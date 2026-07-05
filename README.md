@@ -23,7 +23,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (49 tests) |
+| `swift test` | ✅ Pass (62 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
@@ -106,8 +106,15 @@ The 3D view is RunPlay Studio's main differentiator. It renders your run as an e
 - **Fit Route** — Button to see entire route at once
 - **Camera presets** — Default, top-down, and side views
 - **Elevation scale** — Choose 1x, 2x, 5x, or 10x exaggeration
+- **Color mode** — Single color, pace-based, or elevation-based
 - **Toggle grid** — Show/hide ground grid
 - **Toggle km markers** — Show/hide kilometer markers
+
+**Pace coloring:**
+When pace coloring is enabled, the route shows fast sections in blue/cyan and slow sections in red/yellow. A legend displays the pace range. The color scale uses quantile-based normalization (10th/90th percentile) to avoid outliers, with moving average smoothing to reduce noise.
+
+**Elevation coloring:**
+When elevation coloring is enabled, low elevations are green and high elevations are brown/orange.
 
 **Elevation handling:**
 Routes with elevation changes are visualized with configurable exaggeration:

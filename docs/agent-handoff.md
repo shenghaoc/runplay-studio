@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: 3D Route Replay Polish Complete  
-**Latest Commit**: `b30bb2b` — test: cover 3d projection and geometry edge cases  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (49 tests)
+**Phase**: Route Coloring by Pace Complete  
+**Latest Commit**: `aa2a542` — test: cover pace route coloring logic  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (62 tests)
 
 ## Verification Results
 
@@ -12,16 +12,17 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (49 tests, 0 failures)
+swift test                # ✅ Pass (62 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 49 tests, with 0 failures (0 unexpected)
+Executed 62 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
   - ReplayControllerTests: 13 tests
-  - RouteProjectionTests: 12 tests (UPDATED with edge cases)
+  - RouteProjectionTests: 12 tests
+  - RouteColoringTests: 13 tests (NEW)
   - SplitCalculatorTests: 5 tests
   - WorkoutAnalyzerTests: 4 tests
 ```
@@ -83,6 +84,49 @@ Executed 49 tests, with 0 failures (0 unexpected)
 - testNaNCoordinatesFiltered: invalid coords filtered out
 - testElevationExaggerationChangesYValues: 5x produces 5x difference
 - testMaxExtent: returns reasonable minimum for small routes
+
+## What Was Completed This Phase (Route Coloring by Pace)
+
+### RouteColoringService
+- RouteColorMode enum: singleColor, pace, elevation
+- PaceColorScale with fastest/median/slowest formatted labels
+- Quantile-based scaling (10th/90th percentile) to avoid outliers
+- Moving average smoothing (window=5) to reduce noise
+- Handles missing pace, zero-distance segments, NaN/infinity
+- Pace range: 2:00/km to 20:00/km (filters unreasonable values)
+- HSV color gradient: blue (fast) -> green -> yellow -> red (slow)
+- Elevation coloring: green (low) to brown (high)
+
+### 3D Route Segment Coloring
+- RouteSceneBuilder.colorMode property
+- createRoute() uses RouteColoringService for segment colors
+- Each tube segment gets its own color based on pace
+- Falls back to routeColor for singleColor mode
+- Preserves all existing markers and controls
+
+### Route Color Controls and Legend
+- Color mode picker (Single/Pace/Elevation)
+- Pace legend with gradient bar and pace labels
+- Legend shows fastest/median/slowest pace formatted as MM:SS/km
+- Legend only visible in pace mode
+- Scene rebuilds when color mode changes
+- Pace scale computed from RouteColoringService
+
+### Tests Added (62 total, up from 49)
+- RouteColoringTests: 13 tests covering pace scale, colors, edge cases
+- testPaceColorScaleHandlesNormalData
+- testPaceColorScaleIgnoresNaN
+- testPaceColorScaleHandlesRepeatedPoints
+- testPaceColorScaleHandlesMissingPace
+- testPaceColorScaleHandlesVeryShortRoute
+- testFastestSegmentsMapDifferentlyFromSlowest
+- testSingleColorModeReturnsUniformColors
+- testEmptyPointsReturnsEmptyColors
+- testSinglePointReturnsEmptyColors
+- testComputeSegmentPaceReturnsValidValues
+- testComputeSegmentPaceHandlesZeroDistance
+- testPaceFormatting
+- testRouteColoringDoesNotBreakProjection
 
 ## What Was Completed
 
