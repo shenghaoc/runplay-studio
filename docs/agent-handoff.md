@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: TCX Import Complete  
-**Latest Commit**: `86908a3` — docs: update tcx import support  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (147 tests)
+**Phase**: Heart Rate Route Coloring Complete  
+**Latest Commit**: `bcdb447` — test: cover heart rate route coloring  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (155 tests)
 
 ## Verification Results
 
@@ -12,17 +12,24 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (147 tests, 0 failures)
+swift test                # ✅ Pass (155 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 147 tests, with 0 failures (0 unexpected)
+Executed 155 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
-  - TCXImporterTests: 18 tests (NEW)
+  - TCXImporterTests: 18 tests
   - ReplayControllerTests: 20 tests
   - RouteProjectionTests: 12 tests
+  - RouteColoringTests: 21 tests (UPDATED with HR tests)
+  - SegmentDetectionTests: 11 tests
+  - SplitCalculatorTests: 5 tests
+  - ExportServiceTests: 29 tests
+  - ChartSelectionMapperTests: 18 tests
+  - WorkoutAnalyzerTests: 4 tests
+```
   - RouteColoringTests: 13 tests
   - SegmentDetectionTests: 11 tests
   - SplitCalculatorTests: 5 tests
