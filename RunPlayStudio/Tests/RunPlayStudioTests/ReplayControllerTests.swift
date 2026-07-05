@@ -112,6 +112,116 @@ final class ReplayControllerTests: XCTestCase {
         XCTAssertEqual(controller.currentRoutePoint?.id, workout.routePoints[0].id)
     }
 
+    func testSelectedMetricsAtStart() {
+        let metrics = controller.selectedMetrics
+        XCTAssertNotNil(metrics.elapsedSeconds)
+        XCTAssertEqual(metrics.elapsedSeconds!, 0, accuracy: 0.1)
+        XCTAssertNotNil(metrics.distanceMeters)
+        XCTAssertEqual(metrics.distanceMeters!, 0, accuracy: 0.1)
+    }
+
+    func testSelectedMetricsAfterSeek() {
+        controller.seekToTime(500)
+        let metrics = controller.selectedMetrics
+        XCTAssertNotNil(metrics.elapsedSeconds)
+        // Should be close to 500 seconds (within a few seconds due to discrete points)
+        XCTAssertEqual(metrics.elapsedSeconds!, 500, accuracy: 30)
+        XCTAssertNotNil(metrics.distanceMeters)
+        XCTAssertGreaterThan(metrics.distanceMeters!, 0)
+    }
+
+    func testSelectedMetricsFormatting() {
+        controller.seekToTime(300) // 5 minutes
+        let metrics = controller.selectedMetrics
+        // Should be formatted as MM:SS (may not be exactly 5:00 due to discrete points)
+        XCTAssertTrue(metrics.formattedElapsed.contains(":"))
+        XCTAssertTrue(metrics.formattedDistance.contains("km"))
+        XCTAssertTrue(metrics.formattedPace.contains("/km"))
+    }
+
+    func testSelectedMetricsHandlesMissingData() {
+        // Workout without HR data
+        let noHRWorkout = createSampleWorkout()
+        controller.load(noHRWorkout)
+        controller.seekToTime(500)
+
+        let metrics = controller.selectedMetrics
+        // Should not crash, HR should be nil
+        XCTAssertNil(metrics.heartRateBPM)
+    }
+
+    func testSelectedIndexClampsAtEnd() {
+        controller.seekToTime(controller.state.totalDuration + 1000)
+        let metrics = controller.selectedMetrics
+        XCTAssertNotNil(metrics.elapsedSeconds)
+        // Should be clamped to last point
+        XCTAssertLessThanOrEqual(metrics.elapsedSeconds!, controller.state.totalDuration + 1)
+    }
+
+    func testSelectedIndexClampsAtStart() {
+        controller.seekToTime(-100)
+        let metrics = controller.selectedMetrics
+        XCTAssertNotNil(metrics.elapsedSeconds)
+        XCTAssertEqual(metrics.elapsedSeconds!, 0, accuracy: 1)
+    }
+
+    func testRepeatedTimestampsDoNotCrash() {
+        // Create workout with repeated timestamps
+        let points = (0..<10).map { i in
+            RoutePoint(
+                timestamp: Date(),
+                latitude: 37.7749 + Double(i) * 0.001,
+                longitude: -122.4194,
+                altitudeMeters: 10,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: 0 // All same time
+            )
+        }
+        let repeatedWorkout = RunWorkout(routePoints: points)
+        controller.load(repeatedWorkout)
+        controller.seekToTime(0)
+
+        let metrics = controller.selectedMetrics
+        XCTAssertNotNil(metrics.elapsedSeconds)
+        // Should not crash
+    }
+
+    func testShortRouteDoesNotCrash() {
+        let points = [
+            RoutePoint(timestamp: Date(), latitude: 37.7749, longitude: -122.4194, altitudeMeters: 10, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: Date(), latitude: 37.7750, longitude: -122.4193, altitudeMeters: 15, distanceFromStartMeters: 100, elapsedSeconds: 30)
+        ]
+        let shortWorkout = RunWorkout(routePoints: points)
+        controller.load(shortWorkout)
+
+        // Should not crash on any seek
+        controller.seekToTime(0)
+        controller.seekToTime(15)
+        controller.seekToTime(30)
+        controller.seekToTime(100) // Beyond end
+
+        let metrics = controller.selectedMetrics
+        XCTAssertNotNil(metrics.elapsedSeconds)
+    }
+
+    func testSelectedMetricsNoNaN() {
+        controller.seekToTime(500)
+        let metrics = controller.selectedMetrics
+
+        if let elapsed = metrics.elapsedSeconds {
+            XCTAssertTrue(elapsed.isFinite)
+            XCTAssertFalse(elapsed.isNaN)
+        }
+        if let distance = metrics.distanceMeters {
+            XCTAssertTrue(distance.isFinite)
+            XCTAssertFalse(distance.isNaN)
+        }
+        if let pace = metrics.paceSecondsPerKilometer {
+            XCTAssertTrue(pace.isFinite)
+            XCTAssertFalse(pace.isNaN)
+        }
+    }
+
     // MARK: - Helpers
 
     private func createSampleWorkout() -> RunWorkout {
