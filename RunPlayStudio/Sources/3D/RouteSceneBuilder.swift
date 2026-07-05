@@ -22,6 +22,10 @@ class RouteSceneBuilder {
     var markerRadius: CGFloat = 2.0
     var showKilometerMarkers: Bool = true { didSet { updateKmMarkerVisibility() } }
     var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
+    var colorMode: RouteColorMode = .singleColor
+
+    /// The coloring service for computing segment colors.
+    let coloringService = RouteColoringService()
 
     // MARK: - Scene Elements (for toggling)
 
@@ -199,6 +203,13 @@ class RouteSceneBuilder {
 
         guard points.count >= 2 else { return parent }
 
+        // Compute segment colors based on color mode
+        let segmentColors = coloringService.computeSegmentColors(
+            points: points,
+            mode: colorMode,
+            defaultColor: routeColor
+        )
+
         // Create tubes between consecutive points, skipping zero-length segments
         for i in 0..<(points.count - 1) {
             let from = points[i]
@@ -214,7 +225,8 @@ class RouteSceneBuilder {
             let length = sqrt(dx*dx + dy*dy + dz*dz)
             guard length >= CGFloat(minSegmentLength) else { continue }
 
-            let tube = createTube(from: start, to: end, radius: routeRadius, color: routeColor)
+            let color = i < segmentColors.count ? segmentColors[i] : routeColor
+            let tube = createTube(from: start, to: end, radius: routeRadius, color: color)
             parent.addChildNode(tube)
         }
 
