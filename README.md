@@ -23,7 +23,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (104 tests) |
+| `swift test` | ✅ Pass (111 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
@@ -163,8 +163,10 @@ Export workout data as local files:
 - **Splits CSV** — Kilometer splits with pace, elevation, heart rate
 - **Segments CSV** — Detected segments with metrics
 - **Combined CSV** — Splits and segments in one file
+- **PNG Summary Card** — Polished stats card image (1200×1600)
 
 All exports are local-only. No data is uploaded anywhere.
+PNG export renders a SwiftUI card using NSHostingView (requires GUI context).
 
 ## Privacy
 

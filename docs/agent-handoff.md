@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Export Functionality Complete  
-**Latest Commit**: `57ae413` — feat: add export controls to app  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (104 tests)
+**Phase**: PNG Summary Export Complete  
+**Latest Commit**: `6327639` — test: cover PNG summary export model  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (111 tests)
 
 ## Verification Results
 
@@ -12,12 +12,12 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (104 tests, 0 failures)
+swift test                # ✅ Pass (111 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 104 tests, with 0 failures (0 unexpected)
+Executed 111 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
   - ReplayControllerTests: 20 tests
@@ -25,7 +25,7 @@ Executed 104 tests, with 0 failures (0 unexpected)
   - RouteColoringTests: 13 tests
   - SegmentDetectionTests: 11 tests
   - SplitCalculatorTests: 5 tests
-  - ExportServiceTests: 22 tests (NEW)
+  - ExportServiceTests: 29 tests (UPDATED with PNG tests)
   - WorkoutAnalyzerTests: 4 tests
 ```
 
@@ -279,6 +279,54 @@ Executed 104 tests, with 0 failures (0 unexpected)
 - testEmptySegmentsDoesNotCrash
 - testMissingOptionalMetricsDoNotCrash
 - testDeterministicOutput
+
+## What Was Completed This Phase (PNG Summary Export)
+
+### ExportSummaryCardModel
+- Pure model for PNG card rendering
+- All workout metrics, segments, splits
+- Formatted for display (pace, distance, duration)
+- Privacy note included
+- Handles missing heart rate gracefully
+- Handles empty segments gracefully
+
+### ExportSummaryCardView
+- Fixed 1200×1600 card layout
+- Header with branding, title, date, source
+- Main metrics grid (distance, duration, pace, elevation, HR)
+- Key segments list with icons
+- Compact splits table (up to 10 splits)
+- Footer with privacy note
+- Light mode, clean design
+- No MapKit/SceneKit dependencies
+
+### PNGExportRenderer
+- NSHostingView-based rendering
+- Bitmap representation for reliable PNG output
+- Error handling for zero-size and encoding failures
+- Graceful fallback in headless CI
+
+### ExportService Integration
+- exportSummaryPNG() method added
+- Uses ExportFilenameBuilder for safe filenames
+
+### ExportView Integration
+- Added "Export Summary Card (PNG)" option
+- Uses existing NSSavePanel flow
+
+### Tests (111 total, up from 104)
+- testSummaryCardModelBuildsFromWorkout
+- testSummaryCardModelHandlesMissingHeartRate
+- testSummaryCardModelHandlesEmptySegments
+- testSummaryCardModelPrivacyNote
+- testFilenameBuilderSupportsPNG
+- testPNGExportReturnsNonEmptyData (graceful CI fallback)
+- testPNGDataHasValidSignature (graceful CI fallback)
+
+### Known Limitations
+- PNG rendering requires GUI context (fails gracefully in headless CI)
+- No map/3D screenshot (future work)
+- Card uses fixed light mode style
 
 ## What Was Completed
 
