@@ -85,11 +85,14 @@
 - [x] Parse heart rate and cadence
 - [x] Handle missing fields gracefully
 
-## Phase 10: FIT Import (Future)
-- [ ] Implement FIT binary format parser
-- [ ] Extract record messages
-- [ ] Handle FIT timestamps and coordinates
-- [ ] Add FIT-specific error handling
+## Phase 10: FIT Import ✅
+- [x] Implement FIT binary format parser
+- [x] Extract record messages
+- [x] Handle FIT timestamps and coordinates
+- [x] Add FIT-specific error handling
+- [x] Parse altitude, speed, heart rate, cadence
+- [x] Semicircle to degree coordinate conversion
+- [x] Wire into file picker
 
 ## Phase 11: HealthKit Research (Future)
 - [ ] Research macOS HealthKit availability
