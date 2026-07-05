@@ -1,10 +1,14 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Extension to register TCX file type.
+/// Extension to register TCX and FIT file types.
 extension UTType {
     static var tcx: UTType {
         UTType(importedAs: "com.garmin.tcx")
+    }
+
+    static var fit: UTType {
+        UTType(importedAs: "com.garmin.fit")
     }
 }
 
@@ -36,7 +40,7 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $appState.showImporter,
-            allowedContentTypes: [.json, .xml, .tcx],
+            allowedContentTypes: [.json, .xml, .tcx, .fit],
             allowsMultipleSelection: false
         ) { result in
             appState.handleImport(result)
