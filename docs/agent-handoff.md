@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Segment Detection and 3D Highlighting Complete  
-**Latest Commit**: `1fc3e9b` — test: cover segment detection logic  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (82 tests)
+**Phase**: Export Functionality Complete  
+**Latest Commit**: `57ae413` — feat: add export controls to app  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (104 tests)
 
 ## Verification Results
 
@@ -12,19 +12,20 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (82 tests, 0 failures)
+swift test                # ✅ Pass (104 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 82 tests, with 0 failures (0 unexpected)
+Executed 104 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
   - ReplayControllerTests: 20 tests
   - RouteProjectionTests: 12 tests
   - RouteColoringTests: 13 tests
-  - SegmentDetectionTests: 11 tests (NEW)
+  - SegmentDetectionTests: 11 tests
   - SplitCalculatorTests: 5 tests
+  - ExportServiceTests: 22 tests (NEW)
   - WorkoutAnalyzerTests: 4 tests
 ```
 
@@ -222,6 +223,62 @@ Executed 82 tests, with 0 failures (0 unexpected)
 - testZeroDurationPointsDoNotCrash
 - testSegmentPointRangesAreValid
 - testSegmentDistancesWithinBounds
+
+## What Was Completed This Phase (Export Functionality)
+
+### ExportService
+- exportWorkoutSummaryJSON() for JSON summary
+- exportSplitsCSV() for splits CSV
+- exportSegmentsCSV() for segment highlights CSV
+- exportCombinedCSV() for combined CSV
+- Safe CSV escaping for commas and quotes
+- UTF-8 encoding
+- Deterministic output
+
+### WorkoutExportSummary
+- JSON-serializable workout summary
+- Includes app name, export version, privacy note
+- SplitExport and SegmentExport sub-models
+- All workout metrics
+
+### ExportFilenameBuilder
+- Safe filename generation
+- Timestamp-based uniqueness
+- Sanitizes special characters
+
+### ExportView
+- Menu with JSON, Splits CSV, Segments CSV, Combined CSV options
+- NSSavePanel for native macOS save dialog
+- Success/error alerts
+- Safe filename from ExportFilenameBuilder
+
+### Integration
+- Export button in toolbar when workout is selected
+- Export uses detected segments from AppState
+
+### Tests Added (104 total, up from 82)
+- testSplitsCSVHasHeader
+- testSplitsCSVHasExpectedRowCount
+- testSplitsCSVContainsSplitData
+- testSegmentsCSVHasHeader
+- testSegmentsCSVIncludesAllTypes
+- testSegmentsCSVHasExpectedRowCount
+- testCSVEscapingForCommas
+- testCSVEscapingForQuotes
+- testCSVEscapingForNewlines
+- testCSVEscapingNormalText
+- testCSVRowJoined
+- testJSONSummaryContainsKeyFields
+- testJSONSummaryContainsSplits
+- testJSONSummaryContainsSegments
+- testJSONSummaryPrivacyNote
+- testFilenameBuilderProducesSafeFilename
+- testFilenameBuilderForCSV
+- testFilenameBuilderForPNG
+- testEmptySplitsDoesNotCrash
+- testEmptySegmentsDoesNotCrash
+- testMissingOptionalMetricsDoNotCrash
+- testDeterministicOutput
 
 ## What Was Completed
 
