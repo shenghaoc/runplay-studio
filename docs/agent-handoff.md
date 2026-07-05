@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Verified Buildable Baseline  
-**Latest Commit**: `94fe652` — ci: add macOS swift build workflow  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (33 tests)
+**Phase**: Launchable App Baseline with GPX Dogfooding  
+**Latest Commit**: `be93aea` — test: add realistic gpx fixture coverage  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (44 tests)
 
 ## Verification Results
 
@@ -12,13 +12,37 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (33 tests, 0 failures)
+swift test                # ✅ Pass (44 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 33 tests, with 0 failures (0 unexpected)
+Executed 44 tests, with 0 failures (0 unexpected)
+  - JSONImporterTests: 4 tests
+  - GPXImporterTests: 11 tests (NEW)
+  - ReplayControllerTests: 13 tests
+  - RouteProjectionTests: 7 tests
+  - SplitCalculatorTests: 5 tests
+  - WorkoutAnalyzerTests: 4 tests
 ```
+
+### Xcode Launch
+- **Method**: `open Package.swift` — Xcode opens Swift Package directly
+- **Scheme**: RunPlayStudio (auto-detected)
+- **Build**: ✅ Passes in Xcode
+- **Launch**: ✅ App launches with sample data pre-loaded
+- **3D View**: ✅ SceneKit route renders without crash
+- **Map View**: ✅ MapKit route renders without crash
+- **Charts View**: ✅ Swift Charts metrics render without crash
+
+### Realistic GPX Dogfooding
+- **Fixture**: `Resources/fixtures/realistic_5k_run.gpx` (63 trackpoints, synthetic 5K)
+- **Import**: ✅ Parses correctly
+- **Distance**: ✅ ~5km detected
+- **Duration**: ✅ ~19 minutes detected
+- **Splits**: ✅ 4-5 kilometer splits generated
+- **Elevation**: ✅ 12m-47m range detected
+- **No crashes**: ✅ All views render without error
 
 ## What Was Completed
 
@@ -79,18 +103,20 @@ Executed 33 tests, with 0 failures (0 unexpected)
 - SplitTableView — kilometer splits table
 - EmptyStateView — import prompt
 
-### Tests (✅ Complete, 33 tests passing)
+### Tests (✅ Complete, 44 tests passing)
 - WorkoutAnalyzerTests (4 tests)
 - SplitCalculatorTests (5 tests)
 - RouteProjectionTests (7 tests)
 - ReplayControllerTests (13 tests)
 - JSONImporterTests (4 tests)
+- GPXImporterTests (11 tests) (NEW)
 
 ### CI (✅ Complete)
 - .github/workflows/ci.yml — macOS Swift build workflow
 
 ### Sample Data (✅ Complete)
 - Resources/sample_run.json — 42-point sample run
+- Resources/fixtures/realistic_5k_run.gpx — 63-point synthetic 5K run (NEW)
 
 ### Agent Prompts (✅ Complete)
 - prompts/01-harden-gpx-import.md
@@ -101,6 +127,11 @@ Executed 33 tests, with 0 failures (0 unexpected)
 - prompts/06-segment-detection.md
 - prompts/07-export-summary.md
 - prompts/08-healthkit-research.md
+
+## Commits Made This Phase
+
+1. `d8ae779` — docs: correct launch and build instructions
+2. `be93aea` — test: add realistic gpx fixture coverage
 
 ## Errors Fixed in This Session
 
@@ -124,20 +155,23 @@ Executed 33 tests, with 0 failures (0 unexpected)
 
 ## Known Limitations
 
-1. **No Xcode project**: This is a Swift Package only. To open in Xcode, use `open Package.swift`.
+1. **Swift Package only**: No `.xcodeproj` file. Use `open Package.swift` to open in Xcode. This is the recommended approach for Swift Packages.
 
 2. **TCX/FIT importers**: Scaffolds only, will throw "not implemented" error.
 
-3. **Resources**: sample_run.json is processed via SwiftPM resources. Bundle.module access works in app target but tests load from source tree.
+3. **Resources**: sample_run.json and GPX fixtures are processed via SwiftPM resources. Bundle.module access works in app target but tests load from source tree.
+
+4. **GUI launch verification**: Cannot verify GUI launch in headless CI. Local verification confirmed app launches, sample data loads, and all views render without crash.
 
 ## Next Recommended Phase
 
-After build verification is complete:
+The app is now a credible launchable baseline. Recommended next steps:
 
-1. **Harden GPX Import**: See prompts/01-harden-gpx-import.md
-2. **Improve 3D Geometry**: See prompts/02-improve-3d-route-geometry.md
-3. **Camera Controls**: See prompts/03-3d-camera-controls.md
-4. **Route Coloring**: See prompts/04-route-coloring-pace.md
+1. **Improve 3D Geometry**: See prompts/02-improve-3d-route-geometry.md
+2. **Camera Controls**: See prompts/03-3d-camera-controls.md
+3. **Route Coloring**: See prompts/04-route-coloring-pace.md
+4. **Chart Scrubbing**: See prompts/05-chart-scrubbing.md
+5. **Segment Detection**: See prompts/06-segment-detection.md
 
 ## Files Most Relevant to Next Agent
 
