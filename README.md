@@ -23,7 +23,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (44 tests) |
+| `swift test` | ✅ Pass (49 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
@@ -89,12 +89,32 @@ Both approaches use the same source code. There is no separate Xcode project fil
 ## App Features
 
 ### 3D Route Visualization (SceneKit)
-- Route points converted to local meter-space coordinates
-- Elevation used as Y-axis with configurable exaggeration
-- Start/finish markers and optional kilometer markers
-- Moving replay marker synced to timeline
-- Orbit, pan, and zoom camera controls
-- Ground grid for spatial reference
+
+The 3D view is RunPlay Studio's main differentiator. It renders your run as an explorable 3D scene.
+
+**What you see:**
+- Route rendered as connected tubes showing your path
+- Start marker (green sphere with "START" label)
+- Finish marker (red sphere with "FINISH" label)
+- Current position marker (yellow cone pointing in direction of travel)
+- Kilometer markers (orange poles with distance labels)
+- Adaptive ground grid for spatial reference
+
+**Controls:**
+- **Orbit** — Click and drag to rotate view
+- **Zoom** — Scroll wheel or pinch to zoom in/out
+- **Fit Route** — Button to see entire route at once
+- **Camera presets** — Default, top-down, and side views
+- **Elevation scale** — Choose 1x, 2x, 5x, or 10x exaggeration
+- **Toggle grid** — Show/hide ground grid
+- **Toggle km markers** — Show/hide kilometer markers
+
+**Elevation handling:**
+Routes with elevation changes are visualized with configurable exaggeration:
+- 1x — True scale (may look flat for gentle hills)
+- 2x — Default, good balance for most routes
+- 5x — Makes moderate hills visible
+- 10x — For very flat routes where you want to see any elevation
 
 ### Map View (MapKit)
 - 2D overhead route display

@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Launchable App Baseline with GPX Dogfooding  
-**Latest Commit**: `be93aea` — test: add realistic gpx fixture coverage  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (44 tests)
+**Phase**: 3D Route Replay Polish Complete  
+**Latest Commit**: `b30bb2b` — test: cover 3d projection and geometry edge cases  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (49 tests)
 
 ## Verification Results
 
@@ -12,16 +12,16 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (44 tests, 0 failures)
+swift test                # ✅ Pass (49 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 44 tests, with 0 failures (0 unexpected)
+Executed 49 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
-  - GPXImporterTests: 11 tests (NEW)
+  - GPXImporterTests: 11 tests
   - ReplayControllerTests: 13 tests
-  - RouteProjectionTests: 7 tests
+  - RouteProjectionTests: 12 tests (UPDATED with edge cases)
   - SplitCalculatorTests: 5 tests
   - WorkoutAnalyzerTests: 4 tests
 ```
@@ -43,6 +43,46 @@ Executed 44 tests, with 0 failures (0 unexpected)
 - **Splits**: ✅ 4-5 kilometer splits generated
 - **Elevation**: ✅ 12m-47m range detected
 - **No crashes**: ✅ All views render without error
+
+## What Was Completed This Phase (3D Replay Polish)
+
+### Route Projection Hardening
+- Filter out NaN/infinite coordinates before projection
+- Replace any remaining NaN/infinity with 0 in output
+- Skip non-finite values in bounding box calculation
+- Add maxExtent() helper for adaptive grid/camera scaling
+- Default missing altitude to minimum altitude (not 0)
+
+### 3D Route Geometry Improvements
+- Skip zero-length segments to avoid degenerate geometry
+- Adaptive grid sizing based on route extent (50m/100m/200m spacing)
+- Better lighting (key + fill + top lights with shadows)
+- Start/finish markers with text labels (START/FINISH)
+- Current marker uses cone indicating direction of travel
+- Direction-aware marker that rotates with route heading
+- Km markers use pole + sphere + distance label
+- Grid/km markers stored as single nodes for easy toggling
+
+### Camera Controls
+- fitToRoute() calculates optimal distance from field of view
+- setPresetView() for default/top-down/side/front views
+- Properly updates position on all orbit/zoom/reset calls
+- CGFloat types for macOS compatibility
+
+### 3D View UI Controls
+- Fit Route button to see entire route
+- Camera preset buttons (default, top-down, side)
+- Elevation scale picker (1x, 2x, 5x, 10x)
+- Toggle grid visibility
+- Toggle km markers visibility
+- Compact Mac-native overlay design
+
+### Tests Added (49 total, up from 44)
+- testRepeatedCoordinates: same point repeated 3 times
+- testMissingElevation: nil altitude defaults gracefully
+- testNaNCoordinatesFiltered: invalid coords filtered out
+- testElevationExaggerationChangesYValues: 5x produces 5x difference
+- testMaxExtent: returns reasonable minimum for small routes
 
 ## What Was Completed
 
