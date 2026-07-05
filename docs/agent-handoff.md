@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Chart Click-to-Seek Complete  
-**Latest Commit**: `6a32ba3` — test: cover chart seek mapping logic  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (129 tests)
+**Phase**: TCX Import Complete  
+**Latest Commit**: `c036046` — feat: wire tcx import into file picker  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (147 tests)
 
 ## Verification Results
 
@@ -12,21 +12,22 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (129 tests, 0 failures)
+swift test                # ✅ Pass (147 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 129 tests, with 0 failures (0 unexpected)
+Executed 147 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
+  - TCXImporterTests: 18 tests (NEW)
   - ReplayControllerTests: 20 tests
   - RouteProjectionTests: 12 tests
   - RouteColoringTests: 13 tests
   - SegmentDetectionTests: 11 tests
   - SplitCalculatorTests: 5 tests
   - ExportServiceTests: 29 tests
-  - ChartSelectionMapperTests: 18 tests (NEW)
+  - ChartSelectionMapperTests: 18 tests
   - WorkoutAnalyzerTests: 4 tests
 ```
 
@@ -490,15 +491,20 @@ Executed 129 tests, with 0 failures (0 unexpected)
 
 4. **GUI launch verification**: Cannot verify GUI launch in headless CI. Local verification confirmed app launches, sample data loads, and all views render without crash.
 
+## Known Limitations
+
+- FIT import not implemented (binary format, future work)
+- Heart rate route coloring not implemented (future work)
+- No lap-specific analysis (laps combined into single route)
+
 ## Next Recommended Phase
 
 The app is now a credible launchable baseline. Recommended next steps:
 
-1. **Improve 3D Geometry**: See prompts/02-improve-3d-route-geometry.md
-2. **Camera Controls**: See prompts/03-3d-camera-controls.md
-3. **Route Coloring**: See prompts/04-route-coloring-pace.md
-4. **Chart Scrubbing**: See prompts/05-chart-scrubbing.md
-5. **Segment Detection**: See prompts/06-segment-detection.md
+1. **FIT Import**: Binary format parser for Garmin devices
+2. **Heart Rate Route Coloring**: Color route by HR zones
+3. **Chart Hover Highlighting**: Visual feedback on hover
+4. **Route Comparison**: Compare multiple workouts
 
 ## Files Most Relevant to Next Agent
 

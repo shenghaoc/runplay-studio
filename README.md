@@ -23,7 +23,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (129 tests) |
+| `swift test` | ✅ Pass (147 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
@@ -81,8 +81,8 @@ Both approaches use the same source code. There is no separate Xcode project fil
 | Format | Status | Notes |
 |--------|--------|-------|
 | JSON   | ✅ Full support | Native format, all fields supported |
-| GPX    | ✅ Basic support | Trackpoints with lat/lon/elevation/time; HR/cadence via extensions |
-| TCX    | 🔧 Scaffold only | Parser not implemented |
+| GPX    | ✅ Full support | Trackpoints with lat/lon/elevation/time; HR/cadence via extensions |
+| TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance |
 | FIT    | 📋 Placeholder only | Binary format, future work |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 

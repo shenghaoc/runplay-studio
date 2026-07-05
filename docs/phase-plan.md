@@ -76,11 +76,14 @@
 - [x] Visual feedback during chart interaction
 - [x] Playback behavior: pauses during chart drag
 
-## Phase 9: TCX Import (Future)
-- [ ] Parse TCX XML structure
-- [ ] Extract trackpoints with timestamps
-- [ ] Handle TCX sport types
-- [ ] Map TCX data to RoutePoint model
+## Phase 9: TCX Import ✅
+- [x] Parse TCX XML structure
+- [x] Extract trackpoints with timestamps
+- [x] Handle TCX sport types
+- [x] Map TCX data to RoutePoint model
+- [x] Support multiple laps
+- [x] Parse heart rate and cadence
+- [x] Handle missing fields gracefully
 
 ## Phase 10: FIT Import (Future)
 - [ ] Implement FIT binary format parser
