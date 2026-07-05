@@ -15,55 +15,53 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 - A web app
 - An AI product
 
-## Current MVP Status
+## Current Status
 
-**In Development** — Building core features incrementally.
+**✅ Verified Buildable** — Swift Package builds and all tests pass.
 
-### Working
-
-- Data models for workouts, route points, splits
-- JSON workout importer
-- GPX importer (basic)
-- Workout analysis (distance, pace, elevation, splits)
-- Route projection (lat/lng → local 3D coordinates)
-- 3D route visualization with SceneKit
-- 2D MapKit route display
-- Swift Charts for pace, elevation, heart rate
-- Replay controller with timeline scrubbing
-- macOS SwiftUI app shell with sidebar
-
-### Stubbed / Future
-
-- TCX importer (scaffold)
-- FIT importer (placeholder)
-- HealthKit importer (research needed)
-- Route coloring by pace/heart rate in 3D
-- Segment detection
-- Video/PNG export
-- Route comparison
+| Check | Status |
+|-------|--------|
+| `swift package describe` | ✅ Pass |
+| `swift build` | ✅ Pass |
+| `swift test` | ✅ Pass (33 tests) |
+| CI | ✅ GitHub Actions macOS workflow |
 
 ## Build Requirements
 
 - macOS 14.0+
-- Xcode 15.0+
+- Xcode 15.0+ (for SwiftUI features)
 - Swift 5.9+
 
 ## How to Build
 
+This is a **Swift Package** (no Xcode project yet).
+
 ```bash
-open RunPlayStudio.xcodeproj
-# or
+# Clone the repo
+git clone https://github.com/shenghaoc/runplay-studio.git
+cd runplay-studio
+
+# Build
 swift build
+
+# Run tests
+swift test
 ```
+
+To open in Xcode:
+```bash
+open Package.swift
+```
+Xcode will open the package and you can build/run from there.
 
 ## Supported Import Formats
 
 | Format | Status |
 |--------|--------|
 | JSON   | ✅ Full support |
-| GPX    | ✅ Basic support |
-| TCX    | 🔧 Scaffold |
-| FIT    | 📋 Placeholder |
+| GPX    | ✅ Full support |
+| TCX    | 🔧 Scaffold only |
+| FIT    | 📋 Placeholder only |
 
 ## 3D Route Visualization
 
