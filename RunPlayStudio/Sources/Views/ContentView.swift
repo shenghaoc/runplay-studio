@@ -14,6 +14,14 @@ struct ContentView: View {
         } detail: {
             if let workout = appState.selectedWorkout {
                 WorkoutDetailView(workout: workout, appState: appState)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            ExportView(
+                                workout: workout,
+                                segments: appState.detectedSegments
+                            )
+                        }
+                    }
             } else {
                 EmptyStateView(onImport: { appState.showImporter = true })
             }
