@@ -6,25 +6,43 @@ struct ComparisonMapView: View {
     let primaryPoints: [RoutePoint]
     let comparisonPoints: [RoutePoint]
 
-    @State private var region: MKCoordinateRegion = MKCoordinateRegion()
+    @State private var position: MapCameraPosition = .automatic
 
     var body: some View {
-        Map(coordinateRegion: $region, annotationItems: mapAnnotations) { item in
-            MapAnnotation(coordinate: item.coordinate) {
-                Circle()
-                    .fill(item.color)
-                    .frame(width: item.size, height: item.size)
-                    .overlay(
-                        Circle().stroke(.white, lineWidth: 2)
-                    )
+        Map(position: $position) {
+            if primaryCoordinates.count >= 2 {
+                MapPolyline(coordinates: primaryCoordinates)
+                    .stroke(.blue, lineWidth: 3)
+            }
+
+            if comparisonCoordinates.count >= 2 {
+                MapPolyline(coordinates: comparisonCoordinates)
+                    .stroke(.red, lineWidth: 3)
+            }
+
+            ForEach(mapAnnotations) { item in
+                Annotation(item.label, coordinate: item.coordinate) {
+                    Circle()
+                        .fill(item.color)
+                        .frame(width: item.size, height: item.size)
+                        .overlay(
+                            Circle().stroke(.white, lineWidth: 2)
+                        )
+                        .accessibilityLabel(item.label)
+                }
             }
         }
-        .overlay(routeOverlays)
         .overlay(alignment: .topLeading) {
             routeLegend
         }
         .onAppear {
-            calculateRegion()
+            updatePosition()
+        }
+        .onChange(of: primaryPoints) { _, _ in
+            updatePosition()
+        }
+        .onChange(of: comparisonPoints) { _, _ in
+            updatePosition()
         }
     }
 
@@ -34,9 +52,9 @@ struct ComparisonMapView: View {
         var items: [RouteMapAnnotation] = []
 
         // Primary start
-        if let first = primaryPoints.first {
+        if let first = primaryCoordinates.first {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: first.latitude, longitude: first.longitude),
+                coordinate: first,
                 color: .blue,
                 size: 10,
                 label: "P Start"
@@ -44,9 +62,9 @@ struct ComparisonMapView: View {
         }
 
         // Primary finish
-        if let last = primaryPoints.last {
+        if let last = primaryCoordinates.last {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude),
+                coordinate: last,
                 color: .blue,
                 size: 10,
                 label: "P End"
@@ -54,9 +72,9 @@ struct ComparisonMapView: View {
         }
 
         // Comparison start
-        if let first = comparisonPoints.first {
+        if let first = comparisonCoordinates.first {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: first.latitude, longitude: first.longitude),
+                coordinate: first,
                 color: .red,
                 size: 10,
                 label: "C Start"
@@ -64,9 +82,9 @@ struct ComparisonMapView: View {
         }
 
         // Comparison finish
-        if let last = comparisonPoints.last {
+        if let last = comparisonCoordinates.last {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude),
+                coordinate: last,
                 color: .red,
                 size: 10,
                 label: "C End"
@@ -76,41 +94,12 @@ struct ComparisonMapView: View {
         return items
     }
 
-    // MARK: - Route Overlays
-
-    @ViewBuilder
-    private var routeOverlays: some View {
-        // Primary route
-        routeOverlay(points: primaryPoints, color: .blue)
-
-        // Comparison route
-        routeOverlay(points: comparisonPoints, color: .red)
+    private var primaryCoordinates: [CLLocationCoordinate2D] {
+        coordinates(from: primaryPoints)
     }
 
-    private func routeOverlay(points: [RoutePoint], color: Color) -> some View {
-        Group {
-            if points.count >= 2 {
-                GeometryReader { geometry in
-                    Path { path in
-                        let screenPoints = points.map { point -> CGPoint in
-                            let normalizedX = (point.longitude - region.center.longitude + region.span.longitudeDelta / 2) / region.span.longitudeDelta
-                            let normalizedY = 1 - (point.latitude - region.center.latitude + region.span.latitudeDelta / 2) / region.span.latitudeDelta
-                            return CGPoint(
-                                x: normalizedX * geometry.size.width,
-                                y: normalizedY * geometry.size.height
-                            )
-                        }
-
-                        guard let first = screenPoints.first else { return }
-                        path.move(to: first)
-                        for point in screenPoints.dropFirst() {
-                            path.addLine(to: point)
-                        }
-                    }
-                    .stroke(color, lineWidth: 3)
-                }
-            }
-        }
+    private var comparisonCoordinates: [CLLocationCoordinate2D] {
+        coordinates(from: comparisonPoints)
     }
 
     private var routeLegend: some View {
@@ -136,12 +125,21 @@ struct ComparisonMapView: View {
 
     // MARK: - Helpers
 
-    private func calculateRegion() {
-        let allPoints = primaryPoints + comparisonPoints
-        guard !allPoints.isEmpty else { return }
+    private func updatePosition() {
+        guard let region = mapRegion() else {
+            position = .automatic
+            return
+        }
 
-        let lats = allPoints.map { $0.latitude }
-        let lons = allPoints.map { $0.longitude }
+        position = .region(region)
+    }
+
+    private func mapRegion() -> MKCoordinateRegion? {
+        let allCoordinates = primaryCoordinates + comparisonCoordinates
+        guard !allCoordinates.isEmpty else { return nil }
+
+        let lats = allCoordinates.map { $0.latitude }
+        let lons = allCoordinates.map { $0.longitude }
 
         let minLat = lats.min()!
         let maxLat = lats.max()!
@@ -158,6 +156,14 @@ struct ComparisonMapView: View {
             longitudeDelta: max((maxLon - minLon) * 1.2, 0.01)
         )
 
-        region = MKCoordinateRegion(center: center, span: span)
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
+    private func coordinates(from points: [RoutePoint]) -> [CLLocationCoordinate2D] {
+        points.compactMap { point in
+            guard point.latitude.isFinite, point.longitude.isFinite else { return nil }
+            guard abs(point.latitude) <= 90, abs(point.longitude) <= 180 else { return nil }
+            return CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+        }
     }
 }
