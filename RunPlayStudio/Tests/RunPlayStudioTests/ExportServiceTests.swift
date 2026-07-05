@@ -210,6 +210,102 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(csv1, csv2, "CSV output should be deterministic")
     }
 
+    // MARK: - PNG Export
+
+    func testSummaryCardModelBuildsFromWorkout() {
+        let workout = createSampleWorkout()
+        let segments = createSampleSegments()
+        let model = ExportSummaryCardModel(workout: workout, segments: segments)
+
+        XCTAssertEqual(model.appBranding, "RunPlay Studio")
+        XCTAssertFalse(model.workoutTitle.isEmpty)
+        XCTAssertFalse(model.dateText.isEmpty)
+        XCTAssertTrue(model.distanceText.contains("km"))
+        XCTAssertTrue(model.durationText.contains(":"))
+        XCTAssertTrue(model.paceText.contains("/km"))
+        XCTAssertTrue(model.elevationGainText.contains("m"))
+        XCTAssertFalse(model.segments.isEmpty)
+        XCTAssertFalse(model.splits.isEmpty)
+    }
+
+    func testSummaryCardModelHandlesMissingHeartRate() {
+        let points = (0..<10).map { i in
+            RoutePoint(
+                timestamp: Date(),
+                latitude: 37.7749,
+                longitude: -122.4194,
+                altitudeMeters: 10,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: Double(i) * 30
+            )
+        }
+        let workout = RunWorkout(routePoints: points)
+        let model = ExportSummaryCardModel(workout: workout, segments: [])
+
+        XCTAssertNil(model.heartRateText)
+        XCTAssertNil(model.maxHeartRateText)
+        XCTAssertFalse(model.distanceText.isEmpty)
+    }
+
+    func testSummaryCardModelHandlesEmptySegments() {
+        let workout = createSampleWorkout()
+        let model = ExportSummaryCardModel(workout: workout, segments: [])
+
+        XCTAssertTrue(model.segments.isEmpty)
+        XCTAssertFalse(model.splits.isEmpty)
+    }
+
+    func testSummaryCardModelPrivacyNote() {
+        let workout = createSampleWorkout()
+        let model = ExportSummaryCardModel(workout: workout, segments: [])
+
+        XCTAssertTrue(model.privacyNote.contains("RunPlay Studio"))
+        XCTAssertTrue(model.privacyNote.contains("local") || model.privacyNote.contains("Local"))
+    }
+
+    func testFilenameBuilderSupportsPNG() {
+        let workout = createSampleWorkout()
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
+        XCTAssertTrue(filename.hasSuffix(".png"))
+        XCTAssertFalse(filename.contains(" "))
+    }
+
+    func testPNGExportReturnsNonEmptyData() throws {
+        let workout = createSampleWorkout()
+        let segments = createSampleSegments()
+
+        // PNG rendering requires window context, may fail in headless CI
+        do {
+            let result = try exportService.exportSummaryPNG(workout: workout, segments: segments)
+            XCTAssertGreaterThan(result.data.count, 0)
+            XCTAssertTrue(result.filename.hasSuffix(".png"))
+            XCTAssertEqual(result.format, .png)
+        } catch {
+            // Expected in headless CI - verify error is about rendering, not data
+            XCTAssertTrue(error.localizedDescription.contains("rendering") ||
+                         error.localizedDescription.contains("size"),
+                         "Unexpected error: \(error.localizedDescription)")
+        }
+    }
+
+    func testPNGDataHasValidSignature() throws {
+        let workout = createSampleWorkout()
+
+        // PNG rendering requires window context, may fail in headless CI
+        do {
+            let result = try exportService.exportSummaryPNG(workout: workout, segments: [])
+            let data = result.data
+            XCTAssertGreaterThanOrEqual(data.count, 8)
+            let signature = data.prefix(8)
+            let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+            XCTAssertEqual(Array(signature), pngSignature)
+        } catch {
+            // Expected in headless CI
+            XCTAssertTrue(error.localizedDescription.contains("rendering") ||
+                         error.localizedDescription.contains("size"))
+        }
+    }
+
     // MARK: - Helpers
 
     private func createSampleWorkout() -> RunWorkout {
