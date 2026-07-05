@@ -129,7 +129,7 @@ struct MapReferenceView: View {
 
 // MARK: - Supporting Types
 
-private struct RouteMapAnnotation: Identifiable {
+struct RouteMapAnnotation: Identifiable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
     let color: Color
