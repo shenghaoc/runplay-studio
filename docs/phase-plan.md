@@ -105,8 +105,10 @@
 - [x] Compare view and comparison selection state
 - [x] Warnings for different distances, insufficient overlap, different route endpoints, missing data, and too few points
 - [x] Pure logic tests for comparison edge cases
+- [x] Bundled comparison demo fixture for immediate dogfooding
+- [x] Manual GUI dogfooding with bundled runs and a local TCX import
+- [x] macOS 14 MapKit overlay API modernization for route maps
 - [ ] 3D comparison overlay
-- [ ] Manual GUI dogfooding with two imported workouts
 
 ## Phase 12: HealthKit Research (Future)
 - [ ] Research macOS HealthKit availability
