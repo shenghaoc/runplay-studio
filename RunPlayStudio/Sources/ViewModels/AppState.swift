@@ -13,10 +13,15 @@ class AppState: ObservableObject {
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
 
+    // Comparison state
+    @Published var comparisonWorkout: RunWorkout?
+    @Published var isComparing: Bool = false
+
     let replayController = ReplayController()
     let sceneBuilder = RouteSceneBuilder()
     let cameraController = SceneCameraController()
     var projectionService = RouteProjectionService()
+    let comparisonService = WorkoutComparisonService()
 
     init() {
         loadSampleWorkout()
@@ -83,5 +88,55 @@ class AppState: ObservableObject {
                 replayController.load(first)
             }
         }
+        if comparisonWorkout?.id == workout.id {
+            comparisonWorkout = nil
+            isComparing = false
+        }
+    }
+
+    // MARK: - Comparison
+
+    /// Set the comparison workout and enter comparison mode.
+    func setComparison(_ workout: RunWorkout?) {
+        comparisonWorkout = workout
+        isComparing = workout != nil
+    }
+
+    /// Clear comparison mode.
+    func clearComparison() {
+        comparisonWorkout = nil
+        isComparing = false
+    }
+
+    /// Get the current comparison pair, if both workouts are selected.
+    var comparisonPair: ComparisonPair? {
+        guard let primary = selectedWorkout, let comparison = comparisonWorkout else {
+            return nil
+        }
+        return ComparisonPair(primary: primary, comparison: comparison)
+    }
+
+    /// Get the comparison summary, if available.
+    var comparisonSummary: WorkoutComparisonSummary? {
+        guard let pair = comparisonPair else { return nil }
+        return comparisonService.compare(primary: pair.primary, comparison: pair.comparison)
+    }
+
+    /// Get split comparisons, if available.
+    var splitComparisons: [SplitComparison] {
+        guard let pair = comparisonPair else { return [] }
+        return comparisonService.compareSplits(primary: pair.primary, comparison: pair.comparison)
+    }
+
+    /// Get pace comparison metrics over distance.
+    var comparisonMetrics: [ComparisonMetricPoint] {
+        guard let pair = comparisonPair else { return [] }
+        return comparisonService.compareMetricsOverDistance(primary: pair.primary, comparison: pair.comparison)
+    }
+
+    /// Other workouts available for comparison (excluding current selection).
+    var availableForComparison: [RunWorkout] {
+        guard let selected = selectedWorkout else { return workouts }
+        return workouts.filter { $0.id != selected.id }
     }
 }
