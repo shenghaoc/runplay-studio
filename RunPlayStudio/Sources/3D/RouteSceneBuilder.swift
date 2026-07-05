@@ -4,12 +4,12 @@ import SceneKit
 /// Builds a SceneKit scene for 3D route visualization.
 ///
 /// Creates a stylized 3D route with:
-/// - Route polyline as connected tubes
-/// - Start marker (green sphere)
-/// - Finish marker (red sphere)
-/// - Current position marker (yellow sphere)
+/// - Route polyline as connected tubes (skipping zero-length segments)
+/// - Start marker (green sphere with label)
+/// - Finish marker (red sphere with label)
+/// - Current position marker (yellow cone indicating direction)
 /// - Optional kilometer markers
-/// - Ground grid plane
+/// - Adaptive ground grid
 class RouteSceneBuilder {
 
     // MARK: - Configuration
@@ -20,21 +20,28 @@ class RouteSceneBuilder {
     var finishMarkerColor: NSColor = .systemRed
     var currentMarkerColor: NSColor = .systemYellow
     var markerRadius: CGFloat = 2.0
-    var showKilometerMarkers: Bool = true
-    var showGroundGrid: Bool = true
+    var showKilometerMarkers: Bool = true { didSet { updateKmMarkerVisibility() } }
+    var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
 
-    // MARK: - Scene Elements
+    // MARK: - Scene Elements (for toggling)
 
     private var routeNode: SCNNode?
     private var startNode: SCNNode?
     private var finishNode: SCNNode?
     private var currentNode: SCNNode?
-    private var kmMarkerNodes: [SCNNode] = []
+    private var kmMarkersNode: SCNNode?
+    private var gridNode: SCNNode?
+    private var scenePoints: [RouteScenePoint] = []
+
+    // Minimum segment length to render (meters) - avoids degenerate geometry
+    private let minSegmentLength: Float = 0.01
 
     // MARK: - Build Scene
 
     /// Build a complete 3D scene from scene points.
     func buildScene(from points: [RouteScenePoint]) -> SCNScene {
+        self.scenePoints = points
+
         let scene = SCNScene()
 
         // Background
@@ -44,10 +51,10 @@ class RouteSceneBuilder {
         setupLighting(in: scene)
 
         // Ground grid
-        if showGroundGrid {
-            let grid = createGroundGrid(boundingBox: RouteProjectionService().boundingBox(of: points))
-            scene.rootNode.addChildNode(grid)
-        }
+        let grid = createGroundGrid(points: points)
+        gridNode = grid
+        grid.isHidden = !showGroundGrid
+        scene.rootNode.addChildNode(grid)
 
         // Route
         if !points.isEmpty {
@@ -56,26 +63,25 @@ class RouteSceneBuilder {
             scene.rootNode.addChildNode(route)
 
             // Start marker
-            let start = createMarker(at: points.first!, color: startMarkerColor, radius: markerRadius)
+            let start = createStartMarker(at: points.first!)
             startNode = start
             scene.rootNode.addChildNode(start)
 
             // Finish marker
-            let finish = createMarker(at: points.last!, color: finishMarkerColor, radius: markerRadius)
+            let finish = createFinishMarker(at: points.last!)
             finishNode = finish
             scene.rootNode.addChildNode(finish)
 
             // Current position marker
-            let current = createMarker(at: points.first!, color: currentMarkerColor, radius: markerRadius * 1.2)
+            let current = createCurrentMarker(at: points.first!, direction: calculateDirection(at: 0))
             currentNode = current
             scene.rootNode.addChildNode(current)
 
             // Kilometer markers
-            if showKilometerMarkers {
-                let kmMarkers = createKilometerMarkers(from: points)
-                kmMarkerNodes = kmMarkers
-                kmMarkers.forEach { scene.rootNode.addChildNode($0) }
-            }
+            let kmMarkers = createKilometerMarkers(from: points)
+            kmMarkersNode = kmMarkers
+            kmMarkers.isHidden = !showKilometerMarkers
+            scene.rootNode.addChildNode(kmMarkers)
         }
 
         return scene
@@ -83,40 +89,109 @@ class RouteSceneBuilder {
 
     /// Update the current position marker.
     func updateCurrentPosition(to point: RouteScenePoint) {
-        let position = SCNVector3(point.xMeters, point.yMeters + markerRadius, point.zMeters)
-        currentNode?.position = position
+        guard let marker = currentNode else { return }
+
+        // Position above route surface
+        let position = SCNVector3(point.xMeters, point.yMeters + markerRadius * 2, point.zMeters)
+        marker.position = position
+
+        // Update direction if we have a source index
+        if let index = scenePoints.firstIndex(where: { $0.id == point.id }) {
+            let direction = calculateDirection(at: index)
+            updateMarkerDirection(marker: marker, direction: direction)
+        }
+    }
+
+    /// Get the bounding box for camera fitting.
+    var routeBoundingBox: (center: SCNVector3, extent: CGFloat) {
+        let projection = RouteProjectionService()
+        let bbox = projection.boundingBox(of: scenePoints)
+        let center = SCNVector3(
+            (CGFloat(bbox.min.x) + CGFloat(bbox.max.x)) / 2,
+            (CGFloat(bbox.min.y) + CGFloat(bbox.max.y)) / 2,
+            (CGFloat(bbox.min.z) + CGFloat(bbox.max.z)) / 2
+        )
+        let extent = CGFloat(projection.maxExtent(of: scenePoints))
+        return (center, extent)
+    }
+
+    // MARK: - Visibility Toggles
+
+    private func updateGridVisibility() {
+        gridNode?.isHidden = !showGroundGrid
+    }
+
+    private func updateKmMarkerVisibility() {
+        kmMarkersNode?.isHidden = !showKilometerMarkers
+    }
+
+    // MARK: - Direction Calculation
+
+    private func calculateDirection(at index: Int) -> simd_float3 {
+        guard scenePoints.count >= 2 else { return simd_float3(0, 0, 1) }
+
+        // Use a window of points to smooth direction
+        let lookAhead = min(3, scenePoints.count - index - 1)
+        guard lookAhead > 0 else {
+            // At the end, use previous direction
+            let prev = scenePoints[max(0, index - 1)]
+            let curr = scenePoints[index]
+            let dx = Float(curr.xMeters - prev.xMeters)
+            let dz = Float(curr.zMeters - prev.zMeters)
+            let len = sqrt(dx * dx + dz * dz)
+            return len > 0 ? simd_float3(dx / len, 0, dz / len) : simd_float3(0, 0, 1)
+        }
+
+        let curr = scenePoints[index]
+        let next = scenePoints[index + lookAhead]
+        let dx = Float(next.xMeters - curr.xMeters)
+        let dz = Float(next.zMeters - curr.zMeters)
+        let len = sqrt(dx * dx + dz * dz)
+        return len > 0 ? simd_float3(dx / len, 0, dz / len) : simd_float3(0, 0, 1)
     }
 
     // MARK: - Private Builders
 
     private func setupLighting(in scene: SCNScene) {
-        // Ambient light
+        // Ambient light for base visibility
         let ambient = SCNLight()
         ambient.type = .ambient
-        ambient.color = NSColor(white: 0.6, alpha: 1.0)
+        ambient.color = NSColor(white: 0.5, alpha: 1.0)
         let ambientNode = SCNNode()
         ambientNode.light = ambient
         scene.rootNode.addChildNode(ambientNode)
 
-        // Directional light (sun)
-        let directional = SCNLight()
-        directional.type = .directional
-        directional.color = NSColor(white: 0.8, alpha: 1.0)
-        directional.intensity = 1000
-        let dirNode = SCNNode()
-        dirNode.light = directional
-        dirNode.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 4, 0)
-        scene.rootNode.addChildNode(dirNode)
+        // Key light (directional, angled from above-left)
+        let keyLight = SCNLight()
+        keyLight.type = .directional
+        keyLight.color = NSColor(white: 0.9, alpha: 1.0)
+        keyLight.intensity = 800
+        keyLight.castsShadow = true
+        let keyNode = SCNNode()
+        keyNode.light = keyLight
+        keyNode.eulerAngles = SCNVector3(-Float.pi / 3, Float.pi / 4, 0)
+        scene.rootNode.addChildNode(keyNode)
 
-        // Point light above route
-        let point = SCNLight()
-        point.type = .omni
-        point.color = NSColor(white: 0.5, alpha: 1.0)
-        point.intensity = 500
-        let pointNode = SCNNode()
-        pointNode.light = point
-        pointNode.position = SCNVector3(0, 200, 0)
-        scene.rootNode.addChildNode(pointNode)
+        // Fill light (softer, from opposite side)
+        let fillLight = SCNLight()
+        fillLight.type = .directional
+        fillLight.color = NSColor(white: 0.4, alpha: 1.0)
+        fillLight.intensity = 300
+        let fillNode = SCNNode()
+        fillNode.light = fillLight
+        fillNode.eulerAngles = SCNVector3(-Float.pi / 6, -Float.pi / 3, 0)
+        scene.rootNode.addChildNode(fillNode)
+
+        // Top light for the route
+        let topLight = SCNLight()
+        topLight.type = .omni
+        topLight.color = NSColor(white: 0.3, alpha: 1.0)
+        topLight.intensity = 400
+        topLight.zFar = 2000
+        let topNode = SCNNode()
+        topNode.light = topLight
+        topNode.position = SCNVector3(0, 300, 0)
+        scene.rootNode.addChildNode(topNode)
     }
 
     private func createRoute(from points: [RouteScenePoint]) -> SCNNode {
@@ -124,13 +199,20 @@ class RouteSceneBuilder {
 
         guard points.count >= 2 else { return parent }
 
-        // Create tubes between consecutive points
+        // Create tubes between consecutive points, skipping zero-length segments
         for i in 0..<(points.count - 1) {
             let from = points[i]
             let to = points[i + 1]
 
             let start = SCNVector3(from.xMeters, from.yMeters, from.zMeters)
             let end = SCNVector3(to.xMeters, to.yMeters, to.zMeters)
+
+            // Skip zero-length or degenerate segments
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let dz = end.z - start.z
+            let length = sqrt(dx*dx + dy*dy + dz*dz)
+            guard length >= CGFloat(minSegmentLength) else { continue }
 
             let tube = createTube(from: start, to: end, radius: routeRadius, color: routeColor)
             parent.addChildNode(tube)
@@ -145,10 +227,13 @@ class RouteSceneBuilder {
         let dz = end.z - start.z
         let distance = sqrt(dx*dx + dy*dy + dz*dz)
 
-        let tube = SCNCylinder(radius: radius, height: CGFloat(distance))
+        guard distance > 0 else { return SCNNode() }
+
+        let tube = SCNCylinder(radius: radius, height: distance)
         tube.radialSegmentCount = 8
         tube.firstMaterial?.diffuse.contents = color
         tube.firstMaterial?.lightingModel = .blinn
+        tube.firstMaterial?.specular.contents = NSColor(white: 0.3, alpha: 1.0)
 
         let node = SCNNode(geometry: tube)
         node.position = SCNVector3(
@@ -158,7 +243,6 @@ class RouteSceneBuilder {
         )
 
         // Orient cylinder (default Y-axis) to align with start→end direction
-        // Use quaternion rotation from Y-axis to direction vector
         let dir = simd_float3(Float(dx), Float(dy), Float(dz))
         let len = simd_length(dir)
         guard len > 0 else { return node }
@@ -175,84 +259,200 @@ class RouteSceneBuilder {
         } else {
             let axis = simd_cross(yAxis, dirNorm)
             let angle = acos(min(1.0, max(-1.0, dotProduct)))
-            node.rotation = SCNVector4(axis.x, axis.y, axis.z, angle)
+            node.rotation = SCNVector4(CGFloat(axis.x), CGFloat(axis.y), CGFloat(axis.z), CGFloat(angle))
         }
 
         return node
     }
 
-    private func createMarker(at point: RouteScenePoint, color: NSColor, radius: CGFloat) -> SCNNode {
-        let sphere = SCNSphere(radius: radius)
-        sphere.firstMaterial?.diffuse.contents = color
+    // MARK: - Markers
+
+    private func createStartMarker(at point: RouteScenePoint) -> SCNNode {
+        let parent = SCNNode()
+
+        // Green sphere
+        let sphere = SCNSphere(radius: markerRadius * 1.5)
+        sphere.firstMaterial?.diffuse.contents = startMarkerColor
         sphere.firstMaterial?.lightingModel = .blinn
+        sphere.firstMaterial?.specular.contents = NSColor.white
+        parent.addChildNode(SCNNode(geometry: sphere))
 
-        let node = SCNNode(geometry: sphere)
-        node.position = SCNVector3(point.xMeters, point.yMeters + radius, point.zMeters)
-
-        // Add glow effect
-        let glow = SCNSphere(radius: radius * 1.3)
-        glow.firstMaterial?.diffuse.contents = color.withAlphaComponent(0.3)
+        // Glow
+        let glow = SCNSphere(radius: markerRadius * 2.0)
+        glow.firstMaterial?.diffuse.contents = startMarkerColor.withAlphaComponent(0.2)
         glow.firstMaterial?.lightingModel = .constant
-        let glowNode = SCNNode(geometry: glow)
-        node.addChildNode(glowNode)
+        parent.addChildNode(SCNNode(geometry: glow))
 
-        return node
+        // Label
+        let label = createTextSprite("START", color: startMarkerColor, fontSize: 2.5)
+        label.position = SCNVector3(0, markerRadius * 3, 0)
+        parent.addChildNode(label)
+
+        parent.position = SCNVector3(point.xMeters, point.yMeters + markerRadius * 1.5, point.zMeters)
+        return parent
     }
 
-    private func createKilometerMarkers(from points: [RouteScenePoint]) -> [SCNNode] {
-        var markers: [SCNNode] = []
+    private func createFinishMarker(at point: RouteScenePoint) -> SCNNode {
+        let parent = SCNNode()
+
+        // Red sphere
+        let sphere = SCNSphere(radius: markerRadius * 1.5)
+        sphere.firstMaterial?.diffuse.contents = finishMarkerColor
+        sphere.firstMaterial?.lightingModel = .blinn
+        sphere.firstMaterial?.specular.contents = NSColor.white
+        parent.addChildNode(SCNNode(geometry: sphere))
+
+        // Glow
+        let glow = SCNSphere(radius: markerRadius * 2.0)
+        glow.firstMaterial?.diffuse.contents = finishMarkerColor.withAlphaComponent(0.2)
+        glow.firstMaterial?.lightingModel = .constant
+        parent.addChildNode(SCNNode(geometry: glow))
+
+        // Label
+        let label = createTextSprite("FINISH", color: finishMarkerColor, fontSize: 2.5)
+        label.position = SCNVector3(0, markerRadius * 3, 0)
+        parent.addChildNode(label)
+
+        parent.position = SCNVector3(point.xMeters, point.yMeters + markerRadius * 1.5, point.zMeters)
+        return parent
+    }
+
+    private func createCurrentMarker(at point: RouteScenePoint, direction: simd_float3) -> SCNNode {
+        let parent = SCNNode()
+
+        // Cone pointing in direction of travel
+        let cone = SCNCone(topRadius: 0, bottomRadius: markerRadius * 1.2, height: markerRadius * 3)
+        cone.firstMaterial?.diffuse.contents = currentMarkerColor
+        cone.firstMaterial?.lightingModel = .blinn
+        cone.firstMaterial?.specular.contents = NSColor.white
+        cone.firstMaterial?.emission.contents = currentMarkerColor.withAlphaComponent(0.3)
+
+        let coneNode = SCNNode(geometry: cone)
+        // Default cone points up (Y), rotate to point forward
+        coneNode.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
+        parent.addChildNode(coneNode)
+
+        // Glow ring
+        let ring = SCNTorus(ringRadius: markerRadius * 1.5, pipeRadius: 0.3)
+        ring.firstMaterial?.diffuse.contents = currentMarkerColor.withAlphaComponent(0.5)
+        ring.firstMaterial?.lightingModel = .constant
+        let ringNode = SCNNode(geometry: ring)
+        ringNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        parent.addChildNode(ringNode)
+
+        // Set initial direction
+        updateMarkerDirection(marker: parent, direction: direction)
+
+        parent.position = SCNVector3(point.xMeters, point.yMeters + markerRadius * 2, point.zMeters)
+        return parent
+    }
+
+    private func updateMarkerDirection(marker: SCNNode, direction: simd_float3) {
+        // Rotate marker to face direction of travel
+        guard simd_length(direction) > 0 else { return }
+        let angle = atan2(direction.x, direction.z)
+        marker.eulerAngles = SCNVector3(0, angle, 0)
+    }
+
+    private func createTextSprite(_ text: String, color: NSColor, fontSize: CGFloat) -> SCNNode {
+        let textGeometry = SCNText(string: text, extrusionDepth: 0.5)
+        textGeometry.font = NSFont.boldSystemFont(ofSize: fontSize)
+        textGeometry.firstMaterial?.diffuse.contents = color
+        textGeometry.firstMaterial?.lightingModel = .constant
+        textGeometry.flatness = 0.1
+
+        let textNode = SCNNode(geometry: textGeometry)
+        // Center the text
+        let (min, max) = textGeometry.boundingBox
+        textNode.pivot = SCNMatrix4MakeTranslation(
+            (max.x - min.x) / 2 + min.x,
+            (max.y - min.y) / 2 + min.y,
+            (max.z - min.z) / 2 + min.z
+        )
+
+        return textNode
+    }
+
+    // MARK: - Kilometer Markers
+
+    private func createKilometerMarkers(from points: [RouteScenePoint]) -> SCNNode {
+        let parent = SCNNode()
         var nextKm: Double = 1000
 
         for point in points {
             if point.distanceFromStartMeters >= nextKm {
-                let marker = createKmLabel(at: point, km: Int(nextKm / 1000))
-                markers.append(marker)
+                let marker = createKmMarker(at: point, km: Int(nextKm / 1000))
+                parent.addChildNode(marker)
                 nextKm += 1000
             }
         }
 
-        return markers
+        return parent
     }
 
-    private func createKmLabel(at point: RouteScenePoint, km: Int) -> SCNNode {
-        let text = SCNText(string: "\(km)k", extrusionDepth: 0.5)
-        text.font = NSFont.boldSystemFont(ofSize: 3)
-        text.firstMaterial?.diffuse.contents = NSColor.labelColor
-
-        let node = SCNNode(geometry: text)
-        node.position = SCNVector3(point.xMeters, point.yMeters + 5, point.zMeters)
-        node.scale = SCNVector3(1, 1, 1)
-
-        // Add a small sphere below the text
-        let dot = SCNSphere(radius: 1.0)
-        dot.firstMaterial?.diffuse.contents = NSColor.systemOrange
-        let dotNode = SCNNode(geometry: dot)
-        dotNode.position = SCNVector3(0, -2, 0)
-        node.addChildNode(dotNode)
-
-        return node
-    }
-
-    private func createGroundGrid(boundingBox: (min: SIMD3<Double>, max: SIMD3<Double>)) -> SCNNode {
+    private func createKmMarker(at point: RouteScenePoint, km: Int) -> SCNNode {
         let parent = SCNNode()
-        let gridSize: CGFloat = 500
-        let gridSpacing: CGFloat = 50
+
+        // Pole
+        let pole = SCNCylinder(radius: 0.3, height: 8)
+        pole.firstMaterial?.diffuse.contents = NSColor.systemOrange
+        pole.firstMaterial?.lightingModel = .blinn
+        let poleNode = SCNNode(geometry: pole)
+        poleNode.position = SCNVector3(0, 4, 0)
+        parent.addChildNode(poleNode)
+
+        // Sphere on top
+        let sphere = SCNSphere(radius: 1.5)
+        sphere.firstMaterial?.diffuse.contents = NSColor.systemOrange
+        sphere.firstMaterial?.lightingModel = .blinn
+        let sphereNode = SCNNode(geometry: sphere)
+        sphereNode.position = SCNVector3(0, 9, 0)
+        parent.addChildNode(sphereNode)
+
+        // Distance label
+        let label = createTextSprite("\(km) km", color: .white, fontSize: 2.0)
+        label.position = SCNVector3(0, 12, 0)
+        parent.addChildNode(label)
+
+        parent.position = SCNVector3(point.xMeters, point.yMeters, point.zMeters)
+        return parent
+    }
+
+    // MARK: - Ground Grid
+
+    private func createGroundGrid(points: [RouteScenePoint]) -> SCNNode {
+        let parent = SCNNode()
+
+        let projection = RouteProjectionService()
+        let bbox = projection.boundingBox(of: points)
+        let extent = projection.maxExtent(of: points)
+
+        // Adaptive grid: spacing based on route extent
+        let gridSpacing: CGFloat
+        if extent < 500 {
+            gridSpacing = 50
+        } else if extent < 2000 {
+            gridSpacing = 100
+        } else {
+            gridSpacing = 200
+        }
+
+        let gridSize = CGFloat(extent) * 0.8 // Slightly larger than route
         let gridColor = NSColor.separatorColor.withAlphaComponent(0.3)
 
         let center = SCNVector3(
-            (boundingBox.min.x + boundingBox.max.x) / 2,
-            boundingBox.min.y - 1,
-            (boundingBox.min.z + boundingBox.max.z) / 2
+            (CGFloat(bbox.min.x) + CGFloat(bbox.max.x)) / 2,
+            CGFloat(bbox.min.y) - 1,
+            (CGFloat(bbox.min.z) + CGFloat(bbox.max.z)) / 2
         )
 
         // Create grid lines along X
         var i: CGFloat = -gridSize
         while i <= gridSize {
-            let line = createLine(
-                from: SCNVector3(center.x + i, center.y, center.z - gridSize),
-                to: SCNVector3(center.x + i, center.y, center.z + gridSize),
-                color: gridColor
-            )
+            let x = center.x + i
+            let from = SCNVector3(x, center.y, center.z - gridSize)
+            let to = SCNVector3(x, center.y, center.z + gridSize)
+            let line = createLine(from: from, to: to, color: gridColor)
             parent.addChildNode(line)
             i += gridSpacing
         }
@@ -260,11 +460,10 @@ class RouteSceneBuilder {
         // Create grid lines along Z
         i = -gridSize
         while i <= gridSize {
-            let line = createLine(
-                from: SCNVector3(center.x - gridSize, center.y, center.z + i),
-                to: SCNVector3(center.x + gridSize, center.y, center.z + i),
-                color: gridColor
-            )
+            let z = center.z + i
+            let from = SCNVector3(center.x - gridSize, center.y, z)
+            let to = SCNVector3(center.x + gridSize, center.y, z)
+            let line = createLine(from: from, to: to, color: gridColor)
             parent.addChildNode(line)
             i += gridSpacing
         }
