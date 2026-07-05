@@ -4,13 +4,16 @@ import Charts
 /// Displays running metrics as interactive charts using Swift Charts.
 ///
 /// Shows pace, elevation, and heart rate over distance with
-/// optional current position indicator.
+/// optional current position indicator and click/drag to seek.
 struct MetricsChartView: View {
     let routePoints: [RoutePoint]
     var currentDistance: Double = 0
     var smoothingWindow: Int = 5
+    var onSeek: ((Double) -> Void)? = nil
 
     @State private var selectedMetric: MetricType = .elevation
+    @State private var isDragging: Bool = false
+    @State private var dragDistance: Double? = nil
 
     enum MetricType: String, CaseIterable {
         case elevation = "Elevation"
@@ -42,17 +45,34 @@ struct MetricsChartView: View {
                 }
 
                 // Current position indicator
-                if currentDistance > 0 {
-                    RuleMark(x: .value("Current", currentDistance / 1000))
-                        .foregroundStyle(.yellow)
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
+                let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
+                if displayDistance > 0 {
+                    RuleMark(x: .value("Current", displayDistance / 1000))
+                        .foregroundStyle(isDragging ? .orange : .yellow)
+                        .lineStyle(StrokeStyle(lineWidth: isDragging ? 3 : 2, dash: [5, 5]))
                         .annotation(position: .top, alignment: .center) {
-                            Text(formatValue(currentValue))
+                            Text(formatValue(valueForDistance(displayDistance)))
                                 .font(.caption)
                                 .padding(4)
-                                .background(.yellow.opacity(0.2))
+                                .background((isDragging ? Color.orange : Color.yellow).opacity(0.2))
                                 .cornerRadius(4)
                         }
+                }
+            }
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(Color.clear)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    handleChartDrag(at: value.location, proxy: proxy, geometry: geometry)
+                                }
+                                .onEnded { _ in
+                                    handleChartDragEnd()
+                                }
+                        )
                 }
             }
             .chartXAxis {
@@ -76,6 +96,43 @@ struct MetricsChartView: View {
             .frame(height: 150)
             .padding(.horizontal)
         }
+    }
+
+    // MARK: - Chart Interaction
+
+    private func handleChartDrag(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
+        // Convert location to chart coordinates
+        let frame = geometry.frame(in: .local)
+        guard frame.width > 0 else { return }
+
+        // Calculate relative position within chart
+        let relativeX = (location.x - frame.minX) / frame.width
+
+        // Get data range from chart data
+        guard let minX = chartData.first?.distanceKm,
+              let maxX = chartData.last?.distanceKm else { return }
+
+        let dataRange = maxX - minX
+        guard dataRange > 0 else { return }
+
+        // Map to distance in km, then to meters
+        let positionKm = minX + relativeX * dataRange
+        let totalDistance = routePoints.last?.distanceFromStartMeters ?? 0
+        let distance = ChartSelectionMapper.distanceForChartPosition(
+            positionKm: positionKm,
+            totalDistanceMeters: totalDistance
+        )
+
+        isDragging = true
+        dragDistance = distance
+
+        // Seek replay
+        onSeek?(distance)
+    }
+
+    private func handleChartDragEnd() {
+        isDragging = false
+        dragDistance = nil
     }
 
     // MARK: - Chart Data
@@ -121,9 +178,9 @@ struct MetricsChartView: View {
         }
     }
 
-    private var currentValue: Double {
-        guard currentDistance > 0 else { return 0 }
-        let index = routePoints.firstIndex { $0.distanceFromStartMeters >= currentDistance } ?? routePoints.count - 1
+    private func valueForDistance(_ distance: Double) -> Double {
+        guard distance > 0 else { return 0 }
+        let index = routePoints.firstIndex { $0.distanceFromStartMeters >= distance } ?? routePoints.count - 1
         guard index < routePoints.count else { return 0 }
 
         switch selectedMetric {
@@ -132,6 +189,10 @@ struct MetricsChartView: View {
         case .heartRate: return routePoints[index].heartRateBPM ?? 0
         case .speed: return routePoints[index].speedMetersPerSecond ?? 0
         }
+    }
+
+    private var currentValue: Double {
+        valueForDistance(currentDistance)
     }
 
     private func formatValue(_ value: Double) -> String {

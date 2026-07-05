@@ -36,7 +36,11 @@ struct WorkoutDetailView: View {
             case .charts:
                 MetricsChartView(
                     routePoints: workout.routePoints,
-                    currentDistance: appState.replayController.state.currentDistance
+                    currentDistance: appState.replayController.state.currentDistance,
+                    onSeek: { distance in
+                        appState.replayController.pause()
+                        appState.replayController.seekToDistance(distance)
+                    }
                 )
             }
 
