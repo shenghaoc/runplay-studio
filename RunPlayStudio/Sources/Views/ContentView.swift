@@ -1,4 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// Extension to register TCX file type.
+extension UTType {
+    static var tcx: UTType {
+        UTType(importedAs: "com.garmin.tcx")
+    }
+}
 
 /// Main content view with sidebar, 3D route view, and detail panels.
 struct ContentView: View {
@@ -28,7 +36,7 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $appState.showImporter,
-            allowedContentTypes: [.json, .xml],
+            allowedContentTypes: [.json, .xml, .tcx],
             allowsMultipleSelection: false
         ) { result in
             appState.handleImport(result)
