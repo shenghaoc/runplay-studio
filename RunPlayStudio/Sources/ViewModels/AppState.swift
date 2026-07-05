@@ -16,6 +16,7 @@ class AppState: ObservableObject {
     // Comparison state
     @Published var comparisonWorkout: RunWorkout?
     @Published var isComparing: Bool = false
+    @Published var comparisonSelectionMessage: String?
 
     let replayController = ReplayController()
     let sceneBuilder = RouteSceneBuilder()
@@ -23,8 +24,10 @@ class AppState: ObservableObject {
     var projectionService = RouteProjectionService()
     let comparisonService = WorkoutComparisonService()
 
-    init() {
-        loadSampleWorkout()
+    init(loadSampleWorkout: Bool = true) {
+        if loadSampleWorkout {
+            self.loadSampleWorkout()
+        }
     }
 
     /// Load the bundled sample workout.
@@ -104,19 +107,44 @@ class AppState: ObservableObject {
 
     /// Set the comparison workout and enter comparison mode.
     func setComparison(_ workout: RunWorkout?) {
+        comparisonSelectionMessage = nil
+        guard let workout else {
+            clearComparison()
+            return
+        }
+        guard selectedWorkout != nil else {
+            comparisonWorkout = nil
+            isComparing = false
+            comparisonSelectionMessage = "Select a primary run first."
+            return
+        }
+        guard canCompare(workout) else {
+            comparisonWorkout = nil
+            isComparing = false
+            comparisonSelectionMessage = "Choose a different run to compare."
+            return
+        }
+
         comparisonWorkout = workout
-        isComparing = workout != nil
+        isComparing = true
     }
 
     /// Clear comparison mode.
     func clearComparison() {
         comparisonWorkout = nil
         isComparing = false
+        comparisonSelectionMessage = nil
+    }
+
+    /// Whether the supplied workout can be compared with the current primary selection.
+    func canCompare(_ workout: RunWorkout) -> Bool {
+        guard let selectedWorkout else { return false }
+        return selectedWorkout.id != workout.id
     }
 
     /// Get the current comparison pair, if both workouts are selected.
     var comparisonPair: ComparisonPair? {
-        guard let primary = selectedWorkout, let comparison = comparisonWorkout else {
+        guard let primary = selectedWorkout, let comparison = comparisonWorkout, primary.id != comparison.id else {
             return nil
         }
         return ComparisonPair(primary: primary, comparison: comparison)

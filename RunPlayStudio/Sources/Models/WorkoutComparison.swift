@@ -48,20 +48,33 @@ struct WorkoutComparisonSummary {
 
     var distanceDeltaFormatted: String {
         let km = distanceDeltaMeters / 1000
-        return String(format: "%+.2f km", km)
+        if abs(km) < 0.005 {
+            return "0.00 km even"
+        }
+        return String(format: "%+.2f km %@", km, km > 0 ? "longer" : "shorter")
     }
 
     var durationDeltaFormatted: String {
-        let mins = durationDeltaSeconds / 60
-        return String(format: "%+.1f min", mins)
+        formatTimeDelta(durationDeltaSeconds, suffix: nil, positiveLabel: "slower", negativeLabel: "faster")
     }
 
     var paceDeltaFormatted: String {
-        let delta = paceDeltaSecondsPerKm
-        let mins = Int(abs(delta)) / 60
-        let secs = Int(abs(delta)) % 60
-        let sign = delta >= 0 ? "+" : "-"
-        return "\(sign)\(mins):\(String(format: "%02d", secs)) /km"
+        formatTimeDelta(paceDeltaSecondsPerKm, suffix: "/km", positiveLabel: "slower", negativeLabel: "faster")
+    }
+
+    var elevationGainDeltaFormatted: String {
+        if abs(elevationGainDeltaMeters) < 0.5 {
+            return "0 m even"
+        }
+        return String(format: "%+.0f m %@", elevationGainDeltaMeters, elevationGainDeltaMeters > 0 ? "more gain" : "less gain")
+    }
+
+    var avgHRDeltaFormatted: String? {
+        formatHeartRateDelta(avgHRDelta)
+    }
+
+    var maxHRDeltaFormatted: String? {
+        formatHeartRateDelta(maxHRDelta)
     }
 
     var winner: ComparisonResult {
@@ -70,6 +83,34 @@ struct WorkoutComparisonSummary {
             return .tie
         }
         return paceDiff > 0 ? .comparison : .primary
+    }
+
+    private func formatTimeDelta(
+        _ delta: Double,
+        suffix: String?,
+        positiveLabel: String,
+        negativeLabel: String
+    ) -> String {
+        let suffixText = suffix.map { " \($0)" } ?? ""
+        guard delta.isFinite else { return "N/A" }
+        if abs(delta) < 0.5 {
+            return "0:00\(suffixText) even"
+        }
+
+        let rounded = Int(abs(delta).rounded())
+        let minutes = rounded / 60
+        let seconds = rounded % 60
+        let sign = delta > 0 ? "+" : "-"
+        let label = delta > 0 ? positiveLabel : negativeLabel
+        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
+    }
+
+    private func formatHeartRateDelta(_ delta: Double?) -> String? {
+        guard let delta, delta.isFinite else { return nil }
+        if abs(delta) < 0.5 {
+            return "0 bpm even"
+        }
+        return String(format: "%+.0f bpm %@", delta, delta > 0 ? "higher" : "lower")
     }
 }
 
@@ -102,18 +143,27 @@ struct SplitComparison: Identifiable {
 
     var formattedDurationDelta: String {
         guard let delta = durationDeltaSeconds else { return "—" }
-        let mins = Int(abs(delta)) / 60
-        let secs = Int(abs(delta)) % 60
-        let sign = delta >= 0 ? "+" : "-"
-        return "\(sign)\(mins):\(String(format: "%02d", secs))"
+        return Self.formatTimeDelta(delta, suffix: nil)
     }
 
     var formattedPaceDelta: String {
         guard let delta = paceDeltaSecondsPerKm else { return "—" }
-        let mins = Int(abs(delta)) / 60
-        let secs = Int(abs(delta)) % 60
-        let sign = delta >= 0 ? "+" : "-"
-        return "\(sign)\(mins):\(String(format: "%02d", secs))"
+        return Self.formatTimeDelta(delta, suffix: "/km")
+    }
+
+    private static func formatTimeDelta(_ delta: Double, suffix: String?) -> String {
+        let suffixText = suffix.map { " \($0)" } ?? ""
+        guard delta.isFinite else { return "N/A" }
+        if abs(delta) < 0.5 {
+            return "0:00\(suffixText) even"
+        }
+
+        let rounded = Int(abs(delta).rounded())
+        let minutes = rounded / 60
+        let seconds = rounded % 60
+        let sign = delta > 0 ? "+" : "-"
+        let label = delta > 0 ? "slower" : "faster"
+        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
     }
 }
 

@@ -26,12 +26,24 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertEqual(summary.paceDeltaSecondsPerKm, -60, accuracy: 5)
     }
 
+    func testSummaryDeltaFormattingShowsDirection() {
+        let faster = createSampleWorkout(distance: 5000, pace: 270)
+        let slower = createSampleWorkout(distance: 5000, pace: 330)
+
+        let summary = service.compare(primary: faster, comparison: slower)
+
+        XCTAssertEqual(summary.distanceDeltaFormatted, "0.00 km even")
+        XCTAssertEqual(summary.durationDeltaFormatted, "-5:00 faster")
+        XCTAssertEqual(summary.paceDeltaFormatted, "-1:00 /km faster")
+    }
+
     func testLongerRunGivesCorrectDistanceDelta() {
         let longer = createSampleWorkout(distance: 10000, pace: 300)
         let shorter = createSampleWorkout(distance: 5000, pace: 300)
         let summary = service.compare(primary: longer, comparison: shorter)
 
         XCTAssertEqual(summary.distanceDeltaMeters, 5000, accuracy: 10)
+        XCTAssertEqual(summary.distanceDeltaFormatted, "+5.00 km longer")
     }
 
     func testWinnerIsCorrect() {
@@ -54,6 +66,7 @@ final class WorkoutComparisonTests: XCTestCase {
         let summary = service.compare(primary: primary, comparison: comparison)
 
         XCTAssertEqual(summary.maxHRDelta, 11)
+        XCTAssertEqual(summary.maxHRDeltaFormatted, "+11 bpm higher")
     }
 
     func testSimilarPaceIsTie() {
@@ -115,6 +128,15 @@ final class WorkoutComparisonTests: XCTestCase {
             // Winner should be consistent
             XCTAssertNotEqual(split.winner, .tie, "Different paces should not tie")
         }
+    }
+
+    func testSplitDeltaFormattingShowsDirection() {
+        let primary = createSampleWorkout(distance: 5000, pace: 270)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let split = service.compareSplits(primary: primary, comparison: comparison)[0]
+
+        XCTAssertEqual(split.formattedPaceDelta, "-0:55 /km faster")
     }
 
     // MARK: - Metric Series
