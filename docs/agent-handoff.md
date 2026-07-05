@@ -3,7 +3,7 @@
 ## Current Status
 
 **Phase**: TCX Import Complete  
-**Latest Commit**: `c036046` — feat: wire tcx import into file picker  
+**Latest Commit**: `86908a3` — docs: update tcx import support  
 **Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (147 tests)
 
 ## Verification Results
