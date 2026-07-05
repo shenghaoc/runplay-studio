@@ -29,6 +29,12 @@ struct ExportView: View {
 
             Divider()
 
+            Button(action: { exportPNG() }) {
+                Label("Export Summary Card (PNG)", systemImage: "photo")
+            }
+
+            Divider()
+
             Button(action: { exportCombinedCSV() }) {
                 Label("Export All (CSV)", systemImage: "doc.plaintext")
             }
@@ -77,6 +83,15 @@ struct ExportView: View {
     private func exportCombinedCSV() {
         do {
             let result = try exportService.exportCombinedCSV(workout: workout, segments: segments)
+            saveFile(data: result.data, filename: result.filename)
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    private func exportPNG() {
+        do {
+            let result = try exportService.exportSummaryPNG(workout: workout, segments: segments)
             saveFile(data: result.data, filename: result.filename)
         } catch {
             showError(error.localizedDescription)

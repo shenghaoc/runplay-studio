@@ -175,6 +175,15 @@ struct ExportService {
         return sections.joined(separator: "\n")
     }
 
+    // MARK: - PNG Export
+
+    /// Export workout summary as PNG image.
+    func exportSummaryPNG(workout: RunWorkout, segments: [SegmentHighlight]) throws -> ExportResult {
+        let data = try PNGExportRenderer.renderSummaryCard(workout: workout, segments: segments)
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
+        return ExportResult(format: .png, filename: filename, data: data)
+    }
+
     // MARK: - Helpers
 
     private func formatNumber(_ value: Double) -> String {

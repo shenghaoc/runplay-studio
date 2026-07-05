@@ -1,0 +1,52 @@
+import Foundation
+import SwiftUI
+import AppKit
+
+/// Renders the export summary card as PNG data.
+///
+/// Uses NSHostingView and bitmap representation for reliable macOS rendering.
+struct PNGExportRenderer {
+
+    /// Render the summary card view to PNG data.
+    ///
+    /// - Parameter view: The SwiftUI view to render.
+    /// - Returns: PNG image data.
+    /// - Throws: ExportError if rendering fails.
+    static func renderPNG<Content: View>(from view: Content) throws -> Data {
+        let hostingView = NSHostingView(rootView: view)
+
+        // Force layout
+        hostingView.layoutSubtreeIfNeeded()
+
+        guard let size = hostingView.subviews.first?.frame.size ?? Optional(hostingView.frame.size),
+              size.width > 0, size.height > 0 else {
+            throw ExportError.renderingFailed("View has zero size")
+        }
+
+        let bounds = NSRect(origin: .zero, size: size)
+        hostingView.frame = bounds
+
+        guard let bitmapRep = hostingView.bitmapImageRepForCachingDisplay(in: bounds) else {
+            throw ExportError.renderingFailed("Could not create bitmap representation")
+        }
+
+        hostingView.cacheDisplay(in: bounds, to: bitmapRep)
+
+        guard let pngData = bitmapRep.representation(using: .png, properties: [:]) else {
+            throw ExportError.renderingFailed("Could not encode as PNG")
+        }
+
+        guard !pngData.isEmpty else {
+            throw ExportError.renderingFailed("PNG data is empty")
+        }
+
+        return pngData
+    }
+
+    /// Render the export summary card to PNG data.
+    static func renderSummaryCard(workout: RunWorkout, segments: [SegmentHighlight]) throws -> Data {
+        let model = ExportSummaryCardModel(workout: workout, segments: segments)
+        let view = ExportSummaryCardView(model: model)
+        return try renderPNG(from: view)
+    }
+}
