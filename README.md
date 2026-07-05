@@ -23,7 +23,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (62 tests) |
+| `swift test` | ✅ Pass (71 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
@@ -136,6 +136,16 @@ Routes with elevation changes are visualized with configurable exaggeration:
 - Automatic kilometer splits
 - Per-split pace, elevation gain, heart rate
 - Fastest/slowest segment highlighting
+- Current split highlighted during replay
+
+### Synchronized Replay
+All views stay in sync with the replay position:
+- 3D route marker updates with timeline
+- 2D map marker matches selected position
+- Charts show selection indicator at current distance
+- Current metrics panel shows real-time data
+- Split table highlights current split
+- Timeline slider drives all views
 
 ## Privacy
 

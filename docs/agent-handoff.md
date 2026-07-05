@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Route Coloring by Pace Complete  
-**Latest Commit**: `aa2a542` — test: cover pace route coloring logic  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (62 tests)
+**Phase**: Synchronized Chart Scrubbing Complete  
+**Latest Commit**: `0a4ae34` — test: cover synchronized replay selection  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (71 tests)
 
 ## Verification Results
 
@@ -12,17 +12,17 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (62 tests, 0 failures)
+swift test                # ✅ Pass (71 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 62 tests, with 0 failures (0 unexpected)
+Executed 71 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
-  - ReplayControllerTests: 13 tests
+  - ReplayControllerTests: 20 tests (UPDATED with sync tests)
   - RouteProjectionTests: 12 tests
-  - RouteColoringTests: 13 tests (NEW)
+  - RouteColoringTests: 13 tests
   - SplitCalculatorTests: 5 tests
   - WorkoutAnalyzerTests: 4 tests
 ```
@@ -127,6 +127,48 @@ Executed 62 tests, with 0 failures (0 unexpected)
 - testComputeSegmentPaceHandlesZeroDistance
 - testPaceFormatting
 - testRouteColoringDoesNotBreakProjection
+
+## What Was Completed This Phase (Synchronized Chart Scrubbing)
+
+### Centralized Replay Selection State
+- ReplayController.selectedMetrics computed property
+- Exposes pace, elevation, HR, speed, cadence at current position
+- findCurrentSplitIndex() for split context
+
+### SelectedMetrics Model
+- Snapshot of route point data at current position
+- Formatted accessors for all metrics (time, distance, pace, elev, HR, speed, cadence, split)
+- Handles nil/missing data gracefully
+
+### CurrentMetricsPanel View
+- Compact horizontal badges for real-time metrics
+- Shows time, distance, pace, elevation, split
+- Conditionally shows HR and cadence if data exists
+- Updates during playback and scrubbing
+
+### Current Split Highlighting
+- SplitTableView accepts optional currentSplitIndex
+- Shows current split card with orange highlight
+- Current split row shows orange dot indicator
+
+### Synchronized Views
+- 3D route marker driven by ReplayController
+- 2D map marker driven by ReplayController
+- Charts show selection indicator at current distance
+- Current metrics panel shows real-time data
+- Split table highlights current split
+- All views stay in sync during playback and scrubbing
+
+### Tests Added (71 total, up from 62)
+- testSelectedMetricsAtStart
+- testSelectedMetricsAfterSeek
+- testSelectedMetricsFormatting
+- testSelectedMetricsHandlesMissingData
+- testSelectedIndexClampsAtEnd
+- testSelectedIndexClampsAtStart
+- testRepeatedTimestampsDoNotCrash
+- testShortRouteDoesNotCrash
+- testSelectedMetricsNoNaN
 
 ## What Was Completed
 
