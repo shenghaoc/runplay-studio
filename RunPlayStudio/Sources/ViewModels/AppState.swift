@@ -26,21 +26,19 @@ class AppState: ObservableObject {
 
     init(loadSampleWorkout: Bool = true) {
         if loadSampleWorkout {
-            self.loadSampleWorkout()
+            self.loadSampleWorkouts()
         }
     }
 
-    /// Load the bundled sample workout.
-    func loadSampleWorkout() {
-        guard let url = Bundle.main.url(forResource: "sample_run", withExtension: "json") else {
-            // Try loading from file system for development
-            let devURL = URL(fileURLWithPath: "RunPlayStudio/Resources/sample_run.json")
-            if FileManager.default.fileExists(atPath: devURL.path) {
-                loadWorkout(from: devURL)
-            }
-            return
+    /// Load bundled demo workouts.
+    func loadSampleWorkouts() {
+        let initialCount = workouts.count
+        loadBundledWorkout(resource: "sample_run", extension: "json")
+        loadBundledWorkout(resource: "comparison_park_run", extension: "json", subdirectory: "fixtures")
+
+        if workouts.count > initialCount {
+            selectWorkout(workouts[initialCount])
         }
-        loadWorkout(from: url)
     }
 
     /// Import a workout from a file URL.
@@ -67,6 +65,21 @@ class AppState: ObservableObject {
         case .failure(let error):
             errorMessage = error.localizedDescription
             showingError = true
+        }
+    }
+
+    private func loadBundledWorkout(resource: String, extension fileExtension: String, subdirectory: String? = nil) {
+        if let url = Bundle.main.url(forResource: resource, withExtension: fileExtension, subdirectory: subdirectory) {
+            loadWorkout(from: url)
+            return
+        }
+
+        let relativePath = [subdirectory, "\(resource).\(fileExtension)"]
+            .compactMap { $0 }
+            .joined(separator: "/")
+        let devURL = URL(fileURLWithPath: "RunPlayStudio/Resources/\(relativePath)")
+        if FileManager.default.fileExists(atPath: devURL.path) {
+            loadWorkout(from: devURL)
         }
     }
 

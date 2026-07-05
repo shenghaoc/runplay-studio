@@ -53,6 +53,15 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertNil(appState.comparisonSelectionMessage)
     }
 
+    func testDefaultAppStateLoadsDemoComparisonWorkouts() {
+        let appState = AppState()
+
+        XCTAssertGreaterThanOrEqual(appState.workouts.count, 2)
+        XCTAssertEqual(appState.selectedWorkout?.displayName, "Morning Park Run")
+        XCTAssertTrue(appState.workouts.contains { $0.displayName == "Morning Park Progression Run" })
+        XCTAssertFalse(appState.availableForComparison.isEmpty)
+    }
+
     private func makeWorkout(name: String) -> RunWorkout {
         RunWorkout(metadata: WorkoutMetadata(name: name, activityType: "running"))
     }
