@@ -100,9 +100,9 @@
 - [ ] Implement HealthKit workout query
 - [ ] Handle permissions and privacy
 
-## Phase 12: Advanced Features (Future)
-- [ ] Route comparison (side-by-side)
-- [ ] Heart rate route coloring
+## Phase 12: Advanced Features
+- [x] Route comparison (side-by-side)
+- [ ] Heart rate route coloring (done as part of HR route coloring)
 - [ ] Dark mode PNG variant
 - [ ] Map/3D screenshot in PNG export
 - [ ] Keyboard shortcuts

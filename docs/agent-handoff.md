@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: FIT Import Complete  
-**Latest Commit**: `01c991d` — docs: update fit import support  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (173 tests)
+**Phase**: Route Comparison Complete  
+**Latest Commit**: `43568ec` — feat: add route comparison view  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (191 tests)
 
 ## Verification Results
 
@@ -12,16 +12,16 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (173 tests, 0 failures)
+swift test                # ✅ Pass (191 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 173 tests, with 0 failures (0 unexpected)
+Executed 191 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
   - TCXImporterTests: 18 tests
-  - FITImporterTests: 18 tests (NEW)
+  - FITImporterTests: 18 tests
   - ReplayControllerTests: 20 tests
   - RouteProjectionTests: 12 tests
   - RouteColoringTests: 21 tests
