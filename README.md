@@ -23,7 +23,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (71 tests) |
+| `swift test` | ✅ Pass (82 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
@@ -146,6 +146,16 @@ All views stay in sync with the replay position:
 - Current metrics panel shows real-time data
 - Split table highlights current split
 - Timeline slider drives all views
+
+### Segment Detection
+Automatically identifies key run segments:
+- Fastest 400m
+- Fastest 1km
+- Slowest 1km
+- Biggest climb
+- Biggest descent
+
+Segments are detected using distance-based sliding windows for accuracy with uneven GPS sampling. Selecting a segment highlights it in 3D and seeks the replay to its start.
 
 ## Privacy
 

@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: Synchronized Chart Scrubbing Complete  
-**Latest Commit**: `0a4ae34` — test: cover synchronized replay selection  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (71 tests)
+**Phase**: Segment Detection and 3D Highlighting Complete  
+**Latest Commit**: `1fc3e9b` — test: cover segment detection logic  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (82 tests)
 
 ## Verification Results
 
@@ -12,17 +12,18 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (71 tests, 0 failures)
+swift test                # ✅ Pass (82 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 71 tests, with 0 failures (0 unexpected)
+Executed 82 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
-  - ReplayControllerTests: 20 tests (UPDATED with sync tests)
+  - ReplayControllerTests: 20 tests
   - RouteProjectionTests: 12 tests
   - RouteColoringTests: 13 tests
+  - SegmentDetectionTests: 11 tests (NEW)
   - SplitCalculatorTests: 5 tests
   - WorkoutAnalyzerTests: 4 tests
 ```
@@ -169,6 +170,58 @@ Executed 71 tests, with 0 failures (0 unexpected)
 - testRepeatedTimestampsDoNotCrash
 - testShortRouteDoesNotCrash
 - testSelectedMetricsNoNaN
+
+## What Was Completed This Phase (Segment Detection and 3D Highlighting)
+
+### SegmentHighlight Model
+- Added title, subtitle, duration, elevation delta, average HR
+- sourcePointRange for precise 3D highlighting
+- displayPriority for ordering
+- Formatted accessors for pace, duration, distance, elevation
+- New types: fastest400m, biggestClimb, biggestDescent
+- Added icon and color properties for UI
+
+### SegmentDetector
+- Rewritten with distance-based sliding windows
+- 50m step size for finer resolution
+- Handles uneven GPS sampling
+- Filters unreasonable pace (2:00-20:00/km)
+- Elevation segments use point-count windows
+- Returns sorted by displayPriority
+- Handles missing data gracefully
+
+### SegmentHighlightsPanel
+- Horizontal scrollable cards for each detected segment
+- Shows title, subtitle, distance, duration, elevation
+- Selection binding with visual feedback
+- Clear selection button
+- Color-coded by segment type
+
+### 3D Segment Highlighting
+- highlightSegment() creates highlight tube above route
+- Adds S/E markers for segment start/end
+- Uses translucent colored tubes above the route
+- clearSegmentHighlight() removes highlight
+- Preserves all existing scene elements
+
+### Integration
+- AppState detects segments when workout is loaded/selected
+- WorkoutDetailView shows segment panel
+- Selecting segment seeks replay to segment start
+- Segment highlight persists during playback
+
+### Tests Added (82 total, up from 71)
+- testFastest400mDetection
+- testFastest1kmDetection
+- testSlowest1kmDetection
+- testFastestSlowerThanSlowest
+- testBiggestClimbDetection
+- testBiggestDescentDetection
+- testShortRouteReturnsNoSegments
+- testRepeatedPointsDoNotCrash
+- testZeroDurationPointsDoNotCrash
+- testSegmentPointRangesAreValid
+- testSegmentDistancesWithinBounds
 
 ## What Was Completed
 
