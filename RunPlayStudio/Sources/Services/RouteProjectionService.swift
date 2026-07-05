@@ -11,20 +11,34 @@ struct RouteProjectionService {
     var elevationExaggeration: Double = 2.0
 
     /// Convert an array of RoutePoints into RouteScenePoints for 3D rendering.
+    ///
+    /// Handles edge cases:
+    /// - Empty arrays return empty results
+    /// - Repeated coordinates are preserved (not collapsed)
+    /// - Missing altitude defaults to minimum altitude
+    /// - NaN/infinite coordinates are filtered out
     func project(_ points: [RoutePoint]) -> [RouteScenePoint] {
         guard !points.isEmpty else { return [] }
 
+        // Filter out points with invalid coordinates
+        let validPoints = points.filter { point in
+            point.latitude.isFinite && point.longitude.isFinite &&
+            !point.latitude.isNaN && !point.longitude.isNaN
+        }
+
+        guard !validPoints.isEmpty else { return [] }
+
         // Find route center (midpoint of bounding box)
-        let lats = points.map { $0.latitude }
-        let lons = points.map { $0.longitude }
+        let lats = validPoints.map { $0.latitude }
+        let lons = validPoints.map { $0.longitude }
         let centerLat = (lats.min()! + lats.max()!) / 2
         let centerLon = (lons.min()! + lons.max()!) / 2
 
         // Find elevation range for scaling
-        let altitudes = points.compactMap { $0.altitudeMeters }
+        let altitudes = validPoints.compactMap { $0.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }
         let minAlt = altitudes.min() ?? 0
 
-        return points.enumerated().map { index, point in
+        return validPoints.enumerated().map { index, point in
             let (x, z) = latLonToMeters(
                 lat: point.latitude,
                 lon: point.longitude,
@@ -32,12 +46,18 @@ struct RouteProjectionService {
                 centerLon: centerLon
             )
 
-            let y = ((point.altitudeMeters ?? minAlt) - minAlt) * elevationExaggeration
+            let altitude = point.altitudeMeters ?? minAlt
+            let y = (altitude - minAlt) * elevationExaggeration
+
+            // Final safety check - replace any NaN/infinity with 0
+            let safeX = x.isFinite ? x : 0
+            let safeY = y.isFinite ? y : 0
+            let safeZ = z.isFinite ? z : 0
 
             return RouteScenePoint(
-                xMeters: x,
-                yMeters: y,
-                zMeters: z,
+                xMeters: safeX,
+                yMeters: safeY,
+                zMeters: safeZ,
                 sourceIndex: index,
                 distanceFromStartMeters: point.distanceFromStartMeters,
                 elapsedSeconds: point.elapsedSeconds,
@@ -79,6 +99,7 @@ struct RouteProjectionService {
         var minZ = Double.infinity, maxZ = -Double.infinity
 
         for p in scenePoints {
+            guard p.xMeters.isFinite && p.yMeters.isFinite && p.zMeters.isFinite else { continue }
             minX = min(minX, p.xMeters)
             maxX = max(maxX, p.xMeters)
             minY = min(minY, p.yMeters)
@@ -87,9 +108,23 @@ struct RouteProjectionService {
             maxZ = max(maxZ, p.zMeters)
         }
 
+        // Handle case where all values were infinite
+        guard minX.isFinite && maxX.isFinite else {
+            return (SIMD3<Double>(0, 0, 0), SIMD3<Double>(0, 0, 0))
+        }
+
         return (
             SIMD3<Double>(minX, minY, minZ),
             SIMD3<Double>(maxX, maxY, maxZ)
         )
+    }
+
+    /// Calculate the maximum extent of the bounding box (for scaling grid/camera).
+    func maxExtent(of scenePoints: [RouteScenePoint]) -> Double {
+        let bbox = boundingBox(of: scenePoints)
+        let dx = bbox.max.x - bbox.min.x
+        let dy = bbox.max.y - bbox.min.y
+        let dz = bbox.max.z - bbox.min.z
+        return max(dx, dy, dz, 100) // Minimum 100m extent
     }
 }
