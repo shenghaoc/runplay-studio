@@ -147,6 +147,49 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(note!.contains("local") || note!.contains("Local"))
     }
 
+    func testBundledDemoExportSmokeUsesSyntheticData() throws {
+        let workout = try loadFixture("sample_run.json")
+        let segments = SegmentDetector.detectSegments(from: workout)
+
+        let json = try exportService.exportWorkoutSummaryJSON(workout: workout, segments: segments)
+        let splits = try exportService.exportSplitsCSV(workout: workout)
+        let segmentCSV = try exportService.exportSegmentsCSV(segments: segments)
+        let combined = try exportService.exportCombinedCSV(workout: workout, segments: segments)
+
+        XCTAssertFalse(json.data.isEmpty)
+        XCTAssertFalse(splits.data.isEmpty)
+        XCTAssertFalse(segmentCSV.data.isEmpty)
+        XCTAssertFalse(combined.data.isEmpty)
+        XCTAssertEqual(json.format, .json)
+        XCTAssertEqual(splits.format, .splitsCSV)
+        XCTAssertEqual(segmentCSV.format, .segmentsCSV)
+        XCTAssertEqual(combined.format, .splitsCSV)
+
+        let jsonText = try XCTUnwrap(String(data: json.data, encoding: .utf8))
+        let splitsText = try XCTUnwrap(String(data: splits.data, encoding: .utf8))
+        let segmentText = try XCTUnwrap(String(data: segmentCSV.data, encoding: .utf8))
+        let combinedText = try XCTUnwrap(String(data: combined.data, encoding: .utf8))
+
+        XCTAssertTrue(jsonText.contains("RunPlay Studio"))
+        XCTAssertTrue(splitsText.contains("Split"))
+        XCTAssertTrue(segmentText.contains("Type"))
+        XCTAssertTrue(combinedText.contains("# Splits"))
+        XCTAssertDemoExportContainsNoPrivateMarkers(jsonText)
+        XCTAssertDemoExportContainsNoPrivateMarkers(splitsText)
+        XCTAssertDemoExportContainsNoPrivateMarkers(segmentText)
+        XCTAssertDemoExportContainsNoPrivateMarkers(combinedText)
+
+        do {
+            let png = try exportService.exportSummaryPNG(workout: workout, segments: segments)
+            XCTAssertGreaterThan(png.data.count, 8)
+            XCTAssertEqual(Array(png.data.prefix(8)), pngSignature)
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("rendering") ||
+                         error.localizedDescription.contains("size"),
+                         "Unexpected error: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Filename Builder
 
     func testFilenameBuilderProducesSafeFilename() {
@@ -270,6 +313,22 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertFalse(filename.contains(" "))
     }
 
+    func testFilenameBuilderHandlesDemoExportNames() {
+        let workout = RunWorkout(
+            metadata: WorkoutMetadata(name: "Morning Park Demo / Export: Test", activityType: "running"),
+            source: .json,
+            routePoints: createSamplePoints()
+        )
+
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .json)
+
+        XCTAssertTrue(filename.hasPrefix("morning-park-demo-export-test"))
+        XCTAssertTrue(filename.hasSuffix(".json"))
+        XCTAssertFalse(filename.contains("/"))
+        XCTAssertFalse(filename.contains(":"))
+        XCTAssertFalse(filename.contains(" "))
+    }
+
     func testPNGExportReturnsNonEmptyData() throws {
         let workout = createSampleWorkout()
         let segments = createSampleSegments()
@@ -296,9 +355,7 @@ final class ExportServiceTests: XCTestCase {
             let result = try exportService.exportSummaryPNG(workout: workout, segments: [])
             let data = result.data
             XCTAssertGreaterThanOrEqual(data.count, 8)
-            let signature = data.prefix(8)
-            let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
-            XCTAssertEqual(Array(signature), pngSignature)
+            XCTAssertEqual(Array(data.prefix(8)), pngSignature)
         } catch {
             // Expected in headless CI
             XCTAssertTrue(error.localizedDescription.contains("rendering") ||
@@ -358,5 +415,29 @@ final class ExportServiceTests: XCTestCase {
             SegmentHighlight(type: .biggestClimb, title: "Biggest Climb", subtitle: "+50 m ↑", startDistanceMeters: 1000, endDistanceMeters: 2000, startElapsedSeconds: 255, endElapsedSeconds: 600, durationSeconds: 345, distanceMeters: 1000, elevationDeltaMeters: 50, sourcePointRange: 20..<40, displayPriority: 4),
             SegmentHighlight(type: .biggestDescent, title: "Biggest Descent", subtitle: "-30 m ↓", startDistanceMeters: 3000, endDistanceMeters: 4000, startElapsedSeconds: 960, endElapsedSeconds: 1260, durationSeconds: 300, distanceMeters: 1000, elevationDeltaMeters: -30, sourcePointRange: 60..<80, displayPriority: 5)
         ]
+    }
+
+    private var pngSignature: [UInt8] {
+        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    }
+
+    private func loadFixture(_ relativePath: String) throws -> RunWorkout {
+        let baseURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // ExportServiceTests
+            .deletingLastPathComponent()  // RunPlayStudioTests
+            .deletingLastPathComponent()  // Tests
+            .appendingPathComponent("Resources")
+        let url = baseURL.appendingPathComponent(relativePath)
+        return try JSONWorkoutImporter().importWorkout(from: url)
+    }
+
+    private func XCTAssertDemoExportContainsNoPrivateMarkers(
+        _ text: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for marker in ["activity_", "local-workouts", "private-workouts", "23487672964"] {
+            XCTAssertFalse(text.contains(marker), "Demo export contains private marker: \(marker)", file: file, line: line)
+        }
     }
 }
