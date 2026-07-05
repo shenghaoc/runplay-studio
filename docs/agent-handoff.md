@@ -488,6 +488,44 @@ Executed 155 tests, with 0 failures (0 unexpected)
 5. **RouteProjectionService** elevation exaggeration test
    - Changed let to var for mutable service
 
+## What Was Completed This Phase (Heart Rate Route Coloring)
+
+### RouteColoringService
+- Added .heartRate to RouteColorMode enum
+- computeSegmentHeartRate(): smoothed HR values with filtering
+- computeHeartRateScale(): quantile-based scale for legend
+- hasHeartRateData(): checks if points have usable HR
+- computeHeartRateColors(): segment colors from HR
+- heartRateToColor(): low HR = blue/green, high HR = red/purple
+- Filters unreasonable HR (40-230 bpm range)
+
+### HeartRateColorScale
+- lowHR, medianHR, highHR with formatted labels
+- bpm unit formatting
+
+### Route3DReplayView
+- Heart Rate legend shows when in HR color mode
+- Legend displays low/median/high HR in bpm
+- Color gradient: blue -> green -> yellow -> orange -> red
+- buildScene() computes HR scale when in Heart Rate mode
+- Pace and HR scales are mutually exclusive (only one shown)
+
+### Fallback Behavior
+- No HR data: returns safe fallback color (default blue)
+- Partial HR data: uses available values, fills missing with median
+- Invalid HR values (< 40 or > 230): filtered out
+
+### Tests (155 total, up from 147)
+- RouteColoringTests: 21 tests (8 new HR tests)
+- testHeartRateColorScaleHandlesNormalData
+- testHeartRateColorScaleIgnoresInvalidValues
+- testHeartRateColorScaleHandlesMissingHR
+- testHeartRateColorScaleHandlesPartialHR
+- testHighHRMapsDifferentlyFromLowHR
+- testNoHRDataReturnsSafeFallback
+- testHasHeartRateData
+- testHeartRateSegmentValues
+
 ## Known Limitations
 
 1. **Swift Package only**: No `.xcodeproj` file. Use `open Package.swift` to open in Xcode. This is the recommended approach for Swift Packages.
