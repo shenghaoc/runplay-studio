@@ -13,7 +13,8 @@ class AppState: ObservableObject {
 
     let replayController = ReplayController()
     let sceneBuilder = RouteSceneBuilder()
-    let projectionService = RouteProjectionService()
+    let cameraController = SceneCameraController()
+    var projectionService = RouteProjectionService()
 
     init() {
         loadSampleWorkout()
