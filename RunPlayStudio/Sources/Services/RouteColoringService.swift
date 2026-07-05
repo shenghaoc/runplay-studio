@@ -6,6 +6,7 @@ enum RouteColorMode: String, CaseIterable, Identifiable {
     case singleColor = "Single"
     case pace = "Pace"
     case elevation = "Elevation"
+    case heartRate = "Heart Rate"
 
     var id: String { rawValue }
 }
@@ -31,6 +32,8 @@ struct RouteColoringService {
             return computePaceColors(points: points, defaultColor: defaultColor)
         case .elevation:
             return computeElevationColors(points: points, defaultColor: defaultColor)
+        case .heartRate:
+            return computeHeartRateColors(points: points, defaultColor: defaultColor)
         }
     }
 
@@ -227,5 +230,146 @@ extension RouteColoringService {
         } else {
             return sorted[count / 2]
         }
+    }
+
+    // MARK: - Heart Rate
+
+    /// Compute heart rate values for each segment.
+    ///
+    /// Returns smoothed HR values. Invalid values are replaced with the median.
+    func computeSegmentHeartRate(points: [RouteScenePoint]) -> [Double] {
+        guard points.count >= 2 else { return [] }
+
+        var rawHR: [Double] = []
+
+        for i in 0..<(points.count - 1) {
+            let from = points[i]
+            let to = points[i + 1]
+
+            // Average HR of the two points
+            let hr1 = from.heartRateBPM
+            let hr2 = to.heartRateBPM
+
+            if let h1 = hr1, let h2 = hr2 {
+                let avg = (h1 + h2) / 2
+                // Filter unreasonable values
+                if avg >= 40 && avg <= 230 && avg.isFinite && !avg.isNaN {
+                    rawHR.append(avg)
+                } else {
+                    rawHR.append(.nan)
+                }
+            } else if let h = hr1 ?? hr2 {
+                // One point has HR
+                if h >= 40 && h <= 230 && h.isFinite && !h.isNaN {
+                    rawHR.append(h)
+                } else {
+                    rawHR.append(.nan)
+                }
+            } else {
+                rawHR.append(.nan) // No HR data
+            }
+        }
+
+        // Smooth HR to reduce noise
+        let smoothed = smoothValues(rawHR, windowSize: 5)
+
+        // Replace remaining NaN with median
+        let validHR = smoothed.filter { !$0.isNaN && $0.isFinite }
+        let median = validHR.isEmpty ? 140.0 : medianOf(validHR) // Default 140 bpm
+
+        return smoothed.map { $0.isNaN || !$0.isFinite ? median : $0 }
+    }
+
+    /// Compute the heart rate color scale for legend display.
+    func computeHeartRateScale(points: [RouteScenePoint]) -> HeartRateColorScale? {
+        let hrValues = computeSegmentHeartRate(points: points)
+        guard !hrValues.isEmpty else { return nil }
+
+        let validValues = hrValues.filter { $0.isFinite && $0 >= 40 && $0 <= 230 }
+        guard validValues.count >= 2 else { return nil }
+
+        let sorted = validValues.sorted()
+        let count = sorted.count
+
+        // Use 10th and 90th percentiles to avoid outliers
+        let lowIdx = max(0, count / 10)
+        let highIdx = min(count - 1, count * 9 / 10)
+        let medianIdx = count / 2
+
+        return HeartRateColorScale(
+            lowHR: sorted[lowIdx],
+            medianHR: sorted[medianIdx],
+            highHR: sorted[highIdx]
+        )
+    }
+
+    /// Check if points have usable heart rate data.
+    func hasHeartRateData(points: [RouteScenePoint]) -> Bool {
+        let hrValues = points.compactMap { $0.heartRateBPM }
+        let validCount = hrValues.filter { $0 >= 40 && $0 <= 230 && $0.isFinite }.count
+        return validCount >= 2
+    }
+
+    private func computeHeartRateColors(points: [RouteScenePoint], defaultColor: NSColor) -> [NSColor] {
+        let hrValues = computeSegmentHeartRate(points: points)
+        guard !hrValues.isEmpty else {
+            return Array(repeating: defaultColor, count: points.count - 1)
+        }
+
+        // Compute scale from 10th to 90th percentile
+        let sorted = hrValues.filter { $0.isFinite && $0 >= 40 && $0 <= 230 }.sorted()
+        guard sorted.count >= 2 else {
+            return Array(repeating: defaultColor, count: points.count - 1)
+        }
+
+        let lowBound = sorted[max(0, sorted.count / 10)]
+        let highBound = sorted[min(sorted.count - 1, sorted.count * 9 / 10)]
+
+        return hrValues.map { hr in
+            heartRateToColor(hr: hr, lowBound: lowBound, highBound: highBound)
+        }
+    }
+
+    /// Map heart rate to color: low HR = blue/green, moderate = yellow/orange, high = red/purple
+    private func heartRateToColor(hr: Double, lowBound: Double, highBound: Double) -> NSColor {
+        guard hr.isFinite && !hr.isNaN else {
+            return NSColor.systemGreen
+        }
+
+        // Clamp to bounds
+        let clamped = max(lowBound, min(highBound, hr))
+
+        // Normalize: 0 = low HR (blue/green), 1 = high HR (red/purple)
+        let range = highBound - lowBound
+        guard range > 0 else { return NSColor.systemGreen }
+        let t = (clamped - lowBound) / range
+
+        // Color gradient: blue -> cyan -> green -> yellow -> orange -> red
+        // Using HSV: hue goes from 0.55 (blue-green) to 0.0 (red)
+        let hue = 0.55 * (1.0 - t)
+        let saturation = 0.8
+        let brightness = 0.9
+
+        return NSColor(
+            hue: hue,
+            saturation: saturation,
+            brightness: brightness,
+            alpha: 1.0
+        )
+    }
+}
+
+/// Heart rate color scale for legend display.
+struct HeartRateColorScale {
+    let lowHR: Double
+    let medianHR: Double
+    let highHR: Double
+
+    var lowFormatted: String { formatHR(lowHR) }
+    var medianFormatted: String { formatHR(medianHR) }
+    var highFormatted: String { formatHR(highHR) }
+
+    private func formatHR(_ bpm: Double) -> String {
+        "\(Int(bpm)) bpm"
     }
 }
