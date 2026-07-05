@@ -190,6 +190,151 @@ final class RouteColoringTests: XCTestCase {
         }
     }
 
+    // MARK: - Heart Rate Color Tests
+
+    func testHeartRateColorScaleHandlesNormalData() {
+        let points = createPointsWithHR(count: 20, startHR: 120, endHR: 170)
+        let scale = coloringService.computeHeartRateScale(points: points)
+
+        XCTAssertNotNil(scale)
+        if let scale = scale {
+            XCTAssertLessThan(scale.lowHR, scale.medianHR)
+            XCTAssertLessThan(scale.medianHR, scale.highHR)
+            XCTAssertTrue(scale.lowHR.isFinite)
+            XCTAssertTrue(scale.medianHR.isFinite)
+            XCTAssertTrue(scale.highHR.isFinite)
+        }
+    }
+
+    func testHeartRateColorScaleIgnoresInvalidValues() {
+        var points = createPointsWithHR(count: 20, startHR: 120, endHR: 170)
+        // Add a point with invalid HR
+        let badPoint = RouteScenePoint(
+            xMeters: points[10].xMeters,
+            yMeters: points[10].yMeters,
+            zMeters: points[10].zMeters,
+            sourceIndex: 10,
+            distanceFromStartMeters: points[10].distanceFromStartMeters,
+            elapsedSeconds: points[10].elapsedSeconds,
+            heartRateBPM: 500 // Unrealistic
+        )
+        points.insert(badPoint, at: 11)
+
+        let scale = coloringService.computeHeartRateScale(points: points)
+        XCTAssertNotNil(scale)
+        if let scale = scale {
+            XCTAssertTrue(scale.lowHR >= 40 && scale.lowHR <= 230)
+            XCTAssertTrue(scale.highHR >= 40 && scale.highHR <= 230)
+        }
+    }
+
+    func testHeartRateColorScaleHandlesMissingHR() {
+        let points = (0..<10).map { i in
+            RouteScenePoint(
+                xMeters: Double(i) * 100,
+                yMeters: 0,
+                zMeters: 0,
+                sourceIndex: i,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: Double(i) * 30,
+                heartRateBPM: nil
+            )
+        }
+
+        let scale = coloringService.computeHeartRateScale(points: points)
+        // With no HR data, the service provides a fallback scale with default 140 bpm
+        // or returns nil - either is acceptable
+        if let scale = scale {
+            // If returned, values should be the fallback median
+            XCTAssertTrue(scale.lowHR.isFinite)
+            XCTAssertTrue(scale.medianHR.isFinite)
+            XCTAssertTrue(scale.highHR.isFinite)
+        }
+    }
+
+    func testHeartRateColorScaleHandlesPartialHR() {
+        var points = createPointsWithHR(count: 20, startHR: 120, endHR: 170)
+        // Remove HR from some points
+        for i in stride(from: 0, to: points.count, by: 2) {
+            points[i] = RouteScenePoint(
+                xMeters: points[i].xMeters,
+                yMeters: points[i].yMeters,
+                zMeters: points[i].zMeters,
+                sourceIndex: points[i].sourceIndex,
+                distanceFromStartMeters: points[i].distanceFromStartMeters,
+                elapsedSeconds: points[i].elapsedSeconds,
+                heartRateBPM: nil
+            )
+        }
+
+        let scale = coloringService.computeHeartRateScale(points: points)
+        // Should still work with partial data
+        XCTAssertNotNil(scale)
+    }
+
+    func testHighHRMapsDifferentlyFromLowHR() {
+        let points = createPointsWithHR(count: 20, startHR: 100, endHR: 180)
+        let colors = coloringService.computeSegmentColors(points: points, mode: .heartRate)
+
+        XCTAssertEqual(colors.count, points.count - 1)
+        // First segment (low HR) should be more blue/green
+        // Last segment (high HR) should be more red
+        // They should be different colors
+        XCTAssertNotEqual(colors.first, colors.last)
+    }
+
+    func testNoHRDataReturnsSafeFallback() {
+        let points = (0..<10).map { i in
+            RouteScenePoint(
+                xMeters: Double(i) * 100,
+                yMeters: 0,
+                zMeters: 0,
+                sourceIndex: i,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: Double(i) * 30,
+                heartRateBPM: nil
+            )
+        }
+
+        let colors = coloringService.computeSegmentColors(points: points, mode: .heartRate)
+        XCTAssertEqual(colors.count, points.count - 1)
+        // Should return default color, not crash
+        for color in colors {
+            XCTAssertNotNil(color)
+        }
+    }
+
+    func testHasHeartRateData() {
+        let withHR = createPointsWithHR(count: 10, startHR: 120, endHR: 170)
+        XCTAssertTrue(coloringService.hasHeartRateData(points: withHR))
+
+        let withoutHR = (0..<10).map { i in
+            RouteScenePoint(
+                xMeters: Double(i) * 100,
+                yMeters: 0,
+                zMeters: 0,
+                sourceIndex: i,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: Double(i) * 30,
+                heartRateBPM: nil
+            )
+        }
+        XCTAssertFalse(coloringService.hasHeartRateData(points: withoutHR))
+    }
+
+    func testHeartRateSegmentValues() {
+        let points = createPointsWithHR(count: 20, startHR: 120, endHR: 170)
+        let hrValues = coloringService.computeSegmentHeartRate(points: points)
+
+        XCTAssertEqual(hrValues.count, points.count - 1)
+        for hr in hrValues {
+            XCTAssertTrue(hr.isFinite, "HR should be finite")
+            XCTAssertFalse(hr.isNaN, "HR should not be NaN")
+            XCTAssertGreaterThanOrEqual(hr, 40, "HR should be >= 40")
+            XCTAssertLessThanOrEqual(hr, 230, "HR should be <= 230")
+        }
+    }
+
     // MARK: - Helpers
 
     private func createPointsWithPace(count: Int, startPace: Double, endPace: Double) -> [RouteScenePoint] {
@@ -210,6 +355,30 @@ final class RouteColoringTests: XCTestCase {
                 distanceFromStartMeters: distance,
                 elapsedSeconds: time,
                 paceSecondsPerKilometer: pace
+            ))
+        }
+
+        return points
+    }
+
+    private func createPointsWithHR(count: Int, startHR: Double, endHR: Double) -> [RouteScenePoint] {
+        var points: [RouteScenePoint] = []
+        let totalDistance = Double(count - 1) * 100.0 // 100m between points
+
+        for i in 0..<count {
+            let fraction = Double(i) / Double(count - 1)
+            let distance = fraction * totalDistance
+            let hr = startHR + (endHR - startHR) * fraction // Linear interpolation
+            let time = distance / 3.0 // ~3 m/s
+
+            points.append(RouteScenePoint(
+                xMeters: distance,
+                yMeters: 0,
+                zMeters: 0,
+                sourceIndex: i,
+                distanceFromStartMeters: distance,
+                elapsedSeconds: time,
+                heartRateBPM: hr
             ))
         }
 
