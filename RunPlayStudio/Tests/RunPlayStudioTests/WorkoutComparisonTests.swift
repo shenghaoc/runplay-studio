@@ -263,6 +263,7 @@ final class WorkoutComparisonTests: XCTestCase {
         let summary = service.compare(primary: primary, comparison: comparison)
 
         XCTAssertTrue(summary.warnings.contains(.differentRouteShape))
+        XCTAssertEqual(ComparisonWarning.differentRouteShape.rawValue, "Routes differ; comparison uses distance alignment")
     }
 
     // MARK: - Edge Cases

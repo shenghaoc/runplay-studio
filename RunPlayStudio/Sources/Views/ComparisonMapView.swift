@@ -104,8 +104,8 @@ struct ComparisonMapView: View {
 
     private var routeLegend: some View {
         VStack(alignment: .leading, spacing: 6) {
-            legendRow(color: .blue, label: "Primary")
-            legendRow(color: .red, label: "Comparison")
+            legendRow(color: .blue, label: "Primary run")
+            legendRow(color: .red, label: "Comparison run")
         }
         .font(.caption)
         .padding(8)

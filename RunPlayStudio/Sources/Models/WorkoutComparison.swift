@@ -186,7 +186,7 @@ struct ComparisonMetricPoint: Identifiable {
 enum ComparisonWarning: String, CaseIterable {
     case differentDistances = "Runs have significantly different distances"
     case insufficientOverlap = "Insufficient distance overlap for comparison"
-    case differentRouteShape = "Routes may cover different paths"
+    case differentRouteShape = "Routes differ; comparison uses distance alignment"
     case missingHeartRate = "One or both runs lack heart rate data"
     case missingElevation = "One or both runs lack elevation data"
     case tooFewPoints = "One or both runs have very few data points"
