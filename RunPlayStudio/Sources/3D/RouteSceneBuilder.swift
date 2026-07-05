@@ -35,6 +35,7 @@ class RouteSceneBuilder {
     private var currentNode: SCNNode?
     private var kmMarkersNode: SCNNode?
     private var gridNode: SCNNode?
+    private var segmentHighlightNode: SCNNode?
     private var scenePoints: [RouteScenePoint] = []
 
     // Minimum segment length to render (meters) - avoids degenerate geometry
@@ -104,6 +105,113 @@ class RouteSceneBuilder {
             let direction = calculateDirection(at: index)
             updateMarkerDirection(marker: marker, direction: direction)
         }
+    }
+
+    /// Highlight a segment on the 3D route.
+    ///
+    /// Creates a highlight tube above the route for the given distance range.
+    /// Returns a node that should be added to the scene.
+    @discardableResult
+    func highlightSegment(_ segment: SegmentHighlight, in scene: SCNScene) -> SCNNode? {
+        // Remove previous highlight
+        segmentHighlightNode?.removeFromParentNode()
+        segmentHighlightNode = nil
+
+        guard !scenePoints.isEmpty else { return nil }
+
+        // Find scene points within the segment distance range
+        let startDist = segment.startDistanceMeters
+        let endDist = segment.endDistanceMeters
+
+        var segmentPoints: [RouteScenePoint] = []
+        for point in scenePoints {
+            if point.distanceFromStartMeters >= startDist && point.distanceFromStartMeters <= endDist {
+                segmentPoints.append(point)
+            }
+        }
+
+        guard segmentPoints.count >= 2 else { return nil }
+
+        // Create highlight tube above the route
+        let highlightNode = SCNNode()
+        let highlightColor = segmentHighlightColor(for: segment.type)
+        let highlightRadius: CGFloat = routeRadius * 1.8
+        let yOffset: CGFloat = 1.5 // Above the route
+
+        for i in 0..<(segmentPoints.count - 1) {
+            let from = segmentPoints[i]
+            let to = segmentPoints[i + 1]
+
+            let start = SCNVector3(from.xMeters, from.yMeters + yOffset, from.zMeters)
+            let end = SCNVector3(to.xMeters, to.yMeters + yOffset, to.zMeters)
+
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let dz = end.z - start.z
+            let length = sqrt(dx*dx + dy*dy + dz*dz)
+            guard length >= CGFloat(minSegmentLength) else { continue }
+
+            let tube = createTube(from: start, to: end, radius: highlightRadius, color: highlightColor)
+            highlightNode.addChildNode(tube)
+        }
+
+        // Add start marker for segment
+        if let firstPoint = segmentPoints.first {
+            let startMarker = createSegmentMarker(at: firstPoint, color: highlightColor, label: "S")
+            highlightNode.addChildNode(startMarker)
+        }
+
+        // Add end marker for segment
+        if let lastPoint = segmentPoints.last {
+            let endMarker = createSegmentMarker(at: lastPoint, color: highlightColor, label: "E")
+            highlightNode.addChildNode(endMarker)
+        }
+
+        scene.rootNode.addChildNode(highlightNode)
+        segmentHighlightNode = highlightNode
+
+        return highlightNode
+    }
+
+    /// Remove segment highlight from the scene.
+    func clearSegmentHighlight() {
+        segmentHighlightNode?.removeFromParentNode()
+        segmentHighlightNode = nil
+    }
+
+    // MARK: - Segment Highlight Helpers
+
+    private func segmentHighlightColor(for type: SegmentType) -> NSColor {
+        switch type {
+        case .fastest400m, .fastest1km: return NSColor.systemBlue.withAlphaComponent(0.7)
+        case .slowest1km: return NSColor.systemRed.withAlphaComponent(0.7)
+        case .biggestClimb: return NSColor.systemOrange.withAlphaComponent(0.7)
+        case .biggestDescent: return NSColor.systemPurple.withAlphaComponent(0.7)
+        case .slowdown: return NSColor.systemYellow.withAlphaComponent(0.7)
+        case .custom: return NSColor.systemGray.withAlphaComponent(0.7)
+        }
+    }
+
+    private func createSegmentMarker(at point: RouteScenePoint, color: NSColor, label: String) -> SCNNode {
+        let parent = SCNNode()
+
+        // Sphere
+        let sphere = SCNSphere(radius: markerRadius * 0.8)
+        sphere.firstMaterial?.diffuse.contents = color
+        sphere.firstMaterial?.lightingModel = .blinn
+        parent.addChildNode(SCNNode(geometry: sphere))
+
+        // Label
+        let text = SCNText(string: label, extrusionDepth: 0.3)
+        text.font = NSFont.boldSystemFont(ofSize: 2)
+        text.firstMaterial?.diffuse.contents = NSColor.white
+        text.firstMaterial?.lightingModel = .constant
+        let textNode = SCNNode(geometry: text)
+        textNode.position = SCNVector3(0, markerRadius * 1.5, 0)
+        parent.addChildNode(textNode)
+
+        parent.position = SCNVector3(point.xMeters, point.yMeters + markerRadius * 1.5, point.zMeters)
+        return parent
     }
 
     /// Get the bounding box for camera fitting.
