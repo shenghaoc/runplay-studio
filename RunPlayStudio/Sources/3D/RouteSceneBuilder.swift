@@ -157,18 +157,26 @@ class RouteSceneBuilder {
             (start.z + end.z) / 2
         )
 
-        // Orient tube to point from start to end
-        let dir = SCNVector3(dx, dy, dz)
-        let up = SCNVector3(0, 1, 0)
-        let right = cross(dir, up)
-        let adjustedUp = cross(right, dir)
+        // Orient cylinder (default Y-axis) to align with start→end direction
+        // Use quaternion rotation from Y-axis to direction vector
+        let dir = simd_float3(dx, dy, dz)
+        let len = simd_length(dir)
+        guard len > 0 else { return node }
 
-        let lookAt = SCNMatrix4MakeLookAt(
-            0, 0, 0,
-            CGFloat(dir.x), CGFloat(dir.y), CGFloat(dir.z),
-            CGFloat(adjustedUp.x), CGFloat(adjustedUp.y), CGFloat(adjustedUp.z)
-        )
-        node.transform = SCNMatrix4Mult(lookAt, node.transform)
+        let dirNorm = dir / len
+        let yAxis = simd_float3(0, 1, 0)
+        let dotProduct = simd_dot(yAxis, dirNorm)
+
+        if dotProduct > 0.999 {
+            // Already aligned with Y
+        } else if dotProduct < -0.999 {
+            // Opposite direction - rotate 180° around X
+            node.eulerAngles = SCNVector3(Float.pi, 0, 0)
+        } else {
+            let axis = simd_cross(yAxis, dirNorm)
+            let angle = acos(min(1.0, max(-1.0, dotProduct)))
+            node.rotation = SCNVector4(axis.x, axis.y, axis.z, angle)
+        }
 
         return node
     }
@@ -273,39 +281,5 @@ class RouteSceneBuilder {
         geometry.firstMaterial?.diffuse.contents = color
 
         return SCNNode(geometry: geometry)
-    }
-
-    private func cross(_ a: SCNVector3, _ b: SCNVector3) -> SCNVector3 {
-        SCNVector3(
-            a.y * b.z - a.z * b.y,
-            a.z * b.x - a.x * b.z,
-            a.x * b.y - a.y * b.x
-        )
-    }
-
-    private func SCNMatrix4MakeLookAt(
-        _ eyeX: CGFloat, _ eyeY: CGFloat, _ eyeZ: CGFloat,
-        _ centerX: CGFloat, _ centerY: CGFloat, _ centerZ: CGFloat,
-        _ upX: CGFloat, _ upY: CGFloat, _ upZ: CGFloat
-    ) -> SCNMatrix4 {
-        var lookAt = SCNMatrix4MakeLookAt(
-            SCNVector3(eyeX, eyeY, eyeZ),
-            SCNVector3(centerX, centerY, centerZ),
-            SCNVector3(upX, upY, upZ)
-        )
-        return lookAt
-    }
-}
-
-// Helper extension for SCNMatrix4MakeLookAt with individual components
-private extension SCNMatrix4 {
-    init(eyeX: CGFloat, eyeY: CGFloat, eyeZ: CGFloat,
-         centerX: CGFloat, centerY: CGFloat, centerZ: CGFloat,
-         upX: CGFloat, upY: CGFloat, upZ: CGFloat) {
-        self = SCNMatrix4MakeLookAt(
-            SCNVector3(eyeX, eyeY, eyeZ),
-            SCNVector3(centerX, centerY, centerZ),
-            SCNVector3(upX, upY, upZ)
-        )
     }
 }

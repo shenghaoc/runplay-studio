@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 /// Imports workouts from JSON files.
 ///

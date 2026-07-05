@@ -27,7 +27,7 @@ struct MapReferenceView: View {
         .onAppear {
             calculateRegion()
         }
-        .onChange(of: routePoints.count) { _ in
+        .onChange(of: routePoints.count) { _, _ in
             calculateRegion()
         }
     }

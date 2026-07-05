@@ -3,13 +3,13 @@ import SceneKit
 
 /// Displays the 3D route scene with replay marker.
 struct Route3DReplayView: View {
-    let workout: RouteWorkout
+    let workout: RunWorkout
     @ObservedObject var appState: AppState
 
     @State private var scene: SCNScene?
     @State private var scenePoints: [RouteScenePoint] = []
 
-    var body: some View
+    var body: some View {
         ZStack {
             if let scene = scene {
                 SceneView(
@@ -41,10 +41,10 @@ struct Route3DReplayView: View {
         .onAppear {
             buildScene()
         }
-        .onChange(of: workout.routePoints.count) { _ in
+        .onChange(of: workout.routePoints.count) { _, _ in
             buildScene()
         }
-        .onChange(of: appState.replayController.state.currentPointIndex) { newIndex in
+        .onChange(of: appState.replayController.state.currentPointIndex) { _, newIndex in
             updateMarker(at: newIndex)
         }
     }
@@ -63,6 +63,3 @@ struct Route3DReplayView: View {
         // Reset handled by SceneKit's built-in camera controls
     }
 }
-
-// Type alias for convenience
-private typealias RouteWorkout = RunWorkout
