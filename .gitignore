@@ -43,6 +43,15 @@ Icon
 # Generated
 *.generated.swift
 
+# Local private workout files for manual dogfooding
+local-workouts/
+private-workouts/
+*.local.gpx
+*.local.tcx
+*.local.fit
+activity_*.tcx
+activity_*.fit
+
 # Secrets
 .env
 *.pem
