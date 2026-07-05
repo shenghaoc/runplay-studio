@@ -42,6 +42,18 @@ struct WorkoutDetailView: View {
 
             Divider()
 
+            // Current metrics panel
+            CurrentMetricsPanel(
+                metrics: appState.replayController.selectedMetrics,
+                hasHeartRate: workout.hasHeartRateData,
+                hasCadence: workout.hasCadenceData
+            )
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+
+            Divider()
+
             // Bottom panel: replay controls + summary
             HStack(spacing: 16) {
                 // Replay controls

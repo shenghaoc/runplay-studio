@@ -151,6 +151,45 @@ class ReplayController: ObservableObject {
         state.currentPointIndex
     }
 
+    /// Selected metrics at the current position.
+    var selectedMetrics: SelectedMetrics {
+        guard let point = currentRoutePoint else {
+            return SelectedMetrics()
+        }
+
+        let splitIndex = findCurrentSplitIndex()
+
+        return SelectedMetrics(
+            elapsedSeconds: point.elapsedSeconds,
+            distanceMeters: point.distanceFromStartMeters,
+            paceSecondsPerKilometer: point.paceSecondsPerKilometer,
+            altitudeMeters: point.altitudeMeters,
+            heartRateBPM: point.heartRateBPM,
+            speedMetersPerSecond: point.speedMetersPerSecond,
+            cadence: point.cadence,
+            splitIndex: splitIndex
+        )
+    }
+
+    /// Find the current split index based on distance.
+    private func findCurrentSplitIndex() -> Int? {
+        guard let workout = workout else { return nil }
+        let distance = state.currentDistance
+
+        for (index, split) in workout.splits.enumerated() {
+            if distance >= split.startDistanceMeters && distance < split.endDistanceMeters {
+                return index
+            }
+        }
+
+        // If past all splits, return last
+        if let lastSplit = workout.splits.last, distance >= lastSplit.endDistanceMeters {
+            return workout.splits.count - 1
+        }
+
+        return nil
+    }
+
     // MARK: - Private
 
     private func startTimer() {
