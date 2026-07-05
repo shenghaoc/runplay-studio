@@ -1,0 +1,34 @@
+import SwiftUI
+
+/// Main content view with sidebar, 3D route view, and detail panels.
+struct ContentView: View {
+    @StateObject private var appState = AppState()
+
+    var body: some View {
+        NavigationSplitView {
+            SidebarView(
+                workouts: appState.workouts,
+                selectedWorkout: $appState.selectedWorkout,
+                onImport: { appState.showImporter = true }
+            )
+        } detail: {
+            if let workout = appState.selectedWorkout {
+                WorkoutDetailView(workout: workout, appState: appState)
+            } else {
+                EmptyStateView(onImport: { appState.showImporter = true })
+            }
+        }
+        .fileImporter(
+            isPresented: $appState.showImporter,
+            allowedContentTypes: [.json, .xml],
+            allowsMultipleSelection: false
+        ) { result in
+            appState.handleImport(result)
+        }
+        .alert("Import Error", isPresented: $appState.showingError) {
+            Button("OK") { appState.errorMessage = nil }
+        } message: {
+            Text(appState.errorMessage ?? "Unknown error")
+        }
+    }
+}
