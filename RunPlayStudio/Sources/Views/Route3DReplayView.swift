@@ -11,6 +11,8 @@ struct Route3DReplayView: View {
     @State private var showGrid: Bool = true
     @State private var showKmMarkers: Bool = true
     @State private var elevationScale: Double = 2.0
+    @State private var colorMode: RouteColorMode = .singleColor
+    @State private var paceScale: PaceColorScale?
 
     // Camera presets
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
@@ -30,8 +32,15 @@ struct Route3DReplayView: View {
 
             // Controls overlay
             VStack {
-                HStack {
+                HStack(alignment: .top) {
+                    // Legend (left side)
+                    if colorMode == .pace, let scale = paceScale {
+                        paceLegend(scale: scale)
+                    }
+
                     Spacer()
+
+                    // Control panel (right side)
                     controlPanel
                 }
                 Spacer()
@@ -49,10 +58,72 @@ struct Route3DReplayView: View {
         }
     }
 
+    // MARK: - Pace Legend
+
+    private func paceLegend(scale: PaceColorScale) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Pace")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            // Color gradient bar
+            LinearGradient(
+                colors: [.blue, .cyan, .green, .yellow, .red],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: 12, height: 60)
+            .cornerRadius(3)
+
+            // Labels
+            VStack(alignment: .leading, spacing: 0) {
+                Text(scale.fastestFormatted)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(scale.medianFormatted)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(scale.slowestFormatted)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 60)
+        }
+        .padding(8)
+        .background(.ultraThinMaterial)
+        .cornerRadius(8)
+    }
+
     // MARK: - Control Panel
 
     private var controlPanel: some View {
         VStack(spacing: 12) {
+            // Color mode
+            VStack(spacing: 4) {
+                Text("Color")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                ForEach(RouteColorMode.allCases) { mode in
+                    Button(action: { setColorMode(mode) }) {
+                        Text(mode.rawValue)
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(colorMode == mode ? Color.accentColor.opacity(0.3) : Color.clear)
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(6)
+            .background(.ultraThinMaterial)
+            .cornerRadius(6)
+
+            Divider()
+
             // Reset camera
             Button(action: fitToRoute) {
                 Label("Fit Route", systemImage: "viewfinder")
@@ -153,9 +224,18 @@ struct Route3DReplayView: View {
         appState.projectionService.elevationExaggeration = elevationScale
         scenePoints = appState.projectionService.project(workout.routePoints)
 
-        // Update builder visibility
+        // Update builder settings
         appState.sceneBuilder.showGroundGrid = showGrid
         appState.sceneBuilder.showKilometerMarkers = showKmMarkers
+        appState.sceneBuilder.colorMode = colorMode
+
+        // Compute pace scale for legend
+        if colorMode == .pace {
+            let scenePointsForPace = appState.projectionService.project(workout.routePoints)
+            paceScale = appState.sceneBuilder.coloringService.computePaceScale(points: scenePointsForPace)
+        } else {
+            paceScale = nil
+        }
 
         scene = appState.sceneBuilder.buildScene(from: scenePoints)
     }
@@ -176,6 +256,11 @@ struct Route3DReplayView: View {
 
     private func setElevationScale(_ scale: Double) {
         elevationScale = scale
+        buildScene()
+    }
+
+    private func setColorMode(_ mode: RouteColorMode) {
+        colorMode = mode
         buildScene()
     }
 }
