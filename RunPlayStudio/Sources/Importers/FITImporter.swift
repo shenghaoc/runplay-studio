@@ -1,13 +1,53 @@
 import Foundation
+import CoreLocation
 
 /// Imports workouts from FIT (Flexible and Interoperable Data Transfer) files.
 ///
-/// This is a placeholder implementation. FIT is a binary format that requires
-/// a dedicated parser. Will be implemented in a future phase.
+/// Supports common running activity files with GPS records.
+/// Uses FIT binary parser to extract record messages with
+/// timestamps, coordinates, altitude, distance, speed, heart rate, and cadence.
 struct FITImporter: WorkoutImporting {
     var supportedExtensions: [String] { ["fit"] }
 
     func importWorkout(from url: URL) throws -> RunWorkout {
-        throw WorkoutImportError.unsupportedFormat("FIT import not yet implemented")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw WorkoutImportError.fileNotFound(url)
+        }
+
+        let data = try Data(contentsOf: url)
+
+        // Parse FIT binary data
+        let records = try FITParser.parse(data: data)
+
+        guard !records.isEmpty else {
+            throw WorkoutImportError.missingData("No records found in FIT file")
+        }
+
+        // Decode records into route points
+        let routePoints = FITDecoder.decode(records: records)
+
+        guard !routePoints.isEmpty else {
+            throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
+        }
+
+        // Build metadata
+        let metadata = WorkoutMetadata(
+            name: url.deletingPathExtension().lastPathComponent,
+            activityType: "running",
+            startDate: routePoints.first?.timestamp,
+            endDate: routePoints.last?.timestamp
+        )
+
+        var workout = RunWorkout(
+            metadata: metadata,
+            source: .fit,
+            routePoints: routePoints
+        )
+
+        // Run analysis
+        let analyzer = WorkoutAnalyzer()
+        analyzer.analyze(&workout)
+
+        return workout
     }
 }
