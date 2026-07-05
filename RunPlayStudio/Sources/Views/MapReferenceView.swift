@@ -10,25 +10,32 @@ struct MapReferenceView: View {
     var currentPointIndex: Int = 0
     var showAnnotations: Bool = true
 
-    @State private var region: MKCoordinateRegion = MKCoordinateRegion()
+    @State private var position: MapCameraPosition = .automatic
 
     var body: some View {
-        Map(coordinateRegion: $region, annotationItems: mapAnnotations) { item in
-            MapAnnotation(coordinate: item.coordinate) {
-                Circle()
-                    .fill(item.color)
-                    .frame(width: item.size, height: item.size)
-                    .overlay(
-                        Circle().stroke(.white, lineWidth: 2)
-                    )
+        Map(position: $position) {
+            if routeCoordinates.count >= 2 {
+                MapPolyline(coordinates: routeCoordinates)
+                    .stroke(.blue, lineWidth: 3)
+            }
+
+            ForEach(mapAnnotations) { item in
+                Annotation(item.label, coordinate: item.coordinate) {
+                    Circle()
+                        .fill(item.color)
+                        .frame(width: item.size, height: item.size)
+                        .overlay(
+                            Circle().stroke(.white, lineWidth: 2)
+                        )
+                        .accessibilityLabel(item.label)
+                }
             }
         }
-        .overlay(routeOverlay)
         .onAppear {
-            calculateRegion()
+            updatePosition()
         }
-        .onChange(of: routePoints.count) { _, _ in
-            calculateRegion()
+        .onChange(of: routePoints) { _, _ in
+            updatePosition()
         }
     }
 
@@ -40,9 +47,9 @@ struct MapReferenceView: View {
         var items: [RouteMapAnnotation] = []
 
         // Start
-        if let first = routePoints.first {
+        if let first = routeCoordinates.first {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: first.latitude, longitude: first.longitude),
+                coordinate: first,
                 color: .green,
                 size: 12,
                 label: "Start"
@@ -50,9 +57,9 @@ struct MapReferenceView: View {
         }
 
         // Finish
-        if let last = routePoints.last, routePoints.count > 1 {
+        if let last = routeCoordinates.last, routeCoordinates.count > 1 {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude),
+                coordinate: last,
                 color: .red,
                 size: 12,
                 label: "Finish"
@@ -60,10 +67,10 @@ struct MapReferenceView: View {
         }
 
         // Current position
-        if currentPointIndex < routePoints.count {
-            let point = routePoints[currentPointIndex]
+        if currentPointIndex < routePoints.count,
+           let coordinate = coordinate(from: routePoints[currentPointIndex]) {
             items.append(RouteMapAnnotation(
-                coordinate: CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude),
+                coordinate: coordinate,
                 color: .yellow,
                 size: 10,
                 label: "Current"
@@ -73,40 +80,26 @@ struct MapReferenceView: View {
         return items
     }
 
-    // MARK: - Route Overlay
-
-    @ViewBuilder
-    private var routeOverlay: some View {
-        if routePoints.count >= 2 {
-            GeometryReader { geometry in
-                Path { path in
-                    let points = routePoints.map { point -> CGPoint in
-                        let normalizedX = (point.longitude - region.center.longitude + region.span.longitudeDelta / 2) / region.span.longitudeDelta
-                        let normalizedY = 1 - (point.latitude - region.center.latitude + region.span.latitudeDelta / 2) / region.span.latitudeDelta
-                        return CGPoint(
-                            x: normalizedX * geometry.size.width,
-                            y: normalizedY * geometry.size.height
-                        )
-                    }
-
-                    guard let first = points.first else { return }
-                    path.move(to: first)
-                    for point in points.dropFirst() {
-                        path.addLine(to: point)
-                    }
-                }
-                .stroke(Color.blue, lineWidth: 3)
-            }
-        }
+    private var routeCoordinates: [CLLocationCoordinate2D] {
+        routePoints.compactMap(coordinate)
     }
 
     // MARK: - Helpers
 
-    private func calculateRegion() {
-        guard !routePoints.isEmpty else { return }
+    private func updatePosition() {
+        guard let region = mapRegion() else {
+            position = .automatic
+            return
+        }
 
-        let lats = routePoints.map { $0.latitude }
-        let lons = routePoints.map { $0.longitude }
+        position = .region(region)
+    }
+
+    private func mapRegion() -> MKCoordinateRegion? {
+        guard !routeCoordinates.isEmpty else { return nil }
+
+        let lats = routeCoordinates.map { $0.latitude }
+        let lons = routeCoordinates.map { $0.longitude }
 
         let minLat = lats.min()!
         let maxLat = lats.max()!
@@ -123,7 +116,13 @@ struct MapReferenceView: View {
             longitudeDelta: max((maxLon - minLon) * 1.2, 0.01)
         )
 
-        region = MKCoordinateRegion(center: center, span: span)
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
+    private func coordinate(from point: RoutePoint) -> CLLocationCoordinate2D? {
+        guard point.latitude.isFinite, point.longitude.isFinite else { return nil }
+        guard abs(point.latitude) <= 90, abs(point.longitude) <= 180 else { return nil }
+        return CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
     }
 }
 
