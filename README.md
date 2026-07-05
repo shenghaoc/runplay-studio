@@ -6,6 +6,18 @@ A native macOS post-run visualization studio for completed runs.
 
 RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with 3D route replay, synchronized charts, split analysis, and segment highlights.
 
+![Synthetic RunPlay Studio summary export](docs/assets/demo-summary.png)
+
+At a glance:
+
+- Native macOS SwiftUI app for completed-run analysis
+- 3D SceneKit route replay with synchronized timeline controls
+- Pace, elevation, and heart-rate coloring
+- Automatic split analysis and segment highlighting
+- Route comparison with summary deltas, splits, pace chart, and 2D overlay
+- Local JSON, CSV, and PNG exports
+- Local-only privacy model: no account, no cloud, no telemetry, no AI API
+
 ## What It Is NOT
 
 - A live run tracker
@@ -194,6 +206,10 @@ Current limitations: comparison is distance-aligned only, does not do dynamic ti
 - **No telemetry** — No phone-home behavior
 - **No account** — No sign-up or login
 - **No AI API** — No external AI services
+
+For manual dogfooding with real workouts, keep private files in ignored local
+paths and follow [docs/private-data.md](docs/private-data.md). Public fixtures
+and demo assets must be synthetic or anonymized.
 
 ## Roadmap
 
