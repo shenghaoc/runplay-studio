@@ -3,7 +3,7 @@
 ## Current Status
 
 **Phase**: FIT Import Complete  
-**Latest Commit**: `fbf5f31` — feat: wire fit import into file picker  
+**Latest Commit**: `01c991d` — docs: update fit import support  
 **Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (173 tests)
 
 ## Verification Results
