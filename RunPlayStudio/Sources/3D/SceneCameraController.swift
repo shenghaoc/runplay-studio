@@ -42,12 +42,13 @@ class SceneCameraController: ObservableObject {
     func updateCameraPosition(lookingAt target: SCNVector3) {
         guard let camera = cameraNode else { return }
 
-        let angleXRad = cameraAngleX * .pi / 180
-        let angleYRad = cameraAngleY * .pi / 180
+        let angleXRad = CGFloat(cameraAngleX * .pi / 180)
+        let angleYRad = CGFloat(cameraAngleY * .pi / 180)
+        let dist = CGFloat(cameraDistance)
 
-        let x = target.x + cameraDistance * cos(angleXRad) * sin(angleYRad)
-        let y = target.y + cameraDistance * sin(angleXRad)
-        let z = target.z + cameraDistance * cos(angleXRad) * cos(angleYRad)
+        let x = target.x + dist * cos(angleXRad) * sin(angleYRad)
+        let y = target.y + dist * sin(angleXRad)
+        let z = target.z + dist * cos(angleXRad) * cos(angleYRad)
 
         camera.position = SCNVector3(x, y, z)
         camera.look(at: target)

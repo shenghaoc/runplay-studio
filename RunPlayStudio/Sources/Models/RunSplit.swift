@@ -1,7 +1,7 @@
 import Foundation
 
 /// A kilometer or mile split with summary metrics.
-struct RunSplit: Identifiable, Codable, Equatable {
+struct RunSplit: Identifiable, Codable, Hashable {
     let id: UUID
     var splitIndex: Int
     var distanceMeters: Double

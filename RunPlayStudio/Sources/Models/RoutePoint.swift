@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single GPS point along a running route with optional biometric data.
-struct RoutePoint: Identifiable, Codable, Equatable {
+struct RoutePoint: Identifiable, Codable, Hashable {
     let id: UUID
     var timestamp: Date
     var latitude: Double

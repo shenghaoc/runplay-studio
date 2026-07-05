@@ -35,7 +35,7 @@ final class RouteProjectionTests: XCTestCase {
     }
 
     func testElevationExaggeration() {
-        let service = RouteProjectionService()
+        var service = RouteProjectionService()
         service.elevationExaggeration = 3.0
 
         let points = [
@@ -83,6 +83,25 @@ final class RouteProjectionTests: XCTestCase {
             centerLon: -122.4194
         )
         XCTAssertEqual(z2, 1110, accuracy: 100)
+    }
+
+    func testProjectedPointsHaveFiniteValues() {
+        let service = RouteProjectionService()
+        let points = [
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10),
+            createPoint(lat: 37.7759, lon: -122.4184, alt: 50),
+            createPoint(lat: 37.7769, lon: -122.4174, alt: 30)
+        ]
+        let scenePoints = service.project(points)
+
+        for point in scenePoints {
+            XCTAssertTrue(point.xMeters.isFinite, "xMeters should be finite")
+            XCTAssertTrue(point.yMeters.isFinite, "yMeters should be finite")
+            XCTAssertTrue(point.zMeters.isFinite, "zMeters should be finite")
+            XCTAssertFalse(point.xMeters.isNaN, "xMeters should not be NaN")
+            XCTAssertFalse(point.yMeters.isNaN, "yMeters should not be NaN")
+            XCTAssertFalse(point.zMeters.isNaN, "zMeters should not be NaN")
+        }
     }
 
     // MARK: - Helpers

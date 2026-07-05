@@ -1,7 +1,7 @@
 import Foundation
 
 /// Optional metadata about a running workout.
-struct WorkoutMetadata: Codable, Equatable {
+struct WorkoutMetadata: Codable, Hashable {
     var name: String?
     var notes: String?
     var activityType: String

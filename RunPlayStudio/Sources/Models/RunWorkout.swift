@@ -1,7 +1,7 @@
 import Foundation
 
 /// A complete running workout with route data, analysis, and metadata.
-struct RunWorkout: Identifiable, Codable {
+struct RunWorkout: Identifiable, Codable, Hashable {
     let id: UUID
     var metadata: WorkoutMetadata
     var source: WorkoutSource

@@ -9,11 +9,12 @@ final class SplitCalculatorTests: XCTestCase {
         XCTAssertTrue(splits.isEmpty)
     }
 
-    func testShortRunReturnsNoSplits() {
+    func testShortRunReturnsOneSplit() {
         let points = createPoints(distance: 500) // Less than 1km
         let workout = RunWorkout(routePoints: points)
         let splits = SplitCalculator.calculateSplits(from: workout)
-        XCTAssertTrue(splits.isEmpty)
+        XCTAssertEqual(splits.count, 1) // Short run still gets 1 partial split
+        XCTAssertEqual(splits[0].distanceMeters, 500, accuracy: 10)
     }
 
     func testOneKilometerRunReturnsOneSplit() {

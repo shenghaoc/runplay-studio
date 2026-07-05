@@ -159,7 +159,7 @@ class RouteSceneBuilder {
 
         // Orient cylinder (default Y-axis) to align with start→end direction
         // Use quaternion rotation from Y-axis to direction vector
-        let dir = simd_float3(dx, dy, dz)
+        let dir = simd_float3(Float(dx), Float(dy), Float(dz))
         let len = simd_length(dir)
         guard len > 0 else { return node }
 
@@ -235,18 +235,18 @@ class RouteSceneBuilder {
 
     private func createGroundGrid(boundingBox: (min: SIMD3<Double>, max: SIMD3<Double>)) -> SCNNode {
         let parent = SCNNode()
-        let gridSize: Float = 500
-        let gridSpacing: Float = 50
+        let gridSize: CGFloat = 500
+        let gridSpacing: CGFloat = 50
         let gridColor = NSColor.separatorColor.withAlphaComponent(0.3)
 
         let center = SCNVector3(
-            Float((boundingBox.min.x + boundingBox.max.x) / 2),
-            Float(boundingBox.min.y) - 1,
-            Float((boundingBox.min.z + boundingBox.max.z) / 2)
+            (boundingBox.min.x + boundingBox.max.x) / 2,
+            boundingBox.min.y - 1,
+            (boundingBox.min.z + boundingBox.max.z) / 2
         )
 
         // Create grid lines along X
-        var i: Float = -gridSize
+        var i: CGFloat = -gridSize
         while i <= gridSize {
             let line = createLine(
                 from: SCNVector3(center.x + i, center.y, center.z - gridSize),

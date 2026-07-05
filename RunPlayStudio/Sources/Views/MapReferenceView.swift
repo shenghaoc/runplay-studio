@@ -13,11 +13,11 @@ struct MapReferenceView: View {
     @State private var region: MKCoordinateRegion = MKCoordinateRegion()
 
     var body: some View {
-        Map(coordinateRegion: $region, annotationItems: annotations) { annotation in
-            MapAnnotation(coordinate: annotation.coordinate) {
+        Map(coordinateRegion: $region, annotationItems: mapAnnotations) { item in
+            MapAnnotation(coordinate: item.coordinate) {
                 Circle()
-                    .fill(annotation.color)
-                    .frame(width: annotation.size, height: annotation.size)
+                    .fill(item.color)
+                    .frame(width: item.size, height: item.size)
                     .overlay(
                         Circle().stroke(.white, lineWidth: 2)
                     )
@@ -34,14 +34,14 @@ struct MapReferenceView: View {
 
     // MARK: - Annotations
 
-    private var annotations: [MapAnnotation] {
+    private var mapAnnotations: [RouteMapAnnotation] {
         guard showAnnotations, !routePoints.isEmpty else { return [] }
 
-        var items: [MapAnnotation] = []
+        var items: [RouteMapAnnotation] = []
 
         // Start
         if let first = routePoints.first {
-            items.append(MapAnnotation(
+            items.append(RouteMapAnnotation(
                 coordinate: CLLocationCoordinate2D(latitude: first.latitude, longitude: first.longitude),
                 color: .green,
                 size: 12,
@@ -51,7 +51,7 @@ struct MapReferenceView: View {
 
         // Finish
         if let last = routePoints.last, routePoints.count > 1 {
-            items.append(MapAnnotation(
+            items.append(RouteMapAnnotation(
                 coordinate: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude),
                 color: .red,
                 size: 12,
@@ -62,7 +62,7 @@ struct MapReferenceView: View {
         // Current position
         if currentPointIndex < routePoints.count {
             let point = routePoints[currentPointIndex]
-            items.append(MapAnnotation(
+            items.append(RouteMapAnnotation(
                 coordinate: CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude),
                 color: .yellow,
                 size: 10,
@@ -129,7 +129,7 @@ struct MapReferenceView: View {
 
 // MARK: - Supporting Types
 
-private struct MapAnnotation: Identifiable {
+private struct RouteMapAnnotation: Identifiable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
     let color: Color
