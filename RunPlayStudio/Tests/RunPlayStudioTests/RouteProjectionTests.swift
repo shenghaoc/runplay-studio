@@ -104,9 +104,89 @@ final class RouteProjectionTests: XCTestCase {
         }
     }
 
+    func testRepeatedCoordinates() {
+        let service = RouteProjectionService()
+        // All same coordinates - should still produce valid output
+        let points = [
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10),
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10),
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10)
+        ]
+        let result = service.project(points)
+
+        XCTAssertEqual(result.count, 3)
+        // All points should project to same location (center)
+        XCTAssertEqual(result[0].xMeters, 0, accuracy: 0.01)
+        XCTAssertEqual(result[1].xMeters, 0, accuracy: 0.01)
+        XCTAssertEqual(result[2].xMeters, 0, accuracy: 0.01)
+    }
+
+    func testMissingElevation() {
+        let service = RouteProjectionService()
+        let points = [
+            createPoint(lat: 37.7749, lon: -122.4194, alt: nil),
+            createPoint(lat: 37.7750, lon: -122.4193, alt: nil)
+        ]
+        let result = service.project(points)
+
+        XCTAssertEqual(result.count, 2)
+        // Should default to minAlt (0 when all nil), so y should be 0
+        XCTAssertEqual(result[0].yMeters, 0, accuracy: 0.01)
+        XCTAssertEqual(result[1].yMeters, 0, accuracy: 0.01)
+    }
+
+    func testNaNCoordinatesFiltered() {
+        let service = RouteProjectionService()
+        let points = [
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10),
+            createPoint(lat: Double.nan, lon: -122.4193, alt: 15),
+            createPoint(lat: 37.7751, lon: Double.infinity, alt: 20),
+            createPoint(lat: 37.7752, lon: -122.4191, alt: 25)
+        ]
+        let result = service.project(points)
+
+        // Should only have 2 valid points (first and last)
+        XCTAssertEqual(result.count, 2)
+        XCTAssertTrue(result[0].xMeters.isFinite)
+        XCTAssertTrue(result[1].xMeters.isFinite)
+    }
+
+    func testElevationExaggerationChangesYValues() {
+        let points = [
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10),
+            createPoint(lat: 37.7750, lon: -122.4193, alt: 50)
+        ]
+
+        var service1 = RouteProjectionService()
+        service1.elevationExaggeration = 1.0
+        let result1 = service1.project(points)
+
+        var service2 = RouteProjectionService()
+        service2.elevationExaggeration = 5.0
+        let result2 = service2.project(points)
+
+        // Y difference should be 5x greater with 5x exaggeration
+        let diff1 = result1[1].yMeters - result1[0].yMeters
+        let diff2 = result2[1].yMeters - result2[0].yMeters
+        XCTAssertEqual(diff2 / diff1, 5.0, accuracy: 0.1)
+    }
+
+    func testMaxExtent() {
+        let service = RouteProjectionService()
+        let points = [
+            createPoint(lat: 37.7749, lon: -122.4194, alt: 10),
+            createPoint(lat: 37.7849, lon: -122.4094, alt: 50) // ~1.5km away
+        ]
+        let scenePoints = service.project(points)
+        let extent = service.maxExtent(of: scenePoints)
+
+        XCTAssertGreaterThan(extent, 1000) // Should be at least 1km
+        XCTAssertTrue(extent.isFinite)
+    }
+
     // MARK: - Helpers
 
-    private func createPoint(lat: Double, lon: Double, alt: Double) -> RoutePoint {
+    private func createPoint(lat: Double, lon: Double, alt: Double?) -> RoutePoint {
         RoutePoint(
             timestamp: Date(),
             latitude: lat,
