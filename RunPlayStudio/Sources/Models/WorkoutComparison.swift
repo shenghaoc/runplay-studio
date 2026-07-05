@@ -37,6 +37,7 @@ struct WorkoutComparisonSummary {
     let avgHRDelta: Double?
     let primaryMaxHR: Double?
     let comparisonMaxHR: Double?
+    let maxHRDelta: Double?
 
     // Point counts
     let primaryPointCount: Int
@@ -68,7 +69,7 @@ struct WorkoutComparisonSummary {
         if abs(paceDiff) < 5 {
             return .tie
         }
-        return paceDiff > 0 ? .primary : .comparison
+        return paceDiff > 0 ? .comparison : .primary
     }
 }
 

@@ -71,6 +71,9 @@ class AppState: ObservableObject {
     func selectWorkout(_ workout: RunWorkout?) {
         selectedWorkout = workout
         selectedSegment = nil
+        if let workout, comparisonWorkout?.id == workout.id {
+            clearComparison()
+        }
         if let workout = workout {
             replayController.load(workout)
             detectedSegments = SegmentDetector.detectSegments(from: workout)
@@ -86,6 +89,9 @@ class AppState: ObservableObject {
             selectedWorkout = workouts.first
             if let first = workouts.first {
                 replayController.load(first)
+                detectedSegments = SegmentDetector.detectSegments(from: first)
+            } else {
+                detectedSegments = []
             }
         }
         if comparisonWorkout?.id == workout.id {

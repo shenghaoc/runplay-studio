@@ -20,6 +20,9 @@ struct ComparisonMapView: View {
             }
         }
         .overlay(routeOverlays)
+        .overlay(alignment: .topLeading) {
+            routeLegend
+        }
         .onAppear {
             calculateRegion()
         }
@@ -107,6 +110,27 @@ struct ComparisonMapView: View {
                     .stroke(color, lineWidth: 3)
                 }
             }
+        }
+    }
+
+    private var routeLegend: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            legendRow(color: .blue, label: "Primary")
+            legendRow(color: .red, label: "Comparison")
+        }
+        .font(.caption)
+        .padding(8)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding()
+    }
+
+    private func legendRow(color: Color, label: String) -> some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 18, height: 4)
+            Text(label)
         }
     }
 

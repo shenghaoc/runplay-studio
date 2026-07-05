@@ -20,7 +20,10 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 workouts: appState.workouts,
-                selectedWorkout: $appState.selectedWorkout,
+                selectedWorkout: Binding(
+                    get: { appState.selectedWorkout },
+                    set: { appState.selectWorkout($0) }
+                ),
                 onImport: { appState.showImporter = true }
             )
         } detail: {

@@ -39,12 +39,21 @@ final class WorkoutComparisonTests: XCTestCase {
         let slower = createSampleWorkout(distance: 5000, pace: 330)
 
         let summary1 = service.compare(primary: faster, comparison: slower)
-        // Check that they're different - the exact winner depends on calculated pace
-        XCTAssertNotEqual(summary1.winner, .tie, "Faster vs slower should not be a tie")
+        XCTAssertEqual(summary1.winner, .primary)
 
         let summary2 = service.compare(primary: slower, comparison: faster)
-        // Winner should be opposite
-        XCTAssertNotEqual(summary1.winner, summary2.winner, "Winner should swap when order swaps")
+        XCTAssertEqual(summary2.winner, .comparison)
+    }
+
+    func testMaxHeartRateDeltaIsReportedWhenAvailable() {
+        var primary = createSampleWorkout(distance: 5000, pace: 300)
+        var comparison = createSampleWorkout(distance: 5000, pace: 300)
+        primary.summary.maxHeartRateBPM = 182
+        comparison.summary.maxHeartRateBPM = 171
+
+        let summary = service.compare(primary: primary, comparison: comparison)
+
+        XCTAssertEqual(summary.maxHRDelta, 11)
     }
 
     func testSimilarPaceIsTie() {
@@ -135,6 +144,33 @@ final class WorkoutComparisonTests: XCTestCase {
         }
     }
 
+    func testMetricSeriesFiltersNonFiniteValues() {
+        var primary = createSampleWorkout(distance: 5000, pace: 300)
+        var comparison = createSampleWorkout(distance: 5000, pace: 330)
+        primary.routePoints[0].paceSecondsPerKilometer = .nan
+        primary.routePoints[0].altitudeMeters = .infinity
+        comparison.routePoints[0].heartRateBPM = .nan
+
+        let metrics = service.compareMetricsOverDistance(primary: primary, comparison: comparison)
+
+        XCTAssertNil(metrics.first?.primaryPace)
+        XCTAssertNil(metrics.first?.primaryElevation)
+        XCTAssertNil(metrics.first?.comparisonHR)
+    }
+
+    func testInvalidMetricSampleIntervalReturnsEmptySeries() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let metrics = service.compareMetricsOverDistance(
+            primary: primary,
+            comparison: comparison,
+            sampleIntervalMeters: 0
+        )
+
+        XCTAssertTrue(metrics.isEmpty)
+    }
+
     // MARK: - Warnings
 
     func testDifferentDistancesWarning() {
@@ -175,6 +211,20 @@ final class WorkoutComparisonTests: XCTestCase {
         let summary = service.compare(primary: primary, comparison: comparison)
 
         XCTAssertTrue(summary.warnings.contains(.insufficientOverlap))
+    }
+
+    func testDifferentRouteShapeWarning() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        var comparison = createSampleWorkout(distance: 5000, pace: 300)
+        comparison.routePoints = comparison.routePoints.map { point in
+            var shifted = point
+            shifted.latitude += 0.1
+            return shifted
+        }
+
+        let summary = service.compare(primary: primary, comparison: comparison)
+
+        XCTAssertTrue(summary.warnings.contains(.differentRouteShape))
     }
 
     // MARK: - Edge Cases

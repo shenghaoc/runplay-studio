@@ -31,6 +31,13 @@ struct WorkoutComparisonService {
             avgHRDelta = nil
         }
 
+        let maxHRDelta: Double?
+        if let pHR = primarySummary.maxHeartRateBPM, let cHR = comparisonSummary.maxHeartRateBPM {
+            maxHRDelta = pHR - cHR
+        } else {
+            maxHRDelta = nil
+        }
+
         // Generate warnings
         let warnings = generateWarnings(primary: primary, comparison: comparison)
 
@@ -54,6 +61,7 @@ struct WorkoutComparisonService {
             avgHRDelta: avgHRDelta,
             primaryMaxHR: primarySummary.maxHeartRateBPM,
             comparisonMaxHR: comparisonSummary.maxHeartRateBPM,
+            maxHRDelta: maxHRDelta,
             primaryPointCount: primary.routePoints.count,
             comparisonPointCount: comparison.routePoints.count,
             warnings: warnings
@@ -118,6 +126,9 @@ struct WorkoutComparisonService {
         guard !primaryPoints.isEmpty && !comparisonPoints.isEmpty else {
             return []
         }
+        guard sampleIntervalMeters.isFinite && sampleIntervalMeters > 0 else {
+            return []
+        }
 
         // Use common distance range
         let maxDistance = min(
@@ -145,13 +156,13 @@ struct WorkoutComparisonService {
 
             points.append(ComparisonMetricPoint(
                 distanceMeters: distance,
-                primaryPace: primaryPoint?.paceSecondsPerKilometer,
-                comparisonPace: comparisonPoint?.paceSecondsPerKilometer,
+                primaryPace: finite(primaryPoint?.paceSecondsPerKilometer),
+                comparisonPace: finite(comparisonPoint?.paceSecondsPerKilometer),
                 paceDelta: paceDelta,
-                primaryElevation: primaryPoint?.altitudeMeters,
-                comparisonElevation: comparisonPoint?.altitudeMeters,
-                primaryHR: primaryPoint?.heartRateBPM,
-                comparisonHR: comparisonPoint?.heartRateBPM
+                primaryElevation: finite(primaryPoint?.altitudeMeters),
+                comparisonElevation: finite(comparisonPoint?.altitudeMeters),
+                primaryHR: finite(primaryPoint?.heartRateBPM),
+                comparisonHR: finite(comparisonPoint?.heartRateBPM)
             ))
 
             distance += sampleIntervalMeters
@@ -186,6 +197,11 @@ struct WorkoutComparisonService {
         return points[low]
     }
 
+    private func finite(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+
     private func generateWarnings(primary: RunWorkout, comparison: RunWorkout) -> [ComparisonWarning] {
         var warnings: [ComparisonWarning] = []
 
@@ -209,6 +225,10 @@ struct WorkoutComparisonService {
             warnings.append(.tooFewPoints)
         }
 
+        if routeEndpointsDiffer(primary: primary, comparison: comparison) {
+            warnings.append(.differentRouteShape)
+        }
+
         // Missing heart rate
         if !primary.hasHeartRateData || !comparison.hasHeartRateData {
             warnings.append(.missingHeartRate)
@@ -220,5 +240,39 @@ struct WorkoutComparisonService {
         }
 
         return warnings
+    }
+
+    private func routeEndpointsDiffer(primary: RunWorkout, comparison: RunWorkout) -> Bool {
+        guard
+            let primaryStart = primary.routePoints.first,
+            let primaryEnd = primary.routePoints.last,
+            let comparisonStart = comparison.routePoints.first,
+            let comparisonEnd = comparison.routePoints.last
+        else {
+            return false
+        }
+
+        let commonDistance = min(primary.summary.totalDistanceMeters, comparison.summary.totalDistanceMeters)
+        let threshold = max(200, min(commonDistance * 0.1, 1_000))
+
+        return coordinateDistance(primaryStart, comparisonStart) > threshold
+            || coordinateDistance(primaryEnd, comparisonEnd) > threshold
+    }
+
+    private func coordinateDistance(_ a: RoutePoint, _ b: RoutePoint) -> Double {
+        guard a.latitude.isFinite, a.longitude.isFinite, b.latitude.isFinite, b.longitude.isFinite else {
+            return .infinity
+        }
+
+        let earthRadiusMeters = 6_371_000.0
+        let lat1 = a.latitude * .pi / 180
+        let lat2 = b.latitude * .pi / 180
+        let deltaLat = (b.latitude - a.latitude) * .pi / 180
+        let deltaLon = (b.longitude - a.longitude) * .pi / 180
+
+        let haversine = sin(deltaLat / 2) * sin(deltaLat / 2)
+            + cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
+        let angularDistance = 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
+        return earthRadiusMeters * angularDistance
     }
 }
