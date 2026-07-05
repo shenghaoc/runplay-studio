@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="RunPlayStudio">
+  <metadata>
+    <name>Morning 5K Training Run</name>
+    <time>2026-07-05T07:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Morning 5K Training Run</name>
+    <type>running</type>
+    <trkseg>
+      <!-- Start - warmup -->
+      <trkpt lat="1.2966" lon="103.7764">
+        <ele>12.0</ele>
+        <time>2026-07-05T07:00:00Z</time>
+      </trkpt>
+      <trkpt lat="1.2967" lon="103.7765">
+        <ele>12.5</ele>
+        <time>2026-07-05T07:00:10Z</time>
+      </trkpt>
+      <trkpt lat="1.2969" lon="103.7767">
+        <ele>13.2</ele>
+        <time>2026-07-05T07:00:20Z</time>
+      </trkpt>
+      <trkpt lat="1.2971" lon="103.7769">
+        <ele>14.0</ele>
+        <time>2026-07-05T07:00:30Z</time>
+      </trkpt>
+      <trkpt lat="1.2974" lon="103.7772">
+        <ele>15.1</ele>
+        <time>2026-07-05T07:00:45Z</time>
+      </trkpt>
+      <trkpt lat="1.2977" lon="103.7775">
+        <ele>16.3</ele>
+        <time>2026-07-05T07:01:00Z</time>
+      </trkpt>
+      <trkpt lat="1.2980" lon="103.7778">
+        <ele>17.8</ele>
+        <time>2026-07-05T07:01:15Z</time>
+      </trkpt>
+      <trkpt lat="1.2983" lon="103.7781">
+        <ele>19.2</ele>
+        <time>2026-07-05T07:01:30Z</time>
+      </trkpt>
+
+      <!-- Settling into pace -->
+      <trkpt lat="1.2987" lon="103.7785">
+        <ele>20.5</ele>
+        <time>2026-07-05T07:01:45Z</time>
+      </trkpt>
+      <trkpt lat="1.2991" lon="103.7789">
+        <ele>21.8</ele>
+        <time>2026-07-05T07:02:00Z</time>
+      </trkpt>
+      <trkpt lat="1.2995" lon="103.7793">
+        <ele>23.0</ele>
+        <time>2026-07-05T07:02:15Z</time>
+      </trkpt>
+      <trkpt lat="1.2999" lon="103.7797">
+        <ele>24.2</ele>
+        <time>2026-07-05T07:02:30Z</time>
+      </trkpt>
+      <trkpt lat="1.3003" lon="103.7801">
+        <ele>25.5</ele>
+        <time>2026-07-05T07:02:45Z</time>
+      </trkpt>
+      <trkpt lat="1.3007" lon="103.7805">
+        <ele>26.8</ele>
+        <time>2026-07-05T07:03:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3011" lon="103.7809">
+        <ele>28.0</ele>
+        <time>2026-07-05T07:03:15Z</time>
+      </trkpt>
+      <trkpt lat="1.3015" lon="103.7813">
+        <ele>29.3</ele>
+        <time>2026-07-05T07:03:30Z</time>
+      </trkpt>
+
+      <!-- Kilometer 1 marker area -->
+      <trkpt lat="1.3019" lon="103.7817">
+        <ele>30.5</ele>
+        <time>2026-07-05T07:03:45Z</time>
+      </trkpt>
+      <trkpt lat="1.3023" lon="103.7821">
+        <ele>31.2</ele>
+        <time>2026-07-05T07:04:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3028" lon="103.7826">
+        <ele>32.0</ele>
+        <time>2026-07-05T07:04:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3033" lon="103.7831">
+        <ele>32.8</ele>
+        <time>2026-07-05T07:04:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3038" lon="103.7836">
+        <ele>33.5</ele>
+        <time>2026-07-05T07:05:00Z</time>
+      </trkpt>
+
+      <!-- Kilometer 2 - slight downhill -->
+      <trkpt lat="1.3043" lon="103.7841">
+        <ele>33.0</ele>
+        <time>2026-07-05T07:05:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3048" lon="103.7846">
+        <ele>32.2</ele>
+        <time>2026-07-05T07:05:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3053" lon="103.7851">
+        <ele>31.5</ele>
+        <time>2026-07-05T07:06:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3058" lon="103.7856">
+        <ele>30.8</ele>
+        <time>2026-07-05T07:06:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3063" lon="103.7861">
+        <ele>30.0</ele>
+        <time>2026-07-05T07:06:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3068" lon="103.7866">
+        <ele>29.2</ele>
+        <time>2026-07-05T07:07:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3073" lon="103.7871">
+        <ele>28.5</ele>
+        <time>2026-07-05T07:07:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3078" lon="103.7876">
+        <ele>27.8</ele>
+        <time>2026-07-05T07:07:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3083" lon="103.7881">
+        <ele>27.0</ele>
+        <time>2026-07-05T07:08:00Z</time>
+      </trkpt>
+
+      <!-- Kilometer 3 - flat section -->
+      <trkpt lat="1.3088" lon="103.7886">
+        <ele>26.5</ele>
+        <time>2026-07-05T07:08:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3093" lon="103.7891">
+        <ele>26.2</ele>
+        <time>2026-07-05T07:08:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3098" lon="103.7896">
+        <ele>26.0</ele>
+        <time>2026-07-05T07:09:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3103" lon="103.7901">
+        <ele>26.2</ele>
+        <time>2026-07-05T07:09:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3108" lon="103.7906">
+        <ele>26.5</ele>
+        <time>2026-07-05T07:09:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3113" lon="103.7911">
+        <ele>26.8</ele>
+        <time>2026-07-05T07:10:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3118" lon="103.7916">
+        <ele>27.0</ele>
+        <time>2026-07-05T07:10:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3123" lon="103.7921">
+        <ele>27.2</ele>
+        <time>2026-07-05T07:10:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3128" lon="103.7926">
+        <ele>27.5</ele>
+        <time>2026-07-05T07:11:00Z</time>
+      </trkpt>
+
+      <!-- Kilometer 4 - gradual climb -->
+      <trkpt lat="1.3133" lon="103.7931">
+        <ele>28.5</ele>
+        <time>2026-07-05T07:11:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3138" lon="103.7936">
+        <ele>30.0</ele>
+        <time>2026-07-05T07:11:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3143" lon="103.7941">
+        <ele>32.0</ele>
+        <time>2026-07-05T07:12:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3148" lon="103.7946">
+        <ele>34.5</ele>
+        <time>2026-07-05T07:12:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3153" lon="103.7951">
+        <ele>37.0</ele>
+        <time>2026-07-05T07:12:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3158" lon="103.7956">
+        <ele>39.5</ele>
+        <time>2026-07-05T07:13:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3163" lon="103.7961">
+        <ele>42.0</ele>
+        <time>2026-07-05T07:13:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3168" lon="103.7966">
+        <ele>44.5</ele>
+        <time>2026-07-05T07:13:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3173" lon="103.7971">
+        <ele>47.0</ele>
+        <time>2026-07-05T07:14:00Z</time>
+      </trkpt>
+
+      <!-- Kilometer 5 - descent and finish -->
+      <trkpt lat="1.3178" lon="103.7976">
+        <ele>45.5</ele>
+        <time>2026-07-05T07:14:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3183" lon="103.7981">
+        <ele>43.0</ele>
+        <time>2026-07-05T07:14:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3188" lon="103.7986">
+        <ele>40.5</ele>
+        <time>2026-07-05T07:15:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3193" lon="103.7991">
+        <ele>38.0</ele>
+        <time>2026-07-05T07:15:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3198" lon="103.7996">
+        <ele>35.5</ele>
+        <time>2026-07-05T07:15:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3203" lon="103.8001">
+        <ele>33.0</ele>
+        <time>2026-07-05T07:16:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3208" lon="103.8006">
+        <ele>30.5</ele>
+        <time>2026-07-05T07:16:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3213" lon="103.8011">
+        <ele>28.0</ele>
+        <time>2026-07-05T07:16:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3218" lon="103.8016">
+        <ele>25.5</ele>
+        <time>2026-07-05T07:17:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3223" lon="103.8021">
+        <ele>23.0</ele>
+        <time>2026-07-05T07:17:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3228" lon="103.8026">
+        <ele>20.5</ele>
+        <time>2026-07-05T07:17:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3233" lon="103.8031">
+        <ele>18.0</ele>
+        <time>2026-07-05T07:18:00Z</time>
+      </trkpt>
+      <trkpt lat="1.3238" lon="103.8036">
+        <ele>15.5</ele>
+        <time>2026-07-05T07:18:20Z</time>
+      </trkpt>
+      <trkpt lat="1.3243" lon="103.8041">
+        <ele>13.0</ele>
+        <time>2026-07-05T07:18:40Z</time>
+      </trkpt>
+      <trkpt lat="1.3248" lon="103.8046">
+        <ele>12.0</ele>
+        <time>2026-07-05T07:19:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
