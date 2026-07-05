@@ -35,7 +35,7 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (204 tests) |
+| `swift test` | ✅ Pass (206 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Two bundled JSON demo runs auto-load |
@@ -185,6 +185,7 @@ Export workout data as local files:
 
 All exports are local-only. No data is uploaded anywhere.
 PNG export renders a SwiftUI card using NSHostingView (requires GUI context).
+The README demo image is generated from bundled synthetic data.
 
 ### Route Comparison
 Compare two completed runs:
