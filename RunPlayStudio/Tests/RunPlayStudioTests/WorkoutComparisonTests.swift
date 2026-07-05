@@ -64,6 +64,22 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertEqual(summary.winner, .tie)
     }
 
+    func testDemoComparisonFixturesCompareSafely() throws {
+        let primary = try loadFixture("sample_run.json")
+        let comparison = try loadFixture("fixtures/comparison_park_run.json")
+
+        let summary = service.compare(primary: primary, comparison: comparison)
+        let splits = service.compareSplits(primary: primary, comparison: comparison)
+        let metrics = service.compareMetricsOverDistance(primary: primary, comparison: comparison)
+
+        XCTAssertNotEqual(primary.id, comparison.id)
+        XCTAssertFalse(summary.warnings.contains(.differentRouteShape))
+        XCTAssertFalse(summary.warnings.contains(.differentDistances))
+        XCTAssertGreaterThanOrEqual(splits.count, 7)
+        XCTAssertFalse(metrics.isEmpty)
+        XCTAssertLessThanOrEqual(metrics.last?.distanceMeters ?? .infinity, min(primary.summary.totalDistanceMeters, comparison.summary.totalDistanceMeters))
+    }
+
     // MARK: - Split Comparison
 
     func testSplitComparisonAlignsByIndex() {
@@ -250,6 +266,17 @@ final class WorkoutComparisonTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func loadFixture(_ path: String) throws -> RunWorkout {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let url = testFile
+            .deletingLastPathComponent()  // WorkoutComparisonTests
+            .deletingLastPathComponent()  // RunPlayStudioTests
+            .deletingLastPathComponent()  // Tests
+            .appendingPathComponent("Resources")
+            .appendingPathComponent(path)
+        return try JSONWorkoutImporter().importWorkout(from: url)
+    }
 
     private func createSampleWorkout(
         distance: Double,

@@ -4,14 +4,7 @@ import XCTest
 final class JSONImporterTests: XCTestCase {
 
     func testSampleFixtureLoads() throws {
-        // Locate the sample JSON in the source tree
-        let testFile = URL(fileURLWithPath: #filePath)
-        let resourcesURL = testFile
-            .deletingLastPathComponent()  // JSONImporterTests
-            .deletingLastPathComponent()  // RunPlayStudioTests
-            .deletingLastPathComponent()  // Tests
-            .appendingPathComponent("Resources")
-            .appendingPathComponent("sample_run.json")
+        let resourcesURL = resourceURL("sample_run.json")
 
         guard FileManager.default.fileExists(atPath: resourcesURL.path) else {
             XCTFail("sample_run.json not found at \(resourcesURL.path)")
@@ -20,6 +13,20 @@ final class JSONImporterTests: XCTestCase {
 
         let workout = try JSONWorkoutImporter().importWorkout(from: resourcesURL)
         validateWorkout(workout)
+    }
+
+    func testComparisonFixtureLoads() throws {
+        let resourcesURL = resourceURL("fixtures/comparison_park_run.json")
+
+        guard FileManager.default.fileExists(atPath: resourcesURL.path) else {
+            XCTFail("comparison_park_run.json not found at \(resourcesURL.path)")
+            return
+        }
+
+        let workout = try JSONWorkoutImporter().importWorkout(from: resourcesURL)
+        validateWorkout(workout)
+        XCTAssertEqual(workout.displayName, "Morning Park Progression Run")
+        XCTAssertGreaterThanOrEqual(workout.splits.count, 7)
     }
 
     func testJSONImporterParsesRoutePoints() throws {
@@ -82,6 +89,16 @@ final class JSONImporterTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func resourceURL(_ path: String) -> URL {
+        let testFile = URL(fileURLWithPath: #filePath)
+        return testFile
+            .deletingLastPathComponent()  // JSONImporterTests
+            .deletingLastPathComponent()  // RunPlayStudioTests
+            .deletingLastPathComponent()  // Tests
+            .appendingPathComponent("Resources")
+            .appendingPathComponent(path)
+    }
 
     private func validateWorkout(_ workout: RunWorkout) {
         XCTAssertFalse(workout.routePoints.isEmpty, "Workout should have route points")

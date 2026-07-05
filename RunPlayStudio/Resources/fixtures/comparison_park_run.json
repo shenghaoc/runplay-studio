@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "name": "Morning Park Progression Run",
+    "activityType": "running",
+    "startDate": "2026-07-06T07:30:00Z",
+    "endDate": "2026-07-06T08:48:00Z",
+    "deviceName": "Synthetic Fixture",
+    "notes": "Synthetic comparison run on a similar anonymized park route"
+  },
+  "source": "json",
+  "routePoints": [
+    {"timestamp": "2026-07-06T07:30:00Z", "latitude": 37.77492, "longitude": -122.41938, "altitudeMeters": 15.2, "distanceFromStartMeters": 0, "elapsedSeconds": 0, "speedMetersPerSecond": 1.60, "heartRateBPM": 78, "cadence": 74},
+    {"timestamp": "2026-07-06T07:35:12Z", "latitude": 37.77605, "longitude": -122.41782, "altitudeMeters": 20.4, "distanceFromStartMeters": 500, "elapsedSeconds": 312, "speedMetersPerSecond": 1.60, "heartRateBPM": 111, "cadence": 78},
+    {"timestamp": "2026-07-06T07:40:24Z", "latitude": 37.77902, "longitude": -122.41278, "altitudeMeters": 42.4, "distanceFromStartMeters": 1000, "elapsedSeconds": 624, "speedMetersPerSecond": 1.60, "heartRateBPM": 124, "cadence": 80},
+    {"timestamp": "2026-07-06T07:45:42Z", "latitude": 37.78048, "longitude": -122.41082, "altitudeMeters": 48.4, "distanceFromStartMeters": 1500, "elapsedSeconds": 942, "speedMetersPerSecond": 1.57, "heartRateBPM": 130, "cadence": 80},
+    {"timestamp": "2026-07-06T07:51:00Z", "latitude": 37.78252, "longitude": -122.40818, "altitudeMeters": 53.4, "distanceFromStartMeters": 2000, "elapsedSeconds": 1260, "speedMetersPerSecond": 1.57, "heartRateBPM": 136, "cadence": 79},
+    {"timestamp": "2026-07-06T07:56:24Z", "latitude": 37.78348, "longitude": -122.40722, "altitudeMeters": 50.4, "distanceFromStartMeters": 2500, "elapsedSeconds": 1584, "speedMetersPerSecond": 1.54, "heartRateBPM": 139, "cadence": 78},
+    {"timestamp": "2026-07-06T08:01:48Z", "latitude": 37.78502, "longitude": -122.40498, "altitudeMeters": 38.4, "distanceFromStartMeters": 3000, "elapsedSeconds": 1908, "speedMetersPerSecond": 1.54, "heartRateBPM": 143, "cadence": 77},
+    {"timestamp": "2026-07-06T08:07:00Z", "latitude": 37.78582, "longitude": -122.40352, "altitudeMeters": 28.3, "distanceFromStartMeters": 3500, "elapsedSeconds": 2220, "speedMetersPerSecond": 1.60, "heartRateBPM": 145, "cadence": 78},
+    {"timestamp": "2026-07-06T08:12:12Z", "latitude": 37.78682, "longitude": -122.40118, "altitudeMeters": 17.3, "distanceFromStartMeters": 4000, "elapsedSeconds": 2532, "speedMetersPerSecond": 1.60, "heartRateBPM": 148, "cadence": 79},
+    {"timestamp": "2026-07-06T08:17:18Z", "latitude": 37.78722, "longitude": -122.39982, "altitudeMeters": 15.8, "distanceFromStartMeters": 4500, "elapsedSeconds": 2838, "speedMetersPerSecond": 1.63, "heartRateBPM": 150, "cadence": 80},
+    {"timestamp": "2026-07-06T08:22:24Z", "latitude": 37.78802, "longitude": -122.39748, "altitudeMeters": 16.3, "distanceFromStartMeters": 5000, "elapsedSeconds": 3144, "speedMetersPerSecond": 1.63, "heartRateBPM": 153, "cadence": 80},
+    {"timestamp": "2026-07-06T08:27:24Z", "latitude": 37.78852, "longitude": -122.39602, "altitudeMeters": 17.3, "distanceFromStartMeters": 5500, "elapsedSeconds": 3444, "speedMetersPerSecond": 1.67, "heartRateBPM": 155, "cadence": 81},
+    {"timestamp": "2026-07-06T08:32:24Z", "latitude": 37.78922, "longitude": -122.39382, "altitudeMeters": 18.8, "distanceFromStartMeters": 6000, "elapsedSeconds": 3744, "speedMetersPerSecond": 1.67, "heartRateBPM": 157, "cadence": 81},
+    {"timestamp": "2026-07-06T08:37:12Z", "latitude": 37.78982, "longitude": -122.39218, "altitudeMeters": 19.8, "distanceFromStartMeters": 6500, "elapsedSeconds": 4032, "speedMetersPerSecond": 1.74, "heartRateBPM": 160, "cadence": 82},
+    {"timestamp": "2026-07-06T08:42:00Z", "latitude": 37.79052, "longitude": -122.38998, "altitudeMeters": 21.3, "distanceFromStartMeters": 7000, "elapsedSeconds": 4320, "speedMetersPerSecond": 1.74, "heartRateBPM": 162, "cadence": 82},
+    {"timestamp": "2026-07-06T08:46:48Z", "latitude": 37.79082, "longitude": -122.38918, "altitudeMeters": 21.8, "distanceFromStartMeters": 7400, "elapsedSeconds": 4608, "speedMetersPerSecond": 1.39, "heartRateBPM": 164, "cadence": 80}
+  ]
+}
