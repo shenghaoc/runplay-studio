@@ -1,6 +1,6 @@
 # RunPlay Studio — Phase Plan
 
-## Phase 1: Foundation ✅ (Current)
+## Phase 1: Foundation ✅
 - [x] Initialize repository
 - [x] Create documentation
 - [x] Define data models
@@ -15,64 +15,90 @@
 - [x] Build SwiftUI shell
 - [x] Add unit tests
 
-## Phase 2: GPX Hardening
-- [ ] Improve GPX parser robustness
-- [ ] Handle GPX extensions (heart rate, cadence)
-- [ ] Validate against real-world GPX files
+## Phase 2: GPX Import ✅
+- [x] Basic GPX parser with XML parsing
+- [x] Handle GPX extensions (heart rate, cadence)
+- [ ] Validate against real-world GPX files (use realistic_5k_run.gpx fixture)
 - [ ] Add error reporting for malformed GPX
 
-## Phase 3: TCX Import
+## Phase 3: 3D Route Replay Polish ✅
+- [x] Improve route geometry (skip zero-length segments)
+- [x] Better lighting (key + fill + top lights)
+- [x] Direction-aware replay marker (cone)
+- [x] Start/finish markers with labels
+- [x] Kilometer markers with poles
+- [x] Adaptive ground grid
+- [x] Camera presets (default, top-down, side)
+- [x] Fit-to-route camera button
+- [x] Elevation exaggeration controls (1x, 2x, 5x, 10x)
+- [x] Grid and km marker visibility toggles
+
+## Phase 4: Route Coloring ✅
+- [x] Route coloring by pace (blue=fast, red=slow)
+- [x] Quantile-based color scaling (10th/90th percentile)
+- [x] Moving average smoothing for pace
+- [x] Elevation coloring (green=low, brown=high)
+- [x] Color mode picker (Single/Pace/Elevation)
+- [x] Pace legend with gradient bar
+
+## Phase 5: Synchronized Replay ✅
+- [x] Unified ReplayController as single source of truth
+- [x] 3D marker sync with timeline
+- [x] 2D map marker sync
+- [x] Chart selection indicator (RuleMark)
+- [x] Current metrics panel (time, distance, pace, elev, HR, split)
+- [x] Split table current split highlighting
+- [x] Playback controls (play/pause/stop/speed)
+
+## Phase 6: Segment Detection ✅
+- [x] Fastest 400m detection (distance-based sliding window)
+- [x] Fastest 1km detection
+- [x] Slowest 1km detection
+- [x] Biggest climb detection
+- [x] Biggest descent detection
+- [x] Segment highlights panel with cards
+- [x] 3D segment highlighting (translucent tube above route)
+- [x] Segment start/end markers
+
+## Phase 7: Export ✅
+- [x] JSON summary export (complete workout data)
+- [x] Splits CSV export
+- [x] Segments CSV export
+- [x] Combined CSV export
+- [x] PNG summary card export (1200×1600)
+- [x] Export menu with NSSavePanel
+- [x] Safe filename generation
+- [x] CSV escaping for special characters
+
+## Phase 8: Chart Click-to-Seek (In Progress)
+- [ ] Click/drag on chart to seek replay position
+- [ ] Chart selection mapping helpers
+- [ ] Visual feedback during chart interaction
+- [ ] Playback behavior documentation
+
+## Phase 9: TCX Import (Future)
 - [ ] Parse TCX XML structure
 - [ ] Extract trackpoints with timestamps
 - [ ] Handle TCX sport types
 - [ ] Map TCX data to RoutePoint model
 
-## Phase 4: FIT Import
+## Phase 10: FIT Import (Future)
 - [ ] Implement FIT binary format parser
 - [ ] Extract record messages
 - [ ] Handle FIT timestamps and coordinates
 - [ ] Add FIT-specific error handling
 
-## Phase 5: 3D Enhancements
-- [ ] Route coloring by pace (gradient)
-- [ ] Route coloring by heart rate
-- [ ] Improve camera orbit controls
-- [ ] Add elevation exaggeration slider
-- [ ] Improve ground plane rendering
-
-## Phase 6: Chart Interactivity
-- [ ] Scrub charts to sync with 3D view
-- [ ] Hover to highlight route position
-- [ ] Click to seek replay
-- [ ] Zoom/pan on charts
-
-## Phase 7: Segment Detection
-- [ ] Auto-detect fastest kilometers
-- [ ] Auto-detect steepest climbs
-- [ ] Highlight segments on 3D route
-- [ ] Segment comparison table
-
-## Phase 8: Route Comparison
-- [ ] Load multiple workouts
-- [ ] Side-by-side route comparison
-- [ ] Split comparison table
-- [ ] Overlay routes on same map
-
-## Phase 9: Export
-- [ ] Export summary as PNG
-- [ ] Export route image
-- [ ] Export split table as CSV
-- [ ] Research video export with AVFoundation
-
-## Phase 10: HealthKit Research
+## Phase 11: HealthKit Research (Future)
 - [ ] Research macOS HealthKit availability
 - [ ] Design HealthKit import flow
 - [ ] Implement HealthKit workout query
 - [ ] Handle permissions and privacy
 
-## Phase 11: Polish
+## Phase 12: Advanced Features (Future)
+- [ ] Route comparison (side-by-side)
+- [ ] Heart rate route coloring
+- [ ] Dark mode PNG variant
+- [ ] Map/3D screenshot in PNG export
 - [ ] Keyboard shortcuts
-- [ ] Menu bar integration
 - [ ] Window state persistence
 - [ ] Accessibility improvements
-- [ ] Performance optimization
