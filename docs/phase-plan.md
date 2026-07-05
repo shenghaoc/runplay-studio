@@ -70,11 +70,11 @@
 - [x] Safe filename generation
 - [x] CSV escaping for special characters
 
-## Phase 8: Chart Click-to-Seek (In Progress)
-- [ ] Click/drag on chart to seek replay position
-- [ ] Chart selection mapping helpers
-- [ ] Visual feedback during chart interaction
-- [ ] Playback behavior documentation
+## Phase 8: Chart Click-to-Seek ✅
+- [x] Click/drag on chart to seek replay position
+- [x] Chart selection mapping helpers
+- [x] Visual feedback during chart interaction
+- [x] Playback behavior: pauses during chart drag
 
 ## Phase 9: TCX Import (Future)
 - [ ] Parse TCX XML structure

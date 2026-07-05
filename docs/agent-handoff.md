@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Phase**: PNG Summary Export Complete  
-**Latest Commit**: `6327639` — test: cover PNG summary export model  
-**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (111 tests)
+**Phase**: Chart Click-to-Seek Complete  
+**Latest Commit**: `6a32ba3` — test: cover chart seek mapping logic  
+**Build Status**: ✅ Verified — `swift build` passes, `swift test` passes (129 tests)
 
 ## Verification Results
 
@@ -12,12 +12,12 @@
 ```bash
 swift package describe    # ✅ Pass
 swift build               # ✅ Pass
-swift test                # ✅ Pass (111 tests, 0 failures)
+swift test                # ✅ Pass (129 tests, 0 failures)
 ```
 
 ### Test Results
 ```
-Executed 111 tests, with 0 failures (0 unexpected)
+Executed 129 tests, with 0 failures (0 unexpected)
   - JSONImporterTests: 4 tests
   - GPXImporterTests: 11 tests
   - ReplayControllerTests: 20 tests
@@ -25,7 +25,8 @@ Executed 111 tests, with 0 failures (0 unexpected)
   - RouteColoringTests: 13 tests
   - SegmentDetectionTests: 11 tests
   - SplitCalculatorTests: 5 tests
-  - ExportServiceTests: 29 tests (UPDATED with PNG tests)
+  - ExportServiceTests: 29 tests
+  - ChartSelectionMapperTests: 18 tests (NEW)
   - WorkoutAnalyzerTests: 4 tests
 ```
 
@@ -322,6 +323,48 @@ Executed 111 tests, with 0 failures (0 unexpected)
 - testFilenameBuilderSupportsPNG
 - testPNGExportReturnsNonEmptyData (graceful CI fallback)
 - testPNGDataHasValidSignature (graceful CI fallback)
+
+## What Was Completed This Phase (Chart Click-to-Seek)
+
+### Documentation Sync
+- Updated docs/phase-plan.md to reflect all completed work
+- Phase 1-7 marked as complete, Phase 8 in progress
+
+### ChartSelectionMapper
+- distanceForChartPosition(): maps chart km to workout meters
+- nearestRoutePointIndex(): binary search by distance or time
+- routePointIndex(): direct chart position to route point mapping
+- Safe clamping for NaN/infinity/bounds
+- Pure logic, fully testable
+
+### Chart Interaction
+- DragGesture on chart overlay for click/drag interaction
+- Visual feedback: orange indicator during drag, yellow normally
+- ChartRuleMark updates during drag
+- Calls onSeek callback with distance in meters
+- Playback pauses during chart drag (predictable behavior)
+
+### MetricsChartView Updates
+- Added onSeek callback parameter
+- chartOverlay with transparent gesture capture
+- valueForDistance() helper for metric lookup
+- isDragging state for visual feedback
+
+### WorkoutDetailView Integration
+- Passes seek callback to MetricsChartView
+- Chart drag pauses playback and seeks
+
+### Tests (129 total, up from 111)
+- ChartSelectionMapperTests: 18 tests
+- Distance mapping: normal, start, end, clamp, NaN, infinity
+- Route point by distance: normal, start, end, empty, NaN
+- Route point by time: normal, start, empty
+- Chart position to route point: normal, start, end
+
+### Known Limitations
+- Hover highlighting not implemented (drag only)
+- No zoom/pan on charts
+- Chart gesture may conflict with macOS trackpad gestures
 
 ### Known Limitations
 - PNG rendering requires GUI context (fails gracefully in headless CI)
