@@ -122,10 +122,11 @@ struct FITParser {
                 continue
             }
 
-            let messageType = (recordHeader >> 4) & 0x03
+            // Bit 6: 0=data message, 1=definition message
+            let isDefinition = (recordHeader & 0x40) != 0
             let localType = recordHeader & 0x0F
 
-            if messageType == 1 {
+            if isDefinition {
                 // Definition message
                 let def = try parseDefinition(data: data, offset: &offset, localType: localType)
                 definitions[localType] = def
