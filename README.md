@@ -17,7 +17,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 
 ## Current Status
 
-**✅ Verified Buildable** — Swift Package builds and all tests pass.
+**✅ Verified Launchable** — Swift Package builds, tests pass, app launches with sample data.
 
 | Check | Status |
 |-------|--------|
@@ -25,6 +25,9 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass (33 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
+| Xcode launch | ✅ Opens via `open Package.swift` |
+| Sample data loads | ✅ Bundled JSON auto-loads |
+| GPX import | ✅ Tested with synthetic fixture |
 
 ## Build Requirements
 
@@ -34,7 +37,9 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 
 ## How to Build
 
-This is a **Swift Package** (no Xcode project yet).
+This is a **Swift Package** (no `.xcodeproj` file). Xcode can open Swift Packages directly.
+
+### Command Line
 
 ```bash
 # Clone the repo
@@ -48,25 +53,42 @@ swift build
 swift test
 ```
 
-To open in Xcode:
+### Xcode
+
 ```bash
+# Open the package in Xcode
 open Package.swift
 ```
-Xcode will open the package and you can build/run from there.
+
+Xcode will open the Swift Package and resolve dependencies. To run:
+1. Select the **RunPlayStudio** scheme in the toolbar
+2. Choose **My Mac** as the destination
+3. Press **⌘R** to build and run
+
+The app will launch with a bundled sample run pre-loaded. Import additional runs via the sidebar import button (supports JSON and GPX files).
+
+### Xcode vs Swift Package
+
+| Approach | Use Case |
+|----------|----------|
+| `open Package.swift` | Development, UI work, debugging |
+| `swift build` / `swift test` | CI, headless verification, scripting |
+
+Both approaches use the same source code. There is no separate Xcode project file to maintain.
 
 ## Supported Import Formats
 
-| Format | Status |
-|--------|--------|
-| JSON   | ✅ Full support |
-| GPX    | ✅ Full support |
-| TCX    | 🔧 Scaffold only |
-| FIT    | 📋 Placeholder only |
+| Format | Status | Notes |
+|--------|--------|-------|
+| JSON   | ✅ Full support | Native format, all fields supported |
+| GPX    | ✅ Basic support | Trackpoints with lat/lon/elevation/time; HR/cadence via extensions |
+| TCX    | 🔧 Scaffold only | Parser not implemented |
+| FIT    | 📋 Placeholder only | Binary format, future work |
+| HealthKit | 📋 Research only | Requires entitlements, future work |
 
-## 3D Route Visualization
+## App Features
 
-RunPlay Studio uses SceneKit to render a stylized 3D route scene:
-
+### 3D Route Visualization (SceneKit)
 - Route points converted to local meter-space coordinates
 - Elevation used as Y-axis with configurable exaggeration
 - Start/finish markers and optional kilometer markers
@@ -74,7 +96,19 @@ RunPlay Studio uses SceneKit to render a stylized 3D route scene:
 - Orbit, pan, and zoom camera controls
 - Ground grid for spatial reference
 
-This is NOT a 3D globe or satellite terrain — it's a focused route visualization designed for post-run analysis.
+### Map View (MapKit)
+- 2D overhead route display
+- Start/finish annotations
+- Reference context for the 3D view
+
+### Charts (Swift Charts)
+- Pace, elevation, heart rate over time
+- Interactive scrubbing synced to replay
+
+### Split Analysis
+- Automatic kilometer splits
+- Per-split pace, elevation gain, heart rate
+- Fastest/slowest segment highlighting
 
 ## Privacy
 
