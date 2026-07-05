@@ -13,6 +13,7 @@ struct Route3DReplayView: View {
     @State private var elevationScale: Double = 2.0
     @State private var colorMode: RouteColorMode = .singleColor
     @State private var paceScale: PaceColorScale?
+    @State private var hrScale: HeartRateColorScale?
 
     // Camera presets
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
@@ -36,6 +37,8 @@ struct Route3DReplayView: View {
                     // Legend (left side)
                     if colorMode == .pace, let scale = paceScale {
                         paceLegend(scale: scale)
+                    } else if colorMode == .heartRate, let scale = hrScale {
+                        heartRateLegend(scale: scale)
                     }
 
                     Spacer()
@@ -86,6 +89,42 @@ struct Route3DReplayView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(scale.slowestFormatted)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 60)
+        }
+        .padding(8)
+        .background(.ultraThinMaterial)
+        .cornerRadius(8)
+    }
+
+    private func heartRateLegend(scale: HeartRateColorScale) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Heart Rate")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            // Color gradient bar (low HR blue/green -> high HR red)
+            LinearGradient(
+                colors: [.blue, .green, .yellow, .orange, .red],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: 12, height: 60)
+            .cornerRadius(3)
+
+            // Labels
+            VStack(alignment: .leading, spacing: 0) {
+                Text(scale.lowFormatted)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(scale.medianFormatted)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(scale.highFormatted)
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
@@ -229,12 +268,18 @@ struct Route3DReplayView: View {
         appState.sceneBuilder.showKilometerMarkers = showKmMarkers
         appState.sceneBuilder.colorMode = colorMode
 
-        // Compute pace scale for legend
+        // Compute scales for legend
         if colorMode == .pace {
             let scenePointsForPace = appState.projectionService.project(workout.routePoints)
             paceScale = appState.sceneBuilder.coloringService.computePaceScale(points: scenePointsForPace)
+            hrScale = nil
+        } else if colorMode == .heartRate {
+            let scenePointsForHR = appState.projectionService.project(workout.routePoints)
+            hrScale = appState.sceneBuilder.coloringService.computeHeartRateScale(points: scenePointsForHR)
+            paceScale = nil
         } else {
             paceScale = nil
+            hrScale = nil
         }
 
         scene = appState.sceneBuilder.buildScene(from: scenePoints)
