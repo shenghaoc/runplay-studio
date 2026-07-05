@@ -4,6 +4,7 @@
 
 ```
 Import File → Importer → Normalized Model → Analyzer → Route Projection → Replay Controller → Views
+                                                        ↘ Comparison Service → Compare View
 ```
 
 ### Detailed Flow
@@ -15,6 +16,7 @@ Import File → Importer → Normalized Model → Analyzer → Route Projection 
 5. **Project**: `RouteProjectionService` converts lat/lng to local 3D coordinates
 6. **Control**: `ReplayController` manages playback state and timeline
 7. **Render**: Views display 3D scene, map, charts, and summaries
+8. **Compare**: `WorkoutComparisonService` compares two loaded workouts by summary metrics, split index, and distance-aligned metric series
 
 ## Module Structure
 
@@ -57,6 +59,23 @@ protocol RouteSceneBuilding {
 
 This allows swapping SceneKit for RealityKit later without changing analysis code.
 
+### WorkoutComparisonService
+
+Route comparison is intentionally distance-based for the MVP. It does not do
+dynamic time warping or complex route matching.
+
+```swift
+struct WorkoutComparisonService {
+    func compare(primary: RunWorkout, comparison: RunWorkout) -> WorkoutComparisonSummary
+    func compareSplits(primary: RunWorkout, comparison: RunWorkout) -> [SplitComparison]
+    func compareMetricsOverDistance(primary: RunWorkout, comparison: RunWorkout) -> [ComparisonMetricPoint]
+}
+```
+
+The service clamps metric series to the common distance, filters non-finite
+metric values, handles missing heart-rate/elevation data, and returns warnings
+instead of crashing on weak comparisons.
+
 ## Dependencies
 
 ### Apple Frameworks Used
@@ -78,4 +97,3 @@ This allows swapping SceneKit for RealityKit later without changing analysis cod
 - RealityKit backend for 3D (if SceneKit limitations arise)
 - AVFoundation for video export
 - HealthKit for direct Apple Health import
-- CloudKit sync (optional, privacy-preserving)

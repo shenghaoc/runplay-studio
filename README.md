@@ -23,11 +23,14 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (191 tests) |
+| `swift test` | ✅ Pass (195 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Bundled JSON auto-loads |
+| JSON import | ✅ Tested with bundled fixture |
 | GPX import | ✅ Tested with synthetic fixture |
+| TCX import | ✅ Tested with synthetic fixture |
+| FIT import | ✅ Basic activity fixture covered |
 
 ## Build Requirements
 
@@ -65,7 +68,7 @@ Xcode will open the Swift Package and resolve dependencies. To run:
 2. Choose **My Mac** as the destination
 3. Press **⌘R** to build and run
 
-The app will launch with a bundled sample run pre-loaded. Import additional runs via the sidebar import button (supports JSON and GPX files).
+The app will launch with a bundled sample run pre-loaded. Import additional runs via the sidebar import button (supports JSON, GPX, TCX, and FIT files).
 
 ### Xcode vs Swift Package
 
@@ -174,11 +177,14 @@ PNG export renders a SwiftUI card using NSHostingView (requires GUI context).
 ### Route Comparison
 Compare two completed runs:
 - Summary metric deltas (distance, duration, pace, elevation)
+- Average and max heart-rate deltas when both runs contain heart-rate data
 - Per-split comparison with winner indication
 - Pace over distance comparison chart
-- 2D map overlay with both routes
+- 2D map overlay with both routes and a simple legend
 - Warnings for different/distorted comparisons
 - Distance-based alignment (no route matching)
+
+Current limitations: comparison is distance-aligned only, does not do dynamic time warping, and does not yet provide a 3D overlay mode.
 
 ## Privacy
 

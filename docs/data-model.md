@@ -131,6 +131,86 @@ enum SegmentType: String, Codable {
 }
 ```
 
+## Comparison Types
+
+### ComparisonPair
+
+The selected primary and comparison workouts.
+
+```swift
+struct ComparisonPair {
+    let primary: RunWorkout
+    let comparison: RunWorkout
+}
+```
+
+### WorkoutComparisonSummary
+
+Summary deltas between two completed runs.
+
+```swift
+struct WorkoutComparisonSummary {
+    let primaryTitle: String
+    let comparisonTitle: String
+    let distanceDeltaMeters: Double
+    let durationDeltaSeconds: Double
+    let paceDeltaSecondsPerKm: Double
+    let elevationGainDeltaMeters: Double
+    let avgHRDelta: Double?
+    let maxHRDelta: Double?
+    let primaryPointCount: Int
+    let comparisonPointCount: Int
+    let warnings: [ComparisonWarning]
+}
+```
+
+### SplitComparison
+
+Split-by-split comparison aligned by split index.
+
+```swift
+struct SplitComparison: Identifiable {
+    let splitIndex: Int
+    let primarySplit: RunSplit?
+    let comparisonSplit: RunSplit?
+    let durationDeltaSeconds: Double?
+    let paceDeltaSecondsPerKm: Double?
+    let winner: ComparisonResult
+}
+```
+
+### ComparisonMetricPoint
+
+Distance-aligned sample used by the comparison chart.
+
+```swift
+struct ComparisonMetricPoint: Identifiable {
+    let distanceMeters: Double
+    let primaryPace: Double?
+    let comparisonPace: Double?
+    let paceDelta: Double?
+    let primaryElevation: Double?
+    let comparisonElevation: Double?
+    let primaryHR: Double?
+    let comparisonHR: Double?
+}
+```
+
+### ComparisonWarning
+
+Warnings returned for comparisons that are still possible but weak.
+
+```swift
+enum ComparisonWarning {
+    case differentDistances
+    case insufficientOverlap
+    case differentRouteShape
+    case missingHeartRate
+    case missingElevation
+    case tooFewPoints
+}
+```
+
 ## 3D Types
 
 ### RouteScenePoint

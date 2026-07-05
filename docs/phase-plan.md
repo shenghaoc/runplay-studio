@@ -94,15 +94,28 @@
 - [x] Semicircle to degree coordinate conversion
 - [x] Wire into file picker
 
-## Phase 11: HealthKit Research (Future)
+## Phase 11: Route Comparison ✅
+- [x] ComparisonPair, WorkoutComparisonSummary, SplitComparison, ComparisonMetricPoint, and ComparisonWarning models
+- [x] WorkoutComparisonService with distance-based alignment
+- [x] Summary metric deltas
+- [x] Average and max heart-rate deltas when available
+- [x] Split comparison aligned by split index
+- [x] Pace-over-distance comparison series clamped to common distance
+- [x] 2D MapKit route overlay with primary/comparison legend
+- [x] Compare view and comparison selection state
+- [x] Warnings for different distances, insufficient overlap, different route endpoints, missing data, and too few points
+- [x] Pure logic tests for comparison edge cases
+- [ ] 3D comparison overlay
+- [ ] Manual GUI dogfooding with two imported workouts
+
+## Phase 12: HealthKit Research (Future)
 - [ ] Research macOS HealthKit availability
 - [ ] Design HealthKit import flow
 - [ ] Implement HealthKit workout query
 - [ ] Handle permissions and privacy
 
-## Phase 12: Advanced Features
-- [x] Route comparison (side-by-side)
-- [ ] Heart rate route coloring (done as part of HR route coloring)
+## Phase 13: Advanced Features
+- [x] Heart rate route coloring
 - [ ] Dark mode PNG variant
 - [ ] Map/3D screenshot in PNG export
 - [ ] Keyboard shortcuts
