@@ -1,20 +1,49 @@
 import SwiftUI
 
-/// Displays kilometer splits in a table format.
+/// Displays kilometer splits in a table format with current split highlighting.
 struct SplitTableView: View {
     let splits: [RunSplit]
+    var currentSplitIndex: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Splits")
                 .font(.headline)
 
-            Table(splits) {
-                TableColumn("Split") { split in
-                    Text("\(split.splitIndex)")
+            // Current split highlight
+            if let idx = currentSplitIndex, idx < splits.count {
+                let split = splits[idx]
+                HStack {
+                    Image(systemName: "flag.fill")
+                        .foregroundStyle(.orange)
+                    Text("Current: Split \(split.splitIndex)")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Text(split.formattedPace)
+                        .font(.caption)
+                        .monospacedDigit()
+                    Text(split.formattedElapsed)
+                        .font(.caption)
                         .monospacedDigit()
                 }
-                .width(40)
+                .padding(6)
+                .background(.orange.opacity(0.1))
+                .cornerRadius(6)
+            }
+
+            Table(splits) {
+                TableColumn("Split") { split in
+                    HStack {
+                        if currentSplitIndex != nil && splits.firstIndex(where: { $0.id == split.id }) == currentSplitIndex {
+                            Image(systemName: "circle.fill")
+                                .font(.system(size: 6))
+                                .foregroundStyle(.orange)
+                        }
+                        Text("\(split.splitIndex)")
+                            .monospacedDigit()
+                    }
+                }
+                .width(50)
 
                 TableColumn("Distance") { split in
                     Text(String(format: "%.2f km", split.distanceMeters / 1000))
