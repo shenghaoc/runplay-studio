@@ -238,6 +238,11 @@ struct Route3DReplayView: View {
         }
 
         scene = appState.sceneBuilder.buildScene(from: scenePoints)
+
+        // Apply segment highlight if one is selected
+        if let segment = appState.selectedSegment, let scene = scene {
+            appState.sceneBuilder.highlightSegment(segment, in: scene)
+        }
     }
 
     private func updateMarker(at index: Int) {

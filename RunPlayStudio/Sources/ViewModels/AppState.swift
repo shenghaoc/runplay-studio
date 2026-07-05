@@ -10,6 +10,8 @@ class AppState: ObservableObject {
     @Published var showImporter = false
     @Published var errorMessage: String?
     @Published var showingError = false
+    @Published var detectedSegments: [SegmentHighlight] = []
+    @Published var selectedSegment: SegmentHighlight?
 
     let replayController = ReplayController()
     let sceneBuilder = RouteSceneBuilder()
@@ -40,6 +42,8 @@ class AppState: ObservableObject {
             workouts.append(workout)
             selectedWorkout = workout
             replayController.load(workout)
+            detectedSegments = SegmentDetector.detectSegments(from: workout)
+            selectedSegment = nil
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -61,8 +65,12 @@ class AppState: ObservableObject {
     /// Select a workout for viewing.
     func selectWorkout(_ workout: RunWorkout?) {
         selectedWorkout = workout
+        selectedSegment = nil
         if let workout = workout {
             replayController.load(workout)
+            detectedSegments = SegmentDetector.detectSegments(from: workout)
+        } else {
+            detectedSegments = []
         }
     }
 

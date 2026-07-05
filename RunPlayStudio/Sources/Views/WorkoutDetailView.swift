@@ -42,6 +42,25 @@ struct WorkoutDetailView: View {
 
             Divider()
 
+            // Segment highlights
+            if !appState.detectedSegments.isEmpty {
+                SegmentHighlightsPanel(
+                    segments: appState.detectedSegments,
+                    selectedSegment: $appState.selectedSegment,
+                    onSelect: { segment in
+                        seekToSegment(segment)
+                    },
+                    onClear: {
+                        appState.sceneBuilder.clearSegmentHighlight()
+                    }
+                )
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial)
+
+                Divider()
+            }
+
             // Current metrics panel
             CurrentMetricsPanel(
                 metrics: appState.replayController.selectedMetrics,
@@ -69,5 +88,9 @@ struct WorkoutDetailView: View {
             .padding()
             .background(.ultraThinMaterial)
         }
+    }
+
+    private func seekToSegment(_ segment: SegmentHighlight) {
+        appState.replayController.seekToDistance(segment.startDistanceMeters)
     }
 }
