@@ -23,6 +23,9 @@ class AppState: ObservableObject {
     let cameraController = SceneCameraController()
     var projectionService = RouteProjectionService()
     let comparisonService = WorkoutComparisonService()
+    var comparisonProjectionService = ComparisonRouteProjectionService()
+    let comparisonSceneBuilder = ComparisonSceneBuilder()
+    let comparisonCameraController = SceneCameraController()
 
     init(loadSampleWorkout: Bool = true) {
         if loadSampleWorkout {
