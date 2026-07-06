@@ -3,6 +3,7 @@ import SwiftUI
 /// Main comparison view showing two workouts side by side.
 struct CompareView: View {
     @ObservedObject var appState: AppState
+    @State private var show3DComparison: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,28 +22,39 @@ struct CompareView: View {
                     Divider()
                 }
 
-                // Main content: map + splits
-                HStack(spacing: 0) {
-                    // Route overlay map
-                    ComparisonMapView(
-                        primaryPoints: pair.primary.routePoints,
-                        comparisonPoints: pair.comparison.routePoints
+                // View mode toggle
+                viewModeToggle
+
+                if show3DComparison {
+                    // 3D comparison view
+                    Comparison3DView(
+                        primaryWorkout: pair.primary,
+                        comparisonWorkout: pair.comparison,
+                        warnings: appState.comparisonSummary?.warnings ?? [],
+                        appState: appState
                     )
-                    .frame(minWidth: 400)
+                } else {
+                    // 2D comparison: map + splits
+                    HStack(spacing: 0) {
+                        ComparisonMapView(
+                            primaryPoints: pair.primary.routePoints,
+                            comparisonPoints: pair.comparison.routePoints
+                        )
+                        .frame(minWidth: 400)
+
+                        Divider()
+
+                        SplitComparisonTableView(splits: appState.splitComparisons)
+                            .frame(minWidth: 300)
+                    }
 
                     Divider()
 
-                    // Split comparison table
-                    SplitComparisonTableView(splits: appState.splitComparisons)
-                        .frame(minWidth: 300)
+                    // Pace comparison chart
+                    ComparisonChartView(metrics: appState.comparisonMetrics)
+                        .frame(height: 200)
+                        .padding()
                 }
-
-                Divider()
-
-                // Pace comparison chart
-                ComparisonChartView(metrics: appState.comparisonMetrics)
-                    .frame(height: 200)
-                    .padding()
             } else {
                 ComparisonEmptyView(
                     workoutCount: appState.workouts.count,
@@ -50,6 +62,25 @@ struct CompareView: View {
                 )
             }
         }
+    }
+
+    // MARK: - View Mode Toggle
+
+    private var viewModeToggle: some View {
+        HStack {
+            Spacer()
+            Picker("View Mode", selection: $show3DComparison) {
+                Label("2D Map", systemImage: "map")
+                    .tag(false)
+                Label("3D View", systemImage: "cube")
+                    .tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 200)
+            Spacer()
+        }
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
     }
 
     // MARK: - Selector
