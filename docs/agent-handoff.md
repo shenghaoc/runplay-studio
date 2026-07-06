@@ -2,11 +2,12 @@
 
 ## Current Status
 
-3D route comparison overlay MVP is implemented and GUI-verified. Route
-comparison now supports both 2D map and 3D scene views. Do not add commit
-hashes to this handoff as a status field; they become stale and cause repeated
-hash-only documentation commits during rapid iteration. Run `git log -1
---oneline` locally to see the current commit.
+3D route comparison overlay MVP is implemented. Route comparison now supports
+both 2D map and 3D scene views, and the SceneKit camera controller is wired to
+the visible single-run and comparison scenes. Do not add commit hashes to this
+handoff as a status field; they become stale and cause repeated hash-only
+documentation commits during rapid iteration. Run `git log -1 --oneline`
+locally to see the current commit.
 
 ## Verification Snapshot
 
@@ -22,7 +23,7 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test`: pass, 227 tests, 0 failures
+- `swift test`: pass, 235 tests, 0 failures
 - Package product: `RunPlayStudio`
 - Test target: `RunPlayStudioTests`
 - Validation was performed after synchronizing with the latest default branch
@@ -40,6 +41,7 @@ Latest verified result:
 - Local JSON, CSV, and PNG summary export
 - Route comparison MVP
 - 3D route comparison overlay
+- SceneKit camera controls wired to the visible single-run and comparison scenes
 - Bundled demo comparison pair loaded on launch for immediate comparison testing
 - Private local workout ignore policy and data-handling documentation
 - Synthetic demo summary PNG generated from bundled fixture data
@@ -78,7 +80,8 @@ Current comparison behavior:
 - 3D comparison shows primary (blue) and comparison (orange) routes with
   distinct start/finish markers and a 3D legend
 - 3D comparison supports elevation exaggeration, camera presets, fit-to-routes,
-  and grid toggle
+  and grid toggle. Camera wiring is fixed and unit-tested; run a normal desktop
+  manual pass before marking the buttons GUI-verified.
 - Toggle between 2D map and 3D view via segmented picker in CompareView
 - Shows warnings for different distances, insufficient overlap, different route
   endpoints, missing heart rate, missing elevation, and too few points
@@ -159,7 +162,10 @@ Not fully completed manually:
 ## 3D Comparison GUI Dogfood
 
 GUI dogfood of the 3D comparison view was performed using bundled synthetic
-demo runs only.
+demo runs only before the camera-control fix. A follow-up camera-control GUI
+pass was attempted from a freshly staged temporary app bundle, but automation
+could not attach to the RunPlayStudio window and AppleScript/System Events did
+not have assistive access on this machine.
 
 Verified:
 
@@ -180,14 +186,33 @@ Verified:
 - Switching between 2D and 3D comparison does not crash
 - Switching back to single-run 3D replay still works
 
+Camera-control fix completed:
+
+- Single-run `Route3DReplayView` now passes the controller-owned camera node to
+  `SceneView(pointOfView:)`.
+- `Comparison3DView` now passes the controller-owned camera node to
+  `SceneView(pointOfView:)`.
+- `SceneCameraController` exposes the active camera node, clamps camera distance
+  and fit math, and sanitizes non-finite bounds.
+- `SceneCameraControllerTests` cover camera installation, fit-to-route math,
+  presets, non-finite zoom input, and comparison-route camera bounds.
+
+Manual GUI camera recheck still pending:
+
+- Fresh temporary app bundle launched from the current SwiftPM debug executable.
+- Computer Use listed the fresh RunPlayStudio bundle as running but could not
+  attach to app state by display name, bundle id, or bundle path.
+- Targeted AppleScript/System Events access to the RunPlayStudio process failed
+  because `osascript` does not have assistive access on this machine.
+- Do not claim single-run or comparison camera buttons are manually verified
+  until a normal desktop pass confirms Fit Route/Fit Routes, presets, and manual
+  orbit/zoom/pan.
+
 Known limitations found:
 
-- Fit Routes button and camera presets are not connected to the scene camera.
-  This is a pre-existing issue in Route3DReplayView too. Users can orbit, zoom,
-  and pan manually with mouse/trackpad.
-- Grid toggle icon does not change visually between on/off states (uses same
-  SF Symbol with different foreground color). This is consistent with
-  Route3DReplayView.
+- Grid toggle icon previously used the same SF Symbol for on/off state; the
+  current code now uses filled/unfilled grid symbols, but this should be
+  visually checked in the next GUI pass.
 
 ## MapKit Status
 
@@ -200,8 +225,8 @@ deprecation warnings from route map overlays are removed in current builds.
 Continue stabilization and polish:
 
 - GUI dogfood the save-panel export in a normal desktop session
-- Connect camera controller to scene for Fit Routes and camera presets to work
-- Improve grid toggle icon to visually distinguish on/off states
+- GUI dogfood single-run and comparison 3D camera controls in a normal desktop
+  session
 - Improve comparison chart readability when routes differ substantially
 - Consider a selected-distance marker on both routes in 3D comparison
 - Keep expanding synthetic demo assets only from anonymized or generated data

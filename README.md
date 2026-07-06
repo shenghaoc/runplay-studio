@@ -35,7 +35,7 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (227 tests) |
+| `swift test` | ✅ Pass (235 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Two bundled JSON demo runs auto-load |

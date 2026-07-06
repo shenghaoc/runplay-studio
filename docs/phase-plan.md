@@ -30,6 +30,7 @@
 - [x] Adaptive ground grid
 - [x] Camera presets (default, top-down, side)
 - [x] Fit-to-route camera button
+- [x] Camera controller wired to the visible SceneKit point of view
 - [x] Elevation exaggeration controls (1x, 2x, 5x, 10x)
 - [x] Grid and km marker visibility toggles
 
@@ -113,6 +114,8 @@
 - [x] macOS 14 MapKit overlay API modernization for route maps
 - [x] Clearer distance-alignment warning for different route shapes
 - [x] 3D comparison overlay
+- [x] 3D comparison camera controller wired to the visible SceneKit point of view
+- [ ] Manual GUI recheck of single-run and comparison 3D camera buttons after camera wiring fix
 
 ## Phase 11.5: Real-Data Safety And Demo Polish ✅
 - [x] Ignore local private workout paths and `activity_*.tcx` / `activity_*.fit`

@@ -69,8 +69,8 @@ Checklist:
 - [x] Verify comparison start/finish markers are labeled "C START" / "C FINISH".
 - [x] Verify both routes appear in the same 3D space with correct relative positioning.
 - [x] Verify the 3D legend shows route names and colors.
-- [ ] Verify "Fit Routes" button frames both routes.
-- [ ] Verify camera presets (default, top-down, side) work.
+- [ ] Verify "Fit Routes" button frames both routes after the camera wiring fix.
+- [ ] Verify camera presets (default, top-down, side) work after the camera wiring fix.
 - [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
 - [x] Verify grid toggle shows/hides the ground grid.
 - [x] Verify warnings appear in the 3D view when applicable.
@@ -89,9 +89,51 @@ Latest 3D comparison dogfood notes:
 - Elevation scale controls rebuild the scene.
 - Grid toggle shows/hides the ground grid.
 - Segmented picker toggles between 2D and 3D views without crash.
-- Known limitation: Fit Routes and camera preset buttons are not connected to
-  the scene camera (pre-existing issue in Route3DReplayView too). Users can
-  orbit/zoom/pan manually with mouse/trackpad.
+- Camera-control wiring has been fixed in code and covered by
+  `SceneCameraControllerTests`.
+- Current GUI recheck of the fixed Fit Routes and camera preset buttons is
+  still pending because the automation layer could not attach to the temporary
+  RunPlayStudio bundle, and AppleScript/System Events did not have assistive
+  access on this machine.
+
+## 3D Camera Controls Regression Checklist
+
+Environment:
+
+- Build from the SwiftPM package.
+- Launch the app from Xcode or a temporary `.app` bundle built from the package.
+- Use bundled demo runs, or the explicitly provided local TCX file when
+  dogfooding private data. Do not commit private workout data.
+
+Checklist:
+
+- [x] `SceneView` uses the controller-owned camera node as its point of view in
+  single-run 3D replay.
+- [x] `SceneView` uses the controller-owned camera node as its point of view in
+  3D comparison.
+- [x] Camera setup installs an active camera node in the SceneKit scene.
+- [x] Fit-to-route math clamps non-finite and very large route extents.
+- [x] Camera preset math leaves finite camera positions.
+- [x] Comparison route bounds can drive camera fitting in unit tests.
+- [ ] Manually verify single-run Fit Route button in a normal desktop session.
+- [ ] Manually verify single-run camera presets in a normal desktop session.
+- [ ] Manually verify comparison Fit Routes button in a normal desktop session.
+- [ ] Manually verify comparison camera presets in a normal desktop session.
+- [ ] Manually verify manual orbit/zoom/pan still works after pressing presets.
+
+Latest 3D camera-control dogfood notes:
+
+- `swift build` passed after the camera wiring fix.
+- `swift test` passed with 235 tests, including 8 focused
+  `SceneCameraControllerTests`.
+- A fresh temporary app bundle was staged under `/private/tmp` from the current
+  SwiftPM debug executable and launched successfully.
+- Computer Use listed the fresh RunPlayStudio bundle as running, but could not
+  attach to its app state by display name, bundle id, or bundle path.
+- AppleScript/System Events access to the RunPlayStudio process failed because
+  `osascript` does not have assistive access on this machine.
+- Manual GUI confirmation of the fixed camera buttons remains pending; do not
+  mark it complete without an actual desktop pass.
 
 Latest dogfood notes:
 
