@@ -346,6 +346,64 @@ final class ComparisonProjectionTests: XCTestCase {
         XCTAssertGreaterThan(bbox.extent, 0)
     }
 
+    func testComparisonSceneBuilderDistanceMarkers() {
+        let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
+        let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)
+
+        let comparisonScene = service.project(primary: primary, comparison: comparison)
+        let builder = ComparisonSceneBuilder()
+        let scene = builder.buildScene(from: comparisonScene)
+        let baseCount = scene.rootNode.childNodes.count
+
+        let primaryPoint = comparisonScene.primaryRoute[5]
+        let comparisonPoint = comparisonScene.comparisonRoute[3]
+
+        builder.updateDistanceMarkers(in: scene, primaryPoint: primaryPoint, comparisonPoint: comparisonPoint)
+
+        // Should add 2 marker nodes
+        XCTAssertEqual(scene.rootNode.childNodes.count, baseCount + 2)
+    }
+
+    func testComparisonSceneBuilderDistanceMarkersNil() {
+        let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
+        let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)
+
+        let comparisonScene = service.project(primary: primary, comparison: comparison)
+        let builder = ComparisonSceneBuilder()
+        let scene = builder.buildScene(from: comparisonScene)
+        let baseCount = scene.rootNode.childNodes.count
+
+        builder.updateDistanceMarkers(in: scene, primaryPoint: nil, comparisonPoint: nil)
+
+        // No markers added
+        XCTAssertEqual(scene.rootNode.childNodes.count, baseCount)
+    }
+
+    func testComparisonSceneBuilderDistanceMarkersUpdate() {
+        let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
+        let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)
+
+        let comparisonScene = service.project(primary: primary, comparison: comparison)
+        let builder = ComparisonSceneBuilder()
+        let scene = builder.buildScene(from: comparisonScene)
+
+        // First update
+        builder.updateDistanceMarkers(
+            in: scene,
+            primaryPoint: comparisonScene.primaryRoute[3],
+            comparisonPoint: comparisonScene.comparisonRoute[2]
+        )
+        let countAfterFirst = scene.rootNode.childNodes.count
+
+        // Second update should replace markers, not add more
+        builder.updateDistanceMarkers(
+            in: scene,
+            primaryPoint: comparisonScene.primaryRoute[10],
+            comparisonPoint: comparisonScene.comparisonRoute[8]
+        )
+        XCTAssertEqual(scene.rootNode.childNodes.count, countAfterFirst)
+    }
+
     // MARK: - Helpers
 
     private func createRoute(startLat: Double, startLon: Double, count: Int) -> [RoutePoint] {

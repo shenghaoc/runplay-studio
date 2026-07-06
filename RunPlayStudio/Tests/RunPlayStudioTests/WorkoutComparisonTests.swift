@@ -288,6 +288,332 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertNotNil(summary)
     }
 
+    // MARK: - Common Distance
+
+    func testCommonDistanceClampsToShorterRoute() {
+        let primary = createSampleWorkout(distance: 10000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 300)
+        let common = service.commonDistance(primary: primary, comparison: comparison)
+
+        XCTAssertEqual(common, 5000, accuracy: 10)
+    }
+
+    func testCommonDistanceIsZeroForEmptyRoute() {
+        let primary = RunWorkout(routePoints: [])
+        let comparison = createSampleWorkout(distance: 5000, pace: 300)
+        let common = service.commonDistance(primary: primary, comparison: comparison)
+
+        XCTAssertEqual(common, 0, accuracy: 0.1)
+    }
+
+    // MARK: - Distance Selection Interpolation
+
+    func testMetricsAtDistanceStart() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let metrics = service.metricsAtDistance(0, primary: primary, comparison: comparison)
+
+        XCTAssertEqual(metrics.selectedDistanceMeters, 0, accuracy: 0.1)
+        XCTAssertEqual(metrics.primaryElapsedSeconds ?? -1, 0, accuracy: 1)
+        XCTAssertEqual(metrics.comparisonElapsedSeconds ?? -1, 0, accuracy: 1)
+        XCTAssertEqual(metrics.timeDeltaSeconds ?? -1, 0, accuracy: 1)
+    }
+
+    func testMetricsAtDistanceMidpoint() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300) // 5:00/km
+        let comparison = createSampleWorkout(distance: 5000, pace: 330) // 5:30/km
+
+        let metrics = service.metricsAtDistance(2500, primary: primary, comparison: comparison)
+
+        // At 2.5 km with pace 300 s/km: elapsed = 2500 * 300 / 1000 = 750s
+        XCTAssertEqual(metrics.primaryElapsedSeconds ?? 0, 750, accuracy: 10)
+        // At 2.5 km with pace 330 s/km: elapsed = 2500 * 330 / 1000 = 825s
+        XCTAssertEqual(metrics.comparisonElapsedSeconds ?? 0, 825, accuracy: 10)
+        // Time delta: primary is faster by 75s
+        XCTAssertEqual(metrics.timeDeltaSeconds ?? 0, -75, accuracy: 10)
+    }
+
+    func testMetricsAtDistanceEnd() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let metrics = service.metricsAtDistance(5000, primary: primary, comparison: comparison)
+
+        // Primary: 5000m at 300 s/km = 1500s
+        XCTAssertEqual(metrics.primaryElapsedSeconds ?? 0, 1500, accuracy: 10)
+        // Comparison: 5000m at 330 s/km = 1650s
+        XCTAssertEqual(metrics.comparisonElapsedSeconds ?? 0, 1650, accuracy: 10)
+        // Time delta: -150s (primary faster)
+        XCTAssertEqual(metrics.timeDeltaSeconds ?? 0, -150, accuracy: 10)
+    }
+
+    func testMetricsAtDistancePaceDelta() {
+        let primary = createSampleWorkout(distance: 5000, pace: 270) // 4:30/km
+        let comparison = createSampleWorkout(distance: 5000, pace: 330) // 5:30/km
+
+        let metrics = service.metricsAtDistance(2500, primary: primary, comparison: comparison)
+
+        // Pace delta should indicate primary is faster (negative)
+        if let delta = metrics.paceDeltaSecondsPerKm {
+            XCTAssertTrue(delta.isFinite)
+            XCTAssertLessThan(delta, 0, "Primary with shorter elapsed time should have lower pace delta")
+        }
+    }
+
+    func testMetricsAtDistanceClampsBeyondRoute() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 3000, pace: 300)
+
+        let metrics = service.metricsAtDistance(4000, primary: primary, comparison: comparison)
+
+        // Should clamp comparison to 3000m
+        XCTAssertNotNil(metrics.comparisonElapsedSeconds)
+        XCTAssertNotNil(metrics.primaryElapsedSeconds)
+    }
+
+    func testMetricsAtDistanceEmptyRoute() {
+        let primary = RunWorkout(routePoints: [])
+        let comparison = createSampleWorkout(distance: 5000, pace: 300)
+
+        let metrics = service.metricsAtDistance(2500, primary: primary, comparison: comparison)
+
+        // Primary is empty, so primary metrics are nil
+        XCTAssertNil(metrics.primaryElapsedSeconds)
+        XCTAssertNil(metrics.primaryPaceSecondsPerKm)
+        // Comparison still has data, so its metrics are non-nil
+        XCTAssertNotNil(metrics.comparisonElapsedSeconds)
+        // Time/pace delta are nil because primary is missing
+        XCTAssertNil(metrics.timeDeltaSeconds)
+        XCTAssertNil(metrics.paceDeltaSecondsPerKm)
+    }
+
+    func testMetricsAtDistanceOnePointRoute() {
+        let singlePoint = RunWorkout(routePoints: [
+            RoutePoint(timestamp: Date(), latitude: 37.7749, longitude: -122.4194,
+                       altitudeMeters: 10, distanceFromStartMeters: 0, elapsedSeconds: 0,
+                       paceSecondsPerKilometer: 300)
+        ])
+        let comparison = createSampleWorkout(distance: 5000, pace: 300)
+
+        let metrics = service.metricsAtDistance(0, primary: singlePoint, comparison: comparison)
+
+        XCTAssertNotNil(metrics.primaryElapsedSeconds)
+        XCTAssertNotNil(metrics.comparisonElapsedSeconds)
+    }
+
+    func testMetricsAtDistanceDifferentLengths() {
+        let primary = createSampleWorkout(distance: 10000, pace: 300)
+        let comparison = createSampleWorkout(distance: 3000, pace: 330)
+
+        // At 2.5 km, both should have values
+        let metrics2500 = service.metricsAtDistance(2500, primary: primary, comparison: comparison)
+        XCTAssertNotNil(metrics2500.primaryElapsedSeconds)
+        XCTAssertNotNil(metrics2500.comparisonElapsedSeconds)
+        XCTAssertNotNil(metrics2500.timeDeltaSeconds)
+
+        // At 5 km, primary still has data, comparison gets clamped to 3000m
+        let metrics5000 = service.metricsAtDistance(5000, primary: primary, comparison: comparison)
+        XCTAssertNotNil(metrics5000.primaryElapsedSeconds)
+        XCTAssertNotNil(metrics5000.comparisonElapsedSeconds) // Clamped to 3000m
+        XCTAssertNotNil(metrics5000.timeDeltaSeconds)
+
+        // At 0, both should be at start
+        let metrics0 = service.metricsAtDistance(0, primary: primary, comparison: comparison)
+        XCTAssertNotNil(metrics0.primaryElapsedSeconds)
+        XCTAssertNotNil(metrics0.comparisonElapsedSeconds)
+    }
+
+    func testMetricsAtDistanceNoNaN() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let metrics = service.metricsAtDistance(2500, primary: primary, comparison: comparison)
+
+        if let t = metrics.primaryElapsedSeconds { XCTAssertTrue(t.isFinite) }
+        if let t = metrics.comparisonElapsedSeconds { XCTAssertTrue(t.isFinite) }
+        if let d = metrics.timeDeltaSeconds { XCTAssertTrue(d.isFinite); XCTAssertFalse(d.isNaN) }
+        if let p = metrics.primaryPaceSecondsPerKm { XCTAssertTrue(p.isFinite) }
+        if let p = metrics.comparisonPaceSecondsPerKm { XCTAssertTrue(p.isFinite) }
+        if let d = metrics.paceDeltaSecondsPerKm { XCTAssertTrue(d.isFinite); XCTAssertFalse(d.isNaN) }
+    }
+
+    func testMetricsAtNegativeDistance() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let metrics = service.metricsAtDistance(-100, primary: primary, comparison: comparison)
+
+        // Should return safe defaults
+        XCTAssertEqual(metrics.selectedDistanceMeters, 0)
+    }
+
+    // MARK: - Scene Point Interpolation
+
+    func testMetricsAtDistanceWithScenePoints() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let projService = ComparisonRouteProjectionService()
+        let scene = projService.project(primary: primary.routePoints, comparison: comparison.routePoints)
+
+        let metrics = service.metricsAtDistance(
+            2500,
+            primary: primary,
+            comparison: comparison,
+            primaryScenePoints: scene.primaryRoute,
+            comparisonScenePoints: scene.comparisonRoute
+        )
+
+        XCTAssertNotNil(metrics.primaryScenePoint)
+        XCTAssertNotNil(metrics.comparisonScenePoint)
+
+        if let pp = metrics.primaryScenePoint {
+            XCTAssertTrue(pp.xMeters.isFinite)
+            XCTAssertTrue(pp.yMeters.isFinite)
+            XCTAssertTrue(pp.zMeters.isFinite)
+            XCTAssertEqual(pp.distanceFromStartMeters, 2500, accuracy: 10)
+        }
+
+        if let cp = metrics.comparisonScenePoint {
+            XCTAssertTrue(cp.xMeters.isFinite)
+            XCTAssertTrue(cp.yMeters.isFinite)
+            XCTAssertTrue(cp.zMeters.isFinite)
+            XCTAssertEqual(cp.distanceFromStartMeters, 2500, accuracy: 10)
+        }
+    }
+
+    func testMetricsAtDistanceScenePointAtStart() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let projService = ComparisonRouteProjectionService()
+        let scene = projService.project(primary: primary.routePoints, comparison: comparison.routePoints)
+
+        let metrics = service.metricsAtDistance(
+            0,
+            primary: primary,
+            comparison: comparison,
+            primaryScenePoints: scene.primaryRoute,
+            comparisonScenePoints: scene.comparisonRoute
+        )
+
+        if let pp = metrics.primaryScenePoint {
+            XCTAssertEqual(pp.distanceFromStartMeters, 0, accuracy: 1)
+        }
+    }
+
+    func testMetricsAtDistanceScenePointEmptyScenePoints() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 330)
+
+        let metrics = service.metricsAtDistance(
+            2500,
+            primary: primary,
+            comparison: comparison,
+            primaryScenePoints: [],
+            comparisonScenePoints: []
+        )
+
+        XCTAssertNil(metrics.primaryScenePoint)
+        XCTAssertNil(metrics.comparisonScenePoint)
+    }
+
+    // MARK: - Demo Fixtures Distance Selection
+
+    func testDemoComparisonFixturesDistanceSelection() throws {
+        let primary = try loadFixture("sample_run.json")
+        let comparison = try loadFixture("fixtures/comparison_park_run.json")
+
+        let common = service.commonDistance(primary: primary, comparison: comparison)
+        XCTAssertGreaterThan(common, 0)
+
+        let midMetrics = service.metricsAtDistance(common / 2, primary: primary, comparison: comparison)
+        XCTAssertNotNil(midMetrics.primaryElapsedSeconds)
+        XCTAssertNotNil(midMetrics.comparisonElapsedSeconds)
+        XCTAssertNotNil(midMetrics.timeDeltaSeconds)
+
+        if let t = midMetrics.primaryElapsedSeconds { XCTAssertTrue(t.isFinite) }
+        if let t = midMetrics.comparisonElapsedSeconds { XCTAssertTrue(t.isFinite) }
+        if let d = midMetrics.timeDeltaSeconds { XCTAssertTrue(d.isFinite); XCTAssertFalse(d.isNaN) }
+    }
+
+    func testDemoComparisonFixturesScenePointMarkers() throws {
+        let primary = try loadFixture("sample_run.json")
+        let comparison = try loadFixture("fixtures/comparison_park_run.json")
+
+        let projService = ComparisonRouteProjectionService()
+        let scene = projService.project(primary: primary.routePoints, comparison: comparison.routePoints)
+        let common = service.commonDistance(primary: primary, comparison: comparison)
+
+        let metrics = service.metricsAtDistance(
+            common / 2,
+            primary: primary,
+            comparison: comparison,
+            primaryScenePoints: scene.primaryRoute,
+            comparisonScenePoints: scene.comparisonRoute
+        )
+
+        XCTAssertNotNil(metrics.primaryScenePoint)
+        XCTAssertNotNil(metrics.comparisonScenePoint)
+
+        if let pp = metrics.primaryScenePoint {
+            XCTAssertTrue(pp.xMeters.isFinite)
+            XCTAssertTrue(pp.yMeters.isFinite)
+            XCTAssertTrue(pp.zMeters.isFinite)
+        }
+        if let cp = metrics.comparisonScenePoint {
+            XCTAssertTrue(cp.xMeters.isFinite)
+            XCTAssertTrue(cp.yMeters.isFinite)
+            XCTAssertTrue(cp.zMeters.isFinite)
+        }
+    }
+
+    // MARK: - ComparisonDistanceMetrics Formatting
+
+    func testComparisonDistanceMetricsFormatting() {
+        let metrics = ComparisonDistanceMetrics(
+            selectedDistanceMeters: 2500,
+            primaryElapsedSeconds: 750,
+            comparisonElapsedSeconds: 825,
+            timeDeltaSeconds: -75,
+            primaryPaceSecondsPerKm: 300,
+            comparisonPaceSecondsPerKm: 330,
+            paceDeltaSecondsPerKm: -60,
+            primaryScenePoint: nil,
+            comparisonScenePoint: nil
+        )
+
+        XCTAssertEqual(metrics.selectedDistanceFormatted, "2.50 km")
+        XCTAssertEqual(metrics.primaryElapsedFormatted, "12:30")
+        XCTAssertEqual(metrics.comparisonElapsedFormatted, "13:45")
+        XCTAssertEqual(metrics.timeDeltaFormatted, "-1:15 faster")
+        XCTAssertEqual(metrics.primaryPaceFormatted, "5:00 /km")
+        XCTAssertEqual(metrics.comparisonPaceFormatted, "5:30 /km")
+        XCTAssertEqual(metrics.paceDeltaFormatted, "-1:00 /km faster")
+    }
+
+    func testComparisonDistanceMetricsNilValues() {
+        let metrics = ComparisonDistanceMetrics(
+            selectedDistanceMeters: 0,
+            primaryElapsedSeconds: nil,
+            comparisonElapsedSeconds: nil,
+            timeDeltaSeconds: nil,
+            primaryPaceSecondsPerKm: nil,
+            comparisonPaceSecondsPerKm: nil,
+            paceDeltaSecondsPerKm: nil,
+            primaryScenePoint: nil,
+            comparisonScenePoint: nil
+        )
+
+        XCTAssertEqual(metrics.primaryElapsedFormatted, "--:--")
+        XCTAssertEqual(metrics.comparisonElapsedFormatted, "--:--")
+        XCTAssertEqual(metrics.timeDeltaFormatted, "N/A")
+        XCTAssertEqual(metrics.primaryPaceFormatted, "--:-- /km")
+        XCTAssertEqual(metrics.comparisonPaceFormatted, "--:-- /km")
+        XCTAssertEqual(metrics.paceDeltaFormatted, "N/A")
+    }
+
     // MARK: - Helpers
 
     private func loadFixture(_ path: String) throws -> RunWorkout {
