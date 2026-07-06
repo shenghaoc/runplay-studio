@@ -35,7 +35,7 @@ public struct ChartSelectionMapper {
 
         // Handle NaN/infinity
         guard distance.isFinite, !distance.isNaN else {
-            return 0
+            return nil
         }
 
         let clampedDistance = max(0, min(distance, points.last?.distanceFromStartMeters ?? 0))
@@ -74,7 +74,7 @@ public struct ChartSelectionMapper {
 
         // Handle NaN/infinity
         guard elapsed.isFinite, !elapsed.isNaN else {
-            return 0
+            return nil
         }
 
         let clampedTime = max(0, min(elapsed, points.last?.elapsedSeconds ?? 0))

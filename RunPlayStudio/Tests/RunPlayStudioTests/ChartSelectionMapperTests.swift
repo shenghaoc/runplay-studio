@@ -101,8 +101,7 @@ final class ChartSelectionMapperTests: XCTestCase {
         let points = createSamplePoints(count: 50, totalDistance: 5000)
         let index = ChartSelectionMapper.nearestRoutePointIndex(forDistance: Double.nan, in: points)
 
-        XCTAssertNotNil(index)
-        XCTAssertEqual(index, 0)
+        XCTAssertNil(index, "NaN distance should return nil")
     }
 
     // MARK: - Route Point by Elapsed Time

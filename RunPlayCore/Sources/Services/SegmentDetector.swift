@@ -269,29 +269,6 @@ public struct SegmentDetector {
         )
     }
 
-    /// Get elapsed time range for point indices.
-    private static func getElapsedRange(points: [RoutePoint], startIdx: Int, endIdx: Int) -> (Double, Double) {
-        guard startIdx < points.count, endIdx < points.count else { return (0, 0) }
-        return (points[startIdx].elapsedSeconds, points[endIdx].elapsedSeconds)
-    }
-
-    /// Get elevation delta for a point range.
-    private static func getElevationDelta(points: [RoutePoint], range: Range<Int>) -> Double? {
-        guard range.lowerBound < points.count, range.upperBound <= points.count else { return nil }
-        let slice = points[range]
-        guard let startAlt = slice.first?.altitudeMeters, let endAlt = slice.last?.altitudeMeters else { return nil }
-        return endAlt - startAlt
-    }
-
-    /// Get average heart rate for a point range.
-    private static func getAverageHeartRate(points: [RoutePoint], range: Range<Int>) -> Double? {
-        guard range.lowerBound < points.count, range.upperBound <= points.count else { return nil }
-        let slice = points[range]
-        let hrValues = slice.compactMap { $0.heartRateBPM }
-        guard !hrValues.isEmpty else { return nil }
-        return hrValues.reduce(0, +) / Double(hrValues.count)
-    }
-
     private static func sourceRange(points: [RoutePoint], startDist: Double, endDist: Double) -> Range<Int> {
         guard !points.isEmpty else { return 0..<0 }
         let startIdx = RoutePointInterpolator.firstIndex(atOrAfter: startDist, in: points) ?? 0

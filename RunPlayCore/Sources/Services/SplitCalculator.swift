@@ -27,7 +27,11 @@ public struct SplitCalculator {
             let actualDistance = splitEnd - currentSplitStart
             let elapsed = lastPoint.elapsedSeconds - firstPoint.elapsedSeconds
 
-            guard actualDistance > 0, elapsed > 0, elapsed.isFinite else { break }
+            guard actualDistance > 0, elapsed > 0, elapsed.isFinite else {
+                currentSplitStart = splitEnd
+                splitIndex += 1
+                continue
+            }
 
             let pace = (elapsed / actualDistance) * 1000.0
 

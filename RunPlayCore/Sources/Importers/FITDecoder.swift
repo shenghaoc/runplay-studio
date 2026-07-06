@@ -71,8 +71,16 @@ public struct FITDecoder {
                 cadence = nil
             }
 
-            let timestamp = record.timestamp.map(FITParser.timestampToDate)
-                ?? Date(timeIntervalSince1970: Double(index))
+            let timestamp: Date
+            if let ts = record.timestamp {
+                timestamp = FITParser.timestampToDate(ts)
+            } else if let lastTimestamp = routePoints.last?.timestamp {
+                // Estimate from previous point (1-second interval)
+                timestamp = lastTimestamp.addingTimeInterval(1.0)
+            } else {
+                // First point with no timestamp — use FIT epoch as last resort
+                timestamp = Date(timeIntervalSince1970: FITParser.fitEpoch)
+            }
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
             } ?? 0
