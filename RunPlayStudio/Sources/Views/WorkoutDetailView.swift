@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Main detail view for a selected workout showing 3D route, map, charts, and summary.
 struct WorkoutDetailView: View {

@@ -1,4 +1,5 @@
 import Foundation
+import RunPlayCore
 
 /// Builds minimal FIT binary data for testing.
 ///

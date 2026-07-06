@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Displays a summary of the running workout metrics.
 struct RunSummaryView: View {

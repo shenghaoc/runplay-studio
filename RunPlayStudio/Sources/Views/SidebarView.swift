@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Sidebar showing list of loaded workouts with import button.
 struct SidebarView: View {

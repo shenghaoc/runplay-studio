@@ -1,5 +1,7 @@
 import SwiftUI
+import RunPlayCore
 import Charts
+import RunPlayCore
 
 /// Chart showing pace comparison over distance.
 struct ComparisonChartView: View {

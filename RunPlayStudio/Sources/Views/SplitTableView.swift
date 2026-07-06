@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Displays kilometer splits in a table format with current split highlighting.
 struct SplitTableView: View {

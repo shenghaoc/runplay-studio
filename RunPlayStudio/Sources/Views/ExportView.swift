@@ -1,11 +1,13 @@
 import SwiftUI
+import RunPlayCore
+import AppKit
+import RunPlayCore
 
 /// Export menu/button for exporting workout data.
 struct ExportView: View {
     let workout: RunWorkout
     let segments: [SegmentHighlight]
 
-    @State private var showingExporter = false
     @State private var exportError: String?
     @State private var showingError = false
     @State private var exportSuccess: String?
@@ -91,7 +93,7 @@ struct ExportView: View {
 
     private func exportPNG() {
         do {
-            let result = try exportService.exportSummaryPNG(workout: workout, segments: segments)
+            let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
             saveFile(data: result.data, filename: result.filename)
         } catch {
             showError(error.localizedDescription)
@@ -126,5 +128,3 @@ struct ExportView: View {
         showingSuccess = true
     }
 }
-
-import AppKit

@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Compact panel showing metrics at the current replay position.
 ///

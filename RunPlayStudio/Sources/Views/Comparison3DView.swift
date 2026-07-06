@@ -1,5 +1,7 @@
 import SwiftUI
+import RunPlayCore
 import SceneKit
+import RunPlayCore
 
 /// Displays a 3D comparison of two routes in the same scene.
 struct Comparison3DView: View {

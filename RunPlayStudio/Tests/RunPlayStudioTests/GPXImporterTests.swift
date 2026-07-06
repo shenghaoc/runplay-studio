@@ -1,4 +1,5 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
 
 final class GPXImporterTests: XCTestCase {

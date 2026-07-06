@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Shown when no workout is selected, prompting user to import or load a sample.
 struct EmptyStateView: View {

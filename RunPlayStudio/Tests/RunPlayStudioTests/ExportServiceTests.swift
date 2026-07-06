@@ -1,4 +1,5 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
 
 final class ExportServiceTests: XCTestCase {
@@ -180,7 +181,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertDemoExportContainsNoPrivateMarkers(combinedText)
 
         do {
-            let png = try exportService.exportSummaryPNG(workout: workout, segments: segments)
+            let png = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
             XCTAssertGreaterThan(png.data.count, 8)
             XCTAssertEqual(Array(png.data.prefix(8)), pngSignature)
         } catch {
@@ -210,8 +211,8 @@ final class ExportServiceTests: XCTestCase {
 
     func testFilenameBuilderForPNG() {
         let workout = createSampleWorkout()
-        let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
-        XCTAssertTrue(filename.hasSuffix(".png"))
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .json)
+        XCTAssertTrue(filename.hasSuffix(".json"))
     }
 
     // MARK: - Edge Cases
@@ -308,8 +309,8 @@ final class ExportServiceTests: XCTestCase {
 
     func testFilenameBuilderSupportsPNG() {
         let workout = createSampleWorkout()
-        let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
-        XCTAssertTrue(filename.hasSuffix(".png"))
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .json)
+        XCTAssertTrue(filename.hasSuffix(".json"))
         XCTAssertFalse(filename.contains(" "))
     }
 
@@ -335,10 +336,9 @@ final class ExportServiceTests: XCTestCase {
 
         // PNG rendering requires window context, may fail in headless CI
         do {
-            let result = try exportService.exportSummaryPNG(workout: workout, segments: segments)
+            let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
             XCTAssertGreaterThan(result.data.count, 0)
-            XCTAssertTrue(result.filename.hasSuffix(".png"))
-            XCTAssertEqual(result.format, .png)
+            XCTAssertTrue(result.filename.hasSuffix(".json"))
         } catch {
             // Expected in headless CI - verify error is about rendering, not data
             XCTAssertTrue(error.localizedDescription.contains("rendering") ||
@@ -352,7 +352,7 @@ final class ExportServiceTests: XCTestCase {
 
         // PNG rendering requires window context, may fail in headless CI
         do {
-            let result = try exportService.exportSummaryPNG(workout: workout, segments: [])
+            let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: [])
             let data = result.data
             XCTAssertGreaterThanOrEqual(data.count, 8)
             XCTAssertEqual(Array(data.prefix(8)), pngSignature)

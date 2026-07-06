@@ -1,5 +1,7 @@
 import SwiftUI
+import RunPlayCore
 import Charts
+import RunPlayCore
 
 /// Displays running metrics as interactive charts using Swift Charts.
 ///
