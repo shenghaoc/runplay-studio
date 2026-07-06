@@ -36,8 +36,10 @@ public struct RouteProjectionService {
         // Find route center (midpoint of bounding box)
         let lats = validIndexedPoints.map { $0.point.latitude }
         let lons = validIndexedPoints.map { $0.point.longitude }
-        let centerLat = (lats.min()! + lats.max()!) / 2
-        let centerLon = (lons.min()! + lons.max()!) / 2
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return [] }
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
 
         // Find elevation range for scaling
         let altitudes = validIndexedPoints.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }

@@ -64,23 +64,23 @@ class RouteSceneBuilder {
         scene.rootNode.addChildNode(grid)
 
         // Route
-        if !points.isEmpty {
+        if let firstPoint = points.first, let lastPoint = points.last, points.count >= 2 {
             let route = createRoute(from: points)
             routeNode = route
             scene.rootNode.addChildNode(route)
 
             // Start marker
-            let start = createStartMarker(at: points.first!)
+            let start = createStartMarker(at: firstPoint)
             startNode = start
             scene.rootNode.addChildNode(start)
 
             // Finish marker
-            let finish = createFinishMarker(at: points.last!)
+            let finish = createFinishMarker(at: lastPoint)
             finishNode = finish
             scene.rootNode.addChildNode(finish)
 
             // Current position marker
-            let current = createCurrentMarker(at: points.first!, direction: calculateDirection(at: 0))
+            let current = createCurrentMarker(at: firstPoint, direction: calculateDirection(at: 0))
             currentNode = current
             scene.rootNode.addChildNode(current)
 

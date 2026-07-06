@@ -52,20 +52,16 @@ class ComparisonSceneBuilder {
             scene.rootNode.addChildNode(primaryRoute)
 
             // Primary start marker
-            let primaryStart = createStartMarker(
-                at: comparisonScene.primaryRoute.first!,
-                color: .systemGreen,
-                label: "P START"
-            )
-            scene.rootNode.addChildNode(primaryStart)
+            if let firstPoint = comparisonScene.primaryRoute.first {
+                let primaryStart = createStartMarker(at: firstPoint, color: .systemGreen, label: "P START")
+                scene.rootNode.addChildNode(primaryStart)
+            }
 
             // Primary finish marker
-            let primaryFinish = createFinishMarker(
-                at: comparisonScene.primaryRoute.last!,
-                color: .systemRed,
-                label: "P FINISH"
-            )
-            scene.rootNode.addChildNode(primaryFinish)
+            if let lastPoint = comparisonScene.primaryRoute.last {
+                let primaryFinish = createFinishMarker(at: lastPoint, color: .systemRed, label: "P FINISH")
+                scene.rootNode.addChildNode(primaryFinish)
+            }
         }
 
         // Comparison route
@@ -75,20 +71,16 @@ class ComparisonSceneBuilder {
             scene.rootNode.addChildNode(compRoute)
 
             // Comparison start marker
-            let compStart = createStartMarker(
-                at: comparisonScene.comparisonRoute.first!,
-                color: .systemTeal,
-                label: "C START"
-            )
-            scene.rootNode.addChildNode(compStart)
+            if let firstPoint = comparisonScene.comparisonRoute.first {
+                let compStart = createStartMarker(at: firstPoint, color: .systemTeal, label: "C START")
+                scene.rootNode.addChildNode(compStart)
+            }
 
             // Comparison finish marker
-            let compFinish = createFinishMarker(
-                at: comparisonScene.comparisonRoute.last!,
-                color: .systemPurple,
-                label: "C FINISH"
-            )
-            scene.rootNode.addChildNode(compFinish)
+            if let lastPoint = comparisonScene.comparisonRoute.last {
+                let compFinish = createFinishMarker(at: lastPoint, color: .systemPurple, label: "C FINISH")
+                scene.rootNode.addChildNode(compFinish)
+            }
         }
 
         // Legend

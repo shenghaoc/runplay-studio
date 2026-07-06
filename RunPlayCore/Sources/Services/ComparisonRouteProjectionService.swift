@@ -41,8 +41,16 @@ public struct ComparisonRouteProjectionService {
         // Compute shared origin from primary route center
         let primaryLats = validPrimary.map { $0.point.latitude }
         let primaryLons = validPrimary.map { $0.point.longitude }
-        let centerLat = (primaryLats.min()! + primaryLats.max()!) / 2
-        let centerLon = (primaryLons.min()! + primaryLons.max()!) / 2
+        guard let minLat = primaryLats.min(), let maxLat = primaryLats.max(),
+              let minLon = primaryLons.min(), let maxLon = primaryLons.max() else {
+            return ComparisonRouteScene(
+                primaryRoute: [], comparisonRoute: [],
+                combinedBounds: (min: SIMD3<Double>(0, 0, 0), max: SIMD3<Double>(0, 0, 0)),
+                warnings: existingWarnings + [.tooFewPoints]
+            )
+        }
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
 
         // Find elevation baseline from both routes combined
         let primaryAlts = validPrimary.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }

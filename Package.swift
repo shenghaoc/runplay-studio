@@ -15,10 +15,7 @@ let package = Package(
         .target(
             name: "RunPlayCore",
             dependencies: [],
-            path: "RunPlayCore/Sources",
-            resources: [
-                .process("../../RunPlayStudio/Resources")
-            ]
+            path: "RunPlayCore/Sources"
         ),
         // macOS executable target
         .executableTarget(
