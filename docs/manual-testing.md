@@ -60,6 +60,7 @@ Environment:
 
 Checklist:
 
+- [x] App launches without crash.
 - [x] Open Compare view with primary and comparison workouts selected.
 - [x] Toggle from 2D Map to 3D View using the segmented picker.
 - [x] Verify primary route renders in blue.
@@ -68,8 +69,8 @@ Checklist:
 - [x] Verify comparison start/finish markers are labeled "C START" / "C FINISH".
 - [x] Verify both routes appear in the same 3D space with correct relative positioning.
 - [x] Verify the 3D legend shows route names and colors.
-- [x] Verify "Fit Routes" button frames both routes.
-- [x] Verify camera presets (default, top-down, side) work.
+- [ ] Verify "Fit Routes" button frames both routes.
+- [ ] Verify camera presets (default, top-down, side) work.
 - [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
 - [x] Verify grid toggle shows/hides the ground grid.
 - [x] Verify warnings appear in the 3D view when applicable.
@@ -79,9 +80,18 @@ Checklist:
 
 Latest 3D comparison dogfood notes:
 
-- CLI-only session; GUI dogfood not possible from automated environment.
-- 3D comparison view compiles and all 227 tests pass.
-- The 3D comparison view is integrated as a toggle in the CompareView.
+- App launched successfully from SwiftPM debug build.
+- Both bundled demo runs loaded automatically.
+- 3D comparison view renders both routes in the same scene.
+- Primary (blue) and comparison (orange) routes are visually distinguishable.
+- P START/P FINISH and C START/C FINISH markers appear.
+- Legend shows route names and colors.
+- Elevation scale controls rebuild the scene.
+- Grid toggle shows/hides the ground grid.
+- Segmented picker toggles between 2D and 3D views without crash.
+- Known limitation: Fit Routes and camera preset buttons are not connected to
+  the scene camera (pre-existing issue in Route3DReplayView too). Users can
+  orbit/zoom/pan manually with mouse/trackpad.
 
 Latest dogfood notes:
 

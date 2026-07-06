@@ -2,11 +2,11 @@
 
 ## Current Status
 
-3D route comparison overlay MVP is implemented. Route comparison now supports
-both 2D map and 3D scene views. Do not add commit hashes to this handoff as a
-status field; they become stale and cause repeated hash-only documentation
-commits during rapid iteration. Run `git log -1 --oneline` locally to see the
-current commit.
+3D route comparison overlay MVP is implemented and GUI-verified. Route
+comparison now supports both 2D map and 3D scene views. Do not add commit
+hashes to this handoff as a status field; they become stale and cause repeated
+hash-only documentation commits during rapid iteration. Run `git log -1
+--oneline` locally to see the current commit.
 
 ## Verification Snapshot
 
@@ -156,6 +156,39 @@ Not fully completed manually:
   the repo or temporary paths. Export data generation and PNG rendering are
   covered by automated `ExportServiceTests`.
 
+## 3D Comparison GUI Dogfood
+
+GUI dogfood of the 3D comparison view was performed using bundled synthetic
+demo runs only.
+
+Verified:
+
+- App launches without crash from SwiftPM debug build
+- Both bundled demo runs load automatically on launch
+- Compare view opens from the toolbar
+- Primary/comparison selectors work
+- Same-workout comparison is blocked
+- 2D comparison map still works
+- 3D comparison toggle works (segmented picker)
+- Both routes render in the 3D comparison scene
+- Primary route (blue) and comparison route (orange) are visually distinguishable
+- P START / P FINISH and C START / C FINISH markers appear
+- Legend appears and is understandable
+- Elevation exaggeration controls (1x, 2x, 5x, 10x) rebuild the scene
+- Grid toggle shows/hides the ground grid
+- Comparison warnings appear in the 3D view when applicable
+- Switching between 2D and 3D comparison does not crash
+- Switching back to single-run 3D replay still works
+
+Known limitations found:
+
+- Fit Routes button and camera presets are not connected to the scene camera.
+  This is a pre-existing issue in Route3DReplayView too. Users can orbit, zoom,
+  and pan manually with mouse/trackpad.
+- Grid toggle icon does not change visually between on/off states (uses same
+  SF Symbol with different foreground color). This is consistent with
+  Route3DReplayView.
+
 ## MapKit Status
 
 The comparison and single-route MapKit views now use the macOS 14 `Map` APIs
@@ -164,10 +197,11 @@ deprecation warnings from route map overlays are removed in current builds.
 
 ## Recommended Next Phase
 
-Stabilize 3D comparison after broader real-workout dogfooding:
+Continue stabilization and polish:
 
-- GUI dogfood the 3D comparison view with bundled demo runs
 - GUI dogfood the save-panel export in a normal desktop session
+- Connect camera controller to scene for Fit Routes and camera presets to work
+- Improve grid toggle icon to visually distinguish on/off states
 - Improve comparison chart readability when routes differ substantially
 - Consider a selected-distance marker on both routes in 3D comparison
 - Keep expanding synthetic demo assets only from anonymized or generated data
