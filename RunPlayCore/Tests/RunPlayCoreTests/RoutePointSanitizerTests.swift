@@ -72,6 +72,57 @@ final class RoutePointSanitizerTests: XCTestCase {
         XCTAssertNotNil(smoothed[2])
     }
 
+    func testNormalizeDropsNegativeOptionalMetrics() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let points = [
+            RoutePoint(
+                timestamp: start,
+                latitude: 1,
+                longitude: 103,
+                altitudeMeters: -5,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0,
+                speedMetersPerSecond: -1,
+                paceSecondsPerKilometer: -300,
+                heartRateBPM: 500,
+                cadence: -80,
+                horizontalAccuracy: -3
+            )
+        ]
+
+        let normalized = RoutePointSanitizer.normalize(points)
+
+        XCTAssertEqual(normalized.count, 1)
+        XCTAssertEqual(normalized[0].altitudeMeters, -5)
+        XCTAssertNil(normalized[0].speedMetersPerSecond)
+        XCTAssertNil(normalized[0].paceSecondsPerKilometer)
+        XCTAssertNil(normalized[0].heartRateBPM)
+        XCTAssertNil(normalized[0].cadence)
+        XCTAssertNil(normalized[0].horizontalAccuracy)
+    }
+
+    func testNormalizeAllowsZeroOptionalMetrics() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let points = [
+            RoutePoint(
+                timestamp: start,
+                latitude: 1,
+                longitude: 103,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0,
+                speedMetersPerSecond: 0,
+                cadence: 0,
+                horizontalAccuracy: 0
+            )
+        ]
+
+        let normalized = RoutePointSanitizer.normalize(points)
+
+        XCTAssertEqual(normalized[0].speedMetersPerSecond, 0)
+        XCTAssertEqual(normalized[0].cadence, 0)
+        XCTAssertEqual(normalized[0].horizontalAccuracy, 0)
+    }
+
     private func point(
         _ timestamp: Date,
         lat: Double,

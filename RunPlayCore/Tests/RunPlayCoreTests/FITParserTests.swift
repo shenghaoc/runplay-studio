@@ -30,6 +30,20 @@ final class FITParserTests: XCTestCase {
         }
     }
 
+    func testDeveloperDataFieldsAreSkippedWithoutDesyncing() throws {
+        let data = Self.fitDataWithDeveloperFields(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
+        ])
+
+        let records = try FITParser.parse(data: data)
+        let points = FITDecoder.decode(records: records)
+
+        XCTAssertEqual(records.count, 2)
+        XCTAssertEqual(points.count, 2)
+        XCTAssertGreaterThan(points[1].distanceFromStartMeters, points[0].distanceFromStartMeters)
+    }
+
     func testFITDecoderReturnsEmptyWhenGPSRecordsHaveNoTimestamps() {
         let records = [
             Self.record(timestamp: nil, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
@@ -72,6 +86,22 @@ final class FITParserTests: XCTestCase {
         return fitData(rawContent: content)
     }
 
+    private static func fitDataWithDeveloperFields(
+        records: [(timestamp: UInt32, latDegrees: Double, lonDegrees: Double, distanceMeters: Double)]
+    ) -> Data {
+        var content = Data()
+        writeDefinition(to: &content, includeDeveloperField: true)
+        for record in records {
+            content.append(0x00)
+            append(record.timestamp, to: &content)
+            append(semicircles(record.latDegrees), to: &content)
+            append(semicircles(record.lonDegrees), to: &content)
+            append(UInt32(record.distanceMeters * 100), to: &content)
+            content.append(contentsOf: [0x12, 0x34])
+        }
+        return fitData(rawContent: content)
+    }
+
     private static func fitData(rawContent content: Data) -> Data {
         var data = Data()
         data.append(14)
@@ -85,8 +115,8 @@ final class FITParserTests: XCTestCase {
         return data
     }
 
-    private static func writeDefinition(to data: inout Data) {
-        data.append(0x40)
+    private static func writeDefinition(to data: inout Data, includeDeveloperField: Bool = false) {
+        data.append(includeDeveloperField ? 0x60 : 0x40)
         data.append(0x00)
         data.append(0x00)
         data.append(contentsOf: [0x14, 0x00])
@@ -95,6 +125,13 @@ final class FITParserTests: XCTestCase {
         writeField(0, size: 4, type: 133, to: &data)
         writeField(1, size: 4, type: 133, to: &data)
         writeField(5, size: 4, type: 134, to: &data)
+
+        if includeDeveloperField {
+            data.append(1)
+            data.append(0)
+            data.append(2)
+            data.append(0)
+        }
     }
 
     private static func writeField(_ number: UInt8, size: UInt8, type: UInt8, to data: inout Data) {

@@ -54,7 +54,7 @@ public protocol WorkoutImporting {
 }
 ```
 
-The `WorkoutImporterFactory` dispatches by file extension. The SwiftUI file picker uses `UTType(filenameExtension:)` so `.tcx` and `.fit` files are selectable even without system UTI declarations.
+The `WorkoutImporterFactory` dispatches by file extension. The SwiftUI file picker allows generic data files so `.tcx` and `.fit` files remain selectable even when the system does not declare dedicated UTIs; unsupported extensions are rejected by the importer factory.
 
 ### GeoDistance
 

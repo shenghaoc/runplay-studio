@@ -80,11 +80,11 @@ public enum RoutePointSanitizer {
                 altitudeMeters: finiteOptional(point.altitudeMeters),
                 distanceFromStartMeters: distance,
                 elapsedSeconds: elapsed,
-                speedMetersPerSecond: finiteOptional(point.speedMetersPerSecond),
+                speedMetersPerSecond: nonNegativeFiniteOptional(point.speedMetersPerSecond),
                 paceSecondsPerKilometer: positiveFiniteOptional(point.paceSecondsPerKilometer),
                 heartRateBPM: validHeartRate(point.heartRateBPM),
-                cadence: finiteOptional(point.cadence),
-                horizontalAccuracy: finiteOptional(point.horizontalAccuracy)
+                cadence: nonNegativeFiniteOptional(point.cadence),
+                horizontalAccuracy: nonNegativeFiniteOptional(point.horizontalAccuracy)
             ))
         }
 
@@ -129,6 +129,11 @@ public enum RoutePointSanitizer {
 
     private static func positiveFiniteOptional(_ value: Double?) -> Double? {
         guard let value, value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    private static func nonNegativeFiniteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
         return value
     }
 

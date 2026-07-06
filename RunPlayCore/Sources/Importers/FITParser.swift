@@ -58,6 +58,14 @@ public struct FITDefinitionMessage {
     public let architecture: UInt8      // 0=little-endian, 1=big-endian
     public let globalMessageNumber: UInt16
     public let fields: [FITFieldDefinition]
+    let developerFields: [FITDeveloperFieldDefinition]
+}
+
+/// FIT developer field definition from a definition message.
+struct FITDeveloperFieldDefinition {
+    let fieldNumber: UInt8
+    let size: UInt8
+    let developerDataIndex: UInt8
 }
 
 /// Parser for FIT binary files.
@@ -125,6 +133,7 @@ public struct FITParser {
 
             // Bit 6: 0=data message, 1=definition message
             let isDefinition = (recordHeader & 0x40) != 0
+            let hasDeveloperData = isDefinition && (recordHeader & 0x20) != 0
             let localType = recordHeader & 0x0F
 
             if isDefinition {
@@ -133,7 +142,8 @@ public struct FITParser {
                     data: data,
                     offset: &offset,
                     dataEndOffset: dataEndOffset,
-                    localType: localType
+                    localType: localType,
+                    hasDeveloperData: hasDeveloperData
                 )
                 definitions[localType] = def
             } else {
@@ -153,6 +163,7 @@ public struct FITParser {
                 } else {
                     // Skip non-record messages
                     let dataSize = def.fields.reduce(0) { $0 + Int($1.size) }
+                        + def.developerFields.reduce(0) { $0 + Int($1.size) }
                     guard offset + dataSize <= dataEndOffset else {
                         throw FITError.unexpectedEndOfFile
                     }
@@ -203,7 +214,8 @@ public struct FITParser {
         data: Data,
         offset: inout Int,
         dataEndOffset: Int,
-        localType: UInt8
+        localType: UInt8,
+        hasDeveloperData: Bool
     ) throws -> FITDefinitionMessage {
         guard offset + 5 <= dataEndOffset else {
             throw FITError.unexpectedEndOfFile
@@ -247,10 +259,38 @@ public struct FITParser {
             ))
         }
 
+        let developerFields: [FITDeveloperFieldDefinition]
+        if hasDeveloperData {
+            guard offset + 1 <= dataEndOffset else {
+                throw FITError.unexpectedEndOfFile
+            }
+
+            let developerFieldCount = Int(data[offset])
+            offset += 1
+
+            var parsedDeveloperFields: [FITDeveloperFieldDefinition] = []
+            for _ in 0..<developerFieldCount {
+                guard offset + 3 <= dataEndOffset else {
+                    throw FITError.unexpectedEndOfFile
+                }
+
+                parsedDeveloperFields.append(FITDeveloperFieldDefinition(
+                    fieldNumber: data[offset],
+                    size: data[offset + 1],
+                    developerDataIndex: data[offset + 2]
+                ))
+                offset += 3
+            }
+            developerFields = parsedDeveloperFields
+        } else {
+            developerFields = []
+        }
+
         return FITDefinitionMessage(
             architecture: architecture,
             globalMessageNumber: globalMessageNumber,
-            fields: fields
+            fields: fields,
+            developerFields: developerFields
         )
     }
 
@@ -316,6 +356,13 @@ public struct FITParser {
                 break // Skip unknown fields
             }
 
+            offset += Int(field.size)
+        }
+
+        for field in definition.developerFields {
+            guard offset + Int(field.size) <= dataEndOffset else {
+                throw FITError.unexpectedEndOfFile
+            }
             offset += Int(field.size)
         }
 
