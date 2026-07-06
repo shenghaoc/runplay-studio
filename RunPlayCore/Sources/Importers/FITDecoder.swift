@@ -11,7 +11,7 @@ public struct FITDecoder {
     /// Convert FIT record messages to RoutePoints.
     ///
     /// Filters out records without valid GPS coordinates.
-    /// Handles distance normalization and timestamp ordering.
+    /// Delegates distance normalization and timestamp ordering to `RoutePointSanitizer`.
     public static func decode(records: [FITRecordMessage]) -> [RoutePoint] {
         let validRecords = records.filter { record in
             guard let lat = record.positionLat, let lon = record.positionLong else {

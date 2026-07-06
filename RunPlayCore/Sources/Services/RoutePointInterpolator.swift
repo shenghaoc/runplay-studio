@@ -1,8 +1,19 @@
 import Foundation
 
 /// Distance-based interpolation helpers for route analysis.
+///
+/// All methods use binary search for efficiency and linear interpolation
+/// between the two nearest route points. Values are clamped to the route's
+/// distance bounds — requesting a distance beyond the route returns the
+/// first or last point.
 public enum RoutePointInterpolator {
 
+    /// Interpolate a `RoutePoint` at a given cumulative distance.
+    ///
+    /// Uses binary search to find the segment containing the distance,
+    /// then linearly interpolates all fields between the bounding points.
+    /// Returns `nil` for empty arrays or non-finite distance.
+    /// Returns the single point for single-point arrays.
     public static func point(at distance: Double, in points: [RoutePoint]) -> RoutePoint? {
         guard !points.isEmpty, distance.isFinite else { return nil }
         guard points.count >= 2 else { return points[0] }
@@ -31,6 +42,10 @@ public enum RoutePointInterpolator {
         return interpolate(from: before, to: after, fraction: fraction, distance: clampedDistance)
     }
 
+    /// Interpolate a `RouteScenePoint` at a given cumulative distance.
+    ///
+    /// Same algorithm as `point(at:in:)` but for 3D scene points.
+    /// The `sourceIndex` is taken from the point before the interpolation target.
     public static func scenePoint(at distance: Double, in points: [RouteScenePoint]) -> RouteScenePoint? {
         guard !points.isEmpty, distance.isFinite else { return nil }
         guard points.count >= 2 else { return points[0] }
@@ -68,14 +83,20 @@ public enum RoutePointInterpolator {
         )
     }
 
+    /// Find the index of the first point at or after the given distance.
     public static func firstIndex(atOrAfter distance: Double, in points: [RoutePoint]) -> Int? {
         points.firstIndex { $0.distanceFromStartMeters >= distance }
     }
 
+    /// Find the index of the last point at or before the given distance.
     public static func lastIndex(atOrBefore distance: Double, in points: [RoutePoint]) -> Int? {
         points.lastIndex { $0.distanceFromStartMeters <= distance }
     }
 
+    /// Compute average heart rate for points within a distance range.
+    ///
+    /// Filters to valid heart rates within `WorkoutAnalyzer.validHeartRateRange` (30-230 bpm).
+    /// Returns `nil` if no valid heart rate data exists in the range.
     public static func averageHeartRate(
         in points: [RoutePoint],
         from startDistance: Double,
@@ -94,6 +115,11 @@ public enum RoutePointInterpolator {
         return values.reduce(0, +) / Double(values.count)
     }
 
+    /// Compute cumulative elevation gain for points within a distance range.
+    ///
+    /// Sums only positive altitude deltas (ascending). Returns `nil` if no
+    /// altitude data exists in the range. Uses interpolated start/end points
+    /// for accurate boundary calculations.
     public static func elevationGain(
         in points: [RoutePoint],
         from startDistance: Double,

@@ -55,12 +55,12 @@ Latest verified result:
 
 ## Route Comparison MVP
 
-Implemented files:
+Implemented files (models and services in `RunPlayCore`, UI in `RunPlayStudio`):
 
-- `RunPlayStudio/Sources/Models/WorkoutComparison.swift`
-- `RunPlayStudio/Sources/Models/ComparisonRouteScene.swift`
-- `RunPlayStudio/Sources/Services/WorkoutComparisonService.swift`
-- `RunPlayStudio/Sources/Services/ComparisonRouteProjectionService.swift`
+- `RunPlayCore/Sources/Models/WorkoutComparison.swift`
+- `RunPlayCore/Sources/Models/ComparisonRouteScene.swift`
+- `RunPlayCore/Sources/Services/WorkoutComparisonService.swift`
+- `RunPlayCore/Sources/Services/ComparisonRouteProjectionService.swift`
 - `RunPlayStudio/Sources/ViewModels/AppState.swift`
 - `RunPlayStudio/Sources/Views/CompareView.swift`
 - `RunPlayStudio/Sources/Views/ComparisonMapView.swift`
@@ -98,8 +98,8 @@ Current comparison behavior:
 - Rejects comparing a selected primary workout with itself
 - Formats deltas with faster/slower and longer/shorter direction labels
 - Keeps all comparison work local to the app
-- The route-shape warning now explicitly says comparison uses distance alignment
-  and samples shared distances rather than only comparing final endpoints
+- The route-shape warning explicitly states comparison uses distance alignment
+  and samples shared distances
 
 Current comparison limitations:
 

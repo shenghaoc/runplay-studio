@@ -91,7 +91,7 @@ public enum RoutePointSanitizer {
         return normalized
     }
 
-    public static func hasValidSuppliedDistanceSeries(_ points: [RoutePoint]) -> Bool {
+    private static func hasValidSuppliedDistanceSeries(_ points: [RoutePoint]) -> Bool {
         guard !points.isEmpty else { return false }
         var previous = -Double.infinity
         for point in points {

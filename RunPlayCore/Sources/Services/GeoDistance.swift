@@ -49,7 +49,6 @@ public enum GeoDistance {
     /// - Returns: `true` if the coordinate is valid.
     public static func isValidCoordinate(lat: Double, lon: Double) -> Bool {
         lat.isFinite && lon.isFinite &&
-        !lat.isNaN && !lon.isNaN &&
         lat >= -90 && lat <= 90 &&
         lon >= -180 && lon <= 180
     }
