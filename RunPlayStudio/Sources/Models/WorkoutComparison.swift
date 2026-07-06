@@ -182,6 +182,75 @@ struct ComparisonMetricPoint: Identifiable {
     var distanceKm: Double { distanceMeters / 1000 }
 }
 
+/// Metrics at a user-selected distance along a comparison route pair.
+struct ComparisonDistanceMetrics {
+    let selectedDistanceMeters: Double
+    let primaryElapsedSeconds: Double?
+    let comparisonElapsedSeconds: Double?
+    let timeDeltaSeconds: Double?
+    let primaryPaceSecondsPerKm: Double?
+    let comparisonPaceSecondsPerKm: Double?
+    let paceDeltaSecondsPerKm: Double?
+    let primaryScenePoint: RouteScenePoint?
+    let comparisonScenePoint: RouteScenePoint?
+
+    var selectedDistanceFormatted: String {
+        String(format: "%.2f km", selectedDistanceMeters / 1000)
+    }
+
+    var primaryElapsedFormatted: String {
+        formatElapsed(primaryElapsedSeconds)
+    }
+
+    var comparisonElapsedFormatted: String {
+        formatElapsed(comparisonElapsedSeconds)
+    }
+
+    var timeDeltaFormatted: String {
+        formatTimeDelta(timeDeltaSeconds, suffix: nil, positiveLabel: "slower", negativeLabel: "faster")
+    }
+
+    var primaryPaceFormatted: String {
+        formatPace(primaryPaceSecondsPerKm)
+    }
+
+    var comparisonPaceFormatted: String {
+        formatPace(comparisonPaceSecondsPerKm)
+    }
+
+    var paceDeltaFormatted: String {
+        formatTimeDelta(paceDeltaSecondsPerKm, suffix: "/km", positiveLabel: "slower", negativeLabel: "faster")
+    }
+
+    private func formatElapsed(_ seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite else { return "--:--" }
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
+    private func formatPace(_ pace: Double?) -> String {
+        guard let pace, pace.isFinite, pace > 0 else { return "--:-- /km" }
+        let mins = Int(pace) / 60
+        let secs = Int(pace) % 60
+        return String(format: "%d:%02d /km", mins, secs)
+    }
+
+    private func formatTimeDelta(_ delta: Double?, suffix: String?, positiveLabel: String, negativeLabel: String) -> String {
+        let suffixText = suffix.map { " \($0)" } ?? ""
+        guard let delta, delta.isFinite else { return "N/A" }
+        if abs(delta) < 0.5 {
+            return "0:00\(suffixText) even"
+        }
+        let rounded = Int(abs(delta).rounded())
+        let minutes = rounded / 60
+        let seconds = rounded % 60
+        let sign = delta > 0 ? "+" : "-"
+        let label = delta > 0 ? positiveLabel : negativeLabel
+        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
+    }
+}
+
 /// Warning about a comparison.
 enum ComparisonWarning: String, CaseIterable {
     case differentDistances = "Runs have significantly different distances"

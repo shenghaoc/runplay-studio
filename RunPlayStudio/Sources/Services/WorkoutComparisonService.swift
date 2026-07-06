@@ -171,7 +171,178 @@ struct WorkoutComparisonService {
         return points
     }
 
+    // MARK: - Distance Selection
+
+    /// Maximum common distance for both routes, clamped to zero if either has no data.
+    func commonDistance(primary: RunWorkout, comparison: RunWorkout) -> Double {
+        let pd = primary.routePoints.last?.distanceFromStartMeters ?? 0
+        let cd = comparison.routePoints.last?.distanceFromStartMeters ?? 0
+        return max(0, min(pd, cd))
+    }
+
+    /// Compute comparison metrics at a selected distance along both routes.
+    ///
+    /// Interpolates between the two nearest points on each route.
+    /// Returns `nil` values for metrics when route data is missing or non-finite.
+    func metricsAtDistance(
+        _ selectedDistance: Double,
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryScenePoints: [RouteScenePoint] = [],
+        comparisonScenePoints: [RouteScenePoint] = []
+    ) -> ComparisonDistanceMetrics {
+        guard selectedDistance >= 0, selectedDistance.isFinite else {
+            return ComparisonDistanceMetrics(
+                selectedDistanceMeters: 0,
+                primaryElapsedSeconds: nil, comparisonElapsedSeconds: nil,
+                timeDeltaSeconds: nil,
+                primaryPaceSecondsPerKm: nil, comparisonPaceSecondsPerKm: nil,
+                paceDeltaSecondsPerKm: nil,
+                primaryScenePoint: nil, comparisonScenePoint: nil
+            )
+        }
+
+        let primaryInterp = interpolatePoint(at: selectedDistance, in: primary.routePoints)
+        let comparisonInterp = interpolatePoint(at: selectedDistance, in: comparison.routePoints)
+
+        let primaryElapsed = finite(primaryInterp?.elapsedSeconds)
+        let comparisonElapsed = finite(comparisonInterp?.elapsedSeconds)
+        let timeDelta: Double?
+        if let pe = primaryElapsed, let ce = comparisonElapsed {
+            timeDelta = pe - ce
+        } else {
+            timeDelta = nil
+        }
+
+        let primaryPace = finite(primaryInterp?.paceSecondsPerKilometer)
+        let comparisonPace = finite(comparisonInterp?.paceSecondsPerKilometer)
+        let paceDelta: Double?
+        if let pp = primaryPace, let cp = comparisonPace {
+            paceDelta = pp - cp
+        } else {
+            paceDelta = nil
+        }
+
+        let primaryScene = interpolateScenePoint(at: selectedDistance, in: primaryScenePoints)
+        let comparisonScene = interpolateScenePoint(at: selectedDistance, in: comparisonScenePoints)
+
+        return ComparisonDistanceMetrics(
+            selectedDistanceMeters: selectedDistance,
+            primaryElapsedSeconds: primaryElapsed,
+            comparisonElapsedSeconds: comparisonElapsed,
+            timeDeltaSeconds: timeDelta,
+            primaryPaceSecondsPerKm: primaryPace,
+            comparisonPaceSecondsPerKm: comparisonPace,
+            paceDeltaSecondsPerKm: paceDelta,
+            primaryScenePoint: primaryScene,
+            comparisonScenePoint: comparisonScene
+        )
+    }
+
     // MARK: - Helpers
+
+    /// Interpolate a `RoutePoint` at a given distance by linear interpolation.
+    private func interpolatePoint(at distance: Double, in points: [RoutePoint]) -> RoutePoint? {
+        guard !points.isEmpty else { return nil }
+        guard points.count >= 2 else { return points[0] }
+
+        // Clamp to route bounds
+        let clampedDistance = max(points[0].distanceFromStartMeters,
+                                  min(distance, points.last!.distanceFromStartMeters))
+
+        // Find the segment that contains the distance
+        var low = 0
+        var high = points.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if points[mid].distanceFromStartMeters < clampedDistance {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        // low is the first point >= clampedDistance
+        if low == 0 { return points[0] }
+        let after = points[low]
+        let before = points[low - 1]
+
+        let segDist = after.distanceFromStartMeters - before.distanceFromStartMeters
+        guard segDist > 0 else { return before }
+
+        let t = (clampedDistance - before.distanceFromStartMeters) / segDist
+        let tClamped = max(0, min(1, t))
+
+        let elapsed = before.elapsedSeconds + tClamped * (after.elapsedSeconds - before.elapsedSeconds)
+
+        // Interpolate optional pace
+        let pace: Double?
+        if let bp = before.paceSecondsPerKilometer, let ap = after.paceSecondsPerKilometer,
+           bp.isFinite, ap.isFinite {
+            pace = bp + tClamped * (ap - bp)
+        } else {
+            pace = nil
+        }
+
+        return RoutePoint(
+            timestamp: before.timestamp.addingTimeInterval(tClamped * (after.timestamp.timeIntervalSince(before.timestamp))),
+            latitude: before.latitude + tClamped * (after.latitude - before.latitude),
+            longitude: before.longitude + tClamped * (after.longitude - before.longitude),
+            altitudeMeters: interpolateOptional(before.altitudeMeters, after.altitudeMeters, t: tClamped),
+            distanceFromStartMeters: clampedDistance,
+            elapsedSeconds: elapsed,
+            speedMetersPerSecond: interpolateOptional(before.speedMetersPerSecond, after.speedMetersPerSecond, t: tClamped),
+            paceSecondsPerKilometer: pace,
+            heartRateBPM: interpolateOptional(before.heartRateBPM, after.heartRateBPM, t: tClamped),
+            cadence: interpolateOptional(before.cadence, after.cadence, t: tClamped)
+        )
+    }
+
+    /// Interpolate a `RouteScenePoint` at a given distance by linear interpolation.
+    private func interpolateScenePoint(at distance: Double, in points: [RouteScenePoint]) -> RouteScenePoint? {
+        guard !points.isEmpty else { return nil }
+        guard points.count >= 2 else { return points[0] }
+
+        let clampedDistance = max(points[0].distanceFromStartMeters,
+                                  min(distance, points.last!.distanceFromStartMeters))
+
+        var low = 0
+        var high = points.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if points[mid].distanceFromStartMeters < clampedDistance {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        if low == 0 { return points[0] }
+        let after = points[low]
+        let before = points[low - 1]
+
+        let segDist = after.distanceFromStartMeters - before.distanceFromStartMeters
+        guard segDist > 0 else { return before }
+
+        let t = (clampedDistance - before.distanceFromStartMeters) / segDist
+        let tClamped = max(0, min(1, t))
+
+        return RouteScenePoint(
+            xMeters: before.xMeters + tClamped * (after.xMeters - before.xMeters),
+            yMeters: before.yMeters + tClamped * (after.yMeters - before.yMeters),
+            zMeters: before.zMeters + tClamped * (after.zMeters - before.zMeters),
+            sourceIndex: before.sourceIndex,
+            distanceFromStartMeters: clampedDistance,
+            elapsedSeconds: before.elapsedSeconds + tClamped * (after.elapsedSeconds - before.elapsedSeconds),
+            paceSecondsPerKilometer: interpolateOptional(before.paceSecondsPerKilometer, after.paceSecondsPerKilometer, t: tClamped),
+            heartRateBPM: interpolateOptional(before.heartRateBPM, after.heartRateBPM, t: tClamped)
+        )
+    }
+
+    private func interpolateOptional(_ a: Double?, _ b: Double?, t: Double) -> Double? {
+        guard let a, let b, a.isFinite, b.isFinite else { return nil }
+        return a + t * (b - a)
+    }
 
     private func findNearestPoint(at distance: Double, in points: [RoutePoint]) -> RoutePoint? {
         guard !points.isEmpty else { return nil }

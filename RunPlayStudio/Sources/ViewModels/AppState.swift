@@ -17,6 +17,7 @@ class AppState: ObservableObject {
     @Published var comparisonWorkout: RunWorkout?
     @Published var isComparing: Bool = false
     @Published var comparisonSelectionMessage: String?
+    @Published var selectedComparisonDistanceMeters: Double = 0
 
     let replayController = ReplayController()
     let sceneBuilder = RouteSceneBuilder()
@@ -150,6 +151,7 @@ class AppState: ObservableObject {
         comparisonWorkout = nil
         isComparing = false
         comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
     }
 
     /// Whether the supplied workout can be compared with the current primary selection.
@@ -182,6 +184,44 @@ class AppState: ObservableObject {
     var comparisonMetrics: [ComparisonMetricPoint] {
         guard let pair = comparisonPair else { return [] }
         return comparisonService.compareMetricsOverDistance(primary: pair.primary, comparison: pair.comparison)
+    }
+
+    /// Common distance for both routes (clamped).
+    var comparisonCommonDistanceMeters: Double {
+        guard let pair = comparisonPair else { return 0 }
+        return comparisonService.commonDistance(primary: pair.primary, comparison: pair.comparison)
+    }
+
+    /// Metrics at the selected comparison distance.
+    var comparisonDistanceMetrics: ComparisonDistanceMetrics {
+        guard let pair = comparisonPair else {
+            return ComparisonDistanceMetrics(
+                selectedDistanceMeters: 0,
+                primaryElapsedSeconds: nil, comparisonElapsedSeconds: nil,
+                timeDeltaSeconds: nil,
+                primaryPaceSecondsPerKm: nil, comparisonPaceSecondsPerKm: nil,
+                paceDeltaSecondsPerKm: nil,
+                primaryScenePoint: nil, comparisonScenePoint: nil
+            )
+        }
+        // Clamp to common distance
+        let clamped = max(0, min(selectedComparisonDistanceMeters, comparisonCommonDistanceMeters))
+        return comparisonService.metricsAtDistance(
+            clamped,
+            primary: pair.primary,
+            comparison: pair.comparison
+        )
+    }
+
+    /// Clamp the selected comparison distance to the common route distance.
+    func clampComparisonDistance() {
+        let common = comparisonCommonDistanceMeters
+        if selectedComparisonDistanceMeters > common {
+            selectedComparisonDistanceMeters = common
+        }
+        if selectedComparisonDistanceMeters < 0 {
+            selectedComparisonDistanceMeters = 0
+        }
     }
 
     /// Other workouts available for comparison (excluding current selection).
