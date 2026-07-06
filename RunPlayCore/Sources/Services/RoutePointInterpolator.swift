@@ -21,6 +21,7 @@ public enum RoutePointInterpolator {
         let lastDistance = points.last?.distanceFromStartMeters ?? 0
         let clampedDistance = max(points[0].distanceFromStartMeters, min(distance, lastDistance))
 
+        // Binary search for the first point >= clampedDistance
         var low = 0
         var high = points.count - 1
         while low < high {
@@ -36,7 +37,18 @@ public enum RoutePointInterpolator {
         let after = points[low]
         let before = points[low - 1]
         let segmentDistance = after.distanceFromStartMeters - before.distanceFromStartMeters
-        guard segmentDistance > 0, segmentDistance.isFinite else { return before }
+
+        // When segmentDistance is 0 (duplicate distances from stationary samples),
+        // prefer the last point at that distance to capture final elapsed time.
+        guard segmentDistance > 0, segmentDistance.isFinite else {
+            // Find the last point at this exact distance
+            var lastAtDistance = low
+            while lastAtDistance + 1 < points.count &&
+                  points[lastAtDistance + 1].distanceFromStartMeters == after.distanceFromStartMeters {
+                lastAtDistance += 1
+            }
+            return points[lastAtDistance]
+        }
 
         let fraction = max(0, min(1, (clampedDistance - before.distanceFromStartMeters) / segmentDistance))
         return interpolate(from: before, to: after, fraction: fraction, distance: clampedDistance)

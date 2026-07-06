@@ -63,28 +63,35 @@ class RouteSceneBuilder {
         grid.isHidden = !showGroundGrid
         scene.rootNode.addChildNode(grid)
 
-        // Route
-        if let firstPoint = points.first, let lastPoint = points.last, points.count >= 2 {
+        // Route polyline (requires 2+ points for tubes)
+        if points.count >= 2 {
             let route = createRoute(from: points)
             routeNode = route
             scene.rootNode.addChildNode(route)
+        }
 
+        // Markers (created for any non-empty route, including single-point)
+        if let firstPoint = points.first {
             // Start marker
             let start = createStartMarker(at: firstPoint)
             startNode = start
             scene.rootNode.addChildNode(start)
 
-            // Finish marker
-            let finish = createFinishMarker(at: lastPoint)
-            finishNode = finish
-            scene.rootNode.addChildNode(finish)
-
             // Current position marker
             let current = createCurrentMarker(at: firstPoint, direction: calculateDirection(at: 0))
             currentNode = current
             scene.rootNode.addChildNode(current)
+        }
 
-            // Kilometer markers
+        if let lastPoint = points.last, points.count >= 2 {
+            // Finish marker (only when distinct from start)
+            let finish = createFinishMarker(at: lastPoint)
+            finishNode = finish
+            scene.rootNode.addChildNode(finish)
+        }
+
+        // Kilometer markers (require 2+ points)
+        if points.count >= 2 {
             let kmMarkers = createKilometerMarkers(from: points)
             kmMarkersNode = kmMarkers
             kmMarkers.isHidden = !showKilometerMarkers

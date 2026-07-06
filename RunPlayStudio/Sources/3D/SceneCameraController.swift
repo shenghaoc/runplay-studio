@@ -143,10 +143,10 @@ class SceneCameraController: ObservableObject {
             cameraAngleY = 0
         case .side:
             cameraAngleX = 5   // Nearly horizontal, low angle
-            cameraAngleY = 0
+            cameraAngleY = 90  // Right side (perpendicular to route)
         case .front:
             cameraAngleX = 10  // Slightly above
-            cameraAngleY = 90
+            cameraAngleY = 0   // Front (along route direction)
         }
         updateCameraPosition(lookingAt: targetPoint)
     }
