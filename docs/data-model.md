@@ -213,6 +213,22 @@ enum ComparisonWarning {
 
 ## 3D Types
 
+### ComparisonRouteScene
+
+Result of projecting two routes into a shared 3D coordinate space.
+
+```swift
+struct ComparisonRouteScene {
+    let primaryRoute: [RouteScenePoint]
+    let comparisonRoute: [RouteScenePoint]
+    let combinedBounds: (min: SIMD3<Double>, max: SIMD3<Double>)
+    let warnings: [ComparisonWarning]
+    var hasValidRoutes: Bool
+    var maxExtent: Double
+    var center: SIMD3<Double>
+}
+```
+
 ### RouteScenePoint
 
 A route point projected into 3D local coordinates.

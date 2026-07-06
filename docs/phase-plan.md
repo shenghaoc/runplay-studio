@@ -112,7 +112,7 @@
 - [x] Manual GUI dogfooding with bundled runs and a local TCX import
 - [x] macOS 14 MapKit overlay API modernization for route maps
 - [x] Clearer distance-alignment warning for different route shapes
-- [ ] 3D comparison overlay
+- [x] 3D comparison overlay
 
 ## Phase 11.5: Real-Data Safety And Demo Polish ✅
 - [x] Ignore local private workout paths and `activity_*.tcx` / `activity_*.fit`

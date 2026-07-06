@@ -14,7 +14,7 @@ At a glance:
 - 3D SceneKit route replay with synchronized timeline controls
 - Pace, elevation, and heart-rate coloring
 - Automatic split analysis and segment highlighting
-- Route comparison with summary deltas, splits, pace chart, and 2D overlay
+- Route comparison with summary deltas, splits, pace chart, 2D overlay, and 3D overlay
 - Local JSON, CSV, and PNG exports
 - Local-only privacy model: no account, no cloud, no telemetry, no AI API
 
@@ -35,7 +35,7 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (206 tests) |
+| `swift test` | ✅ Pass (227 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Two bundled JSON demo runs auto-load |
@@ -194,10 +194,17 @@ Compare two completed runs:
 - Per-split comparison with winner indication
 - Pace over distance comparison chart
 - 2D map overlay with both routes and a simple legend
+- 3D comparison overlay with both routes in the same scene
 - Warnings for different distances, route shapes, insufficient overlap, and missing data
 - Distance-based alignment (no route matching)
 
-Current limitations: comparison is distance-aligned only, does not do dynamic time warping, and does not yet provide a 3D overlay mode.
+**3D comparison**: Both routes are projected into a shared coordinate space so they
+maintain correct relative positioning. Primary route is blue, comparison route is
+orange. Each route has distinct start/finish markers. Controls include elevation
+exaggeration, camera presets, fit-to-routes, and grid toggle.
+
+Current limitations: comparison is distance-aligned only and does not do dynamic
+time warping.
 
 ## Privacy
 

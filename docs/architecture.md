@@ -5,6 +5,7 @@
 ```
 Import File → Importer → Normalized Model → Analyzer → Route Projection → Replay Controller → Views
                                                         ↘ Comparison Service → Compare View
+                                                        ↘ Comparison Route Projection → 3D Comparison View
 ```
 
 ### Detailed Flow
@@ -75,6 +76,36 @@ struct WorkoutComparisonService {
 The service clamps metric series to the common distance, filters non-finite
 metric values, handles missing heart-rate/elevation data, and returns warnings
 instead of crashing on weak comparisons.
+
+### ComparisonRouteProjectionService
+
+Projects two routes into a shared local coordinate system for 3D comparison:
+
+```swift
+struct ComparisonRouteProjectionService {
+    var elevationExaggeration: Double = 2.0
+    func project(primary: [RoutePoint], comparison: [RoutePoint], existingWarnings: [ComparisonWarning]) -> ComparisonRouteScene
+}
+```
+
+Uses the primary route's bounding-box center as the shared origin so both routes
+maintain correct relative geographic positions. Filters invalid/NaN coordinates,
+applies elevation exaggeration consistently, and returns a `ComparisonRouteScene`
+with combined bounds and warnings.
+
+### ComparisonSceneBuilder
+
+Builds a SceneKit scene for 3D comparison:
+
+```swift
+class ComparisonSceneBuilder {
+    func buildScene(from comparisonScene: ComparisonRouteScene) -> SCNScene
+    func routeBoundingBox(for comparisonScene: ComparisonRouteScene) -> (center: SCNVector3, extent: CGFloat)
+}
+```
+
+Renders primary (blue) and comparison (orange) routes with distinct start/finish
+markers, a shared ground grid, and a 3D legend.
 
 ## Dependencies
 

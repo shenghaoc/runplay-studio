@@ -2,11 +2,11 @@
 
 ## Current Status
 
-Route comparison MVP dogfood, private-data safety hardening, and synthetic
-export demo polish are implemented and verified from the SwiftPM package.
-Do not add commit hashes to this handoff as a status field; they become stale and
-caused repeated hash-only documentation commits during rapid iteration.
-Run `git log -1 --oneline` locally to see the current commit.
+3D route comparison overlay MVP is implemented. Route comparison now supports
+both 2D map and 3D scene views. Do not add commit hashes to this handoff as a
+status field; they become stale and cause repeated hash-only documentation
+commits during rapid iteration. Run `git log -1 --oneline` locally to see the
+current commit.
 
 ## Verification Snapshot
 
@@ -22,7 +22,7 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test`: pass, 206 tests, 0 failures
+- `swift test`: pass, 227 tests, 0 failures
 - Package product: `RunPlayStudio`
 - Test target: `RunPlayStudioTests`
 - Validation was performed after synchronizing with the latest default branch
@@ -39,6 +39,7 @@ Latest verified result:
 - Segment detection and 3D segment highlighting
 - Local JSON, CSV, and PNG summary export
 - Route comparison MVP
+- 3D route comparison overlay
 - Bundled demo comparison pair loaded on launch for immediate comparison testing
 - Private local workout ignore policy and data-handling documentation
 - Synthetic demo summary PNG generated from bundled fixture data
@@ -48,14 +49,19 @@ Latest verified result:
 Implemented files:
 
 - `RunPlayStudio/Sources/Models/WorkoutComparison.swift`
+- `RunPlayStudio/Sources/Models/ComparisonRouteScene.swift`
 - `RunPlayStudio/Sources/Services/WorkoutComparisonService.swift`
+- `RunPlayStudio/Sources/Services/ComparisonRouteProjectionService.swift`
 - `RunPlayStudio/Sources/ViewModels/AppState.swift`
 - `RunPlayStudio/Sources/Views/CompareView.swift`
 - `RunPlayStudio/Sources/Views/ComparisonMapView.swift`
 - `RunPlayStudio/Sources/Views/ComparisonChartView.swift`
+- `RunPlayStudio/Sources/Views/Comparison3DView.swift`
+- `RunPlayStudio/Sources/3D/ComparisonSceneBuilder.swift`
 - `RunPlayStudio/Resources/fixtures/comparison_park_run.json`
 - `RunPlayStudio/Tests/RunPlayStudioTests/AppStateComparisonTests.swift`
 - `RunPlayStudio/Tests/RunPlayStudioTests/WorkoutComparisonTests.swift`
+- `RunPlayStudio/Tests/RunPlayStudioTests/ComparisonProjectionTests.swift`
 
 Current comparison behavior:
 
@@ -66,6 +72,14 @@ Current comparison behavior:
 - Builds a distance-aligned pace/elevation/heart-rate series clamped to common
   distance
 - Shows a 2D route overlay for both runs with a simple legend
+- Shows a 3D comparison overlay with both routes in the same scene
+- 3D comparison uses shared coordinate origin (primary route center) so both
+  routes maintain correct relative geographic positioning
+- 3D comparison shows primary (blue) and comparison (orange) routes with
+  distinct start/finish markers and a 3D legend
+- 3D comparison supports elevation exaggeration, camera presets, fit-to-routes,
+  and grid toggle
+- Toggle between 2D map and 3D view via segmented picker in CompareView
 - Shows warnings for different distances, insufficient overlap, different route
   endpoints, missing heart rate, missing elevation, and too few points
 - Rejects comparing a selected primary workout with itself
@@ -76,7 +90,6 @@ Current comparison behavior:
 Current comparison limitations:
 
 - No dynamic time warping or complex route matching
-- No 3D route comparison overlay
 - No chart hover, zoom, or pan behavior for comparison charts
 - No HealthKit, cloud sync, accounts, telemetry, analytics, or AI APIs
 
@@ -151,11 +164,12 @@ deprecation warnings from route map overlays are removed in current builds.
 
 ## Recommended Next Phase
 
-Stabilize comparison after broader real-workout dogfooding:
+Stabilize 3D comparison after broader real-workout dogfooding:
 
+- GUI dogfood the 3D comparison view with bundled demo runs
+- GUI dogfood the save-panel export in a normal desktop session
 - Improve comparison chart readability when routes differ substantially
-- Consider a safe, optional 3D overlay only after 2D comparison is stable
-- Broaden manual export smoke testing in a normal desktop session
+- Consider a selected-distance marker on both routes in 3D comparison
 - Keep expanding synthetic demo assets only from anonymized or generated data
 - Keep HealthKit, cloud, accounts, telemetry, analytics, AI APIs, and advanced
   route matching out of scope until explicitly planned

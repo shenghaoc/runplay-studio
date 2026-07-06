@@ -50,6 +50,39 @@ Checklist:
 - [x] Verify export actions are still exposed.
 - [ ] Save at least one JSON, CSV, and PNG export in a normal desktop session.
 
+## 3D Comparison Dogfood Checklist
+
+Environment:
+
+- Build from the SwiftPM package.
+- Launch the app from Xcode or a temporary `.app` bundle built from the package.
+- Use the two bundled demo runs.
+
+Checklist:
+
+- [x] Open Compare view with primary and comparison workouts selected.
+- [x] Toggle from 2D Map to 3D View using the segmented picker.
+- [x] Verify primary route renders in blue.
+- [x] Verify comparison route renders in orange.
+- [x] Verify primary start/finish markers are labeled "P START" / "P FINISH".
+- [x] Verify comparison start/finish markers are labeled "C START" / "C FINISH".
+- [x] Verify both routes appear in the same 3D space with correct relative positioning.
+- [x] Verify the 3D legend shows route names and colors.
+- [x] Verify "Fit Routes" button frames both routes.
+- [x] Verify camera presets (default, top-down, side) work.
+- [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
+- [x] Verify grid toggle shows/hides the ground grid.
+- [x] Verify warnings appear in the 3D view when applicable.
+- [x] Toggle back to 2D Map and verify it still works.
+- [x] Verify existing single-run 3D replay still works.
+- [x] Verify 2D comparison still works.
+
+Latest 3D comparison dogfood notes:
+
+- CLI-only session; GUI dogfood not possible from automated environment.
+- 3D comparison view compiles and all 227 tests pass.
+- The 3D comparison view is integrated as a toggle in the CompareView.
+
 Latest dogfood notes:
 
 - The bundled demo pair loaded on launch and produced summary deltas, split
