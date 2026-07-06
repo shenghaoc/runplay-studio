@@ -16,6 +16,10 @@ struct Comparison3DView: View {
 
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
 
+    private var commonDistance: Double {
+        appState.comparisonCommonDistanceMeters
+    }
+
     var body: some View {
         ZStack {
             if let scene = scene {
@@ -48,6 +52,9 @@ struct Comparison3DView: View {
                     controlPanel
                 }
                 Spacer()
+
+                // Distance slider bar at bottom
+                distanceSliderBar
             }
             .padding()
         }
@@ -204,6 +211,104 @@ struct Comparison3DView: View {
 
     // MARK: - Actions
 
+    // MARK: - Distance Slider Bar
+
+    private var distanceSliderBar: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text("Selected Distance")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(appState.comparisonDistanceMetrics.selectedDistanceFormatted)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.primary)
+
+                if commonDistance > 0 {
+                    Text("/ \(String(format: "%.2f km", commonDistance / 1000))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button(action: { appState.selectedComparisonDistanceMeters = 0; updateDistanceMarkers() }) {
+                    Image(systemName: "backward.end.fill")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Reset to start")
+
+                Slider(
+                    value: Binding(
+                        get: { appState.selectedComparisonDistanceMeters },
+                        set: { appState.selectedComparisonDistanceMeters = $0; updateDistanceMarkers() }
+                    ),
+                    in: 0...max(commonDistance, 1),
+                    step: max(commonDistance / 500, 1)
+                )
+                .disabled(commonDistance <= 0)
+
+                Button(action: { appState.selectedComparisonDistanceMeters = commonDistance; updateDistanceMarkers() }) {
+                    Image(systemName: "forward.end.fill")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Jump to end")
+                .disabled(commonDistance <= 0)
+            }
+
+            // Metrics readout
+            comparisonDistanceMetricsRow
+        }
+        .padding(8)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var comparisonDistanceMetricsRow: some View {
+        let metrics = appState.comparisonDistanceMetrics
+        return HStack(spacing: 16) {
+            metricBadge(label: "Primary", value: metrics.primaryElapsedFormatted, color: .blue)
+            metricBadge(label: "Comparison", value: metrics.comparisonElapsedFormatted, color: .orange)
+            metricBadge(label: "Time", value: metrics.timeDeltaFormatted, color: timeDeltaColor(metrics.timeDeltaSeconds))
+
+            Divider().frame(height: 16)
+
+            metricBadge(label: "P Pace", value: metrics.primaryPaceFormatted, color: .blue)
+            metricBadge(label: "C Pace", value: metrics.comparisonPaceFormatted, color: .orange)
+            metricBadge(label: "Pace", value: metrics.paceDeltaFormatted, color: paceDeltaColor(metrics.paceDeltaSecondsPerKm))
+        }
+        .frame(height: 24)
+    }
+
+    private func metricBadge(label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 1) {
+            Text(label)
+                .font(.system(size: 8))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(color)
+        }
+    }
+
+    private func timeDeltaColor(_ delta: Double?) -> Color {
+        guard let delta, delta.isFinite else { return .secondary }
+        if abs(delta) < 0.5 { return .secondary }
+        return delta < 0 ? .green : .red
+    }
+
+    private func paceDeltaColor(_ delta: Double?) -> Color {
+        guard let delta, delta.isFinite else { return .secondary }
+        if abs(delta) < 0.5 { return .secondary }
+        return delta < 0 ? .green : .red
+    }
+
+    // MARK: - Actions
+
     private func buildScene() {
         appState.comparisonProjectionService.elevationExaggeration = elevationScale
         appState.comparisonSceneBuilder.showGroundGrid = showGrid
@@ -220,6 +325,36 @@ struct Comparison3DView: View {
         cameraNode = appState.comparisonCameraController.setupCamera(in: newScene, lookingAt: bbox.center)
         appState.comparisonCameraController.fitToRoute(center: bbox.center, extent: bbox.extent)
         scene = newScene
+
+        appState.clampComparisonDistance()
+        updateDistanceMarkers(in: newScene, result: result)
+    }
+
+    private func updateDistanceMarkers() {
+        guard let scene, let compScene = comparisonScene else { return }
+        updateDistanceMarkers(in: scene, result: compScene)
+    }
+
+    private func updateDistanceMarkers(in scene: SCNScene, result: ComparisonRouteScene) {
+        let selectedDist = appState.selectedComparisonDistanceMeters
+        guard selectedDist > 0, commonDistance > 0 else {
+            appState.comparisonSceneBuilder.updateDistanceMarkers(in: scene, primaryPoint: nil, comparisonPoint: nil)
+            return
+        }
+
+        let metrics = appState.comparisonService.metricsAtDistance(
+            selectedDist,
+            primary: primaryWorkout,
+            comparison: comparisonWorkout,
+            primaryScenePoints: result.primaryRoute,
+            comparisonScenePoints: result.comparisonRoute
+        )
+
+        appState.comparisonSceneBuilder.updateDistanceMarkers(
+            in: scene,
+            primaryPoint: metrics.primaryScenePoint,
+            comparisonPoint: metrics.comparisonScenePoint
+        )
     }
 
     private func fitToRoutes() {

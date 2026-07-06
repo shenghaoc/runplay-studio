@@ -23,6 +23,8 @@ class ComparisonSceneBuilder {
     private var gridNode: SCNNode?
     private var primaryRouteNode: SCNNode?
     private var comparisonRouteNode: SCNNode?
+    private var primaryDistanceMarkerNode: SCNNode?
+    private var comparisonDistanceMarkerNode: SCNNode?
 
     private let minSegmentLength: Float = 0.01
 
@@ -111,6 +113,77 @@ class ComparisonSceneBuilder {
 
     private func updateGridVisibility() {
         gridNode?.isHidden = !showGroundGrid
+    }
+
+    // MARK: - Distance Markers
+
+    var primaryDistanceMarkerColor: NSColor = .systemBlue
+    var comparisonDistanceMarkerColor: NSColor = .systemOrange
+    var distanceMarkerRadius: CGFloat = 1.5
+
+    /// Update the distance markers in the scene at the given interpolated points.
+    ///
+    /// Removes any existing distance markers and adds new ones.
+    /// Pass `nil` for a point to hide that marker.
+    func updateDistanceMarkers(
+        in scene: SCNScene,
+        primaryPoint: RouteScenePoint?,
+        comparisonPoint: RouteScenePoint?
+    ) {
+        primaryDistanceMarkerNode?.removeFromParentNode()
+        comparisonDistanceMarkerNode?.removeFromParentNode()
+        primaryDistanceMarkerNode = nil
+        comparisonDistanceMarkerNode = nil
+
+        if let point = primaryPoint {
+            let marker = createDistanceMarker(
+                at: point,
+                color: primaryDistanceMarkerColor,
+                label: "P \(formatDistanceLabel(point.distanceFromStartMeters))"
+            )
+            primaryDistanceMarkerNode = marker
+            scene.rootNode.addChildNode(marker)
+        }
+
+        if let point = comparisonPoint {
+            let marker = createDistanceMarker(
+                at: point,
+                color: comparisonDistanceMarkerColor,
+                label: "C \(formatDistanceLabel(point.distanceFromStartMeters))"
+            )
+            comparisonDistanceMarkerNode = marker
+            scene.rootNode.addChildNode(marker)
+        }
+    }
+
+    private func createDistanceMarker(at point: RouteScenePoint, color: NSColor, label: String) -> SCNNode {
+        let parent = SCNNode()
+
+        let sphere = SCNSphere(radius: distanceMarkerRadius)
+        sphere.firstMaterial?.diffuse.contents = color
+        sphere.firstMaterial?.lightingModel = .blinn
+        sphere.firstMaterial?.specular.contents = NSColor.white
+        parent.addChildNode(SCNNode(geometry: sphere))
+
+        let glow = SCNSphere(radius: distanceMarkerRadius * 1.8)
+        glow.firstMaterial?.diffuse.contents = color.withAlphaComponent(0.3)
+        glow.firstMaterial?.lightingModel = .constant
+        parent.addChildNode(SCNNode(geometry: glow))
+
+        let text = createTextSprite(label, color: color, fontSize: 2.0)
+        text.position = SCNVector3(0, distanceMarkerRadius * 3, 0)
+        parent.addChildNode(text)
+
+        parent.position = SCNVector3(
+            point.xMeters,
+            point.yMeters + distanceMarkerRadius * 2,
+            point.zMeters
+        )
+        return parent
+    }
+
+    private func formatDistanceLabel(_ meters: Double) -> String {
+        String(format: "%.2f km", meters / 1000)
     }
 
     // MARK: - Lighting
