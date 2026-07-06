@@ -76,23 +76,14 @@ public struct RouteProjectionService {
 
     /// Convert latitude/longitude to local meter coordinates relative to a center point.
     ///
-    /// Uses a simple equirectangular approximation, accurate for routes < 100km.
+    /// Delegates to `GeoDistance.latLonToMeters` for the equirectangular approximation.
     public func latLonToMeters(
         lat: Double,
         lon: Double,
         centerLat: Double,
         centerLon: Double
     ) -> (x: Double, z: Double) {
-        let latRad = centerLat * .pi / 180
-
-        // Meters per degree at this latitude
-        let metersPerDegLat = 111132.92 - 559.82 * cos(2 * latRad) + 1.175 * cos(4 * latRad)
-        let metersPerDegLon = 111412.84 * cos(latRad) - 93.5 * cos(3 * latRad)
-
-        let x = (lon - centerLon) * metersPerDegLon
-        let z = (lat - centerLat) * metersPerDegLat
-
-        return (x, z)
+        GeoDistance.latLonToMeters(lat: lat, lon: lon, centerLat: centerLat, centerLon: centerLon)
     }
 
     /// Get the bounding box of projected points (for camera positioning).

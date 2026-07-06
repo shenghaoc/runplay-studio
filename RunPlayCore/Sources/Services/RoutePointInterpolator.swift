@@ -119,7 +119,7 @@ public enum RoutePointInterpolator {
 
     /// Compute average heart rate for points within a distance range.
     ///
-    /// Filters to valid heart rates within `WorkoutAnalyzer.validHeartRateRange` (30-230 bpm).
+    /// Filters to valid heart rates within `GeoDistance.validHeartRateRange` (30-230 bpm).
     /// Returns `nil` if no valid heart rate data exists in the range.
     public static func averageHeartRate(
         in points: [RoutePoint],
@@ -131,7 +131,7 @@ public enum RoutePointInterpolator {
             .compactMap { point -> Double? in
                 guard let hr = point.heartRateBPM,
                       hr.isFinite,
-                      WorkoutAnalyzer.validHeartRateRange.contains(hr)
+                      GeoDistance.validHeartRateRange.contains(hr)
                 else { return nil }
                 return hr
             }

@@ -12,11 +12,11 @@ public struct WorkoutAnalyzer {
     public static let validHeartRateRange: ClosedRange<Double> = 30...230
 
     /// Analyze a workout in-place, calculating summary, splits, and segments.
+    ///
+    /// Precondition: `workout.routePoints` must already be normalized via
+    /// `RoutePointSanitizer.normalize()`. All importers (JSON, GPX, TCX, FIT)
+    /// perform normalization before calling this method.
     public func analyze(_ workout: inout RunWorkout) {
-        workout.routePoints = RoutePointSanitizer.normalize(
-            workout.routePoints,
-            distancePolicy: .useSuppliedDistancesWhenValid
-        )
         calculateDerivedMetrics(&workout)
         workout.summary = calculateSummary(workout)
         workout.splits = SplitCalculator.calculateSplits(from: workout)

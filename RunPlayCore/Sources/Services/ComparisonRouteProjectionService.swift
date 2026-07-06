@@ -137,20 +137,14 @@ public struct ComparisonRouteProjectionService {
 
     /// Convert latitude/longitude to local meter coordinates.
     ///
-    /// Uses a simple equirectangular approximation, accurate for routes < 100km.
+    /// Delegates to `GeoDistance.latLonToMeters` for the equirectangular approximation.
     public func latLonToMeters(
         lat: Double,
         lon: Double,
         centerLat: Double,
         centerLon: Double
     ) -> (x: Double, z: Double) {
-        let latRad = centerLat * .pi / 180
-        let metersPerDegLat = 111132.92 - 559.82 * cos(2 * latRad) + 1.175 * cos(4 * latRad)
-        let metersPerDegLon = 111412.84 * cos(latRad) - 93.5 * cos(3 * latRad)
-
-        let x = (lon - centerLon) * metersPerDegLon
-        let z = (lat - centerLat) * metersPerDegLat
-        return (x, z)
+        GeoDistance.latLonToMeters(lat: lat, lon: lon, centerLat: centerLat, centerLon: centerLon)
     }
 
     /// Compute the combined bounding box of both projected routes.

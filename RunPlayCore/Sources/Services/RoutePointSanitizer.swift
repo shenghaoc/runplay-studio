@@ -91,30 +91,29 @@ public enum RoutePointSanitizer {
         return normalized
     }
 
-    private static func hasValidSuppliedDistanceSeries(_ points: [RoutePoint]) -> Bool {
+    /// Check if a numeric field across route points is finite, non-negative, and monotonically non-decreasing.
+    private static func isMonotonicallyNonDecreasing(
+        _ keyPath: KeyPath<RoutePoint, Double>,
+        in points: [RoutePoint]
+    ) -> Bool {
         guard !points.isEmpty else { return false }
         var previous = -Double.infinity
         for point in points {
-            let distance = point.distanceFromStartMeters
-            guard distance.isFinite, distance >= 0, distance >= previous else {
+            let value = point[keyPath: keyPath]
+            guard value.isFinite, value >= 0, value >= previous else {
                 return false
             }
-            previous = distance
+            previous = value
         }
         return true
     }
 
+    private static func hasValidSuppliedDistanceSeries(_ points: [RoutePoint]) -> Bool {
+        isMonotonicallyNonDecreasing(\.distanceFromStartMeters, in: points)
+    }
+
     private static func hasValidElapsedSeries(_ points: [RoutePoint]) -> Bool {
-        guard !points.isEmpty else { return false }
-        var previous = -Double.infinity
-        for point in points {
-            let elapsed = point.elapsedSeconds
-            guard elapsed.isFinite, elapsed >= 0, elapsed >= previous else {
-                return false
-            }
-            previous = elapsed
-        }
-        return true
+        isMonotonicallyNonDecreasing(\.elapsedSeconds, in: points)
     }
 
     private static func elapsedSpan(from points: [RoutePoint]) -> TimeInterval {
@@ -136,7 +135,7 @@ public enum RoutePointSanitizer {
     private static func validHeartRate(_ value: Double?) -> Double? {
         guard let value,
               value.isFinite,
-              WorkoutAnalyzer.validHeartRateRange.contains(value)
+              GeoDistance.validHeartRateRange.contains(value)
         else {
             return nil
         }

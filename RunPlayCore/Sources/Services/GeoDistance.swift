@@ -9,6 +9,9 @@ public enum GeoDistance {
     /// Earth's mean radius in meters (WGS-84).
     public static let earthRadiusMeters: Double = 6_371_000.0
 
+    /// Valid heart rate range for filtering outliers (30-230 bpm).
+    public static let validHeartRateRange: ClosedRange<Double> = 30...230
+
     /// Calculate the great-circle distance between two coordinates in meters.
     ///
     /// Uses the Haversine formula, accurate for all distances on Earth.
@@ -51,5 +54,35 @@ public enum GeoDistance {
         lat.isFinite && lon.isFinite &&
         lat >= -90 && lat <= 90 &&
         lon >= -180 && lon <= 180
+    }
+
+    /// Convert latitude/longitude to local meter coordinates relative to a center point.
+    ///
+    /// Uses a simple equirectangular approximation, accurate for routes < 100km.
+    /// This is the shared implementation used by both `RouteProjectionService`
+    /// and `ComparisonRouteProjectionService`.
+    ///
+    /// - Parameters:
+    ///   - lat: Latitude in degrees.
+    ///   - lon: Longitude in degrees.
+    ///   - centerLat: Center latitude in degrees.
+    ///   - centerLon: Center longitude in degrees.
+    /// - Returns: (x, z) coordinates in meters.
+    public static func latLonToMeters(
+        lat: Double,
+        lon: Double,
+        centerLat: Double,
+        centerLon: Double
+    ) -> (x: Double, z: Double) {
+        let latRad = centerLat * .pi / 180
+
+        // Meters per degree at this latitude
+        let metersPerDegLat = 111132.92 - 559.82 * cos(2 * latRad) + 1.175 * cos(4 * latRad)
+        let metersPerDegLon = 111412.84 * cos(latRad) - 93.5 * cos(3 * latRad)
+
+        let x = (lon - centerLon) * metersPerDegLon
+        let z = (lat - centerLat) * metersPerDegLat
+
+        return (x, z)
     }
 }

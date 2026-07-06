@@ -55,7 +55,7 @@ public struct MetricSmoother {
         for index in points.indices {
             guard let current = points[index].heartRateBPM,
                   current.isFinite,
-                  WorkoutAnalyzer.validHeartRateRange.contains(current)
+                  GeoDistance.validHeartRateRange.contains(current)
             else {
                 continue
             }
@@ -65,7 +65,7 @@ public struct MetricSmoother {
             let values = points[start..<end].compactMap { point -> Double? in
                 guard let hr = point.heartRateBPM,
                       hr.isFinite,
-                      WorkoutAnalyzer.validHeartRateRange.contains(hr)
+                      GeoDistance.validHeartRateRange.contains(hr)
                 else {
                     return nil
                 }
