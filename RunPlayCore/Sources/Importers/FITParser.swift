@@ -69,35 +69,35 @@ public struct FITParser {
     public init() {}
 
     // FIT constants
-    public static let fitDataType: [UInt8] = [0x46, 0x49, 0x54, 0x20] // "FIT "
-    public static let fitEpoch: TimeInterval = 631065600 // 1989-12-31 00:00:00 UTC
+    static let fitDataType: [UInt8] = [0x46, 0x49, 0x54, 0x20] // "FIT "
+    static let fitEpoch: TimeInterval = 631065600 // 1989-12-31 00:00:00 UTC
 
     // Global message numbers
-    public static let globalMessageRecord: UInt16 = 20
+    static let globalMessageRecord: UInt16 = 20
 
     // Record field numbers
-    public static let fieldTimestamp: UInt8 = 253
-    public static let fieldPositionLat: UInt8 = 0
-    public static let fieldPositionLong: UInt8 = 1
-    public static let fieldAltitude: UInt8 = 2
-    public static let fieldDistance: UInt8 = 5
-    public static let fieldSpeed: UInt8 = 6
-    public static let fieldHeartRate: UInt8 = 3
-    public static let fieldCadence: UInt8 = 4
-    public static let fieldEnhancedAltitude: UInt8 = 78
-    public static let fieldEnhancedSpeed: UInt8 = 73
+    static let fieldTimestamp: UInt8 = 253
+    static let fieldPositionLat: UInt8 = 0
+    static let fieldPositionLong: UInt8 = 1
+    static let fieldAltitude: UInt8 = 2
+    static let fieldDistance: UInt8 = 5
+    static let fieldSpeed: UInt8 = 6
+    static let fieldHeartRate: UInt8 = 3
+    static let fieldCadence: UInt8 = 4
+    static let fieldEnhancedAltitude: UInt8 = 78
+    static let fieldEnhancedSpeed: UInt8 = 73
 
     // Scaling factors
-    public static let altitudeScale: Double = 5.0
-    public static let altitudeOffset: Double = 500.0
-    public static let distanceScale: Double = 100.0
-    public static let speedScale: Double = 1000.0
+    static let altitudeScale: Double = 5.0
+    static let altitudeOffset: Double = 500.0
+    static let distanceScale: Double = 100.0
+    static let speedScale: Double = 1000.0
 
     // Sentinel values
-    public static let invalidCoordinate: Int32 = 0x7FFFFFFF
-    public static let invalidUint16: UInt16 = 0xFFFF
-    public static let invalidUint32: UInt32 = 0xFFFFFFFF
-    public static let invalidUint8: UInt8 = 0xFF
+    static let invalidCoordinate: Int32 = 0x7FFFFFFF
+    static let invalidUint16: UInt16 = 0xFFFF
+    static let invalidUint32: UInt32 = 0xFFFFFFFF
+    static let invalidUint8: UInt8 = 0xFF
 
     /// Parse FIT binary data and return record messages.
     public static func parse(data: Data) throws -> [FITRecordMessage] {

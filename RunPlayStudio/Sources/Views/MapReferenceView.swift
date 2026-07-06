@@ -103,10 +103,10 @@ struct MapReferenceView: View {
         let lats = routeCoordinates.map { $0.latitude }
         let lons = routeCoordinates.map { $0.longitude }
 
-        let minLat = lats.min()!
-        let maxLat = lats.max()!
-        let minLon = lons.min()!
-        let maxLon = lons.max()!
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else {
+            return nil
+        }
 
         let center = CLLocationCoordinate2D(
             latitude: (minLat + maxLat) / 2,

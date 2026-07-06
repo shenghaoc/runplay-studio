@@ -45,9 +45,10 @@ public struct TCXImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No trackpoints with valid coordinates found")
         }
 
-        // Require at least some timestamps for meaningful pace/duration analysis
-        let hasAnyTimestamp = validPoints.contains { $0.time != nil }
-        guard hasAnyTimestamp else {
+        // Require at least some timestamps for meaningful pace/duration analysis.
+        // Missing timestamps between known points are interpolated below.
+        guard let timestamps = RouteTimestampResolver.resolve(validPoints.map(\.time)),
+              let startDate = timestamps.first else {
             throw WorkoutImportError.missingData("TCX file has no timestamps; cannot compute pace or duration")
         }
 
@@ -57,10 +58,8 @@ public struct TCXImporter: WorkoutImporting {
         }
 
         var routePoints: [RoutePoint] = []
-        let startDate = validPoints.first(where: { $0.time != nil })?.time ?? Date()
 
-        for raw in validPoints {
-            let timestamp = raw.time ?? startDate
+        for (raw, timestamp) in zip(validPoints, timestamps) {
             let elapsed = timestamp.timeIntervalSince(startDate)
 
             let point = RoutePoint(
@@ -85,8 +84,8 @@ public struct TCXImporter: WorkoutImporting {
         let metadata = WorkoutMetadata(
             name: sourceURL.deletingPathExtension().lastPathComponent,
             activityType: rawResult.sport ?? "running",
-            startDate: rawResult.activityId ?? validPoints.first?.time,
-            endDate: validPoints.last?.time
+            startDate: rawResult.activityId ?? routePoints.first?.timestamp,
+            endDate: routePoints.last?.timestamp
         )
 
         var workout = RunWorkout(

@@ -30,6 +30,33 @@ final class FITParserTests: XCTestCase {
         }
     }
 
+    func testFITDecoderReturnsEmptyWhenGPSRecordsHaveNoTimestamps() {
+        let records = [
+            Self.record(timestamp: nil, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            Self.record(timestamp: nil, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
+        ]
+
+        let points = FITDecoder.decode(records: records)
+
+        XCTAssertTrue(points.isEmpty)
+    }
+
+    func testFITDecoderInterpolatesPartialTimestamps() {
+        let records = [
+            Self.record(timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            Self.record(timestamp: nil, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20),
+            Self.record(timestamp: 1_020, latDegrees: 37.7751, lonDegrees: -122.4196, distanceMeters: 40),
+            Self.record(timestamp: nil, latDegrees: 37.7752, lonDegrees: -122.4197, distanceMeters: 60)
+        ]
+
+        let points = FITDecoder.decode(records: records)
+
+        XCTAssertEqual(points.count, 4)
+        XCTAssertEqual(points[1].timestamp.timeIntervalSince(points[0].timestamp), 10, accuracy: 0.001)
+        XCTAssertEqual(points[2].timestamp.timeIntervalSince(points[1].timestamp), 10, accuracy: 0.001)
+        XCTAssertEqual(points[3].timestamp.timeIntervalSince(points[2].timestamp), 1, accuracy: 0.001)
+    }
+
     private static func fitData(
         records: [(timestamp: UInt32, latDegrees: Double, lonDegrees: Double, distanceMeters: Double)]
     ) -> Data {
@@ -74,6 +101,20 @@ final class FITParserTests: XCTestCase {
         data.append(number)
         data.append(size)
         data.append(type)
+    }
+
+    private static func record(
+        timestamp: UInt32?,
+        latDegrees: Double,
+        lonDegrees: Double,
+        distanceMeters: Double
+    ) -> FITRecordMessage {
+        var record = FITRecordMessage()
+        record.timestamp = timestamp
+        record.positionLat = semicircles(latDegrees)
+        record.positionLong = semicircles(lonDegrees)
+        record.distance = UInt32(distanceMeters * 100)
+        return record
     }
 
     private static func semicircles(_ degrees: Double) -> Int32 {

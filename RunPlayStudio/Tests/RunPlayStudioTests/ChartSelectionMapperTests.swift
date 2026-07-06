@@ -6,44 +6,44 @@ final class ChartSelectionMapperTests: XCTestCase {
 
     // MARK: - Distance Mapping
 
-    func testDistanceForChartPositionNormalCase() {
+    func testDistanceForChartPositionNormalCase() throws {
         let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: 2.5,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 2500, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(distance), 2500, accuracy: 0.1)
     }
 
-    func testDistanceForChartPositionAtStart() {
+    func testDistanceForChartPositionAtStart() throws {
         let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: 0,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 0, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(distance), 0, accuracy: 0.1)
     }
 
-    func testDistanceForChartPositionAtEnd() {
+    func testDistanceForChartPositionAtEnd() throws {
         let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: 5,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 5000, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(distance), 5000, accuracy: 0.1)
     }
 
-    func testDistanceForChartPositionClampsBeforeStart() {
+    func testDistanceForChartPositionClampsBeforeStart() throws {
         let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: -1,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 0, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(distance), 0, accuracy: 0.1)
     }
 
-    func testDistanceForChartPositionClampsAfterEnd() {
+    func testDistanceForChartPositionClampsAfterEnd() throws {
         let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: 10,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 5000, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(distance), 5000, accuracy: 0.1)
     }
 
     func testDistanceForChartPositionHandlesNaN() {
@@ -51,7 +51,7 @@ final class ChartSelectionMapperTests: XCTestCase {
             positionKm: Double.nan,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 0, accuracy: 0.1)
+        XCTAssertNil(distance)
     }
 
     func testDistanceForChartPositionHandlesInfinity() {
@@ -59,7 +59,7 @@ final class ChartSelectionMapperTests: XCTestCase {
             positionKm: Double.infinity,
             totalDistanceMeters: 5000
         )
-        XCTAssertEqual(distance, 0, accuracy: 0.1)
+        XCTAssertNil(distance)
     }
 
     // MARK: - Route Point by Distance
@@ -154,6 +154,13 @@ final class ChartSelectionMapperTests: XCTestCase {
         let index = ChartSelectionMapper.routePointIndex(forChartPositionKm: 5, in: points)
 
         XCTAssertNotNil(index)
+    }
+
+    func testRoutePointIndexForInvalidChartPositionReturnsNil() {
+        let points = createSamplePoints(count: 50, totalDistance: 5000)
+        let index = ChartSelectionMapper.routePointIndex(forChartPositionKm: Double.nan, in: points)
+
+        XCTAssertNil(index)
     }
 
     // MARK: - Helpers

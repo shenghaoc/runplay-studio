@@ -45,18 +45,16 @@ public struct GPXImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No valid coordinates found in GPX file")
         }
 
-        // Require at least some timestamps for meaningful pace/duration analysis
-        let hasAnyTimestamp = validRawPoints.contains { $0.time != nil }
-        guard hasAnyTimestamp else {
+        // Require at least some timestamps for meaningful pace/duration analysis.
+        // Missing timestamps between known points are interpolated below.
+        guard let timestamps = RouteTimestampResolver.resolve(validRawPoints.map(\.time)),
+              let startDate = timestamps.first else {
             throw WorkoutImportError.missingData("GPX file has no timestamps; cannot compute pace or duration")
         }
 
-        // Use first available timestamp as reference, or current date as fallback
-        let startDate = validRawPoints.first(where: { $0.time != nil })?.time ?? Date()
         var routePoints: [RoutePoint] = []
 
-        for raw in validRawPoints {
-            let timestamp = raw.time ?? startDate
+        for (raw, timestamp) in zip(validRawPoints, timestamps) {
             let point = RoutePoint(
                 timestamp: timestamp,
                 latitude: raw.lat,

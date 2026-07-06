@@ -23,8 +23,8 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test --filter RunPlayCoreTests`: pass, 34 tests, 0 failures
-- `swift test`: pass, 295 tests, 0 failures
+- `swift test --filter RunPlayCoreTests`: pass, 38 tests, 0 failures
+- `swift test`: pass, 302 tests, 0 failures
 - Package products: `RunPlayCore`, `RunPlayStudio`
 - Test targets: `RunPlayCoreTests`, `RunPlayStudioTests`
 - No fresh manual GUI dogfood was performed in this stabilization pass
@@ -32,9 +32,10 @@ Latest verified result:
 ## Completed Capabilities
 
 - Local import: JSON, GPX, TCX, and basic FIT activity files
-- Import normalization rejects invalid coordinates, requires GPX/TCX timestamps
-  for timing analysis, rebases first nonzero TCX/FIT distances, and prevents
-  mixed supplied/computed distance series
+- Import normalization rejects invalid coordinates, requires at least one
+  GPX/TCX/FIT timestamp for timing analysis, interpolates partial missing
+  timestamps, rebases first nonzero TCX/FIT distances, and prevents mixed
+  supplied/computed distance series
 - 3D route replay with SceneKit
 - 2D MapKit route view
 - Swift Charts pace, elevation, and heart-rate metrics

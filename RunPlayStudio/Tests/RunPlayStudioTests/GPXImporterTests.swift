@@ -185,6 +185,34 @@ final class GPXImporterTests: XCTestCase {
         XCTAssertFalse(workout.hasAltitudeData)
     }
 
+    func testGPXImporterInterpolatesPartialMissingTimes() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+              </trkpt>
+              <trkpt lat="1.2974" lon="103.7774">
+                <time>2026-07-05T07:00:20Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 3)
+        XCTAssertEqual(workout.routePoints[1].elapsedSeconds, 10, accuracy: 0.001)
+        XCTAssertEqual(workout.routePoints[2].elapsedSeconds, 20, accuracy: 0.001)
+    }
+
     func testGPXImporterRejectsMissingTime() throws {
         let gpx = """
         <?xml version="1.0" encoding="UTF-8"?>

@@ -8,9 +8,9 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | Format | Status | Notes |
 | --- | --- | --- |
 | JSON | Full support | Native fixture format with route points, metadata, biometrics, and derived analysis. |
-| GPX | Track support | Parses GPS trackpoints, time, elevation, heart rate, and cadence extensions where present. Trackpoints must include timestamps for pace/duration analysis. |
-| TCX | Track support | Parses Training Center XML activities, laps, trackpoints, distance, elevation, heart rate, and cadence. First nonzero distance values are rebased to route start. |
-| FIT | Basic support | Parses common activity records for GPS, altitude, speed, heart rate, and cadence. CRC validation is not implemented; compressed timestamp headers fail with a controlled unsupported-data error. |
+| GPX | Track support | Parses GPS trackpoints, time, elevation, heart rate, and cadence extensions where present. At least one timestamp is required for pace/duration analysis; partial missing timestamps are interpolated. |
+| TCX | Track support | Parses Training Center XML activities, laps, trackpoints, distance, elevation, heart rate, and cadence. First nonzero distance values are rebased to route start; partial missing timestamps are interpolated. |
+| FIT | Basic support | Parses common activity records for GPS, altitude, speed, heart rate, and cadence. Requires at least one timestamp; CRC validation is not implemented; compressed timestamp headers fail with a controlled unsupported-data error. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
 ## Current Limitations

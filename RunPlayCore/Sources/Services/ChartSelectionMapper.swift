@@ -12,10 +12,12 @@ public struct ChartSelectionMapper {
     public static func distanceForChartPosition(
         positionKm: Double,
         totalDistanceMeters: Double
-    ) -> Double {
+    ) -> Double? {
         // Handle NaN/infinity
-        guard positionKm.isFinite, !positionKm.isNaN else {
-            return 0
+        guard positionKm.isFinite,
+              totalDistanceMeters.isFinite,
+              totalDistanceMeters >= 0 else {
+            return nil
         }
 
         let distanceMeters = positionKm * 1000
@@ -108,7 +110,9 @@ public struct ChartSelectionMapper {
         in points: [RoutePoint]
     ) -> Int? {
         let totalDistance = points.last?.distanceFromStartMeters ?? 0
-        let distance = distanceForChartPosition(positionKm: positionKm, totalDistanceMeters: totalDistance)
+        guard let distance = distanceForChartPosition(positionKm: positionKm, totalDistanceMeters: totalDistance) else {
+            return nil
+        }
         return nearestRoutePointIndex(forDistance: distance, in: points)
     }
 }

@@ -118,10 +118,10 @@ struct MetricsChartView: View {
         guard let positionKm: Double = proxy.value(atX: plotX, as: Double.self) else { return }
 
         let totalDistance = routePoints.last?.distanceFromStartMeters ?? 0
-        let distance = ChartSelectionMapper.distanceForChartPosition(
+        guard let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: positionKm,
             totalDistanceMeters: totalDistance
-        )
+        ) else { return }
 
         isDragging = true
         dragDistance = distance

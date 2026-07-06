@@ -21,7 +21,9 @@ public struct SplitCalculator {
                 let firstPoint = RoutePointInterpolator.point(at: currentSplitStart, in: points),
                 let lastPoint = RoutePointInterpolator.point(at: splitEnd, in: points)
             else {
-                break
+                currentSplitStart = splitEnd
+                splitIndex += 1
+                continue
             }
 
             let actualDistance = splitEnd - currentSplitStart

@@ -196,6 +196,41 @@ final class TCXImporterTests: XCTestCase {
         XCTAssertEqual(workout.routePoints[1].distanceFromStartMeters, 100, accuracy: 0.001)
     }
 
+    func testTCXPartialMissingTimesAreInterpolated() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Position><LatitudeDegrees>1.2976</LatitudeDegrees><LongitudeDegrees>103.7774</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Position><LatitudeDegrees>1.2986</LatitudeDegrees><LongitudeDegrees>103.7784</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let url = try createTempTCX(tcx)
+        let workout = try importer.importWorkout(from: url)
+
+        XCTAssertEqual(workout.routePoints.count, 3)
+        XCTAssertEqual(workout.routePoints[1].elapsedSeconds, 10, accuracy: 0.001)
+        XCTAssertEqual(workout.routePoints[2].elapsedSeconds, 20, accuracy: 0.001)
+    }
+
     func testTCXMissingHRDoesNotCrash() throws {
         let tcx = """
         <?xml version="1.0" encoding="UTF-8"?>

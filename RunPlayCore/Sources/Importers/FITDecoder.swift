@@ -24,6 +24,18 @@ public struct FITDecoder {
             return []
         }
 
+        let resolvedTimestamps = RouteTimestampResolver.resolve(
+            validRecords.map { record in
+                guard let timestamp = record.timestamp, timestamp != FITParser.invalidUint32 else {
+                    return nil
+                }
+                return FITParser.timestampToDate(timestamp)
+            }
+        )
+        guard let resolvedTimestamps, let startDate = resolvedTimestamps.first else {
+            return []
+        }
+
         let hasCompleteDistanceSeries = validRecords.allSatisfy { record in
             guard let distance = record.distance else { return false }
             return distance != FITParser.invalidUint32
@@ -71,16 +83,7 @@ public struct FITDecoder {
                 cadence = nil
             }
 
-            let timestamp: Date
-            if let ts = record.timestamp {
-                timestamp = FITParser.timestampToDate(ts)
-            } else if let lastTimestamp = routePoints.last?.timestamp {
-                // Estimate from previous point (1-second interval)
-                timestamp = lastTimestamp.addingTimeInterval(1.0)
-            } else {
-                // First point with no timestamp — use FIT epoch as last resort
-                timestamp = Date(timeIntervalSince1970: FITParser.fitEpoch)
-            }
+            let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
             } ?? 0
@@ -91,7 +94,7 @@ public struct FITDecoder {
                 longitude: lon,
                 altitudeMeters: altitude,
                 distanceFromStartMeters: distance,
-                elapsedSeconds: Double(index),
+                elapsedSeconds: timestamp.timeIntervalSince(startDate),
                 speedMetersPerSecond: speed,
                 heartRateBPM: heartRate,
                 cadence: cadence

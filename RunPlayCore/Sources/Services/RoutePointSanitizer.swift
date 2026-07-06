@@ -143,3 +143,54 @@ public enum RoutePointSanitizer {
         return value
     }
 }
+
+enum RouteTimestampResolver {
+
+    static func resolve(_ timestamps: [Date?]) -> [Date]? {
+        guard !timestamps.isEmpty, timestamps.contains(where: { $0 != nil }) else {
+            return nil
+        }
+
+        return timestamps.indices.map { index in
+            if let timestamp = timestamps[index] {
+                return timestamp
+            }
+
+            let previous = previousTimestamp(before: index, in: timestamps)
+            let next = nextTimestamp(after: index, in: timestamps)
+
+            switch (previous, next) {
+            case let (.some(previous), .some(next)):
+                let totalSteps = max(1, next.index - previous.index)
+                let interval = next.timestamp.timeIntervalSince(previous.timestamp) / Double(totalSteps)
+                return previous.timestamp.addingTimeInterval(interval * Double(index - previous.index))
+            case let (.some(previous), .none):
+                return previous.timestamp.addingTimeInterval(Double(index - previous.index))
+            case let (.none, .some(next)):
+                return next.timestamp.addingTimeInterval(-Double(next.index - index))
+            case (.none, .none):
+                preconditionFailure("RouteTimestampResolver requires at least one timestamp")
+            }
+        }
+    }
+
+    private static func previousTimestamp(before index: Int, in timestamps: [Date?]) -> (index: Int, timestamp: Date)? {
+        guard index > 0 else { return nil }
+        for candidate in stride(from: index - 1, through: 0, by: -1) {
+            if let timestamp = timestamps[candidate] {
+                return (candidate, timestamp)
+            }
+        }
+        return nil
+    }
+
+    private static func nextTimestamp(after index: Int, in timestamps: [Date?]) -> (index: Int, timestamp: Date)? {
+        guard index + 1 < timestamps.count else { return nil }
+        for candidate in (index + 1)..<timestamps.count {
+            if let timestamp = timestamps[candidate] {
+                return (candidate, timestamp)
+            }
+        }
+        return nil
+    }
+}
