@@ -122,15 +122,6 @@ struct SplitComparisonTableView: View {
         }
     }
 
-    private func colorForSplit(_ split: SplitComparison) -> Color {
-        switch split.winner {
-        case .primary: return .green
-        case .comparison: return .red
-        case .tie: return .secondary
-        case .unavailable: return .secondary
-        }
-    }
-
     private func deltaColor(_ delta: Double?) -> Color {
         guard let d = delta else { return .secondary }
         if abs(d) < 5 { return .secondary }

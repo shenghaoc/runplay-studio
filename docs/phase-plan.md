@@ -28,7 +28,7 @@
 - [x] Start/finish markers with labels
 - [x] Kilometer markers with poles
 - [x] Adaptive ground grid
-- [x] Camera presets (default, top-down, side)
+- [x] Camera presets (default, top-down, side, front)
 - [x] Fit-to-route camera button
 - [x] Camera controller wired to the visible SceneKit point of view
 - [x] Elevation exaggeration controls (1x, 2x, 5x, 10x)

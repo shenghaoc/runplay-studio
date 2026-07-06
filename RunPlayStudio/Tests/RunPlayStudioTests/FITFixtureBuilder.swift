@@ -35,21 +35,6 @@ struct FITFixtureBuilder {
         return data
     }
 
-    /// Build an empty FIT file (no records).
-    static func buildEmpty() -> Data {
-        var data = Data()
-
-        // Minimal header
-        data.append(14) // header length
-        data.append(16) // protocol version
-        data.append(contentsOf: [0x00, 0x00]) // profile version (little-endian)
-        data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // data size = 0
-        data.append(contentsOf: [0x46, 0x49, 0x54, 0x20]) // "FIT "
-        data.append(contentsOf: [0x00, 0x00]) // CRC
-
-        return data
-    }
-
     /// Build a FIT file with invalid header.
     static func buildInvalidHeader() -> Data {
         var data = Data()
