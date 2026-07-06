@@ -211,6 +211,24 @@ enum ComparisonWarning {
 }
 ```
 
+### ComparisonDistanceMetrics
+
+Metrics at a user-selected distance along both comparison routes.
+
+```swift
+struct ComparisonDistanceMetrics {
+    let selectedDistanceMeters: Double
+    let primaryElapsedSeconds: Double?
+    let comparisonElapsedSeconds: Double?
+    let timeDeltaSeconds: Double?
+    let primaryPaceSecondsPerKm: Double?
+    let comparisonPaceSecondsPerKm: Double?
+    let paceDeltaSecondsPerKm: Double?
+    let primaryScenePoint: RouteScenePoint?
+    let comparisonScenePoint: RouteScenePoint?
+}
+```
+
 ## 3D Types
 
 ### ComparisonRouteScene

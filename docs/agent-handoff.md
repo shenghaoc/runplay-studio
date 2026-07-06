@@ -23,7 +23,7 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test`: pass, 235 tests, 0 failures
+- `swift test`: pass, 257 tests, 0 failures
 - Package product: `RunPlayStudio`
 - Test target: `RunPlayStudioTests`
 - Validation was performed after synchronizing with the latest default branch
@@ -41,6 +41,7 @@ Latest verified result:
 - Local JSON, CSV, and PNG summary export
 - Route comparison MVP
 - 3D route comparison overlay
+- 3D comparison selected-distance markers with time/pace delta readout
 - SceneKit camera controls wired to the visible single-run and comparison scenes
 - Bundled demo comparison pair loaded on launch for immediate comparison testing
 - Private local workout ignore policy and data-handling documentation
@@ -82,6 +83,9 @@ Current comparison behavior:
 - 3D comparison supports elevation exaggeration, camera presets, fit-to-routes,
   and grid toggle. Camera wiring is fixed and unit-tested; run a normal desktop
   manual pass before marking the buttons GUI-verified.
+- 3D comparison supports a selected-distance slider that places interpolated
+  markers on both routes at the same distance, with a compact readout showing
+  elapsed time and pace deltas. Distance is clamped to the common route distance.
 - Toggle between 2D map and 3D view via segmented picker in CompareView
 - Shows warnings for different distances, insufficient overlap, different route
   endpoints, missing heart rate, missing elevation, and too few points
@@ -227,8 +231,9 @@ Continue stabilization and polish:
 - GUI dogfood the save-panel export in a normal desktop session
 - GUI dogfood single-run and comparison 3D camera controls in a normal desktop
   session
+- GUI dogfood the 3D comparison selected-distance slider in a normal desktop
+  session
 - Improve comparison chart readability when routes differ substantially
-- Consider a selected-distance marker on both routes in 3D comparison
 - Keep expanding synthetic demo assets only from anonymized or generated data
 - Keep HealthKit, cloud, accounts, telemetry, analytics, AI APIs, and advanced
   route matching out of scope until explicitly planned

@@ -115,6 +115,7 @@
 - [x] Clearer distance-alignment warning for different route shapes
 - [x] 3D comparison overlay
 - [x] 3D comparison camera controller wired to the visible SceneKit point of view
+- [x] 3D comparison selected-distance markers with time/pace delta readout
 - [ ] Manual GUI recheck of single-run and comparison 3D camera buttons after camera wiring fix
 
 ## Phase 11.5: Real-Data Safety And Demo Polish ✅

@@ -15,6 +15,7 @@ At a glance:
 - Pace, elevation, and heart-rate coloring
 - Automatic split analysis and segment highlighting
 - Route comparison with summary deltas, splits, pace chart, 2D overlay, and 3D overlay
+- Selected-distance markers in 3D comparison with time/pace delta readout
 - Local JSON, CSV, and PNG exports
 - Local-only privacy model: no account, no cloud, no telemetry, no AI API
 
@@ -35,7 +36,7 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (235 tests) |
+| `swift test` | ✅ Pass (257 tests) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Two bundled JSON demo runs auto-load |
@@ -201,7 +202,10 @@ Compare two completed runs:
 **3D comparison**: Both routes are projected into a shared coordinate space so they
 maintain correct relative positioning. Primary route is blue, comparison route is
 orange. Each route has distinct start/finish markers. Controls include elevation
-exaggeration, camera presets, fit-to-routes, and grid toggle.
+exaggeration, camera presets, fit-to-routes, and grid toggle. A distance slider
+lets you scrub along the common route distance and see where both runs were at
+that distance, with interpolated markers labeled "P X.XX km" and "C X.XX km"
+and a compact readout showing elapsed time and pace deltas.
 
 Current limitations: comparison is distance-aligned only and does not do dynamic
 time warping.

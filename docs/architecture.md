@@ -70,12 +70,16 @@ struct WorkoutComparisonService {
     func compare(primary: RunWorkout, comparison: RunWorkout) -> WorkoutComparisonSummary
     func compareSplits(primary: RunWorkout, comparison: RunWorkout) -> [SplitComparison]
     func compareMetricsOverDistance(primary: RunWorkout, comparison: RunWorkout) -> [ComparisonMetricPoint]
+    func commonDistance(primary: RunWorkout, comparison: RunWorkout) -> Double
+    func metricsAtDistance(_ distance: Double, primary: RunWorkout, comparison: RunWorkout, primaryScenePoints: [RouteScenePoint], comparisonScenePoints: [RouteScenePoint]) -> ComparisonDistanceMetrics
 }
 ```
 
 The service clamps metric series to the common distance, filters non-finite
 metric values, handles missing heart-rate/elevation data, and returns warnings
-instead of crashing on weak comparisons.
+instead of crashing on weak comparisons. The `metricsAtDistance` method uses
+linear interpolation between the two nearest points on each route to compute
+elapsed time, pace, and 3D scene position at any selected distance.
 
 ### ComparisonRouteProjectionService
 

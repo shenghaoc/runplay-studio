@@ -96,6 +96,39 @@ Latest 3D comparison dogfood notes:
   RunPlayStudio bundle, and AppleScript/System Events did not have assistive
   access on this machine.
 
+## 3D Comparison Selected-Distance Dogfood Checklist
+
+Environment:
+
+- Build from the SwiftPM package.
+- Launch the app from Xcode or a temporary `.app` bundle built from the package.
+- Use the two bundled demo runs.
+
+Checklist:
+
+- [ ] App launches without crash.
+- [ ] Open Compare view with primary and comparison workouts selected.
+- [ ] Toggle to 3D View.
+- [ ] Verify distance slider appears at the bottom of the 3D comparison view.
+- [ ] Verify distance readout shows "0.00 km / X.XX km" format.
+- [ ] Move the slider and verify both "P X.XX km" and "C X.XX km" markers appear on the routes.
+- [ ] Verify markers move along the routes as the slider is scrubbed.
+- [ ] Verify elapsed time readout updates for both primary and comparison.
+- [ ] Verify time delta shows correct direction (faster/slower).
+- [ ] Verify pace readout updates for both primary and comparison.
+- [ ] Verify pace delta shows correct direction (faster/slower).
+- [ ] Test at start distance (0 km).
+- [ ] Test at midpoint distance.
+- [ ] Test at end distance (common max).
+- [ ] Verify backward-end button resets to 0.
+- [ ] Verify forward-end button jumps to common distance max.
+- [ ] Verify slider is disabled when routes are empty.
+- [ ] Verify existing camera presets still work after slider interaction.
+- [ ] Verify existing elevation scale controls still work.
+- [ ] Verify grid toggle still works.
+- [ ] Switch back to 2D Map and verify no crash.
+- [ ] Verify existing single-run 3D replay still works.
+
 ## 3D Camera Controls Regression Checklist
 
 Environment:
