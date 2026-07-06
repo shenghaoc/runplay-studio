@@ -36,14 +36,29 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (257 tests) |
+| `swift test` | ✅ Pass (285 tests) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (28 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | ✅ Opens via `open Package.swift` |
 | Sample data loads | ✅ Two bundled JSON demo runs auto-load |
 | JSON import | ✅ Tested with bundled fixture |
 | GPX import | ✅ Tested with synthetic fixture |
-| TCX import | ✅ Tested with synthetic fixture and manual local import |
-| FIT import | ✅ Basic activity fixture covered |
+| TCX import | ✅ Tested with synthetic fixture; `.tcx` selectable in file picker |
+| FIT import | ✅ Basic activity fixture covered; `.fit` selectable in file picker |
+
+### Core Testability / Codex Cloud
+
+The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies. It can be built and tested on any platform with Swift:
+
+```bash
+# Build core library only
+swift build --target RunPlayCore
+
+# Run core tests only (no macOS UI frameworks required)
+swift test --filter RunPlayCoreTests
+```
+
+See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
 
 ## Build Requirements
 
@@ -99,8 +114,12 @@ Both approaches use the same source code. There is no separate Xcode project fil
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Full support | Trackpoints with lat/lon/elevation/time; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance |
-| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; CRC not validated |
+| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
+
+**File picker**: `.json`, `.gpx`, `.tcx`, and `.fit` files are all selectable through the macOS open panel. Unsupported extensions are rejected with a clear error message.
+
+**FIT limitations**: CRC validation is not implemented. Compressed timestamp headers are not fully supported. Only record messages (global message 20) are parsed. Signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres.
 
 ## App Features
 
