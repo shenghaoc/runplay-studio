@@ -14,6 +14,7 @@ struct Route3DReplayView: View {
     @State private var colorMode: RouteColorMode = .singleColor
     @State private var paceScale: PaceColorScale?
     @State private var hrScale: HeartRateColorScale?
+    @State private var cameraNode: SCNNode?
 
     // Camera presets
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
@@ -23,7 +24,7 @@ struct Route3DReplayView: View {
             if let scene = scene {
                 SceneView(
                     scene: scene,
-                    pointOfView: nil,
+                    pointOfView: cameraNode,
                     options: [.allowsCameraControl, .autoenablesDefaultLighting],
                     preferredFramesPerSecond: 60
                 )
@@ -232,7 +233,7 @@ struct Route3DReplayView: View {
 
             // Toggle grid
             Button(action: { showGrid.toggle() }) {
-                Image(systemName: showGrid ? "grid" : "grid")
+                Image(systemName: showGrid ? "square.grid.3x3.fill" : "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(showGrid ? .primary : .secondary)
             }
@@ -240,7 +241,7 @@ struct Route3DReplayView: View {
             .padding(6)
             .background(.ultraThinMaterial)
             .cornerRadius(6)
-            .help("Toggle grid")
+            .help(showGrid ? "Hide grid" : "Show grid")
 
             // Toggle km markers
             Button(action: { showKmMarkers.toggle() }) {
@@ -282,7 +283,11 @@ struct Route3DReplayView: View {
             hrScale = nil
         }
 
-        scene = appState.sceneBuilder.buildScene(from: scenePoints)
+        let newScene = appState.sceneBuilder.buildScene(from: scenePoints)
+        let bbox = appState.sceneBuilder.routeBoundingBox
+        cameraNode = appState.cameraController.setupCamera(in: newScene, lookingAt: bbox.center)
+        appState.cameraController.fitToRoute(center: bbox.center, extent: bbox.extent)
+        scene = newScene
 
         // Apply segment highlight if one is selected
         if let segment = appState.selectedSegment, let scene = scene {

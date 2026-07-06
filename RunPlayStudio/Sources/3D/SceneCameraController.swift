@@ -11,6 +11,7 @@ class SceneCameraController: ObservableObject {
     @Published var cameraDistance: CGFloat = 500
     @Published var cameraAngleX: CGFloat = -30 // degrees
     @Published var cameraAngleY: CGFloat = 45  // degrees
+    @Published private(set) var activeCameraNode: SCNNode?
 
     // MARK: - Configuration
 
@@ -25,7 +26,8 @@ class SceneCameraController: ObservableObject {
     private var targetPoint: SCNVector3 = SCNVector3(0, 0, 0)
 
     /// Set up camera in a scene.
-    func setupCamera(in scene: SCNScene, lookingAt center: SCNVector3) {
+    @discardableResult
+    func setupCamera(in scene: SCNScene, lookingAt center: SCNVector3) -> SCNNode {
         let camera = SCNCamera()
         camera.zNear = 1
         camera.zFar = 10000
@@ -35,22 +37,33 @@ class SceneCameraController: ObservableObject {
         node.camera = camera
         scene.rootNode.addChildNode(node)
         cameraNode = node
+        activeCameraNode = node
         targetPoint = center
 
         updateCameraPosition(lookingAt: center)
+        return node
     }
 
     /// Update camera position based on current angles and distance.
     func updateCameraPosition(lookingAt target: SCNVector3) {
         guard let camera = cameraNode else { return }
-        targetPoint = target
+        targetPoint = Self.finiteVector(target, fallback: targetPoint)
 
         let angleXRad = cameraAngleX * .pi / 180
         let angleYRad = cameraAngleY * .pi / 180
 
-        let x = target.x + cameraDistance * cos(angleXRad) * sin(angleYRad)
-        let y = target.y + cameraDistance * sin(angleXRad)
-        let z = target.z + cameraDistance * cos(angleXRad) * cos(angleYRad)
+        let safeDistance = Self.clampFinite(
+            cameraDistance,
+            min: minDistance,
+            max: maxDistance,
+            fallback: minDistance
+        )
+        cameraDistance = safeDistance
+
+        let target = targetPoint
+        let x = target.x + safeDistance * cos(angleXRad) * sin(angleYRad)
+        let y = target.y + safeDistance * sin(angleXRad)
+        let z = target.z + safeDistance * cos(angleXRad) * cos(angleYRad)
 
         camera.position = SCNVector3(x, y, z)
         camera.look(at: target)
@@ -65,7 +78,13 @@ class SceneCameraController: ObservableObject {
 
     /// Zoom by delta (positive = zoom in).
     func zoom(delta: CGFloat) {
-        cameraDistance = max(minDistance, min(maxDistance, cameraDistance - delta))
+        let safeDelta = delta.isFinite ? delta : 0
+        cameraDistance = Self.clampFinite(
+            cameraDistance - safeDelta,
+            min: minDistance,
+            max: maxDistance,
+            fallback: minDistance
+        )
         updateCameraPosition(lookingAt: targetPoint)
     }
 
@@ -79,23 +98,29 @@ class SceneCameraController: ObservableObject {
 
     /// Fit camera to show the entire route.
     func fitToRoute(center: SCNVector3, extent: CGFloat) {
-        // Calculate distance needed to see the entire route
-        let fov = cameraNode?.camera?.fieldOfView ?? 60
+        let safeCenter = Self.finiteVector(center, fallback: SCNVector3(0, 0, 0))
+        let safeExtent = Self.clampFinite(extent, min: minDistance, max: maxDistance, fallback: minDistance)
+        let fov = Self.clampFinite(
+            CGFloat(cameraNode?.camera?.fieldOfView ?? 60),
+            min: 10,
+            max: 120,
+            fallback: 60
+        )
         let fovRad = fov * .pi / 180
-        let distance = extent / (2 * tan(fovRad / 2)) * 1.2 // 20% margin
+        let distance = safeExtent / (2 * tan(fovRad / 2)) * 1.35
 
-        targetPoint = center
-        cameraDistance = max(minDistance, min(maxDistance, distance))
+        targetPoint = safeCenter
+        cameraDistance = Self.clampFinite(distance, min: minDistance, max: maxDistance, fallback: minDistance)
         cameraAngleX = -30
         cameraAngleY = 45
 
-        updateCameraPosition(lookingAt: center)
+        updateCameraPosition(lookingAt: safeCenter)
     }
 
     /// Focus camera on a specific route point.
     func focusOn(point: RouteScenePoint, distance: CGFloat = 200) {
         let target = SCNVector3(point.xMeters, point.yMeters, point.zMeters)
-        cameraDistance = distance
+        cameraDistance = Self.clampFinite(distance, min: minDistance, max: maxDistance, fallback: 200)
         updateCameraPosition(lookingAt: target)
     }
 
@@ -116,6 +141,20 @@ class SceneCameraController: ObservableObject {
             cameraAngleY = 90
         }
         updateCameraPosition(lookingAt: targetPoint)
+    }
+
+    // MARK: - Helpers
+
+    private static func finiteVector(_ vector: SCNVector3, fallback: SCNVector3) -> SCNVector3 {
+        guard vector.x.isFinite, vector.y.isFinite, vector.z.isFinite else {
+            return fallback
+        }
+        return vector
+    }
+
+    private static func clampFinite(_ value: CGFloat, min minValue: CGFloat, max maxValue: CGFloat, fallback: CGFloat) -> CGFloat {
+        guard value.isFinite else { return fallback }
+        return max(minValue, min(maxValue, value))
     }
 }
 

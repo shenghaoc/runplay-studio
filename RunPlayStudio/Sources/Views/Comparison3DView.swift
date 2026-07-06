@@ -12,6 +12,7 @@ struct Comparison3DView: View {
     @State private var comparisonScene: ComparisonRouteScene?
     @State private var showGrid: Bool = true
     @State private var elevationScale: Double = 2.0
+    @State private var cameraNode: SCNNode?
 
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
 
@@ -20,7 +21,7 @@ struct Comparison3DView: View {
             if let scene = scene {
                 SceneView(
                     scene: scene,
-                    pointOfView: nil,
+                    pointOfView: cameraNode,
                     options: [.allowsCameraControl, .autoenablesDefaultLighting],
                     preferredFramesPerSecond: 60
                 )
@@ -189,7 +190,7 @@ struct Comparison3DView: View {
 
             // Toggle grid
             Button(action: { showGrid.toggle() }) {
-                Image(systemName: showGrid ? "grid" : "grid")
+                Image(systemName: showGrid ? "square.grid.3x3.fill" : "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(showGrid ? .primary : .secondary)
             }
@@ -197,7 +198,7 @@ struct Comparison3DView: View {
             .padding(6)
             .background(.ultraThinMaterial)
             .cornerRadius(6)
-            .help("Toggle grid")
+            .help(showGrid ? "Hide grid" : "Show grid")
         }
     }
 
@@ -214,10 +215,11 @@ struct Comparison3DView: View {
         )
         comparisonScene = result
 
-        scene = appState.comparisonSceneBuilder.buildScene(from: result)
-
-        // Fit camera on first build
-        fitToRoutes()
+        let newScene = appState.comparisonSceneBuilder.buildScene(from: result)
+        let bbox = appState.comparisonSceneBuilder.routeBoundingBox(for: result)
+        cameraNode = appState.comparisonCameraController.setupCamera(in: newScene, lookingAt: bbox.center)
+        appState.comparisonCameraController.fitToRoute(center: bbox.center, extent: bbox.extent)
+        scene = newScene
     }
 
     private func fitToRoutes() {
