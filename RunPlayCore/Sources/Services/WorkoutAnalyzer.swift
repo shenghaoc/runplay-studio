@@ -13,6 +13,10 @@ public class WorkoutAnalyzer {
 
     /// Analyze a workout in-place, calculating summary, splits, and segments.
     public func analyze(_ workout: inout RunWorkout) {
+        workout.routePoints = RoutePointSanitizer.normalize(
+            workout.routePoints,
+            distancePolicy: .useSuppliedDistancesWhenValid
+        )
         calculateDerivedMetrics(&workout)
         workout.summary = calculateSummary(workout)
         workout.splits = SplitCalculator.calculateSplits(from: workout)

@@ -137,7 +137,7 @@ final class WorkoutComparisonTests: XCTestCase {
 
         let split = service.compareSplits(primary: primary, comparison: comparison)[0]
 
-        XCTAssertEqual(split.formattedPaceDelta, "-0:55 /km faster")
+        XCTAssertEqual(split.formattedPaceDelta, "-1:00 /km faster")
     }
 
     // MARK: - Metric Series

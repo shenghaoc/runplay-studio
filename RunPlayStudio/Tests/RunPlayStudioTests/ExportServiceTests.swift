@@ -164,7 +164,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(json.format, .json)
         XCTAssertEqual(splits.format, .splitsCSV)
         XCTAssertEqual(segmentCSV.format, .segmentsCSV)
-        XCTAssertEqual(combined.format, .splitsCSV)
+        XCTAssertEqual(combined.format, .combinedCSV)
 
         let jsonText = try XCTUnwrap(String(data: json.data, encoding: .utf8))
         let splitsText = try XCTUnwrap(String(data: splits.data, encoding: .utf8))
@@ -211,8 +211,8 @@ final class ExportServiceTests: XCTestCase {
 
     func testFilenameBuilderForPNG() {
         let workout = createSampleWorkout()
-        let filename = ExportFilenameBuilder.filename(for: workout, format: .json)
-        XCTAssertTrue(filename.hasSuffix(".json"))
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
+        XCTAssertTrue(filename.hasSuffix(".png"))
     }
 
     // MARK: - Edge Cases
@@ -309,8 +309,8 @@ final class ExportServiceTests: XCTestCase {
 
     func testFilenameBuilderSupportsPNG() {
         let workout = createSampleWorkout()
-        let filename = ExportFilenameBuilder.filename(for: workout, format: .json)
-        XCTAssertTrue(filename.hasSuffix(".json"))
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
+        XCTAssertTrue(filename.hasSuffix(".png"))
         XCTAssertFalse(filename.contains(" "))
     }
 
@@ -338,7 +338,8 @@ final class ExportServiceTests: XCTestCase {
         do {
             let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
             XCTAssertGreaterThan(result.data.count, 0)
-            XCTAssertTrue(result.filename.hasSuffix(".json"))
+            XCTAssertEqual(result.format, .png)
+            XCTAssertTrue(result.filename.hasSuffix(".png"))
         } catch {
             // Expected in headless CI - verify error is about rendering, not data
             XCTAssertTrue(error.localizedDescription.contains("rendering") ||

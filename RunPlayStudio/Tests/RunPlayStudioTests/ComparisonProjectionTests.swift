@@ -347,6 +347,21 @@ final class ComparisonProjectionTests: XCTestCase {
         XCTAssertGreaterThan(bbox.extent, 0)
     }
 
+    func testComparisonSceneBuilderTogglesGridAfterBuild() {
+        let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
+        let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)
+
+        let comparisonScene = service.project(primary: primary, comparison: comparison)
+        let builder = ComparisonSceneBuilder()
+        let scene = builder.buildScene(from: comparisonScene)
+
+        XCTAssertFalse(scene.rootNode.childNodes.contains { $0.isHidden })
+
+        builder.showGroundGrid = false
+
+        XCTAssertTrue(scene.rootNode.childNodes.contains { $0.isHidden })
+    }
+
     func testComparisonSceneBuilderDistanceMarkers() {
         let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
         let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)

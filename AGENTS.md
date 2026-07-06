@@ -72,8 +72,7 @@ open Package.swift
 
 ### File Import
 
-- File picker uses `UTType(filenameExtension:)` for dynamic type resolution
-- `.tcx` and `.fit` files are selectable even without system UTI declarations
+- File picker allows generic file data so `.tcx` and `.fit` remain selectable in the Swift Package app path
 - Extension validation happens in `WorkoutImporterFactory`
 
 ### Camera Convention
@@ -119,7 +118,7 @@ open Package.swift
 ## FIT Limitations
 
 - CRC validation is not implemented
-- Compressed timestamp headers are not fully supported
+- Compressed timestamp headers fail with a controlled unsupported-data error
 - Only record messages (global message 20) are parsed
 - Signed Int32 coordinate decoding uses bit-pattern semantics
 

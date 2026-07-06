@@ -1,19 +1,12 @@
 import SwiftUI
 import RunPlayCore
 import UniformTypeIdentifiers
-import RunPlayCore
 
-/// Supported import file types built dynamically from the importer factory.
-/// Uses `UTType(filenameExtension:)` so that .tcx and .fit files are selectable
-/// even when no system-wide UTI declaration exists (Swift Package apps lack Info.plist).
+/// Supported import file types for the Swift Package app path.
+/// Generic data keeps custom .tcx/.fit files selectable; importer validation
+/// still rejects unsupported extensions with a clear error.
 extension UTType {
-    static let supportedImportTypes: [UTType] = {
-        let types = WorkoutImporterFactory.supportedExtensions.compactMap { ext in
-            UTType(filenameExtension: ext)
-        }
-        // Fallback to .data if no types resolved (should not happen)
-        return types.isEmpty ? [.data] : types
-    }()
+    static let supportedImportTypes: [UTType] = [.data]
 }
 
 /// Main content view with sidebar, 3D route view, and detail panels.

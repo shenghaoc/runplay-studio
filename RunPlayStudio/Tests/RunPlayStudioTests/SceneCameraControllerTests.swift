@@ -1,7 +1,7 @@
 import SceneKit
 import RunPlayCore
 import XCTest
-import RunPlayCore
+
 @testable import RunPlayStudio
 
 final class SceneCameraControllerTests: XCTestCase {

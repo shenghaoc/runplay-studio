@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(UniformTypeIdentifiers)
-import UniformTypeIdentifiers
-#endif
 
 /// Protocol for workout file importers.
 public protocol WorkoutImporting {

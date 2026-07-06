@@ -1,7 +1,7 @@
 import SwiftUI
 import RunPlayCore
 import SceneKit
-import RunPlayCore
+
 
 /// Displays a 3D comparison of two routes in the same scene.
 struct Comparison3DView: View {
@@ -166,6 +166,13 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Side view")
+
+                Button(action: { setCameraPreset(.front) }) {
+                    Image(systemName: "arrow.up.to.line")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Front view")
             }
             .padding(6)
             .background(.ultraThinMaterial)
@@ -198,7 +205,7 @@ struct Comparison3DView: View {
             Divider()
 
             // Toggle grid
-            Button(action: { showGrid.toggle() }) {
+            Button(action: { setGridVisible(!showGrid) }) {
                 Image(systemName: showGrid ? "square.grid.3x3.fill" : "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(showGrid ? .primary : .secondary)
@@ -372,5 +379,10 @@ struct Comparison3DView: View {
     private func setElevationScale(_ scale: Double) {
         elevationScale = scale
         buildScene()
+    }
+
+    private func setGridVisible(_ isVisible: Bool) {
+        showGrid = isVisible
+        appState.comparisonSceneBuilder.showGroundGrid = isVisible
     }
 }

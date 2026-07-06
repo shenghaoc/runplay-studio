@@ -144,8 +144,8 @@ public struct WorkoutComparisonService {
         var distance: Double = 0
 
         while distance <= maxDistance {
-            let primaryPoint = findNearestPoint(at: distance, in: primaryPoints)
-            let comparisonPoint = findNearestPoint(at: distance, in: comparisonPoints)
+            let primaryPoint = RoutePointInterpolator.point(at: distance, in: primaryPoints)
+            let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparisonPoints)
 
             let paceDelta: Double?
             if let pp = primaryPoint?.paceSecondsPerKilometer,
@@ -204,8 +204,8 @@ public struct WorkoutComparisonService {
             )
         }
 
-        let primaryInterp = interpolatePoint(at: selectedDistance, in: primary.routePoints)
-        let comparisonInterp = interpolatePoint(at: selectedDistance, in: comparison.routePoints)
+        let primaryInterp = RoutePointInterpolator.point(at: selectedDistance, in: primary.routePoints)
+        let comparisonInterp = RoutePointInterpolator.point(at: selectedDistance, in: comparison.routePoints)
 
         let primaryElapsed = finite(primaryInterp?.elapsedSeconds)
         let comparisonElapsed = finite(comparisonInterp?.elapsedSeconds)
@@ -225,8 +225,8 @@ public struct WorkoutComparisonService {
             paceDelta = nil
         }
 
-        let primaryScene = interpolateScenePoint(at: selectedDistance, in: primaryScenePoints)
-        let comparisonScene = interpolateScenePoint(at: selectedDistance, in: comparisonScenePoints)
+        let primaryScene = RoutePointInterpolator.scenePoint(at: selectedDistance, in: primaryScenePoints)
+        let comparisonScene = RoutePointInterpolator.scenePoint(at: selectedDistance, in: comparisonScenePoints)
 
         return ComparisonDistanceMetrics(
             selectedDistanceMeters: selectedDistance,
@@ -416,36 +416,36 @@ public struct WorkoutComparisonService {
     }
 
     private func routeEndpointsDiffer(primary: RunWorkout, comparison: RunWorkout) -> Bool {
-        guard
-            let primaryStart = primary.routePoints.first,
-            let primaryEnd = primary.routePoints.last,
-            let comparisonStart = comparison.routePoints.first,
-            let comparisonEnd = comparison.routePoints.last
-        else {
+        let commonDistance = min(primary.summary.totalDistanceMeters, comparison.summary.totalDistanceMeters)
+        guard commonDistance > 0 else {
             return false
         }
 
-        let commonDistance = min(primary.summary.totalDistanceMeters, comparison.summary.totalDistanceMeters)
         let threshold = max(200, min(commonDistance * 0.1, 1_000))
+        let sampleDistances = [0, commonDistance * 0.5, commonDistance]
 
-        return coordinateDistance(primaryStart, comparisonStart) > threshold
-            || coordinateDistance(primaryEnd, comparisonEnd) > threshold
+        return sampleDistances.contains { distance in
+            guard
+                let primaryPoint = RoutePointInterpolator.point(at: distance, in: primary.routePoints),
+                let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparison.routePoints)
+            else {
+                return false
+            }
+            return coordinateDistance(primaryPoint, comparisonPoint) > threshold
+        }
     }
 
     private func coordinateDistance(_ a: RoutePoint, _ b: RoutePoint) -> Double {
-        guard a.latitude.isFinite, a.longitude.isFinite, b.latitude.isFinite, b.longitude.isFinite else {
+        guard GeoDistance.isValidCoordinate(lat: a.latitude, lon: a.longitude),
+              GeoDistance.isValidCoordinate(lat: b.latitude, lon: b.longitude) else {
             return .infinity
         }
 
-        let earthRadiusMeters = 6_371_000.0
-        let lat1 = a.latitude * .pi / 180
-        let lat2 = b.latitude * .pi / 180
-        let deltaLat = (b.latitude - a.latitude) * .pi / 180
-        let deltaLon = (b.longitude - a.longitude) * .pi / 180
-
-        let haversine = sin(deltaLat / 2) * sin(deltaLat / 2)
-            + cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
-        let angularDistance = 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
-        return earthRadiusMeters * angularDistance
+        return GeoDistance.distanceMeters(
+            fromLat: a.latitude,
+            lon: a.longitude,
+            toLat: b.latitude,
+            lon: b.longitude
+        )
     }
 }

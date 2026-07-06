@@ -185,7 +185,7 @@ final class GPXImporterTests: XCTestCase {
         XCTAssertFalse(workout.hasAltitudeData)
     }
 
-    func testGPXImporterHandlesMissingTime() throws {
+    func testGPXImporterRejectsMissingTime() throws {
         let gpx = """
         <?xml version="1.0" encoding="UTF-8"?>
         <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
@@ -204,12 +204,13 @@ final class GPXImporterTests: XCTestCase {
 
         let data = Data(gpx.utf8)
         let tempURL = try writeTempFile(data: data, extension: "gpx")
-        let workout = try GPXImporter().importWorkout(from: tempURL)
-
-        XCTAssertEqual(workout.routePoints.count, 2)
-        // Should still have elapsed time (synthetic from index)
-        XCTAssertEqual(workout.routePoints[0].elapsedSeconds, 0)
-        XCTAssertEqual(workout.routePoints[1].elapsedSeconds, 1)
+        XCTAssertThrowsError(try GPXImporter().importWorkout(from: tempURL)) { error in
+            guard case WorkoutImportError.missingData(let message) = error else {
+                XCTFail("Expected missingData error, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("timestamps"))
+        }
     }
 
     func testGPXImporterThrowsOnEmptyTrack() throws {

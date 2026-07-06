@@ -49,8 +49,7 @@ public struct SegmentDetector {
         guard totalDistance >= distanceMeters else { return nil }
 
         var bestPace: Double = .infinity
-        var bestStartIdx = 0
-        var bestEndIdx = 0
+        var bestResult: WindowEvaluation?
         var bestStartDist: Double = 0
         var bestEndDist: Double = 0
 
@@ -64,8 +63,7 @@ public struct SegmentDetector {
             if let result = evaluateWindow(points: points, startDist: windowStart, endDist: windowEnd) {
                 if result.pace < bestPace && result.pace > 0 && result.pace.isFinite {
                     bestPace = result.pace
-                    bestStartIdx = result.startIdx
-                    bestEndIdx = result.endIdx
+                    bestResult = result
                     bestStartDist = windowStart
                     bestEndDist = windowEnd
                 }
@@ -74,10 +72,8 @@ public struct SegmentDetector {
             windowStart += stepSize
         }
 
-        guard bestPace.isFinite && bestPace > 0 else { return nil }
-
-        let (startElapsed, endElapsed) = getElapsedRange(points: points, startIdx: bestStartIdx, endIdx: bestEndIdx)
-        let hrAvg = getAverageHeartRate(points: points, range: bestStartIdx..<bestEndIdx+1)
+        guard bestPace.isFinite && bestPace > 0, let bestResult else { return nil }
+        let sourceRange = sourceRange(points: points, startDist: bestStartDist, endDist: bestEndDist)
 
         return SegmentHighlight(
             type: type,
@@ -85,14 +81,14 @@ public struct SegmentDetector {
             subtitle: formatPace(bestPace),
             startDistanceMeters: bestStartDist,
             endDistanceMeters: bestEndDist,
-            startElapsedSeconds: startElapsed,
-            endElapsedSeconds: endElapsed,
-            durationSeconds: endElapsed - startElapsed,
+            startElapsedSeconds: bestResult.startElapsed,
+            endElapsedSeconds: bestResult.endElapsed,
+            durationSeconds: bestResult.endElapsed - bestResult.startElapsed,
             distanceMeters: distanceMeters,
             paceSecondsPerKilometer: bestPace,
-            elevationDeltaMeters: getElevationDelta(points: points, range: bestStartIdx..<bestEndIdx+1),
-            averageHeartRate: hrAvg,
-            sourcePointRange: bestStartIdx..<bestEndIdx+1,
+            elevationDeltaMeters: bestResult.elevationDelta,
+            averageHeartRate: bestResult.averageHeartRate,
+            sourcePointRange: sourceRange,
             displayPriority: type == .fastest400m ? 1 : 2
         )
     }
@@ -106,8 +102,7 @@ public struct SegmentDetector {
         guard totalDistance >= distanceMeters else { return nil }
 
         var worstPace: Double = 0
-        var bestStartIdx = 0
-        var bestEndIdx = 0
+        var bestResult: WindowEvaluation?
         var bestStartDist: Double = 0
         var bestEndDist: Double = 0
 
@@ -120,8 +115,7 @@ public struct SegmentDetector {
             if let result = evaluateWindow(points: points, startDist: windowStart, endDist: windowEnd) {
                 if result.pace > worstPace && result.pace.isFinite && result.pace < 1200 {
                     worstPace = result.pace
-                    bestStartIdx = result.startIdx
-                    bestEndIdx = result.endIdx
+                    bestResult = result
                     bestStartDist = windowStart
                     bestEndDist = windowEnd
                 }
@@ -130,10 +124,8 @@ public struct SegmentDetector {
             windowStart += stepSize
         }
 
-        guard worstPace > 0 && worstPace.isFinite else { return nil }
-
-        let (startElapsed, endElapsed) = getElapsedRange(points: points, startIdx: bestStartIdx, endIdx: bestEndIdx)
-        let hrAvg = getAverageHeartRate(points: points, range: bestStartIdx..<bestEndIdx+1)
+        guard worstPace > 0 && worstPace.isFinite, let bestResult else { return nil }
+        let sourceRange = sourceRange(points: points, startDist: bestStartDist, endDist: bestEndDist)
 
         return SegmentHighlight(
             type: type,
@@ -141,14 +133,14 @@ public struct SegmentDetector {
             subtitle: formatPace(worstPace),
             startDistanceMeters: bestStartDist,
             endDistanceMeters: bestEndDist,
-            startElapsedSeconds: startElapsed,
-            endElapsedSeconds: endElapsed,
-            durationSeconds: endElapsed - startElapsed,
+            startElapsedSeconds: bestResult.startElapsed,
+            endElapsedSeconds: bestResult.endElapsed,
+            durationSeconds: bestResult.endElapsed - bestResult.startElapsed,
             distanceMeters: distanceMeters,
             paceSecondsPerKilometer: worstPace,
-            elevationDeltaMeters: getElevationDelta(points: points, range: bestStartIdx..<bestEndIdx+1),
-            averageHeartRate: hrAvg,
-            sourcePointRange: bestStartIdx..<bestEndIdx+1,
+            elevationDeltaMeters: bestResult.elevationDelta,
+            averageHeartRate: bestResult.averageHeartRate,
+            sourcePointRange: sourceRange,
             displayPriority: 3
         )
     }
@@ -167,43 +159,53 @@ public struct SegmentDetector {
 
     private static func findBiggestElevationSegment(_ workout: RunWorkout, ascending: Bool) -> SegmentHighlight? {
         let points = workout.routePoints
-        guard points.count >= 10 else { return nil }
+        guard points.count >= 2 else { return nil }
 
         // Check for altitude data
         let hasAltitude = points.contains { $0.altitudeMeters != nil }
         guard hasAltitude else { return nil }
 
-        // Use a window of ~10% of route or at least 10 points
-        let windowSize = max(10, points.count / 10)
+        let totalDistance = points.last?.distanceFromStartMeters ?? 0
+        guard totalDistance >= 100 else { return nil }
+
+        let windowDistance = max(100, min(1_000, totalDistance * 0.2))
+        let stepSize = max(25, windowDistance / 10)
         var bestDelta: Double = 0
-        var bestStartIdx = 0
-        var bestEndIdx = 0
+        var bestStartDist: Double = 0
+        var bestEndDist: Double = 0
+        var bestStartPoint: RoutePoint?
+        var bestEndPoint: RoutePoint?
 
-        for i in 0...(points.count - windowSize) {
-            let startPt = points[i]
-            let endPt = points[i + windowSize - 1]
+        var windowStart: Double = 0
+        while windowStart + windowDistance <= totalDistance {
+            let windowEnd = windowStart + windowDistance
+            defer { windowStart += stepSize }
 
-            guard let startAlt = startPt.altitudeMeters,
-                  let endAlt = endPt.altitudeMeters else { continue }
+            guard
+                let startPt = RoutePointInterpolator.point(at: windowStart, in: points),
+                let endPt = RoutePointInterpolator.point(at: windowEnd, in: points),
+                let startAlt = startPt.altitudeMeters,
+                let endAlt = endPt.altitudeMeters
+            else { continue }
 
             let delta = endAlt - startAlt
-            let dist = endPt.distanceFromStartMeters - startPt.distanceFromStartMeters
+            let dist = windowEnd - windowStart
             guard dist > 0 else { continue }
 
             if (ascending && delta > bestDelta) || (!ascending && delta < bestDelta) {
                 bestDelta = delta
-                bestStartIdx = i
-                bestEndIdx = i + windowSize - 1
+                bestStartDist = windowStart
+                bestEndDist = windowEnd
+                bestStartPoint = startPt
+                bestEndPoint = endPt
             }
         }
 
-        guard bestDelta != 0 else { return nil }
+        guard bestDelta != 0, let startPt = bestStartPoint, let endPt = bestEndPoint else { return nil }
 
-        let startPt = points[bestStartIdx]
-        let endPt = points[bestEndIdx]
-        let dist = endPt.distanceFromStartMeters - startPt.distanceFromStartMeters
-        let (startElapsed, endElapsed) = getElapsedRange(points: points, startIdx: bestStartIdx, endIdx: bestEndIdx)
-        let hrAvg = getAverageHeartRate(points: points, range: bestStartIdx..<bestEndIdx+1)
+        let dist = bestEndDist - bestStartDist
+        let hrAvg = RoutePointInterpolator.averageHeartRate(in: points, from: bestStartDist, to: bestEndDist)
+        let sourceRange = sourceRange(points: points, startDist: bestStartDist, endDist: bestEndDist)
 
         let type: SegmentType = ascending ? .biggestClimb : .biggestDescent
 
@@ -211,15 +213,15 @@ public struct SegmentDetector {
             type: type,
             title: type.displayName,
             subtitle: String(format: "%.0f m %@", abs(bestDelta), ascending ? "↑" : "↓"),
-            startDistanceMeters: startPt.distanceFromStartMeters,
-            endDistanceMeters: endPt.distanceFromStartMeters,
-            startElapsedSeconds: startElapsed,
-            endElapsedSeconds: endElapsed,
-            durationSeconds: endElapsed - startElapsed,
+            startDistanceMeters: bestStartDist,
+            endDistanceMeters: bestEndDist,
+            startElapsedSeconds: startPt.elapsedSeconds,
+            endElapsedSeconds: endPt.elapsedSeconds,
+            durationSeconds: endPt.elapsedSeconds - startPt.elapsedSeconds,
             distanceMeters: dist,
             elevationDeltaMeters: bestDelta,
             averageHeartRate: hrAvg,
-            sourcePointRange: bestStartIdx..<bestEndIdx+1,
+            sourcePointRange: sourceRange,
             displayPriority: ascending ? 4 : 5
         )
     }
@@ -227,17 +229,22 @@ public struct SegmentDetector {
     // MARK: - Helpers
 
     /// Evaluate a distance window and return pace and point indices.
-    private static func evaluateWindow(points: [RoutePoint], startDist: Double, endDist: Double) -> (startIdx: Int, endIdx: Int, pace: Double)? {
-        // Find first point at or after startDist
-        guard let startIdx = points.firstIndex(where: { $0.distanceFromStartMeters >= startDist }) else { return nil }
-        // Find last point at or before endDist
-        guard let endIdx = points.lastIndex(where: { $0.distanceFromStartMeters <= endDist }) else { return nil }
-        guard endIdx > startIdx else { return nil }
+    private struct WindowEvaluation {
+        let startElapsed: Double
+        let endElapsed: Double
+        let pace: Double
+        let elevationDelta: Double?
+        let averageHeartRate: Double?
+    }
 
-        let startPoint = points[startIdx]
-        let endPoint = points[endIdx]
+    private static func evaluateWindow(points: [RoutePoint], startDist: Double, endDist: Double) -> WindowEvaluation? {
+        guard
+            let startPoint = RoutePointInterpolator.point(at: startDist, in: points),
+            let endPoint = RoutePointInterpolator.point(at: endDist, in: points)
+        else { return nil }
+
         let elapsed = endPoint.elapsedSeconds - startPoint.elapsedSeconds
-        let distance = endPoint.distanceFromStartMeters - startPoint.distanceFromStartMeters
+        let distance = endDist - startDist
 
         guard distance > 0, elapsed > 0 else { return nil }
 
@@ -246,7 +253,20 @@ public struct SegmentDetector {
         // Filter unreasonable pace values
         guard pace >= 120, pace <= 1200, pace.isFinite, !pace.isNaN else { return nil }
 
-        return (startIdx, endIdx, pace)
+        let elevationDelta: Double?
+        if let startAltitude = startPoint.altitudeMeters, let endAltitude = endPoint.altitudeMeters {
+            elevationDelta = endAltitude - startAltitude
+        } else {
+            elevationDelta = nil
+        }
+
+        return WindowEvaluation(
+            startElapsed: startPoint.elapsedSeconds,
+            endElapsed: endPoint.elapsedSeconds,
+            pace: pace,
+            elevationDelta: elevationDelta,
+            averageHeartRate: RoutePointInterpolator.averageHeartRate(in: points, from: startDist, to: endDist)
+        )
     }
 
     /// Get elapsed time range for point indices.
@@ -270,6 +290,15 @@ public struct SegmentDetector {
         let hrValues = slice.compactMap { $0.heartRateBPM }
         guard !hrValues.isEmpty else { return nil }
         return hrValues.reduce(0, +) / Double(hrValues.count)
+    }
+
+    private static func sourceRange(points: [RoutePoint], startDist: Double, endDist: Double) -> Range<Int> {
+        guard !points.isEmpty else { return 0..<0 }
+        let startIdx = RoutePointInterpolator.firstIndex(atOrAfter: startDist, in: points) ?? 0
+        let endIdx = RoutePointInterpolator.lastIndex(atOrBefore: endDist, in: points) ?? startIdx
+        let lower = max(0, min(startIdx, points.count - 1))
+        let upper = max(lower + 1, min(points.count, endIdx + 1))
+        return lower..<upper
     }
 
     private static func formatPace(_ paceSeconds: Double) -> String {

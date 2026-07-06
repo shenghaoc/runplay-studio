@@ -37,38 +37,37 @@ public struct GPXImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No trackpoints found in GPX file")
         }
 
+        let validRawPoints = rawPoints.filter {
+            GeoDistance.isValidCoordinate(lat: $0.lat, lon: $0.lon)
+        }
+
+        guard !validRawPoints.isEmpty else {
+            throw WorkoutImportError.missingData("No valid coordinates found in GPX file")
+        }
+
+        guard validRawPoints.allSatisfy({ $0.time != nil }) else {
+            throw WorkoutImportError.missingData("GPX trackpoints must include timestamps for pace and duration analysis")
+        }
+
+        let startDate = validRawPoints.first?.time ?? Date()
         var routePoints: [RoutePoint] = []
-        var cumulativeDistance: Double = 0
-        let startDate = rawPoints.first?.time ?? Date()
 
-        for (index, raw) in rawPoints.enumerated() {
-            // Skip invalid coordinates
-            guard GeoDistance.isValidCoordinate(lat: raw.lat, lon: raw.lon) else {
-                continue
-            }
-
-            let elapsed = raw.time?.timeIntervalSince(startDate) ?? Double(index)
-
-            if index > 0 {
-                let prev = rawPoints[index - 1]
-                cumulativeDistance += GeoDistance.distanceMeters(
-                    fromLat: prev.lat, lon: prev.lon,
-                    toLat: raw.lat, lon: raw.lon
-                )
-            }
-
+        for raw in validRawPoints {
+            let timestamp = raw.time ?? startDate
             let point = RoutePoint(
-                timestamp: raw.time ?? startDate.addingTimeInterval(elapsed),
+                timestamp: timestamp,
                 latitude: raw.lat,
                 longitude: raw.lon,
                 altitudeMeters: raw.ele,
-                distanceFromStartMeters: cumulativeDistance,
-                elapsedSeconds: elapsed,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: timestamp.timeIntervalSince(startDate),
                 heartRateBPM: raw.hr,
                 cadence: raw.cad
             )
             routePoints.append(point)
         }
+
+        routePoints = RoutePointSanitizer.normalize(routePoints)
 
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid coordinates found in GPX file")
@@ -77,8 +76,8 @@ public struct GPXImporter: WorkoutImporting {
         let metadata = WorkoutMetadata(
             name: sourceURL.deletingPathExtension().lastPathComponent,
             activityType: "running",
-            startDate: rawPoints.first?.time,
-            endDate: rawPoints.last?.time
+            startDate: routePoints.first?.timestamp,
+            endDate: routePoints.last?.timestamp
         )
 
         var workout = RunWorkout(

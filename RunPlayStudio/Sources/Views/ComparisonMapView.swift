@@ -1,7 +1,7 @@
 import SwiftUI
 import RunPlayCore
 import MapKit
-import RunPlayCore
+
 
 /// Map view showing two routes overlaid for comparison.
 struct ComparisonMapView: View {

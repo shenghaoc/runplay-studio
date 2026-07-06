@@ -5,18 +5,22 @@ public enum ExportFormat: String, CaseIterable {
     case json = "JSON Summary"
     case splitsCSV = "Splits CSV"
     case segmentsCSV = "Segments CSV"
+    case combinedCSV = "Combined CSV"
+    case png = "PNG Summary Card"
 
     public var fileExtension: String {
         switch self {
         case .json: return "json"
-        case .splitsCSV, .segmentsCSV: return "csv"
+        case .splitsCSV, .segmentsCSV, .combinedCSV: return "csv"
+        case .png: return "png"
         }
     }
 
     public var utType: String {
         switch self {
         case .json: return "public.json"
-        case .splitsCSV, .segmentsCSV: return "public.comma-separated-values-text"
+        case .splitsCSV, .segmentsCSV, .combinedCSV: return "public.comma-separated-values-text"
+        case .png: return "public.png"
         }
     }
 }
@@ -103,8 +107,8 @@ public struct ExportService {
         guard let data = csv.data(using: .utf8) else {
             throw ExportError.encodingFailed("Could not encode CSV as UTF-8")
         }
-        let filename = ExportFilenameBuilder.filename(for: workout, format: .splitsCSV)
-        return ExportResult(format: .splitsCSV, filename: filename, data: data)
+        let filename = ExportFilenameBuilder.filename(for: workout, format: .combinedCSV)
+        return ExportResult(format: .combinedCSV, filename: filename, data: data)
     }
 
     // MARK: - CSV Generation

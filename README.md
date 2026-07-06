@@ -30,25 +30,25 @@ At a glance:
 
 ## Current Status
 
-**✅ Verified Launchable** — Swift Package builds, tests pass, app launches with sample data.
+**✅ SwiftPM Verified** — Swift Package builds and tests pass. A fresh manual GUI launch/file-picker pass was not performed in this verification pass.
 
 | Check | Status |
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (285 tests) |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (28 tests, platform-neutral) |
+| `swift test` | ✅ Pass (295 tests) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (34 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS workflow |
-| Xcode launch | ✅ Opens via `open Package.swift` |
-| Sample data loads | ✅ Two bundled JSON demo runs auto-load |
+| Xcode launch | Not reverified in this pass |
+| Sample data loads | ✅ Covered by app-state and fixture tests |
 | JSON import | ✅ Tested with bundled fixture |
 | GPX import | ✅ Tested with synthetic fixture |
-| TCX import | ✅ Tested with synthetic fixture; `.tcx` selectable in file picker |
-| FIT import | ✅ Basic activity fixture covered; `.fit` selectable in file picker |
+| TCX import | ✅ Tested with synthetic fixture; picker allows `.tcx` via generic data selection |
+| FIT import | ✅ Basic activity fixture covered; picker allows `.fit` via generic data selection |
 
 ### Core Testability / Codex Cloud
 
-The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies. It can be built and tested on any platform with Swift:
+The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies. Use these commands when a review environment needs to avoid SwiftUI/AppKit/SceneKit/MapKit/Charts:
 
 ```bash
 # Build core library only
@@ -112,14 +112,14 @@ Both approaches use the same source code. There is no separate Xcode project fil
 | Format | Status | Notes |
 |--------|--------|-------|
 | JSON   | ✅ Full support | Native format, all fields supported |
-| GPX    | ✅ Full support | Trackpoints with lat/lon/elevation/time; HR/cadence via extensions |
+| GPX    | ✅ Track support | Trackpoints must include timestamps for pace/duration analysis; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance |
 | FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
-**File picker**: `.json`, `.gpx`, `.tcx`, and `.fit` files are all selectable through the macOS open panel. Unsupported extensions are rejected with a clear error message.
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
 
-**FIT limitations**: CRC validation is not implemented. Compressed timestamp headers are not fully supported. Only record messages (global message 20) are parsed. Signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres.
+**FIT limitations**: CRC validation is not implemented. Compressed timestamp headers fail with a controlled unsupported-data error. Only record messages (global message 20) are parsed. Signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres.
 
 ## App Features
 
@@ -139,7 +139,7 @@ The 3D view is RunPlay Studio's main differentiator. It renders your run as an e
 - **Orbit** — Click and drag to rotate view
 - **Zoom** — Scroll wheel or pinch to zoom in/out
 - **Fit Route** — Button to see entire route at once
-- **Camera presets** — Default, top-down, and side views
+- **Camera presets** — Default, top-down, side, and front views
 - **Elevation scale** — Choose 1x, 2x, 5x, or 10x exaggeration
 - **Color mode** — Single color, pace-based, or elevation-based
 - **Toggle grid** — Show/hide ground grid
@@ -164,8 +164,9 @@ Routes with elevation changes are visualized with configurable exaggeration:
 - Reference context for the 3D view
 
 ### Charts (Swift Charts)
-- Pace, elevation, heart rate over time
+- Pace, elevation, heart rate, and speed over distance
 - Interactive scrubbing synced to replay
+- Heart-rate chart shows an explicit no-data state when usable HR samples are unavailable
 
 ### Split Analysis
 - Automatic kilometer splits

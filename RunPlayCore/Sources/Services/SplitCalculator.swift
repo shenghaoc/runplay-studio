@@ -12,47 +12,35 @@ public struct SplitCalculator {
         let splitDistance: Double = 1000.0 // 1 km
         var currentSplitStart: Double = 0
         var splitIndex = 1
+        let totalDistance = points.last?.distanceFromStartMeters ?? 0
 
-        while currentSplitStart < (points.last?.distanceFromStartMeters ?? 0) {
-            let splitEnd = currentSplitStart + splitDistance
+        while currentSplitStart < totalDistance {
+            let splitEnd = min(currentSplitStart + splitDistance, totalDistance)
 
-            // Find points within this split
-            let splitPoints = points.filter {
-                $0.distanceFromStartMeters >= currentSplitStart &&
-                $0.distanceFromStartMeters < splitEnd
-            }
-
-            guard let firstPoint = splitPoints.first,
-                  let lastPoint = splitPoints.last else {
+            guard
+                let firstPoint = RoutePointInterpolator.point(at: currentSplitStart, in: points),
+                let lastPoint = RoutePointInterpolator.point(at: splitEnd, in: points)
+            else {
                 break
             }
 
-            // Interpolate exact split boundaries
-            let actualDistance = min(splitEnd, points.last?.distanceFromStartMeters ?? splitEnd) - currentSplitStart
+            let actualDistance = splitEnd - currentSplitStart
             let elapsed = lastPoint.elapsedSeconds - firstPoint.elapsedSeconds
 
-            guard elapsed > 0 else {
-                currentSplitStart = splitEnd
-                splitIndex += 1
-                continue
-            }
+            guard actualDistance > 0, elapsed > 0, elapsed.isFinite else { break }
 
             let pace = (elapsed / actualDistance) * 1000.0
 
-            // Average heart rate for split
-            let hrValues = splitPoints.compactMap { $0.heartRateBPM }
-            let avgHR = hrValues.isEmpty ? nil : hrValues.reduce(0, +) / Double(hrValues.count)
-
-            // Elevation gain for split
-            var elevGain: Double = 0
-            var prevAlt: Double?
-            for point in splitPoints {
-                if let alt = point.altitudeMeters, let prev = prevAlt {
-                    let diff = alt - prev
-                    if diff > 0 { elevGain += diff }
-                }
-                prevAlt = point.altitudeMeters
-            }
+            let avgHR = RoutePointInterpolator.averageHeartRate(
+                in: points,
+                from: currentSplitStart,
+                to: splitEnd
+            )
+            let elevGain = RoutePointInterpolator.elevationGain(
+                in: points,
+                from: currentSplitStart,
+                to: splitEnd
+            )
 
             let split = RunSplit(
                 splitIndex: splitIndex,
@@ -68,38 +56,6 @@ public struct SplitCalculator {
 
             currentSplitStart = splitEnd
             splitIndex += 1
-
-            // Stop if we've covered the total distance
-            if currentSplitStart >= (points.last?.distanceFromStartMeters ?? 0) {
-                break
-            }
-        }
-
-        // Add partial final split if needed
-        if let lastPoint = points.last,
-           let lastSplit = splits.last,
-           lastSplit.endDistanceMeters < lastPoint.distanceFromStartMeters {
-            let startDist = lastSplit.endDistanceMeters
-            let endDist = lastPoint.distanceFromStartMeters
-            let dist = endDist - startDist
-
-            let startPoint = points.first { $0.distanceFromStartMeters >= startDist }
-            let endPoint = points.last { $0.distanceFromStartMeters <= endDist }
-
-            if let start = startPoint, let end = endPoint {
-                let elapsed = end.elapsedSeconds - start.elapsedSeconds
-                let pace = dist > 0 ? (elapsed / dist) * 1000.0 : 0
-
-                let partialSplit = RunSplit(
-                    splitIndex: splits.count + 1,
-                    distanceMeters: dist,
-                    elapsedSeconds: elapsed,
-                    paceSecondsPerKilometer: pace,
-                    startDistanceMeters: startDist,
-                    endDistanceMeters: endDist
-                )
-                splits.append(partialSplit)
-            }
         }
 
         return splits

@@ -108,23 +108,21 @@ public struct FITParser {
         var offset = 0
 
         // Parse header
-        let headerLength = try parseHeader(data: data, offset: &offset)
+        let dataEndOffset = try parseHeader(data: data, offset: &offset)
 
         // Parse data records
         var definitions: [UInt8: FITDefinitionMessage] = [:]
         var records: [FITRecordMessage] = []
 
-        while offset < data.count - 2 { // Leave room for CRC
-            guard offset < data.count else { break }
+        while offset < dataEndOffset {
+            guard offset < dataEndOffset else { break }
 
             let recordHeader = data[offset]
             offset += 1
 
             // Check for compressed timestamp header (bit 7 set)
             if recordHeader & 0x80 != 0 {
-                // Compressed timestamp - skip for now
-                // This is a simplified handling
-                continue
+                throw FITError.corruptedData("Compressed timestamp records are not supported")
             }
 
             // Bit 6: 0=data message, 1=definition message
@@ -133,7 +131,12 @@ public struct FITParser {
 
             if isDefinition {
                 // Definition message
-                let def = try parseDefinition(data: data, offset: &offset, localType: localType)
+                let def = try parseDefinition(
+                    data: data,
+                    offset: &offset,
+                    dataEndOffset: dataEndOffset,
+                    localType: localType
+                )
                 definitions[localType] = def
             } else {
                 // Data message
@@ -145,12 +148,16 @@ public struct FITParser {
                     let record = try parseRecordMessage(
                         data: data,
                         offset: &offset,
+                        dataEndOffset: dataEndOffset,
                         definition: def
                     )
                     records.append(record)
                 } else {
                     // Skip non-record messages
                     let dataSize = def.fields.reduce(0) { $0 + Int($1.size) }
+                    guard offset + dataSize <= dataEndOffset else {
+                        throw FITError.unexpectedEndOfFile
+                    }
                     offset += dataSize
                 }
             }
@@ -159,9 +166,9 @@ public struct FITParser {
         return records
     }
 
-    /// Parse FIT file header. Returns header length.
+    /// Parse FIT file header. Returns the exclusive end offset for data records.
     private static func parseHeader(data: Data, offset: inout Int) throws -> Int {
-        guard data.count >= 14 else {
+        guard data.count >= 12 else {
             throw FITError.invalidHeader
         }
 
@@ -182,17 +189,25 @@ public struct FITParser {
             throw FITError.invalidDataType
         }
 
+        let dataSize = Int(readUInt32(data: data[4..<8], littleEndian: true))
+        let dataStart = headerLength
+        let dataEnd = dataStart + dataSize
+        guard data.count >= dataEnd + 2 else {
+            throw FITError.unexpectedEndOfFile
+        }
+
         offset = headerLength
-        return headerLength
+        return dataEnd
     }
 
     /// Parse a definition message.
     private static func parseDefinition(
         data: Data,
         offset: inout Int,
+        dataEndOffset: Int,
         localType: UInt8
     ) throws -> FITDefinitionMessage {
-        guard offset + 5 <= data.count else {
+        guard offset + 5 <= dataEndOffset else {
             throw FITError.unexpectedEndOfFile
         }
 
@@ -218,7 +233,7 @@ public struct FITParser {
 
         var fields: [FITFieldDefinition] = []
         for _ in 0..<fieldCount {
-            guard offset + 3 <= data.count else {
+            guard offset + 3 <= dataEndOffset else {
                 throw FITError.unexpectedEndOfFile
             }
 
@@ -245,13 +260,14 @@ public struct FITParser {
     private static func parseRecordMessage(
         data: Data,
         offset: inout Int,
+        dataEndOffset: Int,
         definition: FITDefinitionMessage
     ) throws -> FITRecordMessage {
         var record = FITRecordMessage()
         let isLittleEndian = definition.architecture == 0
 
         for field in definition.fields {
-            guard offset + Int(field.size) <= data.count else {
+            guard offset + Int(field.size) <= dataEndOffset else {
                 throw FITError.unexpectedEndOfFile
             }
 
@@ -320,12 +336,7 @@ public struct FITParser {
     }
 
     private static func readInt32(data: Data.SubSequence, littleEndian: Bool) -> Int32 {
-        let bytes = Array(data.prefix(4))
-        if littleEndian {
-            return Int32(UInt32(bytes[0]) | (UInt32(bytes[1]) << 8) | (UInt32(bytes[2]) << 16) | (UInt32(bytes[3]) << 24))
-        } else {
-            return Int32(UInt32(bytes[0]) << 24 | UInt32(bytes[1]) << 16 | UInt32(bytes[2]) << 8 | UInt32(bytes[3]))
-        }
+        Int32(bitPattern: readUInt32(data: data, littleEndian: littleEndian))
     }
 
     private static func readUInt32(data: Data.SubSequence, littleEndian: Bool) -> UInt32 {

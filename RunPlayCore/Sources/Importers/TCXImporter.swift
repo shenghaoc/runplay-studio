@@ -45,42 +45,39 @@ public struct TCXImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No trackpoints with valid coordinates found")
         }
 
-        // Convert to RoutePoints
+        guard validPoints.allSatisfy({ $0.time != nil }) else {
+            throw WorkoutImportError.missingData("TCX trackpoints must include timestamps for pace and duration analysis")
+        }
+
+        let hasCompleteSuppliedDistanceSeries = validPoints.allSatisfy { point in
+            guard let distance = point.distanceMeters else { return false }
+            return distance.isFinite && distance >= 0
+        }
+
         var routePoints: [RoutePoint] = []
-        var cumulativeDistance: Double = 0
         let startDate = validPoints.first?.time ?? Date()
 
-        for (index, raw) in validPoints.enumerated() {
-            let elapsed = raw.time?.timeIntervalSince(startDate) ?? Double(index)
-
-            // Calculate distance from coordinates
-            if index > 0 {
-                let prev = validPoints[index - 1]
-                let computedDistance = GeoDistance.distanceMeters(
-                    fromLat: prev.latitude, lon: prev.longitude,
-                    toLat: raw.latitude, lon: raw.longitude
-                )
-
-                // Use TCX distance if available and nondecreasing, otherwise computed
-                if let tcxDistance = raw.distanceMeters, tcxDistance >= cumulativeDistance {
-                    cumulativeDistance = tcxDistance
-                } else if computedDistance > 0 {
-                    cumulativeDistance += computedDistance
-                }
-            }
+        for raw in validPoints {
+            let timestamp = raw.time ?? startDate
+            let elapsed = timestamp.timeIntervalSince(startDate)
 
             let point = RoutePoint(
-                timestamp: raw.time ?? startDate.addingTimeInterval(elapsed),
+                timestamp: timestamp,
                 latitude: raw.latitude,
                 longitude: raw.longitude,
                 altitudeMeters: raw.altitudeMeters,
-                distanceFromStartMeters: cumulativeDistance,
+                distanceFromStartMeters: raw.distanceMeters ?? 0,
                 elapsedSeconds: elapsed,
                 heartRateBPM: raw.heartRateBPM.map { Double($0) },
                 cadence: raw.cadence.map { Double($0) }
             )
             routePoints.append(point)
         }
+
+        routePoints = RoutePointSanitizer.normalize(
+            routePoints,
+            distancePolicy: hasCompleteSuppliedDistanceSeries ? .useSuppliedDistancesWhenValid : .computeFromCoordinates
+        )
 
         // Build metadata
         let metadata = WorkoutMetadata(

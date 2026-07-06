@@ -3,6 +3,10 @@
 Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
+Current stabilization note: automated validation passed with `swift test`
+(295 tests) and `swift test --filter RunPlayCoreTests` (34 tests). A fresh
+manual GUI pass was not performed for this update.
+
 ## Privacy Checklist Before Commit
 
 - [x] Keep private workout files untracked or ignored.
@@ -70,7 +74,7 @@ Checklist:
 - [x] Verify both routes appear in the same 3D space with correct relative positioning.
 - [x] Verify the 3D legend shows route names and colors.
 - [ ] Verify "Fit Routes" button frames both routes after the camera wiring fix.
-- [ ] Verify camera presets (default, top-down, side) work after the camera wiring fix.
+- [ ] Verify camera presets (default, top-down, side, front) work after the camera wiring fix.
 - [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
 - [x] Verify grid toggle shows/hides the ground grid.
 - [x] Verify warnings appear in the 3D view when applicable.
@@ -91,6 +95,8 @@ Latest 3D comparison dogfood notes:
 - Segmented picker toggles between 2D and 3D views without crash.
 - Camera-control wiring has been fixed in code and covered by
   `SceneCameraControllerTests`.
+- Grid and kilometer-marker visibility toggles are covered by SceneKit builder
+  tests, but still need a normal desktop interaction pass.
 - Current GUI recheck of the fixed Fit Routes and camera preset buttons is
   still pending because the automation layer could not attach to the temporary
   RunPlayStudio bundle, and AppleScript/System Events did not have assistive
@@ -157,7 +163,7 @@ Checklist:
 Latest 3D camera-control dogfood notes:
 
 - `swift build` passed after the camera wiring fix.
-- `swift test` passed with 235 tests, including 8 focused
+- `swift test` passed with 295 tests, including focused
   `SceneCameraControllerTests`.
 - A fresh temporary app bundle was staged under `/private/tmp` from the current
   SwiftPM debug executable and launched successfully.

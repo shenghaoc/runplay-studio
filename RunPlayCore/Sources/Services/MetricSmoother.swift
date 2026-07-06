@@ -45,4 +45,36 @@ public struct MetricSmoother {
 
         return result
     }
+
+    /// Smooth heart-rate values without compacting away route-point alignment.
+    public static func smoothHeartRate(from points: [RoutePoint], windowSize: Int = 5) -> [Double?] {
+        let window = max(1, windowSize)
+        let halfWindow = window / 2
+        var result: [Double?] = Array(repeating: nil, count: points.count)
+
+        for index in points.indices {
+            guard let current = points[index].heartRateBPM,
+                  current.isFinite,
+                  WorkoutAnalyzer.validHeartRateRange.contains(current)
+            else {
+                continue
+            }
+
+            let start = max(points.startIndex, index - halfWindow)
+            let end = min(points.endIndex, index + halfWindow + 1)
+            let values = points[start..<end].compactMap { point -> Double? in
+                guard let hr = point.heartRateBPM,
+                      hr.isFinite,
+                      WorkoutAnalyzer.validHeartRateRange.contains(hr)
+                else {
+                    return nil
+                }
+                return hr
+            }
+            guard !values.isEmpty else { continue }
+            result[index] = values.reduce(0, +) / Double(values.count)
+        }
+
+        return result
+    }
 }
