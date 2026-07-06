@@ -24,8 +24,7 @@ public struct RouteProjectionService {
 
         // Filter out points with invalid coordinates, preserving original indices
         let validIndexedPoints: [(index: Int, point: RoutePoint)] = points.enumerated().compactMap { idx, point in
-            guard point.latitude.isFinite && point.longitude.isFinite &&
-                  !point.latitude.isNaN && !point.longitude.isNaN else {
+            guard GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude) else {
                 return nil
             }
             return (index: idx, point: point)

@@ -97,12 +97,12 @@ public struct GPXImporter: WorkoutImporting {
 // MARK: - GPX XML Parser
 
 private struct RawGPXPoint {
-    public var lat: Double
-    public var lon: Double
-    public var ele: Double?
-    public var time: Date?
-    public var hr: Double?
-    public var cad: Double?
+    var lat: Double
+    var lon: Double
+    var ele: Double?
+    var time: Date?
+    var hr: Double?
+    var cad: Double?
 }
 
 private class GPXXMLParser: NSObject, XMLParserDelegate {
@@ -119,7 +119,7 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
     private var inTrackpoint = false
     private var inExtensions = false
 
-    public init(xml: String) {
+    init(xml: String) {
         self.xml = xml
     }
 

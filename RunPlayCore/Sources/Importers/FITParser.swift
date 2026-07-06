@@ -115,8 +115,6 @@ public struct FITParser {
         var records: [FITRecordMessage] = []
 
         while offset < dataEndOffset {
-            guard offset < dataEndOffset else { break }
-
             let recordHeader = data[offset]
             offset += 1
 

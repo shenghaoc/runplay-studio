@@ -80,11 +80,11 @@ public enum RoutePointSanitizer {
                 altitudeMeters: finiteOptional(point.altitudeMeters),
                 distanceFromStartMeters: distance,
                 elapsedSeconds: elapsed,
-                speedMetersPerSecond: positiveFiniteOptional(point.speedMetersPerSecond),
+                speedMetersPerSecond: finiteOptional(point.speedMetersPerSecond),
                 paceSecondsPerKilometer: positiveFiniteOptional(point.paceSecondsPerKilometer),
                 heartRateBPM: validHeartRate(point.heartRateBPM),
-                cadence: positiveFiniteOptional(point.cadence),
-                horizontalAccuracy: positiveFiniteOptional(point.horizontalAccuracy)
+                cadence: finiteOptional(point.cadence),
+                horizontalAccuracy: finiteOptional(point.horizontalAccuracy)
             ))
         }
 
@@ -169,7 +169,9 @@ enum RouteTimestampResolver {
             case let (.none, .some(next)):
                 return next.timestamp.addingTimeInterval(-Double(next.index - index))
             case (.none, .none):
-                preconditionFailure("RouteTimestampResolver requires at least one timestamp")
+                // Unreachable if caller verified at least one non-nil timestamp.
+                // Return distant past as safe fallback instead of crashing.
+                return Date.distantPast
             }
         }
     }

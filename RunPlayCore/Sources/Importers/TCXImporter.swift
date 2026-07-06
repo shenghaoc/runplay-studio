@@ -105,19 +105,19 @@ public struct TCXImporter: WorkoutImporting {
 // MARK: - TCX XML Parser
 
 private struct RawTCXResult {
-    public var trackpoints: [RawTCXTrackpoint]
-    public var sport: String?
-    public var activityId: Date?
+    var trackpoints: [RawTCXTrackpoint]
+    var sport: String?
+    var activityId: Date?
 }
 
 private struct RawTCXTrackpoint {
-    public var time: Date?
-    public var latitude: Double
-    public var longitude: Double
-    public var altitudeMeters: Double?
-    public var distanceMeters: Double?
-    public var heartRateBPM: Int?
-    public var cadence: Int?
+    var time: Date?
+    var latitude: Double
+    var longitude: Double
+    var altitudeMeters: Double?
+    var distanceMeters: Double?
+    var heartRateBPM: Int?
+    var cadence: Int?
 }
 
 private class TCXXMLParser: NSObject, XMLParserDelegate {
@@ -141,7 +141,7 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     private var currentHR: Int?
     private var currentCadence: Int?
 
-    public init(xml: String) {
+    init(xml: String) {
         self.xml = xml
     }
 

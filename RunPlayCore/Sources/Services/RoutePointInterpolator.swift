@@ -84,13 +84,37 @@ public enum RoutePointInterpolator {
     }
 
     /// Find the index of the first point at or after the given distance.
+    /// Uses binary search for O(log n) performance on sorted route arrays.
     public static func firstIndex(atOrAfter distance: Double, in points: [RoutePoint]) -> Int? {
-        points.firstIndex { $0.distanceFromStartMeters >= distance }
+        guard !points.isEmpty else { return nil }
+        var low = 0
+        var high = points.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if points[mid].distanceFromStartMeters < distance {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return points[low].distanceFromStartMeters >= distance ? low : nil
     }
 
     /// Find the index of the last point at or before the given distance.
+    /// Uses binary search for O(log n) performance on sorted route arrays.
     public static func lastIndex(atOrBefore distance: Double, in points: [RoutePoint]) -> Int? {
-        points.lastIndex { $0.distanceFromStartMeters <= distance }
+        guard !points.isEmpty else { return nil }
+        var low = 0
+        var high = points.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2 // Round up to avoid infinite loop
+            if points[mid].distanceFromStartMeters <= distance {
+                low = mid
+            } else {
+                high = mid - 1
+            }
+        }
+        return points[low].distanceFromStartMeters <= distance ? low : nil
     }
 
     /// Compute average heart rate for points within a distance range.

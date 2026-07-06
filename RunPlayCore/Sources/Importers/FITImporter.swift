@@ -43,8 +43,8 @@ public struct FITImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("FIT file has no timestamps; cannot compute pace or duration")
         }
 
-        // Decode records into route points
-        let routePoints = FITDecoder.decode(records: records)
+        // Decode records into route points (pass already-filtered GPS records)
+        let routePoints = FITDecoder.decode(records: gpsRecords)
 
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
