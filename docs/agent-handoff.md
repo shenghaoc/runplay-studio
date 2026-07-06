@@ -23,8 +23,8 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test --filter RunPlayCoreTests`: pass, 38 tests, 0 failures
-- `swift test`: pass, 302 tests, 0 failures
+- `swift test --filter RunPlayCoreTests`: pass, 70 tests, 0 failures
+- `swift test`: pass, 334 tests, 0 failures
 - Package products: `RunPlayCore`, `RunPlayStudio`
 - Test targets: `RunPlayCoreTests`, `RunPlayStudioTests`
 - No fresh manual GUI dogfood was performed in this stabilization pass

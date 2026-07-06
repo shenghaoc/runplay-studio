@@ -36,8 +36,8 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (302 tests) |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (38 tests, platform-neutral) |
+| `swift test` | ✅ Pass (334 tests) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (70 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | Not reverified in this pass |
 | Sample data loads | ✅ Covered by app-state and fixture tests |

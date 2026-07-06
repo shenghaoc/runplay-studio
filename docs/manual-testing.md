@@ -4,7 +4,7 @@ Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
 Current stabilization note: automated validation passed with `swift test`
-(302 tests) and `swift test --filter RunPlayCoreTests` (38 tests). A fresh
+(334 tests) and `swift test --filter RunPlayCoreTests` (70 tests). A fresh
 manual GUI pass was not performed for this update.
 
 ## Privacy Checklist Before Commit
@@ -163,7 +163,7 @@ Checklist:
 Latest 3D camera-control dogfood notes:
 
 - `swift build` passed after the camera wiring fix.
-- `swift test` passed with 302 tests, including focused
+- `swift test` passed with 334 tests, including focused
   `SceneCameraControllerTests`.
 - A fresh temporary app bundle was staged under `/private/tmp` from the current
   SwiftPM debug executable and launched successfully.
