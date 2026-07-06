@@ -1,26 +1,30 @@
 import Foundation
 import RunPlayCore
 import SceneKit
-import RunPlayCore
 
 /// Controls the camera for the 3D route scene.
 ///
 /// Provides orbit, pan, and zoom functionality with a reset capability.
+///
+/// Camera angle convention:
+/// - `cameraAngleX`: elevation angle in degrees. Positive = camera above target (looking down).
+///   Range: 1° (nearly horizontal) to 89° (nearly straight down).
+/// - `cameraAngleY`: azimuth angle in degrees. 0° = front, 90° = right side, etc.
 class SceneCameraController: ObservableObject {
 
     // MARK: - Published State
 
     @Published var cameraDistance: CGFloat = 500
-    @Published var cameraAngleX: CGFloat = -30 // degrees
-    @Published var cameraAngleY: CGFloat = 45  // degrees
+    @Published var cameraAngleX: CGFloat = 30  // degrees, positive = above
+    @Published var cameraAngleY: CGFloat = 45  // degrees, azimuth
     @Published private(set) var activeCameraNode: SCNNode?
 
     // MARK: - Configuration
 
     let minDistance: CGFloat = 50
     let maxDistance: CGFloat = 2000
-    let minAngleX: CGFloat = -89
-    let maxAngleX: CGFloat = -1
+    let minAngleX: CGFloat = 1    // nearly horizontal
+    let maxAngleX: CGFloat = 89   // nearly straight down
 
     // MARK: - Camera Node
 
@@ -63,6 +67,7 @@ class SceneCameraController: ObservableObject {
         cameraDistance = safeDistance
 
         let target = targetPoint
+        // Positive angleX => camera above target
         let x = target.x + safeDistance * cos(angleXRad) * sin(angleYRad)
         let y = target.y + safeDistance * sin(angleXRad)
         let z = target.z + safeDistance * cos(angleXRad) * cos(angleYRad)
@@ -74,7 +79,8 @@ class SceneCameraController: ObservableObject {
     /// Orbit by delta angles.
     func orbit(deltaX: CGFloat, deltaY: CGFloat) {
         cameraAngleY += deltaX
-        cameraAngleX = max(minAngleX, min(maxAngleX, cameraAngleX + deltaY))
+        // Negate deltaY so dragging up increases elevation (camera goes higher)
+        cameraAngleX = max(minAngleX, min(maxAngleX, cameraAngleX - deltaY))
         updateCameraPosition(lookingAt: targetPoint)
     }
 
@@ -93,7 +99,7 @@ class SceneCameraController: ObservableObject {
     /// Reset camera to default position.
     func reset() {
         cameraDistance = 500
-        cameraAngleX = -30
+        cameraAngleX = 30
         cameraAngleY = 45
         updateCameraPosition(lookingAt: targetPoint)
     }
@@ -113,7 +119,7 @@ class SceneCameraController: ObservableObject {
 
         targetPoint = safeCenter
         cameraDistance = Self.clampFinite(distance, min: minDistance, max: maxDistance, fallback: minDistance)
-        cameraAngleX = -30
+        cameraAngleX = 30
         cameraAngleY = 45
 
         updateCameraPosition(lookingAt: safeCenter)
@@ -130,16 +136,16 @@ class SceneCameraController: ObservableObject {
     func setPresetView(_ preset: CameraPreset) {
         switch preset {
         case .default:
-            cameraAngleX = -30
+            cameraAngleX = 30
             cameraAngleY = 45
         case .topDown:
-            cameraAngleX = -89
+            cameraAngleX = 85  // Nearly straight down
             cameraAngleY = 0
         case .side:
-            cameraAngleX = -5
+            cameraAngleX = 5   // Nearly horizontal, low angle
             cameraAngleY = 0
         case .front:
-            cameraAngleX = -10
+            cameraAngleX = 10  // Slightly above
             cameraAngleY = 90
         }
         updateCameraPosition(lookingAt: targetPoint)
