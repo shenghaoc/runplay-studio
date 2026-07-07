@@ -202,15 +202,18 @@ public struct FITParser {
             throw FITError.invalidDataType
         }
 
-        // Validate header CRC (only present in 14-byte headers)
+        // Validate header CRC (only present in 14-byte headers).
+        // A header CRC of 0x0000 means the CRC was not computed; skip validation.
         if headerLength == 14 {
             guard data.count >= 14 else {
                 throw FITError.invalidHeader
             }
             let expectedCRC = UInt16(data[12]) | (UInt16(data[13]) << 8)
-            let computedCRC = crc16(over: data[0..<12])
-            guard expectedCRC == computedCRC else {
-                throw FITError.headerCRCMismatch
+            if expectedCRC != 0 {
+                let computedCRC = crc16(over: data[0..<12])
+                guard expectedCRC == computedCRC else {
+                    throw FITError.headerCRCMismatch
+                }
             }
         }
 
@@ -392,18 +395,18 @@ public struct FITParser {
         return record
     }
 
-    // MARK: - CRC-16 XMODEM
+    // MARK: - CRC-16 (FIT SDK)
 
-    /// CRC-16 lookup table for XMODEM polynomial 0x1021.
+    /// CRC-16 lookup table for FIT SDK polynomial 0x8005 (reflected: 0xA001).
     private static let crc16Table: [UInt16] = {
         var table = [UInt16](repeating: 0, count: 256)
         for i in 0..<256 {
-            var crc = UInt16(i) << 8
+            var crc = UInt16(i)
             for _ in 0..<8 {
-                if crc & 0x8000 != 0 {
-                    crc = (crc << 1) ^ 0x1021
+                if crc & 1 != 0 {
+                    crc = (crc >> 1) ^ 0xA001
                 } else {
-                    crc = crc << 1
+                    crc >>= 1
                 }
             }
             table[i] = crc
@@ -411,12 +414,12 @@ public struct FITParser {
         return table
     }()
 
-    /// Compute CRC-16 XMODEM over a byte sequence.
+    /// Compute CRC-16 over a byte sequence using the FIT SDK algorithm.
     public static func crc16<S: Sequence>(over bytes: S) -> UInt16 where S.Element == UInt8 {
         var crc: UInt16 = 0
         for byte in bytes {
-            let index = Int((crc >> 8) ^ UInt16(byte)) & 0xFF
-            crc = (crc << 8) ^ crc16Table[index]
+            let index = Int(crc ^ UInt16(byte)) & 0xFF
+            crc = (crc >> 8) ^ crc16Table[index]
         }
         return crc
     }
