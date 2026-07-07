@@ -19,6 +19,7 @@ build/
 
 # Swift Package Manager
 .build/
+.swiftpm/
 Packages/
 Package.pins
 Package.resolved
