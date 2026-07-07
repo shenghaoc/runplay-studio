@@ -35,6 +35,8 @@ struct ReplayControlsView: View {
                     Image(systemName: "backward.frame.fill")
                 }
                 .buttonStyle(.plain)
+                .help("Step backward")
+                .accessibilityLabel("Step backward")
                 .disabled(!controller.isPlaying && controller.state.currentTime == 0)
 
                 // Play/Pause
@@ -43,6 +45,8 @@ struct ReplayControlsView: View {
                         .font(.title2)
                 }
                 .buttonStyle(.plain)
+                .help(controller.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
+                .accessibilityLabel(controller.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
                 .keyboardShortcut(.space, modifiers: [])
 
                 // Step forward
@@ -50,6 +54,8 @@ struct ReplayControlsView: View {
                     Image(systemName: "forward.frame.fill")
                 }
                 .buttonStyle(.plain)
+                .help("Step forward")
+                .accessibilityLabel("Step forward")
                 .disabled(!controller.isPlaying && controller.state.currentTime >= controller.state.totalDuration)
 
                 Spacer()
