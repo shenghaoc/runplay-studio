@@ -615,6 +615,81 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertEqual(metrics.paceDeltaFormatted, "N/A")
     }
 
+    // MARK: - Chart Data With Different Route Lengths
+
+    func testMetricSeriesVeryDifferentRouteLengths() {
+        let primary = createSampleWorkout(distance: 20000, pace: 300)
+        let comparison = createSampleWorkout(distance: 3000, pace: 330)
+        let metrics = service.compareMetricsOverDistance(primary: primary, comparison: comparison)
+
+        XCTAssertFalse(metrics.isEmpty)
+        // Should clamp to shorter route (3000m)
+        if let last = metrics.last {
+            XCTAssertLessThanOrEqual(last.distanceMeters, 3100)
+        }
+        // All pace values should be finite or nil
+        for point in metrics {
+            if let p = point.primaryPace {
+                XCTAssertTrue(p.isFinite, "Primary pace must be finite at \(point.distanceMeters)m")
+                XCTAssertGreaterThan(p, 0, "Primary pace must be positive")
+            }
+            if let p = point.comparisonPace {
+                XCTAssertTrue(p.isFinite, "Comparison pace must be finite at \(point.distanceMeters)m")
+                XCTAssertGreaterThan(p, 0, "Comparison pace must be positive")
+            }
+        }
+    }
+
+    func testMetricSeriesVeryDifferentRouteLengthsNoInfiniteValues() {
+        let primary = createSampleWorkout(distance: 15000, pace: 280)
+        let comparison = createSampleWorkout(distance: 2000, pace: 350)
+        let metrics = service.compareMetricsOverDistance(primary: primary, comparison: comparison)
+
+        for point in metrics {
+            XCTAssertFalse(point.distanceMeters.isInfinite, "Distance must not be infinite")
+            XCTAssertFalse(point.distanceMeters.isNaN, "Distance must not be NaN")
+            XCTAssertFalse(point.distanceKm.isInfinite, "DistanceKm must not be infinite")
+            if let d = point.paceDelta {
+                XCTAssertTrue(d.isFinite, "Pace delta must be finite at \(point.distanceKm) km")
+            }
+        }
+    }
+
+    func testDemoFixturesStillLoad() throws {
+        let primary = try loadFixture("sample_run.json")
+        let comparison = try loadFixture("fixtures/comparison_park_run.json")
+
+        XCTAssertFalse(primary.routePoints.isEmpty)
+        XCTAssertFalse(comparison.routePoints.isEmpty)
+        XCTAssertNotEqual(primary.id, comparison.id)
+
+        let summary = service.compare(primary: primary, comparison: comparison)
+        XCTAssertFalse(summary.primaryTitle.isEmpty)
+        XCTAssertFalse(summary.comparisonTitle.isEmpty)
+
+        let metrics = service.compareMetricsOverDistance(primary: primary, comparison: comparison)
+        XCTAssertGreaterThan(metrics.count, 10, "Demo fixtures should produce enough chart points")
+    }
+
+    func testSplitDeltaFormattingEvenSplit() {
+        let primary = createSampleWorkout(distance: 5000, pace: 300)
+        let comparison = createSampleWorkout(distance: 5000, pace: 300) // Same pace
+        let splits = service.compareSplits(primary: primary, comparison: comparison)
+
+        // With same pace, delta should show "even"
+        for split in splits {
+            XCTAssertEqual(split.formattedPaceDelta, "0:00 /km even")
+            XCTAssertEqual(split.winner, .tie)
+        }
+    }
+
+    func testComparisonResultLabels() {
+        XCTAssertEqual(ComparisonResult.primary.label, "Primary faster")
+        XCTAssertEqual(ComparisonResult.comparison.label, "Comparison faster")
+        XCTAssertEqual(ComparisonResult.tie.label, "About the same")
+        XCTAssertEqual(ComparisonResult.unavailable.label, "N/A")
+    }
+
     // MARK: - Helpers
 
     private func loadFixture(_ path: String) throws -> RunWorkout {
