@@ -23,14 +23,21 @@ struct FITFixtureBuilder {
             writeRecordMessage(to: &content, index: i, total: recordCount)
         }
 
-        // Write header
+        // Write header (with placeholder CRC)
         writeHeader(to: &data, dataSize: UInt32(content.count))
+
+        // Compute and patch header CRC
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
 
         // Append content
         data.append(content)
 
-        // Write CRC (simplified - just zeros for testing)
-        data.append(contentsOf: [0x00, 0x00])
+        // Compute and write file CRC
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
 
         return data
     }

@@ -12,6 +12,8 @@ public enum FITError: Error, LocalizedError {
     case noGPSCoordinates
     case invalidCoordinates
     case corruptedData(String)
+    case headerCRCMismatch
+    case fileCRCMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -25,6 +27,8 @@ public enum FITError: Error, LocalizedError {
         case .noGPSCoordinates: return "No GPS coordinates found in FIT file"
         case .invalidCoordinates: return "Invalid coordinates in FIT file"
         case .corruptedData(let d): return "Corrupted FIT data: \(d)"
+        case .headerCRCMismatch: return "FIT header CRC mismatch — file may be corrupted"
+        case .fileCRCMismatch: return "FIT file CRC mismatch — file may be corrupted"
         }
     }
 }
@@ -198,11 +202,30 @@ public struct FITParser {
             throw FITError.invalidDataType
         }
 
+        // Validate header CRC (only present in 14-byte headers)
+        if headerLength == 14 {
+            guard data.count >= 14 else {
+                throw FITError.invalidHeader
+            }
+            let expectedCRC = UInt16(data[12]) | (UInt16(data[13]) << 8)
+            let computedCRC = crc16(over: data[0..<12])
+            guard expectedCRC == computedCRC else {
+                throw FITError.headerCRCMismatch
+            }
+        }
+
         let dataSize = Int(readUInt32(data: data[4..<8], littleEndian: true))
         let dataStart = headerLength
         let dataEnd = dataStart + dataSize
         guard data.count >= dataEnd + 2 else {
             throw FITError.unexpectedEndOfFile
+        }
+
+        // Validate file CRC
+        let expectedFileCRC = UInt16(data[dataEnd]) | (UInt16(data[dataEnd + 1]) << 8)
+        let computedFileCRC = crc16(over: data[0..<dataEnd])
+        guard expectedFileCRC == computedFileCRC else {
+            throw FITError.fileCRCMismatch
         }
 
         offset = headerLength
@@ -367,6 +390,35 @@ public struct FITParser {
         }
 
         return record
+    }
+
+    // MARK: - CRC-16 XMODEM
+
+    /// CRC-16 lookup table for XMODEM polynomial 0x1021.
+    private static let crc16Table: [UInt16] = {
+        var table = [UInt16](repeating: 0, count: 256)
+        for i in 0..<256 {
+            var crc = UInt16(i) << 8
+            for _ in 0..<8 {
+                if crc & 0x8000 != 0 {
+                    crc = (crc << 1) ^ 0x1021
+                } else {
+                    crc = crc << 1
+                }
+            }
+            table[i] = crc
+        }
+        return table
+    }()
+
+    /// Compute CRC-16 XMODEM over a byte sequence.
+    public static func crc16<S: Sequence>(over bytes: S) -> UInt16 where S.Element == UInt8 {
+        var crc: UInt16 = 0
+        for byte in bytes {
+            let index = Int((crc >> 8) ^ UInt16(byte)) & 0xFF
+            crc = (crc << 8) ^ crc16Table[index]
+        }
+        return crc
     }
 
     // MARK: - Binary Reading Helpers

@@ -30,6 +30,62 @@ final class FITParserTests: XCTestCase {
         }
     }
 
+    func testValidCRCParsesSuccessfully() throws {
+        let data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
+        ])
+
+        // Should not throw — CRCs are valid
+        let records = try FITParser.parse(data: data)
+        XCTAssertEqual(records.count, 2)
+    }
+
+    func testCorruptHeaderCRCThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        // Flip a byte in the header CRC
+        data[12] ^= 0xFF
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.headerCRCMismatch = error else {
+                XCTFail("Expected headerCRCMismatch, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testCorruptFileCRCThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        // Flip a byte in the file CRC (last 2 bytes)
+        data[data.count - 1] ^= 0xFF
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.fileCRCMismatch = error else {
+                XCTFail("Expected fileCRCMismatch, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testTruncatedDataThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        // Truncate before the file CRC
+        data = data.prefix(data.count - 4)
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.unexpectedEndOfFile = error else {
+                XCTFail("Expected unexpectedEndOfFile, got \(error)")
+                return
+            }
+        }
+    }
+
     func testDeveloperDataFieldsAreSkippedWithoutDesyncing() throws {
         let data = Self.fitDataWithDeveloperFields(records: [
             (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
@@ -109,9 +165,17 @@ final class FITParserTests: XCTestCase {
         data.append(contentsOf: [0x40, 0x01])
         append(UInt32(content.count), to: &data)
         data.append(contentsOf: [0x46, 0x49, 0x54, 0x20])
+        // Placeholder header CRC — will be patched below
         data.append(contentsOf: [0x00, 0x00])
+        // Patch header CRC (covers bytes 0..<12)
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
         data.append(content)
-        data.append(contentsOf: [0x00, 0x00])
+        // Compute and append file CRC
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
         return data
     }
 
