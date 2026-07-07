@@ -2,12 +2,13 @@
 
 ## Current Status
 
-3D route comparison overlay MVP is implemented, and this stabilization pass
-hardens import normalization, FIT parsing, distance interpolation, SceneKit
-toggles, chart seek alignment, and export result metadata. Do not add commit
-hashes to this handoff as a status field; they become stale and cause repeated
-hash-only documentation commits during rapid iteration. Run `git log -1
---oneline` locally to see the current commit.
+Comparison chart readability and demo presentation polish are complete. The
+comparison chart now uses actual workout names in its legend, shows clear
+min/km units on axes and table headers, and has proper empty states. A demo
+script and improved README are in place. Do not add commit hashes to this
+handoff as a status field; they become stale and cause repeated hash-only
+documentation commits during rapid iteration. Run `git log -1 --oneline`
+locally to see the current commit.
 
 ## Verification Snapshot
 
@@ -23,11 +24,10 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test --filter RunPlayCoreTests`: pass, 70 tests, 0 failures
-- `swift test`: pass, 334 tests, 0 failures
+- `swift test --filter RunPlayCoreTests`: pass, core tests, 0 failures
+- `swift test`: pass, 433 tests, 0 failures
 - Package products: `RunPlayCore`, `RunPlayStudio`
 - Test targets: `RunPlayCoreTests`, `RunPlayStudioTests`
-- No fresh manual GUI dogfood was performed in this stabilization pass
 
 ## Completed Capabilities
 
@@ -51,8 +51,12 @@ Latest verified result:
 - 3D comparison selected-distance markers with time/pace delta readout
 - SceneKit camera controls wired to the visible single-run and comparison scenes
 - Bundled demo comparison pair loaded on launch for immediate comparison testing
+- Comparison chart uses actual workout names in legend, min/km units on axes
+  and table headers, and proper empty states
+- Comparison warnings show common distance when routes differ significantly
 - Private local workout ignore policy and data-handling documentation
 - Synthetic demo summary PNG generated from bundled fixture data
+- Demo script for 3–5 minute public walkthrough
 
 ## Route Comparison MVP
 
@@ -235,14 +239,16 @@ deprecation warnings from route map overlays are removed in current builds.
 
 ## Recommended Next Phase
 
-Continue stabilization and polish:
+Continue stabilization and GUI verification:
 
 - GUI dogfood the save-panel export in a normal desktop session
 - GUI dogfood single-run and comparison 3D camera controls in a normal desktop
   session
 - GUI dogfood the 3D comparison selected-distance slider in a normal desktop
   session
-- Improve comparison chart readability when routes differ substantially
+- GUI dogfood the comparison chart readability improvements (legend, units,
+  empty states, warnings)
+- Add comparison demo screenshot to docs/assets/ if GUI session is available
 - Keep expanding synthetic demo assets only from anonymized or generated data
 - Keep HealthKit, cloud, accounts, telemetry, analytics, AI APIs, and advanced
   route matching out of scope until explicitly planned

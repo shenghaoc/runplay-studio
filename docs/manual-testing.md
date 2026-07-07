@@ -41,15 +41,18 @@ Checklist:
 - [x] Select a primary workout.
 - [x] Select a comparison workout.
 - [x] Verify the current primary workout is not offered as its own comparison.
-- [x] Verify summary delta cards appear.
-- [x] Verify split comparison appears.
-- [x] Verify pace-over-distance comparison chart appears.
+- [x] Verify summary delta cards appear with pace in min/km.
+- [x] Verify split comparison table headers show min/km units.
+- [x] Verify pace-over-distance comparison chart appears with workout names in legend.
+- [x] Verify chart axes show Distance (km) and min/km.
+- [x] Verify chart subtitle says "lower is faster".
 - [x] Verify 2D route overlay appears.
 - [x] Verify primary/comparison legend appears.
 - [x] Verify changing the primary selection clears comparison safely.
 - [x] Import a local TCX through the visible Import control.
 - [x] Compare the imported TCX with a bundled run and verify warnings appear for
   very different distances or route shapes.
+- [x] Verify warnings show common distance when routes differ significantly.
 - [x] Verify existing 3D single-run replay still works after comparison.
 - [x] Verify export actions are still exposed.
 - [ ] Save at least one JSON, CSV, and PNG export in a normal desktop session.

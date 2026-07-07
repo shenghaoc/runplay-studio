@@ -125,6 +125,23 @@
 - [x] Add synthetic README demo image
 - [x] Keep private workout files out of committed fixtures and assets
 
+## Phase 11.6: Comparison Chart Readability And Demo Polish ✅
+- [x] Comparison chart uses actual workout names in legend
+- [x] Chart axes show min/km units explicitly
+- [x] Split table headers show min/km units
+- [x] Chart has empty state view for no overlap
+- [x] Chart subtitle explains "lower is faster"
+- [x] Split table has empty state
+- [x] Comparison empty state has actionable guidance
+- [x] Warnings display with background highlight and common distance info
+- [x] Delta card grid widened for unit labels
+- [x] Tests for metric series with very different route lengths
+- [x] Tests for no infinite values in chart data
+- [x] Tests for demo fixtures loading
+- [x] Demo script created at docs/demo-script.md
+- [x] README polished with demo link and improved comparison section
+- [ ] Comparison demo screenshot (requires GUI session)
+
 ## Phase 12: HealthKit Research (Future)
 - [ ] Research macOS HealthKit availability
 - [ ] Design HealthKit import flow
