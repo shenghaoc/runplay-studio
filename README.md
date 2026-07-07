@@ -8,6 +8,8 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 
 ![Synthetic RunPlay Studio summary export](docs/assets/demo-summary.png)
 
+**New to RunPlay Studio?** See the [demo script](docs/demo-script.md) for a 3–5 minute walkthrough.
+
 At a glance:
 
 - Native macOS SwiftUI app for completed-run analysis
@@ -36,7 +38,7 @@ At a glance:
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (392 tests) |
+| `swift test` | ✅ Pass (433 tests) |
 | Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Xcode launch | Not reverified in this pass |
@@ -215,14 +217,15 @@ The README demo image is generated from bundled synthetic data.
 
 ### Route Comparison
 Compare two completed runs:
-- Summary metric deltas (distance, duration, pace, elevation)
+- Summary metric deltas (distance, duration, pace in min/km, elevation)
 - Average and max heart-rate deltas when both runs contain heart-rate data
-- Per-split comparison with winner indication
-- Pace over distance comparison chart
+- Per-split comparison table with pace, delta, and winner columns
+- Pace over distance comparison chart with actual workout names in the legend
 - 2D map overlay with both routes and a simple legend
 - 3D comparison overlay with both routes in the same scene
 - Warnings for different distances, route shapes, insufficient overlap, and missing data
 - Distance-based alignment (no route matching)
+- When routes differ significantly, warnings explain that only the common distance is compared
 
 **3D comparison**: Both routes are projected into a shared coordinate space so they
 maintain correct relative positioning. Primary route is blue, comparison route is
@@ -248,6 +251,13 @@ time warping.
 For manual dogfooding with real workouts, keep private files in ignored local
 paths and follow [docs/private-data.md](docs/private-data.md). Public fixtures
 and demo assets must be synthetic or anonymized.
+
+## Demo
+
+See [docs/demo-script.md](docs/demo-script.md) for a 3–5 minute walkthrough using
+bundled synthetic data. The demo covers 3D replay, route coloring, segment
+highlights, chart click-to-seek, route comparison, 3D distance slider, and
+export — all without needing private workout data.
 
 ## Roadmap
 
