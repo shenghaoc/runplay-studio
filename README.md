@@ -21,8 +21,6 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 - **Chart click/drag to seek** — Click or drag on charts to navigate the run
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 
-**New to RunPlay Studio?** See the [demo script](docs/demo-script.md) for a 3–5 minute walkthrough.
-
 ---
 
 ## Supported Formats
@@ -242,8 +240,8 @@ Compare two completed runs side by side:
 ## Limitations
 
 - Comparison is distance-aligned only — no dynamic time warping or route matching
-- FIT support is basic (no compressed timestamps, no CRC validation)
-- No HealthKit integration
+- FIT support is basic — CRC validation is not implemented; compressed timestamp headers fail with a controlled unsupported-data error; only record messages (global message 20) are parsed; signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres
+- No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)
 - PNG export requires GUI context (NSHostingView)
