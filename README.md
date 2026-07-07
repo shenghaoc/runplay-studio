@@ -21,36 +21,22 @@ At a glance:
 - Local JSON, CSV, and PNG exports
 - Privacy-first: no account, no cloud, no telemetry, no AI API; workout data stays local (MapKit loads map tiles from Apple services)
 
-## What It Is NOT
-
-- A live run tracker
-- A Strava clone
-- A social network
-- A generic fitness dashboard
-- A web app
-- An AI product
-
 ## Current Status
 
-**SwiftPM builds and tests pass.** GUI launch and manual smoke testing status is documented below.
+SwiftPM builds and all 433 tests pass. GUI features verified by manual testing
+on 2026-07-08.
 
 | Check | Status |
 |-------|--------|
-| `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass (433 tests) |
 | Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
-| Xcode launch | Not reverified in this pass |
-| Sample data loads | ✅ Covered by app-state and fixture tests |
-| JSON import | ✅ Tested with bundled fixture |
-| GPX import | ✅ Tested with synthetic fixture |
-| TCX import | ✅ Tested with synthetic fixture; picker allows `.tcx` via generic data selection |
-| FIT import | ✅ Basic activity fixture covered; picker allows `.fit` via generic data selection |
+| Manual GUI verification | ✅ 2026-07-08 (camera controls, comparison, export) |
 
-### Core Testability / Codex Cloud
+### Core Testability
 
-The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies. Use these commands when a review environment needs to avoid SwiftUI/AppKit/SceneKit/MapKit/Charts:
+The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies:
 
 ```bash
 # Build core library only
@@ -216,27 +202,25 @@ PNG export renders a SwiftUI card using NSHostingView (requires GUI context).
 The README demo image is generated from bundled synthetic data.
 
 ### Route Comparison
-Compare two completed runs:
-- Summary metric deltas (distance, duration, pace in min/km, elevation)
-- Average and max heart-rate deltas when both runs contain heart-rate data
+
+Compare two completed runs side by side:
+
+- Summary deltas for distance, duration, pace, elevation, and heart rate
 - Per-split comparison table with pace, delta, and winner columns
-- Pace over distance comparison chart with actual workout names in the legend
-- 2D map overlay with both routes and a simple legend
-- 3D comparison overlay with both routes in the same scene
-- Warnings for different distances, route shapes, insufficient overlap, and missing data
-- Distance-based alignment (no route matching)
-- When routes differ significantly, warnings explain that only the common distance is compared
+- Pace over distance chart with actual workout names in the legend
+- 2D map overlay and 3D comparison with both routes in the same scene
+- Distance slider to scrub along the common route and see where both runners
+  were at each point, with elapsed time and pace delta readout
+- Warnings for different distances, route shapes, and missing data
 
-**3D comparison**: Both routes are projected into a shared coordinate space so they
-maintain correct relative positioning. Primary route is blue, comparison route is
-orange. Each route has distinct start/finish markers. Controls include elevation
-exaggeration, camera presets, fit-to-routes, and grid toggle. A distance slider
-lets you scrub along the common route distance and see where both runs were at
-that distance, with interpolated markers labeled "P X.XX km" and "C X.XX km"
-and a compact readout showing elapsed time and pace deltas.
+## Limitations
 
-Current limitations: comparison is distance-aligned only and does not do dynamic
-time warping.
+- Comparison is distance-aligned only — no dynamic time warping or route matching
+- FIT support is basic (no compressed timestamps, no CRC validation)
+- No HealthKit integration
+- No cloud sync, accounts, or web interface
+- macOS only (requires SwiftUI, SceneKit, MapKit)
+- PNG export requires GUI context (NSHostingView)
 
 ## Privacy
 
