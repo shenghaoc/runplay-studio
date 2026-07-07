@@ -52,9 +52,13 @@ struct CompareView: View {
                     Divider()
 
                     // Pace comparison chart
-                    ComparisonChartView(metrics: appState.comparisonMetrics)
-                        .frame(height: 200)
-                        .padding()
+                    ComparisonChartView(
+                        metrics: appState.comparisonMetrics,
+                        primaryName: pair.primary.displayName,
+                        comparisonName: pair.comparison.displayName
+                    )
+                    .frame(height: 200)
+                    .padding()
                 }
             } else {
                 ComparisonEmptyView(
@@ -171,11 +175,11 @@ struct ComparisonSummaryView: View {
             }
 
             // Metric deltas
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 12)], spacing: 12) {
                 DeltaCard(label: "Distance", value: summary.distanceDeltaFormatted)
                 DeltaCard(label: "Duration", value: summary.durationDeltaFormatted)
-                DeltaCard(label: "Pace", value: summary.paceDeltaFormatted)
-                DeltaCard(label: "Elevation", value: summary.elevationGainDeltaFormatted)
+                DeltaCard(label: "Pace (min/km)", value: summary.paceDeltaFormatted)
+                DeltaCard(label: "Elevation Gain", value: summary.elevationGainDeltaFormatted)
                 if let avgHR = summary.avgHRDeltaFormatted {
                     DeltaCard(label: "Avg HR", value: avgHR)
                 }
@@ -188,11 +192,30 @@ struct ComparisonSummaryView: View {
             if !summary.warnings.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(summary.warnings, id: \.self) { warning in
-                        Label(warning.rawValue, systemImage: warning.icon)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: warning.icon)
+                                .foregroundStyle(.orange)
+                                .frame(width: 16)
+                            Text(warning.rawValue)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+
+                    if summary.warnings.contains(.differentDistances) {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16)
+                            Text("Only the shorter distance (\(commonDistanceLabel)) is compared in charts and splits.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
+                .padding(8)
+                .background(Color.orange.opacity(0.08))
+                .cornerRadius(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -214,6 +237,11 @@ struct ComparisonSummaryView: View {
         case .tie: return .secondary
         case .unavailable: return .secondary
         }
+    }
+
+    private var commonDistanceLabel: String {
+        let commonKm = min(summary.primaryDistanceMeters, summary.comparisonDistanceMeters) / 1000
+        return String(format: "%.1f km", commonKm)
     }
 }
 
@@ -257,19 +285,26 @@ struct ComparisonEmptyView: View {
 
             Text(message)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            if workoutCount >= 2 && primaryName != nil {
+                Text("Select a workout from the \"Compare Against\" picker above.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var title: String {
-        if workoutCount < 2 { return "Import another run" }
+        if workoutCount < 2 { return "Import another run to compare" }
         if primaryName == nil { return "Select a primary run" }
         return "Select a comparison run"
     }
 
     private var message: String {
-        if workoutCount == 0 { return "No runs loaded yet" }
-        if workoutCount == 1 { return "Only one run is loaded" }
+        if workoutCount == 0 { return "No runs loaded yet. Import a GPX, TCX, FIT, or JSON file." }
+        if workoutCount == 1 { return "Only one run is loaded. Import another to compare." }
         if let primaryName { return "Primary: \(primaryName)" }
         return "Choose a run in the sidebar"
     }
