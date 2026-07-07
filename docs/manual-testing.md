@@ -4,9 +4,10 @@ Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
 Current stabilization note: automated validation passed with `swift test`
-(433 tests) and `swift test --filter RunPlayCoreTests` (114 tests). A manual
-GUI pass on 2026-07-08 verified camera controls, comparison view, selected-distance
-slider, comparison chart readability, and save-panel export.
+(433 tests) and `swift test --filter RunPlayCoreTests` (114 tests). Manual
+GUI passes on 2026-07-08 verified all checklists: camera controls, comparison
+view, selected-distance slider, comparison chart readability, save-panel export,
+default view, delete UI, and HR color mode.
 
 ## Privacy Checklist Before Commit
 
@@ -77,11 +78,9 @@ Checklist:
 - [x] Verify comparison start/finish markers are labeled "C START" / "C FINISH".
 - [x] Verify both routes appear in the same 3D space with correct relative positioning.
 - [x] Verify the 3D legend shows route names and colors.
-- [ ] Verify "Fit Routes" button frames both routes after the camera wiring fix.
-- [ ] Verify camera presets (default, top-down, side, front) work after the camera wiring fix.
-- [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
 - [x] Verify "Fit Routes" button frames both routes after the camera wiring fix.
 - [x] Verify camera presets (default, top-down, side, front) work after the camera wiring fix.
+- [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
 - [x] Verify grid toggle shows/hides the ground grid.
 - [x] Verify warnings appear in the 3D view when applicable.
 - [x] Toggle back to 2D Map and verify it still works.
@@ -229,29 +228,50 @@ Use bundled synthetic data for committed artifacts.
 
 ## Default View Checklist
 
-- [ ] On launch with sample data, user sees a map (Overview tab) as the default view
-- [ ] Map shows the route polyline with start/finish annotations
-- [ ] Summary metrics bar is visible below the map
-- [ ] Replay controls are accessible from the Overview tab
-- [ ] 3D Route tab still works when selected
-- [ ] Charts tab still works when selected
-- [ ] Map tab still works when selected
+- [x] On launch with sample data, user sees a map (Overview tab) as the default view
+- [x] Map shows the route polyline with start/finish annotations
+- [x] Summary metrics bar is visible below the map
+- [x] Replay controls are accessible from the Overview tab
+- [x] 3D Route tab still works when selected
+- [x] Charts tab still works when selected
+- [x] Map tab still works when selected
+
+Latest default view notes (2026-07-08):
+
+- All items verified by human owner in a normal desktop session.
+- Overview tab is the default landing view with map and route overlay.
+- Summary metrics and replay controls are accessible.
+- All tabs (3D Route, Charts, Map) work when selected.
 
 ## Delete UI Checklist
 
-- [ ] Right-click on a workout row shows "Delete Run" context menu
-- [ ] Selecting "Delete Run" shows a confirmation dialog
-- [ ] Confirming deletion removes the workout from the sidebar
-- [ ] Deleting the selected workout selects the next available
-- [ ] Deleting the comparison workout clears comparison mode
-- [ ] Deleting the last workout shows empty state
-- [ ] Keyboard delete (backspace) on selected workout works
+- [x] Right-click on a workout row shows "Delete Run" context menu
+- [x] Selecting "Delete Run" shows a confirmation dialog
+- [x] Confirming deletion removes the workout from the sidebar
+- [x] Deleting the selected workout selects the next available
+- [x] Deleting the comparison workout clears comparison mode
+- [x] Deleting the last workout shows empty state
+- [x] Keyboard delete (backspace) on selected workout works
+
+Latest delete UI notes (2026-07-08):
+
+- All items verified by human owner in a normal desktop session.
+- Context menu, confirmation dialog, and deletion all work correctly.
+- Comparison mode clears when the comparison workout is deleted.
+- Empty state appears when the last workout is deleted.
 
 ## HR Color Mode Checklist
 
-- [ ] Heart Rate color button is disabled (grayed out) when route has no HR data
-- [ ] Heart Rate color button works normally when route has HR data
-- [ ] Tooltip explains why HR button is disabled
+- [x] Heart Rate color button is disabled (grayed out) when route has no HR data
+- [x] Heart Rate color button works normally when route has HR data
+- [x] Tooltip explains why HR button is disabled
+
+Latest HR color mode notes (2026-07-08):
+
+- All items verified by human owner in a normal desktop session.
+- HR button is correctly disabled when route has no HR data.
+- HR button works normally when route has HR data.
+- Tooltip explains the disabled state.
 
 Latest export notes:
 

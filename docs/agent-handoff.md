@@ -2,13 +2,12 @@
 
 ## Current Status
 
-Manual GUI verification is complete. All seven GUI features verified by human
-owner on 2026-07-08: 3D camera controls, 3D comparison view, selected-distance
-slider, comparison chart readability, and save-panel JSON/CSV/PNG export.
-Comparison chart readability and demo presentation polish are complete. Do not
-add commit hashes to this handoff as a status field; they become stale and cause
-repeated hash-only documentation commits during rapid iteration. Run
-`git log -1 --oneline` locally to see the current commit.
+All manual GUI checklists are complete. Human owner verified on 2026-07-08:
+3D camera controls, 3D comparison view, selected-distance slider, comparison
+chart readability, save-panel JSON/CSV/PNG export, default view, delete UI,
+and HR color mode. Do not add commit hashes to this handoff as a status field;
+they become stale and cause repeated hash-only documentation commits during
+rapid iteration. Run `git log -1 --oneline` locally to see the current commit.
 
 ## Verification Snapshot
 
@@ -148,8 +147,7 @@ Export gap resolved:
 
 ## Manual GUI Dogfood
 
-Manual dogfood below is retained from earlier passes and supplemented by a
-fresh manual GUI pass on 2026-07-08.
+All manual GUI checklists verified by human owner on 2026-07-08.
 
 Verified:
 
@@ -170,6 +168,13 @@ Verified:
 - Synthetic export smoke coverage passed at the service/model level
 - Save-panel export of JSON, CSV, and PNG confirmed working (2026-07-08)
 - Comparison chart readability improvements verified (legend, units, empty states)
+- Default view shows Overview tab with map, route overlay, summary metrics, replay controls
+- All tabs (3D Route, Charts, Map) work when selected
+- Delete UI: context menu, confirmation dialog, deletion all work correctly
+- Comparison mode clears when comparison workout is deleted
+- Empty state appears when last workout is deleted
+- HR color button disabled when route has no HR data, works when HR data present
+- Tooltip explains disabled HR button state
 
 ## 3D Comparison GUI Dogfood
 
@@ -238,10 +243,10 @@ deprecation warnings from route map overlays are removed in current builds.
 
 ## Recommended Next Phase
 
-GUI verification is complete. Next steps:
+All GUI checklists verified. Next steps:
 
 - Add comparison demo screenshot to docs/assets/ when available
 - Keep expanding synthetic demo assets only from anonymized or generated data
-- GUI dogfood remaining untested checklists (Default View, Delete UI, HR Color Mode)
+- Consider tagging v0.1 demo release
 - Keep HealthKit, cloud, accounts, telemetry, analytics, AI APIs, and advanced
   route matching out of scope until explicitly planned
