@@ -97,6 +97,7 @@
 - [x] Parse altitude, speed, heart rate, cadence
 - [x] Semicircle to degree coordinate conversion
 - [x] Wire into file picker
+- [x] CRC-16 validation (header and file) for corruption detection
 
 ## Phase 11: Route Comparison ✅
 - [x] ComparisonPair, WorkoutComparisonSummary, SplitComparison, ComparisonMetricPoint, and ComparisonWarning models
