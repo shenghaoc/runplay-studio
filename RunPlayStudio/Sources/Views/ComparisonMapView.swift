@@ -110,7 +110,7 @@ struct ComparisonMapView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             legendRow(color: .blue, label: "Primary: \(primaryWorkout.displayName)")
-            legendRow(color: .orange, label: "Comparison: \(comparisonWorkout.displayName)")
+            legendRow(color: .orange, label: "Comp.: \(comparisonWorkout.displayName)")
 
             Divider()
 
@@ -189,7 +189,7 @@ struct ComparisonMapView: View {
                     Image(systemName: "forward.end.fill")
                 }
                 .buttonStyle(.plain)
-                .help("Jump to end (\(String(format: "%.1f", commonDistance / 1000)) km)")
+                .help("Jump to end (\(String(format: "%.2f", commonDistance / 1000)) km)")
                 .disabled(commonDistance <= 0)
             }
 
