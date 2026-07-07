@@ -26,16 +26,19 @@ jobs:
     - name: Test
       shell: bash
       run: |
-        # pipefail is required: without it, the tee pipeline silently swallows
-        # swift test failures because tee always exits 0.
-        set -o pipefail
+        # shell: bash provides set -eo pipefail; capture exit code so we can
+        # write the test summary even when tests fail.
+        set +e
         swift test 2>&1 | tee test-output.txt
+        TEST_EXIT=$?
+        set -e
         # Report test count to step summary
         TEST_SUMMARY=$(grep -E 'Executed [0-9]+ test' test-output.txt | tail -1 || true)
         if [[ -n "$TEST_SUMMARY" ]]; then
           echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
           echo "$TEST_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
         fi
+        exit $TEST_EXIT
 
   core-linux:
     name: RunPlayCore (Linux)
