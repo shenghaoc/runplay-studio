@@ -21,7 +21,8 @@ struct ContentView: View {
                     get: { appState.selectedWorkout },
                     set: { appState.selectWorkout($0) }
                 ),
-                onImport: { appState.showImporter = true }
+                onImport: { appState.showImporter = true },
+                onDelete: { workout in appState.deleteWorkout(workout) }
             )
         } detail: {
             if let workout = appState.selectedWorkout {

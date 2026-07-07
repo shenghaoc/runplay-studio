@@ -34,17 +34,13 @@ public struct RunSplit: Identifiable, Codable, Hashable {
         self.endDistanceMeters = endDistanceMeters
     }
 
-    /// Formatted pace as MM:SS per km.
+    /// Formatted pace as MM:SS (no "/km" suffix, for narrow table contexts).
     public var formattedPace: String {
-        let minutes = Int(paceSecondsPerKilometer) / 60
-        let seconds = Int(paceSecondsPerKilometer) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        DisplayFormatter.formatPaceShort(paceSecondsPerKilometer)
     }
 
     /// Formatted elapsed time as MM:SS.
     public var formattedElapsed: String {
-        let minutes = Int(elapsedSeconds) / 60
-        let seconds = Int(elapsedSeconds) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        DisplayFormatter.formatElapsed(elapsedSeconds)
     }
 }

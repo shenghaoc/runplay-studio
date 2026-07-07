@@ -53,29 +53,19 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable {
     }
 
     public var formattedPace: String {
-        guard let pace = paceSecondsPerKilometer, pace > 0, pace.isFinite else { return "--" }
-        let mins = Int(pace) / 60
-        let secs = Int(pace) % 60
-        return String(format: "%d:%02d /km", mins, secs)
+        DisplayFormatter.formatPace(paceSecondsPerKilometer)
     }
 
     public var formattedDuration: String {
-        let mins = Int(durationSeconds) / 60
-        let secs = Int(durationSeconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+        DisplayFormatter.formatElapsed(durationSeconds)
     }
 
     public var formattedDistance: String {
-        if distanceMeters >= 1000 {
-            return String(format: "%.1f km", distanceMeters / 1000)
-        }
-        return String(format: "%.0f m", distanceMeters)
+        DisplayFormatter.formatDistance(distanceMeters)
     }
 
     public var formattedElevation: String {
-        guard let elev = elevationDeltaMeters else { return "" }
-        let sign = elev >= 0 ? "+" : ""
-        return "\(sign)\(String(format: "%.0f", elev)) m"
+        DisplayFormatter.formatElevationDelta(elevationDeltaMeters)
     }
 }
 

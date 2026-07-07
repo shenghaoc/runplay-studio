@@ -19,7 +19,7 @@ struct ComparisonMapView: View {
 
             if comparisonCoordinates.count >= 2 {
                 MapPolyline(coordinates: comparisonCoordinates)
-                    .stroke(.red, lineWidth: 3)
+                    .stroke(.orange, lineWidth: 3)
             }
 
             ForEach(mapAnnotations) { item in
@@ -77,7 +77,7 @@ struct ComparisonMapView: View {
         if let first = comparisonCoordinates.first {
             items.append(RouteMapAnnotation(
                 coordinate: first,
-                color: .red,
+                color: .orange,
                 size: 10,
                 label: "C Start"
             ))
@@ -87,7 +87,7 @@ struct ComparisonMapView: View {
         if let last = comparisonCoordinates.last {
             items.append(RouteMapAnnotation(
                 coordinate: last,
-                color: .red,
+                color: .orange,
                 size: 10,
                 label: "C End"
             ))
@@ -107,7 +107,7 @@ struct ComparisonMapView: View {
     private var routeLegend: some View {
         VStack(alignment: .leading, spacing: 6) {
             legendRow(color: .blue, label: "Primary run")
-            legendRow(color: .red, label: "Comparison run")
+            legendRow(color: .orange, label: "Comparison run")
         }
         .font(.caption)
         .padding(8)

@@ -254,6 +254,42 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(csv1, csv2, "CSV output should be deterministic")
     }
 
+    // MARK: - Non-finite Export Safety
+
+    func testExportSplitsCSVWithNonFiniteValuesDoesNotContainNaN() {
+        // Create a workout with NaN/Inf values that could propagate
+        let points = [
+            RoutePoint(timestamp: Date(), latitude: 37.7749, longitude: -122.4194,
+                      altitudeMeters: .nan, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: Date(), latitude: 37.7750, longitude: -122.4193,
+                      altitudeMeters: .infinity, distanceFromStartMeters: 1000, elapsedSeconds: 300)
+        ]
+        let workout = RunWorkout(routePoints: points)
+        let csv = exportService.generateSplitsCSV(workout: workout)
+
+        XCTAssertFalse(csv.contains("nan"), "CSV should not contain 'nan'")
+        XCTAssertFalse(csv.contains("inf"), "CSV should not contain 'inf'")
+    }
+
+    func testExportSegmentsCSVWithNonFinitePaceDoesNotCrash() {
+        let segment = SegmentHighlight(
+            type: .fastest1km,
+            title: "Test",
+            subtitle: "Test",
+            startDistanceMeters: 0,
+            endDistanceMeters: 1000,
+            startElapsedSeconds: 0,
+            endElapsedSeconds: 300,
+            durationSeconds: 300,
+            distanceMeters: 1000,
+            paceSecondsPerKilometer: .nan,
+            sourcePointRange: 0..<10
+        )
+
+        let csv = exportService.generateSegmentsCSV(segments: [segment])
+        XCTAssertFalse(csv.contains("nan"), "CSV should not contain 'nan'")
+    }
+
     // MARK: - PNG Export
 
     func testSummaryCardModelBuildsFromWorkout() {

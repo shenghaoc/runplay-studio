@@ -6,9 +6,10 @@ struct WorkoutDetailView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
 
-    @State private var selectedTab: ViewTab = .route3D
+    @State private var selectedTab: ViewTab = .overview
 
     enum ViewTab: String, CaseIterable {
+        case overview = "Overview"
         case route3D = "3D Route"
         case map = "Map"
         case charts = "Charts"
@@ -27,6 +28,8 @@ struct WorkoutDetailView: View {
 
             // Main content
             switch selectedTab {
+            case .overview:
+                OverviewView(workout: workout, appState: appState)
             case .route3D:
                 Route3DReplayView(workout: workout, appState: appState)
             case .map:

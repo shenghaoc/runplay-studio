@@ -223,6 +223,64 @@ final class ReplayControllerTests: XCTestCase {
         }
     }
 
+    // MARK: - Non-finite Input Guards
+
+    func testSeekToTimeNaNIsIgnored() {
+        controller.seekToTime(500)
+        let before = controller.state.currentTime
+        controller.seekToTime(.nan)
+        XCTAssertEqual(controller.state.currentTime, before)
+    }
+
+    func testSeekToTimeInfinityIsIgnored() {
+        controller.seekToTime(500)
+        let before = controller.state.currentTime
+        controller.seekToTime(.infinity)
+        XCTAssertEqual(controller.state.currentTime, before)
+    }
+
+    func testSeekToDistanceNaNIsIgnored() {
+        controller.seekToDistance(500)
+        let before = controller.state.currentDistance
+        controller.seekToDistance(.nan)
+        XCTAssertEqual(controller.state.currentDistance, before)
+    }
+
+    func testSeekToDistanceInfinityIsIgnored() {
+        controller.seekToDistance(500)
+        let before = controller.state.currentDistance
+        controller.seekToDistance(.infinity)
+        XCTAssertEqual(controller.state.currentDistance, before)
+    }
+
+    func testSeekToProgressNaNIsIgnored() {
+        controller.seekToProgress(0.5)
+        let before = controller.state.currentTime
+        controller.seekToProgress(.nan)
+        XCTAssertEqual(controller.state.currentTime, before)
+    }
+
+    func testSeekToProgressInfinityIsIgnored() {
+        controller.seekToProgress(0.5)
+        let before = controller.state.currentTime
+        controller.seekToProgress(.infinity)
+        XCTAssertEqual(controller.state.currentTime, before)
+    }
+
+    func testSetSpeedNaNIsIgnored() {
+        controller.setSpeed(2.0)
+        let before = controller.state.playbackSpeed
+        controller.setSpeed(.nan)
+        XCTAssertEqual(controller.state.playbackSpeed, before)
+    }
+
+    func testSetSpeedInfinityIsIgnored() {
+        controller.setSpeed(2.0)
+        let before = controller.state.playbackSpeed
+        controller.setSpeed(.infinity)
+        XCTAssertEqual(controller.state.playbackSpeed, before)
+    }
+
     // MARK: - Helpers
 
     private func createSampleWorkout() -> RunWorkout {

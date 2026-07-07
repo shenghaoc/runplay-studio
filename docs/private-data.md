@@ -1,6 +1,6 @@
 # Private Workout Data Policy
 
-RunPlay Studio is local-only, but real workout files can still expose personal
+RunPlay Studio keeps all workout data on your Mac, but real workout files can still expose personal
 routes, timestamps, heart-rate data, and home or work locations. Treat any
 real-world GPX, TCX, FIT, or JSON activity file as private unless it was
 explicitly synthesized or anonymized for public use.
