@@ -260,6 +260,13 @@ final class ReplayControllerTests: XCTestCase {
         XCTAssertEqual(controller.state.currentTime, before)
     }
 
+    func testSeekToProgressInfinityIsIgnored() {
+        controller.seekToProgress(0.5)
+        let before = controller.state.currentTime
+        controller.seekToProgress(.infinity)
+        XCTAssertEqual(controller.state.currentTime, before)
+    }
+
     func testSetSpeedNaNIsIgnored() {
         controller.setSpeed(2.0)
         let before = controller.state.playbackSpeed

@@ -56,6 +56,14 @@ public enum DisplayFormatter {
         return String(format: "%d:%02d /km", mins, secs)
     }
 
+    /// Format pace in seconds per kilometer as M:SS (no "/km" suffix, for narrow table contexts).
+    public static func formatPaceShort(_ paceSecondsPerKm: Double?) -> String {
+        guard let value = paceSecondsPerKm, value.isFinite, value > 0 else { return "--:--" }
+        let mins = Int(value) / 60
+        let secs = Int(value) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
     // MARK: - Distance
 
     /// Format distance in meters as km with 2 decimal places.

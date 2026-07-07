@@ -53,10 +53,7 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable {
     }
 
     public var formattedPace: String {
-        guard let pace = paceSecondsPerKilometer, pace > 0, pace.isFinite else { return "--" }
-        let mins = Int(pace) / 60
-        let secs = Int(pace) % 60
-        return String(format: "%d:%02d /km", mins, secs)
+        DisplayFormatter.formatPace(paceSecondsPerKilometer)
     }
 
     public var formattedDuration: String {

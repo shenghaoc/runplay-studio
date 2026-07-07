@@ -38,7 +38,7 @@ At a glance:
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass (392 tests) |
 | Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
-| CI | ✅ GitHub Actions macOS workflow |
+| CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Xcode launch | Not reverified in this pass |
 | Sample data loads | ✅ Covered by app-state and fixture tests |
 | JSON import | ✅ Tested with bundled fixture |

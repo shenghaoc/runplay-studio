@@ -130,6 +130,39 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertEqual(appState.workouts.count, 1)
     }
 
+    // MARK: - Delete + Comparison Combo
+
+    func testDeleteSelectedWorkoutWhileComparingClearsComparison() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        appState.workouts = [w1, w2]
+        appState.selectWorkout(w1)
+        appState.setComparison(w2)
+
+        appState.deleteWorkout(w1)
+
+        XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
+        XCTAssertFalse(appState.isComparing)
+        XCTAssertNil(appState.comparisonWorkout)
+        XCTAssertNil(appState.selectedSegment)
+    }
+
+    func testDeleteSelectedWorkoutCollisionWithComparison() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        appState.workouts = [w1, w2]
+        appState.selectWorkout(w1)
+        appState.setComparison(w2)
+
+        // Delete w1 — new selection is w2, which equals comparisonWorkout
+        appState.deleteWorkout(w1)
+
+        XCTAssertFalse(appState.isComparing)
+        XCTAssertNil(appState.comparisonWorkout)
+    }
+
     private func makeWorkout(name: String) -> RunWorkout {
         RunWorkout(metadata: WorkoutMetadata(name: name, activityType: "running"))
     }

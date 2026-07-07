@@ -36,6 +36,19 @@ final class DisplayFormatterTests: XCTestCase {
         XCTAssertEqual(DisplayFormatter.formatElapsed(nil), "--:--")
     }
 
+    func testFormatElapsedNaNReturnsFallback() {
+        XCTAssertEqual(DisplayFormatter.formatElapsed(.nan), "--:--")
+    }
+
+    func testFormatElapsedInfinityReturnsFallback() {
+        XCTAssertEqual(DisplayFormatter.formatElapsed(.infinity), "--:--")
+        XCTAssertEqual(DisplayFormatter.formatElapsed(-.infinity), "--:--")
+    }
+
+    func testFormatElapsedNegativeReturnsFallback() {
+        XCTAssertEqual(DisplayFormatter.formatElapsed(-10), "--:--")
+    }
+
     // MARK: - Pace
 
     func testFormatPaceNilReturnsFallback() {
@@ -89,6 +102,18 @@ final class DisplayFormatterTests: XCTestCase {
         XCTAssertEqual(DisplayFormatter.formatDistance(500), "500 m")
         XCTAssertEqual(DisplayFormatter.formatDistance(1500), "1.5 km")
         XCTAssertEqual(DisplayFormatter.formatDistance(nil), "---")
+    }
+
+    func testFormatDistanceNaNReturnsFallback() {
+        XCTAssertEqual(DisplayFormatter.formatDistance(.nan), "---")
+    }
+
+    func testFormatDistanceInfinityReturnsFallback() {
+        XCTAssertEqual(DisplayFormatter.formatDistance(.infinity), "---")
+    }
+
+    func testFormatDistanceNegativeReturnsFallback() {
+        XCTAssertEqual(DisplayFormatter.formatDistance(-100), "---")
     }
 
     // MARK: - Elevation

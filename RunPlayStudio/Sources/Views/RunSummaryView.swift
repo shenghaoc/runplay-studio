@@ -19,17 +19,17 @@ struct RunSummaryView: View {
                     MetricLabel(label: "Avg Pace", value: summary.formattedPace)
                     MetricLabel(
                         label: "Avg Speed",
-                        value: String(format: "%.1f km/h", summary.averageSpeedMetersPerSecond * 3.6)
+                        value: DisplayFormatter.formatSpeedKmh(summary.averageSpeedMetersPerSecond)
                     )
                 }
                 GridRow {
                     MetricLabel(
                         label: "Elev Gain",
-                        value: String(format: "%.0f m", summary.elevationGainMeters)
+                        value: DisplayFormatter.formatElevation(summary.elevationGainMeters)
                     )
                     MetricLabel(
                         label: "Elev Loss",
-                        value: String(format: "%.0f m", summary.elevationLossMeters)
+                        value: DisplayFormatter.formatElevation(summary.elevationLossMeters)
                     )
                 }
 

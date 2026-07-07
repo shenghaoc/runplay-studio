@@ -96,7 +96,7 @@ public struct ExportSummaryCardModel {
         self.splits = workout.splits.prefix(10).map { split in
             SplitCardItem(
                 index: split.splitIndex,
-                distance: String(format: "%.2f km", split.distanceMeters / 1000),
+                distance: DisplayFormatter.formatDistanceKm(split.distanceMeters),
                 pace: split.formattedPace,
                 duration: split.formattedElapsed
             )
