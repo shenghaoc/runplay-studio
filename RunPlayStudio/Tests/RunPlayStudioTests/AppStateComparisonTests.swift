@@ -148,6 +148,25 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertNil(appState.selectedSegment)
     }
 
+    func testDeleteSelectedWorkoutWhileComparingDoesNotCarryComparisonToReplacementSelection() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        let w3 = makeWorkout(name: "C")
+        appState.workouts = [w1, w2, w3]
+        appState.selectWorkout(w1)
+        appState.setComparison(w3)
+        appState.selectedComparisonDistanceMeters = 500
+
+        appState.deleteWorkout(w1)
+
+        XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
+        XCTAssertFalse(appState.isComparing)
+        XCTAssertNil(appState.comparisonWorkout)
+        XCTAssertNil(appState.comparisonPair)
+        XCTAssertEqual(appState.selectedComparisonDistanceMeters, 0)
+    }
+
     func testDeleteSelectedWorkoutCollisionWithComparison() {
         let appState = AppState(loadSampleWorkout: false)
         let w1 = makeWorkout(name: "A")

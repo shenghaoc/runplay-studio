@@ -6,7 +6,7 @@ RunPlay Studio processes all workout data locally on your Mac. No workout files,
 
 ## MapKit / Apple Maps
 
-The app uses Apple MapKit to display a 2D map view of your route. MapKit loads map tiles and map context from Apple map services over the network. **Map tile loading is the one network activity in the app** — it is handled entirely by Apple's MapKit framework and is subject to Apple's privacy policies. No workout data is included in map tile requests.
+The app uses Apple MapKit to display a 2D map view of your route. MapKit loads map tiles and map context from Apple map services over the network. **Map tile loading is the one network activity in the app** — it is handled entirely by Apple's MapKit framework and is subject to Apple's privacy policies. The tile requests are for the map region derived from your route coordinates (the bounding box of your run), so the general area of your route is visible to Apple Maps as part of tile loading. No workout file data, metrics, heart rate, or account information is included in map tile requests.
 
 ## No Cloud
 

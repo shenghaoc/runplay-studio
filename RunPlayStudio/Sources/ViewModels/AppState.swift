@@ -109,26 +109,23 @@ class AppState: ObservableObject {
 
     /// Delete a workout.
     func deleteWorkout(_ workout: RunWorkout) {
+        let deletingSelectedWorkout = selectedWorkout?.id == workout.id
+        let deletingComparisonWorkout = comparisonWorkout?.id == workout.id
+
         workouts.removeAll { $0.id == workout.id }
-        if selectedWorkout?.id == workout.id {
+
+        if deletingSelectedWorkout {
+            clearComparison()
             selectedWorkout = workouts.first
             selectedSegment = nil
             if let first = workouts.first {
                 replayController.load(first)
                 detectedSegments = SegmentDetector.detectSegments(from: first)
-                // Clear comparison if the new selection equals the comparison workout
-                if comparisonWorkout?.id == first.id {
-                    clearComparison()
-                }
             } else {
                 detectedSegments = []
-                clearComparison()
             }
-        }
-        if comparisonWorkout?.id == workout.id {
-            comparisonWorkout = nil
-            isComparing = false
-            selectedComparisonDistanceMeters = 0
+        } else if deletingComparisonWorkout {
+            clearComparison()
         }
     }
 

@@ -238,7 +238,7 @@ time warping.
 ## Privacy
 
 - **Local workout processing** — All workout data stays on your Mac
-- **MapKit map tiles** — The map view uses Apple MapKit, which loads map tiles from Apple services over the network. This is the only network activity in the app. No workout data is included in map tile requests.
+- **MapKit map tiles** — The map view uses Apple MapKit, which loads map tiles from Apple services over the network. This is the only network activity in the app. Tile requests are for the map region derived from your route coordinates (bounding box), so the general area of your route is visible to Apple Maps. No workout file data, metrics, or account information is included in map tile requests.
 - **No cloud** — No external servers or sync for workout data
 - **No analytics** — No usage tracking
 - **No telemetry** — No phone-home behavior

@@ -8,13 +8,20 @@ import RunPlayCore
 struct OverviewView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
+    @ObservedObject private var replayController: ReplayController
+
+    init(workout: RunWorkout, appState: AppState) {
+        self.workout = workout
+        self.appState = appState
+        self.replayController = appState.replayController
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Map takes up the main area
             MapReferenceView(
                 routePoints: workout.routePoints,
-                currentPointIndex: appState.replayController.state.currentPointIndex
+                currentPointIndex: replayController.state.currentPointIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
