@@ -10,6 +10,9 @@ public enum GeoDistance {
     public static let earthRadiusMeters: Double = 6_371_000.0
 
     /// Valid heart rate range for filtering outliers (30-230 bpm).
+    ///
+    /// Deprecated: Use `MetricValidation.validHeartRateRange` instead.
+    @available(*, deprecated, renamed: "MetricValidation.validHeartRateRange")
     public static let validHeartRateRange: ClosedRange<Double> = 30...230
 
     /// Calculate the great-circle distance between two coordinates in meters.

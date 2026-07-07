@@ -41,24 +41,16 @@ public struct RunSummary: Codable, Hashable {
 
     /// Formatted average pace as MM:SS per km.
     public var formattedPace: String {
-        let minutes = Int(averagePaceSecondsPerKilometer) / 60
-        let seconds = Int(averagePaceSecondsPerKilometer) % 60
-        return String(format: "%d:%02d /km", minutes, seconds)
+        DisplayFormatter.formatPace(averagePaceSecondsPerKilometer)
     }
 
     /// Formatted total elapsed time.
     public var formattedDuration: String {
-        let hours = Int(totalElapsedSeconds) / 3600
-        let minutes = (Int(totalElapsedSeconds) % 3600) / 60
-        let seconds = Int(totalElapsedSeconds) % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%02d:%02d", minutes, seconds)
+        DisplayFormatter.formatDuration(totalElapsedSeconds)
     }
 
     /// Formatted total distance.
     public var formattedDistance: String {
-        String(format: "%.2f km", totalDistanceKilometers)
+        DisplayFormatter.formatDistanceKm(totalDistanceMeters)
     }
 }

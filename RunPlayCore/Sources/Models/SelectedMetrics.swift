@@ -35,42 +35,31 @@ public struct SelectedMetrics {
     }
 
     public var formattedElapsed: String {
-        guard let seconds = elapsedSeconds else { return "--:--" }
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+        DisplayFormatter.formatElapsed(elapsedSeconds)
     }
 
     public var formattedDistance: String {
-        guard let meters = distanceMeters else { return "--- km" }
-        return String(format: "%.2f km", meters / 1000.0)
+        DisplayFormatter.formatDistanceKm(distanceMeters)
     }
 
     public var formattedPace: String {
-        guard let pace = paceSecondsPerKilometer, pace > 0, pace.isFinite else { return "--:-- /km" }
-        let mins = Int(pace) / 60
-        let secs = Int(pace) % 60
-        return String(format: "%d:%02d /km", mins, secs)
+        DisplayFormatter.formatPace(paceSecondsPerKilometer)
     }
 
     public var formattedElevation: String {
-        guard let alt = altitudeMeters else { return "--- m" }
-        return String(format: "%.0f m", alt)
+        DisplayFormatter.formatElevation(altitudeMeters)
     }
 
     public var formattedHeartRate: String {
-        guard let hr = heartRateBPM else { return "--- bpm" }
-        return String(format: "%.0f bpm", hr)
+        DisplayFormatter.formatHeartRate(heartRateBPM)
     }
 
     public var formattedSpeed: String {
-        guard let speed = speedMetersPerSecond else { return "--- m/s" }
-        return String(format: "%.1f m/s", speed)
+        DisplayFormatter.formatSpeed(speedMetersPerSecond)
     }
 
     public var formattedCadence: String {
-        guard let cad = cadence else { return "--- spm" }
-        return String(format: "%.0f spm", cad)
+        DisplayFormatter.formatCadence(cadence)
     }
 
     public var formattedSplit: String {

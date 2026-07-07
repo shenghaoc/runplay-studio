@@ -126,4 +126,4 @@ open Package.swift
 
 - macOS build/test: `swift test`
 - Core-only test: `swift test --filter RunPlayCoreTests`
-- If Linux CI is not feasible, document the core test command in this file for Codex Cloud
+- Linux CI: `swift build --target RunPlayCore && swift test --filter RunPlayCoreTests` (Ubuntu, Swift 5.9+)

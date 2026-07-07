@@ -187,6 +187,7 @@ public struct ExportService {
     // MARK: - Helpers
 
     private func formatNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "" }
         if value == value.rounded() && abs(value) < 1e10 {
             return String(format: "%.0f", value)
         }

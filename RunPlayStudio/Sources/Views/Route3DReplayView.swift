@@ -149,6 +149,7 @@ struct Route3DReplayView: View {
                     .foregroundStyle(.secondary)
 
                 ForEach(RouteColorMode.allCases) { mode in
+                    let disabled = mode == .heartRate && !workout.hasHeartRateData
                     Button(action: { setColorMode(mode) }) {
                         Text(mode.rawValue)
                             .font(.caption)
@@ -158,6 +159,9 @@ struct Route3DReplayView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
+                    .disabled(disabled)
+                    .opacity(disabled ? 0.4 : 1.0)
+                    .help(disabled ? "No heart rate data available" : "")
                 }
             }
             .padding(6)
@@ -304,9 +308,29 @@ struct Route3DReplayView: View {
         }
     }
 
-    private func updateMarker(at index: Int) {
-        guard index < scenePoints.count else { return }
-        appState.sceneBuilder.updateCurrentPosition(to: scenePoints[index])
+    private func updateMarker(at routeIndex: Int) {
+        guard !scenePoints.isEmpty else { return }
+
+        // Find the projected scene point whose sourceIndex matches the route index.
+        // After projection filtering, scene points may not align 1:1 with route points.
+        if let match = scenePoints.first(where: { $0.sourceIndex == routeIndex }) {
+            appState.sceneBuilder.updateCurrentPosition(to: match)
+            return
+        }
+
+        // Fallback: find the nearest projected point by distance
+        guard routeIndex < workout.routePoints.count else { return }
+        let targetDistance = workout.routePoints[routeIndex].distanceFromStartMeters
+        var bestIndex = 0
+        var bestDelta = Double.infinity
+        for (i, sp) in scenePoints.enumerated() {
+            let delta = abs(sp.distanceFromStartMeters - targetDistance)
+            if delta < bestDelta {
+                bestDelta = delta
+                bestIndex = i
+            }
+        }
+        appState.sceneBuilder.updateCurrentPosition(to: scenePoints[bestIndex])
     }
 
     private func fitToRoute() {

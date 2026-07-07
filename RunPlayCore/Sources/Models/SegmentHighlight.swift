@@ -60,22 +60,15 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable {
     }
 
     public var formattedDuration: String {
-        let mins = Int(durationSeconds) / 60
-        let secs = Int(durationSeconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+        DisplayFormatter.formatElapsed(durationSeconds)
     }
 
     public var formattedDistance: String {
-        if distanceMeters >= 1000 {
-            return String(format: "%.1f km", distanceMeters / 1000)
-        }
-        return String(format: "%.0f m", distanceMeters)
+        DisplayFormatter.formatDistance(distanceMeters)
     }
 
     public var formattedElevation: String {
-        guard let elev = elevationDeltaMeters else { return "" }
-        let sign = elev >= 0 ? "+" : ""
-        return "\(sign)\(String(format: "%.0f", elev)) m"
+        DisplayFormatter.formatElevationDelta(elevationDeltaMeters)
     }
 }
 

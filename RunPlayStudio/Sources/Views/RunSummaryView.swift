@@ -33,11 +33,11 @@ struct RunSummaryView: View {
                     )
                 }
 
-                if let avgHR = summary.averageHeartRateBPM {
+                if let avgHR = summary.averageHeartRateBPM, avgHR.isFinite {
                     GridRow {
-                        MetricLabel(label: "Avg HR", value: "\(Int(avgHR)) bpm")
-                        if let maxHR = summary.maxHeartRateBPM {
-                            MetricLabel(label: "Max HR", value: "\(Int(maxHR)) bpm")
+                        MetricLabel(label: "Avg HR", value: String(format: "%.0f bpm", avgHR))
+                        if let maxHR = summary.maxHeartRateBPM, maxHR.isFinite {
+                            MetricLabel(label: "Max HR", value: String(format: "%.0f bpm", maxHR))
                         }
                     }
                 }

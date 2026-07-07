@@ -90,7 +90,7 @@ class ReplayController: ObservableObject {
 
     /// Seek to a specific time (0...totalDuration).
     func seekToTime(_ time: Double) {
-        guard let workout = workout else { return }
+        guard let workout = workout, time.isFinite else { return }
 
         let clampedTime = max(0, min(time, state.totalDuration))
         state.currentTime = clampedTime
@@ -104,12 +104,13 @@ class ReplayController: ObservableObject {
 
     /// Seek to a fraction of total duration (0...1).
     func seekToProgress(_ progress: Double) {
+        guard progress.isFinite else { return }
         seekToTime(progress * state.totalDuration)
     }
 
     /// Seek to a specific distance.
     func seekToDistance(_ distance: Double) {
-        guard let workout = workout else { return }
+        guard let workout = workout, distance.isFinite else { return }
 
         let clampedDist = max(0, min(distance, state.totalDistance))
         state.currentDistance = clampedDist
@@ -122,6 +123,7 @@ class ReplayController: ObservableObject {
 
     /// Set playback speed.
     func setSpeed(_ speed: Double) {
+        guard speed.isFinite else { return }
         state.playbackSpeed = max(0.1, min(speed, 16.0))
     }
 

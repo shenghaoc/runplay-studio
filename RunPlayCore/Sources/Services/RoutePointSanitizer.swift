@@ -140,7 +140,7 @@ public enum RoutePointSanitizer {
     private static func validHeartRate(_ value: Double?) -> Double? {
         guard let value,
               value.isFinite,
-              GeoDistance.validHeartRateRange.contains(value)
+              MetricValidation.validHeartRateRange.contains(value)
         else {
             return nil
         }

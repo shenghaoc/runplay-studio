@@ -63,6 +63,73 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertFalse(appState.availableForComparison.isEmpty)
     }
 
+    // MARK: - Delete Tests
+
+    func testDeleteWorkoutRemovesFromList() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        appState.workouts = [w1, w2]
+        appState.selectWorkout(w1)
+
+        appState.deleteWorkout(w1)
+
+        XCTAssertEqual(appState.workouts.count, 1)
+        XCTAssertEqual(appState.workouts.first?.id, w2.id)
+    }
+
+    func testDeleteSelectedWorkoutSelectsNext() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        appState.workouts = [w1, w2]
+        appState.selectWorkout(w1)
+
+        appState.deleteWorkout(w1)
+
+        XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
+    }
+
+    func testDeleteComparisonWorkoutClearsComparison() {
+        let appState = AppState(loadSampleWorkout: false)
+        let primary = makeWorkout(name: "Primary")
+        let comparison = makeWorkout(name: "Comparison")
+        appState.workouts = [primary, comparison]
+        appState.selectWorkout(primary)
+        appState.setComparison(comparison)
+
+        appState.deleteWorkout(comparison)
+
+        XCTAssertNil(appState.comparisonWorkout)
+        XCTAssertFalse(appState.isComparing)
+    }
+
+    func testDeleteLastWorkoutLeavesEmptyState() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "Only")
+        appState.workouts = [w1]
+        appState.selectWorkout(w1)
+
+        appState.deleteWorkout(w1)
+
+        XCTAssertTrue(appState.workouts.isEmpty)
+        XCTAssertNil(appState.selectedWorkout)
+        XCTAssertTrue(appState.detectedSegments.isEmpty)
+    }
+
+    func testDeleteNonSelectedWorkoutDoesNotChangeSelection() {
+        let appState = AppState(loadSampleWorkout: false)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        appState.workouts = [w1, w2]
+        appState.selectWorkout(w1)
+
+        appState.deleteWorkout(w2)
+
+        XCTAssertEqual(appState.selectedWorkout?.id, w1.id)
+        XCTAssertEqual(appState.workouts.count, 1)
+    }
+
     private func makeWorkout(name: String) -> RunWorkout {
         RunWorkout(metadata: WorkoutMetadata(name: name, activityType: "running"))
     }

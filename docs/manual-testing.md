@@ -4,7 +4,7 @@ Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
 Current stabilization note: automated validation passed with `swift test`
-(334 tests) and `swift test --filter RunPlayCoreTests` (70 tests). A fresh
+(392 tests) and `swift test --filter RunPlayCoreTests` (114 tests). A fresh
 manual GUI pass was not performed for this update.
 
 ## Privacy Checklist Before Commit
@@ -199,6 +199,32 @@ Use bundled synthetic data for committed artifacts.
 - [x] Demo PNG opened and visually inspected.
 - [x] Demo export text checked for private-data markers in tests.
 - [ ] Save-panel export of JSON, CSV, and PNG in a normal desktop session.
+
+## Default View Checklist
+
+- [ ] On launch with sample data, user sees a map (Overview tab) as the default view
+- [ ] Map shows the route polyline with start/finish annotations
+- [ ] Summary metrics bar is visible below the map
+- [ ] Replay controls are accessible from the Overview tab
+- [ ] 3D Route tab still works when selected
+- [ ] Charts tab still works when selected
+- [ ] Map tab still works when selected
+
+## Delete UI Checklist
+
+- [ ] Right-click on a workout row shows "Delete Run" context menu
+- [ ] Selecting "Delete Run" shows a confirmation dialog
+- [ ] Confirming deletion removes the workout from the sidebar
+- [ ] Deleting the selected workout selects the next available
+- [ ] Deleting the comparison workout clears comparison mode
+- [ ] Deleting the last workout shows empty state
+- [ ] Keyboard delete (backspace) on selected workout works
+
+## HR Color Mode Checklist
+
+- [ ] Heart Rate color button is disabled (grayed out) when route has no HR data
+- [ ] Heart Rate color button works normally when route has HR data
+- [ ] Tooltip explains why HR button is disabled
 
 Latest export notes:
 

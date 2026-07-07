@@ -75,11 +75,14 @@ class AppState: ObservableObject {
     }
 
     private func loadBundledWorkout(resource: String, extension fileExtension: String, subdirectory: String? = nil) {
+        // Primary: Bundle.main (works when launched from Xcode or built .app)
         if let url = Bundle.main.url(forResource: resource, withExtension: fileExtension, subdirectory: subdirectory) {
             loadWorkout(from: url)
             return
         }
 
+        // Development fallback: relative path from repo root.
+        // Only matches when the current working directory is the repository root.
         let relativePath = [subdirectory, "\(resource).\(fileExtension)"]
             .compactMap { $0 }
             .joined(separator: "/")

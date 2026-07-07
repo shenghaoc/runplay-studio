@@ -62,20 +62,20 @@ public struct ExportSummaryCardModel {
         }
 
         // Main metrics
-        self.distanceText = String(format: "%.2f km", workout.summary.totalDistanceMeters / 1000)
+        self.distanceText = DisplayFormatter.formatDistanceKm(workout.summary.totalDistanceMeters)
         self.durationText = workout.summary.formattedDuration
         self.paceText = workout.summary.formattedPace
-        self.elevationGainText = String(format: "+%.0f m", workout.summary.elevationGainMeters)
-        self.elevationLossText = String(format: "-%.0f m", workout.summary.elevationLossMeters)
+        self.elevationGainText = DisplayFormatter.formatElevationDelta(workout.summary.elevationGainMeters)
+        self.elevationLossText = DisplayFormatter.formatElevationDelta(-workout.summary.elevationLossMeters)
 
-        if let avgHR = workout.summary.averageHeartRateBPM {
-            self.heartRateText = String(format: "%.0f bpm", avgHR)
+        if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite {
+            self.heartRateText = DisplayFormatter.formatHeartRate(avgHR)
         } else {
             self.heartRateText = nil
         }
 
-        if let maxHR = workout.summary.maxHeartRateBPM {
-            self.maxHeartRateText = String(format: "%.0f bpm", maxHR)
+        if let maxHR = workout.summary.maxHeartRateBPM, maxHR.isFinite {
+            self.maxHeartRateText = DisplayFormatter.formatHeartRate(maxHR)
         } else {
             self.maxHeartRateText = nil
         }

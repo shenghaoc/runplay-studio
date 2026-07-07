@@ -1,12 +1,16 @@
 # RunPlay Studio — Privacy Policy
 
-## Local-Only Architecture
+## Local Workout Processing
 
-RunPlay Studio processes all data locally on your Mac. No workout data is transmitted to any external server, service, or API.
+RunPlay Studio processes all workout data locally on your Mac. No workout files, analysis results, or personal fitness data are transmitted to any external server, service, or API.
+
+## MapKit / Apple Maps
+
+The app uses Apple MapKit to display a 2D map view of your route. MapKit loads map tiles and map context from Apple map services over the network. **Map tile loading is the one network activity in the app** — it is handled entirely by Apple's MapKit framework and is subject to Apple's privacy policies. No workout data is included in map tile requests.
 
 ## No Cloud
 
-There is no cloud sync, cloud storage, or cloud processing. All files remain on your local filesystem.
+There is no cloud sync, cloud storage, or cloud processing for workout data. All files remain on your local filesystem.
 
 ## No Analytics
 
@@ -22,7 +26,7 @@ There is no sign-up, login, user account, or authentication system. The app work
 
 ## No AI API
 
-RunPlay Studio does not connect to OpenAI, Anthropic, Google Gemini, or any other AI service. All processing is local using Apple frameworks.
+RunPlay Studio does not connect to OpenAI, Anthropic, Google Gemini, or any other AI service. All workout analysis is local using Apple frameworks.
 
 ## Data Storage
 
@@ -31,9 +35,9 @@ RunPlay Studio does not connect to OpenAI, Anthropic, Google Gemini, or any othe
 - Files are accessed via macOS file open dialogs
 - No data is cached beyond what macOS provides
 
-## Network Access
+## Exports
 
-RunPlay Studio does not make any network requests. The app functions entirely offline.
+All exports (JSON, CSV, PNG) are generated and saved locally. No export data is uploaded anywhere.
 
 ## Future Considerations
 

@@ -17,7 +17,7 @@ At a glance:
 - Route comparison with summary deltas, splits, pace chart, 2D overlay, and 3D overlay
 - Selected-distance markers in 3D comparison with time/pace delta readout
 - Local JSON, CSV, and PNG exports
-- Local-only privacy model: no account, no cloud, no telemetry, no AI API
+- Privacy-first: no account, no cloud, no telemetry, no AI API; workout data stays local (MapKit loads map tiles from Apple services)
 
 ## What It Is NOT
 
@@ -30,14 +30,14 @@ At a glance:
 
 ## Current Status
 
-**✅ SwiftPM Verified** — Swift Package builds and tests pass. A fresh manual GUI launch/file-picker pass was not performed in this verification pass.
+**SwiftPM builds and tests pass.** GUI launch and manual smoke testing status is documented below.
 
 | Check | Status |
 |-------|--------|
 | `swift package describe` | ✅ Pass |
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (334 tests) |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (70 tests, platform-neutral) |
+| `swift test` | ✅ Pass (392 tests) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS workflow |
 | Xcode launch | Not reverified in this pass |
 | Sample data loads | ✅ Covered by app-state and fixture tests |
@@ -158,10 +158,15 @@ Routes with elevation changes are visualized with configurable exaggeration:
 - 5x — Makes moderate hills visible
 - 10x — For very flat routes where you want to see any elevation
 
+### Overview (Default)
+- Map with route overlay as the default landing view
+- Run summary metrics and replay controls
+- Real map context via Apple MapKit (loads map tiles from Apple services)
+
 ### Map View (MapKit)
 - 2D overhead route display
 - Start/finish annotations
-- Reference context for the 3D view
+- Full-screen map for detailed route inspection
 
 ### Charts (Swift Charts)
 - Pace, elevation, heart rate, and speed over distance
@@ -232,8 +237,9 @@ time warping.
 
 ## Privacy
 
-- **Local-only** — All data stays on your Mac
-- **No cloud** — No external servers or sync
+- **Local workout processing** — All workout data stays on your Mac
+- **MapKit map tiles** — The map view uses Apple MapKit, which loads map tiles from Apple services over the network. This is the only network activity in the app. No workout data is included in map tile requests.
+- **No cloud** — No external servers or sync for workout data
 - **No analytics** — No usage tracking
 - **No telemetry** — No phone-home behavior
 - **No account** — No sign-up or login

@@ -20,7 +20,6 @@ This means:
 
 - No GPS permissions needed during runs
 - No battery drain during workouts
-- No network dependency
 - Works with data from ANY source
 - Focus on analysis quality over real-time performance
 
@@ -44,7 +43,8 @@ RunPlay Studio's 3D view makes elevation changes, turns, and terrain features vi
 | Timeline scrubbing | Limited | Limited | ✅ |
 | Split analysis | Basic | Basic | ✅ |
 | Multi-panel view | ❌ | Limited | ✅ |
-| Offline/local-only | ❌ | ❌ | ✅ |
+| Workout data local-only | ❌ | ❌ | ✅ |
+| Map tiles from Apple | N/A | N/A | Yes (MapKit) |
 | Desktop-optimized | ❌ | ❌ | ✅ |
 
 ## Target User
