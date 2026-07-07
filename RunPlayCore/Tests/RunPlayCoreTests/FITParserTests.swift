@@ -55,6 +55,24 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(records.count, 1)
     }
 
+    func test12ByteHeaderParsesSuccessfully() throws {
+        // 12-byte headers have no CRC field at all — parser should accept them
+        let data = Self.fitData12ByteHeader(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
+        ])
+
+        let records = try FITParser.parse(data: data)
+        XCTAssertEqual(records.count, 2)
+    }
+
+    func testCRC16KnownAnswer() {
+        // Standard CRC-16/ARC test vector: "123456789" = 0xBB3D
+        let input: [UInt8] = Array("123456789".utf8)
+        let result = FITParser.crc16(over: input)
+        XCTAssertEqual(result, 0xBB3D, "CRC-16/ARC of '123456789' should be 0xBB3D")
+    }
+
     func testCorruptHeaderCRCThrows() {
         var data = Self.fitData(records: [
             (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
@@ -188,6 +206,34 @@ final class FITParserTests: XCTestCase {
             data[12] = UInt8(headerCRC & 0xFF)
             data[13] = UInt8(headerCRC >> 8)
         }
+        data.append(content)
+        // Compute and append file CRC
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
+    /// Build FIT data with a 12-byte header (no header CRC field).
+    private static func fitData12ByteHeader(
+        records: [(timestamp: UInt32, latDegrees: Double, lonDegrees: Double, distanceMeters: Double)]
+    ) -> Data {
+        var content = Data()
+        writeDefinition(to: &content)
+        for record in records {
+            content.append(0x00)
+            append(record.timestamp, to: &content)
+            append(semicircles(record.latDegrees), to: &content)
+            append(semicircles(record.lonDegrees), to: &content)
+            append(UInt32(record.distanceMeters * 100), to: &content)
+        }
+
+        var data = Data()
+        data.append(12)  // 12-byte header (no CRC field)
+        data.append(16)
+        data.append(contentsOf: [0x40, 0x01])
+        append(UInt32(content.count), to: &data)
+        data.append(contentsOf: [0x46, 0x49, 0x54, 0x20])
         data.append(content)
         // Compute and append file CRC
         let fileCRC = FITParser.crc16(over: data)

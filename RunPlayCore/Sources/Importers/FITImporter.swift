@@ -14,8 +14,14 @@ public struct FITImporter: WorkoutImporting {
         try validateLocalFile(url)
         let data = try Data(contentsOf: url)
 
-        // Parse FIT binary data
-        let records = try FITParser.parse(data: data)
+        // Parse FIT binary data, wrapping FITError into WorkoutImportError
+        // so upstream code only needs to handle WorkoutImportError.
+        let records: [FITRecordMessage]
+        do {
+            records = try FITParser.parse(data: data)
+        } catch let error as FITError {
+            throw WorkoutImportError.parsingError(error.localizedDescription)
+        }
 
         guard !records.isEmpty else {
             throw WorkoutImportError.missingData("No records found in FIT file")
