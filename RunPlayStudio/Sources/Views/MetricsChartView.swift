@@ -181,7 +181,7 @@ struct MetricsChartView: View {
 
     private func valueForDistance(_ distance: Double) -> Double {
         guard distance > 0, !routePoints.isEmpty else { return 0 }
-        let index = routePoints.firstIndex { $0.distanceFromStartMeters >= distance } ?? routePoints.count - 1
+        let index = RoutePointInterpolator.firstIndex(atOrAfter: distance, in: routePoints) ?? routePoints.count - 1
         guard index >= 0 && index < routePoints.count else { return 0 }
 
         switch selectedMetric {

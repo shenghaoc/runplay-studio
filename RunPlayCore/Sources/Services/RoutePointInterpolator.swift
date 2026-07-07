@@ -33,6 +33,10 @@ public enum RoutePointInterpolator {
             }
         }
 
+        if points[low].distanceFromStartMeters == clampedDistance {
+            return points[lastDuplicateIndex(startingAt: low, distance: clampedDistance, in: points)]
+        }
+
         if low == 0 { return points[0] }
         let after = points[low]
         let before = points[low - 1]
@@ -41,13 +45,7 @@ public enum RoutePointInterpolator {
         // When segmentDistance is 0 (duplicate distances from stationary samples),
         // prefer the last point at that distance to capture final elapsed time.
         guard segmentDistance > 0, segmentDistance.isFinite else {
-            // Find the last point at this exact distance
-            var lastAtDistance = low
-            while lastAtDistance + 1 < points.count &&
-                  points[lastAtDistance + 1].distanceFromStartMeters == after.distanceFromStartMeters {
-                lastAtDistance += 1
-            }
-            return points[lastAtDistance]
+            return points[lastDuplicateIndex(startingAt: low, distance: after.distanceFromStartMeters, in: points)]
         }
 
         let fraction = max(0, min(1, (clampedDistance - before.distanceFromStartMeters) / segmentDistance))
@@ -76,11 +74,17 @@ public enum RoutePointInterpolator {
             }
         }
 
+        if points[low].distanceFromStartMeters == clampedDistance {
+            return points[lastDuplicateIndex(startingAt: low, distance: clampedDistance, in: points)]
+        }
+
         if low == 0 { return points[0] }
         let after = points[low]
         let before = points[low - 1]
         let segmentDistance = after.distanceFromStartMeters - before.distanceFromStartMeters
-        guard segmentDistance > 0, segmentDistance.isFinite else { return before }
+        guard segmentDistance > 0, segmentDistance.isFinite else {
+            return points[lastDuplicateIndex(startingAt: low, distance: after.distanceFromStartMeters, in: points)]
+        }
 
         let fraction = max(0, min(1, (clampedDistance - before.distanceFromStartMeters) / segmentDistance))
         return RouteScenePoint(
@@ -138,15 +142,18 @@ public enum RoutePointInterpolator {
         from startDistance: Double,
         to endDistance: Double
     ) -> Double? {
-        let values = points
-            .filter { $0.distanceFromStartMeters >= startDistance && $0.distanceFromStartMeters <= endDistance }
-            .compactMap { point -> Double? in
-                guard let hr = point.heartRateBPM,
-                      hr.isFinite,
-                      GeoDistance.validHeartRateRange.contains(hr)
-                else { return nil }
-                return hr
-            }
+        guard let startIndex = firstIndex(atOrAfter: startDistance, in: points),
+              let endIndex = lastIndex(atOrBefore: endDistance, in: points),
+              startIndex <= endIndex
+        else { return nil }
+
+        let values = points[startIndex...endIndex].compactMap { point -> Double? in
+            guard let hr = point.heartRateBPM,
+                  hr.isFinite,
+                  GeoDistance.validHeartRateRange.contains(hr)
+            else { return nil }
+            return hr
+        }
         guard !values.isEmpty else { return nil }
         return values.reduce(0, +) / Double(values.count)
     }
@@ -207,7 +214,36 @@ public enum RoutePointInterpolator {
     }
 
     private static func interpolateOptional(_ a: Double?, _ b: Double?, _ fraction: Double) -> Double? {
+        if fraction <= 0 {
+            return finiteOptional(a)
+        }
+        if fraction >= 1 {
+            return finiteOptional(b)
+        }
         guard let a, let b, a.isFinite, b.isFinite else { return nil }
         return interpolate(a, b, fraction)
+    }
+
+    private static func finiteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+
+    private static func lastDuplicateIndex(startingAt index: Int, distance: Double, in points: [RoutePoint]) -> Int {
+        var lastAtDistance = index
+        while lastAtDistance + 1 < points.count &&
+              points[lastAtDistance + 1].distanceFromStartMeters == distance {
+            lastAtDistance += 1
+        }
+        return lastAtDistance
+    }
+
+    private static func lastDuplicateIndex(startingAt index: Int, distance: Double, in points: [RouteScenePoint]) -> Int {
+        var lastAtDistance = index
+        while lastAtDistance + 1 < points.count &&
+              points[lastAtDistance + 1].distanceFromStartMeters == distance {
+            lastAtDistance += 1
+        }
+        return lastAtDistance
     }
 }

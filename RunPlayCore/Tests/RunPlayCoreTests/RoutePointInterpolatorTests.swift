@@ -65,6 +65,47 @@ final class RoutePointInterpolatorTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    func testPointAtDuplicateTailDistanceReturnsLastPoint() {
+        let points = [
+            makePoint(distance: 0, elapsed: 0),
+            makePoint(distance: 1000, elapsed: 300, hr: 145),
+            makePoint(distance: 1000, elapsed: 360, hr: 150)
+        ]
+
+        let result = RoutePointInterpolator.point(at: 1000, in: points)
+
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result!.elapsedSeconds, 360, accuracy: 0.001)
+        XCTAssertEqual(result!.heartRateBPM, 150)
+    }
+
+    func testPointAtExactEndpointPreservesOneSidedMetrics() {
+        let points = [
+            makePoint(distance: 0, elapsed: 0),
+            makePoint(distance: 1000, elapsed: 300, altitude: 42, hr: 150)
+        ]
+
+        let result = RoutePointInterpolator.point(at: 1000, in: points)
+
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result!.altitudeMeters, 42)
+        XCTAssertEqual(result!.heartRateBPM, 150)
+    }
+
+    func testScenePointAtDuplicateTailDistanceReturnsLastPoint() {
+        let points = [
+            makeScenePoint(distance: 0, elapsed: 0, sourceIndex: 0),
+            makeScenePoint(distance: 1000, elapsed: 300, sourceIndex: 1),
+            makeScenePoint(distance: 1000, elapsed: 360, sourceIndex: 2)
+        ]
+
+        let result = RoutePointInterpolator.scenePoint(at: 1000, in: points)
+
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result!.elapsedSeconds, 360, accuracy: 0.001)
+        XCTAssertEqual(result!.sourceIndex, 2)
+    }
+
     // MARK: - firstIndex / lastIndex
 
     func testFirstIndexAtOrAfterFindsCorrectIndex() {
@@ -164,6 +205,17 @@ final class RoutePointInterpolatorTests: XCTestCase {
             distanceFromStartMeters: distance,
             elapsedSeconds: elapsed,
             heartRateBPM: hr
+        )
+    }
+
+    private func makeScenePoint(distance: Double, elapsed: Double, sourceIndex: Int) -> RouteScenePoint {
+        RouteScenePoint(
+            xMeters: distance,
+            yMeters: 0,
+            zMeters: 0,
+            sourceIndex: sourceIndex,
+            distanceFromStartMeters: distance,
+            elapsedSeconds: elapsed
         )
     }
 }
