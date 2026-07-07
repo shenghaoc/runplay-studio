@@ -209,8 +209,8 @@ struct ComparisonMapView: View {
 
             Divider().frame(height: 16)
 
-            metricBadge(label: "Pace", value: metrics.primaryPaceFormatted, color: .blue)
-            metricBadge(label: "Pace", value: metrics.comparisonPaceFormatted, color: .orange)
+            metricBadge(label: "Primary Pace", value: metrics.primaryPaceFormatted, color: .blue)
+            metricBadge(label: "Comp. Pace", value: metrics.comparisonPaceFormatted, color: .orange)
             metricBadge(label: "Δ Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
         }
         .frame(height: 24)
