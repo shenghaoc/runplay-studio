@@ -166,7 +166,95 @@ final class SegmentDetectionTests: XCTestCase {
         }
     }
 
+    // MARK: - Binary Search Helpers
+
+    func testFirstIndexAtOrAfterEmptyArray() {
+        let points: [RoutePoint] = []
+        XCTAssertNil(RoutePointInterpolator.firstIndex(atOrAfter: 100, in: points))
+    }
+
+    func testFirstIndexAtOrAfterSingleElement() {
+        let points = [makePoint(distance: 50)]
+        XCTAssertEqual(RoutePointInterpolator.firstIndex(atOrAfter: 50, in: points), 0)
+        XCTAssertEqual(RoutePointInterpolator.firstIndex(atOrAfter: 51, in: points), nil)
+        XCTAssertEqual(RoutePointInterpolator.firstIndex(atOrAfter: 0, in: points), 0)
+    }
+
+    func testFirstIndexAtOrAfterExactBoundary() {
+        let points = [0, 100, 200, 300, 400].map { makePoint(distance: Double($0)) }
+        // Target exactly matches a point
+        XCTAssertEqual(RoutePointInterpolator.firstIndex(atOrAfter: 200, in: points), 2)
+        // Target between points — should return next point
+        XCTAssertEqual(RoutePointInterpolator.firstIndex(atOrAfter: 150, in: points), 2)
+        // Target before all
+        XCTAssertEqual(RoutePointInterpolator.firstIndex(atOrAfter: -10, in: points), 0)
+        // Target beyond all
+        XCTAssertNil(RoutePointInterpolator.firstIndex(atOrAfter: 500, in: points))
+    }
+
+    func testLastIndexAtOrBeforeEmptyArray() {
+        let points: [RoutePoint] = []
+        XCTAssertNil(RoutePointInterpolator.lastIndex(atOrBefore: 100, in: points))
+    }
+
+    func testLastIndexAtOrBeforeSingleElement() {
+        let points = [makePoint(distance: 50)]
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 50, in: points), 0)
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 49, in: points), nil)
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 100, in: points), 0)
+    }
+
+    func testLastIndexAtOrBeforeExactBoundary() {
+        let points = [0, 100, 200, 300, 400].map { makePoint(distance: Double($0)) }
+        // Target exactly matches a point
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 200, in: points), 2)
+        // Target between points — should return previous point
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 250, in: points), 2)
+        // Target after all
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 500, in: points), 4)
+        // Target before all
+        XCTAssertNil(RoutePointInterpolator.lastIndex(atOrBefore: -10, in: points))
+    }
+
+    func testLastIndexAtOrBeforeDuplicateDistanceReturnsLastMatch() {
+        let points = [0, 100, 200, 200, 400].map { makePoint(distance: Double($0)) }
+        XCTAssertEqual(RoutePointInterpolator.lastIndex(atOrBefore: 200, in: points), 3)
+    }
+
+    func testEmptyRouteReturnsNoSegments() {
+        let workout = RunWorkout(routePoints: [])
+        let segments = SegmentDetector.detectSegments(from: workout)
+        XCTAssertTrue(segments.isEmpty, "Empty route should return no segments")
+    }
+
+    func testSinglePointRouteReturnsNoSegments() {
+        let points = [makePoint(distance: 0)]
+        let workout = RunWorkout(routePoints: points)
+        let segments = SegmentDetector.detectSegments(from: workout)
+        XCTAssertTrue(segments.isEmpty, "Single point route should return no segments")
+    }
+
+    func testIrregularSpacingBinarySearch() {
+        // Points with irregular GPS spacing
+        let points = [0, 30, 200, 250, 500].map { makePoint(distance: Double($0)) }
+        let workout = RunWorkout(routePoints: points)
+        // Should not crash — binary search handles irregular spacing
+        let segments = SegmentDetector.detectSegments(from: workout)
+        XCTAssertNotNil(segments)
+    }
+
     // MARK: - Helpers
+
+    private func makePoint(distance: Double) -> RoutePoint {
+        RoutePoint(
+            timestamp: Date(),
+            latitude: 37.7749,
+            longitude: -122.4194,
+            altitudeMeters: nil,
+            distanceFromStartMeters: distance,
+            elapsedSeconds: distance / 3.0 // ~3 m/s pace
+        )
+    }
 
     private func createWorkoutWithVaryingPace() -> RunWorkout {
         // Create a 5km run with varying pace
