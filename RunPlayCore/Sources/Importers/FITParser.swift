@@ -208,7 +208,7 @@ public struct FITParser {
             guard data.count >= 14 else {
                 throw FITError.invalidHeader
             }
-            let expectedCRC = readUInt16LE(data, offset: 12)
+            let expectedCRC = readUInt16(data: data[12..<14], littleEndian: true)
             if expectedCRC != 0 {
                 let computedCRC = crc16(over: data[0..<12])
                 guard expectedCRC == computedCRC else {
@@ -226,7 +226,7 @@ public struct FITParser {
 
         // Validate entire-file CRC (covers header + all data records).
         // Placed here because parseHeader already has the dataEnd boundary.
-        let expectedFileCRC = readUInt16LE(data, offset: dataEnd)
+        let expectedFileCRC = readUInt16(data: data[dataEnd..<(dataEnd + 2)], littleEndian: true)
         let computedFileCRC = crc16(over: data[0..<dataEnd])
         guard expectedFileCRC == computedFileCRC else {
             throw FITError.fileCRCMismatch
@@ -426,11 +426,6 @@ public struct FITParser {
     }
 
     // MARK: - Binary Reading Helpers
-
-    /// Read a little-endian UInt16 from `data` at the given byte offset.
-    private static func readUInt16LE(_ data: Data, offset: Int) -> UInt16 {
-        UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
-    }
 
     private static func readUInt16(data: Data.SubSequence, littleEndian: Bool) -> UInt16 {
         let bytes = Array(data.prefix(2))
