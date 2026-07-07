@@ -7,7 +7,6 @@ Current stabilization note: automated validation passed with `swift test`
 (451 tests) and `swift test --filter RunPlayCoreTests` (114 tests). Specific
 manual GUI passes are documented per checklist below; not all GUI behaviors
 have been manually verified.
-
 ## Privacy Checklist Before Commit
 
 - [x] Keep private workout files untracked or ignored.
@@ -17,13 +16,8 @@ have been manually verified.
   are staged.
 - [x] Use explicit `git add <path>` rather than `git add -A`.
 - [x] Keep committed fixtures and demo assets synthetic or anonymized.
-
-Latest privacy notes:
-
-- `activity_*.tcx` and `activity_*.fit` are ignored for local dogfooding.
-- Real workout files should live under `local-workouts/` or
-  `private-workouts/`.
-- See `docs/private-data.md` for the durable private-data policy.
+- [x] Store private workout files under `local-workouts/` or `private-workouts/`.
+- [x] See `docs/private-data.md` for the durable private-data policy.
 
 ## Route Comparison Dogfood Checklist
 

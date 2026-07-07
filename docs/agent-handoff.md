@@ -197,6 +197,5 @@ After completing the current MapKit checklist, next steps are:
 
 - Add comparison demo screenshot to docs/assets/ when available
 - Keep expanding synthetic demo assets only from anonymized or generated data
-- Consider tagging v0.1 demo release
 - Keep HealthKit, cloud, accounts, telemetry, analytics, AI APIs, and advanced
   route matching out of scope until explicitly planned
