@@ -132,6 +132,7 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         parser.delegate = self
         parser.shouldProcessNamespaces = false
         parser.shouldReportNamespacePrefixes = false
+        parser.shouldResolveExternalEntities = false
 
         guard parser.parse() else {
             throw WorkoutImportError.parsingError("XML parsing failed")
