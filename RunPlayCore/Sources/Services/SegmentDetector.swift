@@ -228,7 +228,7 @@ public struct SegmentDetector {
 
     // MARK: - Helpers
 
-    /// Evaluate a distance window and return pace and point indices.
+    /// Evaluate a distance window and return pace metrics.
     private struct WindowEvaluation {
         let startElapsed: Double
         let endElapsed: Double
