@@ -17,6 +17,7 @@ have been manually verified.
 - [x] Use explicit `git add <path>` rather than `git add -A`.
 - [x] Keep committed fixtures and demo assets synthetic or anonymized.
 - [x] Store private workout files under `local-workouts/` or `private-workouts/`.
+- [x] Note: `activity_*.tcx` and `activity_*.fit` are gitignored for local dogfooding.
 - [x] See `docs/private-data.md` for the durable private-data policy.
 
 ## Route Comparison Dogfood Checklist
