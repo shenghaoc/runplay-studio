@@ -27,14 +27,14 @@ struct OverviewView: View {
                 MetricBadge(label: "Pace", value: workout.summary.formattedPace, icon: "speedometer")
                 MetricBadge(
                     label: "Elev",
-                    value: String(format: "+%.0f m", workout.summary.elevationGainMeters),
+                    value: DisplayFormatter.formatElevationDelta(workout.summary.elevationGainMeters),
                     icon: "mountain.2"
                 )
 
                 if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite {
                     MetricBadge(
                         label: "Avg HR",
-                        value: String(format: "%.0f bpm", avgHR),
+                        value: DisplayFormatter.formatHeartRate(avgHR),
                         icon: "heart.fill",
                         color: .red
                     )

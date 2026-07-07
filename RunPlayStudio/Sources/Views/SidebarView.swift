@@ -25,8 +25,8 @@ struct SidebarView: View {
                         }
                 }
                 .onDelete { indexSet in
-                    for index in indexSet {
-                        onDelete?(workouts[index])
+                    if let index = indexSet.first {
+                        workoutToDelete = workouts[index]
                     }
                 }
             }

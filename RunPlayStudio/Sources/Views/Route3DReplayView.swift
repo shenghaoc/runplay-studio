@@ -318,16 +318,25 @@ struct Route3DReplayView: View {
             return
         }
 
-        // Fallback: find the nearest projected point by distance
-        guard routeIndex < workout.routePoints.count else { return }
+        // Fallback: find the nearest projected point by distance using binary search
+        guard routeIndex >= 0, routeIndex < workout.routePoints.count else { return }
         let targetDistance = workout.routePoints[routeIndex].distanceFromStartMeters
-        var bestIndex = 0
-        var bestDelta = Double.infinity
-        for (i, sp) in scenePoints.enumerated() {
-            let delta = abs(sp.distanceFromStartMeters - targetDistance)
-            if delta < bestDelta {
-                bestDelta = delta
-                bestIndex = i
+        var low = 0
+        var high = scenePoints.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if scenePoints[mid].distanceFromStartMeters < targetDistance {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        var bestIndex = low
+        if low > 0 {
+            let prevDiff = abs(scenePoints[low - 1].distanceFromStartMeters - targetDistance)
+            let currDiff = abs(scenePoints[low].distanceFromStartMeters - targetDistance)
+            if prevDiff < currDiff {
+                bestIndex = low - 1
             }
         }
         appState.sceneBuilder.updateCurrentPosition(to: scenePoints[bestIndex])
