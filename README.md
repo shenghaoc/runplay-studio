@@ -99,6 +99,8 @@ See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
 
 ---
 
+---
+
 ## Build Requirements
 
 - macOS 14.0+
