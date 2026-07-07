@@ -2,12 +2,12 @@
 
 ## Current Status
 
-3D route comparison overlay MVP is implemented. Route comparison now supports
-both 2D map and 3D scene views, and the SceneKit camera controller is wired to
-the visible single-run and comparison scenes. Do not add commit hashes to this
-handoff as a status field; they become stale and cause repeated hash-only
-documentation commits during rapid iteration. Run `git log -1 --oneline`
-locally to see the current commit.
+3D route comparison overlay MVP is implemented, and this stabilization pass
+hardens import normalization, FIT parsing, distance interpolation, SceneKit
+toggles, chart seek alignment, and export result metadata. Do not add commit
+hashes to this handoff as a status field; they become stale and cause repeated
+hash-only documentation commits during rapid iteration. Run `git log -1
+--oneline` locally to see the current commit.
 
 ## Verification Snapshot
 
@@ -23,14 +23,19 @@ swift test
 Latest verified result:
 
 - `swift build`: pass
-- `swift test`: pass, 257 tests, 0 failures
-- Package product: `RunPlayStudio`
-- Test target: `RunPlayStudioTests`
-- Validation was performed after synchronizing with the latest default branch
+- `swift test --filter RunPlayCoreTests`: pass, 70 tests, 0 failures
+- `swift test`: pass, 334 tests, 0 failures
+- Package products: `RunPlayCore`, `RunPlayStudio`
+- Test targets: `RunPlayCoreTests`, `RunPlayStudioTests`
+- No fresh manual GUI dogfood was performed in this stabilization pass
 
 ## Completed Capabilities
 
 - Local import: JSON, GPX, TCX, and basic FIT activity files
+- Import normalization rejects invalid coordinates, requires at least one
+  GPX/TCX/FIT timestamp for timing analysis, interpolates partial missing
+  timestamps, rebases first nonzero TCX/FIT distances, and prevents mixed
+  supplied/computed distance series
 - 3D route replay with SceneKit
 - 2D MapKit route view
 - Swift Charts pace, elevation, and heart-rate metrics
@@ -39,6 +44,8 @@ Latest verified result:
 - Chart click/drag-to-seek
 - Segment detection and 3D segment highlighting
 - Local JSON, CSV, and PNG summary export
+- Explicit export result formats for JSON, splits CSV, segments CSV, combined
+  CSV, and PNG
 - Route comparison MVP
 - 3D route comparison overlay
 - 3D comparison selected-distance markers with time/pace delta readout
@@ -49,12 +56,12 @@ Latest verified result:
 
 ## Route Comparison MVP
 
-Implemented files:
+Implemented files (models and services in `RunPlayCore`, UI in `RunPlayStudio`):
 
-- `RunPlayStudio/Sources/Models/WorkoutComparison.swift`
-- `RunPlayStudio/Sources/Models/ComparisonRouteScene.swift`
-- `RunPlayStudio/Sources/Services/WorkoutComparisonService.swift`
-- `RunPlayStudio/Sources/Services/ComparisonRouteProjectionService.swift`
+- `RunPlayCore/Sources/Models/WorkoutComparison.swift`
+- `RunPlayCore/Sources/Models/ComparisonRouteScene.swift`
+- `RunPlayCore/Sources/Services/WorkoutComparisonService.swift`
+- `RunPlayCore/Sources/Services/ComparisonRouteProjectionService.swift`
 - `RunPlayStudio/Sources/ViewModels/AppState.swift`
 - `RunPlayStudio/Sources/Views/CompareView.swift`
 - `RunPlayStudio/Sources/Views/ComparisonMapView.swift`
@@ -73,7 +80,7 @@ Current comparison behavior:
   average heart rate, and max heart rate when available
 - Aligns splits by split index
 - Builds a distance-aligned pace/elevation/heart-rate series clamped to common
-  distance
+  distance using interpolated route points
 - Shows a 2D route overlay for both runs with a simple legend
 - Shows a 3D comparison overlay with both routes in the same scene
 - 3D comparison uses shared coordinate origin (primary route center) so both
@@ -81,8 +88,8 @@ Current comparison behavior:
 - 3D comparison shows primary (blue) and comparison (orange) routes with
   distinct start/finish markers and a 3D legend
 - 3D comparison supports elevation exaggeration, camera presets, fit-to-routes,
-  and grid toggle. Camera wiring is fixed and unit-tested; run a normal desktop
-  manual pass before marking the buttons GUI-verified.
+  and grid toggle. Camera wiring and builder visibility toggles are covered by
+  tests; run a normal desktop manual pass before marking the buttons GUI-verified.
 - 3D comparison supports a selected-distance slider that places interpolated
   markers on both routes at the same distance, with a compact readout showing
   elapsed time and pace deltas. Distance is clamped to the common route distance.
@@ -92,7 +99,8 @@ Current comparison behavior:
 - Rejects comparing a selected primary workout with itself
 - Formats deltas with faster/slower and longer/shorter direction labels
 - Keeps all comparison work local to the app
-- The route-shape warning now explicitly says comparison uses distance alignment
+- The route-shape warning explicitly states comparison uses distance alignment
+  and samples shared distances
 
 Current comparison limitations:
 
@@ -137,8 +145,9 @@ Remaining export gap:
 
 ## Manual GUI Dogfood
 
-Manual dogfood was run from a temporary SwiftPM-built app bundle after a clean
-repository sync.
+Manual dogfood below is retained from earlier passes. It was not rerun during
+the current stabilization pass; do not treat it as fresh proof of current UI
+behavior.
 
 Verified:
 

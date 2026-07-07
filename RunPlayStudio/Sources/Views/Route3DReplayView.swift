@@ -1,5 +1,7 @@
 import SwiftUI
+import RunPlayCore
 import SceneKit
+
 
 /// Displays the 3D route scene with replay marker and controls.
 struct Route3DReplayView: View {
@@ -200,6 +202,13 @@ struct Route3DReplayView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Side view")
+
+                Button(action: { setCameraPreset(.front) }) {
+                    Image(systemName: "arrow.up.to.line")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Front view")
             }
             .padding(6)
             .background(.ultraThinMaterial)
@@ -232,7 +241,7 @@ struct Route3DReplayView: View {
             Divider()
 
             // Toggle grid
-            Button(action: { showGrid.toggle() }) {
+            Button(action: { setGridVisible(!showGrid) }) {
                 Image(systemName: showGrid ? "square.grid.3x3.fill" : "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(showGrid ? .primary : .secondary)
@@ -244,7 +253,7 @@ struct Route3DReplayView: View {
             .help(showGrid ? "Hide grid" : "Show grid")
 
             // Toggle km markers
-            Button(action: { showKmMarkers.toggle() }) {
+            Button(action: { setKilometerMarkersVisible(!showKmMarkers) }) {
                 Image(systemName: showKmMarkers ? "mappin.circle.fill" : "mappin.circle")
                     .font(.caption)
                     .foregroundStyle(showKmMarkers ? .primary : .secondary)
@@ -317,5 +326,15 @@ struct Route3DReplayView: View {
     private func setColorMode(_ mode: RouteColorMode) {
         colorMode = mode
         buildScene()
+    }
+
+    private func setGridVisible(_ isVisible: Bool) {
+        showGrid = isVisible
+        appState.sceneBuilder.showGroundGrid = isVisible
+    }
+
+    private func setKilometerMarkersVisible(_ isVisible: Bool) {
+        showKmMarkers = isVisible
+        appState.sceneBuilder.showKilometerMarkers = isVisible
     }
 }

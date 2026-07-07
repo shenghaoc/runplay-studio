@@ -7,13 +7,14 @@
 The top-level container for a running workout.
 
 ```swift
-struct RunWorkout: Identifiable, Codable {
+struct RunWorkout: Identifiable, Codable, Hashable {
     let id: UUID
     var metadata: WorkoutMetadata
     var source: WorkoutSource
     var routePoints: [RoutePoint]
     var splits: [RunSplit]
     var summary: RunSummary
+    var segments: [SegmentHighlight]
 }
 ```
 
@@ -108,26 +109,35 @@ struct WorkoutMetadata: Codable {
 
 ### SegmentHighlight
 
-A notable segment of the route (fastest mile, steepest climb, etc.)
+A notable segment of the route (fastest 400m, biggest climb, etc.)
 
 ```swift
-struct SegmentHighlight: Identifiable, Codable {
+struct SegmentHighlight: Identifiable, Codable, Hashable {
     let id: UUID
     var type: SegmentType
-    var startIndex: Int          // RoutePoint index
-    var endIndex: Int
+    var title: String
+    var subtitle: String
     var startDistanceMeters: Double
     var endDistanceMeters: Double
-    var value: Double            // pace, gradient, etc.
-    var label: String
+    var startElapsedSeconds: Double
+    var endElapsedSeconds: Double
+    var durationSeconds: Double
+    var distanceMeters: Double
+    var paceSecondsPerKilometer: Double?
+    var elevationDeltaMeters: Double?
+    var averageHeartRate: Double?
+    var sourcePointRange: Range<Int>
+    var displayPriority: Int
 }
 
-enum SegmentType: String, Codable {
-    case fastestKilometer
-    case fastestMile
-    case steepestClimb
-    case steepestDescent
-    case slowestKilometer
+enum SegmentType: String, Codable, Hashable, CaseIterable {
+    case fastest400m
+    case fastest1km
+    case slowest1km
+    case biggestClimb
+    case biggestDescent
+    case slowdown
+    case custom
 }
 ```
 
@@ -146,18 +156,41 @@ struct ComparisonPair {
 
 ### WorkoutComparisonSummary
 
-Summary deltas between two completed runs.
+Summary deltas and individual values between two completed runs.
 
 ```swift
 struct WorkoutComparisonSummary {
     let primaryTitle: String
     let comparisonTitle: String
+
+    // Distance (primary, comparison, delta)
+    let primaryDistanceMeters: Double
+    let comparisonDistanceMeters: Double
     let distanceDeltaMeters: Double
+
+    // Duration
+    let primaryDurationSeconds: Double
+    let comparisonDurationSeconds: Double
     let durationDeltaSeconds: Double
+
+    // Pace
+    let primaryPaceSecondsPerKm: Double
+    let comparisonPaceSecondsPerKm: Double
     let paceDeltaSecondsPerKm: Double
+
+    // Elevation
+    let primaryElevationGainMeters: Double
+    let comparisonElevationGainMeters: Double
     let elevationGainDeltaMeters: Double
+
+    // Heart rate (optional)
+    let primaryAvgHR: Double?
+    let comparisonAvgHR: Double?
     let avgHRDelta: Double?
+    let primaryMaxHR: Double?
+    let comparisonMaxHR: Double?
     let maxHRDelta: Double?
+
     let primaryPointCount: Int
     let comparisonPointCount: Int
     let warnings: [ComparisonWarning]
@@ -286,5 +319,13 @@ struct ReplayState {
     var playbackSpeed: Double        // 1.0, 2.0, 0.5, etc.
     var totalDuration: Double
     var totalDistance: Double
+
+    // Computed properties
+    var progress: Double             // 0...1 fraction of duration
+    var distanceProgress: Double     // 0...1 fraction of distance
+    var formattedCurrentTime: String
+    var formattedTotalDuration: String
+    var formattedCurrentDistance: String
+    var formattedSpeed: String
 }
 ```

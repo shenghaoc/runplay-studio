@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Controls for the route replay: play/pause, timeline, speed.
 struct ReplayControlsView: View {

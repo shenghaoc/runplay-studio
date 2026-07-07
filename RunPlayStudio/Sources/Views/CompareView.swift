@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Main comparison view showing two workouts side by side.
 struct CompareView: View {

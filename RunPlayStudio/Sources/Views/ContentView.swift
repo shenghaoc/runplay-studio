@@ -1,15 +1,12 @@
 import SwiftUI
+import RunPlayCore
 import UniformTypeIdentifiers
 
-/// Extension to register TCX and FIT file types.
+/// Supported import file types for the Swift Package app path.
+/// Generic data keeps custom .tcx/.fit files selectable; importer validation
+/// still rejects unsupported extensions with a clear error.
 extension UTType {
-    static var tcx: UTType {
-        UTType(importedAs: "com.garmin.tcx")
-    }
-
-    static var fit: UTType {
-        UTType(importedAs: "com.garmin.fit")
-    }
+    static let supportedImportTypes: [UTType] = [.data]
 }
 
 /// Main content view with sidebar, 3D route view, and detail panels.
@@ -55,7 +52,7 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $appState.showImporter,
-            allowedContentTypes: [.json, .xml, .tcx, .fit],
+            allowedContentTypes: UTType.supportedImportTypes,
             allowsMultipleSelection: false
         ) { result in
             appState.handleImport(result)

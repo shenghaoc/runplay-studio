@@ -1,5 +1,7 @@
 import Foundation
+import RunPlayCore
 import AppKit
+
 
 /// Route coloring mode for 3D visualization.
 enum RouteColorMode: String, CaseIterable, Identifiable {
@@ -273,9 +275,13 @@ extension RouteColoringService {
         // Smooth HR to reduce noise
         let smoothed = smoothValues(rawHR, windowSize: 5)
 
-        // Replace remaining NaN with median
+        // Replace remaining NaN with median (only if we have valid HR data)
         let validHR = smoothed.filter { !$0.isNaN && $0.isFinite }
-        let median = validHR.isEmpty ? 140.0 : medianOf(validHR) // Default 140 bpm
+        guard !validHR.isEmpty else {
+            // No valid HR data at all - return NaN array (no coloring should happen)
+            return smoothed
+        }
+        let median = medianOf(validHR)
 
         return smoothed.map { $0.isNaN || !$0.isFinite ? median : $0 }
     }

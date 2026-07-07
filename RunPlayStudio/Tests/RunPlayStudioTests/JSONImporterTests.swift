@@ -1,4 +1,5 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
 
 final class JSONImporterTests: XCTestCase {
@@ -86,6 +87,29 @@ final class JSONImporterTests: XCTestCase {
         XCTAssertGreaterThan(pace, 0, "Pace should be positive")
         XCTAssertTrue(pace.isFinite, "Pace should be finite")
         XCTAssertFalse(pace.isNaN, "Pace should not be NaN")
+    }
+
+    func testMixedSuppliedDistancesAreRecomputedInsteadOfMixed() throws {
+        let json = """
+        {
+            "routePoints": [
+                { "timestamp": "2026-01-01T00:00:00Z", "latitude": 37.7749, "longitude": -122.4194, "distanceFromStartMeters": 1000 },
+                { "timestamp": "2026-01-01T00:01:00Z", "latitude": 37.7759, "longitude": -122.4184 },
+                { "timestamp": "2026-01-01T00:02:00Z", "latitude": 37.7769, "longitude": -122.4174, "distanceFromStartMeters": 500 }
+            ]
+        }
+        """
+
+        let workout = try JSONWorkoutImporter().importWorkout(from: Data(json.utf8))
+
+        let firstDistance = try XCTUnwrap(workout.routePoints.first?.distanceFromStartMeters)
+        XCTAssertEqual(firstDistance, 0, accuracy: 0.001)
+        for index in 1..<workout.routePoints.count {
+            XCTAssertGreaterThanOrEqual(
+                workout.routePoints[index].distanceFromStartMeters,
+                workout.routePoints[index - 1].distanceFromStartMeters
+            )
+        }
     }
 
     // MARK: - Helpers

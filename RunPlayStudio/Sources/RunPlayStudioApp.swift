@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 @main
 struct RunPlayStudioApp: App {

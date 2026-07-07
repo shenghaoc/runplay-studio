@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Shown when no workout is selected, prompting user to import or load a sample.
 struct EmptyStateView: View {
@@ -15,7 +16,7 @@ struct EmptyStateView: View {
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("Import a GPX, TCX, or JSON file to visualize your run in 3D")
+                Text("Import a GPX, TCX, FIT, or JSON file to visualize your run in 3D")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

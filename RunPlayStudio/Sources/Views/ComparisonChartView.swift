@@ -1,5 +1,7 @@
 import SwiftUI
+import RunPlayCore
 import Charts
+
 
 /// Chart showing pace comparison over distance.
 struct ComparisonChartView: View {
@@ -117,15 +119,6 @@ struct SplitComparisonTableView: View {
                 }
                 .width(80)
             }
-        }
-    }
-
-    private func colorForSplit(_ split: SplitComparison) -> Color {
-        switch split.winner {
-        case .primary: return .green
-        case .comparison: return .red
-        case .tie: return .secondary
-        case .unavailable: return .secondary
         }
     }
 

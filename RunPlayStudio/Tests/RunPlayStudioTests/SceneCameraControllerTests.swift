@@ -1,5 +1,7 @@
 import SceneKit
+import RunPlayCore
 import XCTest
+
 @testable import RunPlayStudio
 
 final class SceneCameraControllerTests: XCTestCase {
@@ -29,7 +31,7 @@ final class SceneCameraControllerTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(controller.cameraDistance, controller.minDistance)
         XCTAssertLessThanOrEqual(controller.cameraDistance, controller.maxDistance)
-        XCTAssertEqual(controller.cameraAngleX, -30)
+        XCTAssertEqual(controller.cameraAngleX, 30)
         XCTAssertEqual(controller.cameraAngleY, 45)
         assertFinite(cameraNode.position)
     }

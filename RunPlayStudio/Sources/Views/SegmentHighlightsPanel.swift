@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// Panel showing detected segments with selection capability.
 struct SegmentHighlightsPanel: View {

@@ -1,4 +1,5 @@
 import SwiftUI
+import RunPlayCore
 
 /// SwiftUI view designed for PNG export.
 ///

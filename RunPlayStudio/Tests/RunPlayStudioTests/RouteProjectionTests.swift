@@ -1,4 +1,5 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
 
 final class RouteProjectionTests: XCTestCase {
@@ -182,6 +183,24 @@ final class RouteProjectionTests: XCTestCase {
 
         XCTAssertGreaterThan(extent, 1000) // Should be at least 1km
         XCTAssertTrue(extent.isFinite)
+    }
+
+    func testRouteSceneBuilderTogglesGridAndKilometerMarkersAfterBuild() {
+        let scenePoints = [
+            RouteScenePoint(xMeters: 0, yMeters: 0, zMeters: 0, sourceIndex: 0, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RouteScenePoint(xMeters: 500, yMeters: 0, zMeters: 0, sourceIndex: 1, distanceFromStartMeters: 1_000, elapsedSeconds: 300),
+            RouteScenePoint(xMeters: 750, yMeters: 0, zMeters: 0, sourceIndex: 2, distanceFromStartMeters: 1_500, elapsedSeconds: 450)
+        ]
+        let builder = RouteSceneBuilder()
+        let scene = builder.buildScene(from: scenePoints)
+
+        XCTAssertFalse(scene.rootNode.childNodes.contains { $0.isHidden })
+
+        builder.showGroundGrid = false
+        builder.showKilometerMarkers = false
+
+        let hiddenTopLevelNodes = scene.rootNode.childNodes.filter { $0.isHidden }
+        XCTAssertGreaterThanOrEqual(hiddenTopLevelNodes.count, 2)
     }
 
     // MARK: - Helpers

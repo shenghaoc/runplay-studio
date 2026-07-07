@@ -1,5 +1,7 @@
 import SwiftUI
+import RunPlayCore
 import Charts
+
 
 /// Displays running metrics as interactive charts using Swift Charts.
 ///
@@ -34,66 +36,74 @@ struct MetricsChartView: View {
             .padding(.horizontal)
 
             // Chart
-            Chart {
-                ForEach(chartData) { point in
-                    LineMark(
-                        x: .value("Distance (km)", point.distanceKm),
-                        y: .value(selectedMetric.rawValue, point.value)
-                    )
-                    .foregroundStyle(chartColor)
-                    .interpolationMethod(.catmullRom)
-                }
-
-                // Current position indicator
-                let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
-                if displayDistance > 0 {
-                    RuleMark(x: .value("Current", displayDistance / 1000))
-                        .foregroundStyle(isDragging ? .orange : .yellow)
-                        .lineStyle(StrokeStyle(lineWidth: isDragging ? 3 : 2, dash: [5, 5]))
-                        .annotation(position: .top, alignment: .center) {
-                            Text(formatValue(valueForDistance(displayDistance)))
-                                .font(.caption)
-                                .padding(4)
-                                .background((isDragging ? Color.orange : Color.yellow).opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                }
-            }
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    Rectangle()
-                        .fill(Color.clear)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    handleChartDrag(at: value.location, proxy: proxy, geometry: geometry)
-                                }
-                                .onEnded { _ in
-                                    handleChartDragEnd()
-                                }
+            ZStack {
+                Chart {
+                    ForEach(chartData) { point in
+                        LineMark(
+                            x: .value("Distance (km)", point.distanceKm),
+                            y: .value(selectedMetric.rawValue, point.value)
                         )
+                        .foregroundStyle(chartColor)
+                        .interpolationMethod(.catmullRom)
+                    }
+
+                    // Current position indicator
+                    let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
+                    if displayDistance > 0 {
+                        RuleMark(x: .value("Current", displayDistance / 1000))
+                            .foregroundStyle(isDragging ? .orange : .yellow)
+                            .lineStyle(StrokeStyle(lineWidth: isDragging ? 3 : 2, dash: [5, 5]))
+                            .annotation(position: .top, alignment: .center) {
+                                Text(formatValue(valueForDistance(displayDistance)))
+                                    .font(.caption)
+                                    .padding(4)
+                                    .background((isDragging ? Color.orange : Color.yellow).opacity(0.2))
+                                    .cornerRadius(4)
+                            }
+                    }
                 }
-            }
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                    AxisValueLabel {
-                        if let km = value.as(Double.self) {
-                            Text("\(Int(km)) km")
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        Rectangle()
+                            .fill(Color.clear)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { value in
+                                        handleChartDrag(at: value.location, proxy: proxy, geometry: geometry)
+                                    }
+                                    .onEnded { _ in
+                                        handleChartDragEnd()
+                                    }
+                            )
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                        AxisValueLabel {
+                            if let km = value.as(Double.self) {
+                                Text("\(Int(km)) km")
+                            }
                         }
+                        AxisGridLine()
                     }
-                    AxisGridLine()
+                }
+                .chartYAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                        AxisValueLabel {
+                            Text(formatAxisValue(value.as(Double.self) ?? 0))
+                        }
+                        AxisGridLine()
+                    }
+                }
+                .frame(height: 150)
+
+                if chartData.isEmpty {
+                    Text(noDataMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 5)) { value in
-                    AxisValueLabel {
-                        Text(formatAxisValue(value.as(Double.self) ?? 0))
-                    }
-                    AxisGridLine()
-                }
-            }
-            .frame(height: 150)
             .padding(.horizontal)
         }
     }
@@ -101,27 +111,17 @@ struct MetricsChartView: View {
     // MARK: - Chart Interaction
 
     private func handleChartDrag(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
-        // Convert location to chart coordinates
-        let frame = geometry.frame(in: .local)
-        guard frame.width > 0 else { return }
+        guard let anchor = proxy.plotFrame else { return }
+        let plotFrame = geometry[anchor]
+        let plotX = location.x - plotFrame.origin.x
+        guard plotFrame.width > 0, plotX >= 0, plotX <= plotFrame.width else { return }
+        guard let positionKm: Double = proxy.value(atX: plotX, as: Double.self) else { return }
 
-        // Calculate relative position within chart
-        let relativeX = (location.x - frame.minX) / frame.width
-
-        // Get data range from chart data
-        guard let minX = chartData.first?.distanceKm,
-              let maxX = chartData.last?.distanceKm else { return }
-
-        let dataRange = maxX - minX
-        guard dataRange > 0 else { return }
-
-        // Map to distance in km, then to meters
-        let positionKm = minX + relativeX * dataRange
         let totalDistance = routePoints.last?.distanceFromStartMeters ?? 0
-        let distance = ChartSelectionMapper.distanceForChartPosition(
+        guard let distance = ChartSelectionMapper.distanceForChartPosition(
             positionKm: positionKm,
             totalDistanceMeters: totalDistance
-        )
+        ) else { return }
 
         isDragging = true
         dragDistance = distance
@@ -152,10 +152,7 @@ struct MetricsChartView: View {
         case .pace:
             smoothedValues = MetricSmoother.smoothPace(from: routePoints, windowSize: smoothingWindow)
         case .heartRate:
-            smoothedValues = MetricSmoother.movingAverage(
-                routePoints.compactMap { $0.heartRateBPM },
-                windowSize: smoothingWindow
-            ).map { Optional($0) }
+            smoothedValues = MetricSmoother.smoothHeartRate(from: routePoints, windowSize: smoothingWindow)
         case .speed:
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
@@ -178,15 +175,19 @@ struct MetricsChartView: View {
         }
     }
 
+    private var noDataMessage: String {
+        selectedMetric == .heartRate ? "No heart rate data" : "No chart data"
+    }
+
     private func valueForDistance(_ distance: Double) -> Double {
-        guard distance > 0 else { return 0 }
-        let index = routePoints.firstIndex { $0.distanceFromStartMeters >= distance } ?? routePoints.count - 1
-        guard index < routePoints.count else { return 0 }
+        guard distance > 0, !routePoints.isEmpty else { return 0 }
+        let index = RoutePointInterpolator.firstIndex(atOrAfter: distance, in: routePoints) ?? routePoints.count - 1
+        guard index >= 0 && index < routePoints.count else { return 0 }
 
         switch selectedMetric {
         case .elevation: return routePoints[index].altitudeMeters ?? 0
         case .pace: return routePoints[index].paceSecondsPerKilometer ?? 0
-        case .heartRate: return routePoints[index].heartRateBPM ?? 0
+        case .heartRate: return routePoints[index].heartRateBPM ?? .nan
         case .speed: return routePoints[index].speedMetersPerSecond ?? 0
         }
     }
@@ -202,7 +203,9 @@ struct MetricsChartView: View {
             let mins = Int(value) / 60
             let secs = Int(value) % 60
             return "\(mins):\(String(format: "%02d", secs)) /km"
-        case .heartRate: return "\(Int(value)) bpm"
+        case .heartRate:
+            guard value.isFinite else { return "No HR" }
+            return "\(Int(value)) bpm"
         case .speed: return String(format: "%.1f m/s", value)
         }
     }

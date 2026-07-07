@@ -1,0 +1,85 @@
+import XCTest
+@testable import RunPlayCore
+
+final class ImporterDispatchTests: XCTestCase {
+
+    // MARK: - Extension Dispatch
+
+    func testJSONImporterDispatchedByExtension() throws {
+        let url = URL(fileURLWithPath: "/tmp/test.json")
+        let importer = try WorkoutImporterFactory.importer(for: url)
+        XCTAssertTrue(importer is JSONWorkoutImporter)
+    }
+
+    func testGPXImporterDispatchedByExtension() throws {
+        let url = URL(fileURLWithPath: "/tmp/test.gpx")
+        let importer = try WorkoutImporterFactory.importer(for: url)
+        XCTAssertTrue(importer is GPXImporter)
+    }
+
+    func testTCXImporterDispatchedByExtension() throws {
+        let url = URL(fileURLWithPath: "/tmp/test.tcx")
+        let importer = try WorkoutImporterFactory.importer(for: url)
+        XCTAssertTrue(importer is TCXImporter)
+    }
+
+    func testFITImporterDispatchedByExtension() throws {
+        let url = URL(fileURLWithPath: "/tmp/test.fit")
+        let importer = try WorkoutImporterFactory.importer(for: url)
+        XCTAssertTrue(importer is FITImporter)
+    }
+
+    func testUnsupportedExtensionThrows() {
+        let url = URL(fileURLWithPath: "/tmp/test.xyz")
+        XCTAssertThrowsError(try WorkoutImporterFactory.importer(for: url)) { error in
+            guard case WorkoutImportError.unsupportedFormat = error else {
+                XCTFail("Expected unsupportedFormat error, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testCaseInsensitiveExtension() throws {
+        let url = URL(fileURLWithPath: "/tmp/test.JSON")
+        let importer = try WorkoutImporterFactory.importer(for: url)
+        XCTAssertTrue(importer is JSONWorkoutImporter)
+    }
+
+    // MARK: - Supported Extensions
+
+    func testSupportedExtensionsContainsJSON() {
+        XCTAssertTrue(WorkoutImporterFactory.supportedExtensions.contains("json"))
+    }
+
+    func testSupportedExtensionsContainsGPX() {
+        XCTAssertTrue(WorkoutImporterFactory.supportedExtensions.contains("gpx"))
+    }
+
+    func testSupportedExtensionsContainsTCX() {
+        XCTAssertTrue(WorkoutImporterFactory.supportedExtensions.contains("tcx"))
+    }
+
+    func testSupportedExtensionsContainsFIT() {
+        XCTAssertTrue(WorkoutImporterFactory.supportedExtensions.contains("fit"))
+    }
+
+    func testSupportedExtensionsCount() {
+        // At minimum: json, gpx, tcx, fit
+        XCTAssertGreaterThanOrEqual(WorkoutImporterFactory.supportedExtensions.count, 4)
+    }
+
+    // MARK: - Importer Protocol
+
+    func testAllImportersHaveSupportedExtensions() {
+        let importers: [WorkoutImporting] = [
+            JSONWorkoutImporter(),
+            GPXImporter(),
+            TCXImporter(),
+            FITImporter()
+        ]
+        for importer in importers {
+            XCTAssertFalse(importer.supportedExtensions.isEmpty,
+                           "\(type(of: importer)) should have supported extensions")
+        }
+    }
+}

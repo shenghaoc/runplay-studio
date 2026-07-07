@@ -1,4 +1,5 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
 
 final class ComparisonProjectionTests: XCTestCase {
@@ -344,6 +345,21 @@ final class ComparisonProjectionTests: XCTestCase {
         XCTAssertTrue(bbox.center.z.isFinite)
         XCTAssertTrue(bbox.extent.isFinite)
         XCTAssertGreaterThan(bbox.extent, 0)
+    }
+
+    func testComparisonSceneBuilderTogglesGridAfterBuild() {
+        let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
+        let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)
+
+        let comparisonScene = service.project(primary: primary, comparison: comparison)
+        let builder = ComparisonSceneBuilder()
+        let scene = builder.buildScene(from: comparisonScene)
+
+        XCTAssertFalse(scene.rootNode.childNodes.contains { $0.isHidden })
+
+        builder.showGroundGrid = false
+
+        XCTAssertTrue(scene.rootNode.childNodes.contains { $0.isHidden })
     }
 
     func testComparisonSceneBuilderDistanceMarkers() {

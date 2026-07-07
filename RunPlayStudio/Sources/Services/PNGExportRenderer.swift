@@ -1,5 +1,7 @@
 import Foundation
+import RunPlayCore
 import SwiftUI
+
 import AppKit
 
 /// Renders the export summary card as PNG data.

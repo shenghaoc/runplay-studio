@@ -1,5 +1,7 @@
 import Foundation
+import RunPlayCore
 import Combine
+
 
 /// Controls playback of a running workout replay.
 ///
@@ -125,15 +127,17 @@ class ReplayController: ObservableObject {
 
     /// Step forward one frame.
     func stepForward() {
-        guard let workout = workout else { return }
+        guard let workout = workout, !workout.routePoints.isEmpty else { return }
         let nextIdx = min(state.currentPointIndex + 1, workout.routePoints.count - 1)
+        guard nextIdx >= 0 && nextIdx < workout.routePoints.count else { return }
         seekToTime(workout.routePoints[nextIdx].elapsedSeconds)
     }
 
     /// Step backward one frame.
     func stepBackward() {
-        guard let workout = workout else { return }
+        guard let workout = workout, !workout.routePoints.isEmpty else { return }
         let prevIdx = max(state.currentPointIndex - 1, 0)
+        guard prevIdx < workout.routePoints.count else { return }
         seekToTime(workout.routePoints[prevIdx].elapsedSeconds)
     }
 
@@ -211,8 +215,12 @@ class ReplayController: ObservableObject {
         let newTime = state.currentTime + timeIncrement
 
         if newTime >= state.totalDuration {
-            // Reached the end
+            // Reached the end - land on final route point
             state.currentTime = state.totalDuration
+            if let lastIndex = workout.routePoints.indices.last {
+                state.currentPointIndex = lastIndex
+                state.currentDistance = workout.routePoints[lastIndex].distanceFromStartMeters
+            }
             pause()
             return
         }
