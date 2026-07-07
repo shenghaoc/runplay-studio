@@ -20,6 +20,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${1:-$REPO_ROOT/.build/artifacts}"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 
 APP_NAME="RunPlayStudio"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
@@ -44,7 +46,7 @@ cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 # Copy resources bundled by SwiftPM
 RESOURCES_DIR="$REPO_ROOT/RunPlayStudio/Resources"
 if [[ -d "$RESOURCES_DIR" ]]; then
-    cp -R "$RESOURCES_DIR/"* "$APP_BUNDLE/Contents/Resources/"
+    cp -R "$RESOURCES_DIR/." "$APP_BUNDLE/Contents/Resources/"
 fi
 
 # Write Info.plist
