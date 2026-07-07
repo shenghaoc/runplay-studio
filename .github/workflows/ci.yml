@@ -24,7 +24,10 @@ jobs:
       run: swift build
 
     - name: Test
+      shell: bash
       run: |
+        # pipefail is required: without it, the tee pipeline silently swallows
+        # swift test failures because tee always exits 0.
         set -o pipefail
         swift test 2>&1 | tee test-output.txt
         # Report test count to step summary

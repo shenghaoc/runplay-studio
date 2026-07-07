@@ -156,7 +156,7 @@ Both approaches use the same source code. There is no separate Xcode project fil
 
 Every push to `main` and every pull request runs:
 
-- **macOS** — `swift build` + `swift test` (full app, 433 tests)
+- **macOS** — `swift build` + `swift test` (full app)
 - **Linux** — `swift build --target RunPlayCore` + `swift test --filter RunPlayCoreTests` (platform-neutral core only)
 
 Test counts are reported in the GitHub Actions step summary.

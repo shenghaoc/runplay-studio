@@ -12,7 +12,7 @@
 #   - macOS 14.0+
 #   - Xcode 15.0+ (Swift 5.9)
 #
-# This script is intended for CI demo artifact packaging only.
+# Used in CI for demo artifact packaging; can also be run locally.
 # The resulting .app is unsigned and not notarized — for demo/testing only.
 
 set -euo pipefail
@@ -37,17 +37,18 @@ fi
 
 echo "==> Creating app bundle at $APP_BUNDLE..."
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS"
-mkdir -p "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
-# Copy binary
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-# Copy resources bundled by SwiftPM
+# Copy sample data and fixtures into the app bundle
 RESOURCES_DIR="$REPO_ROOT/RunPlayStudio/Resources"
-if [[ -d "$RESOURCES_DIR" ]]; then
-    cp -R "$RESOURCES_DIR/." "$APP_BUNDLE/Contents/Resources/"
+if [[ ! -d "$RESOURCES_DIR" ]]; then
+    echo "ERROR: Resources directory not found at $RESOURCES_DIR" >&2
+    echo "       The app bundle will be incomplete without demo data." >&2
+    exit 1
 fi
+cp -R "$RESOURCES_DIR/." "$APP_BUNDLE/Contents/Resources/"
 
 # Write Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
@@ -83,6 +84,3 @@ PLIST
 echo "==> Creating zip archive..."
 (cd "$OUTPUT_DIR" && ditto -c -k --sequesterRsrc --keepParent "$APP_NAME.app" "$APP_NAME.app.zip")
 
-echo "==> Done!"
-echo "    App bundle: $APP_BUNDLE"
-echo "    Zip archive: $OUTPUT_DIR/$APP_NAME.app.zip"
