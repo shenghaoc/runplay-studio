@@ -150,6 +150,58 @@ Both approaches use the same source code. There is no separate Xcode project fil
 
 ---
 
+## CI and Demo Packaging
+
+### GitHub Actions CI
+
+Every push to `main` and every pull request runs:
+
+- **macOS** — `swift build` + `swift test` (full app, 433 tests)
+- **Linux** — `swift build --target RunPlayCore` + `swift test --filter RunPlayCoreTests` (platform-neutral core only)
+
+Test counts are reported in the GitHub Actions step summary.
+
+### Demo App Artifact
+
+A manually-triggered **Package Demo** workflow (`.github/workflows/package-demo.yml`) builds an unsigned `.app` bundle and uploads it as a GitHub Actions artifact.
+
+To trigger it: go to **Actions → Package Demo → Run workflow**.
+
+GitHub downloads the artifact as an outer archive containing
+`RunPlayStudio.app.zip`. Unzip the downloaded archive, then unzip
+`RunPlayStudio.app.zip` and double-click the app to run it.
+
+#### Packaging Limitations
+
+| Limitation | Detail |
+|------------|--------|
+| **Unsigned** | The app is not code-signed. macOS Gatekeeper will block it by default. Right-click → Open to bypass. |
+| **Not notarized** | The app has not been submitted to Apple for notarization. |
+| **Debug resources only** | The bundle includes sample runs from `RunPlayStudio/Resources/` for demo purposes. |
+| **arm64 only** | Built for Apple Silicon. Intel Macs are not supported. |
+| **For demo/testing only** | This artifact is intended for evaluation, not production use. |
+
+To build a local `.app` bundle:
+
+```bash
+./scripts/package-demo.sh
+# Output: .build/artifacts/RunPlayStudio.app
+```
+
+## Supported Import Formats
+
+| Format | Status | Notes |
+|--------|--------|-------|
+| JSON   | ✅ Full support | Native format, all fields supported |
+| GPX    | ✅ Track support | Requires at least one timestamp for pace/duration analysis; partial missing timestamps are interpolated; HR/cadence via extensions |
+| TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
+| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; requires at least one timestamp; see limitations below |
+| HealthKit | 📋 Research only | Requires entitlements, future work |
+
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
+
+**FIT limitations**: CRC validation is not implemented. Compressed timestamp headers fail with a controlled unsupported-data error. Only record messages (global message 20) are parsed. Signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres.
+
 ## App Features
 
 ### Apple Maps 2D/3D Route Replay (MapKit for SwiftUI)
