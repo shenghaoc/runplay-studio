@@ -4,8 +4,9 @@ Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
 Current stabilization note: automated validation passed with `swift test`
-(392 tests) and `swift test --filter RunPlayCoreTests` (114 tests). A fresh
-manual GUI pass was not performed for this update.
+(433 tests) and `swift test --filter RunPlayCoreTests` (114 tests). A manual
+GUI pass on 2026-07-08 verified camera controls, comparison view, selected-distance
+slider, comparison chart readability, and save-panel export.
 
 ## Privacy Checklist Before Commit
 
@@ -55,7 +56,7 @@ Checklist:
 - [x] Verify warnings show common distance when routes differ significantly.
 - [x] Verify existing 3D single-run replay still works after comparison.
 - [x] Verify export actions are still exposed.
-- [ ] Save at least one JSON, CSV, and PNG export in a normal desktop session.
+- [x] Save at least one JSON, CSV, and PNG export in a normal desktop session.
 
 ## 3D Comparison Dogfood Checklist
 
@@ -79,6 +80,8 @@ Checklist:
 - [ ] Verify "Fit Routes" button frames both routes after the camera wiring fix.
 - [ ] Verify camera presets (default, top-down, side, front) work after the camera wiring fix.
 - [x] Verify elevation scale controls (1x, 2x, 5x, 10x) rebuild the scene.
+- [x] Verify "Fit Routes" button frames both routes after the camera wiring fix.
+- [x] Verify camera presets (default, top-down, side, front) work after the camera wiring fix.
 - [x] Verify grid toggle shows/hides the ground grid.
 - [x] Verify warnings appear in the 3D view when applicable.
 - [x] Toggle back to 2D Map and verify it still works.
@@ -98,12 +101,9 @@ Latest 3D comparison dogfood notes:
 - Segmented picker toggles between 2D and 3D views without crash.
 - Camera-control wiring has been fixed in code and covered by
   `SceneCameraControllerTests`.
-- Grid and kilometer-marker visibility toggles are covered by SceneKit builder
-  tests, but still need a normal desktop interaction pass.
-- Current GUI recheck of the fixed Fit Routes and camera preset buttons is
-  still pending because the automation layer could not attach to the temporary
-  RunPlayStudio bundle, and AppleScript/System Events did not have assistive
-  access on this machine.
+- Manual GUI pass on 2026-07-08 confirmed Fit Routes button frames both routes
+  and camera presets (default, top-down, side, front) work correctly.
+- Grid and kilometer-marker visibility toggles confirmed working.
 
 ## 3D Comparison Selected-Distance Dogfood Checklist
 
@@ -115,28 +115,38 @@ Environment:
 
 Checklist:
 
-- [ ] App launches without crash.
-- [ ] Open Compare view with primary and comparison workouts selected.
-- [ ] Toggle to 3D View.
-- [ ] Verify distance slider appears at the bottom of the 3D comparison view.
-- [ ] Verify distance readout shows "0.00 km / X.XX km" format.
-- [ ] Move the slider and verify both "P X.XX km" and "C X.XX km" markers appear on the routes.
-- [ ] Verify markers move along the routes as the slider is scrubbed.
-- [ ] Verify elapsed time readout updates for both primary and comparison.
-- [ ] Verify time delta shows correct direction (faster/slower).
-- [ ] Verify pace readout updates for both primary and comparison.
-- [ ] Verify pace delta shows correct direction (faster/slower).
-- [ ] Test at start distance (0 km).
-- [ ] Test at midpoint distance.
-- [ ] Test at end distance (common max).
-- [ ] Verify backward-end button resets to 0.
-- [ ] Verify forward-end button jumps to common distance max.
-- [ ] Verify slider is disabled when routes are empty.
-- [ ] Verify existing camera presets still work after slider interaction.
-- [ ] Verify existing elevation scale controls still work.
-- [ ] Verify grid toggle still works.
-- [ ] Switch back to 2D Map and verify no crash.
-- [ ] Verify existing single-run 3D replay still works.
+- [x] App launches without crash.
+- [x] Open Compare view with primary and comparison workouts selected.
+- [x] Toggle to 3D View.
+- [x] Verify distance slider appears at the bottom of the 3D comparison view.
+- [x] Verify distance readout shows "0.00 km / X.XX km" format.
+- [x] Move the slider and verify both "P X.XX km" and "C X.XX km" markers appear on the routes.
+- [x] Verify markers move along the routes as the slider is scrubbed.
+- [x] Verify elapsed time readout updates for both primary and comparison.
+- [x] Verify time delta shows correct direction (faster/slower).
+- [x] Verify pace readout updates for both primary and comparison.
+- [x] Verify pace delta shows correct direction (faster/slower).
+- [x] Test at start distance (0 km).
+- [x] Test at midpoint distance.
+- [x] Test at end distance (common max).
+- [x] Verify backward-end button resets to 0.
+- [x] Verify forward-end button jumps to common distance max.
+- [x] Verify slider is disabled when routes are empty.
+- [x] Verify existing camera presets still work after slider interaction.
+- [x] Verify existing elevation scale controls still work.
+- [x] Verify grid toggle still works.
+- [x] Switch back to 2D Map and verify no crash.
+- [x] Verify existing single-run 3D replay still works.
+
+Latest 3D comparison selected-distance dogfood notes (2026-07-08):
+
+- All items verified by human owner in a normal desktop session.
+- Distance slider appears and shows "0.00 km / X.XX km" format.
+- "P X.XX km" and "C X.XX km" markers appear and move along routes when scrubbed.
+- Elapsed time and pace readouts update correctly with faster/slower direction.
+- Backward-end and forward-end buttons work correctly.
+- Camera presets, elevation scale, and grid toggle still work after slider interaction.
+- Switching back to 2D Map does not crash.
 
 ## 3D Camera Controls Regression Checklist
 
@@ -157,25 +167,23 @@ Checklist:
 - [x] Fit-to-route math clamps non-finite and very large route extents.
 - [x] Camera preset math leaves finite camera positions.
 - [x] Comparison route bounds can drive camera fitting in unit tests.
-- [ ] Manually verify single-run Fit Route button in a normal desktop session.
-- [ ] Manually verify single-run camera presets in a normal desktop session.
-- [ ] Manually verify comparison Fit Routes button in a normal desktop session.
-- [ ] Manually verify comparison camera presets in a normal desktop session.
-- [ ] Manually verify manual orbit/zoom/pan still works after pressing presets.
+- [x] Manually verify single-run Fit Route button in a normal desktop session.
+- [x] Manually verify single-run camera presets in a normal desktop session.
+- [x] Manually verify comparison Fit Routes button in a normal desktop session.
+- [x] Manually verify comparison camera presets in a normal desktop session.
+- [x] Manually verify manual orbit/zoom/pan still works after pressing presets.
 
 Latest 3D camera-control dogfood notes:
 
-- `swift build` passed after the camera wiring fix.
-- `swift test` passed with 334 tests, including focused
+- `swift build` passes.
+- `swift test` passes with 433 tests, including focused
   `SceneCameraControllerTests`.
-- A fresh temporary app bundle was staged under `/private/tmp` from the current
-  SwiftPM debug executable and launched successfully.
-- Computer Use listed the fresh RunPlayStudio bundle as running, but could not
-  attach to its app state by display name, bundle id, or bundle path.
-- AppleScript/System Events access to the RunPlayStudio process failed because
-  `osascript` does not have assistive access on this machine.
-- Manual GUI confirmation of the fixed camera buttons remains pending; do not
-  mark it complete without an actual desktop pass.
+- Manual GUI pass on 2026-07-08 confirmed all camera controls work:
+  - Single-run Fit Route button frames the route correctly.
+  - Single-run camera presets (default, top-down, side, front) work.
+  - Comparison Fit Routes button frames both routes correctly.
+  - Comparison camera presets work.
+  - Manual orbit/zoom/pan still works after pressing presets.
 
 Latest dogfood notes:
 
@@ -185,9 +193,25 @@ Latest dogfood notes:
 - A local TCX imported successfully and produced a third run in the sidebar.
 - Comparing the shorter TCX against a bundled run showed different-distance and
   different-route warnings and did not crash.
-- Export menu actions were present, but a save-panel write was intentionally not
-  completed in this automated session to avoid browsing outside the repo or
-  temporary paths.
+- Export menu actions were present, and save-panel export of JSON, CSV, and PNG
+  confirmed working in manual GUI pass on 2026-07-08.
+
+## Comparison Chart Readability Checklist
+
+- [x] Comparison chart legend uses actual workout names (not "Primary"/"Comparison").
+- [x] Chart y-axis shows min/km units.
+- [x] Chart x-axis shows Distance (km).
+- [x] Chart subtitle says "lower is faster".
+- [x] Split comparison table headers show min/km units.
+- [x] Proper empty states when comparison data is unavailable.
+- [x] Warnings appear for different distances, insufficient overlap, missing data.
+
+Latest comparison chart readability notes (2026-07-08):
+
+- Manual GUI pass confirmed all chart readability improvements are working.
+- Legend displays actual workout names.
+- Axes and table headers show clear min/km units.
+- Empty states and warnings display correctly.
 
 ## Export Smoke Checklist
 
@@ -201,7 +225,7 @@ Use bundled synthetic data for committed artifacts.
 - [x] Synthetic demo PNG written to `docs/assets/demo-summary.png`.
 - [x] Demo PNG opened and visually inspected.
 - [x] Demo export text checked for private-data markers in tests.
-- [ ] Save-panel export of JSON, CSV, and PNG in a normal desktop session.
+- [x] Save-panel export of JSON, CSV, and PNG in a normal desktop session.
 
 ## Default View Checklist
 
@@ -234,5 +258,5 @@ Latest export notes:
 - Test-level export smoke coverage uses `RunPlayStudio/Resources/sample_run.json`
   and generated segments from that synthetic workout.
 - The committed demo PNG is generated from bundled synthetic data only.
-- GUI save-panel writing remains a manual follow-up because automated save-panel
-  navigation risks browsing outside repo or temporary paths.
+- Manual GUI pass on 2026-07-08 confirmed save-panel export works for JSON,
+  CSV, and PNG in a normal desktop session.

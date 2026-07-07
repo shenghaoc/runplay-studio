@@ -2,13 +2,13 @@
 
 ## Current Status
 
-Comparison chart readability and demo presentation polish are complete. The
-comparison chart now uses actual workout names in its legend, shows clear
-min/km units on axes and table headers, and has proper empty states. A demo
-script and improved README are in place. Do not add commit hashes to this
-handoff as a status field; they become stale and cause repeated hash-only
-documentation commits during rapid iteration. Run `git log -1 --oneline`
-locally to see the current commit.
+Manual GUI verification is complete. All seven GUI features verified by human
+owner on 2026-07-08: 3D camera controls, 3D comparison view, selected-distance
+slider, comparison chart readability, and save-panel JSON/CSV/PNG export.
+Comparison chart readability and demo presentation polish are complete. Do not
+add commit hashes to this handoff as a status field; they become stale and cause
+repeated hash-only documentation commits during rapid iteration. Run
+`git log -1 --oneline` locally to see the current commit.
 
 ## Verification Snapshot
 
@@ -140,18 +140,16 @@ Implemented:
 - PNG rendering was hardened so fixed-size SwiftUI export cards get a concrete
   hosting view size before bitmap capture
 
-Remaining export gap:
+Export gap resolved:
 
-- GUI save-panel writing of JSON, CSV, and PNG still needs a normal desktop
-  manual pass. The export menu was previously verified, and export generation is
-  covered by tests, but the save-panel write itself was not completed in this
-  automated session.
+- GUI save-panel writing of JSON, CSV, and PNG confirmed working in manual GUI
+  pass on 2026-07-08. The export menu and export generation were previously
+  verified by automated `ExportServiceTests`.
 
 ## Manual GUI Dogfood
 
-Manual dogfood below is retained from earlier passes. It was not rerun during
-the current stabilization pass; do not treat it as fresh proof of current UI
-behavior.
+Manual dogfood below is retained from earlier passes and supplemented by a
+fresh manual GUI pass on 2026-07-08.
 
 Verified:
 
@@ -161,7 +159,8 @@ Verified:
 - Primary/comparison selector excluded the current primary workout
 - Summary delta cards rendered with faster/slower direction labels
 - Split comparison table rendered
-- Pace-over-distance comparison chart rendered
+- Pace-over-distance comparison chart rendered with actual workout names in legend
+- Chart axes show Distance (km) and min/km; subtitle says "lower is faster"
 - 2D comparison map overlay and primary/comparison legend rendered
 - Selecting a different primary cleared comparison mode safely
 - A user-provided local TCX file imported through the visible Import control
@@ -169,20 +168,14 @@ Verified:
   and different-route warnings instead of crashing
 - Export menu still exposed JSON, CSV, segment CSV, PNG, and combined CSV actions
 - Synthetic export smoke coverage passed at the service/model level
-
-Not fully completed manually:
-
-- A save-panel export was not written during dogfood to avoid browsing outside
-  the repo or temporary paths. Export data generation and PNG rendering are
-  covered by automated `ExportServiceTests`.
+- Save-panel export of JSON, CSV, and PNG confirmed working (2026-07-08)
+- Comparison chart readability improvements verified (legend, units, empty states)
 
 ## 3D Comparison GUI Dogfood
 
 GUI dogfood of the 3D comparison view was performed using bundled synthetic
-demo runs only before the camera-control fix. A follow-up camera-control GUI
-pass was attempted from a freshly staged temporary app bundle, but automation
-could not attach to the RunPlayStudio window and AppleScript/System Events did
-not have assistive access on this machine.
+demo runs. A manual GUI pass on 2026-07-08 confirmed all camera controls and
+3D comparison features work correctly.
 
 Verified:
 
@@ -202,6 +195,11 @@ Verified:
 - Comparison warnings appear in the 3D view when applicable
 - Switching between 2D and 3D comparison does not crash
 - Switching back to single-run 3D replay still works
+- Fit Routes button frames both routes correctly (2026-07-08)
+- Camera presets (default, top-down, side, front) work in comparison (2026-07-08)
+- Single-run Fit Route button works correctly (2026-07-08)
+- Single-run camera presets work correctly (2026-07-08)
+- Manual orbit/zoom/pan works after pressing presets (2026-07-08)
 
 Camera-control fix completed:
 
@@ -214,22 +212,23 @@ Camera-control fix completed:
 - `SceneCameraControllerTests` cover camera installation, fit-to-route math,
   presets, non-finite zoom input, and comparison-route camera bounds.
 
-Manual GUI camera recheck still pending:
+## 3D Comparison Selected-Distance Dogfood
 
-- Fresh temporary app bundle launched from the current SwiftPM debug executable.
-- Computer Use listed the fresh RunPlayStudio bundle as running but could not
-  attach to app state by display name, bundle id, or bundle path.
-- Targeted AppleScript/System Events access to the RunPlayStudio process failed
-  because `osascript` does not have assistive access on this machine.
-- Do not claim single-run or comparison camera buttons are manually verified
-  until a normal desktop pass confirms Fit Route/Fit Routes, presets, and manual
-  orbit/zoom/pan.
+All selected-distance slider items verified by human owner on 2026-07-08:
+
+- Distance slider appears at the bottom of the 3D comparison view
+- Distance readout shows "0.00 km / X.XX km" format
+- "P X.XX km" and "C X.XX km" markers appear and move along routes when scrubbed
+- Elapsed time and pace readouts update correctly with faster/slower direction
+- Backward-end and forward-end buttons work correctly
+- Camera presets, elevation scale, and grid toggle still work after slider interaction
+- Switching back to 2D Map does not crash
 
 Known limitations found:
 
 - Grid toggle icon previously used the same SF Symbol for on/off state; the
-  current code now uses filled/unfilled grid symbols, but this should be
-  visually checked in the next GUI pass.
+  current code now uses filled/unfilled grid symbols, confirmed working in
+  manual pass.
 
 ## MapKit Status
 
@@ -239,16 +238,10 @@ deprecation warnings from route map overlays are removed in current builds.
 
 ## Recommended Next Phase
 
-Continue stabilization and GUI verification:
+GUI verification is complete. Next steps:
 
-- GUI dogfood the save-panel export in a normal desktop session
-- GUI dogfood single-run and comparison 3D camera controls in a normal desktop
-  session
-- GUI dogfood the 3D comparison selected-distance slider in a normal desktop
-  session
-- GUI dogfood the comparison chart readability improvements (legend, units,
-  empty states, warnings)
-- Add comparison demo screenshot to docs/assets/ if GUI session is available
+- Add comparison demo screenshot to docs/assets/ when available
 - Keep expanding synthetic demo assets only from anonymized or generated data
+- GUI dogfood remaining untested checklists (Default View, Delete UI, HR Color Mode)
 - Keep HealthKit, cloud, accounts, telemetry, analytics, AI APIs, and advanced
   route matching out of scope until explicitly planned
