@@ -152,6 +152,7 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Default view")
+                .accessibilityLabel("Default view")
 
                 Button(action: { setCameraPreset(.topDown) }) {
                     Image(systemName: "arrow.down.to.line")
@@ -159,6 +160,7 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Top-down view")
+                .accessibilityLabel("Top-down view")
 
                 Button(action: { setCameraPreset(.side) }) {
                     Image(systemName: "arrow.left.to.line")
@@ -166,6 +168,7 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Side view")
+                .accessibilityLabel("Side view")
 
                 Button(action: { setCameraPreset(.front) }) {
                     Image(systemName: "arrow.up.to.line")
@@ -173,6 +176,7 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Front view")
+                .accessibilityLabel("Front view")
             }
             .padding(6)
             .background(.ultraThinMaterial)
@@ -215,6 +219,7 @@ struct Comparison3DView: View {
             .background(.ultraThinMaterial)
             .cornerRadius(6)
             .help(showGrid ? "Hide grid" : "Show grid")
+            .accessibilityLabel(showGrid ? "Hide grid" : "Show grid")
         }
     }
 
@@ -249,6 +254,7 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Reset to start")
+                .accessibilityLabel("Reset to start")
 
                 Slider(
                     value: Binding(
@@ -266,6 +272,7 @@ struct Comparison3DView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Jump to end")
+                .accessibilityLabel("Jump to end")
                 .disabled(commonDistance <= 0)
             }
 
