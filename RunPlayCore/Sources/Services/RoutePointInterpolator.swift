@@ -147,15 +147,19 @@ public enum RoutePointInterpolator {
               startIndex <= endIndex
         else { return nil }
 
-        let values = points[startIndex...endIndex].compactMap { point -> Double? in
-            guard let hr = point.heartRateBPM,
-                  hr.isFinite,
-                  MetricValidation.validHeartRateRange.contains(hr)
-            else { return nil }
-            return hr
+        var sum: Double = 0
+        var count: Int = 0
+
+        for index in startIndex...endIndex {
+            let point = points[index]
+            if let hr = point.heartRateBPM, hr.isFinite, MetricValidation.validHeartRateRange.contains(hr) {
+                sum += hr
+                count += 1
+            }
         }
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +) / Double(values.count)
+
+        guard count > 0 else { return nil }
+        return sum / Double(count)
     }
 
     /// Compute cumulative elevation gain for points within a distance range.
@@ -169,25 +173,39 @@ public enum RoutePointInterpolator {
         to endDistance: Double
     ) -> Double? {
         guard var previous = point(at: startDistance, in: points),
-              let end = point(at: endDistance, in: points)
+              let end = point(at: endDistance, in: points),
+              startDistance <= endDistance
         else { return nil }
-
-        var samples = points.filter {
-            $0.distanceFromStartMeters > startDistance && $0.distanceFromStartMeters < endDistance
-        }
-        samples.append(end)
 
         var gain: Double = 0
         var sawAltitude = previous.altitudeMeters != nil
-        for sample in samples {
-            if let currentAltitude = sample.altitudeMeters,
-               let previousAltitude = previous.altitudeMeters,
-               currentAltitude.isFinite,
-               previousAltitude.isFinite {
-                gain += max(0, currentAltitude - previousAltitude)
-                sawAltitude = true
+
+        if let startIndex = firstIndex(atOrAfter: startDistance, in: points),
+           let endIndex = lastIndex(atOrBefore: endDistance, in: points),
+           startIndex <= endIndex {
+
+            for index in startIndex...endIndex {
+                let sample = points[index]
+                if sample.distanceFromStartMeters > startDistance && sample.distanceFromStartMeters < endDistance {
+                    if let currentAltitude = sample.altitudeMeters,
+                       let previousAltitude = previous.altitudeMeters,
+                       currentAltitude.isFinite,
+                       previousAltitude.isFinite {
+                        gain += max(0, currentAltitude - previousAltitude)
+                        sawAltitude = true
+                    }
+                    previous = sample
+                }
             }
-            previous = sample
+        }
+
+        // Process the final interpolated end point
+        if let currentAltitude = end.altitudeMeters,
+           let previousAltitude = previous.altitudeMeters,
+           currentAltitude.isFinite,
+           previousAltitude.isFinite {
+            gain += max(0, currentAltitude - previousAltitude)
+            sawAltitude = true
         }
 
         return sawAltitude ? gain : nil
