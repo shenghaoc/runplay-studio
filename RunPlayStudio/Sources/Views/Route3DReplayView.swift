@@ -7,6 +7,13 @@ import SceneKit
 struct Route3DReplayView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
+    @ObservedObject private var replayController: ReplayController
+
+    init(workout: RunWorkout, appState: AppState) {
+        self.workout = workout
+        self.appState = appState
+        self.replayController = appState.replayController
+    }
 
     @State private var scene: SCNScene?
     @State private var scenePoints: [RouteScenePoint] = []
@@ -23,7 +30,22 @@ struct Route3DReplayView: View {
 
     var body: some View {
         ZStack {
-            if let scene = scene {
+            if scenePoints.count < 2 {
+                // Diagnostic overlay for invalid/missing coordinates
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text("3D route unavailable")
+                        .font(.headline)
+                    Text("The route has invalid or missing coordinates and cannot be displayed in 3D.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 300)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let scene = scene {
                 SceneView(
                     scene: scene,
                     pointOfView: cameraNode,
@@ -59,7 +81,7 @@ struct Route3DReplayView: View {
         .onChange(of: workout.routePoints.count) { _, _ in
             buildScene()
         }
-        .onChange(of: appState.replayController.state.currentPointIndex) { _, newIndex in
+        .onChange(of: replayController.state.currentPointIndex) { _, newIndex in
             updateMarker(at: newIndex)
         }
     }
@@ -306,6 +328,9 @@ struct Route3DReplayView: View {
         if let segment = appState.selectedSegment, let scene = scene {
             appState.sceneBuilder.highlightSegment(segment, in: scene)
         }
+
+        // Position marker at controller's current index (not always 0)
+        updateMarker(at: replayController.state.currentPointIndex)
     }
 
     private func updateMarker(at routeIndex: Int) {
