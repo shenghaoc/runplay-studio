@@ -30,7 +30,6 @@ final class SceneCameraControllerTests: XCTestCase {
         controller.fitToRoute(center: SCNVector3(100, 25, -75), extent: 1_000)
 
         XCTAssertGreaterThanOrEqual(controller.cameraDistance, controller.minDistance)
-        XCTAssertLessThanOrEqual(controller.cameraDistance, controller.maxDistance)
         XCTAssertEqual(controller.cameraAngleX, 30)
         XCTAssertEqual(controller.cameraAngleY, 45)
         assertFinite(cameraNode.position)
@@ -48,7 +47,6 @@ final class SceneCameraControllerTests: XCTestCase {
 
         XCTAssertTrue(controller.cameraDistance.isFinite)
         XCTAssertGreaterThanOrEqual(controller.cameraDistance, controller.minDistance)
-        XCTAssertLessThanOrEqual(controller.cameraDistance, controller.maxDistance)
         assertFinite(cameraNode.position)
     }
 
@@ -64,15 +62,31 @@ final class SceneCameraControllerTests: XCTestCase {
         assertFinite(cameraNode.position)
     }
 
-    func testFitToRouteClampsVeryLargeRouteExtent() {
+    func testFitToRouteLargeExtentGrowsCameraDistance() {
+        let scene = SCNScene()
+        let controller = SceneCameraController()
+        _ = controller.setupCamera(in: scene, lookingAt: SCNVector3Zero)
+
+        controller.fitToRoute(center: SCNVector3(0, 500, 0), extent: 100_000)
+
+        // A 100 km extent needs a camera distance well beyond the old 2000 cap.
+        XCTAssertGreaterThan(controller.cameraDistance, 2000)
+        XCTAssertTrue(controller.cameraDistance.isFinite)
+        XCTAssertLessThanOrEqual(controller.cameraDistance, 200_000)
+    }
+
+    func testFitToRouteZFarExceedsDistancePlusExtent() {
         let scene = SCNScene()
         let controller = SceneCameraController()
         let cameraNode = controller.setupCamera(in: scene, lookingAt: SCNVector3Zero)
 
-        controller.fitToRoute(center: SCNVector3(0, 500, 0), extent: 100_000)
+        controller.fitToRoute(center: SCNVector3Zero, extent: 50_000)
 
-        XCTAssertEqual(controller.cameraDistance, controller.maxDistance)
-        assertFinite(cameraNode.position)
+        guard let zFar = cameraNode.camera?.zFar else {
+            XCTFail("Camera has no zFar")
+            return
+        }
+        XCTAssertGreaterThan(zFar, Double(controller.cameraDistance + 50_000))
     }
 
     func testPresetViewsProduceFiniteCameraPositions() {

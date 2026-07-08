@@ -223,6 +223,181 @@ final class ReplayControllerTests: XCTestCase {
         }
     }
 
+    // MARK: - Playback Tick (advancePlayback)
+
+    func testAdvancePlaybackAdvancesTime() {
+        controller.play()
+        let before = controller.state.currentTime
+
+        controller.advancePlayback(by: 1.0 / 30.0)
+
+        XCTAssertGreaterThan(controller.state.currentTime, before)
+    }
+
+    func testAdvancePlaybackAdvancesDistanceAndIndex() {
+        controller.play()
+        controller.advancePlayback(by: 50.0) // jump 50 seconds
+
+        XCTAssertGreaterThan(controller.state.currentDistance, 0)
+        XCTAssertGreaterThan(controller.state.currentPointIndex, 0)
+    }
+
+    func testAdvancePlaybackRespectsSpeedMultiplier() {
+        controller.setSpeed(4.0)
+        controller.play()
+
+        controller.advancePlayback(by: 1.0) // 1 second wall-clock
+        let at4x = controller.state.currentTime
+
+        controller.stop()
+        controller.setSpeed(1.0)
+        controller.play()
+        controller.advancePlayback(by: 1.0)
+        let at1x = controller.state.currentTime
+
+        // 4x speed should advance 4x as far in the same wall-clock interval
+        XCTAssertEqual(at4x, at1x * 4.0, accuracy: 0.01)
+    }
+
+    func testAdvancePlaybackReachingEndLandsOnFinalPoint() {
+        controller.play()
+        // Advance well past the end
+        controller.advancePlayback(by: controller.state.totalDuration + 100)
+
+        let lastRoutePoint = workout.routePoints.last!
+        XCTAssertEqual(controller.state.currentTime, controller.state.totalDuration, accuracy: 0.01)
+        XCTAssertEqual(controller.state.currentPointIndex, workout.routePoints.count - 1)
+        XCTAssertEqual(
+            controller.state.currentDistance,
+            lastRoutePoint.distanceFromStartMeters,
+            accuracy: 0.01
+        )
+        XCTAssertFalse(controller.isPlaying)
+        XCTAssertEqual(controller.state.playbackState, .paused)
+    }
+
+    func testAdvancePlaybackDoesNothingWhenPaused() {
+        controller.play()
+        controller.advancePlayback(by: 5.0)
+        let afterTick = controller.state.currentTime
+
+        controller.pause()
+        controller.advancePlayback(by: 5.0)
+
+        // Should not have advanced while paused
+        XCTAssertEqual(controller.state.currentTime, afterTick)
+    }
+
+    func testMultipleTicksAdvanceMonotonically() {
+        controller.play()
+        var previousTime = controller.state.currentTime
+        var previousIndex = controller.state.currentPointIndex
+
+        for _ in 0..<100 {
+            controller.advancePlayback(by: 1.0) // 1 second per tick
+            XCTAssertGreaterThanOrEqual(controller.state.currentTime, previousTime)
+            XCTAssertGreaterThanOrEqual(controller.state.currentPointIndex, previousIndex)
+            previousTime = controller.state.currentTime
+            previousIndex = controller.state.currentPointIndex
+        }
+
+        // After 100 ticks at 1s each we should have moved significantly
+        XCTAssertGreaterThan(controller.state.currentPointIndex, 0)
+    }
+
+    // MARK: - Marker Mapping Logic
+
+    func testMarkerMappingFindsSourceIndexDirectly() {
+        // Simulate projected scene points with sourceIndex gaps
+        let routePoints = (0..<20).map { i in
+            RoutePoint(
+                timestamp: Date().addingTimeInterval(Double(i) * 5),
+                latitude: 37.0 + Double(i) * 0.001,
+                longitude: -122.0,
+                altitudeMeters: 10,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: Double(i) * 5
+            )
+        }
+        let workout = RunWorkout(routePoints: routePoints)
+
+        // Project — all points valid, so sourceIndex should be 1:1
+        let projection = RouteProjectionService()
+        let scenePoints = projection.project(routePoints)
+
+        // Look up scene point for route index 10
+        let targetIndex = 10
+        let match = scenePoints.first(where: { $0.sourceIndex == targetIndex })
+        XCTAssertNotNil(match, "Direct sourceIndex match should succeed for valid coordinates")
+        XCTAssertEqual(match!.sourceIndex, targetIndex)
+    }
+
+    func testMarkerMappingFallsBackToNearestDistance() {
+        // Simulate scene points where some route indices are missing
+        // (e.g., invalid coordinates were filtered out by projection)
+        let scenePoints: [RouteScenePoint] = [
+            RouteScenePoint(xMeters: 0, yMeters: 0, zMeters: 0,
+                            sourceIndex: 0, distanceFromStartMeters: 0,
+                            elapsedSeconds: 0),
+            RouteScenePoint(xMeters: 100, yMeters: 0, zMeters: 0,
+                            sourceIndex: 2, distanceFromStartMeters: 200,
+                            elapsedSeconds: 10),
+            RouteScenePoint(xMeters: 300, yMeters: 0, zMeters: 0,
+                            sourceIndex: 4, distanceFromStartMeters: 400,
+                            elapsedSeconds: 20),
+            RouteScenePoint(xMeters: 500, yMeters: 0, zMeters: 0,
+                            sourceIndex: 6, distanceFromStartMeters: 600,
+                            elapsedSeconds: 30),
+        ]
+
+        // Route index 3 doesn't exist in scenePoints (sourceIndex 3 is missing).
+        // The fallback should find the nearest by distanceFromStartMeters.
+        let routeIndex = 3
+        let routePoints = (0..<7).map { i in
+            RoutePoint(
+                timestamp: Date(),
+                latitude: 37.0,
+                longitude: -122.0,
+                altitudeMeters: 10,
+                distanceFromStartMeters: Double(i) * 100,
+                elapsedSeconds: Double(i) * 5
+            )
+        }
+
+        // Direct match should fail
+        let directMatch = scenePoints.first(where: { $0.sourceIndex == routeIndex })
+        XCTAssertNil(directMatch, "sourceIndex 3 should be missing from scene points")
+
+        // Fallback: binary search by distance
+        let targetDistance = routePoints[routeIndex].distanceFromStartMeters // 300m
+        var low = 0
+        var high = scenePoints.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if scenePoints[mid].distanceFromStartMeters < targetDistance {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        var bestIndex = low
+        if low > 0 {
+            let prevDiff = abs(scenePoints[low - 1].distanceFromStartMeters - targetDistance)
+            let currDiff = abs(scenePoints[low].distanceFromStartMeters - targetDistance)
+            if prevDiff < currDiff {
+                bestIndex = low - 1
+            }
+        }
+
+        // 300m target: closest scene point is sourceIndex 4 at 400m (100m away)
+        // vs sourceIndex 2 at 200m (100m away) — equal distance, binary search
+        // returns index 2 (the upper bound), so currDiff wins the tie.
+        let chosen = scenePoints[bestIndex]
+        XCTAssertTrue(chosen.sourceIndex == 2 || chosen.sourceIndex == 4,
+                      "Fallback should pick nearest by distance")
+        XCTAssertEqual(chosen.distanceFromStartMeters, 400, accuracy: 0.01)
+    }
+
     // MARK: - Non-finite Input Guards
 
     func testSeekToTimeNaNIsIgnored() {

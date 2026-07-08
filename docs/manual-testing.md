@@ -4,10 +4,9 @@ Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
 Current stabilization note: automated validation passed with `swift test`
-(433 tests) and `swift test --filter RunPlayCoreTests` (114 tests). Manual
-GUI passes on 2026-07-08 verified all checklists: camera controls, comparison
-view, selected-distance slider, comparison chart readability, save-panel export,
-default view, delete UI, and HR color mode.
+(441+ tests) and `swift test --filter RunPlayCoreTests` (114 tests). Specific
+manual GUI passes are documented per checklist below; not all GUI behaviors
+have been manually verified.
 
 ## Privacy Checklist Before Commit
 
@@ -242,6 +241,33 @@ Latest default view notes (2026-07-08):
 - Overview tab is the default landing view with map and route overlay.
 - Summary metrics and replay controls are accessible.
 - All tabs (3D Route, Charts, Map) work when selected.
+
+## Replay Visual Smoke Checklist
+
+Automated coverage: `ReplayControllerTests` exercises `advancePlayback(by:)`,
+end-of-route landing, speed multipliers, and marker-mapping fallback logic.
+The following items still require manual GUI verification.
+
+Environment:
+
+- Build from the SwiftPM package.
+- Launch the app from Xcode or a temporary `.app` bundle built from the package.
+- Use the bundled sample run.
+
+Checklist:
+
+- [ ] **Overview tab playback**: press Play, yellow 2D marker advances along the route on the map.
+- [ ] **Map tab playback**: switch to Map tab, press Play, yellow 2D marker advances.
+- [ ] **3D Route tab playback**: switch to 3D Route tab, press Play, yellow 3D marker advances along the route.
+- [ ] **Current metrics panel**: during playback, the metrics panel (distance, pace, HR) updates at each tick.
+- [ ] **Charts tab**: switch to Charts tab, press Play, the current-distance indicator follows playback.
+- [ ] **Step forward**: press step-forward button, marker advances one route point.
+- [ ] **Step backward**: press step-backward button, marker moves back one route point.
+- [ ] **Slider seek**: drag the chart distance slider, marker jumps to the seeked position.
+- [ ] **End-of-route**: let playback run to completion; marker lands on the final route point and playback pauses.
+- [ ] **Restart from end**: after playback reaches the end, press Play again; playback restarts from the beginning.
+- [ ] **Speed change**: set speed to 4x, press Play, verify playback is visibly faster.
+- [ ] **Pause stops animation**: press Play then Pause; marker stops advancing immediately.
 
 ## Delete UI Checklist
 

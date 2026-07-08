@@ -5,8 +5,15 @@ import RunPlayCore
 struct WorkoutDetailView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
+    @ObservedObject private var replayController: ReplayController
 
     @State private var selectedTab: ViewTab = .overview
+
+    init(workout: RunWorkout, appState: AppState) {
+        self.workout = workout
+        self.appState = appState
+        self.replayController = appState.replayController
+    }
 
     enum ViewTab: String, CaseIterable {
         case overview = "Overview"
@@ -35,15 +42,15 @@ struct WorkoutDetailView: View {
             case .map:
                 MapReferenceView(
                     routePoints: workout.routePoints,
-                    currentPointIndex: appState.replayController.state.currentPointIndex
+                    currentPointIndex: replayController.state.currentPointIndex
                 )
             case .charts:
                 MetricsChartView(
                     routePoints: workout.routePoints,
-                    currentDistance: appState.replayController.state.currentDistance,
+                    currentDistance: replayController.state.currentDistance,
                     onSeek: { distance in
-                        appState.replayController.pause()
-                        appState.replayController.seekToDistance(distance)
+                        replayController.pause()
+                        replayController.seekToDistance(distance)
                     }
                 )
             }
@@ -71,7 +78,7 @@ struct WorkoutDetailView: View {
 
             // Current metrics panel
             CurrentMetricsPanel(
-                metrics: appState.replayController.selectedMetrics,
+                metrics: replayController.selectedMetrics,
                 hasHeartRate: workout.hasHeartRateData,
                 hasCadence: workout.hasCadenceData
             )
@@ -84,7 +91,7 @@ struct WorkoutDetailView: View {
             // Bottom panel: replay controls + summary
             HStack(spacing: 16) {
                 // Replay controls
-                ReplayControlsView(controller: appState.replayController)
+                ReplayControlsView(controller: replayController)
                     .frame(maxWidth: .infinity)
 
                 Divider()
@@ -99,6 +106,6 @@ struct WorkoutDetailView: View {
     }
 
     private func seekToSegment(_ segment: SegmentHighlight) {
-        appState.replayController.seekToDistance(segment.startDistanceMeters)
+        replayController.seekToDistance(segment.startDistanceMeters)
     }
 }
