@@ -192,6 +192,7 @@ struct Route3DReplayView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Default view")
+                .accessibilityLabel("Default view")
 
                 Button(action: { setCameraPreset(.topDown) }) {
                     Image(systemName: "arrow.down.to.line")
@@ -199,6 +200,7 @@ struct Route3DReplayView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Top-down view")
+                .accessibilityLabel("Top-down view")
 
                 Button(action: { setCameraPreset(.side) }) {
                     Image(systemName: "arrow.left.to.line")
@@ -206,6 +208,7 @@ struct Route3DReplayView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Side view")
+                .accessibilityLabel("Side view")
 
                 Button(action: { setCameraPreset(.front) }) {
                     Image(systemName: "arrow.up.to.line")
@@ -213,6 +216,7 @@ struct Route3DReplayView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Front view")
+                .accessibilityLabel("Front view")
             }
             .padding(6)
             .background(.ultraThinMaterial)
@@ -255,6 +259,7 @@ struct Route3DReplayView: View {
             .background(.ultraThinMaterial)
             .cornerRadius(6)
             .help(showGrid ? "Hide grid" : "Show grid")
+            .accessibilityLabel(Text(showGrid ? "Hide grid" : "Show grid"))
 
             // Toggle km markers
             Button(action: { setKilometerMarkersVisible(!showKmMarkers) }) {
@@ -266,7 +271,8 @@ struct Route3DReplayView: View {
             .padding(6)
             .background(.ultraThinMaterial)
             .cornerRadius(6)
-            .help("Toggle km markers")
+            .help(showKmMarkers ? "Hide km markers" : "Show km markers")
+            .accessibilityLabel(Text(showKmMarkers ? "Hide km markers" : "Show km markers"))
         }
     }
 
