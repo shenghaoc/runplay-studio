@@ -14,6 +14,10 @@ public struct TCXImporter: WorkoutImporting {
     public var supportedExtensions: [String] { ["tcx"] }
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
+        guard url.isFileURL else {
+            throw WorkoutImportError.invalidFormat("Only local file URLs are supported")
+        }
+
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw WorkoutImportError.fileNotFound(url)
         }
