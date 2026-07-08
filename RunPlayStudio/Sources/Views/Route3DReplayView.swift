@@ -7,6 +7,13 @@ import SceneKit
 struct Route3DReplayView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
+    @ObservedObject private var replayController: ReplayController
+
+    init(workout: RunWorkout, appState: AppState) {
+        self.workout = workout
+        self.appState = appState
+        self.replayController = appState.replayController
+    }
 
     @State private var scene: SCNScene?
     @State private var scenePoints: [RouteScenePoint] = []
@@ -59,7 +66,7 @@ struct Route3DReplayView: View {
         .onChange(of: workout.routePoints.count) { _, _ in
             buildScene()
         }
-        .onChange(of: appState.replayController.state.currentPointIndex) { _, newIndex in
+        .onChange(of: replayController.state.currentPointIndex) { _, newIndex in
             updateMarker(at: newIndex)
         }
     }
@@ -306,6 +313,9 @@ struct Route3DReplayView: View {
         if let segment = appState.selectedSegment, let scene = scene {
             appState.sceneBuilder.highlightSegment(segment, in: scene)
         }
+
+        // Position marker at controller's current index (not always 0)
+        updateMarker(at: replayController.state.currentPointIndex)
     }
 
     private func updateMarker(at routeIndex: Int) {
