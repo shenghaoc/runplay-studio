@@ -219,7 +219,7 @@ struct Comparison3DView: View {
             .background(.ultraThinMaterial)
             .cornerRadius(6)
             .help(showGrid ? "Hide grid" : "Show grid")
-            .accessibilityLabel(showGrid ? "Hide grid" : "Show grid")
+            .accessibilityLabel(showGrid ? LocalizedStringKey("Hide grid") : LocalizedStringKey("Show grid"))
         }
     }
 

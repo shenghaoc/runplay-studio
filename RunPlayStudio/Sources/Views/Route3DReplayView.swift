@@ -259,7 +259,7 @@ struct Route3DReplayView: View {
             .background(.ultraThinMaterial)
             .cornerRadius(6)
             .help(showGrid ? "Hide grid" : "Show grid")
-            .accessibilityLabel(showGrid ? "Hide grid" : "Show grid")
+            .accessibilityLabel(showGrid ? LocalizedStringKey("Hide grid") : LocalizedStringKey("Show grid"))
 
             // Toggle km markers
             Button(action: { setKilometerMarkersVisible(!showKmMarkers) }) {
