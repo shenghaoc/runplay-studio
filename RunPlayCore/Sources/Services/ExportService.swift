@@ -196,12 +196,24 @@ public struct ExportService {
 /// Safe CSV field escaping and joining.
 public enum CSVRow {
     /// Escape a field for CSV (quote if it contains commas, quotes, or newlines).
+    /// Mitigates CSV Injection (Formula Injection) by prepending a single quote to non-numeric fields starting with `=, +, -, @`
     public static func escape(_ field: String) -> String {
-        if field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r") {
-            let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
+        var safeField = field
+        let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // CSV Injection mitigation: prevent execution of formulas
+        if trimmed.hasPrefix("=") || trimmed.hasPrefix("+") || trimmed.hasPrefix("-") || trimmed.hasPrefix("@") {
+            // Allow negative numbers and positive numbers
+            if Double(trimmed) == nil {
+                safeField = "'" + safeField
+            }
+        }
+
+        if safeField.contains(",") || safeField.contains("\"") || safeField.contains("\n") || safeField.contains("\r") {
+            let escaped = safeField.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
         }
-        return field
+        return safeField
     }
 
     /// Join fields into a CSV row.

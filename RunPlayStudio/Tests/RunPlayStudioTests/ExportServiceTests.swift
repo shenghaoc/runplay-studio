@@ -97,6 +97,24 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(row, "a,\"b,c\",d")
     }
 
+    func testCSVMitigatesFormulaInjection() {
+        // Valid numbers should be left alone
+        XCTAssertEqual(CSVRow.escape("-30.5"), "-30.5")
+        XCTAssertEqual(CSVRow.escape("+42.0"), "+42.0")
+
+        // Potential formulas should be quoted to prevent execution
+        XCTAssertEqual(CSVRow.escape("=cmd|' /C calc'!A0"), "'=cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("+cmd|' /C calc'!A0"), "'+cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("-cmd|' /C calc'!A0"), "'-cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("@SUM(A1:A2)"), "'@SUM(A1:A2)")
+
+        // Leading spaces should still be caught
+        XCTAssertEqual(CSVRow.escape(" =1+1"), "' =1+1")
+
+        // Special case: Formula with comma that would also trigger normal CSV quoting
+        XCTAssertEqual(CSVRow.escape("=cmd, /c calc"), "\"'=cmd, /c calc\"")
+    }
+
     // MARK: - JSON Export
 
     func testJSONSummaryContainsKeyFields() throws {
