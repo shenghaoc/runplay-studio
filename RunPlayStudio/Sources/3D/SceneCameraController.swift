@@ -24,6 +24,7 @@ class SceneCameraController: ObservableObject {
     let minDistance: CGFloat = 50
     /// Upper bound for camera distance; dynamically expanded for large routes.
     private(set) var maxDistance: CGFloat = 2000
+    private let baseMaxDistance: CGFloat = 2000
     let minAngleX: CGFloat = 1    // nearly horizontal
     let maxAngleX: CGFloat = 89   // nearly straight down
 
@@ -125,14 +126,20 @@ class SceneCameraController: ObservableObject {
         let fovRad = fov * .pi / 180
         let desiredDistance = safeExtent / (2 * tan(fovRad / 2)) * 1.35
 
-        // Grow maxDistance if the route needs more room, capped at absoluteMaxDistance.
-        let dynamicMax = max(maxDistance, desiredDistance, safeExtent * 3)
+        // Recalculate the zoom ceiling from a stable baseline so a previously
+        // loaded large route does not leave smaller workouts with loose controls.
+        let dynamicMax = max(baseMaxDistance, desiredDistance, safeExtent * 3)
         maxDistance = min(dynamicMax, absoluteMaxDistance)
 
         targetPoint = safeCenter
         cameraDistance = Self.clampFinite(desiredDistance, min: minDistance, max: maxDistance, fallback: minDistance)
         cameraAngleX = 30
         cameraAngleY = 45
+
+        // Keep near and far clipping planes proportional to large routes. A
+        // fixed zNear with a large zFar loses depth-buffer precision.
+        let neededZNear = max(1.0, cameraDistance * 0.1)
+        cameraNode?.camera?.zNear = Double(neededZNear)
 
         // Update zFar so distant geometry is not clipped. Use 2x the sum of
         // camera distance and extent, with a floor of 100_000.

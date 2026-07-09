@@ -203,6 +203,7 @@ class ReplayController: ObservableObject {
     /// Extracted from the timer path so tests can exercise the tick logic
     /// deterministically without waiting for real `Timer` fires.
     func advancePlayback(by interval: TimeInterval) {
+        guard interval.isFinite, interval >= 0 else { return }
         guard let workout = workout, isPlaying else { return }
 
         let timeIncrement = interval * state.playbackSpeed
@@ -231,8 +232,9 @@ class ReplayController: ObservableObject {
 
     private func startTimer() {
         stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
-            self?.advancePlayback(by: self?.updateInterval ?? (1.0 / 30.0))
+        let interval = updateInterval
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.advancePlayback(by: interval)
         }
     }
 

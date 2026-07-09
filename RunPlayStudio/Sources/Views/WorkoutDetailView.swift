@@ -12,7 +12,7 @@ struct WorkoutDetailView: View {
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
         self.appState = appState
-        self.replayController = appState.replayController
+        self._replayController = ObservedObject(wrappedValue: appState.replayController)
     }
 
     enum ViewTab: String, CaseIterable {

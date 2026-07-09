@@ -73,6 +73,9 @@ final class SceneCameraControllerTests: XCTestCase {
         XCTAssertGreaterThan(controller.cameraDistance, 2000)
         XCTAssertTrue(controller.cameraDistance.isFinite)
         XCTAssertLessThanOrEqual(controller.cameraDistance, 200_000)
+
+        controller.fitToRoute(center: SCNVector3Zero, extent: 100)
+        XCTAssertEqual(controller.maxDistance, 2000)
     }
 
     func testFitToRouteZFarExceedsDistancePlusExtent() {
@@ -82,11 +85,17 @@ final class SceneCameraControllerTests: XCTestCase {
 
         controller.fitToRoute(center: SCNVector3Zero, extent: 50_000)
 
-        guard let zFar = cameraNode.camera?.zFar else {
-            XCTFail("Camera has no zFar")
+        guard let camera = cameraNode.camera else {
+            XCTFail("Camera has no camera")
             return
         }
-        XCTAssertGreaterThan(zFar, Double(controller.cameraDistance + 50_000))
+        XCTAssertGreaterThan(camera.zFar, Double(controller.cameraDistance + 50_000))
+        XCTAssertEqual(
+            camera.zNear,
+            max(1.0, Double(controller.cameraDistance) * 0.1),
+            accuracy: 0.001
+        )
+        XCTAssertLessThan(camera.zNear, camera.zFar)
     }
 
     func testPresetViewsProduceFiniteCameraPositions() {

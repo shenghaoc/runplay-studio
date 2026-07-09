@@ -12,11 +12,12 @@ struct Route3DReplayView: View {
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
         self.appState = appState
-        self.replayController = appState.replayController
+        self._replayController = ObservedObject(wrappedValue: appState.replayController)
     }
 
     @State private var scene: SCNScene?
     @State private var scenePoints: [RouteScenePoint] = []
+    @State private var hasAttemptedBuild = false
     @State private var showGrid: Bool = true
     @State private var showKmMarkers: Bool = true
     @State private var elevationScale: Double = 2.0
@@ -30,7 +31,7 @@ struct Route3DReplayView: View {
 
     var body: some View {
         ZStack {
-            if scenePoints.count < 2 {
+            if hasAttemptedBuild && scenePoints.count < 2 {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -300,6 +301,8 @@ struct Route3DReplayView: View {
     // MARK: - Actions
 
     private func buildScene() {
+        hasAttemptedBuild = false
+
         // Update projection service with current elevation scale
         appState.projectionService.elevationExaggeration = elevationScale
         scenePoints = appState.projectionService.project(workout.routePoints)
@@ -329,47 +332,23 @@ struct Route3DReplayView: View {
         appState.cameraController.fitToRoute(center: bbox.center, extent: bbox.extent)
         scene = newScene
 
-        // Apply segment highlight if one is selected
-        if let segment = appState.selectedSegment, let scene = scene {
-            appState.sceneBuilder.highlightSegment(segment, in: scene)
+        // Apply synchronous setup to the new scene rather than relying on the
+        // asynchronous propagation of the @State assignment above.
+        if let segment = appState.selectedSegment {
+            appState.sceneBuilder.highlightSegment(segment, in: newScene)
         }
 
         // Position marker at controller's current index (not always 0)
         updateMarker(at: replayController.state.currentPointIndex)
+        hasAttemptedBuild = true
     }
 
     private func updateMarker(at routeIndex: Int) {
-        guard !scenePoints.isEmpty else { return }
-
-        // Find the projected scene point whose sourceIndex matches the route index.
-        // After projection filtering, scene points may not align 1:1 with route points.
-        if let match = scenePoints.first(where: { $0.sourceIndex == routeIndex }) {
-            appState.sceneBuilder.updateCurrentPosition(to: match)
-            return
-        }
-
-        // Fallback: find the nearest projected point by distance using binary search
-        guard routeIndex >= 0, routeIndex < workout.routePoints.count else { return }
-        let targetDistance = workout.routePoints[routeIndex].distanceFromStartMeters
-        var low = 0
-        var high = scenePoints.count - 1
-        while low < high {
-            let mid = (low + high) / 2
-            if scenePoints[mid].distanceFromStartMeters < targetDistance {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-        var bestIndex = low
-        if low > 0 {
-            let prevDiff = abs(scenePoints[low - 1].distanceFromStartMeters - targetDistance)
-            let currDiff = abs(scenePoints[low].distanceFromStartMeters - targetDistance)
-            if prevDiff < currDiff {
-                bestIndex = low - 1
-            }
-        }
-        appState.sceneBuilder.updateCurrentPosition(to: scenePoints[bestIndex])
+        guard let point = scenePoints.scenePoint(
+            forRouteIndex: routeIndex,
+            in: workout.routePoints
+        ) else { return }
+        appState.sceneBuilder.updateCurrentPosition(to: point)
     }
 
     private func fitToRoute() {
