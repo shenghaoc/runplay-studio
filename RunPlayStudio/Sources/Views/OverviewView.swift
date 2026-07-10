@@ -1,60 +1,25 @@
 import SwiftUI
 import RunPlayCore
 
-/// Overview tab showing a real map with route overlay, summary, and replay controls.
+/// Overview tab showing a map with route overlay as the default landing view.
 ///
-/// This is the default landing view — it presents the run in a map context
-/// so the user immediately sees a recognizable map/route experience.
+/// The shared current-metrics panel, replay controls, and summary are provided
+/// by the parent `WorkoutDetailView` below all tabs; this view focuses on the
+/// map/route context only.
+///
+/// `currentPointIndex` is passed explicitly from the parent so the map marker
+/// tracks the replay position at 30 fps — `AppState` does not forward
+/// `replayController.objectWillChange`, so direct access alone would not
+/// trigger re-renders during playback.
 struct OverviewView: View {
     let workout: RunWorkout
-    @ObservedObject var appState: AppState
-    @ObservedObject private var replayController: ReplayController
-
-    init(workout: RunWorkout, appState: AppState) {
-        self.workout = workout
-        self.appState = appState
-        self.replayController = appState.replayController
-    }
+    let currentPointIndex: Int
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Map takes up the main area
-            MapReferenceView(
-                routePoints: workout.routePoints,
-                currentPointIndex: replayController.state.currentPointIndex
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            // Summary metrics bar
-            HStack(spacing: 16) {
-                MetricBadge(label: "Distance", value: workout.summary.formattedDistance, icon: "figure.run")
-                MetricBadge(label: "Duration", value: workout.summary.formattedDuration, icon: "clock")
-                MetricBadge(label: "Pace", value: workout.summary.formattedPace, icon: "speedometer")
-                MetricBadge(
-                    label: "Elev",
-                    value: DisplayFormatter.formatElevationDelta(workout.summary.elevationGainMeters),
-                    icon: "mountain.2"
-                )
-
-                if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite {
-                    MetricBadge(
-                        label: "Avg HR",
-                        value: DisplayFormatter.formatHeartRate(avgHR),
-                        icon: "heart.fill",
-                        color: .red
-                    )
-                }
-
-                Divider().frame(height: 20)
-
-                // Replay controls inline
-                ReplayControlsView(controller: appState.replayController)
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-        }
+        MapReferenceView(
+            routePoints: workout.routePoints,
+            currentPointIndex: currentPointIndex
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

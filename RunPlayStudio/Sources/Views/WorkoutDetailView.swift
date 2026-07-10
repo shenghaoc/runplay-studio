@@ -35,7 +35,10 @@ struct WorkoutDetailView: View {
             // Main content
             switch selectedTab {
             case .overview:
-                OverviewView(workout: workout, appState: appState)
+                OverviewView(
+                    workout: workout,
+                    currentPointIndex: replayController.state.currentPointIndex
+                )
             case .map:
                 MapReferenceView(
                     routePoints: workout.routePoints,

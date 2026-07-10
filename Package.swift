@@ -2,7 +2,7 @@
 import PackageDescription
 
 var targets: [Target] = [
-    // Platform-neutral core library (no SwiftUI, AppKit, SceneKit, MapKit, Charts, CoreLocation)
+    // Platform-neutral core library (no SwiftUI, AppKit, MapKit, Charts, CoreLocation)
     .target(
         name: "RunPlayCore",
         dependencies: [],
@@ -20,7 +20,7 @@ var products: [Product] = [
     .library(name: "RunPlayCore", targets: ["RunPlayCore"]),
 ]
 
-// macOS-only targets (require SwiftUI, SceneKit, AppKit, MapKit, Charts)
+// macOS-only targets (require SwiftUI, AppKit, MapKit, Charts)
 #if os(macOS)
 targets.append(contentsOf: [
     .executableTarget(

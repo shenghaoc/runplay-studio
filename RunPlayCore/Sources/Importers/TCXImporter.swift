@@ -279,6 +279,9 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     }()
 
     private func parseISO8601(_ string: String) -> Date? {
-        return iso8601FractionalFormatter.date(from: string) ?? iso8601StandardFormatter.date(from: string)
+        if string.contains(".") {
+            return iso8601FractionalFormatter.date(from: string) ?? iso8601StandardFormatter.date(from: string)
+        }
+        return iso8601StandardFormatter.date(from: string)
     }
 }

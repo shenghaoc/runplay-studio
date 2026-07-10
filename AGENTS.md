@@ -21,11 +21,11 @@ RunPlayCore/          # Platform-neutral library (no UI frameworks)
   Tests/
     RunPlayCoreTests/ # Platform-neutral tests
 
-RunPlayStudio/        # macOS executable (SwiftUI, SceneKit, MapKit)
+RunPlayStudio/        # macOS executable (SwiftUI, MapKit)
   Sources/
     Views/            # SwiftUI views
     ViewModels/       # AppState, ReplayController
-    3D/               # SceneKit builders and camera
+    3D/               # Legacy SceneKit prototype utilities (not the shipped map UI)
     Services/         # macOS-only services (PNG export, route coloring)
   Tests/
     RunPlayStudioTests/ # macOS-specific tests
@@ -64,7 +64,7 @@ open Package.swift
 
 ### RunPlayCore — Platform-Neutral Target
 
-- **No** SwiftUI, AppKit, SceneKit, MapKit, Charts, CoreLocation
+- **No** SwiftUI, AppKit, MapKit, Charts, CoreLocation
 - Uses `GeoDistance` (haversine) instead of `CLLocation.distance(from:)`
 - Uses `#if canImport(FoundationXML)` for Linux XML parsing
 - All types are `public` for cross-module access
@@ -75,12 +75,6 @@ open Package.swift
 - File picker allows generic file data so `.tcx` and `.fit` remain selectable in the Swift Package app path
 - Extension validation happens in `WorkoutImporterFactory`
 
-### Camera Convention
-
-- `cameraAngleX` positive = camera above target (looking down)
-- Range: 1° (nearly horizontal) to 89° (nearly straight down)
-- Top-down preset: 85°
-
 ## Manual Smoke Checklist
 
 ### File Import
@@ -90,11 +84,10 @@ open Package.swift
 - [ ] Select `.json` file through import button
 - [ ] Reject unsupported file extension with clear error
 
-### 3D View
-- [ ] Camera presets (default, top-down, side, front) show correct viewpoints
-- [ ] Grid toggle shows/hides grid immediately
-- [ ] Kilometer marker toggle shows/hides markers immediately
-- [ ] Route displays with correct colors in each mode
+### Map View
+- [ ] 2D/3D toggle switches map pitch correctly
+- [ ] Route displays with correct colors (blue primary, orange comparison)
+- [ ] Start/finish annotations appear on route
 
 ### Replay
 - [ ] Playback reaches end with correct final position
@@ -106,7 +99,7 @@ open Package.swift
 - [ ] HR chart shows "no data" when no HR exists
 
 ### Comparison
-- [ ] Two routes overlay correctly in 3D
+- [ ] Two routes overlay correctly on shared map
 - [ ] Distance slider shows interpolated markers
 - [ ] Blue = primary, orange = comparison
 
