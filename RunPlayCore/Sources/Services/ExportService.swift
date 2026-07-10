@@ -195,18 +195,22 @@ public struct ExportService {
 
 /// Safe CSV field escaping and joining.
 public enum CSVRow {
-    /// Escape a field for CSV (quote if it contains commas, quotes, or newlines).
-    /// Mitigates CSV Injection (Formula Injection) by prepending a single quote to non-numeric fields starting with `=, +, -, @`
+    /// Escape a field for CSV (quote if it contains commas, quotes, newlines, or carriage returns).
+    /// Mitigates CSV Injection (OWASP A1.4) by prepending a single quote to non-numeric fields
+    /// starting with `=, +, -, @`. Effective in Excel, Google Sheets, and LibreOffice Calc.
+    /// NOTE: The single-quote prefix is not part of RFC 4180; behavior in other applications may vary.
     public static func escape(_ field: String) -> String {
         var safeField = field
         let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // CSV Injection mitigation: prevent execution of formulas
-        if trimmed.hasPrefix("=") || trimmed.hasPrefix("+") || trimmed.hasPrefix("-") || trimmed.hasPrefix("@") {
-            // Allow negative numbers and positive numbers (support both `.` and `,` decimal separators)
+        // Prepend single-quote so spreadsheet apps treat the cell as text, not a formula.
+        // OWASP also recommends handling tab and vertical tab as dangerous prefixes.
+        if trimmed.hasPrefix("=") || trimmed.hasPrefix("+") || trimmed.hasPrefix("-") || trimmed.hasPrefix("@") || trimmed.hasPrefix("\t") || trimmed.hasPrefix("\u{0B}") {
+            // Parse both locale formats so legitimate numbers like -30,5 (European) are not flagged
             let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
             if Double(trimmed) == nil && Double(normalized) == nil {
-                safeField = "'" + safeField
+                safeField = "'" + trimmed
             }
         }
 
