@@ -195,13 +195,43 @@ public struct ExportService {
 
 /// Safe CSV field escaping and joining.
 public enum CSVRow {
-    /// Escape a field for CSV (quote if it contains commas, quotes, or newlines).
+    /// Escape a field for CSV (quote if it contains commas, quotes, newlines, or carriage returns).
+    /// Mitigates CSV Injection (OWASP A1.4) by prepending a single quote to non-numeric fields
+    /// starting with `=, +, -, @`. Effective in Excel, Google Sheets, and LibreOffice Calc.
+    /// NOTE: The single-quote prefix is not part of RFC 4180; behavior in other applications may vary.
+    /// Non-whitespace characters that could start a spreadsheet formula (OWASP A1.4).
+    private static let dangerousPrefixes: Set<Character> = ["=", "+", "-", "@"]
+
     public static func escape(_ field: String) -> String {
-        if field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r") {
-            let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
+        var safeField = field
+
+        // CSV Injection mitigation: check first non-whitespace character for dangerous prefixes.
+        if let first = field.first {
+            if dangerousPrefixes.contains(first) {
+                // Fast path: first char is already a dangerous prefix, no trimming needed
+                let normalized = field.replacingOccurrences(of: ",", with: ".")
+                if Double(field) == nil && Double(normalized) == nil {
+                    safeField = "'" + field
+                }
+            } else if first.isWhitespace {
+                // Slow path: leading whitespace — trim to find the real first char.
+                // OWASP also recommends handling tab and vertical tab as dangerous prefixes.
+                let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let trimmedFirst = trimmed.first, dangerousPrefixes.contains(trimmedFirst) {
+                    let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+                    if Double(trimmed) == nil && Double(normalized) == nil {
+                        // Preserve the original field contents; only add the spreadsheet text marker.
+                        safeField = "'" + field
+                    }
+                }
+            }
+        }
+
+        if safeField.contains(",") || safeField.contains("\"") || safeField.contains("\n") || safeField.contains("\r") {
+            let escaped = safeField.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
         }
-        return field
+        return safeField
     }
 
     /// Join fields into a CSV row.

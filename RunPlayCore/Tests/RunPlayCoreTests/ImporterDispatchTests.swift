@@ -68,6 +68,46 @@ final class ImporterDispatchTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(WorkoutImporterFactory.supportedExtensions.count, 4)
     }
 
+    // MARK: - SSRF Prevention (isFileURL guard)
+
+    func testImportersRejectNonFileURLs() {
+        let importers: [WorkoutImporting] = [
+            JSONWorkoutImporter(),
+            GPXImporter(),
+            TCXImporter(),
+            FITImporter()
+        ]
+        let httpURL = URL(string: "https://example.com/workout.json")!
+        for importer in importers {
+            XCTAssertThrowsError(try importer.importWorkout(from: httpURL),
+                                 "\(type(of: importer)) should reject non-file URL") { error in
+                guard case WorkoutImportError.invalidFormat = error else {
+                    XCTFail("Expected invalidFormat error, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    func testImportersRejectMissingFiles() {
+        let importers: [WorkoutImporting] = [
+            JSONWorkoutImporter(),
+            GPXImporter(),
+            TCXImporter(),
+            FITImporter()
+        ]
+        let missingURL = URL(fileURLWithPath: "/nonexistent/path/workout.json")
+        for importer in importers {
+            XCTAssertThrowsError(try importer.importWorkout(from: missingURL),
+                                 "\(type(of: importer)) should reject missing file") { error in
+                guard case WorkoutImportError.fileNotFound = error else {
+                    XCTFail("Expected fileNotFound error, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
     // MARK: - Importer Protocol
 
     func testAllImportersHaveSupportedExtensions() {

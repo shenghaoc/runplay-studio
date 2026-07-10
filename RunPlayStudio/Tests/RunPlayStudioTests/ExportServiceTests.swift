@@ -97,6 +97,48 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(row, "a,\"b,c\",d")
     }
 
+    func testCSVMitigatesFormulaInjection() {
+        // Valid numbers: no injection prefix (comma decimal gets standard CSV quoting only)
+        XCTAssertEqual(CSVRow.escape("-30.5"), "-30.5")
+        XCTAssertEqual(CSVRow.escape("+42.0"), "+42.0")
+        XCTAssertEqual(CSVRow.escape("-30,5"), "\"-30,5\"")
+
+        // Potential formulas should be prefixed with single quote to force text interpretation
+        XCTAssertEqual(CSVRow.escape("=cmd|' /C calc'!A0"), "'=cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("+cmd|' /C calc'!A0"), "'+cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("-cmd|' /C calc'!A0"), "'-cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("@SUM(A1:A2)"), "'@SUM(A1:A2)")
+
+        // Leading whitespace is ignored for detection, but preserved in the exported value.
+        XCTAssertEqual(CSVRow.escape(" =1+1"), "' =1+1")
+        XCTAssertEqual(CSVRow.escape("  =Hill climb  "), "'  =Hill climb  ")
+        XCTAssertEqual(CSVRow.escape("\n=note"), "\"'\n=note\"")
+
+        // Bare dangerous prefixes
+        XCTAssertEqual(CSVRow.escape("="), "'=")
+        XCTAssertEqual(CSVRow.escape("+"), "'+")
+        XCTAssertEqual(CSVRow.escape("-"), "'-")
+        XCTAssertEqual(CSVRow.escape("@"), "'@")
+
+        // @-prefixed numeric-like strings are treated as formulas (not numbers)
+        XCTAssertEqual(CSVRow.escape("@42"), "'@42")
+
+        // Empty string passes through unchanged
+        XCTAssertEqual(CSVRow.escape(""), "")
+
+        // Formula with embedded quotes
+        XCTAssertEqual(CSVRow.escape("=SUM(\"A1\",\"B1\")"), "\"'=SUM(\"\"A1\"\",\"\"B1\"\")\"")
+
+        // Tab-initiated formula (OWASP A1.4)
+        XCTAssertEqual(CSVRow.escape("\t=SUM(A1:A2)"), "'\t=SUM(A1:A2)")
+
+        // Vertical tab-initiated formula (OWASP A1.4)
+        XCTAssertEqual(CSVRow.escape("\u{0B}=CMD('/c calc')"), "'\u{0B}=CMD('/c calc')")
+
+        // Special case: Formula with comma that would also trigger normal CSV quoting
+        XCTAssertEqual(CSVRow.escape("=cmd, /c calc"), "\"'=cmd, /c calc\"")
+    }
+
     // MARK: - JSON Export
 
     func testJSONSummaryContainsKeyFields() throws {

@@ -184,6 +184,28 @@ final class RoutePointInterpolatorTests: XCTestCase {
         XCTAssertNil(gain)
     }
 
+    func testElevationGainWithInvertedRangeReturnsNil() {
+        var points = createPoints(count: 3, totalDistance: 1000)
+        points[0] = makePoint(distance: 0, elapsed: 0, altitude: 100)
+        points[1] = makePoint(distance: 500, elapsed: 500, altitude: 150)
+        points[2] = makePoint(distance: 1000, elapsed: 1000, altitude: 120)
+
+        let gain = RoutePointInterpolator.elevationGain(in: points, from: 1000, to: 0)
+        XCTAssertNil(gain)
+    }
+
+    // MARK: - averageHeartRate inverted range
+
+    func testAverageHeartRateWithInvertedRangeReturnsNil() {
+        var points = createPoints(count: 3, totalDistance: 1000)
+        points[0] = makePoint(distance: 0, elapsed: 0, hr: 120)
+        points[1] = makePoint(distance: 500, elapsed: 500, hr: 140)
+        points[2] = makePoint(distance: 1000, elapsed: 1000, hr: 130)
+
+        let avg = RoutePointInterpolator.averageHeartRate(in: points, from: 1000, to: 0)
+        XCTAssertNil(avg)
+    }
+
     // MARK: - Helpers
 
     private func createPoints(count: Int, totalDistance: Double) -> [RoutePoint] {

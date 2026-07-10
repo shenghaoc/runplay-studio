@@ -9,6 +9,19 @@ public protocol WorkoutImporting {
     func importWorkout(from url: URL) throws -> RunWorkout
 }
 
+extension WorkoutImporting {
+    /// Validates that a URL is a local file URL and that the file exists.
+    /// Call at the top of `importWorkout(from:)` to enforce SSRF prevention.
+    public func validateLocalFile(_ url: URL) throws {
+        guard url.isFileURL else {
+            throw WorkoutImportError.invalidFormat("Only local file URLs are supported")
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw WorkoutImportError.fileNotFound(url)
+        }
+    }
+}
+
 /// Errors that can occur during workout import.
 public enum WorkoutImportError: Error, LocalizedError {
     case fileNotFound(URL)

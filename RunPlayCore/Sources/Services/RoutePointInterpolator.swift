@@ -142,7 +142,8 @@ public enum RoutePointInterpolator {
         from startDistance: Double,
         to endDistance: Double
     ) -> Double? {
-        guard let startIndex = firstIndex(atOrAfter: startDistance, in: points),
+        guard startDistance <= endDistance,
+              let startIndex = firstIndex(atOrAfter: startDistance, in: points),
               let endIndex = lastIndex(atOrBefore: endDistance, in: points),
               startIndex <= endIndex
         else { return nil }
