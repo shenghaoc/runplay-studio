@@ -220,7 +220,8 @@ public enum CSVRow {
                 if let trimmedFirst = trimmed.first, dangerousPrefixes.contains(trimmedFirst) {
                     let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
                     if Double(trimmed) == nil && Double(normalized) == nil {
-                        safeField = "'" + trimmed
+                        // Preserve the original field contents; only add the spreadsheet text marker.
+                        safeField = "'" + field
                     }
                 }
             }

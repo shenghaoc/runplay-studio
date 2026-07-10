@@ -109,8 +109,10 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(CSVRow.escape("-cmd|' /C calc'!A0"), "'-cmd|' /C calc'!A0")
         XCTAssertEqual(CSVRow.escape("@SUM(A1:A2)"), "'@SUM(A1:A2)")
 
-        // Leading/trailing whitespace is trimmed before prefix check, so indented formulas are caught
-        XCTAssertEqual(CSVRow.escape(" =1+1"), "'=1+1")
+        // Leading whitespace is ignored for detection, but preserved in the exported value.
+        XCTAssertEqual(CSVRow.escape(" =1+1"), "' =1+1")
+        XCTAssertEqual(CSVRow.escape("  =Hill climb  "), "'  =Hill climb  ")
+        XCTAssertEqual(CSVRow.escape("\n=note"), "\"'\n=note\"")
 
         // Bare dangerous prefixes
         XCTAssertEqual(CSVRow.escape("="), "'=")
@@ -128,10 +130,10 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(CSVRow.escape("=SUM(\"A1\",\"B1\")"), "\"'=SUM(\"\"A1\"\",\"\"B1\"\")\"")
 
         // Tab-initiated formula (OWASP A1.4)
-        XCTAssertEqual(CSVRow.escape("\t=SUM(A1:A2)"), "'=SUM(A1:A2)")
+        XCTAssertEqual(CSVRow.escape("\t=SUM(A1:A2)"), "'\t=SUM(A1:A2)")
 
         // Vertical tab-initiated formula (OWASP A1.4)
-        XCTAssertEqual(CSVRow.escape("\u{0B}=CMD('/c calc')"), "'=CMD('/c calc')")
+        XCTAssertEqual(CSVRow.escape("\u{0B}=CMD('/c calc')"), "'\u{0B}=CMD('/c calc')")
 
         // Special case: Formula with comma that would also trigger normal CSV quoting
         XCTAssertEqual(CSVRow.escape("=cmd, /c calc"), "\"'=cmd, /c calc\"")
