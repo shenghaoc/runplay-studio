@@ -40,7 +40,7 @@ struct ComparisonMapView: View {
             idPrefix: "comparison"
         )
 
-        let distance = appState.selectedComparisonDistanceMeters
+        let distance = appState.clampedComparisonDistanceMeters
         if distance > 0 {
             if let marker = RouteMapContent.marker(
                 points: primaryWorkout.routePoints,
@@ -70,7 +70,8 @@ struct ComparisonMapView: View {
                 displayMode: $displayMode,
                 routes: routes,
                 markers: markers,
-                fitRequest: fitRequest
+                fitRequest: fitRequest,
+                controlBottomInset: 104
             )
 
             VStack {

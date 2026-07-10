@@ -147,6 +147,7 @@ class AppState: ObservableObject {
 
         comparisonWorkout = workout
         isComparing = true
+        clampComparisonDistance()
     }
 
     /// Clear comparison mode.
@@ -195,6 +196,11 @@ class AppState: ObservableObject {
         return comparisonService.commonDistance(primary: pair.primary, comparison: pair.comparison)
     }
 
+    /// Selected comparison distance constrained to the current route pair.
+    var clampedComparisonDistanceMeters: Double {
+        max(0, min(selectedComparisonDistanceMeters, comparisonCommonDistanceMeters))
+    }
+
     /// Metrics at the selected comparison distance.
     var comparisonDistanceMetrics: ComparisonDistanceMetrics {
         guard let pair = comparisonPair else {
@@ -207,10 +213,8 @@ class AppState: ObservableObject {
                 primaryScenePoint: nil, comparisonScenePoint: nil
             )
         }
-        // Clamp to common distance
-        let clamped = max(0, min(selectedComparisonDistanceMeters, comparisonCommonDistanceMeters))
         return comparisonService.metricsAtDistance(
-            clamped,
+            clampedComparisonDistanceMeters,
             primary: pair.primary,
             comparison: pair.comparison
         )

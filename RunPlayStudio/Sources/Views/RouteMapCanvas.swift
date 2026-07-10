@@ -201,6 +201,7 @@ struct RouteMapCanvas: View {
     let routes: [RouteMapLine]
     let markers: [RouteMapMarker]
     let fitRequest: Int
+    let controlBottomInset: CGFloat
 
     @State private var position: MapCameraPosition = .automatic
     @State private var currentCamera: MapCamera?
@@ -248,6 +249,7 @@ struct RouteMapCanvas: View {
             }
             .controlSize(.small)
             .padding()
+            .padding(.bottom, controlBottomInset)
         }
         .onMapCameraChange(frequency: .onEnd) { context in
             currentCamera = context.camera

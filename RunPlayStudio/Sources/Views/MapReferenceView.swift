@@ -28,7 +28,8 @@ struct MapReferenceView: View {
             displayMode: $displayMode,
             routes: [route],
             markers: markers,
-            fitRequest: fitRequest
+            fitRequest: fitRequest,
+            controlBottomInset: 0
         )
         .overlay(alignment: .topLeading) {
             mapBadge
