@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 import RunPlayCore
 @testable import RunPlayStudio
@@ -360,6 +361,28 @@ final class ComparisonProjectionTests: XCTestCase {
         builder.showGroundGrid = false
 
         XCTAssertTrue(scene.rootNode.childNodes.contains { $0.isHidden })
+    }
+
+    func testComparisonSceneBuilderInstallsSharedMapBelowRoutes() throws {
+        let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 20)
+        let comparison = createRoute(startLat: 37.7750, startLon: -122.4195, count: 15)
+        let comparisonScene = service.project(primary: primary, comparison: comparison)
+        let builder = ComparisonSceneBuilder()
+        let scene = builder.buildScene(from: comparisonScene)
+        let overlay = RouteMapOverlay(
+            image: NSImage(size: NSSize(width: 100, height: 100)),
+            centerX: 0,
+            centerZ: 0,
+            widthMeters: 500,
+            heightMeters: 500
+        )
+
+        builder.installMapOverlay(overlay, in: scene)
+
+        let mapNode = try XCTUnwrap(
+            scene.rootNode.childNode(withName: RouteMapOverlay.nodeName, recursively: false)
+        )
+        XCTAssertLessThan(mapNode.position.y, CGFloat(comparisonScene.combinedBounds.min.y))
     }
 
     func testComparisonSceneBuilderDistanceMarkers() {

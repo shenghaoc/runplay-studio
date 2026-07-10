@@ -11,6 +11,7 @@ import SceneKit
 /// - Finish marker (red sphere with label)
 /// - Current position marker (yellow cone indicating direction)
 /// - Optional kilometer markers
+/// - Apple Maps ground plane aligned to route coordinates
 /// - Adaptive ground grid
 class RouteSceneBuilder {
 
@@ -36,9 +37,11 @@ class RouteSceneBuilder {
     private var finishNode: SCNNode?
     private var currentNode: SCNNode?
     private var kmMarkersNode: SCNNode?
+    private var mapNode: SCNNode?
     private var gridNode: SCNNode?
     private var segmentHighlightNode: SCNNode?
     private var scenePoints: [RouteScenePoint] = []
+    private var mapGroundY: CGFloat = -2
 
     // Minimum segment length to render (meters) - avoids degenerate geometry
     private let minSegmentLength: Float = 0.01
@@ -48,6 +51,8 @@ class RouteSceneBuilder {
     /// Build a complete 3D scene from scene points.
     func buildScene(from points: [RouteScenePoint]) -> SCNScene {
         self.scenePoints = points
+        mapNode = nil
+        mapGroundY = CGFloat(points.map(\.yMeters).min() ?? 0) - 2
 
         let scene = SCNScene()
 
@@ -99,6 +104,14 @@ class RouteSceneBuilder {
         }
 
         return scene
+    }
+
+    /// Install a geospatially aligned Apple Maps image beneath the route.
+    func installMapOverlay(_ overlay: RouteMapOverlay, in scene: SCNScene) {
+        mapNode?.removeFromParentNode()
+        let node = overlay.makeSceneNode(groundY: mapGroundY)
+        mapNode = node
+        scene.rootNode.insertChildNode(node, at: 0)
     }
 
     /// Update the current position marker.

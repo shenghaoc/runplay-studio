@@ -165,6 +165,9 @@ Checklist:
 - [x] Fit-to-route math clamps non-finite and very large route extents.
 - [x] Camera preset math leaves finite camera positions.
 - [x] Comparison route bounds can drive camera fitting in unit tests.
+- [x] Single-run 3D view loads an Apple Maps basemap aligned beneath the route.
+- [x] Comparison 3D view loads one shared basemap aligned beneath both routes.
+- [x] Grid toggle hides only the grid; the basemap remains visible.
 - [x] Manually verify single-run Fit Route button in a normal desktop session.
 - [x] Manually verify single-run camera presets in a normal desktop session.
 - [x] Manually verify comparison Fit Routes button in a normal desktop session.
@@ -182,6 +185,14 @@ Latest 3D camera-control dogfood notes:
   - Comparison Fit Routes button frames both routes correctly.
   - Comparison camera presets work.
   - Manual orbit/zoom/pan still works after pressing presets.
+
+Latest 3D basemap dogfood notes (2026-07-10):
+
+- Launched the SwiftPM GUI through `./script/build_and_run.sh --verify`.
+- Confirmed the single-run 3D view renders Apple Maps streets, labels, parks,
+  and waterfront context beneath the route.
+- Confirmed hiding the adaptive grid leaves the basemap visible.
+- Confirmed comparison 3D uses one shared basemap beneath both routes.
 
 Latest dogfood notes:
 

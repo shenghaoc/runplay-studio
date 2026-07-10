@@ -25,6 +25,7 @@ struct Route3DReplayView: View {
     @State private var paceScale: PaceColorScale?
     @State private var hrScale: HeartRateColorScale?
     @State private var cameraNode: SCNNode?
+    @State private var mapLoadState: RouteMapLoadState = .loading
 
     // Camera presets
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
@@ -59,11 +60,15 @@ struct Route3DReplayView: View {
             // Controls overlay
             VStack {
                 HStack(alignment: .top) {
-                    // Legend (left side)
-                    if colorMode == .pace, let scale = paceScale {
-                        paceLegend(scale: scale)
-                    } else if colorMode == .heartRate, let scale = hrScale {
-                        heartRateLegend(scale: scale)
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Legend (left side)
+                        if colorMode == .pace, let scale = paceScale {
+                            paceLegend(scale: scale)
+                        } else if colorMode == .heartRate, let scale = hrScale {
+                            heartRateLegend(scale: scale)
+                        }
+
+                        RouteMapStatusBadge(state: mapLoadState)
                     }
 
                     Spacer()
@@ -83,6 +88,9 @@ struct Route3DReplayView: View {
         }
         .onChange(of: replayController.state.currentPointIndex) { _, newIndex in
             updateMarker(at: newIndex)
+        }
+        .onDisappear {
+            appState.mapSnapshotService.cancel()
         }
     }
 
@@ -331,6 +339,7 @@ struct Route3DReplayView: View {
         cameraNode = appState.cameraController.setupCamera(in: newScene, lookingAt: bbox.center)
         appState.cameraController.fitToRoute(center: bbox.center, extent: bbox.extent)
         scene = newScene
+        loadMapOverlay(in: newScene)
 
         // Apply synchronous setup to the new scene rather than relying on the
         // asynchronous propagation of the @State assignment above.
@@ -341,6 +350,27 @@ struct Route3DReplayView: View {
         // Position marker at controller's current index (not always 0)
         updateMarker(at: replayController.state.currentPointIndex)
         hasAttemptedBuild = true
+    }
+
+    private func loadMapOverlay(in targetScene: SCNScene) {
+        guard scenePoints.count >= 2 else {
+            mapLoadState = .unavailable
+            return
+        }
+
+        mapLoadState = .loading
+        appState.mapSnapshotService.snapshot(
+            routeGroups: [workout.routePoints],
+            projectionOrigin: workout.routePoints
+        ) { result in
+            switch result {
+            case .success(let overlay):
+                appState.sceneBuilder.installMapOverlay(overlay, in: targetScene)
+                mapLoadState = .ready
+            case .failure:
+                mapLoadState = .unavailable
+            }
+        }
     }
 
     private func updateMarker(at routeIndex: Int) {

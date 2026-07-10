@@ -146,7 +146,7 @@ The camera uses a spherical coordinate system with:
 ### Apple Frameworks Used (RunPlayStudio only)
 
 - **SwiftUI**: App UI and views
-- **MapKit**: 2D map route display
+- **MapKit**: 2D route maps and geospatially aligned snapshots for 3D ground planes
 - **Swift Charts**: Pace, elevation, heart rate charts
 - **SceneKit**: 3D route visualization
 - **UniformTypeIdentifiers**: File import

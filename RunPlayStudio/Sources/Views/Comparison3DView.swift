@@ -15,6 +15,7 @@ struct Comparison3DView: View {
     @State private var showGrid: Bool = true
     @State private var elevationScale: Double = 2.0
     @State private var cameraNode: SCNNode?
+    @State private var mapLoadState: RouteMapLoadState = .loading
 
     private let elevationScales: [Double] = [1.0, 2.0, 5.0, 10.0]
 
@@ -39,7 +40,10 @@ struct Comparison3DView: View {
             VStack {
                 HStack(alignment: .top) {
                     // Legend (left side)
-                    comparisonLegend
+                    VStack(alignment: .leading, spacing: 8) {
+                        comparisonLegend
+                        RouteMapStatusBadge(state: mapLoadState)
+                    }
 
                     Spacer()
 
@@ -68,6 +72,9 @@ struct Comparison3DView: View {
         }
         .onChange(of: comparisonWorkout.routePoints.count) { _, _ in
             buildScene()
+        }
+        .onDisappear {
+            appState.comparisonMapSnapshotService.cancel()
         }
     }
 
@@ -341,9 +348,26 @@ struct Comparison3DView: View {
         cameraNode = appState.comparisonCameraController.setupCamera(in: newScene, lookingAt: bbox.center)
         appState.comparisonCameraController.fitToRoute(center: bbox.center, extent: bbox.extent)
         scene = newScene
+        loadMapOverlay(in: newScene)
 
         appState.clampComparisonDistance()
         updateDistanceMarkers(in: newScene, result: result)
+    }
+
+    private func loadMapOverlay(in targetScene: SCNScene) {
+        mapLoadState = .loading
+        appState.comparisonMapSnapshotService.snapshot(
+            routeGroups: [primaryWorkout.routePoints, comparisonWorkout.routePoints],
+            projectionOrigin: primaryWorkout.routePoints
+        ) { result in
+            switch result {
+            case .success(let overlay):
+                appState.comparisonSceneBuilder.installMapOverlay(overlay, in: targetScene)
+                mapLoadState = .ready
+            case .failure:
+                mapLoadState = .unavailable
+            }
+        }
     }
 
     private func updateDistanceMarkers() {

@@ -116,12 +116,13 @@ Both approaches use the same source code. There is no separate Xcode project fil
 The 3D view is RunPlay Studio's main differentiator. It renders your run as an explorable 3D scene.
 
 **What you see:**
+- Apple Maps basemap aligned beneath the route for real geographic context
 - Route rendered as connected tubes showing your path
 - Start marker (green sphere with "START" label)
 - Finish marker (red sphere with "FINISH" label)
 - Current position marker (yellow cone pointing in direction of travel)
 - Kilometer markers (orange poles with distance labels)
-- Adaptive ground grid for spatial reference
+- Optional adaptive ground grid over the basemap for spatial reference
 
 **Controls:**
 - **Orbit** — Click and drag to rotate view
@@ -225,7 +226,7 @@ Compare two completed runs side by side:
 ## Privacy
 
 - **Local workout processing** — All workout data stays on your Mac
-- **MapKit map tiles** — The map view uses Apple MapKit, which loads map tiles from Apple services over the network. This is the only network activity in the app. Tile requests are for the map region derived from your route coordinates (bounding box), so the general area of your route is visible to Apple Maps. No workout file data, metrics, or account information is included in map tile requests.
+- **MapKit map tiles** — The 2D map and 3D basemap use Apple MapKit, which loads map tiles from Apple services over the network. This is the only network activity in the app. Tile requests are for the map region derived from your route coordinates (bounding box), so the general area of your route is visible to Apple Maps. No workout file data, metrics, or account information is included in map tile requests.
 - **No cloud** — No external servers or sync for workout data
 - **No analytics** — No usage tracking
 - **No telemetry** — No phone-home behavior
