@@ -22,5 +22,6 @@ jobs:
       with:
         name: RunPlayStudio-demo-app
         path: .build/artifacts/RunPlayStudio.app.zip
+        include-hidden-files: true
         retention-days: 30
         if-no-files-found: error

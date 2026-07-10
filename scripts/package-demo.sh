@@ -83,4 +83,3 @@ PLIST
 # Create zip for artifact upload
 echo "==> Creating zip archive..."
 (cd "$OUTPUT_DIR" && ditto -c -k --sequesterRsrc --keepParent "$APP_NAME.app" "$APP_NAME.app.zip")
-
