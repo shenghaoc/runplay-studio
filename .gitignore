@@ -43,6 +43,7 @@ Icon
 
 # Generated
 *.generated.swift
+dist/
 
 # Local private workout files for manual dogfooding
 local-workouts/

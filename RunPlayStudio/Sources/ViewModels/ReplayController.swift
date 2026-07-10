@@ -196,24 +196,17 @@ class ReplayController: ObservableObject {
         return nil
     }
 
-    // MARK: - Private
+    // MARK: - Internal (testable)
 
-    private func startTimer() {
-        stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
-            self?.updatePlayback()
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
-
-    private func updatePlayback() {
+    /// Advance playback by a custom time interval.
+    ///
+    /// Extracted from the timer path so tests can exercise the tick logic
+    /// deterministically without waiting for real `Timer` fires.
+    func advancePlayback(by interval: TimeInterval) {
+        guard interval.isFinite, interval >= 0 else { return }
         guard let workout = workout, isPlaying else { return }
 
-        let timeIncrement = updateInterval * state.playbackSpeed
+        let timeIncrement = interval * state.playbackSpeed
         let newTime = state.currentTime + timeIncrement
 
         if newTime >= state.totalDuration {
@@ -233,6 +226,21 @@ class ReplayController: ObservableObject {
             state.currentPointIndex = index
             state.currentDistance = workout.routePoints[index].distanceFromStartMeters
         }
+    }
+
+    // MARK: - Private
+
+    private func startTimer() {
+        stopTimer()
+        let interval = updateInterval
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.advancePlayback(by: interval)
+        }
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
     }
 
     /// Binary search for the route point closest to a given time.

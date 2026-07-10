@@ -9,7 +9,7 @@
 - [x] Implement workout analysis
 - [x] Implement route projection
 - [x] Implement replay controller
-- [x] Build 3D route scene
+- [x] Build initial SceneKit route prototype (superseded by Phase 11.7)
 - [x] Build 2D MapKit view
 - [x] Build Swift Charts views
 - [x] Build SwiftUI shell
@@ -21,7 +21,7 @@
 - [ ] Validate against real-world GPX files (use realistic_5k_run.gpx fixture)
 - [ ] Add error reporting for malformed GPX
 
-## Phase 3: 3D Route Replay Polish ✅
+## Phase 3: Legacy SceneKit Prototype Polish ✅ (Superseded)
 - [x] Improve route geometry (skip zero-length segments)
 - [x] Better lighting (key + fill + top lights)
 - [x] Direction-aware replay marker (cone)
@@ -34,7 +34,7 @@
 - [x] Elevation exaggeration controls (1x, 2x, 5x, 10x)
 - [x] Grid and km marker visibility toggles
 
-## Phase 4: Route Coloring ✅
+## Phase 4: Legacy SceneKit Route Coloring ✅ (Superseded)
 - [x] Route coloring by pace (blue=fast, red=slow)
 - [x] Quantile-based color scaling (10th/90th percentile)
 - [x] Moving average smoothing for pace
@@ -44,7 +44,7 @@
 
 ## Phase 5: Synchronized Replay ✅
 - [x] Unified ReplayController as single source of truth
-- [x] 3D marker sync with timeline
+- [x] Route marker sync with timeline
 - [x] 2D map marker sync
 - [x] Chart selection indicator (RuleMark)
 - [x] Current metrics panel (time, distance, pace, elev, HR, split)
@@ -58,7 +58,7 @@
 - [x] Biggest climb detection
 - [x] Biggest descent detection
 - [x] Segment highlights panel with cards
-- [x] 3D segment highlighting (translucent tube above route)
+- [x] Initial SceneKit segment highlighting prototype (superseded)
 - [x] Segment start/end markers
 
 ## Phase 7: Export ✅
@@ -113,10 +113,16 @@
 - [x] Manual GUI dogfooding with bundled runs and a local TCX import
 - [x] macOS 14 MapKit overlay API modernization for route maps
 - [x] Clearer distance-alignment warning for different route shapes
-- [x] 3D comparison overlay
-- [x] 3D comparison camera controller wired to the visible SceneKit point of view
-- [x] 3D comparison selected-distance markers with time/pace delta readout
-- [ ] Manual GUI recheck of single-run and comparison 3D camera buttons after camera wiring fix
+- [x] Comparison selected-distance markers with time/pace delta readout
+
+## Phase 11.7: Unified Apple Maps 2D/3D Presentation ✅
+- [x] Replace separate SceneKit product views with one SwiftUI `Map`
+- [x] Add one in-map 2D/3D camera toggle
+- [x] Use one realistic-elevation map with 0°/pitched camera modes
+- [x] Preserve route overlays, replay markers, and comparison markers in both modes
+- [x] Share `RouteMapCanvas` between single-run and comparison views
+- [x] Remove the snapshot-on-SceneKit-plane implementation
+- [ ] Complete current manual GUI checklist in `docs/manual-testing.md`
 
 ## Phase 11.5: Real-Data Safety And Demo Polish ✅
 - [x] Ignore local private workout paths and `activity_*.tcx` / `activity_*.fit`
@@ -151,7 +157,7 @@
 ## Phase 13: Advanced Features
 - [x] Heart rate route coloring
 - [ ] Dark mode PNG variant
-- [ ] Map/3D screenshot in PNG export
+- [ ] Map screenshot in PNG export
 - [ ] Keyboard shortcuts
 - [ ] Window state persistence
 - [ ] Accessibility improvements

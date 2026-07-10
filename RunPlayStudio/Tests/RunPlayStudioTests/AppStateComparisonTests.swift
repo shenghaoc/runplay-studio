@@ -54,6 +54,23 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertNil(appState.comparisonSelectionMessage)
     }
 
+    func testSetComparisonClampsSelectionToShorterReplacement() {
+        let appState = AppState(loadSampleWorkout: false)
+        let primary = makeWorkout(name: "Primary", distanceMeters: 10_000)
+        let longComparison = makeWorkout(name: "Long", distanceMeters: 8_000)
+        let shortComparison = makeWorkout(name: "Short", distanceMeters: 3_000)
+        appState.workouts = [primary, longComparison, shortComparison]
+        appState.selectWorkout(primary)
+        appState.setComparison(longComparison)
+        appState.selectedComparisonDistanceMeters = 7_000
+
+        appState.setComparison(shortComparison)
+
+        XCTAssertEqual(appState.selectedComparisonDistanceMeters, 3_000, accuracy: 0.001)
+        XCTAssertEqual(appState.clampedComparisonDistanceMeters, 3_000, accuracy: 0.001)
+        XCTAssertEqual(appState.comparisonDistanceMetrics.selectedDistanceMeters, 3_000, accuracy: 0.001)
+    }
+
     func testDefaultAppStateLoadsDemoComparisonWorkouts() {
         let appState = AppState()
 
@@ -182,7 +199,35 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertNil(appState.comparisonWorkout)
     }
 
-    private func makeWorkout(name: String) -> RunWorkout {
-        RunWorkout(metadata: WorkoutMetadata(name: name, activityType: "running"))
+    private func makeWorkout(name: String, distanceMeters: Double = 0) -> RunWorkout {
+        let routePoints: [RoutePoint]
+        if distanceMeters > 0 {
+            routePoints = [
+                makePoint(distanceMeters: 0, longitude: 103.8),
+                makePoint(distanceMeters: distanceMeters, longitude: 103.9)
+            ]
+        } else {
+            routePoints = []
+        }
+        return RunWorkout(
+            metadata: WorkoutMetadata(name: name, activityType: "running"),
+            routePoints: routePoints
+        )
+    }
+
+    private func makePoint(distanceMeters: Double, longitude: Double) -> RoutePoint {
+        RoutePoint(
+            timestamp: Date(timeIntervalSince1970: distanceMeters),
+            latitude: 1.3,
+            longitude: longitude,
+            altitudeMeters: 10,
+            distanceFromStartMeters: distanceMeters,
+            elapsedSeconds: distanceMeters / 3,
+            speedMetersPerSecond: 3,
+            paceSecondsPerKilometer: 333,
+            heartRateBPM: 140,
+            cadence: 170,
+            horizontalAccuracy: 5
+        )
     }
 }

@@ -223,6 +223,103 @@ final class ReplayControllerTests: XCTestCase {
         }
     }
 
+    // MARK: - Playback Tick (advancePlayback)
+
+    func testAdvancePlaybackAdvancesTime() {
+        controller.play()
+        let before = controller.state.currentTime
+
+        controller.advancePlayback(by: 1.0 / 30.0)
+
+        XCTAssertGreaterThan(controller.state.currentTime, before)
+    }
+
+    func testAdvancePlaybackAdvancesDistanceAndIndex() {
+        controller.play()
+        controller.advancePlayback(by: 50.0) // jump 50 seconds
+
+        XCTAssertGreaterThan(controller.state.currentDistance, 0)
+        XCTAssertGreaterThan(controller.state.currentPointIndex, 0)
+    }
+
+    func testAdvancePlaybackRespectsSpeedMultiplier() {
+        controller.setSpeed(4.0)
+        controller.play()
+
+        controller.advancePlayback(by: 1.0) // 1 second wall-clock
+        let at4x = controller.state.currentTime
+
+        controller.stop()
+        controller.setSpeed(1.0)
+        controller.play()
+        controller.advancePlayback(by: 1.0)
+        let at1x = controller.state.currentTime
+
+        // 4x speed should advance 4x as far in the same wall-clock interval
+        XCTAssertEqual(at4x, at1x * 4.0, accuracy: 0.01)
+    }
+
+    func testAdvancePlaybackReachingEndLandsOnFinalPoint() {
+        controller.play()
+        // Advance well past the end
+        controller.advancePlayback(by: controller.state.totalDuration + 100)
+
+        let lastRoutePoint = workout.routePoints.last!
+        XCTAssertEqual(controller.state.currentTime, controller.state.totalDuration, accuracy: 0.01)
+        XCTAssertEqual(controller.state.currentPointIndex, workout.routePoints.count - 1)
+        XCTAssertEqual(
+            controller.state.currentDistance,
+            lastRoutePoint.distanceFromStartMeters,
+            accuracy: 0.01
+        )
+        XCTAssertFalse(controller.isPlaying)
+        XCTAssertEqual(controller.state.playbackState, .paused)
+    }
+
+    func testAdvancePlaybackDoesNothingWhenPaused() {
+        controller.play()
+        controller.advancePlayback(by: 5.0)
+        let afterTick = controller.state.currentTime
+
+        controller.pause()
+        controller.advancePlayback(by: 5.0)
+
+        // Should not have advanced while paused
+        XCTAssertEqual(controller.state.currentTime, afterTick)
+    }
+
+    func testAdvancePlaybackIgnoresInvalidIntervals() {
+        controller.play()
+        let beforeTime = controller.state.currentTime
+        let beforeDistance = controller.state.currentDistance
+        let beforeIndex = controller.state.currentPointIndex
+
+        for interval in [-1.0, .nan, .infinity, -.infinity] {
+            controller.advancePlayback(by: interval)
+        }
+
+        XCTAssertEqual(controller.state.currentTime, beforeTime)
+        XCTAssertEqual(controller.state.currentDistance, beforeDistance)
+        XCTAssertEqual(controller.state.currentPointIndex, beforeIndex)
+    }
+
+    func testMultipleTicksAdvanceMonotonically() {
+        controller.play()
+        var previousTime = controller.state.currentTime
+        var previousIndex = controller.state.currentPointIndex
+
+        for _ in 0..<100 {
+            controller.advancePlayback(by: 1.0) // 1 second per tick
+            XCTAssertGreaterThanOrEqual(controller.state.currentTime, previousTime)
+            XCTAssertGreaterThanOrEqual(controller.state.currentPointIndex, previousIndex)
+            previousTime = controller.state.currentTime
+            previousIndex = controller.state.currentPointIndex
+        }
+
+        // After 100 ticks at 1s each we should have moved significantly
+        XCTAssertGreaterThan(controller.state.currentPointIndex, 0)
+    }
+
     // MARK: - Non-finite Input Guards
 
     func testSeekToTimeNaNIsIgnored() {

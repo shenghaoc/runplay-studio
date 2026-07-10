@@ -48,7 +48,6 @@ class RouteSceneBuilder {
     /// Build a complete 3D scene from scene points.
     func buildScene(from points: [RouteScenePoint]) -> SCNScene {
         self.scenePoints = points
-
         let scene = SCNScene()
 
         // Background

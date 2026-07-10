@@ -4,7 +4,7 @@ A native macOS post-run visualization studio for completed runs.
 
 ## What It Is
 
-RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with 3D route replay, synchronized charts, split analysis, and segment highlights.
+RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with an Apple Maps 2D/3D route view, synchronized charts, split analysis, and segment highlights.
 
 ![Synthetic RunPlay Studio summary export](docs/assets/demo-summary.png)
 
@@ -13,26 +13,25 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 At a glance:
 
 - Native macOS SwiftUI app for completed-run analysis
-- 3D SceneKit route replay with synchronized timeline controls
-- Pace, elevation, and heart-rate coloring
+- One Apple Maps route view with a native 2D/3D pitch toggle and synchronized timeline controls
 - Automatic split analysis and segment highlighting
-- Route comparison with summary deltas, splits, pace chart, 2D overlay, and 3D overlay
-- Selected-distance markers in 3D comparison with time/pace delta readout
+- Route comparison with summary deltas, splits, pace chart, and a shared 2D/3D Apple Maps overlay
+- Selected-distance comparison markers with time/pace delta readout
 - Local JSON, CSV, and PNG exports
 - Privacy-first: no account, no cloud, no telemetry, no AI API; workout data stays local (MapKit loads map tiles from Apple services)
 
 ## Current Status
 
-SwiftPM builds and all 433 tests pass. GUI features verified by manual testing
-on 2026-07-08.
+SwiftPM builds and the full test suite passes. GUI verification notes are kept in
+`docs/manual-testing.md`.
 
 | Check | Status |
 |-------|--------|
 | `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass (433 tests) |
+| `swift test` | ✅ Pass |
 | Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
-| Manual GUI verification | ✅ 2026-07-08 (camera controls, comparison, export) |
+| Manual GUI verification | See `docs/manual-testing.md` |
 
 ### Core Testability
 
@@ -111,40 +110,23 @@ Both approaches use the same source code. There is no separate Xcode project fil
 
 ## App Features
 
-### 3D Route Visualization (SceneKit)
+### Apple Maps 2D/3D Route Replay (MapKit for SwiftUI)
 
-The 3D view is RunPlay Studio's main differentiator. It renders your run as an explorable 3D scene.
+RunPlay Studio uses one SwiftUI `Map` for both presentations. One in-map
+2D/3D control changes the same route map between a flat overhead view and a
+pitched 3D perspective; it does not switch to a custom SceneKit world.
 
 **What you see:**
-- Route rendered as connected tubes showing your path
-- Start marker (green sphere with "START" label)
-- Finish marker (red sphere with "FINISH" label)
-- Current position marker (yellow cone pointing in direction of travel)
-- Kilometer markers (orange poles with distance labels)
-- Adaptive ground grid for spatial reference
+- Apple Maps roads, labels, points of interest, terrain, and buildings
+- Blue route polyline with start, finish, and replay-position annotations
+- Top-down 2D and realistic-elevation pitched 3D on the same map
+- The same route overlays and replay state in both modes
 
 **Controls:**
-- **Orbit** — Click and drag to rotate view
-- **Zoom** — Scroll wheel or pinch to zoom in/out
-- **Fit Route** — Button to see entire route at once
-- **Camera presets** — Default, top-down, side, and front views
-- **Elevation scale** — Choose 1x, 2x, 5x, or 10x exaggeration
-- **Color mode** — Single color, pace-based, or elevation-based
-- **Toggle grid** — Show/hide ground grid
-- **Toggle km markers** — Show/hide kilometer markers
-
-**Pace coloring:**
-When pace coloring is enabled, the route shows fast sections in blue/cyan and slow sections in red/yellow. A legend displays the pace range. The color scale uses quantile-based normalization (10th/90th percentile) to avoid outliers, with moving average smoothing to reduce noise.
-
-**Elevation coloring:**
-When elevation coloring is enabled, low elevations are green and high elevations are brown/orange.
-
-**Elevation handling:**
-Routes with elevation changes are visualized with configurable exaggeration:
-- 1x — True scale (may look flat for gentle hills)
-- 2x — Default, good balance for most routes
-- 5x — Makes moderate hills visible
-- 10x — For very flat routes where you want to see any elevation
+- **2D/3D** — One in-map toggle bound to the MapKit camera pitch
+- **Pan/rotate/zoom** — Standard Apple Maps interactions
+- **Fit Route** — Reframes the route without changing to another view
+- **Zoom stepper** — Native MapKit zoom control
 
 ### Overview (Default)
 - Map with route overlay as the default landing view
@@ -152,7 +134,7 @@ Routes with elevation changes are visualized with configurable exaggeration:
 - Real map context via Apple MapKit (loads map tiles from Apple services)
 
 ### Map View (MapKit)
-- 2D overhead route display
+- One route map with flat 2D and realistic 3D modes
 - Start/finish annotations
 - Full-screen map for detailed route inspection
 
@@ -169,8 +151,7 @@ Routes with elevation changes are visualized with configurable exaggeration:
 
 ### Synchronized Replay
 All views stay in sync with the replay position:
-- 3D route marker updates with timeline
-- 2D map marker matches selected position
+- Map route marker updates with the timeline in both 2D and 3D
 - Charts show selection indicator at current distance
 - **Chart click/drag to seek** — drag on charts to navigate the run
 - Current metrics panel shows real-time data
@@ -208,7 +189,8 @@ Compare two completed runs side by side:
 - Summary deltas for distance, duration, pace, elevation, and heart rate
 - Per-split comparison table with pace, delta, and winner columns
 - Pace over distance chart with actual workout names in the legend
-- 2D map overlay and 3D comparison with both routes in the same scene
+- One comparison map whose native pitch toggle switches both route overlays
+  between 2D and 3D
 - Distance slider to scrub along the common route and see where both runners
   were at each point, with elapsed time and pace delta readout
 - Warnings for different distances, route shapes, and missing data
@@ -219,13 +201,13 @@ Compare two completed runs side by side:
 - FIT support is basic (no compressed timestamps, no CRC validation)
 - No HealthKit integration
 - No cloud sync, accounts, or web interface
-- macOS only (requires SwiftUI, SceneKit, MapKit)
+- macOS only (requires SwiftUI and MapKit)
 - PNG export requires GUI context (NSHostingView)
 
 ## Privacy
 
 - **Local workout processing** — All workout data stays on your Mac
-- **MapKit map tiles** — The map view uses Apple MapKit, which loads map tiles from Apple services over the network. This is the only network activity in the app. Tile requests are for the map region derived from your route coordinates (bounding box), so the general area of your route is visible to Apple Maps. No workout file data, metrics, or account information is included in map tile requests.
+- **MapKit map tiles** — The flat and pitched presentations use Apple MapKit, which loads map content from Apple services over the network. This is the only network activity in the app. Requests cover the map region derived from your route coordinates, so the general area of your route is visible to Apple Maps. No workout file data, metrics, or account information is included.
 - **No cloud** — No external servers or sync for workout data
 - **No analytics** — No usage tracking
 - **No telemetry** — No phone-home behavior

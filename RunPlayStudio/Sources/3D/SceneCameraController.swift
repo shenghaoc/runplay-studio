@@ -22,9 +22,14 @@ class SceneCameraController: ObservableObject {
     // MARK: - Configuration
 
     let minDistance: CGFloat = 50
-    let maxDistance: CGFloat = 2000
+    /// Upper bound for camera distance; dynamically expanded for large routes.
+    private(set) var maxDistance: CGFloat = 2000
+    private let baseMaxDistance: CGFloat = 2000
     let minAngleX: CGFloat = 1    // nearly horizontal
     let maxAngleX: CGFloat = 89   // nearly straight down
+
+    /// Absolute ceiling to prevent runaway values from bad input.
+    private let absoluteMaxDistance: CGFloat = 200_000
 
     // MARK: - Camera Node
 
@@ -36,7 +41,7 @@ class SceneCameraController: ObservableObject {
     func setupCamera(in scene: SCNScene, lookingAt center: SCNVector3) -> SCNNode {
         let camera = SCNCamera()
         camera.zNear = 1
-        camera.zFar = 10000
+        camera.zFar = 100_000
         camera.fieldOfView = 60
 
         let node = SCNNode()
@@ -105,9 +110,13 @@ class SceneCameraController: ObservableObject {
     }
 
     /// Fit camera to show the entire route.
+    ///
+    /// Derives camera distance from route extent and field of view so that
+    /// both tiny sample routes and marathon-scale routes are fully visible.
+    /// Also updates `zFar` so very large routes are not clipped.
     func fitToRoute(center: SCNVector3, extent: CGFloat) {
         let safeCenter = Self.finiteVector(center, fallback: SCNVector3(0, 0, 0))
-        let safeExtent = Self.clampFinite(extent, min: minDistance, max: maxDistance, fallback: minDistance)
+        let safeExtent = Self.clampFinite(extent, min: 0, max: absoluteMaxDistance, fallback: minDistance)
         let fov = Self.clampFinite(
             CGFloat(cameraNode?.camera?.fieldOfView ?? 60),
             min: 10,
@@ -115,12 +124,27 @@ class SceneCameraController: ObservableObject {
             fallback: 60
         )
         let fovRad = fov * .pi / 180
-        let distance = safeExtent / (2 * tan(fovRad / 2)) * 1.35
+        let desiredDistance = safeExtent / (2 * tan(fovRad / 2)) * 1.35
+
+        // Recalculate the zoom ceiling from a stable baseline so a previously
+        // loaded large route does not leave smaller workouts with loose controls.
+        let dynamicMax = max(baseMaxDistance, desiredDistance, safeExtent * 3)
+        maxDistance = min(dynamicMax, absoluteMaxDistance)
 
         targetPoint = safeCenter
-        cameraDistance = Self.clampFinite(distance, min: minDistance, max: maxDistance, fallback: minDistance)
+        cameraDistance = Self.clampFinite(desiredDistance, min: minDistance, max: maxDistance, fallback: minDistance)
         cameraAngleX = 30
         cameraAngleY = 45
+
+        // Keep near and far clipping planes proportional to large routes. A
+        // fixed zNear with a large zFar loses depth-buffer precision.
+        let neededZNear = max(1.0, cameraDistance * 0.1)
+        cameraNode?.camera?.zNear = Double(neededZNear)
+
+        // Update zFar so distant geometry is not clipped. Use 2x the sum of
+        // camera distance and extent, with a floor of 100_000.
+        let neededZF = max(100_000, (cameraDistance + safeExtent) * 2)
+        cameraNode?.camera?.zFar = Double(neededZF)
 
         updateCameraPosition(lookingAt: safeCenter)
     }
@@ -128,7 +152,7 @@ class SceneCameraController: ObservableObject {
     /// Focus camera on a specific route point.
     func focusOn(point: RouteScenePoint, distance: CGFloat = 200) {
         let target = SCNVector3(point.xMeters, point.yMeters, point.zMeters)
-        cameraDistance = Self.clampFinite(distance, min: minDistance, max: maxDistance, fallback: 200)
+        cameraDistance = Self.clampFinite(distance, min: minDistance, max: max(200, maxDistance), fallback: 200)
         updateCameraPosition(lookingAt: target)
     }
 
