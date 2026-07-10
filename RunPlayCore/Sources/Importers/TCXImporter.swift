@@ -272,12 +272,20 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         }
     }
 
-    private func parseISO8601(_ string: String) -> Date? {
+    // Cached formatters for performance
+    private static let fractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: string) ?? {
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter.date(from: string)
-        }()
+        return formatter
+    }()
+
+    private static let standardFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private func parseISO8601(_ string: String) -> Date? {
+        return Self.fractionalFormatter.date(from: string) ?? Self.standardFormatter.date(from: string)
     }
 }
