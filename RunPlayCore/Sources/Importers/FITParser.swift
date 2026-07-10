@@ -12,6 +12,8 @@ public enum FITError: Error, LocalizedError {
     case noGPSCoordinates
     case invalidCoordinates
     case corruptedData(String)
+    case headerCRCMismatch
+    case fileCRCMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -25,6 +27,8 @@ public enum FITError: Error, LocalizedError {
         case .noGPSCoordinates: return "No GPS coordinates found in FIT file"
         case .invalidCoordinates: return "Invalid coordinates in FIT file"
         case .corruptedData(let d): return "Corrupted FIT data: \(d)"
+        case .headerCRCMismatch: return "FIT header CRC mismatch — file may be corrupted"
+        case .fileCRCMismatch: return "FIT file CRC mismatch — file may be corrupted"
         }
     }
 }
@@ -198,11 +202,37 @@ public struct FITParser {
             throw FITError.invalidDataType
         }
 
+        // Validate header CRC (only present in 14-byte headers).
+        // A header CRC of 0x0000 means the CRC was not computed; skip validation.
+        if headerLength == 14 {
+            guard data.count >= 14 else {
+                throw FITError.invalidHeader
+            }
+            let expectedCRC = readUInt16(data: data[12..<14], littleEndian: true)
+            if expectedCRC != 0 {
+                let computedCRC = crc16(over: data[0..<12])
+                guard expectedCRC == computedCRC else {
+                    throw FITError.headerCRCMismatch
+                }
+            }
+        }
+
         let dataSize = Int(readUInt32(data: data[4..<8], littleEndian: true))
         let dataStart = headerLength
         let dataEnd = dataStart + dataSize
         guard data.count >= dataEnd + 2 else {
             throw FITError.unexpectedEndOfFile
+        }
+        guard data.count == dataEnd + 2 else {
+            throw FITError.corruptedData("FIT file contains trailing bytes after its CRC")
+        }
+
+        // Validate entire-file CRC (covers header + all data records).
+        // Placed here because parseHeader already has the dataEnd boundary.
+        let expectedFileCRC = readUInt16(data: data[dataEnd..<(dataEnd + 2)], littleEndian: true)
+        let computedFileCRC = crc16(over: data[0..<dataEnd])
+        guard expectedFileCRC == computedFileCRC else {
+            throw FITError.fileCRCMismatch
         }
 
         offset = headerLength
@@ -367,6 +397,35 @@ public struct FITParser {
         }
 
         return record
+    }
+
+    // MARK: - CRC-16 (FIT SDK)
+
+    /// CRC-16 lookup table for FIT SDK polynomial 0x8005 (reflected: 0xA001).
+    private static let crc16Table: [UInt16] = {
+        var table = [UInt16](repeating: 0, count: 256)
+        for i in 0..<256 {
+            var crc = UInt16(i)
+            for _ in 0..<8 {
+                if crc & 1 != 0 {
+                    crc = (crc >> 1) ^ 0xA001  // reflected polynomial 0x8005
+                } else {
+                    crc >>= 1
+                }
+            }
+            table[i] = crc
+        }
+        return table
+    }()
+
+    /// Compute CRC-16 over a byte sequence using the FIT SDK algorithm.
+    public static func crc16<S: Sequence>(over bytes: S) -> UInt16 where S.Element == UInt8 {
+        var crc: UInt16 = 0
+        for byte in bytes {
+            let index = Int(crc ^ UInt16(byte)) & 0xFF
+            crc = (crc >> 8) ^ crc16Table[index]
+        }
+        return crc
     }
 
     // MARK: - Binary Reading Helpers

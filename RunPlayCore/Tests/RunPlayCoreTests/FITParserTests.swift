@@ -30,6 +30,111 @@ final class FITParserTests: XCTestCase {
         }
     }
 
+    func testValidCRCParsesSuccessfully() throws {
+        let data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
+        ])
+
+        // Should not throw — CRCs are valid
+        let records = try FITParser.parse(data: data)
+        XCTAssertEqual(records.count, 2)
+    }
+
+    func testZeroHeaderCRCSkipsValidation() throws {
+        // Header CRC of 0x0000 means "not computed" — parser should skip the check
+        let data = Self.fitData(
+            records: [
+                (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+            ],
+            zeroHeaderCRC: true
+        )
+
+        // Should not throw — 0x0000 header CRC is treated as absent
+        let records = try FITParser.parse(data: data)
+        XCTAssertEqual(records.count, 1)
+    }
+
+    func test12ByteHeaderParsesSuccessfully() throws {
+        // 12-byte headers have no CRC field at all — parser should accept them
+        let data = Self.fitData(
+            records: [
+                (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+                (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
+            ],
+            headerLength: 12
+        )
+
+        let records = try FITParser.parse(data: data)
+        XCTAssertEqual(records.count, 2)
+    }
+
+    func testCRC16KnownAnswer() {
+        // Standard CRC-16/ARC test vector: "123456789" = 0xBB3D
+        let input: [UInt8] = Array("123456789".utf8)
+        let result = FITParser.crc16(over: input)
+        XCTAssertEqual(result, 0xBB3D, "CRC-16/ARC of '123456789' should be 0xBB3D")
+    }
+
+    func testCorruptHeaderCRCThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        // Flip a byte in the header CRC
+        data[12] ^= 0xFF
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.headerCRCMismatch = error else {
+                XCTFail("Expected headerCRCMismatch, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testCorruptFileCRCThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        // Flip a byte in the file CRC (last 2 bytes)
+        data[data.count - 1] ^= 0xFF
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.fileCRCMismatch = error else {
+                XCTFail("Expected fileCRCMismatch, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testTrailingBytesAfterFileCRCThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        data.append(0x00)
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.corruptedData = error else {
+                XCTFail("Expected corruptedData, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testTruncatedDataThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        // Truncate before the file CRC
+        data = data.prefix(data.count - 4)
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.unexpectedEndOfFile = error else {
+                XCTFail("Expected unexpectedEndOfFile, got \(error)")
+                return
+            }
+        }
+    }
+
     func testDeveloperDataFieldsAreSkippedWithoutDesyncing() throws {
         let data = Self.fitDataWithDeveloperFields(records: [
             (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
@@ -72,7 +177,9 @@ final class FITParserTests: XCTestCase {
     }
 
     private static func fitData(
-        records: [(timestamp: UInt32, latDegrees: Double, lonDegrees: Double, distanceMeters: Double)]
+        records: [(timestamp: UInt32, latDegrees: Double, lonDegrees: Double, distanceMeters: Double)],
+        headerLength: UInt8 = 14,
+        zeroHeaderCRC: Bool = false
     ) -> Data {
         var content = Data()
         writeDefinition(to: &content)
@@ -83,7 +190,7 @@ final class FITParserTests: XCTestCase {
             append(semicircles(record.lonDegrees), to: &content)
             append(UInt32(record.distanceMeters * 100), to: &content)
         }
-        return fitData(rawContent: content)
+        return fitData(rawContent: content, headerLength: headerLength, zeroHeaderCRC: zeroHeaderCRC)
     }
 
     private static func fitDataWithDeveloperFields(
@@ -102,16 +209,32 @@ final class FITParserTests: XCTestCase {
         return fitData(rawContent: content)
     }
 
-    private static func fitData(rawContent content: Data) -> Data {
+    private static func fitData(
+        rawContent content: Data,
+        headerLength: UInt8 = 14,
+        zeroHeaderCRC: Bool = false
+    ) -> Data {
         var data = Data()
-        data.append(14)
+        data.append(headerLength)
         data.append(16)
         data.append(contentsOf: [0x40, 0x01])
         append(UInt32(content.count), to: &data)
         data.append(contentsOf: [0x46, 0x49, 0x54, 0x20])
-        data.append(contentsOf: [0x00, 0x00])
+        if headerLength == 14 {
+            // Placeholder header CRC — will be patched below
+            data.append(contentsOf: [0x00, 0x00])
+            if !zeroHeaderCRC {
+                // Patch header CRC (covers bytes 0..<12)
+                let headerCRC = FITParser.crc16(over: data[0..<12])
+                data[12] = UInt8(headerCRC & 0xFF)
+                data[13] = UInt8(headerCRC >> 8)
+            }
+        }
         data.append(content)
-        data.append(contentsOf: [0x00, 0x00])
+        // Compute and append file CRC
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
         return data
     }
 

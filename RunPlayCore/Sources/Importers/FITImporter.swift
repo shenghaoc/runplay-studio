@@ -12,10 +12,18 @@ public struct FITImporter: WorkoutImporting {
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
-        let data = try Data(contentsOf: url)
 
-        // Parse FIT binary data
-        let records = try FITParser.parse(data: data)
+        // Wrap all I/O and parsing errors into WorkoutImportError
+        // so upstream code only needs to handle that type.
+        let records: [FITRecordMessage]
+        do {
+            let data = try Data(contentsOf: url)
+            records = try FITParser.parse(data: data)
+        } catch let error as FITError {
+            throw WorkoutImportError.parsingError(error.localizedDescription)
+        } catch {
+            throw WorkoutImportError.parsingError(error.localizedDescription)
+        }
 
         guard !records.isEmpty else {
             throw WorkoutImportError.missingData("No records found in FIT file")
