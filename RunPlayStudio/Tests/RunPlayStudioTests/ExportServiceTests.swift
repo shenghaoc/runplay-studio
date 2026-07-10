@@ -97,6 +97,16 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(row, "a,\"b,c\",d")
     }
 
+    func testCSVEscapingForFormulaInjection() {
+        XCTAssertEqual(CSVRow.escape("=cmd|' /C calc'!A0"), "'=cmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("+1+2"), "'+1+2")
+        XCTAssertEqual(CSVRow.escape("-1-2"), "'-1-2")
+        XCTAssertEqual(CSVRow.escape("@SUM(A1:A2)"), "'@SUM(A1:A2)")
+        XCTAssertEqual(CSVRow.escape("\tpayload"), "'\tpayload")
+        XCTAssertEqual(CSVRow.escape("\rpayload"), "\"'\rpayload\"")
+        XCTAssertEqual(CSVRow.escape("=cmd,args"), "\"'=cmd,args\"") // formula with comma
+    }
+
     // MARK: - JSON Export
 
     func testJSONSummaryContainsKeyFields() throws {

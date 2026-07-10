@@ -7,3 +7,8 @@
 **Vulnerability:** Found missing `url.isFileURL` checks before calling `Data(contentsOf: url)` in workout importer classes (`FITImporter`, `GPXImporter`, `JSONWorkoutImporter`, `TCXImporter`). While `FileManager.default.fileExists(atPath: url.path)` provided partial mitigation, it does not prevent network requests if an attacker provided an `http://` URL where the `.path` component coincidentally matched an existing local file.
 **Learning:** `Data(contentsOf:)` handles network protocols like HTTP/HTTPS in addition to local files. Relying solely on `FileManager.default.fileExists` is insufficient because it only validates the path component of the URL.
 **Prevention:** Always validate that URLs intended for local file access are actually local files using `guard url.isFileURL else { ... }` before passing them to `Data(contentsOf:)` or similar APIs.
+
+## 2026-07-10 - CSV Injection (Formula Injection) Prevention
+**Vulnerability:** Found missing sanitization for formula trigger characters in `ExportService.swift` when generating CSV exports for segments and splits. Unsanitized data fields starting with `=`, `+`, `-`, `@`, `\t`, or `\r` can execute malicious commands in spreadsheet applications.
+**Learning:** Even though we properly escape commas, newlines, and quotes in CSVs, spreadsheet programs like Excel interpret fields starting with certain triggers as formulas, potentially leading to arbitrary code execution if the data originates from an untrusted source.
+**Prevention:** Always prepend a single quote (`'`) to any CSV field that begins with a formula trigger character (`=`, `+`, `-`, `@`, `\t`, `\r`) before normal escaping, so spreadsheet apps treat the cell as raw text instead of evaluating it.
