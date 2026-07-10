@@ -106,6 +106,20 @@ final class FITParserTests: XCTestCase {
         }
     }
 
+    func testTrailingBytesAfterFileCRCThrows() {
+        var data = Self.fitData(records: [
+            (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)
+        ])
+        data.append(0x00)
+
+        XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
+            guard case FITError.corruptedData = error else {
+                XCTFail("Expected corruptedData, got \(error)")
+                return
+            }
+        }
+    }
+
     func testTruncatedDataThrows() {
         var data = Self.fitData(records: [
             (timestamp: 1_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0)

@@ -223,6 +223,9 @@ public struct FITParser {
         guard data.count >= dataEnd + 2 else {
             throw FITError.unexpectedEndOfFile
         }
+        guard data.count == dataEnd + 2 else {
+            throw FITError.corruptedData("FIT file contains trailing bytes after its CRC")
+        }
 
         // Validate entire-file CRC (covers header + all data records).
         // Placed here because parseHeader already has the dataEnd boundary.
