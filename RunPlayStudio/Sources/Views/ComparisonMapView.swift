@@ -33,11 +33,15 @@ struct ComparisonMapView: View {
     private var markers: [RouteMapMarker] {
         var markers = RouteMapContent.endpointMarkers(
             points: primaryWorkout.routePoints,
-            idPrefix: "primary"
+            idPrefix: "primary",
+            startTitle: "Primary Start",
+            finishTitle: "Primary Finish"
         )
         markers += RouteMapContent.endpointMarkers(
             points: comparisonWorkout.routePoints,
-            idPrefix: "comparison"
+            idPrefix: "comparison",
+            startTitle: "Comp. Start",
+            finishTitle: "Comp. Finish"
         )
 
         let distance = appState.clampedComparisonDistanceMeters
@@ -106,7 +110,7 @@ struct ComparisonMapView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             legendRow(color: .blue, label: "Primary: \(primaryWorkout.displayName)")
-            legendRow(color: .orange, label: "Comparison: \(comparisonWorkout.displayName)")
+            legendRow(color: .orange, label: "Comp.: \(comparisonWorkout.displayName)")
 
             Divider()
 
@@ -150,7 +154,7 @@ struct ComparisonMapView: View {
     private var distanceSliderBar: some View {
         VStack(spacing: 6) {
             HStack {
-                Text("Selected Distance")
+                Text("Distance Along Route")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -170,7 +174,7 @@ struct ComparisonMapView: View {
                     Image(systemName: "backward.end.fill")
                 }
                 .buttonStyle(.plain)
-                .help("Reset to start")
+                .help("Jump to start (0 km)")
 
                 Slider(
                     value: $appState.selectedComparisonDistanceMeters,
@@ -185,7 +189,7 @@ struct ComparisonMapView: View {
                     Image(systemName: "forward.end.fill")
                 }
                 .buttonStyle(.plain)
-                .help("Jump to end")
+                .help("Jump to end (\(String(format: "%.2f", commonDistance / 1000)) km)")
                 .disabled(commonDistance <= 0)
             }
 
@@ -200,14 +204,14 @@ struct ComparisonMapView: View {
         let metrics = appState.comparisonDistanceMetrics
         return HStack(spacing: 16) {
             metricBadge(label: "Primary", value: metrics.primaryElapsedFormatted, color: .blue)
-            metricBadge(label: "Comparison", value: metrics.comparisonElapsedFormatted, color: .orange)
-            metricBadge(label: "Time", value: metrics.timeDeltaFormatted, color: deltaColor(metrics.timeDeltaSeconds))
+            metricBadge(label: "Comp.", value: metrics.comparisonElapsedFormatted, color: .orange)
+            metricBadge(label: "Δ Time", value: metrics.timeDeltaFormatted, color: deltaColor(metrics.timeDeltaSeconds))
 
             Divider().frame(height: 16)
 
-            metricBadge(label: "P Pace", value: metrics.primaryPaceFormatted, color: .blue)
-            metricBadge(label: "C Pace", value: metrics.comparisonPaceFormatted, color: .orange)
-            metricBadge(label: "Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
+            metricBadge(label: "Primary Pace", value: metrics.primaryPaceFormatted, color: .blue)
+            metricBadge(label: "Comp. Pace", value: metrics.comparisonPaceFormatted, color: .orange)
+            metricBadge(label: "Δ Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
         }
         .frame(height: 24)
     }

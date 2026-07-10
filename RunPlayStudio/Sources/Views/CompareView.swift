@@ -175,7 +175,7 @@ struct ComparisonSummaryView: View {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 16)
-                            Text("Only the shorter distance (\(commonDistanceLabel)) is compared in charts and splits.")
+                            Text("Charts and splits compare the overlapping \(commonDistanceLabel) only.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -256,7 +256,7 @@ struct ComparisonEmptyView: View {
                 .multilineTextAlignment(.center)
 
             if workoutCount >= 2 && primaryName != nil {
-                Text("Select a workout from the \"Compare Against\" picker above.")
+                Text("Use the \"Compare Against\" picker above to select a second run.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -271,9 +271,9 @@ struct ComparisonEmptyView: View {
     }
 
     private var message: String {
-        if workoutCount == 0 { return "No runs loaded yet. Import a GPX, TCX, FIT, or JSON file." }
-        if workoutCount == 1 { return "Only one run is loaded. Import another to compare." }
+        if workoutCount == 0 { return "No runs loaded yet. Import a GPX, TCX, FIT, or JSON file to get started." }
+        if workoutCount == 1 { return "Only one run is loaded. Import another to compare side-by-side." }
         if let primaryName { return "Primary: \(primaryName)" }
-        return "Choose a run in the sidebar"
+        return "Choose a run in the sidebar to begin"
     }
 }

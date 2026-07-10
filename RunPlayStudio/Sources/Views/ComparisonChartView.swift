@@ -99,10 +99,10 @@ struct ComparisonChartEmptyView: View {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 32))
                 .foregroundStyle(.secondary)
-            Text("No overlapping distance data")
+            Text("No pace data to chart")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text("Both runs need route points to build a pace comparison chart.")
+            Text("Both runs need GPS route points with timing data to build a pace comparison.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -144,7 +144,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(90)
 
-                    TableColumn("Comparison (min/km)") { split in
+                    TableColumn("Comp. (min/km)") { split in
                         if let s = split.comparisonSplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
@@ -155,14 +155,14 @@ struct SplitComparisonTableView: View {
                     }
                     .width(110)
 
-                    TableColumn("Delta") { split in
+                    TableColumn("Δ Pace") { split in
                         Text(split.formattedPaceDelta)
                             .monospacedDigit()
                             .foregroundStyle(deltaColor(split.paceDeltaSecondsPerKm))
                     }
                     .width(90)
 
-                    TableColumn("Faster") { split in
+                    TableColumn("Winner") { split in
                         Text(split.winner.label)
                             .font(.caption)
                     }

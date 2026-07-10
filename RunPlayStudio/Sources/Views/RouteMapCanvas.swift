@@ -104,14 +104,19 @@ enum RouteMapContent {
         )
     }
 
-    static func endpointMarkers(points: [RoutePoint], idPrefix: String) -> [RouteMapMarker] {
+    static func endpointMarkers(
+        points: [RoutePoint],
+        idPrefix: String,
+        startTitle: String = "Start",
+        finishTitle: String = "Finish"
+    ) -> [RouteMapMarker] {
         let coordinates = points.compactMap(RouteMapCoordinate.init)
         guard let first = coordinates.first else { return [] }
 
         var markers = [
             RouteMapMarker(
                 id: "\(idPrefix)-start",
-                title: "Start",
+                title: startTitle,
                 coordinate: first,
                 style: .start
             )
@@ -121,7 +126,7 @@ enum RouteMapContent {
             markers.append(
                 RouteMapMarker(
                     id: "\(idPrefix)-finish",
-                    title: "Finish",
+                    title: finishTitle,
                     coordinate: last,
                     style: .finish
                 )
