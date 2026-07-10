@@ -15,7 +15,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 ## Highlights
 
 - **Apple Maps 2D/3D replay** — One route map with a native pitch toggle and synchronized timeline controls
-- **Synchronized views** — Map, charts, and split table stay in sync with the timeline
+- **Synchronized views** — Map and charts stay in sync with the timeline
 - **Route comparison** — Summary deltas, pace chart, and a shared 2D/3D Apple Maps overlay
 - **Segment detection** — Auto-identify fastest 400m, fastest 1km, slowest 1km, biggest climb/descent
 - **Chart click/drag to seek** — Click or drag on charts to navigate the run
@@ -104,6 +104,8 @@ See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
 - macOS 14.0+
 - Xcode 15.0+ (for SwiftUI features)
 - Swift 5.9+
+
+---
 
 ## How to Build
 
@@ -195,7 +197,6 @@ All views stay in sync with the replay position:
 - Charts show selection indicator at current distance
 - **Chart click/drag to seek** — drag on charts to navigate the run
 - Current metrics panel shows real-time data
-- Split table highlights current split
 - Timeline slider drives all views
 
 Chart drag behavior: dragging on any chart pauses playback and seeks to the selected position. Visual feedback shows an orange indicator during drag.
@@ -249,6 +250,8 @@ Compare two completed runs side by side:
 ## Roadmap
 
 See [docs/phase-plan.md](docs/phase-plan.md) for detailed development phases.
+
+---
 
 ## License
 
