@@ -32,29 +32,28 @@ The app launches with two bundled synthetic demo runs pre-loaded.
 
 > **Key point:** No account, no cloud, no sign-up. Everything runs locally.
 
-### 2. 3D Route Replay (~60 seconds)
+### 2. Apple Maps 2D/3D Route Replay (~60 seconds)
 
-- Switch to the **3D** view tab.
-- The route renders as a 3D tube with start (green) and finish (red) markers.
+- Switch to the **Map** tab.
+- Use the map's native pitch toggle to switch the same route between 2D and 3D.
+- Point out realistic terrain/buildings, the blue route, and start/finish markers.
 - Press **Play** to watch the yellow position marker travel along the route.
-- Show the **pace coloring** mode: fast sections in blue, slow sections in red.
-- Show the **elevation coloring** mode: low = green, high = brown/orange.
-- Demonstrate **elevation exaggeration** (1x, 2x, 5x, 10x).
-- Use **camera presets** (default, top-down, side) and **orbit/zoom** with mouse.
+- Pan, rotate, and zoom using standard Apple Maps interactions.
+- Press **Fit Route** to restore the route framing without leaving the map.
 
-> **Key point:** 3D replay with pace and elevation coloring reveals how a run
-> felt, not just where it went.
+> **Key point:** 2D and 3D are two presentations of one real map, not separate
+> renderers or a textured 3D plane.
 
 ### 3. Charts and Segment Highlights (~45 seconds)
 
 - Switch to the **Charts** tab.
 - Show pace, elevation, and heart-rate charts over distance.
-- **Click or drag on a chart** to seek the replay to that position — the 3D
+- **Click or drag on a chart** to seek the replay to that position — the map
   marker, map marker, and metrics panel all update.
 - Switch to the **Segments** tab.
 - Show auto-detected segments: fastest 400m, fastest 1km, slowest 1km,
   biggest climb, biggest descent.
-- Click a segment to highlight it in 3D and seek the replay.
+- Click a segment to seek the replay to it.
 
 > **Key point:** Chart click-to-seek and segment detection make it easy to
 > find the interesting parts of a run.
@@ -76,18 +75,18 @@ The app launches with two bundled synthetic demo runs pre-loaded.
 > **Key point:** Comparison is distance-aligned and shows exactly where one
 > run was faster or slower.
 
-### 5. 3D Comparison and Distance Slider (~45 seconds)
+### 5. Comparison Map Toggle and Distance Slider (~45 seconds)
 
-- Toggle from **2D Map** to **3D View** in the comparison.
-- Both routes appear in the same 3D scene: primary in blue, comparison in
-  orange, with labeled start/finish markers.
+- Use the comparison map's native pitch toggle to switch the same overlay from
+  2D to 3D.
+- Primary stays blue and comparison stays orange in both modes.
 - Use the **distance slider** at the bottom to scrub along the common route
   distance.
 - As you drag, both "P" and "C" markers move along their routes, and the
   readout shows elapsed time and pace deltas at that distance.
 - Try the start, midpoint, and end positions.
 
-> **Key point:** The 3D comparison distance slider lets you see exactly where
+> **Key point:** The comparison distance slider lets you see exactly where
 > both runners were at the same point in the race.
 
 ### 6. Export (~20 seconds)

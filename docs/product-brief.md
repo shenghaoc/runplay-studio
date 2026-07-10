@@ -8,7 +8,7 @@ A desktop studio offers:
 
 - **Large screen real estate** for detailed route visualization
 - **Precise timeline scrubbing** with mouse/trackpad
-- **Multi-panel layouts** showing 3D route, charts, and splits simultaneously
+- **Multi-panel layouts** showing an Apple Maps route, charts, and splits simultaneously
 - **Keyboard shortcuts** for power users
 - **Local processing power** for complex route analysis
 
@@ -23,7 +23,7 @@ This means:
 - Works with data from ANY source
 - Focus on analysis quality over real-time performance
 
-## Why 3D Route Replay
+## Why Apple Maps 3D Route Replay
 
 A flat 2D map loses critical information about running routes:
 
@@ -32,14 +32,16 @@ A flat 2D map loses critical information about running routes:
 - **Turns and switchbacks** look different in 3D
 - **Spatial memory** — runners remember routes in 3D
 
-RunPlay Studio's 3D view makes elevation changes, turns, and terrain features visible and explorable.
+RunPlay Studio uses MapKit's realistic elevation and pitched camera on the same
+map as the 2D route. The runner keeps familiar Apple Maps context while gaining
+terrain, building, and perspective cues.
 
 ## How This Differs
 
 | Feature | Phone Apps | Web Apps | RunPlay Studio |
 |---------|-----------|----------|----------------|
 | Live tracking | ✅ | ✅ | ❌ |
-| 3D route replay | ❌ | Limited | ✅ |
+| Apple Maps 2D/3D route replay | ❌ | Limited | ✅ |
 | Timeline scrubbing | Limited | Limited | ✅ |
 | Split analysis | Basic | Basic | ✅ |
 | Multi-panel view | ❌ | Limited | ✅ |

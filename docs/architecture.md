@@ -3,9 +3,9 @@
 ## Data Flow
 
 ```
-Import File → Importer → RoutePointSanitizer → Normalized Model → Analyzer → Route Projection → Replay Controller → Views
+Import File → Importer → RoutePointSanitizer → Normalized Model → Analyzer → Replay Controller → Views
                                                      ↘ Comparison Service → Compare View
-                                                     ↘ Comparison Route Projection → 3D Comparison View
+                                                     ↘ Route Coordinates → MapKit 2D/3D View
 ```
 
 ### Detailed Flow
@@ -14,10 +14,9 @@ Import File → Importer → RoutePointSanitizer → Normalized Model → Analyz
 2. **Parse**: Format-specific importer parses raw data
 3. **Normalize**: `RoutePointSanitizer` validates coordinates, ensures monotonic elapsed time and distance
 4. **Analyze**: `WorkoutAnalyzer` calculates distance, pace, elevation, splits, segments
-5. **Project**: `RouteProjectionService` converts lat/lng to local 3D coordinates
-6. **Control**: `ReplayController` manages playback state and timeline
-7. **Render**: Views display 3D scene, map, charts, and summaries
-8. **Compare**: `WorkoutComparisonService` compares two loaded workouts by summary metrics, split index, and distance-aligned metric series
+5. **Control**: `ReplayController` manages playback state and timeline
+6. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries
+7. **Compare**: `WorkoutComparisonService` compares two loaded workouts by summary metrics, split index, and distance-aligned metric series
 
 ## Module Structure
 
@@ -30,12 +29,12 @@ RunPlayCore/                   # Platform-neutral library (no UI frameworks)
 └── Tests/
     └── RunPlayCoreTests/      # Platform-neutral tests
 
-RunPlayStudio/                 # macOS executable (SwiftUI, SceneKit, MapKit)
+RunPlayStudio/                 # macOS executable (SwiftUI, MapKit, Swift Charts)
 ├── Sources/
 │   ├── Services/              # macOS-only services (PNG export, route coloring)
 │   ├── ViewModels/            # View state management (AppState, ReplayController)
 │   ├── Views/                 # SwiftUI views
-│   └── 3D/                    # SceneKit 3D rendering
+│   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
 ├── Resources/                 # Sample data and fixtures
 └── Tests/
     └── RunPlayStudioTests/    # macOS-specific tests
@@ -101,54 +100,29 @@ The service clamps metric series to the common distance, filters non-finite
 metric values, handles missing heart-rate/elevation data, and returns warnings
 instead of crashing on weak comparisons. The `metricsAtDistance` method uses
 linear interpolation between the two nearest points on each route to compute
-elapsed time, pace, and 3D scene position at any selected distance.
+elapsed time, pace, and selected route coordinates at any distance.
 
-### ComparisonRouteProjectionService
+### RouteMapCanvas
 
-Projects two routes into a shared local coordinate system for 3D comparison:
+`RouteMapCanvas` is the shared SwiftUI MapKit surface for single-run and
+comparison maps. It owns a `MapCameraPosition`, draws `MapPolyline` and
+`Annotation` content, and exposes one 2D/3D camera toggle plus native MapKit
+zoom controls. The 2D/3D state changes the same map camera:
 
-```swift
-public struct ComparisonRouteProjectionService {
-    public var elevationExaggeration: Double = 2.0
-    public func project(primary: [RoutePoint], comparison: [RoutePoint], existingWarnings: [ComparisonWarning]) -> ComparisonRouteScene
-}
-```
+- one realistic-elevation map style in both modes
+- `MapCamera.pitch` of 0° versus a pitched perspective
 
-Uses the primary route's bounding-box center as the shared origin so both routes
-maintain correct relative geographic positions. Filters invalid/NaN coordinates,
-applies elevation exaggeration consistently, and returns a `ComparisonRouteScene`
-with combined bounds and warnings.
-
-### ComparisonSceneBuilder
-
-Builds a SceneKit scene for 3D comparison:
-
-```swift
-class ComparisonSceneBuilder {
-    func buildScene(from comparisonScene: ComparisonRouteScene) -> SCNScene
-    func routeBoundingBox(for comparisonScene: ComparisonRouteScene) -> (center: SCNVector3, extent: CGFloat)
-    func updateDistanceMarkers(in scene: SCNScene, primaryPoint: RouteScenePoint?, comparisonPoint: RouteScenePoint?)
-}
-```
-
-Renders primary (blue) and comparison (orange) routes with distinct start/finish
-markers, a shared ground grid, and a 3D legend.
-
-### Camera Convention
-
-The camera uses a spherical coordinate system with:
-- `cameraAngleX`: elevation angle in degrees. Positive = camera above target (looking down). Range: 1° to 89°.
-- `cameraAngleY`: azimuth angle in degrees. 0° = front, 90° = right side.
-- Presets: default (30°, 45°), top-down (85°, 0°), side (5°, 0°), front (10°, 90°).
+`RouteMapContent` filters invalid coordinates, computes fitting bounds, and
+interpolates selected-distance markers without introducing another renderer.
 
 ## Dependencies
 
 ### Apple Frameworks Used (RunPlayStudio only)
 
 - **SwiftUI**: App UI and views
-- **MapKit**: 2D route maps and geospatially aligned snapshots for 3D ground planes
+- **MapKit**: One realistic-elevation SwiftUI map with top-down and pitched presentations
 - **Swift Charts**: Pace, elevation, heart rate charts
-- **SceneKit**: 3D route visualization
+- **SceneKit**: Legacy prototype utilities retained internally; not the shipped map surface
 - **UniformTypeIdentifiers**: File import
 - **Foundation**: Parsing and models
 
@@ -163,6 +137,5 @@ The camera uses a spherical coordinate system with:
 
 ## Future Considerations
 
-- RealityKit backend for 3D (if SceneKit limitations arise)
 - AVFoundation for video export
 - HealthKit for direct Apple Health import

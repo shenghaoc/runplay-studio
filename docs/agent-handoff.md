@@ -2,10 +2,9 @@
 
 ## Current Status
 
-All manual GUI checklists are complete. Human owner verified on 2026-07-08:
-3D camera controls, 3D comparison view, selected-distance slider, comparison
-chart readability, save-panel JSON/CSV/PNG export, default view, delete UI,
-and HR color mode. Do not add commit hashes to this handoff as a status field;
+The earlier SceneKit GUI checklist is superseded. The current product uses one
+SwiftUI MapKit surface with a native 2D/3D pitch toggle. Current verification
+belongs in `docs/manual-testing.md`. Do not add commit hashes to this handoff as a status field;
 they become stale and cause repeated hash-only documentation commits during
 rapid iteration. Run `git log -1 --oneline` locally to see the current commit.
 
@@ -24,7 +23,7 @@ Latest verified result:
 
 - `swift build`: pass
 - `swift test --filter RunPlayCoreTests`: pass, core tests, 0 failures
-- `swift test`: pass, 433 tests, 0 failures
+- `swift test`: pass
 - Package products: `RunPlayCore`, `RunPlayStudio`
 - Test targets: `RunPlayCoreTests`, `RunPlayStudioTests`
 
@@ -35,20 +34,17 @@ Latest verified result:
   GPX/TCX/FIT timestamp for timing analysis, interpolates partial missing
   timestamps, rebases first nonzero TCX/FIT distances, and prevents mixed
   supplied/computed distance series
-- 3D route replay with SceneKit
-- 2D MapKit route view
+- One SwiftUI MapKit route view with flat 2D and realistic-elevation 3D modes
 - Swift Charts pace, elevation, and heart-rate metrics
-- Pace, elevation, and heart-rate route coloring
-- Synchronized replay state across 3D, map, charts, metrics, and split table
+- Synchronized replay state across map, charts, metrics, and split table
 - Chart click/drag-to-seek
-- Segment detection and 3D segment highlighting
+- Segment detection and seekable segment cards
 - Local JSON, CSV, and PNG summary export
 - Explicit export result formats for JSON, splits CSV, segments CSV, combined
   CSV, and PNG
 - Route comparison MVP
-- 3D route comparison overlay
-- 3D comparison selected-distance markers with time/pace delta readout
-- SceneKit camera controls wired to the visible single-run and comparison scenes
+- Shared 2D/3D Apple Maps comparison overlay
+- Comparison selected-distance markers with time/pace delta readout
 - Bundled demo comparison pair loaded on launch for immediate comparison testing
 - Comparison chart uses actual workout names in legend, min/km units on axes
   and table headers, and proper empty states
@@ -69,7 +65,8 @@ Implemented files (models and services in `RunPlayCore`, UI in `RunPlayStudio`):
 - `RunPlayStudio/Sources/Views/CompareView.swift`
 - `RunPlayStudio/Sources/Views/ComparisonMapView.swift`
 - `RunPlayStudio/Sources/Views/ComparisonChartView.swift`
-- `RunPlayStudio/Sources/Views/Comparison3DView.swift`
+- `RunPlayStudio/Sources/Views/ComparisonMapView.swift`
+- `RunPlayStudio/Sources/Views/RouteMapCanvas.swift`
 - `RunPlayStudio/Sources/3D/ComparisonSceneBuilder.swift`
 - `RunPlayStudio/Resources/fixtures/comparison_park_run.json`
 - `RunPlayStudio/Tests/RunPlayStudioTests/AppStateComparisonTests.swift`
@@ -84,19 +81,13 @@ Current comparison behavior:
 - Aligns splits by split index
 - Builds a distance-aligned pace/elevation/heart-rate series clamped to common
   distance using interpolated route points
-- Shows a 2D route overlay for both runs with a simple legend
-- Shows a 3D comparison overlay with both routes in the same scene
-- 3D comparison uses shared coordinate origin (primary route center) so both
-  routes maintain correct relative geographic positioning
-- 3D comparison shows primary (blue) and comparison (orange) routes with
-  distinct start/finish markers and a 3D legend
-- 3D comparison supports elevation exaggeration, camera presets, fit-to-routes,
-  and grid toggle. Camera wiring and builder visibility toggles are covered by
-  tests; run a normal desktop manual pass before marking the buttons GUI-verified.
-- 3D comparison supports a selected-distance slider that places interpolated
+- Shows both routes on one SwiftUI MapKit surface with a simple legend
+- The native pitch toggle switches the same overlay between flat and realistic
+  elevation while preserving primary (blue) and comparison (orange) routes
+- The comparison map supports a selected-distance slider that places interpolated
   markers on both routes at the same distance, with a compact readout showing
   elapsed time and pace deltas. Distance is clamped to the common route distance.
-- Toggle between 2D map and 3D view via segmented picker in CompareView
+- Toggle between 2D and 3D with MapKit's map pitch control
 - Shows warnings for different distances, insufficient overlap, different route
   endpoints, missing heart rate, missing elevation, and too few points
 - Rejects comparing a selected primary workout with itself
@@ -147,12 +138,13 @@ Export gap resolved:
 
 ## Manual GUI Dogfood
 
-All manual GUI checklists verified by human owner on 2026-07-08.
+The following non-map workflows were verified by the human owner on 2026-07-08.
+The current MapKit 2D/3D refactor requires the newer checklist below.
 
 Verified:
 
 - App launched with the two bundled demo runs loaded
-- Existing 3D single-run replay rendered and stayed usable
+- Single-run MapKit route view rendered and stayed usable
 - Compare view opened from the toolbar
 - Primary/comparison selector excluded the current primary workout
 - Summary delta cards rendered with faster/slower direction labels
@@ -169,71 +161,29 @@ Verified:
 - Save-panel export of JSON, CSV, and PNG confirmed working (2026-07-08)
 - Comparison chart readability improvements verified (legend, units, empty states)
 - Default view shows Overview tab with map, route overlay, summary metrics, replay controls
-- All tabs (3D Route, Charts, Map) work when selected
+- Map and Charts tabs work when selected
 - Delete UI: context menu, confirmation dialog, deletion all work correctly
 - Comparison mode clears when comparison workout is deleted
 - Empty state appears when last workout is deleted
-- HR color button disabled when route has no HR data, works when HR data present
-- Tooltip explains disabled HR button state
 
-## 3D Comparison GUI Dogfood
+## Apple Maps 2D/3D GUI Dogfood
 
-GUI dogfood of the 3D comparison view was performed using bundled synthetic
-demo runs. A manual GUI pass on 2026-07-08 confirmed all camera controls and
-3D comparison features work correctly.
+The current map path is `RouteMapCanvas`, a SwiftUI `Map` shared by single-run
+and comparison views. It uses one in-map camera toggle and realistic elevation,
+and `MapCameraPosition`; there is no separate SceneKit product view.
 
-Verified:
+Verify with the bundled synthetic runs:
 
-- App launches without crash from SwiftPM debug build
-- Both bundled demo runs load automatically on launch
-- Compare view opens from the toolbar
-- Primary/comparison selectors work
-- Same-workout comparison is blocked
-- 2D comparison map still works
-- 3D comparison toggle works (segmented picker)
-- Both routes render in the 3D comparison scene
-- Primary route (blue) and comparison route (orange) are visually distinguishable
-- P START / P FINISH and C START / C FINISH markers appear
-- Legend appears and is understandable
-- Elevation exaggeration controls (1x, 2x, 5x, 10x) rebuild the scene
-- Grid toggle shows/hides the ground grid
-- Comparison warnings appear in the 3D view when applicable
-- Switching between 2D and 3D comparison does not crash
-- Switching back to single-run 3D replay still works
-- Fit Routes button frames both routes correctly (2026-07-08)
-- Camera presets (default, top-down, side, front) work in comparison (2026-07-08)
-- Single-run Fit Route button works correctly (2026-07-08)
-- Single-run camera presets work correctly (2026-07-08)
-- Manual orbit/zoom/pan works after pressing presets (2026-07-08)
+- One map remains mounted while the pitch toggle changes 2D/3D presentation
+- Route lines and replay/selected-distance markers remain geospatially aligned
+- Primary stays blue and comparison stays orange
+- Fit Route/Fit Routes works in both pitch states
+- Pan, rotate, zoom, compass, scale, and zoom stepper remain usable
+- The comparison slider and time/pace readout continue updating in both states
 
-Camera-control fix completed:
-
-- Single-run `Route3DReplayView` now passes the controller-owned camera node to
-  `SceneView(pointOfView:)`.
-- `Comparison3DView` now passes the controller-owned camera node to
-  `SceneView(pointOfView:)`.
-- `SceneCameraController` exposes the active camera node, clamps camera distance
-  and fit math, and sanitizes non-finite bounds.
-- `SceneCameraControllerTests` cover camera installation, fit-to-route math,
-  presets, non-finite zoom input, and comparison-route camera bounds.
-
-## 3D Comparison Selected-Distance Dogfood
-
-All selected-distance slider items verified by human owner on 2026-07-08:
-
-- Distance slider appears at the bottom of the 3D comparison view
-- Distance readout shows "0.00 km / X.XX km" format
-- "P X.XX km" and "C X.XX km" markers appear and move along routes when scrubbed
-- Elapsed time and pace readouts update correctly with faster/slower direction
-- Backward-end and forward-end buttons work correctly
-- Camera presets, elevation scale, and grid toggle still work after slider interaction
-- Switching back to 2D Map does not crash
-
-Known limitations found:
-
-- Grid toggle icon previously used the same SF Symbol for on/off state; the
-  current code now uses filled/unfilled grid symbols, confirmed working in
-  manual pass.
+Computer Use verification on 2026-07-10 confirmed the single-run and comparison
+toggles in both directions. At 3.70 km, both comparison markers and the
+time/pace delta readout remained present after toggling back to 2D.
 
 ## MapKit Status
 
@@ -243,7 +193,7 @@ deprecation warnings from route map overlays are removed in current builds.
 
 ## Recommended Next Phase
 
-All GUI checklists verified. Next steps:
+After completing the current MapKit checklist, next steps are:
 
 - Add comparison demo screenshot to docs/assets/ when available
 - Keep expanding synthetic demo assets only from anonymized or generated data

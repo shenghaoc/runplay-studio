@@ -1,119 +1,127 @@
-import SwiftUI
 import RunPlayCore
-import MapKit
+import SwiftUI
 
-
-/// Map view showing two routes overlaid for comparison.
+/// Displays both comparison routes on one Apple Maps surface with a native 2D/3D toggle.
 struct ComparisonMapView: View {
-    let primaryPoints: [RoutePoint]
-    let comparisonPoints: [RoutePoint]
+    let primaryWorkout: RunWorkout
+    let comparisonWorkout: RunWorkout
+    let warnings: [ComparisonWarning]
+    @ObservedObject var appState: AppState
 
-    @State private var position: MapCameraPosition = .automatic
+    @State private var displayMode: RouteMapDisplayMode = .twoD
+    @State private var fitRequest = 0
+
+    private var commonDistance: Double {
+        appState.comparisonCommonDistanceMeters
+    }
+
+    private var routes: [RouteMapLine] {
+        [
+            RouteMapContent.route(
+                id: "primary",
+                points: primaryWorkout.routePoints,
+                style: .primary
+            ),
+            RouteMapContent.route(
+                id: "comparison",
+                points: comparisonWorkout.routePoints,
+                style: .comparison
+            )
+        ]
+    }
+
+    private var markers: [RouteMapMarker] {
+        var markers = RouteMapContent.endpointMarkers(
+            points: primaryWorkout.routePoints,
+            idPrefix: "primary"
+        )
+        markers += RouteMapContent.endpointMarkers(
+            points: comparisonWorkout.routePoints,
+            idPrefix: "comparison"
+        )
+
+        let distance = appState.selectedComparisonDistanceMeters
+        if distance > 0 {
+            if let marker = RouteMapContent.marker(
+                points: primaryWorkout.routePoints,
+                distance: distance,
+                id: "primary-current",
+                title: "Primary at selected distance",
+                style: .primaryCurrent
+            ) {
+                markers.append(marker)
+            }
+            if let marker = RouteMapContent.marker(
+                points: comparisonWorkout.routePoints,
+                distance: distance,
+                id: "comparison-current",
+                title: "Comparison at selected distance",
+                style: .comparisonCurrent
+            ) {
+                markers.append(marker)
+            }
+        }
+        return markers
+    }
 
     var body: some View {
-        Map(position: $position) {
-            if primaryCoordinates.count >= 2 {
-                MapPolyline(coordinates: primaryCoordinates)
-                    .stroke(.blue, lineWidth: 3)
-            }
+        ZStack {
+            RouteMapCanvas(
+                displayMode: $displayMode,
+                routes: routes,
+                markers: markers,
+                fitRequest: fitRequest
+            )
 
-            if comparisonCoordinates.count >= 2 {
-                MapPolyline(coordinates: comparisonCoordinates)
-                    .stroke(.orange, lineWidth: 3)
-            }
-
-            ForEach(mapAnnotations) { item in
-                Annotation(item.label, coordinate: item.coordinate) {
-                    Circle()
-                        .fill(item.color)
-                        .frame(width: item.size, height: item.size)
-                        .overlay(
-                            Circle().stroke(.white, lineWidth: 2)
-                        )
-                        .accessibilityLabel(item.label)
+            VStack {
+                HStack(alignment: .top) {
+                    comparisonLegend
+                    Spacer()
+                    if !warnings.isEmpty {
+                        comparisonWarnings
+                    }
+                    Spacer()
+                    Button {
+                        fitRequest += 1
+                    } label: {
+                        Label("Fit Routes", systemImage: "viewfinder")
+                    }
+                    .buttonStyle(.bordered)
                 }
+
+                Spacer()
+                distanceSliderBar
             }
-        }
-        .overlay(alignment: .topLeading) {
-            routeLegend
+            .padding()
         }
         .onAppear {
-            updatePosition()
-        }
-        .onChange(of: primaryPoints) { _, _ in
-            updatePosition()
-        }
-        .onChange(of: comparisonPoints) { _, _ in
-            updatePosition()
+            appState.clampComparisonDistance()
         }
     }
 
-    // MARK: - Annotations
-
-    private var mapAnnotations: [RouteMapAnnotation] {
-        var items: [RouteMapAnnotation] = []
-
-        // Primary start
-        if let first = primaryCoordinates.first {
-            items.append(RouteMapAnnotation(
-                coordinate: first,
-                color: .blue,
-                size: 10,
-                label: "P Start"
-            ))
-        }
-
-        // Primary finish
-        if let last = primaryCoordinates.last {
-            items.append(RouteMapAnnotation(
-                coordinate: last,
-                color: .blue,
-                size: 10,
-                label: "P End"
-            ))
-        }
-
-        // Comparison start
-        if let first = comparisonCoordinates.first {
-            items.append(RouteMapAnnotation(
-                coordinate: first,
-                color: .orange,
-                size: 10,
-                label: "C Start"
-            ))
-        }
-
-        // Comparison finish
-        if let last = comparisonCoordinates.last {
-            items.append(RouteMapAnnotation(
-                coordinate: last,
-                color: .orange,
-                size: 10,
-                label: "C End"
-            ))
-        }
-
-        return items
-    }
-
-    private var primaryCoordinates: [CLLocationCoordinate2D] {
-        coordinates(from: primaryPoints)
-    }
-
-    private var comparisonCoordinates: [CLLocationCoordinate2D] {
-        coordinates(from: comparisonPoints)
-    }
-
-    private var routeLegend: some View {
+    private var comparisonLegend: some View {
         VStack(alignment: .leading, spacing: 6) {
-            legendRow(color: .blue, label: "Primary run")
-            legendRow(color: .orange, label: "Comparison run")
+            Text(displayMode == .threeD ? "Apple Maps 3D" : "Apple Maps 2D")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            legendRow(color: .blue, label: "Primary: \(primaryWorkout.displayName)")
+            legendRow(color: .orange, label: "Comparison: \(comparisonWorkout.displayName)")
+
+            Divider()
+
+            HStack(spacing: 6) {
+                Circle().fill(.green).frame(width: 8, height: 8)
+                Text("Start")
+            }
+            HStack(spacing: 6) {
+                Circle().fill(.red).frame(width: 8, height: 8)
+                Text("Finish")
+            }
         }
         .font(.caption)
         .padding(8)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding()
     }
 
     private func legendRow(color: Color, label: String) -> some View {
@@ -121,51 +129,101 @@ struct ComparisonMapView: View {
             RoundedRectangle(cornerRadius: 2)
                 .fill(color)
                 .frame(width: 18, height: 4)
+            Text(label).lineLimit(1)
+        }
+    }
+
+    private var comparisonWarnings: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(warnings, id: \.self) { warning in
+                Label(warning.rawValue, systemImage: warning.icon)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(8)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var distanceSliderBar: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text("Selected Distance")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(appState.comparisonDistanceMetrics.selectedDistanceFormatted)
+                    .font(.caption.monospacedDigit())
+                if commonDistance > 0 {
+                    Text("/ \(String(format: "%.2f km", commonDistance / 1000))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    appState.selectedComparisonDistanceMeters = 0
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                }
+                .buttonStyle(.plain)
+                .help("Reset to start")
+
+                Slider(
+                    value: $appState.selectedComparisonDistanceMeters,
+                    in: 0...max(commonDistance, 1),
+                    step: max(commonDistance / 500, 1)
+                )
+                .disabled(commonDistance <= 0)
+
+                Button {
+                    appState.selectedComparisonDistanceMeters = commonDistance
+                } label: {
+                    Image(systemName: "forward.end.fill")
+                }
+                .buttonStyle(.plain)
+                .help("Jump to end")
+                .disabled(commonDistance <= 0)
+            }
+
+            comparisonDistanceMetricsRow
+        }
+        .padding(8)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var comparisonDistanceMetricsRow: some View {
+        let metrics = appState.comparisonDistanceMetrics
+        return HStack(spacing: 16) {
+            metricBadge(label: "Primary", value: metrics.primaryElapsedFormatted, color: .blue)
+            metricBadge(label: "Comparison", value: metrics.comparisonElapsedFormatted, color: .orange)
+            metricBadge(label: "Time", value: metrics.timeDeltaFormatted, color: deltaColor(metrics.timeDeltaSeconds))
+
+            Divider().frame(height: 16)
+
+            metricBadge(label: "P Pace", value: metrics.primaryPaceFormatted, color: .blue)
+            metricBadge(label: "C Pace", value: metrics.comparisonPaceFormatted, color: .orange)
+            metricBadge(label: "Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
+        }
+        .frame(height: 24)
+    }
+
+    private func metricBadge(label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 1) {
             Text(label)
+                .font(.system(size: 8))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(color)
         }
     }
 
-    // MARK: - Helpers
-
-    private func updatePosition() {
-        guard let region = mapRegion() else {
-            position = .automatic
-            return
-        }
-
-        position = .region(region)
-    }
-
-    private func mapRegion() -> MKCoordinateRegion? {
-        let allCoordinates = primaryCoordinates + comparisonCoordinates
-        guard !allCoordinates.isEmpty else { return nil }
-
-        let lats = allCoordinates.map { $0.latitude }
-        let lons = allCoordinates.map { $0.longitude }
-
-        guard let minLat = lats.min(), let maxLat = lats.max(),
-              let minLon = lons.min(), let maxLon = lons.max() else {
-            return nil
-        }
-
-        let center = CLLocationCoordinate2D(
-            latitude: (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
-
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((maxLat - minLat) * 1.2, 0.01),
-            longitudeDelta: max((maxLon - minLon) * 1.2, 0.01)
-        )
-
-        return MKCoordinateRegion(center: center, span: span)
-    }
-
-    private func coordinates(from points: [RoutePoint]) -> [CLLocationCoordinate2D] {
-        points.compactMap { point in
-            guard point.latitude.isFinite, point.longitude.isFinite else { return nil }
-            guard abs(point.latitude) <= 90, abs(point.longitude) <= 180 else { return nil }
-            return CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
-        }
+    private func deltaColor(_ delta: Double?) -> Color {
+        guard let delta, delta.isFinite, abs(delta) >= 0.5 else { return .secondary }
+        return delta < 0 ? .green : .red
     }
 }

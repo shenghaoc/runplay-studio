@@ -22,15 +22,7 @@ class AppState: ObservableObject {
     @Published var selectedComparisonDistanceMeters: Double = 0
 
     let replayController = ReplayController()
-    let sceneBuilder = RouteSceneBuilder()
-    let cameraController = SceneCameraController()
-    let mapSnapshotService = RouteMapSnapshotService()
-    var projectionService = RouteProjectionService()
     let comparisonService = WorkoutComparisonService()
-    var comparisonProjectionService = ComparisonRouteProjectionService()
-    let comparisonSceneBuilder = ComparisonSceneBuilder()
-    let comparisonCameraController = SceneCameraController()
-    let comparisonMapSnapshotService = RouteMapSnapshotService()
 
     init(loadSampleWorkout: Bool = true) {
         if loadSampleWorkout {

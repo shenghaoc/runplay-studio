@@ -1,4 +1,3 @@
-import AppKit
 import XCTest
 import RunPlayCore
 @testable import RunPlayStudio
@@ -202,29 +201,6 @@ final class RouteProjectionTests: XCTestCase {
 
         let hiddenTopLevelNodes = scene.rootNode.childNodes.filter { $0.isHidden }
         XCTAssertGreaterThanOrEqual(hiddenTopLevelNodes.count, 2)
-    }
-
-    func testRouteSceneBuilderInstallsMapBelowRoute() throws {
-        let scenePoints = [
-            RouteScenePoint(xMeters: -100, yMeters: 0, zMeters: -100, sourceIndex: 0, distanceFromStartMeters: 0, elapsedSeconds: 0),
-            RouteScenePoint(xMeters: 100, yMeters: 20, zMeters: 100, sourceIndex: 1, distanceFromStartMeters: 300, elapsedSeconds: 90)
-        ]
-        let builder = RouteSceneBuilder()
-        let scene = builder.buildScene(from: scenePoints)
-        let overlay = RouteMapOverlay(
-            image: NSImage(size: NSSize(width: 100, height: 100)),
-            centerX: 0,
-            centerZ: 0,
-            widthMeters: 500,
-            heightMeters: 500
-        )
-
-        builder.installMapOverlay(overlay, in: scene)
-
-        let mapNode = try XCTUnwrap(
-            scene.rootNode.childNode(withName: RouteMapOverlay.nodeName, recursively: false)
-        )
-        XCTAssertLessThan(mapNode.position.y, 0)
     }
 
     // MARK: - Helpers

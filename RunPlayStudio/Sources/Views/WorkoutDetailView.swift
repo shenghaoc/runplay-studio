@@ -1,7 +1,7 @@
 import SwiftUI
 import RunPlayCore
 
-/// Main detail view for a selected workout showing 3D route, map, charts, and summary.
+/// Main detail view for a selected workout showing Apple Maps, charts, and summary.
 struct WorkoutDetailView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
@@ -17,7 +17,6 @@ struct WorkoutDetailView: View {
 
     enum ViewTab: String, CaseIterable {
         case overview = "Overview"
-        case route3D = "3D Route"
         case map = "Map"
         case charts = "Charts"
     }
@@ -37,8 +36,6 @@ struct WorkoutDetailView: View {
             switch selectedTab {
             case .overview:
                 OverviewView(workout: workout, appState: appState)
-            case .route3D:
-                Route3DReplayView(workout: workout, appState: appState)
             case .map:
                 MapReferenceView(
                     routePoints: workout.routePoints,
@@ -65,9 +62,7 @@ struct WorkoutDetailView: View {
                     onSelect: { segment in
                         seekToSegment(segment)
                     },
-                    onClear: {
-                        appState.sceneBuilder.clearSegmentHighlight()
-                    }
+                    onClear: {}
                 )
                 .padding(.horizontal)
                 .padding(.vertical, 6)

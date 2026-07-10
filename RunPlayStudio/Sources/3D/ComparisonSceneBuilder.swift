@@ -8,7 +8,6 @@ import SceneKit
 /// Renders two routes in the same 3D space with distinct colors and markers:
 /// - Primary route (blue) with green start / red finish markers
 /// - Comparison route (orange) with cyan start / magenta finish markers
-/// - Shared Apple Maps ground plane aligned to both routes
 /// - Shared ground grid sized for both routes
 /// - Legend text identifying each route
 class ComparisonSceneBuilder {
@@ -24,12 +23,10 @@ class ComparisonSceneBuilder {
     // MARK: - Scene Elements
 
     private var gridNode: SCNNode?
-    private var mapNode: SCNNode?
     private var primaryRouteNode: SCNNode?
     private var comparisonRouteNode: SCNNode?
     private var primaryDistanceMarkerNode: SCNNode?
     private var comparisonDistanceMarkerNode: SCNNode?
-    private var mapGroundY: CGFloat = -2
 
     private let minSegmentLength: Float = 0.01
 
@@ -37,8 +34,6 @@ class ComparisonSceneBuilder {
 
     /// Build a complete 3D comparison scene from a `ComparisonRouteScene`.
     func buildScene(from comparisonScene: ComparisonRouteScene) -> SCNScene {
-        mapNode = nil
-        mapGroundY = CGFloat(comparisonScene.combinedBounds.min.y) - 2
         let scene = SCNScene()
         scene.background.contents = NSColor.windowBackgroundColor
 
@@ -93,14 +88,6 @@ class ComparisonSceneBuilder {
         scene.rootNode.addChildNode(legend)
 
         return scene
-    }
-
-    /// Install a geospatially aligned Apple Maps image beneath both routes.
-    func installMapOverlay(_ overlay: RouteMapOverlay, in scene: SCNScene) {
-        mapNode?.removeFromParentNode()
-        let node = overlay.makeSceneNode(groundY: mapGroundY)
-        mapNode = node
-        scene.rootNode.insertChildNode(node, at: 0)
     }
 
     // MARK: - Bounding Box
