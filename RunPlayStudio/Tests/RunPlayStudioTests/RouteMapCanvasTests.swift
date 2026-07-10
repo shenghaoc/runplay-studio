@@ -78,6 +78,22 @@ final class RouteMapCanvasTests: XCTestCase {
         XCTAssertEqual(heightMeters, 400, accuracy: 1)
     }
 
+    func testMapRectClampsMinimumSpanAtWorldBoundaries() throws {
+        let northwestRoute = RouteMapContent.route(
+            id: "northwest",
+            points: [makePoint(latitude: 85.051_128_78, longitude: -180, distance: 0)],
+            style: .primary
+        )
+        let southeastRoute = RouteMapContent.route(
+            id: "southeast",
+            points: [makePoint(latitude: -85.051_128_78, longitude: 180, distance: 0)],
+            style: .primary
+        )
+
+        assertWithinWorld(try XCTUnwrap(RouteMapContent.mapRect(for: [northwestRoute])))
+        assertWithinWorld(try XCTUnwrap(RouteMapContent.mapRect(for: [southeastRoute])))
+    }
+
     func testThreeDModeUsesPitchedCamera() {
         XCTAssertEqual(RouteMapDisplayMode.twoD.cameraPitch, 0)
         XCTAssertGreaterThan(RouteMapDisplayMode.threeD.cameraPitch, 45)
@@ -118,5 +134,16 @@ final class RouteMapCanvasTests: XCTestCase {
             cadence: 170,
             horizontalAccuracy: 5
         )
+    }
+
+    private func assertWithinWorld(
+        _ rect: MKMapRect,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertGreaterThanOrEqual(rect.minX, 0, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(rect.minY, 0, file: file, line: line)
+        XCTAssertLessThanOrEqual(rect.maxX, MKMapSize.world.width, file: file, line: line)
+        XCTAssertLessThanOrEqual(rect.maxY, MKMapSize.world.height, file: file, line: line)
     }
 }

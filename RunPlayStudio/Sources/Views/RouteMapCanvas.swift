@@ -171,11 +171,13 @@ enum RouteMapContent {
         let latitude = coordinates.map(\.latitude).reduce(0, +) / Double(coordinates.count)
         let metersPerMapPoint = max(MKMetersPerMapPointAtLatitude(latitude), 0.000_001)
         let minimumSpan = 400 / metersPerMapPoint
-        let width = max(rect.width, minimumSpan)
-        let height = max(rect.height, minimumSpan)
+        let width = min(max(rect.width, minimumSpan), MKMapSize.world.width)
+        let height = min(max(rect.height, minimumSpan), MKMapSize.world.height)
+        let x = max(0, min(rect.midX - width / 2, MKMapSize.world.width - width))
+        let y = max(0, min(rect.midY - height / 2, MKMapSize.world.height - height))
         return MKMapRect(
-            x: rect.midX - width / 2,
-            y: rect.midY - height / 2,
+            x: x,
+            y: y,
             width: width,
             height: height
         )
@@ -235,7 +237,9 @@ struct RouteMapCanvas: View {
         .overlay(alignment: .bottomTrailing) {
             VStack(spacing: 8) {
                 Button(displayMode == .threeD ? "2D" : "3D") {
-                    displayMode = displayMode == .threeD ? .twoD : .threeD
+                    let nextMode: RouteMapDisplayMode = displayMode == .threeD ? .twoD : .threeD
+                    displayMode = nextMode
+                    updatePitch(nextMode, animated: true)
                 }
                 .buttonStyle(.borderedProminent)
                 .help(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
@@ -260,9 +264,6 @@ struct RouteMapCanvas: View {
         }
         .onChange(of: fitRequest) { _, _ in
             fitRoutes(animated: true)
-        }
-        .onChange(of: displayMode) { _, mode in
-            updatePitch(mode, animated: true)
         }
     }
 
