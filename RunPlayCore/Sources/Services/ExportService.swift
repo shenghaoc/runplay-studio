@@ -203,8 +203,9 @@ public enum CSVRow {
 
         // CSV Injection mitigation: prevent execution of formulas
         if trimmed.hasPrefix("=") || trimmed.hasPrefix("+") || trimmed.hasPrefix("-") || trimmed.hasPrefix("@") {
-            // Allow negative numbers and positive numbers
-            if Double(trimmed) == nil {
+            // Allow negative numbers and positive numbers (support both `.` and `,` decimal separators)
+            let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+            if Double(trimmed) == nil && Double(normalized) == nil {
                 safeField = "'" + safeField
             }
         }

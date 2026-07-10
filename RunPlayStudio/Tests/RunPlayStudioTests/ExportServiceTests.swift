@@ -101,6 +101,7 @@ final class ExportServiceTests: XCTestCase {
         // Valid numbers should be left alone
         XCTAssertEqual(CSVRow.escape("-30.5"), "-30.5")
         XCTAssertEqual(CSVRow.escape("+42.0"), "+42.0")
+        XCTAssertEqual(CSVRow.escape("-30,5"), "\"-30,5\"")
 
         // Potential formulas should be quoted to prevent execution
         XCTAssertEqual(CSVRow.escape("=cmd|' /C calc'!A0"), "'=cmd|' /C calc'!A0")
