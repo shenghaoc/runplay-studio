@@ -273,19 +273,19 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     }
 
     // ⚡ Bolt: Cache date formatters to avoid expensive initialization on every trackpoint
-    private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
+    private let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private static let iso8601StandardFormatter: ISO8601DateFormatter = {
+    private let iso8601StandardFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
 
     private func parseISO8601(_ string: String) -> Date? {
-        return Self.iso8601FractionalFormatter.date(from: string) ?? Self.iso8601StandardFormatter.date(from: string)
+        return iso8601FractionalFormatter.date(from: string) ?? iso8601StandardFormatter.date(from: string)
     }
 }
