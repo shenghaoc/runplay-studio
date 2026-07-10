@@ -1,24 +1,74 @@
 # RunPlay Studio
 
-A native macOS post-run visualization studio for completed runs.
+A native macOS post-run 2D/3D route replay and analysis app for runners.
+
+![RunPlay Studio summary export — generated from bundled synthetic demo data](docs/assets/demo-summary.png)
+
+*Screenshot generated from bundled synthetic demo data — no private workout data used.*
 
 ## What It Is
 
 RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with an Apple Maps 2D/3D route view, synchronized charts, split analysis, and segment highlights.
 
-![Synthetic RunPlay Studio summary export](docs/assets/demo-summary.png)
+---
 
-**New to RunPlay Studio?** See the [demo script](docs/demo-script.md) for a 3–5 minute walkthrough.
+## Highlights
 
-At a glance:
+- **Apple Maps 2D/3D replay** — One route map with a native pitch toggle and synchronized timeline controls
+- **Synchronized views** — Map and charts stay in sync with the timeline
+- **Route comparison** — Summary deltas, pace chart, and a shared 2D/3D Apple Maps overlay
+- **Segment detection** — Auto-identify fastest 400m, fastest 1km, slowest 1km, biggest climb/descent
+- **Chart click/drag to seek** — Click or drag on charts to navigate the run
+- **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 
-- Native macOS SwiftUI app for completed-run analysis
-- One Apple Maps route view with a native 2D/3D pitch toggle and synchronized timeline controls
-- Automatic split analysis and segment highlighting
-- Route comparison with summary deltas, splits, pace chart, and a shared 2D/3D Apple Maps overlay
-- Selected-distance comparison markers with time/pace delta readout
-- Local JSON, CSV, and PNG exports
-- Privacy-first: no account, no cloud, no telemetry, no AI API; workout data stays local (MapKit loads map tiles from Apple services)
+---
+
+## Supported Formats
+
+### Import
+
+| Format | Status | Notes |
+|--------|--------|-------|
+| JSON   | ✅ Full support | Native format, all fields supported |
+| GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
+| TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
+| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; requires at least one timestamp; see limitations below |
+| HealthKit | 📋 Research only | Requires entitlements, future work |
+
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
+
+### Export
+
+| Format | Description |
+|--------|-------------|
+| JSON   | Complete workout summary with splits and segments |
+| CSV    | Splits, segments, or combined data |
+| PNG    | Polished summary card (1200×1600) |
+
+---
+
+## Privacy
+
+RunPlay Studio is a **local-only** application:
+
+- **Local workout processing** — Workout data is processed on your Mac. Imported files remain at their original locations, and exported files remain where you save them.
+- **No app-operated cloud, accounts, or telemetry** — The app has no backend service, sign-up/login, usage tracking, or phone-home behavior.
+- **No AI APIs** — No external AI services are used.
+- **MapKit map content** — Apple MapKit loads map content from Apple services over the network. Requests cover the map region derived from your route coordinates, so the general area of your route is visible to Apple Maps. No workout file data or metrics are sent by the app.
+
+For manual dogfooding with real workouts, keep private files in ignored local
+paths and follow [docs/private-data.md](docs/private-data.md). Public fixtures
+and demo assets must be synthetic or anonymized.
+
+---
+
+## Demo
+
+See [docs/demo-script.md](docs/demo-script.md) for a 3–5 minute walkthrough using bundled synthetic data.
+
+See [docs/release-notes/v0.1.0-demo.md](docs/release-notes/v0.1.0-demo.md) for the v0.1 demo release.
+
+---
 
 ## Current Status
 
@@ -29,7 +79,7 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 |-------|--------|
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (140 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Manual GUI verification | See `docs/manual-testing.md` |
 
@@ -47,11 +97,15 @@ swift test --filter RunPlayCoreTests
 
 See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
 
+---
+
 ## Build Requirements
 
 - macOS 14.0+
 - Xcode 15.0+ (for SwiftUI features)
 - Swift 5.9+
+
+---
 
 ## How to Build
 
@@ -94,19 +148,7 @@ The app will launch with two bundled sample runs pre-loaded so comparison mode c
 
 Both approaches use the same source code. There is no separate Xcode project file to maintain.
 
-## Supported Import Formats
-
-| Format | Status | Notes |
-|--------|--------|-------|
-| JSON   | ✅ Full support | Native format, all fields supported |
-| GPX    | ✅ Track support | Requires at least one timestamp for pace/duration analysis; partial missing timestamps are interpolated; HR/cadence via extensions |
-| TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
-| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; requires at least one timestamp; see limitations below |
-| HealthKit | 📋 Research only | Requires entitlements, future work |
-
-**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
-
-**FIT limitations**: CRC validation is not implemented. Compressed timestamp headers fail with a controlled unsupported-data error. Only record messages (global message 20) are parsed. Signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres.
+---
 
 ## App Features
 
@@ -155,7 +197,6 @@ All views stay in sync with the replay position:
 - Charts show selection indicator at current distance
 - **Chart click/drag to seek** — drag on charts to navigate the run
 - Current metrics panel shows real-time data
-- Split table highlights current split
 - Timeline slider drives all views
 
 Chart drag behavior: dragging on any chart pauses playback and seeks to the selected position. Visual feedback shows an orange indicator during drag.
@@ -195,39 +236,22 @@ Compare two completed runs side by side:
   were at each point, with elapsed time and pace delta readout
 - Warnings for different distances, route shapes, and missing data
 
+---
+
 ## Limitations
 
 - Comparison is distance-aligned only — no dynamic time warping or route matching
-- FIT support is basic (no compressed timestamps, no CRC validation)
-- No HealthKit integration
+- FIT support is basic — CRC validation is not implemented; compressed timestamp headers fail with a controlled unsupported-data error; only record messages (global message 20) are parsed; signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres
+- No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)
 - PNG export requires GUI context (NSHostingView)
 
-## Privacy
-
-- **Local workout processing** — All workout data stays on your Mac
-- **MapKit map tiles** — The flat and pitched presentations use Apple MapKit, which loads map content from Apple services over the network. This is the only network activity in the app. Requests cover the map region derived from your route coordinates, so the general area of your route is visible to Apple Maps. No workout file data, metrics, or account information is included.
-- **No cloud** — No external servers or sync for workout data
-- **No analytics** — No usage tracking
-- **No telemetry** — No phone-home behavior
-- **No account** — No sign-up or login
-- **No AI API** — No external AI services
-
-For manual dogfooding with real workouts, keep private files in ignored local
-paths and follow [docs/private-data.md](docs/private-data.md). Public fixtures
-and demo assets must be synthetic or anonymized.
-
-## Demo
-
-See [docs/demo-script.md](docs/demo-script.md) for a 3–5 minute walkthrough using
-bundled synthetic data. The demo covers 3D replay, route coloring, segment
-highlights, chart click-to-seek, route comparison, 3D distance slider, and
-export — all without needing private workout data.
-
 ## Roadmap
 
 See [docs/phase-plan.md](docs/phase-plan.md) for detailed development phases.
+
+---
 
 ## License
 
