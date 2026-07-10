@@ -5,3 +5,7 @@
 ## 2025-02-20 - Array Allocation Optimization in Core Services
 **Learning:** `RoutePointInterpolator` used array transformations like `.compactMap { ... }.reduce(0, +)` and `.filter { ... }` extensively inside high-frequency window evaluation loops, causing severe `O(N)` overhead due to intermediate array allocations.
 **Action:** Replaced functional array operations with pre-filtered inline `for` loops combined with `O(log N)` binary search range narrowing, eliminating memory allocations and drastically reducing CPU overhead during segment detection.
+
+## 2025-06-25 - DateFormatter Initialization Overhead in Parsing Loops
+**Learning:** Instantiating `ISO8601DateFormatter` (an Objective-C bridged class with locale/calendar setup) on every trackpoint parsed in GPX/TCX files causes significant CPU overhead and object churn in Swift.
+**Action:** Cache `DateFormatter` instances as instance properties when they are used inside large loops, especially in file importers parsing thousands of nodes.

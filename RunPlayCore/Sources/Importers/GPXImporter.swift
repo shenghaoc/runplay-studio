@@ -209,12 +209,20 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         }
     }
 
-    private func parseISO8601(_ string: String) -> Date? {
+    // ⚡ Bolt: Cache date formatters to avoid expensive initialization on every trackpoint
+    private let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: string) ?? {
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter.date(from: string)
-        }()
+        return formatter
+    }()
+
+    private let iso8601StandardFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private func parseISO8601(_ string: String) -> Date? {
+        return iso8601FractionalFormatter.date(from: string) ?? iso8601StandardFormatter.date(from: string)
     }
 }
