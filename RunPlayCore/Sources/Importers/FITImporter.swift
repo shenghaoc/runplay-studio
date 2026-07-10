@@ -11,14 +11,7 @@ public struct FITImporter: WorkoutImporting {
     public var supportedExtensions: [String] { ["fit"] }
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
-        guard url.isFileURL else {
-            throw WorkoutImportError.invalidFormat("Only local file URLs are supported")
-        }
-
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw WorkoutImportError.fileNotFound(url)
-        }
-
+        try validateLocalFile(url)
         let data = try Data(contentsOf: url)
 
         // Parse FIT binary data

@@ -199,18 +199,25 @@ public enum CSVRow {
     /// Mitigates CSV Injection (OWASP A1.4) by prepending a single quote to non-numeric fields
     /// starting with `=, +, -, @`. Effective in Excel, Google Sheets, and LibreOffice Calc.
     /// NOTE: The single-quote prefix is not part of RFC 4180; behavior in other applications may vary.
+    /// Characters that could start a spreadsheet formula (OWASP A1.4).
+    private static let dangerousPrefixes: Set<Character> = ["=", "+", "-", "@", "\t", "\u{0B}"]
+
     public static func escape(_ field: String) -> String {
         var safeField = field
-        let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // CSV Injection mitigation: prevent execution of formulas
-        // Prepend single-quote so spreadsheet apps treat the cell as text, not a formula.
-        // OWASP also recommends handling tab and vertical tab as dangerous prefixes.
-        if trimmed.hasPrefix("=") || trimmed.hasPrefix("+") || trimmed.hasPrefix("-") || trimmed.hasPrefix("@") || trimmed.hasPrefix("\t") || trimmed.hasPrefix("\u{0B}") {
-            // Parse both locale formats so legitimate numbers like -30,5 (European) are not flagged
-            let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
-            if Double(trimmed) == nil && Double(normalized) == nil {
-                safeField = "'" + trimmed
+        // CSV Injection mitigation: check first non-whitespace character for dangerous prefixes.
+        // Only allocate trimmed string when needed (first char is whitespace or dangerous).
+        if let first = field.first {
+            let needsTrim = first.isWhitespace || dangerousPrefixes.contains(first)
+            if needsTrim {
+                let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let trimmedFirst = trimmed.first, dangerousPrefixes.contains(trimmedFirst) {
+                    // Parse both locale formats so legitimate numbers like -30,5 (European) are not flagged
+                    let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+                    if Double(trimmed) == nil && Double(normalized) == nil {
+                        safeField = "'" + trimmed
+                    }
+                }
             }
         }
 

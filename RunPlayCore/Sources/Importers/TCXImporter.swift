@@ -14,14 +14,7 @@ public struct TCXImporter: WorkoutImporting {
     public var supportedExtensions: [String] { ["tcx"] }
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
-        guard url.isFileURL else {
-            throw WorkoutImportError.invalidFormat("Only local file URLs are supported")
-        }
-
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw WorkoutImportError.fileNotFound(url)
-        }
-
+        try validateLocalFile(url)
         let data = try Data(contentsOf: url)
         guard let xml = String(data: data, encoding: .utf8) else {
             throw WorkoutImportError.invalidFormat("Could not read file as UTF-8")
