@@ -79,7 +79,7 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 |-------|--------|
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (114 tests, platform-neutral) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (140 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Manual GUI verification | See `docs/manual-testing.md` |
 
@@ -96,8 +96,6 @@ swift test --filter RunPlayCoreTests
 ```
 
 See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
-
----
 
 ---
 
