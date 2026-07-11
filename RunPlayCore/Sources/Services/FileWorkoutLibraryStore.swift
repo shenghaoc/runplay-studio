@@ -159,28 +159,22 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring {
             throw WorkoutLibraryError.writeFailed("Cannot write temp file: \(error.localizedDescription)")
         }
 
-        do {
-            // ReplaceItemAt atomically swaps the temp into place.
-            // If the destination doesn't exist yet, this creates it.
-            try fileManager.replaceItem(
-                at: destination,
-                withItemAt: tempURL,
-                backupItemName: nil,
-                options: [],
-                resultingItemURL: nil
-            )
-        } catch {
-            // If replaceItem fails (e.g., destination doesn't exist), fall back to move.
-            if fileManager.fileExists(atPath: destination.path) {
-                try? fileManager.removeItem(at: destination)
-            }
+        // Remove existing destination if present, then rename temp into place.
+        // This approach works on both macOS and Linux (swift-corelibs-foundation).
+        if fileManager.fileExists(atPath: destination.path) {
             do {
-                try fileManager.moveItem(at: tempURL, to: destination)
+                try fileManager.removeItem(at: destination)
             } catch {
-                // Clean up temp if move also fails.
                 try? fileManager.removeItem(at: tempURL)
-                throw WorkoutLibraryError.writeFailed("Cannot move temp to destination: \(error.localizedDescription)")
+                throw WorkoutLibraryError.writeFailed("Cannot remove old file: \(error.localizedDescription)")
             }
+        }
+
+        do {
+            try fileManager.moveItem(at: tempURL, to: destination)
+        } catch {
+            try? fileManager.removeItem(at: tempURL)
+            throw WorkoutLibraryError.writeFailed("Cannot move temp to destination: \(error.localizedDescription)")
         }
     }
 }
