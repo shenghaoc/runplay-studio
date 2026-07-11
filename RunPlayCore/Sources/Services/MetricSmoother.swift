@@ -21,6 +21,7 @@ public struct MetricSmoother {
     }
 
     /// Smooth pace values from route points, handling nil values.
+    /// Does not smooth across route segment boundaries.
     public static func smoothPace(from points: [RoutePoint], windowSize: Int = 5) -> [Double?] {
         let rawPace = points.map { $0.paceSecondsPerKilometer }
 
@@ -35,7 +36,13 @@ public struct MetricSmoother {
             }
         }
 
-        let smoothed = movingAverage(validValues, windowSize: windowSize)
+        // Smooth within segment boundaries only.
+        let smoothed = movingAverageBySegment(
+            validValues,
+            indices: validIndices,
+            points: points,
+            windowSize: windowSize
+        )
 
         // Rebuild array with smoothed values
         var result: [Double?] = Array(repeating: nil, count: points.count)
@@ -47,6 +54,7 @@ public struct MetricSmoother {
     }
 
     /// Smooth heart-rate values without compacting away route-point alignment.
+    /// Does not smooth across route segment boundaries.
     public static func smoothHeartRate(from points: [RoutePoint], windowSize: Int = 5) -> [Double?] {
         let window = max(1, windowSize)
         let halfWindow = window / 2
@@ -60,9 +68,13 @@ public struct MetricSmoother {
                 continue
             }
 
+            let segmentIndex = points[index].routeSegmentIndex
+
             let start = max(points.startIndex, index - halfWindow)
             let end = min(points.endIndex, index + halfWindow + 1)
             let values = points[start..<end].compactMap { point -> Double? in
+                // Don't smooth across segment boundaries.
+                guard point.routeSegmentIndex == segmentIndex else { return nil }
                 guard let hr = point.heartRateBPM,
                       hr.isFinite,
                       MetricValidation.validHeartRateRange.contains(hr)
@@ -76,5 +88,38 @@ public struct MetricSmoother {
         }
 
         return result
+    }
+
+    // MARK: - Segment-Aware Smoothing
+
+    /// Moving average that only averages values within the same route segment.
+    private static func movingAverageBySegment(
+        _ values: [Double],
+        indices: [Int],
+        points: [RoutePoint],
+        windowSize: Int
+    ) -> [Double] {
+        let window = max(1, windowSize)
+        var smoothed: [Double] = []
+
+        for (valueIdx, pointIdx) in indices.enumerated() {
+            let segmentIndex = points[pointIdx].routeSegmentIndex
+            let start = max(0, valueIdx - window / 2)
+            let end = min(values.count, valueIdx + window / 2 + 1)
+
+            // Only include values from the same segment.
+            var sum = 0.0
+            var count = 0
+            for j in start..<end {
+                if indices[j] < points.count, points[indices[j]].routeSegmentIndex == segmentIndex {
+                    sum += values[j]
+                    count += 1
+                }
+            }
+
+            smoothed.append(count > 0 ? sum / Double(count) : values[valueIdx])
+        }
+
+        return smoothed
     }
 }

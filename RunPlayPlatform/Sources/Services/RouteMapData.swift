@@ -114,6 +114,47 @@ public enum RouteMapContent {
         )
     }
 
+    /// Produce one `RouteMapLine` per route segment so the map never draws a
+    /// polyline across a GPS gap.
+    public static func segmentedRoutes(
+        idPrefix: String,
+        points: [RoutePoint],
+        style: RouteMapLineStyle
+    ) -> [RouteMapLine] {
+        guard !points.isEmpty else { return [] }
+
+        var lines: [RouteMapLine] = []
+        var currentSegment: Int = points[0].routeSegmentIndex
+        var currentCoords: [RouteMapCoordinate] = []
+
+        for point in points {
+            if point.routeSegmentIndex != currentSegment {
+                if !currentCoords.isEmpty {
+                    lines.append(RouteMapLine(
+                        id: "\(idPrefix)-seg-\(currentSegment)",
+                        coordinates: currentCoords,
+                        style: style
+                    ))
+                }
+                currentSegment = point.routeSegmentIndex
+                currentCoords = []
+            }
+            if let coord = RouteMapCoordinate(point) {
+                currentCoords.append(coord)
+            }
+        }
+
+        if !currentCoords.isEmpty {
+            lines.append(RouteMapLine(
+                id: "\(idPrefix)-seg-\(currentSegment)",
+                coordinates: currentCoords,
+                style: style
+            ))
+        }
+
+        return lines
+    }
+
     public static func endpointMarkers(
         points: [RoutePoint],
         idPrefix: String,

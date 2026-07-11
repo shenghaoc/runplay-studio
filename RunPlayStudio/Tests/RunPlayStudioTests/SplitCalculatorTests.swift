@@ -58,6 +58,24 @@ final class SplitCalculatorTests: XCTestCase {
         }
     }
 
+    func testSplitsDoNotIncludeElapsedGapsBetweenRouteSegments() {
+        let start = Date()
+        let workout = RunWorkout(routePoints: [
+            RoutePoint(timestamp: start, latitude: 37.7749, longitude: -122.4194, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(300), latitude: 37.7839, longitude: -122.4194, distanceFromStartMeters: 1_000, elapsedSeconds: 300, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(3_600), latitude: 37.9000, longitude: -122.3000, distanceFromStartMeters: 1_000, elapsedSeconds: 3_600, routeSegmentIndex: 1),
+            RoutePoint(timestamp: start.addingTimeInterval(3_900), latitude: 37.9090, longitude: -122.3000, distanceFromStartMeters: 2_000, elapsedSeconds: 3_900, routeSegmentIndex: 1)
+        ])
+
+        let splits = SplitCalculator.calculateSplits(from: workout)
+
+        XCTAssertEqual(splits.count, 2)
+        for split in splits {
+            XCTAssertEqual(split.elapsedSeconds, 300, accuracy: 0.001)
+            XCTAssertEqual(split.paceSecondsPerKilometer, 300, accuracy: 0.001)
+        }
+    }
+
     // MARK: - Helpers
 
     private func createPoints(distance: Double, totalSeconds: Double? = nil) -> [RoutePoint] {

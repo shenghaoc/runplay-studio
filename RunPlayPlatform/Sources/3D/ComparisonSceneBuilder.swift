@@ -232,6 +232,9 @@ public class ComparisonSceneBuilder {
             let from = points[i]
             let to = points[i + 1]
 
+            // Don't draw a tube connecting two different route segments.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else { continue }
+
             let start = SCNVector3(from.xMeters, from.yMeters, from.zMeters)
             let end = SCNVector3(to.xMeters, to.yMeters, to.zMeters)
 

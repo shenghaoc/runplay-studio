@@ -14,6 +14,10 @@ public enum RoutePointInterpolator {
     /// then linearly interpolates all fields between the bounding points.
     /// Returns `nil` for empty arrays or non-finite distance.
     /// Returns the single point for single-point arrays.
+    ///
+    /// Never interpolates across route segment boundaries — if the two
+    /// bounding points belong to different segments, returns the earlier
+    /// point (the boundary endpoint).
     public static func point(at distance: Double, in points: [RoutePoint]) -> RoutePoint? {
         guard !points.isEmpty, distance.isFinite else { return nil }
         guard points.count >= 2 else { return points[0] }
@@ -40,6 +44,12 @@ public enum RoutePointInterpolator {
         if low == 0 { return points[0] }
         let after = points[low]
         let before = points[low - 1]
+
+        // Do not interpolate across segment boundaries.
+        guard before.routeSegmentIndex == after.routeSegmentIndex else {
+            return before
+        }
+
         let segmentDistance = after.distanceFromStartMeters - before.distanceFromStartMeters
 
         // When segmentDistance is 0 (duplicate distances from stationary samples),
@@ -56,6 +66,7 @@ public enum RoutePointInterpolator {
     ///
     /// Same algorithm as `point(at:in:)` but for 3D scene points.
     /// The `sourceIndex` is taken from the point before the interpolation target.
+    /// Never interpolates across route segment boundaries.
     public static func scenePoint(at distance: Double, in points: [RouteScenePoint]) -> RouteScenePoint? {
         guard !points.isEmpty, distance.isFinite else { return nil }
         guard points.count >= 2 else { return points[0] }
@@ -81,6 +92,12 @@ public enum RoutePointInterpolator {
         if low == 0 { return points[0] }
         let after = points[low]
         let before = points[low - 1]
+
+        // Do not interpolate across segment boundaries.
+        guard before.routeSegmentIndex == after.routeSegmentIndex else {
+            return before
+        }
+
         let segmentDistance = after.distanceFromStartMeters - before.distanceFromStartMeters
         guard segmentDistance > 0, segmentDistance.isFinite else {
             return points[lastDuplicateIndex(startingAt: low, distance: after.distanceFromStartMeters, in: points)]
@@ -95,7 +112,8 @@ public enum RoutePointInterpolator {
             distanceFromStartMeters: clampedDistance,
             elapsedSeconds: interpolate(before.elapsedSeconds, after.elapsedSeconds, fraction),
             paceSecondsPerKilometer: interpolateOptional(before.paceSecondsPerKilometer, after.paceSecondsPerKilometer, fraction),
-            heartRateBPM: interpolateOptional(before.heartRateBPM, after.heartRateBPM, fraction)
+            heartRateBPM: interpolateOptional(before.heartRateBPM, after.heartRateBPM, fraction),
+            routeSegmentIndex: before.routeSegmentIndex
         )
     }
 
@@ -191,7 +209,8 @@ public enum RoutePointInterpolator {
                     if let currentAltitude = sample.altitudeMeters,
                        let previousAltitude = previous.altitudeMeters,
                        currentAltitude.isFinite,
-                       previousAltitude.isFinite {
+                       previousAltitude.isFinite,
+                       sample.routeSegmentIndex == previous.routeSegmentIndex {
                         gain += max(0, currentAltitude - previousAltitude)
                         sawAltitude = true
                     }
@@ -204,7 +223,8 @@ public enum RoutePointInterpolator {
         if let currentAltitude = end.altitudeMeters,
            let previousAltitude = previous.altitudeMeters,
            currentAltitude.isFinite,
-           previousAltitude.isFinite {
+           previousAltitude.isFinite,
+           end.routeSegmentIndex == previous.routeSegmentIndex {
             gain += max(0, currentAltitude - previousAltitude)
             sawAltitude = true
         }
@@ -224,7 +244,8 @@ public enum RoutePointInterpolator {
             paceSecondsPerKilometer: interpolateOptional(before.paceSecondsPerKilometer, after.paceSecondsPerKilometer, fraction),
             heartRateBPM: interpolateOptional(before.heartRateBPM, after.heartRateBPM, fraction),
             cadence: interpolateOptional(before.cadence, after.cadence, fraction),
-            horizontalAccuracy: interpolateOptional(before.horizontalAccuracy, after.horizontalAccuracy, fraction)
+            horizontalAccuracy: interpolateOptional(before.horizontalAccuracy, after.horizontalAccuracy, fraction),
+            routeSegmentIndex: before.routeSegmentIndex
         )
     }
 
@@ -251,7 +272,8 @@ public enum RoutePointInterpolator {
     private static func lastDuplicateIndex(startingAt index: Int, distance: Double, in points: [RoutePoint]) -> Int {
         var lastAtDistance = index
         while lastAtDistance + 1 < points.count &&
-              points[lastAtDistance + 1].distanceFromStartMeters == distance {
+              points[lastAtDistance + 1].distanceFromStartMeters == distance &&
+              points[lastAtDistance + 1].routeSegmentIndex == points[index].routeSegmentIndex {
             lastAtDistance += 1
         }
         return lastAtDistance
@@ -260,7 +282,8 @@ public enum RoutePointInterpolator {
     private static func lastDuplicateIndex(startingAt index: Int, distance: Double, in points: [RouteScenePoint]) -> Int {
         var lastAtDistance = index
         while lastAtDistance + 1 < points.count &&
-              points[lastAtDistance + 1].distanceFromStartMeters == distance {
+              points[lastAtDistance + 1].distanceFromStartMeters == distance &&
+              points[lastAtDistance + 1].routeSegmentIndex == points[index].routeSegmentIndex {
             lastAtDistance += 1
         }
         return lastAtDistance

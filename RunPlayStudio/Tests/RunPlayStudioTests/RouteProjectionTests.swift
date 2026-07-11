@@ -1,6 +1,7 @@
 import XCTest
 import RunPlayCore
 import RunPlayPlatform
+import SceneKit
 @testable import RunPlayStudio
 
 final class RouteProjectionTests: XCTestCase {
@@ -202,6 +203,35 @@ final class RouteProjectionTests: XCTestCase {
 
         let hiddenTopLevelNodes = scene.rootNode.childNodes.filter { $0.isHidden }
         XCTAssertGreaterThanOrEqual(hiddenTopLevelNodes.count, 2)
+    }
+
+    func testSegmentHighlightDoesNotBridgeRouteSegments() {
+        let scenePoints = [
+            RouteScenePoint(xMeters: 0, yMeters: 0, zMeters: 0, sourceIndex: 0, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
+            RouteScenePoint(xMeters: 100, yMeters: 0, zMeters: 0, sourceIndex: 1, distanceFromStartMeters: 100, elapsedSeconds: 30, routeSegmentIndex: 0),
+            RouteScenePoint(xMeters: 10_000, yMeters: 0, zMeters: 0, sourceIndex: 2, distanceFromStartMeters: 100, elapsedSeconds: 3_600, routeSegmentIndex: 1),
+            RouteScenePoint(xMeters: 10_100, yMeters: 0, zMeters: 0, sourceIndex: 3, distanceFromStartMeters: 200, elapsedSeconds: 3_630, routeSegmentIndex: 1)
+        ]
+        let builder = RouteSceneBuilder()
+        let scene = builder.buildScene(from: scenePoints)
+        let highlight = SegmentHighlight(
+            type: .custom,
+            title: "Gap-safe highlight",
+            subtitle: "",
+            startDistanceMeters: 0,
+            endDistanceMeters: 200,
+            startElapsedSeconds: 0,
+            endElapsedSeconds: 3_630,
+            durationSeconds: 3_630,
+            distanceMeters: 200,
+            sourcePointRange: 0..<4
+        )
+
+        let highlightNode = builder.highlightSegment(highlight, in: scene)
+
+        XCTAssertNotNil(highlightNode)
+        let tubeCount = highlightNode?.childNodes.filter { $0.geometry is SCNCylinder }.count
+        XCTAssertEqual(tubeCount, 2)
     }
 
     // MARK: - Helpers

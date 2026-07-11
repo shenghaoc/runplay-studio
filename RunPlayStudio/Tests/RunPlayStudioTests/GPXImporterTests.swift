@@ -342,6 +342,193 @@ final class GPXImporterTests: XCTestCase {
         }
     }
 
+    // MARK: - Segment-Aware Tests
+
+    func testGPXMultipleSegmentsGetDistinctIndexes() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>2026-07-05T07:00:10Z</time>
+              </trkpt>
+            </trkseg>
+            <trkseg>
+              <trkpt lat="1.3000" lon="103.7800">
+                <time>2026-07-05T07:10:00Z</time>
+              </trkpt>
+              <trkpt lat="1.3010" lon="103.7810">
+                <time>2026-07-05T07:10:10Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 4)
+        // First segment: indexes 0, 0
+        XCTAssertEqual(workout.routePoints[0].routeSegmentIndex, 0)
+        XCTAssertEqual(workout.routePoints[1].routeSegmentIndex, 0)
+        // Second segment: indexes 1, 1
+        XCTAssertEqual(workout.routePoints[2].routeSegmentIndex, 1)
+        XCTAssertEqual(workout.routePoints[3].routeSegmentIndex, 1)
+    }
+
+    func testGPXWaypointsAreIgnored() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <wpt lat="1.5000" lon="103.8000">
+            <name>Waypoint 1</name>
+          </wpt>
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>2026-07-05T07:00:10Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        // Should only contain trackpoints, not the waypoint.
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.routePoints[0].latitude, 1.2966, accuracy: 0.0001)
+    }
+
+    func testGPXNoPhantomDistanceAcrossSegments() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>2026-07-05T07:00:10Z</time>
+              </trkpt>
+            </trkseg>
+            <!-- Far-away segment (should not add GPS-gap distance) -->
+            <trkseg>
+              <trkpt lat="2.0000" lon="104.0000">
+                <time>2026-07-05T08:00:00Z</time>
+              </trkpt>
+              <trkpt lat="2.0010" lon="104.0010">
+                <time>2026-07-05T08:00:10Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 4)
+
+        // Distance at segment boundary should not include the ~100km GPS gap.
+        // The first segment is ~100m, second is ~150m.
+        // Total should be ~250m, not ~100km.
+        let totalDistance = workout.routePoints.last!.distanceFromStartMeters
+        XCTAssertLessThan(totalDistance, 1000, "Total distance should not include GPS gap (~100km)")
+        XCTAssertGreaterThan(totalDistance, 100, "Total distance should include both segments")
+    }
+
+    func testGPXMultipleTracksGetDistinctSegmentIndexes() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <name>Track 1</name>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>2026-07-05T07:00:10Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+          <trk>
+            <name>Track 2</name>
+            <trkseg>
+              <trkpt lat="1.3000" lon="103.7800">
+                <time>2026-07-05T08:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.3010" lon="103.7810">
+                <time>2026-07-05T08:00:10Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 4)
+        // Track 1's segment: index 0
+        XCTAssertEqual(workout.routePoints[0].routeSegmentIndex, 0)
+        XCTAssertEqual(workout.routePoints[1].routeSegmentIndex, 0)
+        // Track 2's segment: index 1
+        XCTAssertEqual(workout.routePoints[2].routeSegmentIndex, 1)
+        XCTAssertEqual(workout.routePoints[3].routeSegmentIndex, 1)
+    }
+
+    func testGPXBackwardCompatibleDecoding() throws {
+        // Simulate old persisted data without routeSegmentIndex.
+        // Must include all required fields including id.
+        let json = """
+        {"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":683942400,"latitude":1.2966,"longitude":103.7764,"distanceFromStartMeters":0,"elapsedSeconds":0}
+        """
+        let data = Data(json.utf8)
+        let point = try JSONDecoder().decode(RoutePoint.self, from: data)
+        XCTAssertEqual(point.routeSegmentIndex, 0, "Missing routeSegmentIndex should default to 0")
+    }
+
+    func testRoutePointEncodeRoundTrip() throws {
+        // Encode a RoutePoint with non-zero routeSegmentIndex, then decode it back.
+        let original = RoutePoint(
+            timestamp: Date(timeIntervalSinceReferenceDate: 1000),
+            latitude: 37.0,
+            longitude: -122.0,
+            altitudeMeters: 50,
+            distanceFromStartMeters: 100,
+            elapsedSeconds: 60,
+            heartRateBPM: 140,
+            cadence: 170,
+            routeSegmentIndex: 3
+        )
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(RoutePoint.self, from: encoded)
+
+        XCTAssertEqual(decoded.routeSegmentIndex, 3, "routeSegmentIndex must survive encode/decode")
+        XCTAssertEqual(decoded.latitude, 37.0)
+        XCTAssertEqual(decoded.longitude, -122.0)
+        XCTAssertEqual(decoded.altitudeMeters, 50)
+        XCTAssertEqual(decoded.heartRateBPM, 140)
+        XCTAssertEqual(decoded.cadence, 170)
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {

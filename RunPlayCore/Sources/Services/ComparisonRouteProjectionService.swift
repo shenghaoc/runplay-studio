@@ -130,7 +130,8 @@ public struct ComparisonRouteProjectionService: Sendable {
                 distanceFromStartMeters: point.distanceFromStartMeters,
                 elapsedSeconds: point.elapsedSeconds,
                 paceSecondsPerKilometer: point.paceSecondsPerKilometer,
-                heartRateBPM: point.heartRateBPM
+                heartRateBPM: point.heartRateBPM,
+                routeSegmentIndex: point.routeSegmentIndex
             )
         }
     }

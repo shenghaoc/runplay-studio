@@ -11,8 +11,8 @@ struct MapReferenceView: View {
     @State private var displayMode: RouteMapDisplayMode = .twoD
     @State private var fitRequest = 0
 
-    private var route: RouteMapLine {
-        RouteMapContent.route(id: "route", points: routePoints, style: .primary)
+    private var routes: [RouteMapLine] {
+        RouteMapContent.segmentedRoutes(idPrefix: "route", points: routePoints, style: .primary)
     }
 
     private var markers: [RouteMapMarker] {
@@ -27,7 +27,7 @@ struct MapReferenceView: View {
     var body: some View {
         RouteMapCanvas(
             displayMode: $displayMode,
-            routes: [route],
+            routes: routes,
             markers: markers,
             fitRequest: fitRequest,
             controlBottomInset: 0

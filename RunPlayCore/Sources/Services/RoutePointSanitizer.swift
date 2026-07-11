@@ -13,6 +13,12 @@ public enum RoutePointSanitizer {
 
     /// Return route points with valid coordinates, monotonic elapsed time, and
     /// monotonic cumulative distance.
+    ///
+    /// When the input contains points with different `routeSegmentIndex` values,
+    /// sorting and distance computation respect segment boundaries:
+    /// - Points are sorted by timestamp only within each segment.
+    /// - No geographic distance is added across a segment boundary.
+    /// - Cumulative distance continues from the prior segment's ending value.
     public static func normalize(
         _ points: [RoutePoint],
         distancePolicy: RouteDistancePolicy = .computeFromCoordinates,
@@ -24,21 +30,38 @@ public enum RoutePointSanitizer {
 
         guard !validPoints.isEmpty else { return [] }
 
-        let ordered: [RoutePoint]
-        if sortByTimestamp {
-            ordered = validPoints.sorted {
-                if $0.timestamp == $1.timestamp {
-                    return $0.elapsedSeconds < $1.elapsedSeconds
-                }
-                return $0.timestamp < $1.timestamp
+        // Group by segment to preserve segment boundaries during sorting.
+        let segmentGroups = Dictionary(grouping: validPoints, by: \.routeSegmentIndex)
+        let sortedSegmentIndexes = segmentGroups.keys.sorted()
+
+        var ordered: [RoutePoint] = []
+        ordered.reserveCapacity(validPoints.count)
+        for segIdx in sortedSegmentIndexes {
+            guard let segPoints = segmentGroups[segIdx] else { continue }
+            if sortByTimestamp {
+                ordered.append(contentsOf: segPoints.sorted {
+                    if $0.timestamp == $1.timestamp {
+                        return $0.elapsedSeconds < $1.elapsedSeconds
+                    }
+                    return $0.timestamp < $1.timestamp
+                })
+            } else {
+                ordered.append(contentsOf: segPoints)
             }
-        } else {
-            ordered = validPoints
+        }
+
+        // After ordering, re-normalize segment indexes to be compact 0-based.
+        var indexMap: [Int: Int] = [:]
+        var nextIndex = 0
+        for point in ordered {
+            if indexMap[point.routeSegmentIndex] == nil {
+                indexMap[point.routeSegmentIndex] = nextIndex
+                nextIndex += 1
+            }
         }
 
         let useSuppliedDistances = distancePolicy == .useSuppliedDistancesWhenValid
             && hasValidSuppliedDistanceSeries(ordered)
-        let distanceBase = useSuppliedDistances ? ordered[0].distanceFromStartMeters : 0
 
         let useTimestampElapsed = elapsedSpan(from: ordered) > 0
         let useSuppliedElapsed = !useTimestampElapsed && hasValidElapsedSeries(ordered)
@@ -48,10 +71,35 @@ public enum RoutePointSanitizer {
         var normalized: [RoutePoint] = []
         normalized.reserveCapacity(ordered.count)
 
+        // Track the supplied distance base for the current segment.
+        var segmentDistanceBase: Double = 0
+        var segmentStartCumulative: Double = 0
+
         for point in ordered {
+            let compactSegmentIndex = indexMap[point.routeSegmentIndex] ?? 0
+            let isSegmentStart: Bool
+            if let last = normalized.last {
+                isSegmentStart = compactSegmentIndex != last.routeSegmentIndex
+            } else {
+                isSegmentStart = true
+            }
+
             let distance: Double
-            if useSuppliedDistances {
-                distance = max(0, point.distanceFromStartMeters - distanceBase)
+            if isSegmentStart {
+                // At a segment boundary: continue cumulative distance from prior
+                // segment end. No geographic jump is added.
+                segmentStartCumulative = normalized.last?.distanceFromStartMeters ?? 0
+                distance = segmentStartCumulative
+                if useSuppliedDistances {
+                    // Record this segment's first supplied distance as the base
+                    // so subsequent points in this segment compute relative deltas.
+                    segmentDistanceBase = point.distanceFromStartMeters
+                }
+            } else if useSuppliedDistances {
+                // Within a segment: compute absolute position using supplied distance,
+                // offset by the segment's base, added to segment start cumulative.
+                distance = segmentStartCumulative
+                    + max(0, point.distanceFromStartMeters - segmentDistanceBase)
             } else if let previous = normalized.last {
                 distance = previous.distanceFromStartMeters + GeoDistance.distanceMeters(
                     fromLat: previous.latitude,
@@ -84,7 +132,8 @@ public enum RoutePointSanitizer {
                 paceSecondsPerKilometer: positiveFiniteOptional(point.paceSecondsPerKilometer),
                 heartRateBPM: validHeartRate(point.heartRateBPM),
                 cadence: nonNegativeFiniteOptional(point.cadence),
-                horizontalAccuracy: nonNegativeFiniteOptional(point.horizontalAccuracy)
+                horizontalAccuracy: nonNegativeFiniteOptional(point.horizontalAccuracy),
+                routeSegmentIndex: compactSegmentIndex
             ))
         }
 
@@ -108,8 +157,19 @@ public enum RoutePointSanitizer {
         return true
     }
 
+    /// Check if the supplied distance series is valid: monotonically non-decreasing
+    /// within each segment, and complete (no NaN/inf values).
     private static func hasValidSuppliedDistanceSeries(_ points: [RoutePoint]) -> Bool {
-        isMonotonicallyNonDecreasing(\.distanceFromStartMeters, in: points)
+        guard !points.isEmpty else { return false }
+        // Group by segment and check monotonicity within each segment separately.
+        let segmentGroups = Dictionary(grouping: points, by: \.routeSegmentIndex)
+        for (_, segPoints) in segmentGroups {
+            let sorted = segPoints.sorted { $0.elapsedSeconds < $1.elapsedSeconds }
+            guard isMonotonicallyNonDecreasing(\.distanceFromStartMeters, in: sorted) else {
+                return false
+            }
+        }
+        return true
     }
 
     private static func hasValidElapsedSeries(_ points: [RoutePoint]) -> Bool {

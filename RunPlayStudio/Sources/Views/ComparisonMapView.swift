@@ -17,18 +17,15 @@ struct ComparisonMapView: View {
     }
 
     private var routes: [RouteMapLine] {
-        [
-            RouteMapContent.route(
-                id: "primary",
-                points: primaryWorkout.routePoints,
-                style: .primary
-            ),
-            RouteMapContent.route(
-                id: "comparison",
-                points: comparisonWorkout.routePoints,
-                style: .comparison
-            )
-        ]
+        RouteMapContent.segmentedRoutes(
+            idPrefix: "primary",
+            points: primaryWorkout.routePoints,
+            style: .primary
+        ) + RouteMapContent.segmentedRoutes(
+            idPrefix: "comparison",
+            points: comparisonWorkout.routePoints,
+            style: .comparison
+        )
     }
 
     private var markers: [RouteMapMarker] {

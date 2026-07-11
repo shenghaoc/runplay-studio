@@ -5,11 +5,10 @@ import FoundationXML
 
 /// Imports workouts from GPX (GPS Exchange Format) files.
 ///
-/// Supports basic GPX with trackpoints containing:
-/// - latitude/longitude (required)
-/// - elevation (optional)
-/// - time (optional)
-/// - heart rate via extensions (optional)
+/// Supports GPX track data only (`<trk>` > `<trkseg>` > `<trkpt>`).
+/// - `<wpt>` (waypoint) elements are ignored.
+/// - `<rte>` / `<rtept>` (route) elements are not supported.
+/// - Each `<trkseg>` starts a new `routeSegmentIndex`.
 public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
     public init() {}
     public var supportedExtensions: [String] { ["gpx"] }
@@ -17,52 +16,69 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
         let data = try Data(contentsOf: url)
-        guard let xml = String(data: data, encoding: .utf8) else {
-            throw WorkoutImportError.invalidFormat("Could not read file as UTF-8")
-        }
-
-        return try parseGPX(xml, sourceURL: url)
+        return try importWorkout(data: data, sourceURL: url)
     }
 
-    // MARK: - Private
+    /// Internal entry point for testability with raw Data.
+    func importWorkout(data: Data, sourceURL: URL) throws -> RunWorkout {
+        let rawSegments = try parseGPXData(data)
 
-    private func parseGPX(_ xml: String, sourceURL: URL) throws -> RunWorkout {
-        let parser = GPXXMLParser(xml: xml)
-        let rawPoints = try parser.parse()
-
-        guard !rawPoints.isEmpty else {
+        let allRawPoints = rawSegments.flatMap(\.points)
+        guard !allRawPoints.isEmpty else {
             throw WorkoutImportError.missingData("No trackpoints found in GPX file")
         }
 
-        let validRawPoints = rawPoints.filter {
-            GeoDistance.isValidCoordinate(lat: $0.lat, lon: $0.lon)
+        // Build RoutePoints with segment indexes, preserving raw timestamps.
+        var routePoints: [RoutePoint] = []
+        var rawTimestamps: [Date?] = []
+        var segmentIndex = 0
+
+        for segment in rawSegments {
+            guard !segment.points.isEmpty else {
+                segmentIndex += 1
+                continue
+            }
+
+            let validSegmentPoints = segment.points.filter {
+                GeoDistance.isValidCoordinate(lat: $0.lat, lon: $0.lon)
+            }
+            guard !validSegmentPoints.isEmpty else {
+                segmentIndex += 1
+                continue
+            }
+
+            for raw in validSegmentPoints {
+                let point = RoutePoint(
+                    timestamp: Date.distantPast,
+                    latitude: raw.lat,
+                    longitude: raw.lon,
+                    altitudeMeters: raw.ele,
+                    distanceFromStartMeters: 0,
+                    elapsedSeconds: 0,
+                    heartRateBPM: raw.hr,
+                    cadence: raw.cad,
+                    routeSegmentIndex: segmentIndex
+                )
+                routePoints.append(point)
+                rawTimestamps.append(raw.time)
+            }
+            segmentIndex += 1
         }
 
-        guard !validRawPoints.isEmpty else {
+        guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid coordinates found in GPX file")
         }
 
-        // Require at least some timestamps for meaningful pace/duration analysis.
-        // Missing timestamps between known points are interpolated below.
-        guard let timestamps = RouteTimestampResolver.resolve(validRawPoints.map(\.time)),
-              let startDate = timestamps.first else {
+        // Resolve timestamps globally (segments may share a continuous timeline).
+        guard let resolvedTimestamps = RouteTimestampResolver.resolve(rawTimestamps),
+              let startDate = resolvedTimestamps.first else {
             throw WorkoutImportError.missingData("GPX file has no timestamps; cannot compute pace or duration")
         }
 
-        var routePoints: [RoutePoint] = []
-
-        for (raw, timestamp) in zip(validRawPoints, timestamps) {
-            let point = RoutePoint(
-                timestamp: timestamp,
-                latitude: raw.lat,
-                longitude: raw.lon,
-                altitudeMeters: raw.ele,
-                distanceFromStartMeters: 0,
-                elapsedSeconds: timestamp.timeIntervalSince(startDate),
-                heartRateBPM: raw.hr,
-                cadence: raw.cad
-            )
-            routePoints.append(point)
+        // Apply resolved timestamps and compute elapsed.
+        for i in routePoints.indices {
+            routePoints[i].timestamp = resolvedTimestamps[i]
+            routePoints[i].elapsedSeconds = resolvedTimestamps[i].timeIntervalSince(startDate)
         }
 
         routePoints = RoutePointSanitizer.normalize(routePoints)
@@ -93,6 +109,7 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
 
 // MARK: - GPX XML Parser
 
+/// A single parsed trackpoint from GPX.
 private struct RawGPXPoint {
     var lat: Double
     var lon: Double
@@ -102,29 +119,46 @@ private struct RawGPXPoint {
     var cad: Double?
 }
 
+/// A track segment containing ordered trackpoints.
+private struct RawGPXSegment {
+    var points: [RawGPXPoint]
+}
+
+/// GPX XML parser.
+///
+/// Parses the GPX hierarchy: `gpx > trk > trkseg > trkpt`.
+/// Uses `shouldProcessNamespaces = false` and strips prefixes from element
+/// names so both `<hr>` and `<gpxtpx:hr>` match by local name.
 private class GPXXMLParser: NSObject, XMLParserDelegate {
-    private let xml: String
-    private var points: [RawGPXPoint] = []
-    private var currentElement: String = ""
-    private var currentText: String = ""
+    private let data: Data
+    private var segments: [RawGPXSegment] = []
+
+    // Hierarchy tracking
+    private var inTrackSegment = false
+    private var inTrackpoint = false
+
+    // Current trackpoint state
     private var currentLat: Double?
     private var currentLon: Double?
     private var currentEle: Double?
     private var currentTime: Date?
     private var currentHR: Double?
     private var currentCad: Double?
-    private var inTrackpoint = false
-    private var inExtensions = false
 
-    init(xml: String) {
-        self.xml = xml
+    // Current segment points accumulator
+    private var currentSegmentPoints: [RawGPXPoint] = []
+
+    // Character accumulation
+    private var currentText: String = ""
+
+    // Error tracking
+    private var parseError: String?
+
+    init(data: Data) {
+        self.data = data
     }
 
-    func parse() throws -> [RawGPXPoint] {
-        guard let data = xml.data(using: .utf8) else {
-            throw WorkoutImportError.invalidFormat("Could not encode XML as UTF-8")
-        }
-
+    func parse() throws -> [RawGPXSegment] {
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.shouldProcessNamespaces = false
@@ -132,10 +166,23 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         parser.shouldResolveExternalEntities = false
 
         guard parser.parse() else {
-            throw WorkoutImportError.parsingError("XML parsing failed")
+            let line = parser.lineNumber
+            let col = parser.columnNumber
+            if let error = parseError {
+                throw WorkoutImportError.parsingError("GPX parsing failed at line \(line), column \(col): \(error)")
+            }
+            throw WorkoutImportError.parsingError("GPX parsing failed at line \(line), column \(col)")
         }
 
-        return points
+        return segments
+    }
+
+    /// Strip namespace prefix from element name.  `gpxtpx:hr` → `hr`.
+    private func localName(_ elementName: String) -> String {
+        if let idx = elementName.firstIndex(of: ":") {
+            return String(elementName[elementName.index(after: idx)...])
+        }
+        return elementName
     }
 
     // MARK: - XMLParserDelegate
@@ -147,10 +194,14 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         qualifiedName: String?,
         attributes: [String: String]
     ) {
-        currentElement = elementName
         currentText = ""
+        let name = localName(elementName)
 
-        if elementName == "trkpt" || elementName == "wpt" {
+        switch name {
+        case "trkseg":
+            inTrackSegment = true
+            currentSegmentPoints = []
+        case "trkpt":
             inTrackpoint = true
             currentLat = attributes["lat"].flatMap(Double.init)
             currentLon = attributes["lon"].flatMap(Double.init)
@@ -158,10 +209,8 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
             currentTime = nil
             currentHR = nil
             currentCad = nil
-        }
-
-        if elementName == "extensions" {
-            inExtensions = true
+        default:
+            break
         }
     }
 
@@ -176,20 +225,21 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         qualifiedName: String?
     ) {
         let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = localName(elementName)
 
         if inTrackpoint {
-            switch elementName {
+            switch name {
             case "ele":
                 currentEle = Double(text)
             case "time":
                 currentTime = parseISO8601(text)
-            case "hr", "gpxtpx:hr":
+            case "hr":
                 currentHR = Double(text)
-            case "cad", "gpxtpx:cad":
+            case "cad":
                 currentCad = Double(text)
-            case "trkpt", "wpt":
+            case "trkpt":
                 if let lat = currentLat, let lon = currentLon {
-                    points.append(RawGPXPoint(
+                    currentSegmentPoints.append(RawGPXPoint(
                         lat: lat,
                         lon: lon,
                         ele: currentEle,
@@ -204,12 +254,25 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
             }
         }
 
-        if elementName == "extensions" {
-            inExtensions = false
+        switch name {
+        case "trkseg":
+            // Finalize segment — only if it contained trackpoints.
+            if inTrackSegment {
+                segments.append(RawGPXSegment(points: currentSegmentPoints))
+                currentSegmentPoints = []
+                inTrackSegment = false
+            }
+        default:
+            break
         }
     }
 
-    // ⚡ Bolt: Cache date formatters to avoid expensive initialization on every trackpoint
+    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+        self.parseError = parseError.localizedDescription
+    }
+
+    // MARK: - Date Parsing
+
     private let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -228,4 +291,11 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         }
         return iso8601StandardFormatter.date(from: string)
     }
+}
+
+// MARK: - Data-based parsing entry point
+
+private func parseGPXData(_ data: Data) throws -> [RawGPXSegment] {
+    let parser = GPXXMLParser(data: data)
+    return try parser.parse()
 }

@@ -13,8 +13,8 @@ Import File → Importer → RoutePointSanitizer → Normalized Model → Analyz
 
 1. **Import**: User selects file (JSON, GPX, TCX, FIT)
 2. **Parse**: Format-specific importer parses raw data
-3. **Normalize**: `RoutePointSanitizer` validates coordinates, ensures monotonic elapsed time and distance
-4. **Analyze**: `WorkoutAnalyzer` calculates distance, pace, elevation, splits, segments
+3. **Normalize**: `RoutePointSanitizer` validates coordinates, preserves route-segment boundaries, and ensures cumulative distance does not include a recording gap
+4. **Analyze**: `WorkoutAnalyzer` calculates gap-safe distance, pace, elevation, splits, and segments
 5. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized workout and versioned manifest
 6. **Control**: `ReplayController` manages playback state and timeline
 7. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries

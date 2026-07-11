@@ -184,6 +184,7 @@ public struct SegmentDetector {
             guard
                 let startPt = RoutePointInterpolator.point(at: windowStart, in: points),
                 let endPt = RoutePointInterpolator.point(at: windowEnd, in: points),
+                startPt.routeSegmentIndex == endPt.routeSegmentIndex,
                 let startAlt = startPt.altitudeMeters,
                 let endAlt = endPt.altitudeMeters
             else { continue }
@@ -240,7 +241,8 @@ public struct SegmentDetector {
     private static func evaluateWindow(points: [RoutePoint], startDist: Double, endDist: Double) -> WindowEvaluation? {
         guard
             let startPoint = RoutePointInterpolator.point(at: startDist, in: points),
-            let endPoint = RoutePointInterpolator.point(at: endDist, in: points)
+            let endPoint = RoutePointInterpolator.point(at: endDist, in: points),
+            startPoint.routeSegmentIndex == endPoint.routeSegmentIndex
         else { return nil }
 
         let elapsed = endPoint.elapsedSeconds - startPoint.elapsedSeconds

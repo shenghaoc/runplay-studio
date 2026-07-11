@@ -15,6 +15,7 @@ public struct RouteColorMetrics: Sendable {
     ///
     /// Returns smoothed pace values in seconds per kilometer.
     /// Invalid values are replaced with the median.
+    /// Does not compute pace across route segment boundaries.
     public func computeSegmentPace(points: [RouteScenePoint]) -> [Double] {
         guard points.count >= 2 else { return [] }
 
@@ -23,6 +24,12 @@ public struct RouteColorMetrics: Sendable {
         for i in 0..<(points.count - 1) {
             let from = points[i]
             let to = points[i + 1]
+
+            // Skip cross-segment-boundary computation.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else {
+                rawPace.append(.nan)
+                continue
+            }
 
             let distance = to.distanceFromStartMeters - from.distanceFromStartMeters
             let time = to.elapsedSeconds - from.elapsedSeconds
@@ -42,7 +49,7 @@ public struct RouteColorMetrics: Sendable {
         }
 
         // Smooth pace to reduce noise (moving average with window of 3-5)
-        let smoothed = smoothValues(rawPace, windowSize: 5)
+        let smoothed = smoothValues(rawPace, windowSize: 5, segmentIndexes: points.dropLast().map(\.routeSegmentIndex))
 
         // Replace remaining NaN with median
         let validPace = smoothed.filter { !$0.isNaN && $0.isFinite }
@@ -76,6 +83,7 @@ public struct RouteColorMetrics: Sendable {
     /// Compute heart rate values for each segment.
     ///
     /// Returns smoothed HR values. Invalid values are replaced with the median.
+    /// Does not compute across route segment boundaries.
     public func computeSegmentHeartRate(points: [RouteScenePoint]) -> [Double] {
         guard points.count >= 2 else { return [] }
 
@@ -84,6 +92,12 @@ public struct RouteColorMetrics: Sendable {
         for i in 0..<(points.count - 1) {
             let from = points[i]
             let to = points[i + 1]
+
+            // Skip cross-segment-boundary computation.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else {
+                rawHR.append(.nan)
+                continue
+            }
 
             // Average HR of the two points
             let hr1 = from.heartRateBPM
@@ -110,7 +124,7 @@ public struct RouteColorMetrics: Sendable {
         }
 
         // Smooth HR to reduce noise
-        let smoothed = smoothValues(rawHR, windowSize: 5)
+        let smoothed = smoothValues(rawHR, windowSize: 5, segmentIndexes: points.dropLast().map(\.routeSegmentIndex))
 
         // Replace remaining NaN with median (only if we have valid HR data)
         let validHR = smoothed.filter { !$0.isNaN && $0.isFinite }
@@ -156,7 +170,8 @@ public struct RouteColorMetrics: Sendable {
     // MARK: - Helpers
 
     /// Smooth an array of values using a moving average, skipping NaN.
-    private func smoothValues(_ values: [Double], windowSize: Int) -> [Double] {
+    /// Respects segment boundaries: only values from the same segment participate in the window.
+    private func smoothValues(_ values: [Double], windowSize: Int, segmentIndexes: [Int]) -> [Double] {
         guard values.count > 1 else { return values }
         let halfWindow = windowSize / 2
         var result: [Double] = []
@@ -164,11 +179,13 @@ public struct RouteColorMetrics: Sendable {
         for i in 0..<values.count {
             let start = max(0, i - halfWindow)
             let end = min(values.count, i + halfWindow + 1)
+            let currentSegment = segmentIndexes[i]
 
             var sum: Double = 0
             var count: Int = 0
             for j in start..<end {
-                if values[j].isFinite && !values[j].isNaN {
+                if segmentIndexes[j] == currentSegment,
+                   values[j].isFinite && !values[j].isNaN {
                     sum += values[j]
                     count += 1
                 }
