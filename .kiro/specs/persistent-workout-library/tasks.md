@@ -16,5 +16,5 @@
 - [x] Add Core and Studio regression coverage for round trips and failure paths.
 - [x] Update privacy and import documentation for persistent local snapshots.
 - [x] Run the complete SwiftPM, Xcode, CI-equivalent, and packaged-app gates.
-- [ ] Complete and record the desktop import/relaunch/delete/relaunch flow.
+- [x] Complete and record the desktop import/relaunch/delete/relaunch flow.
 - [x] Reconcile the final PR body, review threads, and GitHub checks.
