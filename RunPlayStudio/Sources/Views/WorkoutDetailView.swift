@@ -82,7 +82,7 @@ struct WorkoutDetailView: View {
     // MARK: - Bottom Panels
 
     private var bottomPanels: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: AppDesign.Spacing.small) {
             // Segment highlights (if any)
             if !appState.detectedSegments.isEmpty {
                 SegmentHighlightsPanel(

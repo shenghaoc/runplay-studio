@@ -15,7 +15,7 @@ struct SplitTableView: View {
                 .foregroundStyle(.secondary)
 
             // Current split highlight
-            if let idx = currentSplitIndex, idx < splits.count {
+            if let idx = currentSplitIndex, idx >= 0, idx < splits.count {
                 let split = splits[idx]
                 HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: "flag.fill")

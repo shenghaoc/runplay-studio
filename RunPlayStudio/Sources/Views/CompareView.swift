@@ -69,6 +69,8 @@ struct CompareView: View {
                     .lineLimit(1)
             }
 
+            Spacer()
+
             Image(systemName: "arrow.left.arrow.right")
                 .font(.caption)
                 .foregroundStyle(.quaternary)
