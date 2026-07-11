@@ -4,7 +4,7 @@ import Foundation
 ///
 /// All implementations must be platform-neutral (no SwiftUI, AppKit, etc.)
 /// so tests can run on Linux and in CI without macOS frameworks.
-public protocol WorkoutLibraryStoring {
+public protocol WorkoutLibraryStoring: Sendable {
     /// Load the persisted library manifest.
     func loadManifest() throws -> WorkoutLibraryManifest
 

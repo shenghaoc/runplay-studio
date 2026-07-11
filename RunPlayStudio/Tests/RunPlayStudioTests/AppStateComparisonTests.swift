@@ -6,7 +6,7 @@ import RunPlayCore
 final class AppStateComparisonTests: XCTestCase {
 
     func testSetComparisonRejectsSelectedWorkout() {
-        let appState = AppState(loadSampleWorkout: false)
+        let appState = AppState(storeActor: nil, importService: nil)
         let workout = makeWorkout(name: "Primary")
         appState.workouts = [workout]
         appState.selectWorkout(workout)
@@ -20,7 +20,7 @@ final class AppStateComparisonTests: XCTestCase {
     }
 
     func testAvailableForComparisonExcludesSelectedWorkout() {
-        let appState = AppState(loadSampleWorkout: false)
+        let appState = AppState(storeActor: nil, importService: nil)
         let primary = makeWorkout(name: "Primary")
         let comparison = makeWorkout(name: "Comparison")
         appState.workouts = [primary, comparison]
@@ -30,7 +30,7 @@ final class AppStateComparisonTests: XCTestCase {
     }
 
     func testComparisonPairRejectsSameWorkoutEvenIfStateIsMutatedDirectly() {
-        let appState = AppState(loadSampleWorkout: false)
+        let appState = AppState(storeActor: nil, importService: nil)
         let workout = makeWorkout(name: "Primary")
         appState.workouts = [workout]
         appState.selectedWorkout = workout
@@ -40,7 +40,7 @@ final class AppStateComparisonTests: XCTestCase {
     }
 
     func testSetComparisonAcceptsDifferentWorkout() {
-        let appState = AppState(loadSampleWorkout: false)
+        let appState = AppState(storeActor: nil, importService: nil)
         let primary = makeWorkout(name: "Primary")
         let comparison = makeWorkout(name: "Comparison")
         appState.workouts = [primary, comparison]
@@ -55,7 +55,7 @@ final class AppStateComparisonTests: XCTestCase {
     }
 
     func testSetComparisonClampsSelectionToShorterReplacement() {
-        let appState = AppState(loadSampleWorkout: false)
+        let appState = AppState(storeActor: nil, importService: nil)
         let primary = makeWorkout(name: "Primary", distanceMeters: 10_000)
         let longComparison = makeWorkout(name: "Long", distanceMeters: 8_000)
         let shortComparison = makeWorkout(name: "Short", distanceMeters: 3_000)
@@ -71,8 +71,9 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertEqual(appState.comparisonDistanceMetrics.selectedDistanceMeters, 3_000, accuracy: 0.001)
     }
 
-    func testDefaultAppStateLoadsDemoComparisonWorkouts() {
-        let appState = AppState()
+    func testDefaultAppStateLoadsDemoComparisonWorkouts() async {
+        let appState = AppState(storeActor: nil, importService: nil)
+        await appState.start()
 
         XCTAssertGreaterThanOrEqual(appState.workouts.count, 2)
         XCTAssertEqual(appState.selectedWorkout?.displayName, "Morning Park Run")
@@ -82,66 +83,66 @@ final class AppStateComparisonTests: XCTestCase {
 
     // MARK: - Delete Tests
 
-    func testDeleteWorkoutRemovesFromList() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteWorkoutRemovesFromList() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "A")
         let w2 = makeWorkout(name: "B")
         appState.workouts = [w1, w2]
         appState.selectWorkout(w1)
 
-        appState.deleteWorkout(w1)
+        await appState.deleteWorkout(w1)
 
         XCTAssertEqual(appState.workouts.count, 1)
         XCTAssertEqual(appState.workouts.first?.id, w2.id)
     }
 
-    func testDeleteSelectedWorkoutSelectsNext() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteSelectedWorkoutSelectsNext() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "A")
         let w2 = makeWorkout(name: "B")
         appState.workouts = [w1, w2]
         appState.selectWorkout(w1)
 
-        appState.deleteWorkout(w1)
+        await appState.deleteWorkout(w1)
 
         XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
     }
 
-    func testDeleteComparisonWorkoutClearsComparison() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteComparisonWorkoutClearsComparison() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let primary = makeWorkout(name: "Primary")
         let comparison = makeWorkout(name: "Comparison")
         appState.workouts = [primary, comparison]
         appState.selectWorkout(primary)
         appState.setComparison(comparison)
 
-        appState.deleteWorkout(comparison)
+        await appState.deleteWorkout(comparison)
 
         XCTAssertNil(appState.comparisonWorkout)
         XCTAssertFalse(appState.isComparing)
     }
 
-    func testDeleteLastWorkoutLeavesEmptyState() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteLastWorkoutLeavesEmptyState() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "Only")
         appState.workouts = [w1]
         appState.selectWorkout(w1)
 
-        appState.deleteWorkout(w1)
+        await appState.deleteWorkout(w1)
 
         XCTAssertTrue(appState.workouts.isEmpty)
         XCTAssertNil(appState.selectedWorkout)
         XCTAssertTrue(appState.detectedSegments.isEmpty)
     }
 
-    func testDeleteNonSelectedWorkoutDoesNotChangeSelection() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteNonSelectedWorkoutDoesNotChangeSelection() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "A")
         let w2 = makeWorkout(name: "B")
         appState.workouts = [w1, w2]
         appState.selectWorkout(w1)
 
-        appState.deleteWorkout(w2)
+        await appState.deleteWorkout(w2)
 
         XCTAssertEqual(appState.selectedWorkout?.id, w1.id)
         XCTAssertEqual(appState.workouts.count, 1)
@@ -149,15 +150,15 @@ final class AppStateComparisonTests: XCTestCase {
 
     // MARK: - Delete + Comparison Combo
 
-    func testDeleteSelectedWorkoutWhileComparingClearsComparison() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteSelectedWorkoutWhileComparingClearsComparison() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "A")
         let w2 = makeWorkout(name: "B")
         appState.workouts = [w1, w2]
         appState.selectWorkout(w1)
         appState.setComparison(w2)
 
-        appState.deleteWorkout(w1)
+        await appState.deleteWorkout(w1)
 
         XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
         XCTAssertFalse(appState.isComparing)
@@ -165,8 +166,8 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertNil(appState.selectedSegment)
     }
 
-    func testDeleteSelectedWorkoutWhileComparingDoesNotCarryComparisonToReplacementSelection() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteSelectedWorkoutWhileComparingDoesNotCarryComparisonToReplacementSelection() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "A")
         let w2 = makeWorkout(name: "B")
         let w3 = makeWorkout(name: "C")
@@ -175,7 +176,7 @@ final class AppStateComparisonTests: XCTestCase {
         appState.setComparison(w3)
         appState.selectedComparisonDistanceMeters = 500
 
-        appState.deleteWorkout(w1)
+        await appState.deleteWorkout(w1)
 
         XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
         XCTAssertFalse(appState.isComparing)
@@ -184,8 +185,8 @@ final class AppStateComparisonTests: XCTestCase {
         XCTAssertEqual(appState.selectedComparisonDistanceMeters, 0)
     }
 
-    func testDeleteSelectedWorkoutCollisionWithComparison() {
-        let appState = AppState(loadSampleWorkout: false)
+    func testDeleteSelectedWorkoutCollisionWithComparison() async {
+        let appState = AppState(storeActor: nil, importService: nil)
         let w1 = makeWorkout(name: "A")
         let w2 = makeWorkout(name: "B")
         appState.workouts = [w1, w2]
@@ -193,7 +194,7 @@ final class AppStateComparisonTests: XCTestCase {
         appState.setComparison(w2)
 
         // Delete w1 — new selection is w2, which equals comparisonWorkout
-        appState.deleteWorkout(w1)
+        await appState.deleteWorkout(w1)
 
         XCTAssertFalse(appState.isComparing)
         XCTAssertNil(appState.comparisonWorkout)
