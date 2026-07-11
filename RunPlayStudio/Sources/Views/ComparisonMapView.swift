@@ -176,7 +176,7 @@ struct ComparisonMapView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Jump to start (0 km)")
-                .accessibilityLabel("Jump to start (0 km)")
+                .accessibilityLabel("Jump to start")
 
                 Slider(
                     value: $appState.selectedComparisonDistanceMeters,
@@ -192,7 +192,7 @@ struct ComparisonMapView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Jump to end (\(String(format: "%.2f", commonDistance / 1000)) km)")
-                .accessibilityLabel("Jump to end (\(String(format: "%.2f", commonDistance / 1000)) km)")
+                .accessibilityLabel("Jump to end")
                 .disabled(commonDistance <= 0)
             }
 
