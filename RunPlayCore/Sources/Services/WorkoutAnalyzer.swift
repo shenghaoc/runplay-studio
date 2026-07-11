@@ -64,7 +64,7 @@ public struct WorkoutAnalyzer: Sendable {
         guard !points.isEmpty else { return RunSummary() }
 
         let totalDistance = points.last?.distanceFromStartMeters ?? 0
-        let totalTime = points.last?.elapsedSeconds ?? 0
+        let totalTime = activeElapsedSeconds(in: points)
 
         // Average pace
         let avgPace: Double
@@ -120,6 +120,24 @@ public struct WorkoutAnalyzer: Sendable {
             averageHeartRateBPM: avgHR,
             maxHeartRateBPM: maxHR
         )
+    }
+
+    /// Sum elapsed time within continuous route segments, excluding recording gaps.
+    private func activeElapsedSeconds(in points: [RoutePoint]) -> Double {
+        guard points.count >= 2 else { return 0 }
+
+        var total: Double = 0
+        for index in 1..<points.count {
+            let previous = points[index - 1]
+            let current = points[index]
+            guard current.routeSegmentIndex == previous.routeSegmentIndex else { continue }
+
+            let elapsed = current.elapsedSeconds - previous.elapsedSeconds
+            if elapsed.isFinite, elapsed > 0 {
+                total += elapsed
+            }
+        }
+        return total
     }
 
     /// Calculate distance between two route points using platform-neutral haversine.

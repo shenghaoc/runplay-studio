@@ -152,6 +152,9 @@ public class RouteSceneBuilder {
             let from = segmentPoints[i]
             let to = segmentPoints[i + 1]
 
+            // Keep highlights disconnected at route-segment boundaries.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else { continue }
+
             let start = SCNVector3(from.xMeters, from.yMeters + yOffset, from.zMeters)
             let end = SCNVector3(to.xMeters, to.yMeters + yOffset, to.zMeters)
 

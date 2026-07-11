@@ -57,6 +57,22 @@ final class WorkoutAnalyzerTests: XCTestCase {
         XCTAssertLessThanOrEqual(workout.summary.averageHeartRateBPM!, 140)
     }
 
+    func testSummaryExcludesElapsedGapsBetweenRouteSegments() {
+        let start = Date()
+        let points = [
+            RoutePoint(timestamp: start, latitude: 37.7749, longitude: -122.4194, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(300), latitude: 37.7839, longitude: -122.4194, distanceFromStartMeters: 1_000, elapsedSeconds: 300, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(3_600), latitude: 37.9000, longitude: -122.3000, distanceFromStartMeters: 1_000, elapsedSeconds: 3_600, routeSegmentIndex: 1),
+            RoutePoint(timestamp: start.addingTimeInterval(3_900), latitude: 37.9090, longitude: -122.3000, distanceFromStartMeters: 2_000, elapsedSeconds: 3_900, routeSegmentIndex: 1)
+        ]
+        var workout = RunWorkout(routePoints: points)
+
+        WorkoutAnalyzer().analyze(&workout)
+
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 600, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.averagePaceSecondsPerKilometer, 300, accuracy: 0.001)
+    }
+
     // MARK: - Helpers
 
     private func createSamplePoints(count: Int, totalDistance: Double, totalSeconds: Double) -> [RoutePoint] {

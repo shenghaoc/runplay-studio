@@ -36,8 +36,14 @@ struct RoutePoint: Identifiable, Codable {
     var heartRateBPM: Double?
     var cadence: Double?
     var horizontalAccuracy: Double?
+    var routeSegmentIndex: Int
 }
 ```
+
+`routeSegmentIndex` identifies the continuous source track containing the
+point. It is zero-based after normalization. Rendering and analysis do not
+connect points with different indexes. Older persisted snapshots omit this
+field and decode with index `0` for backward compatibility.
 
 ### RunSplit
 
@@ -64,7 +70,7 @@ Aggregated metrics for the entire run.
 ```swift
 struct RunSummary: Codable {
     var totalDistanceMeters: Double
-    var totalElapsedSeconds: Double
+    var totalElapsedSeconds: Double  // active elapsed time; recording gaps excluded
     var averagePaceSecondsPerKilometer: Double
     var averageSpeedMetersPerSecond: Double
     var elevationGainMeters: Double

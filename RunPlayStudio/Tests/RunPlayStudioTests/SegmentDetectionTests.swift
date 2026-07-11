@@ -87,6 +87,21 @@ final class SegmentDetectionTests: XCTestCase {
         }
     }
 
+    func testSegmentDetectionDoesNotTreatRouteGapAsElevationChange() {
+        let start = Date()
+        let workout = RunWorkout(routePoints: [
+            RoutePoint(timestamp: start, latitude: 37.7749, longitude: -122.4194, altitudeMeters: 10, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(300), latitude: 37.7839, longitude: -122.4194, altitudeMeters: 10, distanceFromStartMeters: 1_000, elapsedSeconds: 300, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(3_600), latitude: 37.9000, longitude: -122.3000, altitudeMeters: 110, distanceFromStartMeters: 1_000, elapsedSeconds: 3_600, routeSegmentIndex: 1),
+            RoutePoint(timestamp: start.addingTimeInterval(3_900), latitude: 37.9090, longitude: -122.3000, altitudeMeters: 110, distanceFromStartMeters: 2_000, elapsedSeconds: 3_900, routeSegmentIndex: 1)
+        ])
+
+        let segments = SegmentDetector.detectSegments(from: workout)
+
+        XCTAssertNil(segments.first { $0.type == .biggestClimb })
+        XCTAssertNil(segments.first { $0.type == .biggestDescent })
+    }
+
     // MARK: - Edge Cases
 
     func testShortRouteReturnsNoSegments() {
