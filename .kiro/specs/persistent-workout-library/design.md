@@ -33,12 +33,13 @@ check. The file-backed implementation accepts an injected root URL so tests can
 use isolated temporary directories. It contains no SwiftUI, AppKit, MapKit,
 SceneKit, Charts, or CoreLocation imports.
 
-### WorkoutLibraryLoader
+### WorkoutLibraryStoreActor and WorkoutImportService
 
-This focused Studio service reads the manifest and workout files, skips damaged
-entries, repairs manifest references when possible, and returns a value result
-for `AppState` to publish. Production startup runs this service in a detached
-task so JSON and disk work do not block the main actor.
+`WorkoutLibraryStoreActor` serializes manifest coordination, workout file I/O,
+selection persistence, recovery, and transactional add/delete operations in
+Core. `WorkoutImportService` is a separate actor that runs the synchronous
+GPX/TCX/FIT/JSON parsers away from `@MainActor`. Both services are injectable
+for Studio tests.
 
 ### AppState persistence coordination
 
@@ -47,10 +48,10 @@ task so JSON and disk work do not block the main actor.
 - Import saves the workout first, then updates the manifest, and removes the
   just-written workout if the manifest step fails.
 - Selection updates the manifest and surfaces failures through the shared alert.
-- Deletion writes the updated manifest, deletes the workout file, and restores
-  the original manifest if file deletion fails. Published state changes only
-  after persistence succeeds or after a clearly reported unrecoverable partial
-  failure.
+- Deletion commits the updated manifest before deleting the workout file. A
+  manifest-write failure leaves UI state unchanged; a later file-delete failure
+  leaves the workout logically deleted, updates UI state, and reports the
+  orphaned file.
 - Restored workouts use their stored `segments`; no duplicate segment analysis
   occurs on selection or startup.
 
@@ -59,7 +60,9 @@ task so JSON and disk work do not block the main actor.
 Bundled demos load through `Bundle.module`, independent of the current working
 directory, and never enter the manifest. The existing native sidebar import and
 destructive delete patterns remain in place. Delete confirmation explicitly
-distinguishes the stored snapshot from the original imported file.
+distinguishes the stored snapshot from the original imported file. Native
+progress overlays communicate loading, importing, and deletion while the root
+flow disables overlapping mutations.
 
 ## Recovery policy
 
@@ -68,15 +71,16 @@ distinguishes the stored snapshot from the original imported file.
 - Missing/corrupt workout: skip it, load valid workouts, warn the user, and
   repair manifest references when the repair can be saved.
 - Import manifest failure: delete the unreferenced newly written workout.
-- Delete file failure: restore the pre-delete manifest when possible and keep UI
-  state unchanged; report any rollback failure explicitly.
+- Delete manifest failure: keep the stored workout and published UI unchanged.
+- Delete file failure after manifest commit: keep the workout logically deleted
+  and report the orphaned stored file.
 
 ## Verification strategy
 
 - Core temporary-directory tests validate manifests, snapshots, atomic writes,
   corruption handling, schema versions, and complete model round trips.
-- Studio tests exercise the real import entry point, relaunch restoration,
-  background loading, selection failures, delete rollback, demos, and comparison
-  cleanup.
+- Studio tests exercise the async import entry point, relaunch restoration,
+  background loading, selection failures, transactional deletion, demos,
+  idempotent imports, cancellation, and comparison cleanup.
 - SwiftPM, Xcode, Linux CI, packaged-app launch, and a manual desktop
   import/relaunch/delete/relaunch flow provide final integration evidence.

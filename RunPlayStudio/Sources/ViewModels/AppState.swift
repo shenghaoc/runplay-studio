@@ -156,10 +156,7 @@ class AppState: ObservableObject {
             } else {
                 workouts.append(workout)
             }
-            selectedWorkout = workout
-            replayController.load(workout)
-            detectedSegments = workout.segments
-            selectedSegment = nil
+            selectWorkout(workout, persistSelection: false)
         } catch is CancellationError {
             // Cancelled — do not add to UI.
         } catch {
@@ -261,14 +258,14 @@ class AppState: ObservableObject {
                 // Always use the UI-level selection snapshot. The actor's
                 // manifest may disagree if selection persistence was pending
                 // or failed, but the UI state is authoritative for display.
-                workouts = remainingWorkouts
+                workouts.removeAll { $0.id == workout.id }
                 applyDeletionSelection(
                     deletingSelectedWorkout: deletingSelectedWorkout,
                     deletingComparisonWorkout: deletingComparisonWorkout
                 )
             } catch let storeError as WorkoutLibraryStoreError {
                 // Manifest committed but file is orphaned. Remove from UI and warn.
-                workouts = remainingWorkouts
+                workouts.removeAll { $0.id == workout.id }
                 applyDeletionSelection(
                     deletingSelectedWorkout: deletingSelectedWorkout,
                     deletingComparisonWorkout: deletingComparisonWorkout

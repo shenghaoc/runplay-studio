@@ -39,8 +39,10 @@ without silently erasing the rest of my library.
    during recovery.
 5. A corrupt or missing individual workout SHALL be skipped while remaining
    valid workouts load, and the user SHALL receive a concise warning.
-6. A failed persisted deletion SHALL leave published UI state unchanged when
-   the manifest can be rolled back.
+6. A manifest-write failure during deletion SHALL leave published UI state
+   unchanged. If the manifest commits but file deletion fails, the workout
+   SHALL remain logically deleted and the user SHALL receive an orphaned-file
+   warning.
 
 ### Requirement 3: Startup, selection, and demos
 
@@ -58,6 +60,8 @@ restored consistently while still seeing demos on a true first launch.
 4. Bundled demo lookup SHALL use the SwiftPM resource bundle and SHALL NOT
    depend on the process working directory.
 5. Selection persistence failures SHALL be reported instead of swallowed.
+6. Selecting bundled demos when no manifest exists SHALL remain an intentional
+   persistence no-op without showing an error.
 
 ### Requirement 4: Import and deletion user flow
 
@@ -74,6 +78,8 @@ be truthful, persistent, and clear about what happens to my original files.
 4. The destructive confirmation SHALL state that only RunPlay Studio's stored
    copy is removed and the original imported file remains unchanged.
 5. Deleting a workout SHALL remain deleted after relaunch.
+6. Import, deletion, and startup SHALL expose native progress feedback and
+   overlapping library mutations SHALL be disabled.
 
 ### Requirement 5: Local-only documentation and verification
 
