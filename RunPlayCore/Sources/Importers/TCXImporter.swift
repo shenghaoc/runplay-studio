@@ -163,7 +163,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     /// If the series starts at a nonzero value, subtract that offset from all entries.
     /// Returns `nil` for entries where the input was `nil`.
     private func rebaseDistance(_ distances: [Double?]) -> [Double?] {
-        guard let firstNonNil = distances.first(where: { $0 != nil }) ?? nil else {
+        guard let firstNonNil = distances.compactMap({ $0 }).first else {
             return distances
         }
         let offset = firstNonNil

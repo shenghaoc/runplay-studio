@@ -209,7 +209,8 @@ public enum RoutePointInterpolator {
                     if let currentAltitude = sample.altitudeMeters,
                        let previousAltitude = previous.altitudeMeters,
                        currentAltitude.isFinite,
-                       previousAltitude.isFinite {
+                       previousAltitude.isFinite,
+                       sample.routeSegmentIndex == previous.routeSegmentIndex {
                         gain += max(0, currentAltitude - previousAltitude)
                         sawAltitude = true
                     }
@@ -222,7 +223,8 @@ public enum RoutePointInterpolator {
         if let currentAltitude = end.altitudeMeters,
            let previousAltitude = previous.altitudeMeters,
            currentAltitude.isFinite,
-           previousAltitude.isFinite {
+           previousAltitude.isFinite,
+           end.routeSegmentIndex == previous.routeSegmentIndex {
             gain += max(0, currentAltitude - previousAltitude)
             sawAltitude = true
         }

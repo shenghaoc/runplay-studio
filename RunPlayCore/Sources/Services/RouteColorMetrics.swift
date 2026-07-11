@@ -20,6 +20,7 @@ public struct RouteColorMetrics: Sendable {
         guard points.count >= 2 else { return [] }
 
         var rawPace: [Double] = []
+        var segmentBoundaries: [Int] = []
 
         for i in 0..<(points.count - 1) {
             let from = points[i]
@@ -28,6 +29,7 @@ public struct RouteColorMetrics: Sendable {
             // Skip cross-segment-boundary computation.
             guard from.routeSegmentIndex == to.routeSegmentIndex else {
                 rawPace.append(.nan)
+                segmentBoundaries.append(i)
                 continue
             }
 
@@ -49,7 +51,12 @@ public struct RouteColorMetrics: Sendable {
         }
 
         // Smooth pace to reduce noise (moving average with window of 3-5)
-        let smoothed = smoothValues(rawPace, windowSize: 5)
+        var smoothed = smoothValues(rawPace, windowSize: 5)
+
+        // Re-apply NaN at segment boundaries so cross-segment data doesn't bleed.
+        for idx in segmentBoundaries {
+            smoothed[idx] = .nan
+        }
 
         // Replace remaining NaN with median
         let validPace = smoothed.filter { !$0.isNaN && $0.isFinite }
@@ -88,6 +95,7 @@ public struct RouteColorMetrics: Sendable {
         guard points.count >= 2 else { return [] }
 
         var rawHR: [Double] = []
+        var segmentBoundaries: [Int] = []
 
         for i in 0..<(points.count - 1) {
             let from = points[i]
@@ -96,6 +104,7 @@ public struct RouteColorMetrics: Sendable {
             // Skip cross-segment-boundary computation.
             guard from.routeSegmentIndex == to.routeSegmentIndex else {
                 rawHR.append(.nan)
+                segmentBoundaries.append(i)
                 continue
             }
 
@@ -124,7 +133,12 @@ public struct RouteColorMetrics: Sendable {
         }
 
         // Smooth HR to reduce noise
-        let smoothed = smoothValues(rawHR, windowSize: 5)
+        var smoothed = smoothValues(rawHR, windowSize: 5)
+
+        // Re-apply NaN at segment boundaries so cross-segment data doesn't bleed.
+        for idx in segmentBoundaries {
+            smoothed[idx] = .nan
+        }
 
         // Replace remaining NaN with median (only if we have valid HR data)
         let validHR = smoothed.filter { !$0.isNaN && $0.isFinite }

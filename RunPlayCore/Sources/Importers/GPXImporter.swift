@@ -9,7 +9,6 @@ import FoundationXML
 /// - `<wpt>` (waypoint) elements are ignored.
 /// - `<rte>` / `<rtept>` (route) elements are not supported.
 /// - Each `<trkseg>` starts a new `routeSegmentIndex`.
-/// - Each `<trk>` also starts a new segment index.
 public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
     public init() {}
     public var supportedExtensions: [String] { ["gpx"] }
@@ -125,23 +124,18 @@ private struct RawGPXSegment {
     var points: [RawGPXPoint]
 }
 
-/// Namespace-aware GPX XML parser.
+/// GPX XML parser.
 ///
 /// Parses the GPX hierarchy: `gpx > trk > trkseg > trkpt`.
 /// Uses `shouldProcessNamespaces = false` and strips prefixes from element
-/// names so both `<hr>` and `<gpxtpx:hr>` match. The namespace URI of the
-/// enclosing `<extensions>` element is inspected to decide whether child
-/// elements should be treated as heart rate / cadence extensions.
+/// names so both `<hr>` and `<gpxtpx:hr>` match by local name.
 private class GPXXMLParser: NSObject, XMLParserDelegate {
     private let data: Data
     private var segments: [RawGPXSegment] = []
 
     // Hierarchy tracking
-    private var trackDepth = 0
     private var inTrackSegment = false
     private var inTrackpoint = false
-    private var inExtensions = false
-    private var extensionNamespaceURI: String?
 
     // Current trackpoint state
     private var currentLat: Double?
@@ -156,12 +150,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
 
     // Character accumulation
     private var currentText: String = ""
-
-    // Namespace-aware extension detection
-    private static let trackPointExtensionNamespaces: Set<String> = [
-        "http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
-        "http://www.garmin.com/xmlschemas/TrackPointExtension/v2",
-    ]
 
     // Error tracking
     private var parseError: String?
@@ -210,8 +198,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         let name = localName(elementName)
 
         switch name {
-        case "trk":
-            trackDepth += 1
         case "trkseg":
             inTrackSegment = true
             currentSegmentPoints = []
@@ -223,12 +209,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
             currentTime = nil
             currentHR = nil
             currentCad = nil
-        case "extensions":
-            if inTrackpoint {
-                inExtensions = true
-                // Capture namespace URI if available from the attributes.
-                extensionNamespaceURI = namespaceURI
-            }
         default:
             break
         }
@@ -275,9 +255,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         }
 
         switch name {
-        case "extensions":
-            inExtensions = false
-            extensionNamespaceURI = nil
         case "trkseg":
             // Finalize segment — only if it contained trackpoints.
             if inTrackSegment {
@@ -285,8 +262,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
                 currentSegmentPoints = []
                 inTrackSegment = false
             }
-        case "trk":
-            trackDepth = max(0, trackDepth - 1)
         default:
             break
         }

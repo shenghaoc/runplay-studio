@@ -256,24 +256,30 @@ public class RouteSceneBuilder {
 
         // Use a window of points to smooth direction, staying within the same segment.
         var lookAhead = 0
-        for j in 1...min(3, scenePoints.count - index - 1) {
-            if scenePoints[index + j].routeSegmentIndex == currentSegment {
-                lookAhead = j
-            } else {
-                break
+        let maxLookAhead = min(3, scenePoints.count - index - 1)
+        if maxLookAhead >= 1 {
+            for j in 1...maxLookAhead {
+                if scenePoints[index + j].routeSegmentIndex == currentSegment {
+                    lookAhead = j
+                } else {
+                    break
+                }
             }
         }
 
         if lookAhead == 0 {
             // At the end of a segment, look backward within the same segment.
-            for j in 1...min(3, index) {
-                if scenePoints[index - j].routeSegmentIndex == currentSegment {
-                    let prev = scenePoints[index - j]
-                    let curr = scenePoints[index]
-                    let dx = Float(curr.xMeters - prev.xMeters)
-                    let dz = Float(curr.zMeters - prev.zMeters)
-                    let len = sqrt(dx * dx + dz * dz)
-                    return len > 0 ? simd_float3(dx / len, 0, dz / len) : simd_float3(0, 0, 1)
+            let maxLookBack = min(3, index)
+            if maxLookBack >= 1 {
+                for j in 1...maxLookBack {
+                    if scenePoints[index - j].routeSegmentIndex == currentSegment {
+                        let prev = scenePoints[index - j]
+                        let curr = scenePoints[index]
+                        let dx = Float(curr.xMeters - prev.xMeters)
+                        let dz = Float(curr.zMeters - prev.zMeters)
+                        let len = sqrt(dx * dx + dz * dz)
+                        return len > 0 ? simd_float3(dx / len, 0, dz / len) : simd_float3(0, 0, 1)
+                    }
                 }
             }
             return simd_float3(0, 0, 1)

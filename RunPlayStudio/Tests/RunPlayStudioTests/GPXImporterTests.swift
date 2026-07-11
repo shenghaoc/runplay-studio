@@ -504,6 +504,31 @@ final class GPXImporterTests: XCTestCase {
         XCTAssertEqual(point.routeSegmentIndex, 0, "Missing routeSegmentIndex should default to 0")
     }
 
+    func testRoutePointEncodeRoundTrip() throws {
+        // Encode a RoutePoint with non-zero routeSegmentIndex, then decode it back.
+        let original = RoutePoint(
+            timestamp: Date(timeIntervalSinceReferenceDate: 1000),
+            latitude: 37.0,
+            longitude: -122.0,
+            altitudeMeters: 50,
+            distanceFromStartMeters: 100,
+            elapsedSeconds: 60,
+            heartRateBPM: 140,
+            cadence: 170,
+            routeSegmentIndex: 3
+        )
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(RoutePoint.self, from: encoded)
+
+        XCTAssertEqual(decoded.routeSegmentIndex, 3, "routeSegmentIndex must survive encode/decode")
+        XCTAssertEqual(decoded.latitude, 37.0)
+        XCTAssertEqual(decoded.longitude, -122.0)
+        XCTAssertEqual(decoded.altitudeMeters, 50)
+        XCTAssertEqual(decoded.heartRateBPM, 140)
+        XCTAssertEqual(decoded.cadence, 170)
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {
