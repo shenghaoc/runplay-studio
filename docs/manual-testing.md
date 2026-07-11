@@ -3,10 +3,42 @@
 Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
-Current stabilization note: automated validation passed with `swift test`
-(451 tests) and `swift test --filter RunPlayCoreTests` (114 tests). Specific
-manual GUI passes are documented per checklist below; not all GUI behaviors
-have been manually verified.
+Current stabilization note: the 2026-07-11 persistence final gate passed
+`swift test`, `swift test --filter RunPlayCoreTests` (175 tests), and the
+direct Xcode package scheme test. Specific manual GUI passes are documented per
+checklist below; not all GUI behaviors have been manually verified.
+
+## Persistent Workout Library Checklist
+
+Use a synthetic fixture and confirm the original fixture checksum before and
+after the flow.
+
+- [x] Launch with an empty user library and confirm bundled demos appear.
+- [x] Import a synthetic TCX workout through the sidebar Import control.
+- [x] Quit and relaunch; confirm the imported workout returns selected.
+- [x] Confirm bundled demos are not inserted alongside the persisted library.
+- [x] Confirm Overview, Charts, replay, and comparison remain reachable.
+- [x] Delete the imported workout through the destructive confirmation.
+- [x] Quit and relaunch; confirm the deleted workout remains deleted and demos
+  return as the empty-library experience.
+- [x] Confirm the original TCX fixture checksum is unchanged.
+- [x] Capture the empty, imported/restored, and post-delete states for the final
+  HIG/UX audit.
+
+Latest persistence notes (2026-07-11):
+
+- The packaged SwiftPM app launched with the two bundled demos when the user
+  manifest was empty.
+- `sample-run.tcx` imported through the native file picker, survived relaunch as
+  the sole selected workout, and remained usable in Overview, Charts, and replay.
+- The native delete confirmation stated that only RunPlay Studio's stored copy
+  would be deleted. After deletion and relaunch, the imported workout stayed
+  deleted and the bundled demos returned.
+- The bundled comparison flow remained reachable after the persistence cycle.
+- The synthetic fixture SHA-256 remained
+  `a7b2f86e58832d3316fd2aa0cf89c648fbf653267f7f45f808b46a101fe06dba`.
+- Screenshots are retained outside the repository in the final-gate audit
+  artifact directory `pr23-persistence-audit`.
 ## Privacy Checklist Before Commit
 
 - [x] Keep private workout files untracked or ignored.

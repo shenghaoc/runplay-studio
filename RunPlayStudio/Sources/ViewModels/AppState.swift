@@ -14,6 +14,7 @@ class AppState: ObservableObject {
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
+    @Published private(set) var isLoadingLibrary = false
 
     // Comparison state
     @Published var comparisonWorkout: RunWorkout?
@@ -24,9 +25,85 @@ class AppState: ObservableObject {
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
 
-    init(loadSampleWorkout: Bool = true) {
+    /// The store used for persistence. Nil only when `loadSampleWorkout` is false
+    /// (used in tests that construct AppState without a store).
+    private let store: WorkoutLibraryStoring?
+
+    private struct SendableStore: @unchecked Sendable {
+        let value: WorkoutLibraryStoring
+    }
+
+    /// Create AppState with an optional store injection.
+    ///
+    /// - Parameters:
+    ///   - store: The persistence store to use. Pass `nil` to skip persistence (tests only).
+    ///   - loadSampleWorkout: Whether to load demos if no persisted workouts exist.
+    init(
+        store: WorkoutLibraryStoring? = nil,
+        loadSampleWorkout: Bool = true,
+        loadStoreAsynchronously: Bool = false
+    ) {
+        self.store = store
+
         if loadSampleWorkout {
-            self.loadSampleWorkouts()
+            if let store {
+                if loadStoreAsynchronously {
+                    isLoadingLibrary = true
+                    loadFromStoreInBackground(store)
+                } else {
+                    applyLibraryLoadResult(WorkoutLibraryLoader.load(from: store))
+                }
+            } else {
+                // No store provided: fall back to legacy demo-only behavior.
+                loadSampleWorkouts()
+            }
+        }
+    }
+
+    /// Convenience init for production: creates a store rooted at the given directory.
+    convenience init(libraryRoot: URL, loadSampleWorkout: Bool = true) {
+        let store = FileWorkoutLibraryStore(rootURL: libraryRoot)
+        self.init(
+            store: store,
+            loadSampleWorkout: loadSampleWorkout,
+            loadStoreAsynchronously: true
+        )
+    }
+
+    // MARK: - Startup
+
+    /// Load and decode persisted workouts away from the main actor, then publish
+    /// the resulting state on the main actor.
+    private func loadFromStoreInBackground(_ store: WorkoutLibraryStoring) {
+        let sendableStore = SendableStore(value: store)
+        Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                WorkoutLibraryLoader.load(from: sendableStore.value)
+            }.value
+            guard let self else { return }
+            applyLibraryLoadResult(result)
+            isLoadingLibrary = false
+        }
+    }
+
+    private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
+        switch result {
+        case .demos(let loadErrorMessage):
+            loadSampleWorkouts()
+            if let loadErrorMessage {
+                errorMessage = loadErrorMessage
+                showingError = true
+            }
+        case .workouts(let loaded, let selectedWorkoutID, let warning):
+            workouts = loaded
+            let selected = selectedWorkoutID.flatMap { id in
+                loaded.first(where: { $0.id == id })
+            } ?? loaded.first
+            selectWorkout(selected, persistSelection: false)
+            if let warning {
+                errorMessage = warning
+                showingError = true
+            }
         }
     }
 
@@ -37,22 +114,70 @@ class AppState: ObservableObject {
         loadBundledWorkout(resource: "comparison_park_run", extension: "json", subdirectory: "fixtures")
 
         if workouts.count > initialCount {
-            selectWorkout(workouts[initialCount])
+            selectWorkout(workouts[initialCount], persistSelection: false)
+        } else if errorMessage == nil {
+            errorMessage = "Bundled demo workouts are unavailable. You can still import a GPX, TCX, FIT, or JSON file."
+            showingError = true
         }
     }
+
+    // MARK: - Import
 
     /// Import a workout from a file URL.
     func loadWorkout(from url: URL) {
         do {
             let workout = try WorkoutImporterFactory.importWorkout(from: url)
+
+            // Persist first. If persistence fails, don't add to in-memory state.
+            if let store {
+                do {
+                    try persistImportedWorkout(workout, store: store)
+                } catch {
+                    errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
+                    showingError = true
+                    return
+                }
+            }
+
             workouts.append(workout)
             selectedWorkout = workout
             replayController.load(workout)
-            detectedSegments = SegmentDetector.detectSegments(from: workout)
+            // Use persisted segments from the analyzed workout.
+            detectedSegments = workout.segments
             selectedSegment = nil
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
+        }
+    }
+
+    private func persistImportedWorkout(_ workout: RunWorkout, store: WorkoutLibraryStoring) throws {
+        try store.saveWorkout(workout)
+
+        do {
+            var manifest: WorkoutLibraryManifest
+            do {
+                manifest = try store.loadManifest()
+            } catch let error as WorkoutLibraryError {
+                if case .manifestMissing = error {
+                    manifest = WorkoutLibraryManifest()
+                } else {
+                    throw error
+                }
+            }
+            manifest.workoutIDs.append(workout.id)
+            manifest.selectedWorkoutID = workout.id
+            try store.saveManifest(manifest)
+        } catch {
+            do {
+                try store.deleteWorkout(id: workout.id)
+            } catch let cleanupError {
+                throw WorkoutLibraryError.writeFailed(
+                    "Could not update the manifest (\(error.localizedDescription)); "
+                    + "cleanup of the saved workout also failed (\(cleanupError.localizedDescription))"
+                )
+            }
+            throw error
         }
     }
 
@@ -69,25 +194,34 @@ class AppState: ObservableObject {
     }
 
     private func loadBundledWorkout(resource: String, extension fileExtension: String, subdirectory: String? = nil) {
-        // Primary: Bundle.main (works when launched from Xcode or built .app)
-        if let url = Bundle.main.url(forResource: resource, withExtension: fileExtension, subdirectory: subdirectory) {
-            loadWorkout(from: url)
-            return
-        }
-
-        // Development fallback: relative path from repo root.
-        // Only matches when the current working directory is the repository root.
-        let relativePath = [subdirectory, "\(resource).\(fileExtension)"]
+        let resourceSubdirectory = ["Resources", subdirectory]
             .compactMap { $0 }
             .joined(separator: "/")
-        let devURL = URL(filePath: "RunPlayStudio/Resources/\(relativePath)")
-        if FileManager.default.fileExists(atPath: devURL.path) {
-            loadWorkout(from: devURL)
+        if let url = Bundle.module.url(
+            forResource: resource,
+            withExtension: fileExtension,
+            subdirectory: resourceSubdirectory
+        ) {
+            loadWorkoutFromBundled(url: url)
         }
     }
 
+    /// Load a bundled workout WITHOUT persisting it (bundled demos are not user library entries).
+    private func loadWorkoutFromBundled(url: URL) {
+        do {
+            let workout = try WorkoutImporterFactory.importWorkout(from: url)
+            workouts.append(workout)
+            // Use persisted segments from the analyzed workout.
+            detectedSegments = workout.segments
+        } catch {
+            // Silently skip bundled workouts that fail to load.
+        }
+    }
+
+    // MARK: - Selection
+
     /// Select a workout for viewing.
-    func selectWorkout(_ workout: RunWorkout?) {
+    func selectWorkout(_ workout: RunWorkout?, persistSelection: Bool = true) {
         selectedWorkout = workout
         selectedSegment = nil
         if let workout, comparisonWorkout?.id == workout.id {
@@ -95,26 +229,98 @@ class AppState: ObservableObject {
         }
         if let workout = workout {
             replayController.load(workout)
-            detectedSegments = SegmentDetector.detectSegments(from: workout)
+            // Use persisted segments instead of recomputing.
+            detectedSegments = workout.segments
         } else {
             detectedSegments = []
         }
+
+        if persistSelection, let store {
+            persistSelectedWorkout(workout?.id, store: store)
+        }
     }
+
+    /// Persist the selected workout ID to the manifest.
+    private func persistSelectedWorkout(_ id: UUID?, store: WorkoutLibraryStoring) {
+        do {
+            var manifest = try store.loadManifest()
+            manifest.selectedWorkoutID = id
+            try store.saveManifest(manifest)
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                return // Bundled demos have no persisted selection.
+            }
+            errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+            showingError = true
+        } catch {
+            errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+
+    // MARK: - Deletion
 
     /// Delete a workout.
     func deleteWorkout(_ workout: RunWorkout) {
         let deletingSelectedWorkout = selectedWorkout?.id == workout.id
         let deletingComparisonWorkout = comparisonWorkout?.id == workout.id
+        let remainingWorkouts = workouts.filter { $0.id != workout.id }
 
-        workouts.removeAll { $0.id == workout.id }
+        // Persist the logical deletion before publishing it to the UI. If the
+        // manifest cannot be updated, leave both disk and memory unchanged.
+        if let store, store.workoutExists(id: workout.id) {
+            do {
+                let originalManifest = try store.loadManifest()
+                var updatedManifest = originalManifest
+                updatedManifest.workoutIDs.removeAll { $0 == workout.id }
+                if deletingSelectedWorkout {
+                    updatedManifest.selectedWorkoutID = remainingWorkouts.first?.id
+                }
+                try store.saveManifest(updatedManifest)
 
+                do {
+                    try store.deleteWorkout(id: workout.id)
+                } catch {
+                    do {
+                        try store.saveManifest(originalManifest)
+                    } catch let rollbackError {
+                        errorMessage = "Workout was removed from the library, but its file and the manifest rollback both failed: \(error.localizedDescription); \(rollbackError.localizedDescription)"
+                        showingError = true
+                        workouts = remainingWorkouts
+                        applyDeletionSelection(
+                            deletingSelectedWorkout: deletingSelectedWorkout,
+                            deletingComparisonWorkout: deletingComparisonWorkout
+                        )
+                        return
+                    }
+                    throw error
+                }
+            } catch {
+                errorMessage = "Could not delete workout; no changes were made: \(error.localizedDescription)"
+                showingError = true
+                return
+            }
+        }
+
+        workouts = remainingWorkouts
+
+        applyDeletionSelection(
+            deletingSelectedWorkout: deletingSelectedWorkout,
+            deletingComparisonWorkout: deletingComparisonWorkout
+        )
+    }
+
+    private func applyDeletionSelection(
+        deletingSelectedWorkout: Bool,
+        deletingComparisonWorkout: Bool
+    ) {
         if deletingSelectedWorkout {
             clearComparison()
             selectedWorkout = workouts.first
             selectedSegment = nil
             if let first = workouts.first {
                 replayController.load(first)
-                detectedSegments = SegmentDetector.detectSegments(from: first)
+                detectedSegments = first.segments
             } else {
                 detectedSegments = []
             }

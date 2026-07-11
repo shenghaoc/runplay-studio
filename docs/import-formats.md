@@ -23,7 +23,7 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
   cumulative distance monotonic before analysis.
 - Malformed or unsupported files should fail with an import error instead of
   partial cloud recovery or background retry.
-- Imported workouts are held in app memory for the current session.
+- Imported workouts are stored locally in the app's `Application Support/RunPlayStudio/` directory and persist across app relaunches. The original imported file is not modified.
 
 ## Fixtures
 

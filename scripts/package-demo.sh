@@ -25,10 +25,12 @@ OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 
 APP_NAME="RunPlayStudio"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
-BINARY="$REPO_ROOT/.build/release/$APP_NAME"
 
 echo "==> Building release binary..."
 swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors
+BIN_DIR="$(swift build -c release --package-path "$REPO_ROOT" --show-bin-path)"
+BINARY="$BIN_DIR/$APP_NAME"
+RESOURCE_BUNDLE="$BIN_DIR/RunPlayStudio_RunPlayStudio.bundle"
 
 if [[ ! -f "$BINARY" ]]; then
     echo "ERROR: Release binary not found at $BINARY" >&2
@@ -41,14 +43,13 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-# Copy sample data and fixtures into the app bundle
-RESOURCES_DIR="$REPO_ROOT/RunPlayStudio/Resources"
-if [[ ! -d "$RESOURCES_DIR" ]]; then
-    echo "ERROR: Resources directory not found at $RESOURCES_DIR" >&2
+# Copy the SwiftPM resource bundle where Bundle.module expects it.
+if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
+    echo "ERROR: SwiftPM resource bundle not found at $RESOURCE_BUNDLE" >&2
     echo "       The app bundle will be incomplete without demo data." >&2
     exit 1
 fi
-cp -R "$RESOURCES_DIR/." "$APP_BUNDLE/Contents/Resources/"
+cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
 
 # Write Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST

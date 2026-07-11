@@ -20,11 +20,12 @@ pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 swift build
 BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+RESOURCE_BUNDLE="$(swift build --show-bin-path)/RunPlayStudio_RunPlayStudio.bundle"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
-cp -R "$ROOT_DIR/RunPlayStudio/Resources/." "$APP_RESOURCES/"
+cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/"
 chmod +x "$APP_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST
