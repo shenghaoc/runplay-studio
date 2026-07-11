@@ -91,6 +91,7 @@ struct ExportView: View {
         }
     }
 
+    @MainActor
     private func exportPNG() {
         do {
             let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
