@@ -40,13 +40,6 @@ public struct RouteMapCoordinate: Hashable {
 public enum RouteMapLineStyle: Hashable {
     case primary
     case comparison
-
-    public var color: Color {
-        switch self {
-        case .primary: return .blue
-        case .comparison: return .orange
-        }
-    }
 }
 
 /// A route line for map display.
@@ -69,16 +62,6 @@ public enum RouteMapMarkerStyle: Hashable {
     case current
     case primaryCurrent
     case comparisonCurrent
-
-    public var color: Color {
-        switch self {
-        case .start: return .green
-        case .finish: return .red
-        case .current: return .yellow
-        case .primaryCurrent: return .blue
-        case .comparisonCurrent: return .orange
-        }
-    }
 
     public var glyph: String {
         switch self {
@@ -223,32 +206,5 @@ public enum RouteMapContent {
         let heightMeters = rect.height * metersPerMapPoint
         let distance = max(max(widthMeters, heightMeters) * 2.25, 900)
         return RouteMapCameraPlan(center: center, distance: distance)
-    }
-}
-
-// MARK: - SwiftUI Color Bridge
-
-import SwiftUI
-
-extension RouteMapLineStyle {
-    /// SwiftUI Color for this line style.
-    public var swiftUIColor: SwiftUI.Color {
-        switch self {
-        case .primary: return .blue
-        case .comparison: return .orange
-        }
-    }
-}
-
-extension RouteMapMarkerStyle {
-    /// SwiftUI Color for this marker style.
-    public var swiftUIColor: SwiftUI.Color {
-        switch self {
-        case .start: return .green
-        case .finish: return .red
-        case .current: return .yellow
-        case .primaryCurrent: return .blue
-        case .comparisonCurrent: return .orange
-        }
     }
 }

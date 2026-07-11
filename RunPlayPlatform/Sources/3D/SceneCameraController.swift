@@ -10,6 +10,7 @@ import SceneKit
 /// - `cameraAngleX`: elevation angle in degrees. Positive = camera above target (looking down).
 ///   Range: 1° (nearly horizontal) to 89° (nearly straight down).
 /// - `cameraAngleY`: azimuth angle in degrees. 0° = front, 90° = right side, etc.
+@MainActor
 public class SceneCameraController: ObservableObject {
 
     // MARK: - Published State

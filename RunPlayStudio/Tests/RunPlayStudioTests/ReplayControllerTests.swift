@@ -27,6 +27,17 @@ final class ReplayControllerTests: XCTestCase {
         XCTAssertGreaterThan(controller.state.totalDistance, 0)
     }
 
+    func testLoadStopsActivePlaybackTimer() {
+        controller.play()
+        XCTAssertTrue(controller.hasActiveTimer)
+
+        controller.load(createSampleWorkout())
+
+        XCTAssertFalse(controller.hasActiveTimer)
+        XCTAssertFalse(controller.isPlaying)
+        XCTAssertEqual(controller.state.playbackState, .stopped)
+    }
+
     func testSeekToTime() {
         let halfTime = controller.state.totalDuration / 2
         controller.seekToTime(halfTime)

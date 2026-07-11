@@ -32,6 +32,7 @@ class ReplayController: ObservableObject {
 
     /// Load a workout for replay.
     func load(_ workout: RunWorkout) {
+        stopTimer()
         engine.load(workout)
         syncFromEngine()
     }
@@ -120,6 +121,10 @@ class ReplayController: ObservableObject {
     }
 
     // MARK: - Internal (testable)
+
+    var hasActiveTimer: Bool {
+        timer != nil
+    }
 
     /// Advance playback by a custom time interval.
     ///

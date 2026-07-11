@@ -4,7 +4,7 @@ import Foundation
 /// Pure state machine for workout replay playback.
 ///
 /// Platform-neutral — no Combine/Timer dependencies.
-/// Timer-driven playback is handled by `ReplayController` (RunPlayPlatform).
+/// Timer-driven playback is handled by `ReplayController` (RunPlayStudio).
 public class PlaybackEngine {
 
     // MARK: - State

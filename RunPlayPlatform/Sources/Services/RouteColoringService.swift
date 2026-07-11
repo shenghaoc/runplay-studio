@@ -143,6 +143,7 @@ extension RouteColoringService {
 
     /// Map elevation fraction to color: low = green, high = brown
     private func elevationToColor(fraction: Double) -> NSColor {
+        guard fraction.isFinite else { return .systemGreen }
         let t = max(0, min(1, fraction))
         // Green (0.33) to brown/orange (0.08)
         let hue = 0.33 - 0.25 * t

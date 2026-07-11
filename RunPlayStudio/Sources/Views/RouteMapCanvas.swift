@@ -3,6 +3,27 @@ import RunPlayCore
 import RunPlayPlatform
 import SwiftUI
 
+private extension RouteMapLineStyle {
+    var swiftUIColor: Color {
+        switch self {
+        case .primary: return .blue
+        case .comparison: return .orange
+        }
+    }
+}
+
+private extension RouteMapMarkerStyle {
+    var swiftUIColor: Color {
+        switch self {
+        case .start: return .green
+        case .finish: return .red
+        case .current: return .yellow
+        case .primaryCurrent: return .blue
+        case .comparisonCurrent: return .orange
+        }
+    }
+}
+
 /// One SwiftUI Map surface whose 2D/3D control switches the same route between
 /// flat 2D and realistic-elevation 3D presentations.
 struct RouteMapCanvas: View {

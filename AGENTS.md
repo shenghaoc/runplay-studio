@@ -24,7 +24,7 @@ RunPlayCore/          # Platform-neutral library (no UI frameworks)
 
 RunPlayPlatform/      # macOS platform layer (no SwiftUI)
   Sources/
-    Services/         # Route coloring (NSColor), PNG renderer, map data types
+    Services/         # Route coloring (NSColor), map data types
     3D/               # SceneKit builders and camera controller
   Tests/
     RunPlayPlatformTests/ # macOS platform tests
@@ -33,7 +33,7 @@ RunPlayStudio/        # macOS GUI layer (SwiftUI, Charts)
   Sources/
     Views/            # SwiftUI views
     ViewModels/       # AppState, ReplayController (Combine/Timer wrapper)
-    Services/         # GUI-specific services (PNG export with views)
+    Services/         # GUI-specific services (SwiftUI PNG rendering/export)
   Tests/
     RunPlayStudioTests/ # macOS GUI tests
   Resources/          # Sample data and fixtures
@@ -100,14 +100,13 @@ Dependency flow: `RunPlayStudio → RunPlayPlatform → RunPlayCore`
 - SceneKit 3D builders (`RouteSceneBuilder`, `ComparisonSceneBuilder`, `SceneCameraController`)
 - AppKit color mapping (`RouteColoringService`)
 - MapKit data types (`RouteMapData`)
-- Generic PNG rendering (`PNGExportRenderer`)
 - **No** SwiftUI views
 
 ### RunPlayStudio — macOS GUI Layer
 
 - SwiftUI views and `@MainActor` view models
 - `ReplayController` wraps `PlaybackEngine` with Combine/Timer
-- PNG export with concrete SwiftUI views (`ExportServicePNGExtension`)
+- PNG export with `ImageRenderer` and concrete SwiftUI views (`PNGExportRenderer`, `ExportServicePNGExtension`)
 
 ### File Import
 

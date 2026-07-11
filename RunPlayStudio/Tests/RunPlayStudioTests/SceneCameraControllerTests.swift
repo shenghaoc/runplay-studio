@@ -5,6 +5,7 @@ import XCTest
 
 @testable import RunPlayStudio
 
+@MainActor
 final class SceneCameraControllerTests: XCTestCase {
 
     func testSetupCameraInstallsActivePointOfView() {

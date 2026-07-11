@@ -10,7 +10,7 @@ jobs:
   # RunPlayCore: Pure Swift domain logic — test on Linux for cross-platform validation
   core-linux:
     name: RunPlayCore (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
       - uses: swift-actions/setup-swift@v2
@@ -24,12 +24,11 @@ jobs:
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio)
   macos:
     name: macOS (Full Stack)
-    runs-on: macos-26
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '5.9'
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
       - name: Build
         run: swift build
       - name: Test
