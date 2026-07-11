@@ -248,14 +248,6 @@ public struct FITDecoder {
 
         guard !timerEvents.isEmpty else { return [] }
 
-        // Build timestamp-to-record-index mapping
-        var timestampToIndex: [UInt32: Int] = [:]
-        for (index, record) in records.enumerated() {
-            if let ts = record.timestamp {
-                timestampToIndex[ts] = index
-            }
-        }
-
         var segments: [RouteSegment] = []
         var segmentStartIndex: Int?
         var segmentStartTimestamp: UInt32?
@@ -369,16 +361,8 @@ public struct FITDecoder {
             return distance != FITParser.invalidUint32
         }
 
-        // Map segments to valid record indices
-        let segmentMap = buildSegmentMap(
-            segments: segments,
-            validRecords: validRecords
-        )
-
         var routePoints: [RoutePoint] = []
         routePoints.reserveCapacity(validRecords.count)
-
-        var currentSegmentIndex = 0
 
         for (index, record) in validRecords.enumerated() {
             let lat = FITParser.semicirclesToDegrees(record.positionLat ?? FITParser.invalidCoordinate)
@@ -404,23 +388,10 @@ public struct FITDecoder {
                 cadence = nil
             }
 
-            // Track segment transitions
-            if let segIdx = segmentMap[index], segIdx != currentSegmentIndex {
-                currentSegmentIndex = segIdx
-            }
-
             let timestamp = resolvedTimestamps[index]
-            let rawDistance = record.distance.flatMap { value -> Double? in
+            let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
             } ?? 0
-
-            // For segmented routes, don't add geographic distance across pauses
-            let distance: Double
-            if !segments.isEmpty {
-                distance = rawDistance
-            } else {
-                distance = rawDistance
-            }
 
             let point = RoutePoint(
                 timestamp: timestamp,
@@ -440,22 +411,6 @@ public struct FITDecoder {
             routePoints,
             distancePolicy: hasCompleteDistanceSeries ? .useSuppliedDistancesWhenValid : .computeFromCoordinates
         )
-    }
-
-    /// Build a mapping from valid record index to segment index.
-    private static func buildSegmentMap(
-        segments: [RouteSegment],
-        validRecords: [FITRecordMessage]
-    ) -> [Int: Int] {
-        guard !segments.isEmpty else { return [:] }
-
-        var map: [Int: Int] = [:]
-        for (segIdx, segment) in segments.enumerated() {
-            for i in segment.startIndex...min(segment.endIndex, validRecords.count - 1) {
-                map[i] = segIdx
-            }
-        }
-        return map
     }
 
     // MARK: - Enhanced Metric Decoding

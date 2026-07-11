@@ -335,9 +335,9 @@ final class FITParserTests: XCTestCase {
 
         XCTAssertEqual(decoded.records.count, 2)
         // lastTimestamp & 0x1F = 30, timeOffset = 5
-        // offsetDelta = 5 &- 30 = 5 - 30 wrapping = large value > 16 (maxDelta)
-        // So wrap: timestamp = 1000030 + (5 &- 30) + 32 = 1000039
-        XCTAssertEqual(decoded.records[1].timestamp, baselineTimestamp + (5 &- 30) + 32)
+        // offsetDelta = (5 &- 30) & 0x1F = 7 (masked to 5 bits)
+        // timestamp = 1000030 + 7 = 1000037
+        XCTAssertEqual(decoded.records[1].timestamp, baselineTimestamp &+ ((5 &- 30) & 0x1F))
     }
 
     func testCompressedTimestampWithMultipleLocalTypes() throws {
@@ -717,53 +717,6 @@ final class FITParserTests: XCTestCase {
     }
 
     // MARK: - Ordered Messages Test
-
-    func testOrderedMessagesTrackDocumentOrder() throws {
-        var content = Data()
-
-        // Definition for event (global 21), local type 0
-        content.append(0x40)
-        content.append(0x00)
-        content.append(0x00)
-        content.append(contentsOf: [0x15, 0x00]) // global msg 21
-        content.append(3)
-        Self.writeField(253, size: 4, type: 134, to: &content)
-        Self.writeField(0, size: 1, type: 2, to: &content)
-        Self.writeField(1, size: 1, type: 2, to: &content)
-
-        // Definition for record (global 20), local type 1
-        content.append(0x41) // definition, local type 1
-        content.append(0x00)
-        content.append(0x00)
-        content.append(contentsOf: [0x14, 0x00]) // global msg 20
-        content.append(4)
-        Self.writeField(253, size: 4, type: 134, to: &content)
-        Self.writeField(0, size: 4, type: 133, to: &content)
-        Self.writeField(1, size: 4, type: 133, to: &content)
-        Self.writeField(5, size: 4, type: 134, to: &content)
-
-        // Event data (local type 0)
-        content.append(0x00)
-        Self.append(UInt32(1_000_000), to: &content)
-        content.append(0) // timer
-        content.append(0) // start
-
-        // Record data (local type 1)
-        content.append(0x01)
-        Self.append(UInt32(1_000_000), to: &content)
-        Self.append(Self.semicircles(37.7749), to: &content)
-        Self.append(Self.semicircles(-122.4194), to: &content)
-        Self.append(UInt32(0), to: &content)
-
-        let data = Self.fitData(rawContent: content)
-        let decoded = try FITParser.parse(data: data)
-
-        // orderedMessages should have 2 entries: event first, then record
-        XCTAssertEqual(decoded.orderedMessages.count, 2)
-        XCTAssertEqual(decoded.orderedMessages[0].globalMessageNumber, 21) // event
-        XCTAssertEqual(decoded.orderedMessages[1].globalMessageNumber, 20) // record
-        XCTAssertLessThan(decoded.orderedMessages[0].index, decoded.orderedMessages[1].index)
-    }
 
     private static func append(_ value: UInt32, to data: inout Data) {
         data.append(contentsOf: withUnsafeBytes(of: value.littleEndian) { Array($0) })

@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Decoded FIT Message Types
 
-/// Decoded FIT file containing all parsed messages in document order.
+/// Decoded FIT file containing all parsed messages.
 public struct FITDecodedFile: Sendable {
     public var fileID: FITFileIDMessage?
     public var deviceInfo: [FITDeviceInfoMessage]
@@ -10,7 +10,6 @@ public struct FITDecodedFile: Sendable {
     public var laps: [FITLapMessage]
     public var events: [FITEventMessage]
     public var records: [FITRecordMessage]
-    public var orderedMessages: [FITOrderedMessage]
 
     public init(
         fileID: FITFileIDMessage? = nil,
@@ -18,8 +17,7 @@ public struct FITDecodedFile: Sendable {
         sessions: [FITSessionMessage] = [],
         laps: [FITLapMessage] = [],
         events: [FITEventMessage] = [],
-        records: [FITRecordMessage] = [],
-        orderedMessages: [FITOrderedMessage] = []
+        records: [FITRecordMessage] = []
     ) {
         self.fileID = fileID
         self.deviceInfo = deviceInfo
@@ -27,20 +25,6 @@ public struct FITDecodedFile: Sendable {
         self.laps = laps
         self.events = events
         self.records = records
-        self.orderedMessages = orderedMessages
-    }
-}
-
-/// Ordered message with position in the original FIT file.
-public struct FITOrderedMessage: Sendable {
-    public let index: Int
-    public let globalMessageNumber: UInt16
-    public let localType: UInt8
-
-    public init(index: Int, globalMessageNumber: UInt16, localType: UInt8) {
-        self.index = index
-        self.globalMessageNumber = globalMessageNumber
-        self.localType = localType
     }
 }
 
@@ -240,34 +224,12 @@ public enum FITBaseType: UInt8, Sendable {
         }
     }
 
-    /// Invalid sentinel value for this base type (as raw bytes).
-    public var invalidSentinel: [UInt8] {
-        switch self {
-        case .enum: return [0xFF]
-        case .sint8: return [0x7F]
-        case .uint8: return [0xFF]
-        case .sint16: return [0x7F, 0xFF]
-        case .uint16: return [0xFF, 0xFF]
-        case .sint32: return [0x7F, 0xFF, 0xFF, 0xFF]
-        case .uint32: return [0xFF, 0xFF, 0xFF, 0xFF]
-        case .string: return [0x00] // null terminated
-        case .float32: return [0xFF, 0xFF, 0xFF, 0xFF]
-        case .float64: return [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
-        case .uint8z: return [0x00]
-        case .uint16z: return [0x00, 0x00]
-        case .uint32z: return [0x00, 0x00, 0x00, 0x00]
-        case .byte: return [0xFF]
-        case .sint64: return [0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
-        case .uint64: return [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
-        case .uint64z: return [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-        }
-    }
 }
 
 // MARK: - FIT Record Field Numbers
 
 /// Known field numbers for record messages (global message 20).
-public enum FITRecordField: UInt8 {
+enum FITRecordField: UInt8 {
     case timestamp = 253
     case positionLat = 0
     case positionLong = 1
@@ -282,7 +244,7 @@ public enum FITRecordField: UInt8 {
 }
 
 /// Known field numbers for event messages (global message 21).
-public enum FITEventField: UInt8 {
+enum FITEventField: UInt8 {
     case timestamp = 253
     case event = 0
     case eventType = 1
@@ -290,7 +252,7 @@ public enum FITEventField: UInt8 {
 }
 
 /// Known field numbers for session messages (global message 18).
-public enum FITSessionField: UInt8 {
+enum FITSessionField: UInt8 {
     case timestamp = 253
     case startTime = 2
     case startPositionLat = 3
@@ -312,10 +274,13 @@ public enum FITSessionField: UInt8 {
     case necLat = 30
     case swcLong = 31
     case swcLat = 32
+    case event = 0
+    case eventType = 1
+    // eventGroup = 23 conflicts with totalDescent; use raw value 23 directly
 }
 
 /// Known field numbers for lap messages (global message 19).
-public enum FITLapField: UInt8 {
+enum FITLapField: UInt8 {
     case timestamp = 253
     case startTime = 2
     case startPositionLat = 3
@@ -340,7 +305,7 @@ public enum FITLapField: UInt8 {
 }
 
 /// Known field numbers for file_id messages (global message 0).
-public enum FITFileIDField: UInt8 {
+enum FITFileIDField: UInt8 {
     case type = 0
     case manufacturer = 1
     case product = 2
@@ -350,7 +315,7 @@ public enum FITFileIDField: UInt8 {
 }
 
 /// Known field numbers for device_info messages (global message 23).
-public enum FITDeviceInfoField: UInt8 {
+enum FITDeviceInfoField: UInt8 {
     case timestamp = 253
     case serialNumber = 0
     case manufacturer = 1
@@ -363,7 +328,7 @@ public enum FITDeviceInfoField: UInt8 {
 }
 
 /// Known field numbers for activity messages (global message 34).
-public enum FITActivityField: UInt8 {
+enum FITActivityField: UInt8 {
     case timestamp = 253
     case totalTimerTime = 0
     case localTimestamp = 1

@@ -18,7 +18,6 @@ public enum FITError: Error, LocalizedError, Sendable {
     case compressedTimestampWithoutBaseline
     case invalidCompressedDefinition
     case unsupportedCompressedTimestamp
-    case cancellationError
 
     public var errorDescription: String? {
         switch self {
@@ -38,16 +37,15 @@ public enum FITError: Error, LocalizedError, Sendable {
         case .compressedTimestampWithoutBaseline: return "Compressed timestamp received before any baseline timestamp"
         case .invalidCompressedDefinition: return "Compressed timestamp header references invalid definition"
         case .unsupportedCompressedTimestamp: return "Compressed timestamp headers are not supported for this definition"
-        case .cancellationError: return "FIT parsing was cancelled"
         }
     }
 }
 
 /// FIT field definition from definition message.
-public struct FITFieldDefinition: Sendable {
-    public let fieldNumber: UInt8
-    public let size: UInt8
-    public let baseType: FITBaseType
+struct FITFieldDefinition: Sendable {
+    let fieldNumber: UInt8
+    let size: UInt8
+    let baseType: FITBaseType
 
     public init(fieldNumber: UInt8, size: UInt8, baseType: FITBaseType) {
         self.fieldNumber = fieldNumber
@@ -57,14 +55,14 @@ public struct FITFieldDefinition: Sendable {
 }
 
 /// FIT definition message for a local message type.
-public struct FITDefinitionMessage: Sendable {
-    public let architecture: UInt8      // 0=little-endian, 1=big-endian
-    public let globalMessageNumber: UInt16
-    public let fields: [FITFieldDefinition]
+struct FITDefinitionMessage: Sendable {
+    let architecture: UInt8      // 0=little-endian, 1=big-endian
+    let globalMessageNumber: UInt16
+    let fields: [FITFieldDefinition]
     let developerFields: [FITDeveloperFieldDefinition]
 
     /// Total data size in bytes for a data message using this definition.
-    public var totalDataSize: Int {
+    var totalDataSize: Int {
         fields.reduce(0) { $0 + Int($1.size) }
             + developerFields.reduce(0) { $0 + Int($1.size) }
     }
@@ -96,8 +94,6 @@ public struct FITParser {
     static let compressedLocalTypeShift: UInt8 = 5
     static let compressedTimeOffsetMask: UInt8 = 0x1F
     static let compressedTimeOffsetBits: Int = 5
-    static let compressedTimeOffsetMax: UInt32 = 0x1F  // 31
-    static let compressedTimeWindow: UInt32 = 32       // 2^5
 
     // Sentinel values (legacy, kept for backward compatibility)
     static let invalidCoordinate: Int32 = 0x7FFFFFFF
@@ -146,7 +142,7 @@ public struct FITParser {
         while offset < dataEndOffset {
             // Cooperative cancellation check
             if messageIndex % cancellationCheckInterval == 0 && isCancelled() {
-                throw FITError.cancellationError
+                throw CancellationError()
             }
 
             guard offset < dataEndOffset else { break }
@@ -167,15 +163,10 @@ public struct FITParser {
                 }
 
                 // Reconstruct timestamp with wrap handling
-                let offsetDelta = timeOffset &- (lastTimestamp & UInt32(compressedTimeOffsetMask))
-                var timestamp = lastTimestamp
-                if offsetDelta <= compressedTimeOffsetMax {
-                    // No wrap
-                    timestamp = lastTimestamp + offsetDelta
-                } else {
-                    // Wrap into next window
-                    timestamp = lastTimestamp + offsetDelta + compressedTimeWindow
-                }
+                // FIT SDK: offsetDelta is masked to 5 bits; always added to lastTimestamp
+                let offsetDelta = (timeOffset &- (lastTimestamp & UInt32(compressedTimeOffsetMask)))
+                    & UInt32(compressedTimeOffsetMask)
+                let timestamp = lastTimestamp &+ offsetDelta
                 lastTimestamp = timestamp
 
                 // Parse the data message (compressed headers don't include the timestamp field)
@@ -217,11 +208,6 @@ public struct FITParser {
                 offset = reader.offset
 
                 messageIndex += 1
-                decodedFile.orderedMessages.append(FITOrderedMessage(
-                    index: messageIndex,
-                    globalMessageNumber: def.globalMessageNumber,
-                    localType: localType
-                ))
 
                 switch def.globalMessageNumber {
                 case FITGlobalMessage.record.rawValue:
@@ -517,11 +503,6 @@ public struct FITParser {
 
         // Build typed message based on global message number
         messageIndex += 1
-        decodedFile.orderedMessages.append(FITOrderedMessage(
-            index: messageIndex,
-            globalMessageNumber: definition.globalMessageNumber,
-            localType: localType
-        ))
 
         switch definition.globalMessageNumber {
         case FITGlobalMessage.fileID.rawValue:
@@ -604,9 +585,9 @@ public struct FITParser {
             session.averageHeartRate = fieldValues[FITSessionField.averageHeartRate.rawValue]?.uint8Value
             session.maximumHeartRate = fieldValues[FITSessionField.maximumHeartRate.rawValue]?.uint8Value
             session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
-            session.event = fieldValues[0]?.uint8Value  // event field 0
-            session.eventType = fieldValues[1]?.uint8Value  // event_type field 1
-            session.eventGroup = fieldValues[23]?.uint8Value  // event_group field 23
+            session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
+            session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
+            session.eventGroup = fieldValues[23]?.uint8Value  // eventGroup — no enum case (conflicts with totalDescent)
             session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
             session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
             session.necLat = fieldValues[FITSessionField.necLat.rawValue]?.int32Value

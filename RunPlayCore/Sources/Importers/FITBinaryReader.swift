@@ -3,13 +3,13 @@ import Foundation
 /// Low-level binary reader for FIT data streams.
 ///
 /// Reads typed values from byte data respecting FIT base types and endianness.
-public struct FITBinaryReader {
+struct FITBinaryReader {
     private let data: Data
     private(set) var offset: Int
     private let endOffset: Int
     private let littleEndian: Bool
 
-    public init(data: Data, offset: Int, endOffset: Int, littleEndian: Bool) {
+    init(data: Data, offset: Int, endOffset: Int, littleEndian: Bool) {
         self.data = data
         self.offset = offset
         self.endOffset = endOffset
@@ -17,19 +17,19 @@ public struct FITBinaryReader {
     }
 
     /// Whether there are remaining bytes to read.
-    public var hasRemainingBytes: Bool {
+    var hasRemainingBytes: Bool {
         offset < endOffset
     }
 
     /// Number of bytes remaining.
-    public var remainingBytes: Int {
+    var remainingBytes: Int {
         max(0, endOffset - offset)
     }
 
     // MARK: - Raw Byte Reading
 
     /// Read a single byte.
-    public mutating func readUInt8() throws -> UInt8 {
+    mutating func readUInt8() throws -> UInt8 {
         guard offset < endOffset else {
             throw FITError.unexpectedEndOfFile
         }
@@ -39,12 +39,12 @@ public struct FITBinaryReader {
     }
 
     /// Read a signed byte.
-    public mutating func readInt8() throws -> Int8 {
+    mutating func readInt8() throws -> Int8 {
         Int8(bitPattern: try readUInt8())
     }
 
     /// Skip `count` bytes.
-    public mutating func skip(_ count: Int) throws {
+    mutating func skip(_ count: Int) throws {
         guard offset + count <= endOffset else {
             throw FITError.unexpectedEndOfFile
         }
@@ -54,7 +54,7 @@ public struct FITBinaryReader {
     // MARK: - Multi-byte Reading
 
     /// Read a UInt16 respecting endianness.
-    public mutating func readUInt16() throws -> UInt16 {
+    mutating func readUInt16() throws -> UInt16 {
         guard offset + 2 <= endOffset else {
             throw FITError.unexpectedEndOfFile
         }
@@ -69,12 +69,12 @@ public struct FITBinaryReader {
     }
 
     /// Read a Int16 respecting endianness.
-    public mutating func readInt16() throws -> Int16 {
+    mutating func readInt16() throws -> Int16 {
         Int16(bitPattern: try readUInt16())
     }
 
     /// Read a UInt32 respecting endianness.
-    public mutating func readUInt32() throws -> UInt32 {
+    mutating func readUInt32() throws -> UInt32 {
         guard offset + 4 <= endOffset else {
             throw FITError.unexpectedEndOfFile
         }
@@ -95,12 +95,12 @@ public struct FITBinaryReader {
     }
 
     /// Read a Int32 respecting endianness.
-    public mutating func readInt32() throws -> Int32 {
+    mutating func readInt32() throws -> Int32 {
         Int32(bitPattern: try readUInt32())
     }
 
     /// Read a UInt64 respecting endianness.
-    public mutating func readUInt64() throws -> UInt64 {
+    mutating func readUInt64() throws -> UInt64 {
         guard offset + 8 <= endOffset else {
             throw FITError.unexpectedEndOfFile
         }
@@ -119,24 +119,24 @@ public struct FITBinaryReader {
     }
 
     /// Read a Int64 respecting endianness.
-    public mutating func readInt64() throws -> Int64 {
+    mutating func readInt64() throws -> Int64 {
         Int64(bitPattern: try readUInt64())
     }
 
     /// Read a Float32 respecting endianness.
-    public mutating func readFloat32() throws -> Float32 {
+    mutating func readFloat32() throws -> Float32 {
         let bits = try readUInt32()
         return Float32(bitPattern: bits)
     }
 
     /// Read a Float64 respecting endianness.
-    public mutating func readFloat64() throws -> Float64 {
+    mutating func readFloat64() throws -> Float64 {
         let bits = try readUInt64()
         return Float64(bitPattern: bits)
     }
 
     /// Read raw bytes of specified count.
-    public mutating func readBytes(_ count: Int) throws -> Data {
+    mutating func readBytes(_ count: Int) throws -> Data {
         guard offset + count <= endOffset else {
             throw FITError.unexpectedEndOfFile
         }
@@ -150,7 +150,7 @@ public struct FITBinaryReader {
     /// Read a value for a FIT base type from the current offset.
     /// Returns the value as an appropriate Swift type, or nil if the value
     /// matches the base type's invalid sentinel.
-    public mutating func readBaseTypeValue(
+    mutating func readBaseTypeValue(
         baseType: FITBaseType,
         fieldSize: Int
     ) throws -> FITFieldValue {
@@ -240,7 +240,7 @@ public struct FITBinaryReader {
     }
 
     /// Read an array of base type values from a single field.
-    public mutating func readBaseTypeArray(
+    mutating func readBaseTypeArray(
         baseType: FITBaseType,
         fieldSize: Int
     ) throws -> [FITFieldValue] {
@@ -266,12 +266,19 @@ public struct FITBinaryReader {
         for _ in 0..<count {
             values.append(try readBaseTypeValue(baseType: baseType, fieldSize: elementSize))
         }
+
+        // Skip any remaining bytes that don't form a complete element
+        let remainder = fieldSize % elementSize
+        if remainder > 0 {
+            try skip(remainder)
+        }
+
         return values
     }
 }
 
 /// FIT field value decoded from binary data.
-public enum FITFieldValue: Sendable {
+enum FITFieldValue: Sendable {
     case uint8(UInt8)
     case int8(Int8)
     case uint16(UInt16)
@@ -287,7 +294,7 @@ public enum FITFieldValue: Sendable {
     case invalid
 
     /// Extract a UInt32 value if valid.
-    public var uint32Value: UInt32? {
+    var uint32Value: UInt32? {
         switch self {
         case .uint32(let v): return v
         case .uint16(let v): return UInt32(v)
@@ -297,7 +304,7 @@ public enum FITFieldValue: Sendable {
     }
 
     /// Extract an Int32 value if valid.
-    public var int32Value: Int32? {
+    var int32Value: Int32? {
         switch self {
         case .int32(let v): return v
         case .int16(let v): return Int32(v)
@@ -307,7 +314,7 @@ public enum FITFieldValue: Sendable {
     }
 
     /// Extract a UInt16 value if valid.
-    public var uint16Value: UInt16? {
+    var uint16Value: UInt16? {
         switch self {
         case .uint16(let v): return v
         case .uint8(let v): return UInt16(v)
@@ -316,7 +323,7 @@ public enum FITFieldValue: Sendable {
     }
 
     /// Extract a UInt8 value if valid.
-    public var uint8Value: UInt8? {
+    var uint8Value: UInt8? {
         switch self {
         case .uint8(let v): return v
         default: return nil
@@ -324,7 +331,7 @@ public enum FITFieldValue: Sendable {
     }
 
     /// Extract an Int8 value if valid.
-    public var int8Value: Int8? {
+    var int8Value: Int8? {
         switch self {
         case .int8(let v): return v
         default: return nil
@@ -332,7 +339,7 @@ public enum FITFieldValue: Sendable {
     }
 
     /// Extract a string value if valid.
-    public var stringValue: String? {
+    var stringValue: String? {
         switch self {
         case .string(let v): return v
         default: return nil
@@ -340,7 +347,7 @@ public enum FITFieldValue: Sendable {
     }
 
     /// Extract a Float64 value if valid.
-    public var float64Value: Double? {
+    var float64Value: Double? {
         switch self {
         case .float64(let v): return v
         case .float32(let v): return Double(v)
