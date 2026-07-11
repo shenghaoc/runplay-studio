@@ -3,7 +3,7 @@ import Foundation
 /// Low-level binary reader for FIT data streams.
 ///
 /// Reads typed values from byte data respecting FIT base types and endianness.
-struct FITBinaryReader {
+public struct FITBinaryReader {
     private let data: Data
     private(set) var offset: Int
     private let endOffset: Int
@@ -278,7 +278,7 @@ struct FITBinaryReader {
 }
 
 /// FIT field value decoded from binary data.
-enum FITFieldValue: Sendable {
+public enum FITFieldValue: Sendable {
     case uint8(UInt8)
     case int8(Int8)
     case uint16(UInt16)

@@ -153,7 +153,7 @@ All file I/O and manifest coordination is serialized through `WorkoutLibraryStor
 **Cancellation limitations:**
 
 - Import cancellation stops before persistence (the `Task` is cancelled before `addWorkout`).
-- Mid-parse cancellation is NOT supported — the synchronous parsers do not check for cancellation.
+- Mid-parse cancellation is supported via the `isCancelled` closure parameter on `FITParser.parse()`. The parser checks for cancellation every 1000 messages and throws `CancellationError` when detected.
 - Selection persistence cancellation uses last-write-wins semantics.
 
 **Security-scoped URL handling:**

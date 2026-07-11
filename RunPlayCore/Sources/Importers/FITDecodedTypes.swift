@@ -229,7 +229,7 @@ public enum FITBaseType: UInt8, Sendable {
 // MARK: - FIT Record Field Numbers
 
 /// Known field numbers for record messages (global message 20).
-enum FITRecordField: UInt8 {
+public enum FITRecordField: UInt8 {
     case timestamp = 253
     case positionLat = 0
     case positionLong = 1
@@ -244,7 +244,7 @@ enum FITRecordField: UInt8 {
 }
 
 /// Known field numbers for event messages (global message 21).
-enum FITEventField: UInt8 {
+public enum FITEventField: UInt8 {
     case timestamp = 253
     case event = 0
     case eventType = 1
@@ -252,7 +252,7 @@ enum FITEventField: UInt8 {
 }
 
 /// Known field numbers for session messages (global message 18).
-enum FITSessionField: UInt8 {
+public enum FITSessionField: UInt8 {
     case timestamp = 253
     case startTime = 2
     case startPositionLat = 3
@@ -280,7 +280,7 @@ enum FITSessionField: UInt8 {
 }
 
 /// Known field numbers for lap messages (global message 19).
-enum FITLapField: UInt8 {
+public enum FITLapField: UInt8 {
     case timestamp = 253
     case startTime = 2
     case startPositionLat = 3
@@ -305,7 +305,7 @@ enum FITLapField: UInt8 {
 }
 
 /// Known field numbers for file_id messages (global message 0).
-enum FITFileIDField: UInt8 {
+public enum FITFileIDField: UInt8 {
     case type = 0
     case manufacturer = 1
     case product = 2
@@ -315,7 +315,7 @@ enum FITFileIDField: UInt8 {
 }
 
 /// Known field numbers for device_info messages (global message 23).
-enum FITDeviceInfoField: UInt8 {
+public enum FITDeviceInfoField: UInt8 {
     case timestamp = 253
     case serialNumber = 0
     case manufacturer = 1
@@ -328,7 +328,7 @@ enum FITDeviceInfoField: UInt8 {
 }
 
 /// Known field numbers for activity messages (global message 34).
-enum FITActivityField: UInt8 {
+public enum FITActivityField: UInt8 {
     case timestamp = 253
     case totalTimerTime = 0
     case localTimestamp = 1

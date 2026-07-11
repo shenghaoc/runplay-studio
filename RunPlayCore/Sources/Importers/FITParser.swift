@@ -42,7 +42,7 @@ public enum FITError: Error, LocalizedError, Sendable {
 }
 
 /// FIT field definition from definition message.
-struct FITFieldDefinition: Sendable {
+public struct FITFieldDefinition: Sendable {
     let fieldNumber: UInt8
     let size: UInt8
     let baseType: FITBaseType
@@ -55,7 +55,7 @@ struct FITFieldDefinition: Sendable {
 }
 
 /// FIT definition message for a local message type.
-struct FITDefinitionMessage: Sendable {
+public struct FITDefinitionMessage: Sendable {
     let architecture: UInt8      // 0=little-endian, 1=big-endian
     let globalMessageNumber: UInt16
     let fields: [FITFieldDefinition]
