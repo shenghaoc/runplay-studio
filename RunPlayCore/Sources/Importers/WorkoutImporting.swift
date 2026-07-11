@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol for workout file importers.
-public protocol WorkoutImporting {
+public protocol WorkoutImporting: Sendable {
     /// The file formats this importer supports.
     var supportedExtensions: [String] { get }
 
