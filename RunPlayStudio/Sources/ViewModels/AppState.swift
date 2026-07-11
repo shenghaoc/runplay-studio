@@ -124,8 +124,20 @@ class AppState: ObservableObject {
                 errorMessage = "Some workouts could not be loaded:\n" + corruptWarnings.joined(separator: "\n")
                 showingError = true
             }
+        } catch let error as WorkoutLibraryError {
+            switch error {
+            case .manifestMissing:
+                // First launch — no manifest yet. Silent fallback to demos.
+                break
+            default:
+                // Corrupt manifest or unsupported version — warn the user.
+                errorMessage = "Failed to load library: \(error.localizedDescription)"
+                showingError = true
+            }
+            loadSampleWorkouts()
         } catch {
-            // Manifest load failed — try demos.
+            errorMessage = "Unexpected error loading library: \(error.localizedDescription)"
+            showingError = true
             loadSampleWorkouts()
         }
     }
@@ -152,7 +164,16 @@ class AppState: ObservableObject {
             if let store {
                 do {
                     try store.saveWorkout(workout)
-                    var manifest = (try? store.loadManifest()) ?? WorkoutLibraryManifest()
+                    var manifest: WorkoutLibraryManifest
+                    do {
+                        manifest = try store.loadManifest()
+                    } catch let error as WorkoutLibraryError {
+                        if case .manifestMissing = error {
+                            manifest = WorkoutLibraryManifest()
+                        } else {
+                            throw error
+                        }
+                    }
                     manifest.workoutIDs.append(workout.id)
                     manifest.selectedWorkoutID = workout.id
                     try store.saveManifest(manifest)
@@ -277,11 +298,6 @@ class AppState: ObservableObject {
                 detectedSegments = first.segments
             } else {
                 detectedSegments = []
-            }
-
-            // Persist new selection.
-            if let store, let newSelected = workouts.first {
-                persistSelectedWorkout(newSelected.id, store: store)
             }
         } else if deletingComparisonWorkout {
             clearComparison()

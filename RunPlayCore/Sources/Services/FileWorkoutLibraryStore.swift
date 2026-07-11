@@ -10,8 +10,14 @@ import Foundation
 ///     <workout-uuid>.json
 /// ```
 ///
-/// Writes use atomic replacement (write-to-temp then rename) where practical
-/// so a crash mid-write never leaves a half-written destination file.
+/// All writes use `Data.write(to:options:.atomic)` which performs
+/// atomic replacement internally, so a crash mid-write never leaves
+/// a half-written destination file.
+///
+/// Note: All I/O is synchronous. The library stores small JSON files
+/// (typically a few KB each), so this is acceptable for the current
+/// use case. If large datasets or frequent concurrent access arise,
+/// consider moving to async I/O with structured concurrency.
 public final class FileWorkoutLibraryStore: WorkoutLibraryStoring {
 
     private let rootURL: URL
@@ -148,33 +154,12 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring {
         workoutsDirectory.appendingPathComponent("\(id.uuidString).json")
     }
 
-    /// Write data atomically: write to a temp file in the same directory, then rename.
+    /// Write data atomically using Foundation's built-in `.atomic` option.
     private func atomicWrite(_ data: Data, to destination: URL) throws {
-        let tempURL = destination.deletingLastPathComponent()
-            .appendingPathComponent(".\(destination.lastPathComponent).tmp")
-
         do {
-            try data.write(to: tempURL, options: .atomic)
+            try data.write(to: destination, options: .atomic)
         } catch {
-            throw WorkoutLibraryError.writeFailed("Cannot write temp file: \(error.localizedDescription)")
-        }
-
-        // Remove existing destination if present, then rename temp into place.
-        // This approach works on both macOS and Linux (swift-corelibs-foundation).
-        if fileManager.fileExists(atPath: destination.path) {
-            do {
-                try fileManager.removeItem(at: destination)
-            } catch {
-                try? fileManager.removeItem(at: tempURL)
-                throw WorkoutLibraryError.writeFailed("Cannot remove old file: \(error.localizedDescription)")
-            }
-        }
-
-        do {
-            try fileManager.moveItem(at: tempURL, to: destination)
-        } catch {
-            try? fileManager.removeItem(at: tempURL)
-            throw WorkoutLibraryError.writeFailed("Cannot move temp to destination: \(error.localizedDescription)")
+            throw WorkoutLibraryError.writeFailed("Cannot write to \(destination.path): \(error.localizedDescription)")
         }
     }
 }
