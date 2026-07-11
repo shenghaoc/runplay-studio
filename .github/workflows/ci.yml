@@ -13,9 +13,8 @@ jobs:
     runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@v7
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '5.9'
+      - name: Verify Swift version
+        run: swift --version
       - name: Build RunPlayCore
         run: swift build --target RunPlayCore
       - name: Test RunPlayCore
