@@ -26,7 +26,7 @@ jobs:
       run: ./scripts/package-demo.sh .build/artifacts
 
     - name: Upload demo app
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: RunPlayStudio-demo-app
         path: .build/artifacts/RunPlayStudio.app.zip
