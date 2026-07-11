@@ -17,7 +17,6 @@ struct WorkoutDetailView: View {
 
     enum ViewTab: String, CaseIterable {
         case overview = "Overview"
-        case map = "Map"
         case charts = "Charts"
     }
 
@@ -37,11 +36,6 @@ struct WorkoutDetailView: View {
             case .overview:
                 OverviewView(
                     workout: workout,
-                    currentPointIndex: replayController.state.currentPointIndex
-                )
-            case .map:
-                MapReferenceView(
-                    routePoints: workout.routePoints,
                     currentPointIndex: replayController.state.currentPointIndex
                 )
             case .charts:
