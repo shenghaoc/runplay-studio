@@ -110,7 +110,7 @@ struct ContentView: View {
         .task {
             await appState.start()
         }
-        .disabled(appState.operationState == .loadingLibrary)
+        .disabled(appState.operationState != .idle)
         .overlay {
             operationStateOverlay
         }

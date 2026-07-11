@@ -133,10 +133,29 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
             // Expected: manifest write failed
         }
 
-        // The workout file should have been rolled back (deleted).
-        // Since ManifestFailingStore doesn't actually write files, just verify
-        // the error propagated.
+        // Verify the rollback path was triggered: saveManifest was called,
+        // and deleteWorkout was called to clean up the saved workout file.
         XCTAssertTrue(failingStore.saveManifestCallCount > 0)
+        XCTAssertEqual(failingStore.deletedWorkoutIDs, [workout.id])
+    }
+
+    // MARK: - Add Propagates Non-Manifest-Missing Errors
+
+    func testAddPropagatesManifestCorruptedError() async throws {
+        let corruptedStore = ManifestCorruptedStore()
+        let actor = WorkoutLibraryStoreActor(store: corruptedStore)
+        let workout = makeWorkout(name: "Corrupted")
+
+        do {
+            try await actor.addWorkout(workout, select: true)
+            XCTFail("Expected manifestCorrupted error")
+        } catch let error as WorkoutLibraryError {
+            if case .manifestCorrupted = error {
+                // Expected
+            } else {
+                XCTFail("Expected manifestCorrupted, got \(error)")
+            }
+        }
     }
 
     // MARK: - Delete Transaction Success
@@ -346,6 +365,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 /// Store that fails on saveManifest to test rollback behavior.
 private final class ManifestFailingStore: WorkoutLibraryStoring, @unchecked Sendable {
     private(set) var saveManifestCallCount = 0
+    private(set) var deletedWorkoutIDs: [UUID] = []
 
     func loadManifest() throws -> WorkoutLibraryManifest {
         WorkoutLibraryManifest()
@@ -362,7 +382,9 @@ private final class ManifestFailingStore: WorkoutLibraryStoring, @unchecked Send
 
     func saveWorkout(_ workout: RunWorkout) throws {}
 
-    func deleteWorkout(id: UUID) throws {}
+    func deleteWorkout(id: UUID) throws {
+        deletedWorkoutIDs.append(id)
+    }
 
     func workoutExists(id: UUID) -> Bool { false }
 }
@@ -422,4 +444,23 @@ private final class FileDeleteFailingStore: WorkoutLibraryStoring, @unchecked Se
     }
 
     func workoutExists(id: UUID) -> Bool { id == workout.id }
+}
+
+/// Store that always returns manifestCorrupted from loadManifest.
+private final class ManifestCorruptedStore: WorkoutLibraryStoring, @unchecked Sendable {
+    func loadManifest() throws -> WorkoutLibraryManifest {
+        throw WorkoutLibraryError.manifestCorrupted("simulated corruption")
+    }
+
+    func saveManifest(_ manifest: WorkoutLibraryManifest) throws {}
+
+    func loadWorkout(id: UUID) throws -> RunWorkout {
+        throw WorkoutLibraryError.workoutFileMissing(id)
+    }
+
+    func saveWorkout(_ workout: RunWorkout) throws {}
+
+    func deleteWorkout(id: UUID) throws {}
+
+    func workoutExists(id: UUID) -> Bool { false }
 }

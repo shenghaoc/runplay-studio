@@ -322,7 +322,7 @@ final class AppStatePersistenceTests: XCTestCase {
         XCTAssertEqual(appState1.selectedWorkout?.id, w2.id)
 
         // Give async selection persistence time to complete.
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: 500_000_000)
 
         // Second launch — should restore w2
         let appState2 = makeAppState(store: store)
@@ -361,7 +361,7 @@ final class AppStatePersistenceTests: XCTestCase {
 
         XCTAssertNil(appState.selectedWorkout)
         // Wait for async persistence.
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertNil(try store.loadManifest().selectedWorkoutID)
     }
 

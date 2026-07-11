@@ -228,10 +228,8 @@ class AppState: ObservableObject {
                 } catch is CancellationError {
                     // A newer selection superseded this one.
                 } catch {
-                    await MainActor.run {
-                        self?.errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
-                        self?.showingError = true
-                    }
+                    self?.errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+                    self?.showingError = true
                 }
             }
         }

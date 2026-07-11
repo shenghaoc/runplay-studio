@@ -210,8 +210,8 @@ final class AppStateAsyncTests: XCTestCase {
         XCTAssertTrue(appState.workouts.isEmpty)
     }
 
-    func testDeleteFailureLeavesWorkoutVisible() async throws {
-        let workout = makeWorkout(name: "Keep Me")
+    func testDeleteOrphanedFileRemovesFromUIWithWarning() async throws {
+        let workout = makeWorkout(name: "Orphaned")
         let failingStore = TestFileDeleteFailingStore(workout: workout)
         let storeActor = WorkoutLibraryStoreActor(store: failingStore)
         let appState = AppState(storeActor: storeActor, importService: WorkoutImportService())
@@ -221,6 +221,8 @@ final class AppStateAsyncTests: XCTestCase {
         await appState.deleteWorkout(workout)
 
         // Manifest committed, file orphaned. Workout removed from UI with warning.
+        XCTAssertTrue(appState.workouts.isEmpty)
+        XCTAssertNil(appState.selectedWorkout)
         XCTAssertTrue(appState.showingError)
         XCTAssertEqual(appState.operationState, .idle)
     }

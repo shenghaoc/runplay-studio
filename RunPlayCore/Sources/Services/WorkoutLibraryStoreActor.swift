@@ -26,7 +26,6 @@ public actor WorkoutLibraryStoreActor {
 
     private let store: WorkoutLibraryStoring
     private let fileManager: FileManager
-    private var selectionSequence: UInt64 = 0
 
     /// Create a store actor backed by the given storage implementation.
     ///
@@ -226,21 +225,13 @@ public actor WorkoutLibraryStoreActor {
 
     // MARK: - Selection
 
-    /// Persist the selected workout ID with last-write-wins semantics.
+    /// Persist the selected workout ID.
     ///
-    /// Uses a monotonic counter so that a stale request never overwrites a newer one.
+    /// Actor serialization guarantees that concurrent selection writes
+    /// execute in FIFO order, so the last enqueued write always wins.
     public func setSelectedWorkoutID(_ id: UUID?) throws {
-        selectionSequence &+= 1
-        let mySequence = selectionSequence
-
         var manifest = try store.loadManifest()
         manifest.selectedWorkoutID = id
-
-        // Only write if this is still the latest request.
-        guard selectionSequence == mySequence else {
-            return
-        }
-
         try store.saveManifest(manifest)
     }
 }
