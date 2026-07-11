@@ -9,8 +9,8 @@ final class FITParserTests: XCTestCase {
             (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
         ])
 
-        let records = try FITParser.parse(data: data)
-        let points = FITDecoder.decode(records: records)
+        let decoded = try FITParser.parse(data: data)
+        let points = FITDecoder.decode(records: decoded.records)
 
         XCTAssertEqual(points.count, 2)
         XCTAssertGreaterThan(points[0].latitude, 0)
@@ -18,15 +18,14 @@ final class FITParserTests: XCTestCase {
         XCTAssertGreaterThan(points[1].distanceFromStartMeters, points[0].distanceFromStartMeters)
     }
 
-    func testCompressedTimestampHeaderFailsWithoutDesyncing() {
+    func testCompressedTimestampHeaderFailsWithoutBaseline() {
         let data = Self.fitData(rawContent: Data([0x80]))
 
         XCTAssertThrowsError(try FITParser.parse(data: data)) { error in
-            guard case FITError.corruptedData(let message) = error else {
-                XCTFail("Expected corruptedData, got \(error)")
+            guard case FITError.compressedTimestampWithoutBaseline = error else {
+                XCTFail("Expected compressedTimestampWithoutBaseline, got \(error)")
                 return
             }
-            XCTAssertTrue(message.contains("Compressed timestamp"))
         }
     }
 
@@ -37,8 +36,8 @@ final class FITParserTests: XCTestCase {
         ])
 
         // Should not throw — CRCs are valid
-        let records = try FITParser.parse(data: data)
-        XCTAssertEqual(records.count, 2)
+        let decoded = try FITParser.parse(data: data)
+        XCTAssertEqual(decoded.records.count, 2)
     }
 
     func testZeroHeaderCRCSkipsValidation() throws {
@@ -51,8 +50,8 @@ final class FITParserTests: XCTestCase {
         )
 
         // Should not throw — 0x0000 header CRC is treated as absent
-        let records = try FITParser.parse(data: data)
-        XCTAssertEqual(records.count, 1)
+        let decoded = try FITParser.parse(data: data)
+        XCTAssertEqual(decoded.records.count, 1)
     }
 
     func test12ByteHeaderParsesSuccessfully() throws {
@@ -65,8 +64,8 @@ final class FITParserTests: XCTestCase {
             headerLength: 12
         )
 
-        let records = try FITParser.parse(data: data)
-        XCTAssertEqual(records.count, 2)
+        let decoded = try FITParser.parse(data: data)
+        XCTAssertEqual(decoded.records.count, 2)
     }
 
     func testCRC16KnownAnswer() {
@@ -141,10 +140,10 @@ final class FITParserTests: XCTestCase {
             (timestamp: 1_010, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20)
         ])
 
-        let records = try FITParser.parse(data: data)
-        let points = FITDecoder.decode(records: records)
+        let decoded = try FITParser.parse(data: data)
+        let points = FITDecoder.decode(records: decoded.records)
 
-        XCTAssertEqual(records.count, 2)
+        XCTAssertEqual(decoded.records.count, 2)
         XCTAssertEqual(points.count, 2)
         XCTAssertGreaterThan(points[1].distanceFromStartMeters, points[0].distanceFromStartMeters)
     }
@@ -279,6 +278,491 @@ final class FITParserTests: XCTestCase {
 
     private static func semicircles(_ degrees: Double) -> Int32 {
         Int32((degrees * pow(2, 31) / 180).rounded())
+    }
+
+    // MARK: - Compressed Timestamp Tests
+
+    func testCompressedTimestampParsesCorrectly() throws {
+        // Build a FIT file with: definition, baseline record, compressed-timestamp record
+        var content = Data()
+        // Definition for local type 0: record with 4 fields (same as writeDefinition)
+        Self.writeDefinition(to: &content)
+
+        // Baseline record (local type 0, normal header)
+        let baselineTimestamp: UInt32 = 1_000_000
+        content.append(0x00) // normal data message, local type 0
+        Self.append(baselineTimestamp, to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content) // distance
+
+        // Compressed timestamp record: bit 7=1, bits 5-6=local type (0), bits 0-4=time offset (10)
+        let compressedHeader: UInt8 = 0x80 | (0 << 5) | 10 // local type 0, offset 10
+        content.append(compressedHeader)
+        Self.append(Self.semicircles(37.7750), to: &content)
+        Self.append(Self.semicircles(-122.4195), to: &content)
+        Self.append(UInt32(2000), to: &content) // distance
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.records.count, 2)
+        XCTAssertEqual(decoded.records[0].timestamp, baselineTimestamp)
+        XCTAssertEqual(decoded.records[1].timestamp, baselineTimestamp + 10)
+    }
+
+    func testCompressedTimestampWrapHandling() throws {
+        var content = Data()
+        Self.writeDefinition(to: &content)
+
+        // Baseline record near the top of the 5-bit window
+        let baselineTimestamp: UInt32 = 1_000_030
+        content.append(0x00)
+        Self.append(baselineTimestamp, to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        // Compressed timestamp with offset 5 — wraps past 32
+        let compressedHeader: UInt8 = 0x80 | (0 << 5) | 5
+        content.append(compressedHeader)
+        Self.append(Self.semicircles(37.7750), to: &content)
+        Self.append(Self.semicircles(-122.4195), to: &content)
+        Self.append(UInt32(1000), to: &content)
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.records.count, 2)
+        // lastTimestamp & 0x1F = 30, timeOffset = 5
+        // offsetDelta = 5 &- 30 = 5 - 30 wrapping = large value > 16 (maxDelta)
+        // So wrap: timestamp = 1000030 + (5 &- 30) + 32 = 1000039
+        XCTAssertEqual(decoded.records[1].timestamp, baselineTimestamp + (5 &- 30) + 32)
+    }
+
+    func testCompressedTimestampWithMultipleLocalTypes() throws {
+        // Two definitions: local 0 = record, local 1 = event
+        var content = Data()
+
+        // Definition for local type 0: record message (global 20)
+        content.append(0x40) // definition, local type 0
+        content.append(0x00) // reserved
+        content.append(0x00) // little-endian
+        content.append(contentsOf: [0x14, 0x00]) // global msg 20 (record)
+        content.append(2) // 2 fields
+        Self.writeField(253, size: 4, type: 134, to: &content) // timestamp
+        Self.writeField(0, size: 4, type: 133, to: &content)   // position_lat
+
+        // Definition for local type 1: event message (global 21)
+        content.append(0x41) // definition, local type 1
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x15, 0x00]) // global msg 21 (event)
+        content.append(3) // 3 fields
+        Self.writeField(253, size: 4, type: 134, to: &content) // timestamp
+        Self.writeField(0, size: 1, type: 2, to: &content)     // event
+        Self.writeField(1, size: 1, type: 2, to: &content)     // event_type
+
+        // Baseline record (local type 0)
+        let baselineTimestamp: UInt32 = 500_000
+        content.append(0x00)
+        Self.append(baselineTimestamp, to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+
+        // Compressed timestamp for local type 1 (event), offset 5
+        let compressedHeader: UInt8 = 0x80 | (1 << 5) | 5 // local type 1, offset 5
+        content.append(compressedHeader)
+        content.append(0) // event = timer
+        content.append(0) // event_type = start
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.records.count, 1)
+        XCTAssertEqual(decoded.events.count, 1)
+        XCTAssertEqual(decoded.events[0].timestamp, baselineTimestamp + 5)
+    }
+
+    // MARK: - Multi-Message Type Tests
+
+    func testFileIDMessageIsParsed() throws {
+        var content = Data()
+
+        // Definition for file_id (global 0): 3 fields
+        content.append(0x40) // definition, local type 0
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x00, 0x00]) // global msg 0 (file_id)
+        content.append(3)
+        Self.writeField(0, size: 1, type: 2, to: &content)   // type (uint8)
+        Self.writeField(1, size: 2, type: 132, to: &content)  // manufacturer (uint16)
+        Self.writeField(4, size: 4, type: 134, to: &content)  // time_created (uint32)
+
+        // Data message
+        content.append(0x00)
+        content.append(4) // type = activity
+        let manufacturer: UInt16 = 1 // Garmin
+        content.append(contentsOf: withUnsafeBytes(of: manufacturer.littleEndian) { Array($0) })
+        let timeCreated: UInt32 = 1_000_000
+        content.append(contentsOf: withUnsafeBytes(of: timeCreated.littleEndian) { Array($0) })
+
+        // Also add a record definition + record so the file isn't empty
+        Self.writeDefinition(to: &content)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertNotNil(decoded.fileID)
+        XCTAssertEqual(decoded.fileID?.type, 4)
+        XCTAssertEqual(decoded.fileID?.manufacturer, 1)
+        XCTAssertEqual(decoded.fileID?.timeCreated, timeCreated)
+    }
+
+    func testSessionMessageIsParsed() throws {
+        var content = Data()
+
+        // Definition for session (global 18): key fields
+        content.append(0x40) // definition, local type 0
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x12, 0x00]) // global msg 18 (session)
+        content.append(4)
+        Self.writeField(253, size: 4, type: 134, to: &content) // timestamp
+        Self.writeField(5, size: 1, type: 2, to: &content)     // sport
+        Self.writeField(6, size: 1, type: 2, to: &content)     // sub_sport
+        Self.writeField(9, size: 4, type: 134, to: &content)   // total_distance
+
+        // Session data
+        content.append(0x00)
+        Self.append(UInt32(1_000_100), to: &content) // timestamp
+        content.append(1)  // sport = running
+        content.append(0)  // sub_sport = generic
+        Self.append(UInt32(500000), to: &content) // total_distance (5000m * 100)
+
+        // Record definition + record
+        Self.writeDefinition(to: &content)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.sessions.count, 1)
+        XCTAssertEqual(decoded.sessions[0].sport, 1) // running
+        XCTAssertEqual(decoded.sessions[0].subSport, 0)
+        XCTAssertEqual(decoded.sessions[0].totalDistance, 500000)
+    }
+
+    func testEventMessageIsParsed() throws {
+        var content = Data()
+
+        // Definition for event (global 21)
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x15, 0x00]) // global msg 21 (event)
+        content.append(4)
+        Self.writeField(253, size: 4, type: 134, to: &content) // timestamp
+        Self.writeField(0, size: 1, type: 2, to: &content)     // event
+        Self.writeField(1, size: 1, type: 2, to: &content)     // event_type
+        Self.writeField(2, size: 1, type: 2, to: &content)     // event_group
+
+        // Timer start event
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        content.append(0)  // event = timer
+        content.append(0)  // event_type = start
+        content.append(0)  // event_group
+
+        // Record definition + record
+        Self.writeDefinition(to: &content)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.events.count, 1)
+        XCTAssertEqual(decoded.events[0].event, 0) // timer
+        XCTAssertEqual(decoded.events[0].eventType, 0) // start
+        XCTAssertEqual(decoded.events[0].timerEventType, .start)
+    }
+
+    func testDeviceInfoMessageIsParsed() throws {
+        var content = Data()
+
+        // Definition for device_info (global 23)
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x17, 0x00]) // global msg 23 (device_info)
+        content.append(3)
+        Self.writeField(253, size: 4, type: 134, to: &content) // timestamp
+        Self.writeField(1, size: 2, type: 132, to: &content)   // manufacturer
+        Self.writeField(2, size: 2, type: 132, to: &content)   // product
+
+        // Device info data
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        let manufacturer: UInt16 = 1 // Garmin
+        content.append(contentsOf: withUnsafeBytes(of: manufacturer.littleEndian) { Array($0) })
+        let product: UInt16 = 3111
+        content.append(contentsOf: withUnsafeBytes(of: product.littleEndian) { Array($0) })
+
+        // Record
+        Self.writeDefinition(to: &content)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.deviceInfo.count, 1)
+        XCTAssertEqual(decoded.deviceInfo[0].manufacturer, 1)
+        XCTAssertEqual(decoded.deviceInfo[0].product, 3111)
+    }
+
+    // MARK: - Enhanced Metrics Tests
+
+    func testEnhancedAltitudeAndSpeedAreParsed() throws {
+        var content = Data()
+
+        // Definition with enhanced altitude (field 78) and enhanced speed (field 73)
+        content.append(0x40) // definition, local type 0
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x14, 0x00]) // global msg 20 (record)
+        content.append(6)
+        Self.writeField(253, size: 4, type: 134, to: &content) // timestamp (uint32)
+        Self.writeField(0, size: 4, type: 133, to: &content)   // position_lat (sint32)
+        Self.writeField(1, size: 4, type: 133, to: &content)   // position_long (sint32)
+        Self.writeField(5, size: 4, type: 134, to: &content)   // distance (uint32)
+        Self.writeField(78, size: 4, type: 134, to: &content)  // enhanced_altitude (uint32)
+        Self.writeField(73, size: 4, type: 134, to: &content)  // enhanced_speed (uint32)
+
+        // Data message with enhanced altitude = 2550 (means (2550/5) - 500 = 10 meters)
+        // and enhanced speed = 3500 (means 3500/1000 = 3.5 m/s)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+        Self.append(UInt32(2550), to: &content) // enhanced_altitude
+        Self.append(UInt32(3500), to: &content) // enhanced_speed
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(decoded.records.count, 1)
+        XCTAssertEqual(decoded.records[0].enhancedAltitude, 2550)
+        XCTAssertEqual(decoded.records[0].enhancedSpeed, 3500)
+
+        // Verify the decoder uses enhanced values
+        let points = FITDecoder.decode(records: decoded.records)
+        XCTAssertEqual(points.count, 1)
+        // enhanced altitude: (2550 / 5.0) - 500 = 10.0
+        XCTAssertEqual(points[0].altitudeMeters ?? 0, 10.0, accuracy: 0.01)
+        // enhanced speed: 3500 / 1000.0 = 3.5
+        XCTAssertEqual(points[0].speedMetersPerSecond ?? 0, 3.5, accuracy: 0.01)
+    }
+
+    // MARK: - Session Selection Tests
+
+    func testSessionSelectionWithSingleRunningSession() throws {
+        var decodedFile = FITDecodedFile()
+
+        // Add a running session with GPS coordinates
+        var session = FITSessionMessage()
+        session.sport = FITSport.running.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        session.startTime = 1_000_000
+        session.timestamp = 1_000_100
+        decodedFile.sessions = [session]
+
+        // Add records within the session timeframe
+        for i in 0..<5 {
+            var record = FITRecordMessage()
+            record.timestamp = UInt32(1_000_000 + i * 20)
+            record.positionLat = Self.semicircles(37.7749 + Double(i) * 0.0001)
+            record.positionLong = Self.semicircles(-122.4194 + Double(i) * 0.0001)
+            record.distance = UInt32(i * 1000)
+            decodedFile.records.append(record)
+        }
+
+        let points = try FITDecoder.decode(decodedFile: decodedFile)
+        XCTAssertEqual(points.count, 5)
+    }
+
+    func testSessionSelectionRejectsMultipleRunningSessions() throws {
+        var decodedFile = FITDecodedFile()
+
+        for _ in 0..<2 {
+            var session = FITSessionMessage()
+            session.sport = FITSport.running.rawValue
+            session.startPositionLat = Self.semicircles(37.7749)
+            session.startPositionLong = Self.semicircles(-122.4194)
+            decodedFile.sessions.append(session)
+        }
+
+        decodedFile.records = [FITRecordMessage()]
+
+        XCTAssertThrowsError(try FITDecoder.decode(decodedFile: decodedFile)) { error in
+            guard case WorkoutImportError.parsingError(let message) = error else {
+                XCTFail("Expected parsingError, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("2 GPS-bearing running sessions"))
+        }
+    }
+
+    func testSessionSelectionRejectsNonRunningSport() throws {
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.cycling.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        decodedFile.sessions = [session]
+
+        decodedFile.records = [FITRecordMessage()]
+
+        XCTAssertThrowsError(try FITDecoder.decode(decodedFile: decodedFile)) { error in
+            guard case WorkoutImportError.parsingError(let message) = error else {
+                XCTFail("Expected parsingError, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("non-running"))
+        }
+    }
+
+    func testSessionSelectionFallsBackWithoutSessions() throws {
+        var decodedFile = FITDecodedFile()
+        // No sessions — should fall back to legacy
+
+        var record = FITRecordMessage()
+        record.timestamp = 1_000_000
+        record.positionLat = Self.semicircles(37.7749)
+        record.positionLong = Self.semicircles(-122.4194)
+        record.distance = 0
+        decodedFile.records = [record]
+
+        let points = try FITDecoder.decode(decodedFile: decodedFile)
+        XCTAssertEqual(points.count, 1)
+    }
+
+    // MARK: - Timer Event Segmentation Tests
+
+    func testTimerEventSegmentationSplitsRoute() throws {
+        var decodedFile = FITDecodedFile()
+
+        // Running session
+        var session = FITSessionMessage()
+        session.sport = FITSport.running.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        session.startTime = 1_000_000
+        session.timestamp = 1_000_120
+        decodedFile.sessions = [session]
+
+        // Timer start at t=1000000
+        var event1 = FITEventMessage()
+        event1.timestamp = 1_000_000
+        event1.event = 0 // timer
+        event1.eventType = 0 // start
+        decodedFile.events.append(event1)
+
+        // Timer stop at t=1000040
+        var event2 = FITEventMessage()
+        event2.timestamp = 1_000_040
+        event2.event = 0 // timer
+        event2.eventType = 1 // stop
+        decodedFile.events.append(event2)
+
+        // Timer start at t=1000080 (resume)
+        var event3 = FITEventMessage()
+        event3.timestamp = 1_000_080
+        event3.event = 0 // timer
+        event3.eventType = 0 // start
+        decodedFile.events.append(event3)
+
+        // 6 records spanning the full session
+        for i in 0..<6 {
+            var record = FITRecordMessage()
+            record.timestamp = UInt32(1_000_000 + i * 20)
+            record.positionLat = Self.semicircles(37.7749 + Double(i) * 0.0001)
+            record.positionLong = Self.semicircles(-122.4194 + Double(i) * 0.0001)
+            record.distance = UInt32(i * 1000)
+            decodedFile.records.append(record)
+        }
+
+        let points = try FITDecoder.decode(decodedFile: decodedFile)
+        // All 6 records should be present (segmentation preserves all records,
+        // just marks boundaries)
+        XCTAssertEqual(points.count, 6)
+    }
+
+    // MARK: - Ordered Messages Test
+
+    func testOrderedMessagesTrackDocumentOrder() throws {
+        var content = Data()
+
+        // Definition for event (global 21), local type 0
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x15, 0x00]) // global msg 21
+        content.append(3)
+        Self.writeField(253, size: 4, type: 134, to: &content)
+        Self.writeField(0, size: 1, type: 2, to: &content)
+        Self.writeField(1, size: 1, type: 2, to: &content)
+
+        // Definition for record (global 20), local type 1
+        content.append(0x41) // definition, local type 1
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x14, 0x00]) // global msg 20
+        content.append(4)
+        Self.writeField(253, size: 4, type: 134, to: &content)
+        Self.writeField(0, size: 4, type: 133, to: &content)
+        Self.writeField(1, size: 4, type: 133, to: &content)
+        Self.writeField(5, size: 4, type: 134, to: &content)
+
+        // Event data (local type 0)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        content.append(0) // timer
+        content.append(0) // start
+
+        // Record data (local type 1)
+        content.append(0x01)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let data = Self.fitData(rawContent: content)
+        let decoded = try FITParser.parse(data: data)
+
+        // orderedMessages should have 2 entries: event first, then record
+        XCTAssertEqual(decoded.orderedMessages.count, 2)
+        XCTAssertEqual(decoded.orderedMessages[0].globalMessageNumber, 21) // event
+        XCTAssertEqual(decoded.orderedMessages[1].globalMessageNumber, 20) // record
+        XCTAssertLessThan(decoded.orderedMessages[0].index, decoded.orderedMessages[1].index)
     }
 
     private static func append(_ value: UInt32, to data: inout Data) {

@@ -3,8 +3,8 @@ import Foundation
 /// Imports workouts from FIT (Flexible and Interoperable Data Transfer) files.
 ///
 /// Supports common running activity files with GPS records.
-/// Uses FIT binary parser to extract record messages with
-/// timestamps, coordinates, altitude, distance, speed, heart rate, and cadence.
+/// Uses FIT binary parser to decode all message types, select the appropriate
+/// session, and extract route points with timer-event-based segmentation.
 public struct FITImporter: WorkoutImporting {
 
     public init() {}
@@ -15,52 +15,34 @@ public struct FITImporter: WorkoutImporting {
 
         // Wrap all I/O and parsing errors into WorkoutImportError
         // so upstream code only needs to handle that type.
-        let records: [FITRecordMessage]
+        let decodedFile: FITDecodedFile
         do {
             let data = try Data(contentsOf: url)
-            records = try FITParser.parse(data: data)
+            decodedFile = try FITParser.parse(data: data)
         } catch let error as FITError {
             throw WorkoutImportError.parsingError(error.localizedDescription)
+        } catch let error as CancellationError {
+            throw error
         } catch {
             throw WorkoutImportError.parsingError(error.localizedDescription)
         }
 
-        guard !records.isEmpty else {
+        guard !decodedFile.records.isEmpty else {
             throw WorkoutImportError.missingData("No records found in FIT file")
         }
 
-        let gpsRecords = records.filter { record in
-            guard let lat = record.positionLat, let lon = record.positionLong else {
-                return false
-            }
-            return lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate
-        }
-
-        guard !gpsRecords.isEmpty else {
-            throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
-        }
-
-        let hasAnyTimestamp = gpsRecords.contains { record in
-            guard let timestamp = record.timestamp else { return false }
-            return timestamp != FITParser.invalidUint32
-        }
-        guard hasAnyTimestamp else {
-            throw WorkoutImportError.missingData("FIT file has no timestamps; cannot compute pace or duration")
-        }
-
-        // Decode records into route points (pass already-filtered GPS records)
-        let routePoints = FITDecoder.decode(records: gpsRecords)
+        // Decode records with session selection and segmentation
+        let routePoints = try FITDecoder.decode(decodedFile: decodedFile)
 
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
         }
 
-        // Build metadata
-        let metadata = WorkoutMetadata(
-            name: url.deletingPathExtension().lastPathComponent,
-            activityType: "running",
-            startDate: routePoints.first?.timestamp,
-            endDate: routePoints.last?.timestamp
+        // Build metadata from session and device info
+        let metadata = buildMetadata(
+            decodedFile: decodedFile,
+            fileName: url.deletingPathExtension().lastPathComponent,
+            routePoints: routePoints
         )
 
         var workout = RunWorkout(
@@ -74,5 +56,68 @@ public struct FITImporter: WorkoutImporting {
         analyzer.analyze(&workout)
 
         return workout
+    }
+
+    // MARK: - Metadata Population
+
+    /// Build workout metadata from FIT session and device messages.
+    private func buildMetadata(
+        decodedFile: FITDecodedFile,
+        fileName: String,
+        routePoints: [RoutePoint]
+    ) -> WorkoutMetadata {
+        // Activity type from session sport
+        let activityType: String
+        if let session = decodedFile.sessions.first,
+           let sport = session.sport,
+           let sportType = FITSport(rawValue: sport) {
+            activityType = activityTypeFromSport(sportType)
+        } else {
+            activityType = "running"
+        }
+
+        // Start/end dates from route points
+        let startDate = routePoints.first?.timestamp
+        let endDate = routePoints.last?.timestamp
+
+        // Device name from device info
+        let deviceName = buildDeviceName(from: decodedFile.deviceInfo)
+
+        return WorkoutMetadata(
+            name: fileName,
+            activityType: activityType,
+            startDate: startDate,
+            endDate: endDate,
+            deviceName: deviceName
+        )
+    }
+
+    /// Convert FIT sport enum to human-readable activity type.
+    private func activityTypeFromSport(_ sport: FITSport) -> String {
+        switch sport {
+        case .running: return "running"
+        case .walking: return "walking"
+        case .hiking: return "hiking"
+        case .cycling: return "cycling"
+        case .swimming: return "swimming"
+        case .generic: return "running"
+        case .training: return "running"
+        default: return "running"
+        }
+    }
+
+    /// Build device name from device info messages.
+    private func buildDeviceName(from deviceInfo: [FITDeviceInfoMessage]) -> String? {
+        guard let device = deviceInfo.first else { return nil }
+
+        // Use product name if available
+        if let productName = device.productName, !productName.isEmpty {
+            return productName
+        }
+
+        // Only report device name for well-known manufacturers with product names
+        // Don't invent names from unknown numeric combinations
+        guard device.manufacturer != nil else { return nil }
+        return nil
     }
 }

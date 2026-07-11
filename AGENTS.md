@@ -230,8 +230,9 @@ swift test --filter AppStateAsyncTests
 ## FIT Limitations
 
 - Header and file CRCs are validated; a `0x0000` header CRC is treated as absent
-- Compressed timestamp headers fail with a controlled unsupported-data error
-- Only record messages (global message 20) are parsed
+- Compressed timestamp headers are supported with 5-bit offset wrap handling (window size 32)
+- Multiple message types are decoded: record (global 20), session (18), event (21), lap (19), device_info (23), file_id (0)
+- Session selection policy: prefer single GPS-bearing running session; reject multiple or non-running
 - Signed Int32 coordinate decoding uses bit-pattern semantics
 
 ## CI

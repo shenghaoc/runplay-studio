@@ -14,6 +14,11 @@ public enum FITError: Error, LocalizedError, Sendable {
     case corruptedData(String)
     case headerCRCMismatch
     case fileCRCMismatch
+    case invalidArchitecture(UInt8)
+    case compressedTimestampWithoutBaseline
+    case invalidCompressedDefinition
+    case unsupportedCompressedTimestamp
+    case cancellationError
 
     public var errorDescription: String? {
         switch self {
@@ -29,40 +34,40 @@ public enum FITError: Error, LocalizedError, Sendable {
         case .corruptedData(let d): return "Corrupted FIT data: \(d)"
         case .headerCRCMismatch: return "FIT header CRC mismatch — file may be corrupted"
         case .fileCRCMismatch: return "FIT file CRC mismatch — file may be corrupted"
+        case .invalidArchitecture(let v): return "Invalid FIT architecture byte: \(v)"
+        case .compressedTimestampWithoutBaseline: return "Compressed timestamp received before any baseline timestamp"
+        case .invalidCompressedDefinition: return "Compressed timestamp header references invalid definition"
+        case .unsupportedCompressedTimestamp: return "Compressed timestamp headers are not supported for this definition"
+        case .cancellationError: return "FIT parsing was cancelled"
         }
     }
 }
 
-/// Raw FIT record message with field values.
-public struct FITRecordMessage: Sendable {
-
-    public var timestamp: UInt32?
-    public var positionLat: Int32?      // semicircles
-    public var positionLong: Int32?     // semicircles
-    public var altitude: UInt16?        // scaled
-    public var enhancedAltitude: UInt16?
-    public var distance: UInt32?        // scaled
-    public var speed: UInt16?           // scaled
-    public var enhancedSpeed: UInt16?
-    public var heartRate: UInt8?
-    public var cadence: UInt8?
-}
-
 /// FIT field definition from definition message.
 public struct FITFieldDefinition: Sendable {
-
     public let fieldNumber: UInt8
     public let size: UInt8
-    public let type: UInt8
+    public let baseType: FITBaseType
+
+    public init(fieldNumber: UInt8, size: UInt8, baseType: FITBaseType) {
+        self.fieldNumber = fieldNumber
+        self.size = size
+        self.baseType = baseType
+    }
 }
 
 /// FIT definition message for a local message type.
 public struct FITDefinitionMessage: Sendable {
-
     public let architecture: UInt8      // 0=little-endian, 1=big-endian
     public let globalMessageNumber: UInt16
     public let fields: [FITFieldDefinition]
     let developerFields: [FITDeveloperFieldDefinition]
+
+    /// Total data size in bytes for a data message using this definition.
+    public var totalDataSize: Int {
+        fields.reduce(0) { $0 + Int($1.size) }
+            + developerFields.reduce(0) { $0 + Int($1.size) }
+    }
 }
 
 /// FIT developer field definition from a definition message.
@@ -74,8 +79,9 @@ struct FITDeveloperFieldDefinition: Sendable {
 
 /// Parser for FIT binary files.
 ///
-/// Parses the FIT binary format to extract record messages
-/// containing GPS, altitude, heart rate, and cadence data.
+/// Decodes the FIT binary format into ordered standard messages.
+/// Supports compressed timestamp headers, all required message types,
+/// and proper base-type decoding.
 public struct FITParser {
 
     public init() {}
@@ -84,37 +90,44 @@ public struct FITParser {
     static let fitDataType: [UInt8] = [0x46, 0x49, 0x54, 0x20] // "FIT "
     static let fitEpoch: TimeInterval = 631065600 // 1989-12-31 00:00:00 UTC
 
-    // Global message numbers
-    static let globalMessageRecord: UInt16 = 20
+    // Compressed timestamp constants
+    static let compressedHeaderMask: UInt8 = 0x80
+    static let compressedLocalTypeMask: UInt8 = 0x60
+    static let compressedLocalTypeShift: UInt8 = 5
+    static let compressedTimeOffsetMask: UInt8 = 0x1F
+    static let compressedTimeOffsetBits: Int = 5
+    static let compressedTimeOffsetMax: UInt32 = 0x1F  // 31
+    static let compressedTimeWindow: UInt32 = 32       // 2^5
 
-    // Record field numbers
-    static let fieldTimestamp: UInt8 = 253
-    static let fieldPositionLat: UInt8 = 0
-    static let fieldPositionLong: UInt8 = 1
-    static let fieldAltitude: UInt8 = 2
-    static let fieldDistance: UInt8 = 5
-    static let fieldSpeed: UInt8 = 6
-    static let fieldHeartRate: UInt8 = 3
-    static let fieldCadence: UInt8 = 4
-    static let fieldEnhancedAltitude: UInt8 = 78
-    static let fieldEnhancedSpeed: UInt8 = 73
-
-    // Scaling factors
-    static let altitudeScale: Double = 5.0
-    static let altitudeOffset: Double = 500.0
-    static let distanceScale: Double = 100.0
-    static let speedScale: Double = 1000.0
-
-    // Sentinel values
+    // Sentinel values (legacy, kept for backward compatibility)
     static let invalidCoordinate: Int32 = 0x7FFFFFFF
     static let invalidUint16: UInt16 = 0xFFFF
     static let invalidUint32: UInt32 = 0xFFFFFFFF
     static let invalidUint8: UInt8 = 0xFF
 
-    /// Parse FIT binary data and return record messages.
-    public static func parse(data: Data) throws -> [FITRecordMessage] {
+    // Resource limits
+    static let maxFileSize: Int = 100 * 1024 * 1024 // 100 MB
+    static let maxDefinitions: Int = 256
+    static let maxFieldCount: Int = 256
+    static let maxFieldSize: Int = 255
+    static let maxRecordCount: Int = 1_000_000
+
+    /// Checkpoint interval for cancellation checks (every N records).
+    static let cancellationCheckInterval: Int = 1000
+
+    // MARK: - Public API
+
+    /// Parse FIT binary data and return a decoded file with all message types.
+    public static func parse(
+        data: Data,
+        isCancelled: @escaping () -> Bool = { false }
+    ) throws -> FITDecodedFile {
         guard !data.isEmpty else {
             throw FITError.emptyFile
+        }
+
+        guard data.count <= maxFileSize else {
+            throw FITError.corruptedData("FIT file exceeds maximum size of \(maxFileSize / (1024 * 1024)) MB")
         }
 
         var offset = 0
@@ -124,63 +137,166 @@ public struct FITParser {
 
         // Parse data records
         var definitions: [UInt8: FITDefinitionMessage] = [:]
-        var records: [FITRecordMessage] = []
+        var decodedFile = FITDecodedFile()
+        var messageIndex = 0
+        var lastTimestamp: UInt32 = 0
+        var hasBaselineTimestamp = false
+        var recordCount = 0
 
         while offset < dataEndOffset {
+            // Cooperative cancellation check
+            if messageIndex % cancellationCheckInterval == 0 && isCancelled() {
+                throw FITError.cancellationError
+            }
+
+            guard offset < dataEndOffset else { break }
             let recordHeader = data[offset]
             offset += 1
 
             // Check for compressed timestamp header (bit 7 set)
-            if recordHeader & 0x80 != 0 {
-                throw FITError.corruptedData("Compressed timestamp records are not supported")
-            }
+            if recordHeader & compressedHeaderMask != 0 {
+                let localType = (recordHeader & compressedLocalTypeMask) >> compressedLocalTypeShift
+                let timeOffset = UInt32(recordHeader & compressedTimeOffsetMask)
 
-            // Bit 6: 0=data message, 1=definition message
-            let isDefinition = (recordHeader & 0x40) != 0
-            let hasDeveloperData = isDefinition && (recordHeader & 0x20) != 0
-            let localType = recordHeader & 0x0F
-
-            if isDefinition {
-                // Definition message
-                let def = try parseDefinition(
-                    data: data,
-                    offset: &offset,
-                    dataEndOffset: dataEndOffset,
-                    localType: localType,
-                    hasDeveloperData: hasDeveloperData
-                )
-                definitions[localType] = def
-            } else {
-                // Data message
-                guard let def = definitions[localType] else {
-                    throw FITError.missingDefinition(localType)
+                guard hasBaselineTimestamp else {
+                    throw FITError.compressedTimestampWithoutBaseline
                 }
 
-                if def.globalMessageNumber == globalMessageRecord {
-                    let record = try parseRecordMessage(
+                guard let def = definitions[localType] else {
+                    throw FITError.invalidCompressedDefinition
+                }
+
+                // Reconstruct timestamp with wrap handling
+                let offsetDelta = timeOffset &- (lastTimestamp & UInt32(compressedTimeOffsetMask))
+                var timestamp = lastTimestamp
+                if offsetDelta <= compressedTimeOffsetMax {
+                    // No wrap
+                    timestamp = lastTimestamp + offsetDelta
+                } else {
+                    // Wrap into next window
+                    timestamp = lastTimestamp + offsetDelta + compressedTimeWindow
+                }
+                lastTimestamp = timestamp
+
+                // Parse the data message (compressed headers don't include the timestamp field)
+                let timestampFieldSize = def.fields
+                    .first { $0.fieldNumber == 253 }
+                    .map { Int($0.size) } ?? 0
+                let dataSize = def.totalDataSize - timestampFieldSize
+                guard offset + dataSize <= dataEndOffset else {
+                    throw FITError.unexpectedEndOfFile
+                }
+
+                let isLittleEndian = def.architecture == 0
+                var reader = FITBinaryReader(
+                    data: data,
+                    offset: offset,
+                    endOffset: offset + dataSize,
+                    littleEndian: isLittleEndian
+                )
+
+                // Read field values (timestamp is NOT in the payload for compressed records)
+                var fieldValues: [UInt8: FITFieldValue] = [:]
+                for field in def.fields {
+                    if field.fieldNumber == 253 {
+                        // Timestamp field is encoded in the compressed header, not in payload
+                        continue
+                    }
+                    let value = try reader.readBaseTypeValue(
+                        baseType: field.baseType,
+                        fieldSize: Int(field.size)
+                    )
+                    fieldValues[field.fieldNumber] = value
+                }
+
+                // Skip developer fields
+                for field in def.developerFields {
+                    try reader.skip(Int(field.size))
+                }
+
+                offset = reader.offset
+
+                messageIndex += 1
+                decodedFile.orderedMessages.append(FITOrderedMessage(
+                    index: messageIndex,
+                    globalMessageNumber: def.globalMessageNumber,
+                    localType: localType
+                ))
+
+                switch def.globalMessageNumber {
+                case FITGlobalMessage.record.rawValue:
+                    var record = FITRecordMessage()
+                    record.timestamp = timestamp
+                    record.positionLat = fieldValues[FITRecordField.positionLat.rawValue]?.int32Value
+                    record.positionLong = fieldValues[FITRecordField.positionLong.rawValue]?.int32Value
+                    record.altitude = fieldValues[FITRecordField.altitude.rawValue]?.uint16Value
+                    record.enhancedAltitude = fieldValues[FITRecordField.enhancedAltitude.rawValue]?.uint32Value
+                    record.distance = fieldValues[FITRecordField.distance.rawValue]?.uint32Value
+                    record.speed = fieldValues[FITRecordField.speed.rawValue]?.uint16Value
+                    record.enhancedSpeed = fieldValues[FITRecordField.enhancedSpeed.rawValue]?.uint32Value
+                    record.heartRate = fieldValues[FITRecordField.heartRate.rawValue]?.uint8Value
+                    record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
+                    record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
+                    decodedFile.records.append(record)
+                    recordCount += 1
+                    if recordCount > maxRecordCount {
+                        throw FITError.corruptedData("Record count exceeds maximum of \(maxRecordCount)")
+                    }
+
+                case FITGlobalMessage.event.rawValue:
+                    var event = FITEventMessage()
+                    event.timestamp = timestamp
+                    event.event = fieldValues[FITEventField.event.rawValue]?.uint8Value
+                    event.eventType = fieldValues[FITEventField.eventType.rawValue]?.uint8Value
+                    event.eventGroup = fieldValues[FITEventField.eventGroup.rawValue]?.uint8Value
+                    decodedFile.events.append(event)
+
+                default:
+                    break
+                }
+            } else {
+                // Normal or definition message
+                let isDefinition = (recordHeader & 0x40) != 0
+                let hasDeveloperData = isDefinition && (recordHeader & 0x20) != 0
+                let localType = recordHeader & 0x0F
+
+                if isDefinition {
+                    let def = try parseDefinition(
                         data: data,
                         offset: &offset,
                         dataEndOffset: dataEndOffset,
-                        definition: def
+                        localType: localType,
+                        hasDeveloperData: hasDeveloperData
                     )
-                    records.append(record)
+                    definitions[localType] = def
                 } else {
-                    // Skip non-record messages
-                    let dataSize = def.fields.reduce(0) { $0 + Int($1.size) }
-                        + def.developerFields.reduce(0) { $0 + Int($1.size) }
-                    guard offset + dataSize <= dataEndOffset else {
-                        throw FITError.unexpectedEndOfFile
+                    guard let def = definitions[localType] else {
+                        throw FITError.missingDefinition(localType)
                     }
-                    offset += dataSize
+
+                    try parseDataMessage(
+                        data: data,
+                        offset: &offset,
+                        dataEndOffset: dataEndOffset,
+                        definition: def,
+                        localType: localType,
+                        lastTimestamp: &lastTimestamp,
+                        hasBaselineTimestamp: &hasBaselineTimestamp,
+                        messageIndex: &messageIndex,
+                        decodedFile: &decodedFile,
+                        recordCount: &recordCount
+                    )
                 }
             }
         }
 
-        return records
+        return decodedFile
     }
 
+    // MARK: - Header Parsing
+
     /// Parse FIT file header. Returns the exclusive end offset for data records.
-    private static func parseHeader(data: Data, offset: inout Int) throws -> Int {
+    static func parseHeader(data: Data, offset: inout Int) throws -> Int {
         guard data.count >= 12 else {
             throw FITError.invalidHeader
         }
@@ -228,7 +344,6 @@ public struct FITParser {
         }
 
         // Validate entire-file CRC (covers header + all data records).
-        // Placed here because parseHeader already has the dataEnd boundary.
         let expectedFileCRC = readUInt16(data: data[dataEnd..<(dataEnd + 2)], littleEndian: true)
         let computedFileCRC = crc16(over: data[0..<dataEnd])
         guard expectedFileCRC == computedFileCRC else {
@@ -239,8 +354,10 @@ public struct FITParser {
         return dataEnd
     }
 
+    // MARK: - Definition Message Parsing
+
     /// Parse a definition message.
-    private static func parseDefinition(
+    static func parseDefinition(
         data: Data,
         offset: inout Int,
         dataEndOffset: Int,
@@ -255,23 +372,30 @@ public struct FITParser {
         offset += 1
 
         let architecture = data[offset]
+        guard architecture == 0 || architecture == 1 else {
+            throw FITError.invalidArchitecture(architecture)
+        }
         offset += 1
+
+        let isLittleEndian = architecture == 0
 
         // Global message number (2 bytes)
         let globalMessageNumber: UInt16
-        if architecture == 0 {
-            // Little-endian
+        if isLittleEndian {
             globalMessageNumber = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
         } else {
-            // Big-endian
             globalMessageNumber = (UInt16(data[offset]) << 8) | UInt16(data[offset + 1])
         }
         offset += 2
 
         let fieldCount = Int(data[offset])
+        guard fieldCount <= maxFieldCount else {
+            throw FITError.corruptedData("Field count \(fieldCount) exceeds maximum \(maxFieldCount)")
+        }
         offset += 1
 
         var fields: [FITFieldDefinition] = []
+        fields.reserveCapacity(fieldCount)
         for _ in 0..<fieldCount {
             guard offset + 3 <= dataEndOffset else {
                 throw FITError.unexpectedEndOfFile
@@ -279,13 +403,27 @@ public struct FITParser {
 
             let fieldNum = data[offset]
             let fieldSize = data[offset + 1]
+            guard Int(fieldSize) <= maxFieldSize else {
+                throw FITError.corruptedData("Field size \(fieldSize) exceeds maximum \(maxFieldSize)")
+            }
             let fieldType = data[offset + 2]
             offset += 3
+
+            // Use full type byte to look up base type (matches FIT SDK convention)
+            guard let baseType = FITBaseType(rawValue: fieldType) else {
+                // Unknown base type - treat as byte array
+                fields.append(FITFieldDefinition(
+                    fieldNumber: fieldNum,
+                    size: fieldSize,
+                    baseType: .byte
+                ))
+                continue
+            }
 
             fields.append(FITFieldDefinition(
                 fieldNumber: fieldNum,
                 size: fieldSize,
-                type: fieldType
+                baseType: baseType
             ))
         }
 
@@ -299,6 +437,7 @@ public struct FITParser {
             offset += 1
 
             var parsedDeveloperFields: [FITDeveloperFieldDefinition] = []
+            parsedDeveloperFields.reserveCapacity(developerFieldCount)
             for _ in 0..<developerFieldCount {
                 guard offset + 3 <= dataEndOffset else {
                     throw FITError.unexpectedEndOfFile
@@ -324,79 +463,187 @@ public struct FITParser {
         )
     }
 
-    /// Parse a record (activity) message.
-    private static func parseRecordMessage(
+    // MARK: - Data Message Parsing
+
+    /// Parse a normal (non-compressed) data message.
+    private static func parseDataMessage(
         data: Data,
         offset: inout Int,
         dataEndOffset: Int,
-        definition: FITDefinitionMessage
-    ) throws -> FITRecordMessage {
-        var record = FITRecordMessage()
+        definition: FITDefinitionMessage,
+        localType: UInt8,
+        lastTimestamp: inout UInt32,
+        hasBaselineTimestamp: inout Bool,
+        messageIndex: inout Int,
+        decodedFile: inout FITDecodedFile,
+        recordCount: inout Int
+    ) throws {
+        let dataSize = definition.totalDataSize
+        guard offset + dataSize <= dataEndOffset else {
+            throw FITError.unexpectedEndOfFile
+        }
+
         let isLittleEndian = definition.architecture == 0
+        var reader = FITBinaryReader(
+            data: data,
+            offset: offset,
+            endOffset: offset + dataSize,
+            littleEndian: isLittleEndian
+        )
 
+        // Read field values
+        var fieldValues: [UInt8: FITFieldValue] = [:]
         for field in definition.fields {
-            guard offset + Int(field.size) <= dataEndOffset else {
-                throw FITError.unexpectedEndOfFile
-            }
-
-            let fieldData = data[offset..<(offset + Int(field.size))]
-
-            switch field.fieldNumber {
-            case fieldTimestamp:
-                if field.size >= 4 {
-                    record.timestamp = readUInt32(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldPositionLat:
-                if field.size >= 4 {
-                    record.positionLat = readInt32(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldPositionLong:
-                if field.size >= 4 {
-                    record.positionLong = readInt32(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldAltitude:
-                if field.size >= 2 {
-                    record.altitude = readUInt16(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldEnhancedAltitude:
-                if field.size >= 2 {
-                    record.enhancedAltitude = readUInt16(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldDistance:
-                if field.size >= 4 {
-                    record.distance = readUInt32(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldSpeed:
-                if field.size >= 2 {
-                    record.speed = readUInt16(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldEnhancedSpeed:
-                if field.size >= 2 {
-                    record.enhancedSpeed = readUInt16(data: fieldData, littleEndian: isLittleEndian)
-                }
-            case fieldHeartRate:
-                if field.size >= 1 {
-                    record.heartRate = fieldData[fieldData.startIndex]
-                }
-            case fieldCadence:
-                if field.size >= 1 {
-                    record.cadence = fieldData[fieldData.startIndex]
-                }
-            default:
-                break // Skip unknown fields
-            }
-
-            offset += Int(field.size)
+            let value = try reader.readBaseTypeValue(
+                baseType: field.baseType,
+                fieldSize: Int(field.size)
+            )
+            fieldValues[field.fieldNumber] = value
         }
 
+        // Skip developer fields
         for field in definition.developerFields {
-            guard offset + Int(field.size) <= dataEndOffset else {
-                throw FITError.unexpectedEndOfFile
-            }
-            offset += Int(field.size)
+            try reader.skip(Int(field.size))
         }
 
-        return record
+        offset = reader.offset
+
+        // Update timestamp if present
+        if let timestampField = fieldValues[253],
+           let timestamp = timestampField.uint32Value {
+            lastTimestamp = timestamp
+            hasBaselineTimestamp = true
+        }
+
+        // Build typed message based on global message number
+        messageIndex += 1
+        decodedFile.orderedMessages.append(FITOrderedMessage(
+            index: messageIndex,
+            globalMessageNumber: definition.globalMessageNumber,
+            localType: localType
+        ))
+
+        switch definition.globalMessageNumber {
+        case FITGlobalMessage.fileID.rawValue:
+            var msg = FITFileIDMessage()
+            msg.type = fieldValues[FITFileIDField.type.rawValue]?.uint8Value
+            msg.manufacturer = fieldValues[FITFileIDField.manufacturer.rawValue]?.uint16Value
+            msg.product = fieldValues[FITFileIDField.product.rawValue]?.uint16Value
+            msg.serialNumber = fieldValues[FITFileIDField.serialNumber.rawValue]?.uint32Value
+            msg.timeCreated = fieldValues[FITFileIDField.timeCreated.rawValue]?.uint32Value
+            msg.number = fieldValues[FITFileIDField.number.rawValue]?.uint16Value
+            decodedFile.fileID = msg
+
+        case FITGlobalMessage.record.rawValue:
+            var record = FITRecordMessage()
+            record.timestamp = fieldValues[FITRecordField.timestamp.rawValue]?.uint32Value
+            record.positionLat = fieldValues[FITRecordField.positionLat.rawValue]?.int32Value
+            record.positionLong = fieldValues[FITRecordField.positionLong.rawValue]?.int32Value
+            record.altitude = fieldValues[FITRecordField.altitude.rawValue]?.uint16Value
+            record.enhancedAltitude = fieldValues[FITRecordField.enhancedAltitude.rawValue]?.uint32Value
+            record.distance = fieldValues[FITRecordField.distance.rawValue]?.uint32Value
+            record.speed = fieldValues[FITRecordField.speed.rawValue]?.uint16Value
+            record.enhancedSpeed = fieldValues[FITRecordField.enhancedSpeed.rawValue]?.uint32Value
+            record.heartRate = fieldValues[FITRecordField.heartRate.rawValue]?.uint8Value
+            record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
+            record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
+            decodedFile.records.append(record)
+            recordCount += 1
+            if recordCount > maxRecordCount {
+                throw FITError.corruptedData("Record count exceeds maximum of \(maxRecordCount)")
+            }
+
+        case FITGlobalMessage.event.rawValue:
+            var event = FITEventMessage()
+            event.timestamp = fieldValues[FITEventField.timestamp.rawValue]?.uint32Value
+            event.event = fieldValues[FITEventField.event.rawValue]?.uint8Value
+            event.eventType = fieldValues[FITEventField.eventType.rawValue]?.uint8Value
+            event.eventGroup = fieldValues[FITEventField.eventGroup.rawValue]?.uint8Value
+            decodedFile.events.append(event)
+
+        case FITGlobalMessage.lap.rawValue:
+            var lap = FITLapMessage()
+            lap.timestamp = fieldValues[FITLapField.timestamp.rawValue]?.uint32Value
+            lap.startTime = fieldValues[FITLapField.startTime.rawValue]?.uint32Value
+            lap.startPositionLat = fieldValues[FITLapField.startPositionLat.rawValue]?.int32Value
+            lap.startPositionLong = fieldValues[FITLapField.startPositionLong.rawValue]?.int32Value
+            lap.endPositionLat = fieldValues[FITLapField.endPositionLat.rawValue]?.int32Value
+            lap.endPositionLong = fieldValues[FITLapField.endPositionLong.rawValue]?.int32Value
+            lap.totalElapsedTime = fieldValues[FITLapField.totalElapsedTime.rawValue]?.uint32Value
+            lap.totalTimerTime = fieldValues[FITLapField.totalTimerTime.rawValue]?.uint32Value
+            lap.totalDistance = fieldValues[FITLapField.totalDistance.rawValue]?.uint32Value
+            lap.totalAscent = fieldValues[FITLapField.totalAscent.rawValue]?.uint16Value
+            lap.totalDescent = fieldValues[FITLapField.totalDescent.rawValue]?.uint16Value
+            lap.averageSpeed = fieldValues[FITLapField.averageSpeed.rawValue]?.uint16Value
+            lap.maximumSpeed = fieldValues[FITLapField.maximumSpeed.rawValue]?.uint16Value
+            lap.averageHeartRate = fieldValues[FITLapField.averageHeartRate.rawValue]?.uint8Value
+            lap.maximumHeartRate = fieldValues[FITLapField.maximumHeartRate.rawValue]?.uint8Value
+            lap.averageCadence = fieldValues[FITLapField.averageCadence.rawValue]?.uint8Value
+            lap.event = fieldValues[FITLapField.event.rawValue]?.uint8Value
+            lap.eventType = fieldValues[FITLapField.eventType.rawValue]?.uint8Value
+            lap.eventGroup = fieldValues[FITLapField.eventGroup.rawValue]?.uint8Value
+            lap.lapTrigger = fieldValues[FITLapField.lapTrigger.rawValue]?.uint8Value
+            lap.sport = fieldValues[FITLapField.sport.rawValue]?.uint8Value
+            decodedFile.laps.append(lap)
+
+        case FITGlobalMessage.session.rawValue:
+            var session = FITSessionMessage()
+            session.timestamp = fieldValues[FITSessionField.timestamp.rawValue]?.uint32Value
+            session.startTime = fieldValues[FITSessionField.startTime.rawValue]?.uint32Value
+            session.startPositionLat = fieldValues[FITSessionField.startPositionLat.rawValue]?.int32Value
+            session.startPositionLong = fieldValues[FITSessionField.startPositionLong.rawValue]?.int32Value
+            session.sport = fieldValues[FITSessionField.sport.rawValue]?.uint8Value
+            session.subSport = fieldValues[FITSessionField.subSport.rawValue]?.uint8Value
+            session.totalElapsedTime = fieldValues[FITSessionField.totalElapsedTime.rawValue]?.uint32Value
+            session.totalTimerTime = fieldValues[FITSessionField.totalTimerTime.rawValue]?.uint32Value
+            session.totalDistance = fieldValues[FITSessionField.totalDistance.rawValue]?.uint32Value
+            session.totalAscent = fieldValues[FITSessionField.totalAscent.rawValue]?.uint16Value
+            session.totalDescent = fieldValues[FITSessionField.totalDescent.rawValue]?.uint16Value
+            session.averageSpeed = fieldValues[FITSessionField.averageSpeed.rawValue]?.uint16Value
+            session.maximumSpeed = fieldValues[FITSessionField.maximumSpeed.rawValue]?.uint16Value
+            session.averageHeartRate = fieldValues[FITSessionField.averageHeartRate.rawValue]?.uint8Value
+            session.maximumHeartRate = fieldValues[FITSessionField.maximumHeartRate.rawValue]?.uint8Value
+            session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
+            session.event = fieldValues[0]?.uint8Value  // event field 0
+            session.eventType = fieldValues[1]?.uint8Value  // event_type field 1
+            session.eventGroup = fieldValues[23]?.uint8Value  // event_group field 23
+            session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
+            session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
+            session.necLat = fieldValues[FITSessionField.necLat.rawValue]?.int32Value
+            session.swcLong = fieldValues[FITSessionField.swcLong.rawValue]?.int32Value
+            session.swcLat = fieldValues[FITSessionField.swcLat.rawValue]?.int32Value
+            decodedFile.sessions.append(session)
+
+        case FITGlobalMessage.activity.rawValue:
+            // Activity messages parsed but not stored separately in this version
+            break
+
+        case FITGlobalMessage.deviceInfo.rawValue:
+            var deviceInfo = FITDeviceInfoMessage()
+            deviceInfo.timestamp = fieldValues[FITDeviceInfoField.timestamp.rawValue]?.uint32Value
+            deviceInfo.serialNumber = fieldValues[FITDeviceInfoField.serialNumber.rawValue]?.uint32Value
+            deviceInfo.manufacturer = fieldValues[FITDeviceInfoField.manufacturer.rawValue]?.uint16Value
+            deviceInfo.product = fieldValues[FITDeviceInfoField.product.rawValue]?.uint16Value
+            deviceInfo.softwareVersion = fieldValues[FITDeviceInfoField.softwareVersion.rawValue]?.uint16Value
+            deviceInfo.hardwareVersion = fieldValues[FITDeviceInfoField.hardwareVersion.rawValue]?.uint8Value
+            deviceInfo.deviceIndex = fieldValues[FITDeviceInfoField.deviceIndex.rawValue]?.uint8Value
+            deviceInfo.deviceType = fieldValues[FITDeviceInfoField.deviceType.rawValue]?.uint8Value
+            deviceInfo.productName = fieldValues[FITDeviceInfoField.productName.rawValue]?.stringValue
+            decodedFile.deviceInfo.append(deviceInfo)
+
+        default:
+            // Unknown messages are skipped silently
+            break
+        }
+    }
+
+    // MARK: - Legacy API (backward compatibility)
+
+    /// Parse FIT binary data and return only record messages.
+    /// This is the legacy API maintained for backward compatibility.
+    public static func parseRecords(data: Data) throws -> [FITRecordMessage] {
+        let decoded = try parse(data: data)
+        return decoded.records
     }
 
     // MARK: - CRC-16 (FIT SDK)
@@ -428,9 +675,9 @@ public struct FITParser {
         return crc
     }
 
-    // MARK: - Binary Reading Helpers
+    // MARK: - Binary Reading Helpers (legacy)
 
-    private static func readUInt16(data: Data.SubSequence, littleEndian: Bool) -> UInt16 {
+    static func readUInt16(data: Data.SubSequence, littleEndian: Bool) -> UInt16 {
         let bytes = Array(data.prefix(2))
         if littleEndian {
             return UInt16(bytes[0]) | (UInt16(bytes[1]) << 8)
@@ -439,11 +686,11 @@ public struct FITParser {
         }
     }
 
-    private static func readInt32(data: Data.SubSequence, littleEndian: Bool) -> Int32 {
+    static func readInt32(data: Data.SubSequence, littleEndian: Bool) -> Int32 {
         Int32(bitPattern: readUInt32(data: data, littleEndian: littleEndian))
     }
 
-    private static func readUInt32(data: Data.SubSequence, littleEndian: Bool) -> UInt32 {
+    static func readUInt32(data: Data.SubSequence, littleEndian: Bool) -> UInt32 {
         let bytes = Array(data.prefix(4))
         if littleEndian {
             return UInt32(bytes[0]) | (UInt32(bytes[1]) << 8) | (UInt32(bytes[2]) << 16) | (UInt32(bytes[3]) << 24)
@@ -469,16 +716,28 @@ extension FITParser {
 
     /// Convert scaled altitude to meters.
     public static func scaledAltitudeToMeters(_ scaled: UInt16) -> Double {
-        (Double(scaled) / altitudeScale) - altitudeOffset
+        (Double(scaled) / 5.0) - 500.0
+    }
+
+    /// Convert enhanced altitude (UInt32) to meters.
+    /// Enhanced altitude uses scale 5, offset 500, but stored as UInt32.
+    public static func enhancedAltitudeToMeters(_ scaled: UInt32) -> Double {
+        (Double(scaled) / 5.0) - 500.0
     }
 
     /// Convert scaled distance to meters.
     public static func scaledDistanceToMeters(_ scaled: UInt32) -> Double {
-        Double(scaled) / distanceScale
+        Double(scaled) / 100.0
     }
 
     /// Convert scaled speed to m/s.
     public static func scaledSpeedToMPS(_ scaled: UInt16) -> Double {
-        Double(scaled) / speedScale
+        Double(scaled) / 1000.0
+    }
+
+    /// Convert enhanced speed (UInt32) to m/s.
+    /// Enhanced speed uses scale 1000, same as legacy.
+    public static func enhancedSpeedToMPS(_ scaled: UInt32) -> Double {
+        Double(scaled) / 1000.0
     }
 }
