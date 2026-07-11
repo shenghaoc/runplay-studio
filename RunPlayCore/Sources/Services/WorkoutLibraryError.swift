@@ -12,7 +12,7 @@ public enum WorkoutLibraryError: Error, LocalizedError, Equatable {
     case workoutCorrupted(UUID, String)
     /// A file write failed.
     case writeFailed(String)
-    /// The schema version is newer than what this app supports.
+    /// The schema version is not supported by this app.
     case unsupportedSchemaVersion(Int)
 
     public var errorDescription: String? {

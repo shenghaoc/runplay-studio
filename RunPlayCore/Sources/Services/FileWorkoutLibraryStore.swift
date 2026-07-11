@@ -77,7 +77,7 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring {
             throw WorkoutLibraryError.manifestCorrupted("Cannot decode manifest: \(error.localizedDescription)")
         }
 
-        guard manifest.version <= WorkoutLibraryManifest.currentVersion else {
+        guard manifest.version == WorkoutLibraryManifest.currentVersion else {
             throw WorkoutLibraryError.unsupportedSchemaVersion(manifest.version)
         }
 

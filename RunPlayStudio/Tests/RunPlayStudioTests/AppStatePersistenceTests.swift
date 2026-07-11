@@ -57,6 +57,15 @@ final class AppStatePersistenceTests: XCTestCase {
         )
     }
 
+    private func writeImportFile(for workout: RunWorkout) throws -> URL {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let url = tempDir.appendingPathComponent("import.json")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        try encoder.encode(workout).write(to: url, options: .atomic)
+        return url
+    }
+
     // MARK: - Startup With No Saved Workouts Loads Demos
 
     func testStartupWithNoSavedWorkoutsLoadsDemos() {
@@ -95,40 +104,57 @@ final class AppStatePersistenceTests: XCTestCase {
         XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
     }
 
+    func testStartupRepairsStaleSelectedWorkoutID() throws {
+        let store = makeStore()
+        let workout = makeWorkout(name: "Valid")
+        try store.saveWorkout(workout)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: UUID()
+        ))
+
+        let appState = AppState(store: store)
+
+        XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
+        XCTAssertEqual(try store.loadManifest().selectedWorkoutID, workout.id)
+    }
+
     // MARK: - Successful Import Persists
 
     func testSuccessfulImportPersists() throws {
         let store = makeStore()
-        _ = AppState(store: store, loadSampleWorkout: false)
+        let appState = AppState(store: store, loadSampleWorkout: false)
+        let url = try writeImportFile(for: makeWorkout(name: "Imported Run"))
 
-        // Manually add a workout and persist it (simulating import flow).
-        let workout = makeWorkout(name: "Imported Run")
-        try store.saveWorkout(workout)
-        var manifest = WorkoutLibraryManifest()
-        manifest.workoutIDs.append(workout.id)
-        manifest.selectedWorkoutID = workout.id
-        try store.saveManifest(manifest)
+        appState.loadWorkout(from: url)
 
-        // Simulate loading from store to verify persistence.
+        let importedID = try XCTUnwrap(appState.selectedWorkout?.id)
+        XCTAssertEqual(appState.workouts.count, 1)
+        XCTAssertEqual(appState.selectedWorkout?.metadata.name, "Imported Run")
+        XCTAssertTrue(store.workoutExists(id: importedID))
+        XCTAssertEqual(try store.loadManifest().workoutIDs, [importedID])
+
         let freshAppState = AppState(store: store)
-        XCTAssertTrue(freshAppState.workouts.contains { $0.id == workout.id })
-        XCTAssertEqual(freshAppState.selectedWorkout?.id, workout.id)
+        XCTAssertEqual(freshAppState.workouts.map(\.id), [importedID])
+        XCTAssertEqual(freshAppState.selectedWorkout?.id, importedID)
     }
 
     // MARK: - Failed Persistence Does Not Leave False In-Memory Success
 
     func testFailedPersistenceDoesNotAddToMemory() throws {
-        let store = makeStore()
+        let seed = makeWorkout(name: "Existing")
+        let store = ManifestSaveFailingStore(workout: seed)
         let appState = AppState(store: store, loadSampleWorkout: false)
+        let url = try writeImportFile(for: makeWorkout(name: "Cannot Persist"))
 
-        // Initially empty
-        XCTAssertTrue(appState.workouts.isEmpty)
+        appState.loadWorkout(from: url)
 
-        // After a simulated failed import (store is empty), workouts should remain empty.
-        // The actual import flow checks store.saveWorkout before appending.
-        let manifest = try? store.loadManifest()
-        XCTAssertNil(manifest)
         XCTAssertTrue(appState.workouts.isEmpty)
+        XCTAssertNil(appState.selectedWorkout)
+        XCTAssertTrue(appState.showingError)
+        XCTAssertTrue(appState.errorMessage?.contains("could not be saved") == true)
+        XCTAssertNotNil(store.savedWorkoutID)
+        XCTAssertEqual(store.deletedWorkoutIDs, [store.savedWorkoutID].compactMap { $0 })
     }
 
     // MARK: - Delete Updates Persistence And Selection
@@ -184,6 +210,20 @@ final class AppStatePersistenceTests: XCTestCase {
 
         XCTAssertEqual(appState.workouts.count, initialCount - 1)
         XCTAssertFalse(appState.showingError)
+    }
+
+    func testDeleteFileFailureRollsBackManifestAndPublishedState() throws {
+        let workout = makeWorkout(name: "Keep Me")
+        let store = WorkoutDeleteFailingStore(workout: workout)
+        let appState = AppState(store: store)
+
+        appState.deleteWorkout(workout)
+
+        XCTAssertEqual(appState.workouts.map(\.id), [workout.id])
+        XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
+        XCTAssertEqual(try store.loadManifest().workoutIDs, [workout.id])
+        XCTAssertTrue(appState.showingError)
+        XCTAssertTrue(appState.errorMessage?.contains("no changes were made") == true)
     }
 
     // MARK: - Deleting Comparison Workout Clears Comparison State
@@ -250,6 +290,35 @@ final class AppStatePersistenceTests: XCTestCase {
         // Second launch — should restore w2
         let appState2 = AppState(store: store)
         XCTAssertEqual(appState2.selectedWorkout?.id, w2.id)
+    }
+
+    func testSelectionPersistenceFailureIsReported() {
+        let workout = makeWorkout(name: "Selection")
+        let store = ManifestSaveFailingStore(workout: workout)
+        let appState = AppState(store: store, loadSampleWorkout: false)
+        appState.workouts = [workout]
+
+        appState.selectWorkout(workout)
+
+        XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
+        XCTAssertTrue(appState.showingError)
+        XCTAssertTrue(appState.errorMessage?.contains("could not be saved") == true)
+    }
+
+    func testClearingSelectionPersistsNilSelection() throws {
+        let store = makeStore()
+        let workout = makeWorkout(name: "Selection")
+        try store.saveWorkout(workout)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id
+        ))
+        let appState = AppState(store: store)
+
+        appState.selectWorkout(nil)
+
+        XCTAssertNil(appState.selectedWorkout)
+        XCTAssertNil(try store.loadManifest().selectedWorkoutID)
     }
 
     // MARK: - Corrupt Manifest Falls Back To Demos
@@ -358,6 +427,8 @@ private final class ManifestSaveFailingStore: WorkoutLibraryStoring {
     private let workout: RunWorkout
     private let manifest: WorkoutLibraryManifest
     private(set) var didDeleteWorkoutFile = false
+    private(set) var savedWorkoutID: UUID?
+    private(set) var deletedWorkoutIDs: [UUID] = []
 
     init(workout: RunWorkout) {
         self.workout = workout
@@ -379,10 +450,48 @@ private final class ManifestSaveFailingStore: WorkoutLibraryStoring {
         workout
     }
 
-    func saveWorkout(_ workout: RunWorkout) throws {}
+    func saveWorkout(_ workout: RunWorkout) throws {
+        savedWorkoutID = workout.id
+    }
 
     func deleteWorkout(id: UUID) throws {
         didDeleteWorkoutFile = true
+        deletedWorkoutIDs.append(id)
+    }
+
+    func workoutExists(id: UUID) -> Bool {
+        id == workout.id
+    }
+}
+
+private final class WorkoutDeleteFailingStore: WorkoutLibraryStoring {
+    private let workout: RunWorkout
+    private var manifest: WorkoutLibraryManifest
+
+    init(workout: RunWorkout) {
+        self.workout = workout
+        self.manifest = WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id
+        )
+    }
+
+    func loadManifest() throws -> WorkoutLibraryManifest {
+        manifest
+    }
+
+    func saveManifest(_ manifest: WorkoutLibraryManifest) throws {
+        self.manifest = manifest
+    }
+
+    func loadWorkout(id: UUID) throws -> RunWorkout {
+        workout
+    }
+
+    func saveWorkout(_ workout: RunWorkout) throws {}
+
+    func deleteWorkout(id: UUID) throws {
+        throw WorkoutLibraryError.writeFailed("simulated file deletion failure")
     }
 
     func workoutExists(id: UUID) -> Bool {

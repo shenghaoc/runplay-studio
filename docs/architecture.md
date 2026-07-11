@@ -3,7 +3,8 @@
 ## Data Flow
 
 ```
-Import File → Importer → RoutePointSanitizer → Normalized Model → Analyzer → Replay Controller → Views
+Import File → Importer → RoutePointSanitizer → Normalized Model → Analyzer → Workout Library
+                                                     ↘ Replay Controller → Views
                                                      ↘ Comparison Service → Compare View
                                                      ↘ Route Coordinates → MapKit 2D/3D View
 ```
@@ -14,9 +15,10 @@ Import File → Importer → RoutePointSanitizer → Normalized Model → Analyz
 2. **Parse**: Format-specific importer parses raw data
 3. **Normalize**: `RoutePointSanitizer` validates coordinates, ensures monotonic elapsed time and distance
 4. **Analyze**: `WorkoutAnalyzer` calculates distance, pace, elevation, splits, segments
-5. **Control**: `ReplayController` manages playback state and timeline
-6. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries
-7. **Compare**: `WorkoutComparisonService` compares two loaded workouts by summary metrics, split index, and distance-aligned metric series
+5. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized workout and versioned manifest
+6. **Control**: `ReplayController` manages playback state and timeline
+7. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries
+8. **Compare**: `WorkoutComparisonService` compares two loaded workouts by summary metrics, split index, and distance-aligned metric series
 
 ## Module Structure
 
@@ -29,9 +31,13 @@ RunPlayCore/                   # Platform-neutral library (no UI frameworks)
 └── Tests/
     └── RunPlayCoreTests/      # Platform-neutral tests
 
-RunPlayStudio/                 # macOS executable (SwiftUI, MapKit, Swift Charts)
+RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit values)
+├── Sources/                   # Route/map data and rendering services
+└── Tests/                     # Platform integration tests
+
+RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 ├── Sources/
-│   ├── Services/              # macOS-only services (PNG export, route coloring)
+│   ├── Services/              # UI-adjacent services (library loading, PNG export)
 │   ├── ViewModels/            # View state management (AppState, ReplayController)
 │   ├── Views/                 # SwiftUI views
 │   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
@@ -54,6 +60,15 @@ public protocol WorkoutImporting {
 ```
 
 The `WorkoutImporterFactory` dispatches by file extension. The SwiftUI file picker allows generic data files so `.tcx` and `.fit` files remain selectable even when the system does not declare dedicated UTIs; unsupported extensions are rejected by the importer factory.
+
+### Workout library persistence
+
+`WorkoutLibraryStoring`, `FileWorkoutLibraryStore`, and
+`WorkoutLibraryManifest` live in `RunPlayCore`. The store writes complete
+normalized workout snapshots beneath Application Support using atomic writes.
+`RunPlayStudio` supplies the production root URL and applies background load
+results to `AppState`; bundled demos remain SwiftPM resources rather than user
+library entries.
 
 ### GeoDistance
 
@@ -117,10 +132,10 @@ interpolates selected-distance markers without introducing another renderer.
 
 ## Dependencies
 
-### Apple Frameworks Used (RunPlayStudio only)
+### Apple Frameworks Used (macOS targets only)
 
 - **SwiftUI**: App UI and views
-- **MapKit**: One realistic-elevation SwiftUI map with top-down and pitched presentations
+- **MapKit**: Platform route/map data and one SwiftUI map with top-down and pitched presentations
 - **Swift Charts**: Pace, elevation, heart rate charts
 - **SceneKit**: Legacy prototype utilities retained internally; not the shipped map surface
 - **UniformTypeIdentifiers**: File import

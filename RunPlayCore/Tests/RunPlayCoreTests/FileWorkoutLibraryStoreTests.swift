@@ -270,20 +270,44 @@ final class FileWorkoutLibraryStoreTests: XCTestCase {
         }
     }
 
+    func testOlderSchemaVersionThrowsWithoutMigration() throws {
+        let manifest = WorkoutLibraryManifest(version: 0, workoutIDs: [])
+        try store.saveManifest(manifest)
+
+        XCTAssertThrowsError(try store.loadManifest()) { error in
+            guard case WorkoutLibraryError.unsupportedSchemaVersion(let version) = error else {
+                XCTFail("Expected unsupportedSchemaVersion, got \(error)")
+                return
+            }
+            XCTAssertEqual(version, 0)
+        }
+    }
+
     // MARK: - Failed Write Does Not Destroy Prior Valid Data
 
-    func testOverwriteWithValidDataPreservesWorkouts() throws {
+    func testFailedWorkoutWritePreservesPriorValidData() throws {
         let workout = makeWorkout(name: "Original")
         try store.saveWorkout(workout)
         try store.saveManifest(WorkoutLibraryManifest(workoutIDs: [workout.id]))
 
-        // Overwrite with updated data
+        let workoutsDirectory = tempDir.appendingPathComponent("workouts")
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555],
+            ofItemAtPath: workoutsDirectory.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: workoutsDirectory.path
+            )
+        }
+
         var updated = workout
         updated.metadata.name = "Updated"
-        try store.saveWorkout(updated)
+        XCTAssertThrowsError(try store.saveWorkout(updated))
 
         let loaded = try store.loadWorkout(id: workout.id)
-        XCTAssertEqual(loaded.metadata.name, "Updated")
+        XCTAssertEqual(loaded.metadata.name, "Original")
     }
 
     // MARK: - Date Round-Trip

@@ -32,6 +32,11 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .onDeleteCommand {
+            if let selectedWorkout {
+                workoutToDelete = selectedWorkout
+            }
+        }
         .navigationTitle("RunPlay Studio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -53,7 +58,7 @@ struct SidebarView: View {
             }
         } message: {
             if let workout = workoutToDelete {
-                Text("Are you sure you want to delete \"\(workout.displayName)\"? This cannot be undone.")
+                Text("Delete RunPlay Studio’s stored copy of \"\(workout.displayName)\"? The original imported file will not be changed.")
             }
         }
     }

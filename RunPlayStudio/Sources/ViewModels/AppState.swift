@@ -33,11 +33,6 @@ class AppState: ObservableObject {
         let value: WorkoutLibraryStoring
     }
 
-    private enum LibraryLoadResult {
-        case demos(errorMessage: String?)
-        case workouts([RunWorkout], selectedWorkoutID: UUID?, warning: String?)
-    }
-
     /// Create AppState with an optional store injection.
     ///
     /// - Parameters:
@@ -56,7 +51,7 @@ class AppState: ObservableObject {
                     isLoadingLibrary = true
                     loadFromStoreInBackground(store)
                 } else {
-                    applyLibraryLoadResult(Self.readLibrary(from: store))
+                    applyLibraryLoadResult(WorkoutLibraryLoader.load(from: store))
                 }
             } else {
                 // No store provided: fall back to legacy demo-only behavior.
@@ -83,7 +78,7 @@ class AppState: ObservableObject {
         let sendableStore = SendableStore(value: store)
         Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
-                Self.readLibrary(from: sendableStore.value)
+                WorkoutLibraryLoader.load(from: sendableStore.value)
             }.value
             guard let self else { return }
             applyLibraryLoadResult(result)
@@ -91,77 +86,7 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Read the persisted library without touching observable UI state.
-    nonisolated private static func readLibrary(from store: WorkoutLibraryStoring) -> LibraryLoadResult {
-        do {
-            let manifest = try store.loadManifest()
-            guard !manifest.workoutIDs.isEmpty else {
-                return .demos(errorMessage: nil)
-            }
-
-            var loaded: [RunWorkout] = []
-            var validIDs: [UUID] = []
-            var corruptWarnings: [String] = []
-            var missingIDs: [UUID] = []
-
-            for id in manifest.workoutIDs {
-                do {
-                    let workout = try store.loadWorkout(id: id)
-                    loaded.append(workout)
-                    validIDs.append(id)
-                } catch let error as WorkoutLibraryError {
-                    switch error {
-                    case .workoutFileMissing:
-                        missingIDs.append(id)
-                        corruptWarnings.append("Workout \(id.uuidString.prefix(8))… file missing — skipped")
-                    case .workoutCorrupted:
-                        corruptWarnings.append("Workout \(id.uuidString.prefix(8))… corrupted — skipped")
-                    default:
-                        corruptWarnings.append("Workout \(id.uuidString.prefix(8))… error: \(error.localizedDescription)")
-                    }
-                } catch {
-                    corruptWarnings.append("Workout \(id.uuidString.prefix(8))… unexpected error: \(error.localizedDescription)")
-                }
-            }
-
-            guard !loaded.isEmpty else {
-                let warning = corruptWarnings.isEmpty
-                    ? nil
-                    : "Library recovery:\n" + corruptWarnings.joined(separator: "\n")
-                return .demos(errorMessage: warning)
-            }
-
-            // Repair manifest if workouts were skipped.
-            if validIDs.count != manifest.workoutIDs.count {
-                var repaired = manifest
-                repaired.workoutIDs = validIDs
-                if let sel = repaired.selectedWorkoutID, !validIDs.contains(sel) {
-                    repaired.selectedWorkoutID = validIDs.first
-                }
-                do {
-                    try store.saveManifest(repaired)
-                } catch {
-                    corruptWarnings.append("Could not repair library manifest: \(error.localizedDescription)")
-                }
-            }
-
-            let warning = corruptWarnings.isEmpty
-                ? nil
-                : "Some workouts could not be loaded:\n" + corruptWarnings.joined(separator: "\n")
-            return .workouts(loaded, selectedWorkoutID: manifest.selectedWorkoutID, warning: warning)
-        } catch let error as WorkoutLibraryError {
-            switch error {
-            case .manifestMissing:
-                return .demos(errorMessage: nil)
-            default:
-                return .demos(errorMessage: "Failed to load library: \(error.localizedDescription)")
-            }
-        } catch {
-            return .demos(errorMessage: "Unexpected error loading library: \(error.localizedDescription)")
-        }
-    }
-
-    private func applyLibraryLoadResult(_ result: LibraryLoadResult) {
+    private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
         switch result {
         case .demos(let loadErrorMessage):
             loadSampleWorkouts()
@@ -190,6 +115,9 @@ class AppState: ObservableObject {
 
         if workouts.count > initialCount {
             selectWorkout(workouts[initialCount], persistSelection: false)
+        } else if errorMessage == nil {
+            errorMessage = "Bundled demo workouts are unavailable. You can still import a GPX, TCX, FIT, or JSON file."
+            showingError = true
         }
     }
 
@@ -203,20 +131,7 @@ class AppState: ObservableObject {
             // Persist first. If persistence fails, don't add to in-memory state.
             if let store {
                 do {
-                    try store.saveWorkout(workout)
-                    var manifest: WorkoutLibraryManifest
-                    do {
-                        manifest = try store.loadManifest()
-                    } catch let error as WorkoutLibraryError {
-                        if case .manifestMissing = error {
-                            manifest = WorkoutLibraryManifest()
-                        } else {
-                            throw error
-                        }
-                    }
-                    manifest.workoutIDs.append(workout.id)
-                    manifest.selectedWorkoutID = workout.id
-                    try store.saveManifest(manifest)
+                    try persistImportedWorkout(workout, store: store)
                 } catch {
                     errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
                     showingError = true
@@ -236,6 +151,36 @@ class AppState: ObservableObject {
         }
     }
 
+    private func persistImportedWorkout(_ workout: RunWorkout, store: WorkoutLibraryStoring) throws {
+        try store.saveWorkout(workout)
+
+        do {
+            var manifest: WorkoutLibraryManifest
+            do {
+                manifest = try store.loadManifest()
+            } catch let error as WorkoutLibraryError {
+                if case .manifestMissing = error {
+                    manifest = WorkoutLibraryManifest()
+                } else {
+                    throw error
+                }
+            }
+            manifest.workoutIDs.append(workout.id)
+            manifest.selectedWorkoutID = workout.id
+            try store.saveManifest(manifest)
+        } catch {
+            do {
+                try store.deleteWorkout(id: workout.id)
+            } catch let cleanupError {
+                throw WorkoutLibraryError.writeFailed(
+                    "Could not update the manifest (\(error.localizedDescription)); "
+                    + "cleanup of the saved workout also failed (\(cleanupError.localizedDescription))"
+                )
+            }
+            throw error
+        }
+    }
+
     /// Handle file import result.
     func handleImport(_ result: Result<[URL], Error>) {
         switch result {
@@ -249,20 +194,15 @@ class AppState: ObservableObject {
     }
 
     private func loadBundledWorkout(resource: String, extension fileExtension: String, subdirectory: String? = nil) {
-        // Primary: Bundle.main (works when launched from Xcode or built .app)
-        if let url = Bundle.main.url(forResource: resource, withExtension: fileExtension, subdirectory: subdirectory) {
-            loadWorkoutFromBundled(url: url)
-            return
-        }
-
-        // Development fallback: relative path from repo root.
-        // Only matches when the current working directory is the repository root.
-        let relativePath = [subdirectory, "\(resource).\(fileExtension)"]
+        let resourceSubdirectory = ["Resources", subdirectory]
             .compactMap { $0 }
             .joined(separator: "/")
-        let devURL = URL(filePath: "RunPlayStudio/Resources/\(relativePath)")
-        if FileManager.default.fileExists(atPath: devURL.path) {
-            loadWorkoutFromBundled(url: devURL)
+        if let url = Bundle.module.url(
+            forResource: resource,
+            withExtension: fileExtension,
+            subdirectory: resourceSubdirectory
+        ) {
+            loadWorkoutFromBundled(url: url)
         }
     }
 
@@ -295,16 +235,27 @@ class AppState: ObservableObject {
             detectedSegments = []
         }
 
-        if persistSelection, let store, let workout {
-            persistSelectedWorkout(workout.id, store: store)
+        if persistSelection, let store {
+            persistSelectedWorkout(workout?.id, store: store)
         }
     }
 
     /// Persist the selected workout ID to the manifest.
-    private func persistSelectedWorkout(_ id: UUID, store: WorkoutLibraryStoring) {
-        guard var manifest = try? store.loadManifest() else { return }
-        manifest.selectedWorkoutID = id
-        try? store.saveManifest(manifest)
+    private func persistSelectedWorkout(_ id: UUID?, store: WorkoutLibraryStoring) {
+        do {
+            var manifest = try store.loadManifest()
+            manifest.selectedWorkoutID = id
+            try store.saveManifest(manifest)
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                return // Bundled demos have no persisted selection.
+            }
+            errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+            showingError = true
+        } catch {
+            errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+            showingError = true
+        }
     }
 
     // MARK: - Deletion
@@ -319,30 +270,50 @@ class AppState: ObservableObject {
         // manifest cannot be updated, leave both disk and memory unchanged.
         if let store, store.workoutExists(id: workout.id) {
             do {
-                var manifest = try store.loadManifest()
-                manifest.workoutIDs.removeAll { $0 == workout.id }
+                let originalManifest = try store.loadManifest()
+                var updatedManifest = originalManifest
+                updatedManifest.workoutIDs.removeAll { $0 == workout.id }
                 if deletingSelectedWorkout {
-                    manifest.selectedWorkoutID = remainingWorkouts.first?.id
+                    updatedManifest.selectedWorkoutID = remainingWorkouts.first?.id
                 }
-                try store.saveManifest(manifest)
+                try store.saveManifest(updatedManifest)
+
+                do {
+                    try store.deleteWorkout(id: workout.id)
+                } catch {
+                    do {
+                        try store.saveManifest(originalManifest)
+                    } catch let rollbackError {
+                        errorMessage = "Workout was removed from the library, but its file and the manifest rollback both failed: \(error.localizedDescription); \(rollbackError.localizedDescription)"
+                        showingError = true
+                        workouts = remainingWorkouts
+                        applyDeletionSelection(
+                            deletingSelectedWorkout: deletingSelectedWorkout,
+                            deletingComparisonWorkout: deletingComparisonWorkout
+                        )
+                        return
+                    }
+                    throw error
+                }
             } catch {
-                errorMessage = "Could not delete workout: \(error.localizedDescription)"
+                errorMessage = "Could not delete workout; no changes were made: \(error.localizedDescription)"
                 showingError = true
                 return
-            }
-
-            do {
-                try store.deleteWorkout(id: workout.id)
-            } catch {
-                // The manifest no longer references this workout, so complete
-                // the logical deletion while reporting the orphaned file.
-                errorMessage = "Workout removed from the library, but its stored file could not be deleted: \(error.localizedDescription)"
-                showingError = true
             }
         }
 
         workouts = remainingWorkouts
 
+        applyDeletionSelection(
+            deletingSelectedWorkout: deletingSelectedWorkout,
+            deletingComparisonWorkout: deletingComparisonWorkout
+        )
+    }
+
+    private func applyDeletionSelection(
+        deletingSelectedWorkout: Bool,
+        deletingComparisonWorkout: Bool
+    ) {
         if deletingSelectedWorkout {
             clearComparison()
             selectedWorkout = workouts.first
