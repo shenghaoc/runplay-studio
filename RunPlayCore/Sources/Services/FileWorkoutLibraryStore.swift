@@ -18,7 +18,7 @@ import Foundation
 /// (typically a few KB each), so this is acceptable for the current
 /// use case. If large datasets or frequent concurrent access arise,
 /// consider moving to async I/O with structured concurrency.
-public final class FileWorkoutLibraryStore: WorkoutLibraryStoring {
+public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Sendable {
 
     private let rootURL: URL
     private let workoutsDirectory: URL

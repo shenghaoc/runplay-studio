@@ -7,9 +7,11 @@
 - [x] Keep bundled demos outside the user manifest and load them with
   `Bundle.module` rather than a working-directory fallback.
 - [x] Make import persistence transactional and report cleanup failures.
-- [x] Make persisted deletion rollback-safe and preserve UI state on failure.
+- [x] Make deletion transactional: preserve UI state on manifest failure and
+  report orphaned files after a committed logical deletion.
 - [x] Surface corrupt-library, selection-save, import-save, and delete errors.
-- [x] Extract background loading from `AppState` into `WorkoutLibraryLoader`.
+- [x] Move library coordination into `WorkoutLibraryStoreActor` and parsing into
+  `WorkoutImportService`, keeping both away from `@MainActor`.
 - [x] Clarify in the destructive confirmation that the original file is unchanged.
 - [x] Add Core and Studio regression coverage for round trips and failure paths.
 - [x] Update privacy and import documentation for persistent local snapshots.

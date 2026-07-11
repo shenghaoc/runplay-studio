@@ -2,6 +2,28 @@ import SwiftUI
 import RunPlayCore
 import UniformTypeIdentifiers
 
+/// Manages security-scoped resource access for the lifetime of an async import.
+///
+/// On macOS, files selected via `NSOpenPanel`/`.fileImporter` may require
+/// `startAccessingSecurityScopedResource()` to remain accessible. This wrapper
+/// keeps access alive until deallocation, which occurs after the async import
+/// task completes and the URL is no longer needed.
+private final class SecurityScopedURL: Sendable {
+    let url: URL
+    private let isAccessing: Bool
+
+    init(_ url: URL) {
+        self.url = url
+        self.isAccessing = url.startAccessingSecurityScopedResource()
+    }
+
+    deinit {
+        if isAccessing {
+            url.stopAccessingSecurityScopedResource()
+        }
+    }
+}
+
 /// Supported import file types for the Swift Package app path.
 /// Generic data keeps custom .tcx/.fit files selectable; importer validation
 /// still rejects unsupported extensions with a clear error.
@@ -30,7 +52,9 @@ struct ContentView: View {
                     set: { appState.selectWorkout($0) }
                 ),
                 onImport: { appState.showImporter = true },
-                onDelete: { workout in appState.deleteWorkout(workout) }
+                onDelete: { workout in
+                    Task { await appState.deleteWorkout(workout) }
+                }
             )
         } detail: {
             if let workout = appState.selectedWorkout {
@@ -64,19 +88,48 @@ struct ContentView: View {
             allowedContentTypes: UTType.supportedImportTypes,
             allowsMultipleSelection: false
         ) { result in
-            appState.handleImport(result)
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                // Keep security-scoped access alive for the full async import.
+                let scoped = SecurityScopedURL(url)
+                Task {
+                    await appState.importWorkout(from: url)
+                    _ = scoped // prevent early deallocation
+                }
+            case .failure(let error):
+                appState.errorMessage = error.localizedDescription
+                appState.showingError = true
+            }
         }
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("OK") { appState.errorMessage = nil }
         } message: {
             Text(appState.errorMessage ?? "Unknown error")
         }
-        .disabled(appState.isLoadingLibrary)
+        .task {
+            await appState.start()
+        }
+        .disabled(appState.operationState != .idle)
         .overlay {
-            if appState.isLoadingLibrary {
-                ProgressView("Loading workout library…")
-                    .padding()
-            }
+            operationStateOverlay
+        }
+    }
+
+    @ViewBuilder
+    private var operationStateOverlay: some View {
+        switch appState.operationState {
+        case .loadingLibrary:
+            ProgressView("Loading workout library…")
+                .padding()
+        case .importing(let filename):
+            ProgressView("Importing \(filename)…")
+                .padding()
+        case .deleting:
+            ProgressView()
+                .padding()
+        case .idle:
+            EmptyView()
         }
     }
 }

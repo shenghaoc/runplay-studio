@@ -4,6 +4,14 @@ import SwiftUI
 
 import UniformTypeIdentifiers
 
+/// Observable state for library operations.
+public enum LibraryOperationState: Equatable {
+    case idle
+    case loadingLibrary
+    case importing(filename: String)
+    case deleting(workoutID: UUID)
+}
+
 /// Main application state manager.
 @MainActor
 class AppState: ObservableObject {
@@ -14,7 +22,7 @@ class AppState: ObservableObject {
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
-    @Published private(set) var isLoadingLibrary = false
+    @Published private(set) var operationState: LibraryOperationState = .idle
 
     // Comparison state
     @Published var comparisonWorkout: RunWorkout?
@@ -25,65 +33,66 @@ class AppState: ObservableObject {
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
 
-    /// The store used for persistence. Nil only when `loadSampleWorkout` is false
-    /// (used in tests that construct AppState without a store).
-    private let store: WorkoutLibraryStoring?
-
-    private struct SendableStore: @unchecked Sendable {
-        let value: WorkoutLibraryStoring
+    /// Backward-compatible computed property for views that check loading state.
+    var isLoadingLibrary: Bool {
+        operationState == .loadingLibrary
     }
 
-    /// Create AppState with an optional store injection.
+    /// The store actor for persistence. Nil only in tests without persistence.
+    private let storeActor: WorkoutLibraryStoreActor?
+
+    /// The import service for parsing workout files off the main actor.
+    private let importService: WorkoutImportServicing?
+
+    /// Handle for the current selection persistence task.
+    private var selectionTask: Task<Void, Never>?
+
+    /// Create AppState with injectable services.
+    ///
+    /// This initializer does **not** launch background tasks. Call `start()` to
+    /// load the persisted library asynchronously.
     ///
     /// - Parameters:
-    ///   - store: The persistence store to use. Pass `nil` to skip persistence (tests only).
-    ///   - loadSampleWorkout: Whether to load demos if no persisted workouts exist.
+    ///   - storeActor: The persistence actor. Pass `nil` to skip persistence (tests only).
+    ///   - importService: The import service. Pass `nil` to skip import (tests only).
     init(
-        store: WorkoutLibraryStoring? = nil,
-        loadSampleWorkout: Bool = true,
-        loadStoreAsynchronously: Bool = false
+        storeActor: WorkoutLibraryStoreActor? = nil,
+        importService: WorkoutImportServicing? = nil
     ) {
-        self.store = store
-
-        if loadSampleWorkout {
-            if let store {
-                if loadStoreAsynchronously {
-                    isLoadingLibrary = true
-                    loadFromStoreInBackground(store)
-                } else {
-                    applyLibraryLoadResult(WorkoutLibraryLoader.load(from: store))
-                }
-            } else {
-                // No store provided: fall back to legacy demo-only behavior.
-                loadSampleWorkouts()
-            }
-        }
+        self.storeActor = storeActor
+        self.importService = importService
     }
 
-    /// Convenience init for production: creates a store rooted at the given directory.
-    convenience init(libraryRoot: URL, loadSampleWorkout: Bool = true) {
+    /// Convenience init for production: creates real services rooted at the given directory.
+    convenience init(libraryRoot: URL) {
         let store = FileWorkoutLibraryStore(rootURL: libraryRoot)
-        self.init(
-            store: store,
-            loadSampleWorkout: loadSampleWorkout,
-            loadStoreAsynchronously: true
-        )
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let importService = WorkoutImportService()
+        self.init(storeActor: actor, importService: importService)
+    }
+
+    deinit {
+        selectionTask?.cancel()
     }
 
     // MARK: - Startup
 
-    /// Load and decode persisted workouts away from the main actor, then publish
-    /// the resulting state on the main actor.
-    private func loadFromStoreInBackground(_ store: WorkoutLibraryStoring) {
-        let sendableStore = SendableStore(value: store)
-        Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) {
-                WorkoutLibraryLoader.load(from: sendableStore.value)
-            }.value
-            guard let self else { return }
-            applyLibraryLoadResult(result)
-            isLoadingLibrary = false
+    /// Load the persisted library asynchronously.
+    ///
+    /// Call from `.task` on the root view. Sets `operationState` to
+    /// `.loadingLibrary` while loading and `.idle` when complete.
+    /// Always resets to `.idle` even if the task is cancelled.
+    func start() async {
+        guard let storeActor else {
+            loadSampleWorkouts()
+            return
         }
+
+        operationState = .loadingLibrary
+        defer { operationState = .idle }
+
+        let result = await storeActor.loadLibrary()
+        applyLibraryLoadResult(result)
     }
 
     private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
@@ -124,71 +133,34 @@ class AppState: ObservableObject {
     // MARK: - Import
 
     /// Import a workout from a file URL.
-    func loadWorkout(from url: URL) {
-        do {
-            let workout = try WorkoutImporterFactory.importWorkout(from: url)
+    ///
+    /// Parsing and persistence run off the main actor. The UI shows
+    /// `.importing(filename:)` while in progress.
+    func importWorkout(from url: URL) async {
+        guard let importService, let storeActor else { return }
 
-            // Persist first. If persistence fails, don't add to in-memory state.
-            if let store {
-                do {
-                    try persistImportedWorkout(workout, store: store)
-                } catch {
-                    errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
-                    showingError = true
-                    return
-                }
-            }
-
-            workouts.append(workout)
-            selectedWorkout = workout
-            replayController.load(workout)
-            // Use persisted segments from the analyzed workout.
-            detectedSegments = workout.segments
-            selectedSegment = nil
-        } catch {
-            errorMessage = error.localizedDescription
-            showingError = true
-        }
-    }
-
-    private func persistImportedWorkout(_ workout: RunWorkout, store: WorkoutLibraryStoring) throws {
-        try store.saveWorkout(workout)
+        let filename = url.lastPathComponent
+        operationState = .importing(filename: filename)
+        defer { operationState = .idle }
 
         do {
-            var manifest: WorkoutLibraryManifest
-            do {
-                manifest = try store.loadManifest()
-            } catch let error as WorkoutLibraryError {
-                if case .manifestMissing = error {
-                    manifest = WorkoutLibraryManifest()
-                } else {
-                    throw error
-                }
-            }
-            manifest.workoutIDs.append(workout.id)
-            manifest.selectedWorkoutID = workout.id
-            try store.saveManifest(manifest)
-        } catch {
-            do {
-                try store.deleteWorkout(id: workout.id)
-            } catch let cleanupError {
-                throw WorkoutLibraryError.writeFailed(
-                    "Could not update the manifest (\(error.localizedDescription)); "
-                    + "cleanup of the saved workout also failed (\(cleanupError.localizedDescription))"
-                )
-            }
-            throw error
-        }
-    }
+            let workout = try await importService.importWorkout(from: url)
+            try await storeActor.addWorkout(workout, select: true)
 
-    /// Handle file import result.
-    func handleImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            loadWorkout(from: url)
-        case .failure(let error):
-            errorMessage = error.localizedDescription
+            // Check cancellation after persistence — if the task was cancelled
+            // while addWorkout was running on the actor, do not mutate UI state.
+            try Task.checkCancellation()
+
+            if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
+                workouts[existingIndex] = workout
+            } else {
+                workouts.append(workout)
+            }
+            selectWorkout(workout, persistSelection: false)
+        } catch is CancellationError {
+            // Cancelled — do not add to UI.
+        } catch {
+            errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
             showingError = true
         }
     }
@@ -221,6 +193,9 @@ class AppState: ObservableObject {
     // MARK: - Selection
 
     /// Select a workout for viewing.
+    ///
+    /// UI state updates immediately. If `persistSelection` is true, the
+    /// manifest write is asynchronous with last-write-wins semantics.
     func selectWorkout(_ workout: RunWorkout?, persistSelection: Bool = true) {
         selectedWorkout = workout
         selectedSegment = nil
@@ -235,79 +210,82 @@ class AppState: ObservableObject {
             detectedSegments = []
         }
 
-        if persistSelection, let store {
-            persistSelectedWorkout(workout?.id, store: store)
-        }
-    }
-
-    /// Persist the selected workout ID to the manifest.
-    private func persistSelectedWorkout(_ id: UUID?, store: WorkoutLibraryStoring) {
-        do {
-            var manifest = try store.loadManifest()
-            manifest.selectedWorkoutID = id
-            try store.saveManifest(manifest)
-        } catch let error as WorkoutLibraryError {
-            if case .manifestMissing = error {
-                return // Bundled demos have no persisted selection.
+        if persistSelection, let storeActor {
+            let id = workout?.id
+            selectionTask?.cancel()
+            selectionTask = Task { [weak self] in
+                do {
+                    try await storeActor.setSelectedWorkoutID(id)
+                } catch is CancellationError {
+                    // A newer selection superseded this one.
+                } catch {
+                    self?.errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+                    self?.showingError = true
+                }
             }
-            errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
-            showingError = true
-        } catch {
-            errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
-            showingError = true
         }
     }
 
     // MARK: - Deletion
 
     /// Delete a workout.
-    func deleteWorkout(_ workout: RunWorkout) {
+    ///
+    /// The manifest transaction runs off the main actor. UI state updates
+    /// only after the logical deletion commits.
+    func deleteWorkout(_ workout: RunWorkout) async {
         let deletingSelectedWorkout = selectedWorkout?.id == workout.id
         let deletingComparisonWorkout = comparisonWorkout?.id == workout.id
-        let remainingWorkouts = workouts.filter { $0.id != workout.id }
+        let newSelectedID = deletingSelectedWorkout
+            ? workouts.first(where: { $0.id != workout.id })?.id
+            : nil
 
-        // Persist the logical deletion before publishing it to the UI. If the
-        // manifest cannot be updated, leave both disk and memory unchanged.
-        if let store, store.workoutExists(id: workout.id) {
+        // Cancel pending selection persistence to prevent a stale write
+        // from saving the deleted workout as selected after removal.
+        selectionTask?.cancel()
+
+        if let storeActor {
+            operationState = .deleting(workoutID: workout.id)
+            defer { operationState = .idle }
+
             do {
-                let originalManifest = try store.loadManifest()
-                var updatedManifest = originalManifest
-                updatedManifest.workoutIDs.removeAll { $0 == workout.id }
-                if deletingSelectedWorkout {
-                    updatedManifest.selectedWorkoutID = remainingWorkouts.first?.id
-                }
-                try store.saveManifest(updatedManifest)
+                // Persist the deletion. The actor handles manifest transaction.
+                // We ignore the result and always use the UI-level selection
+                // snapshot, because the UI state is authoritative for display.
+                try await storeActor.deleteWorkout(
+                    id: workout.id,
+                    newSelectedID: newSelectedID
+                )
 
-                do {
-                    try store.deleteWorkout(id: workout.id)
-                } catch {
-                    do {
-                        try store.saveManifest(originalManifest)
-                    } catch let rollbackError {
-                        errorMessage = "Workout was removed from the library, but its file and the manifest rollback both failed: \(error.localizedDescription); \(rollbackError.localizedDescription)"
-                        showingError = true
-                        workouts = remainingWorkouts
-                        applyDeletionSelection(
-                            deletingSelectedWorkout: deletingSelectedWorkout,
-                            deletingComparisonWorkout: deletingComparisonWorkout
-                        )
-                        return
-                    }
-                    throw error
-                }
-            } catch {
-                errorMessage = "Could not delete workout; no changes were made: \(error.localizedDescription)"
+                // Always use the UI-level selection snapshot. The actor's
+                // manifest may disagree if selection persistence was pending
+                // or failed, but the UI state is authoritative for display.
+                workouts.removeAll { $0.id == workout.id }
+                applyDeletionSelection(
+                    deletingSelectedWorkout: deletingSelectedWorkout,
+                    deletingComparisonWorkout: deletingComparisonWorkout
+                )
+            } catch let storeError as WorkoutLibraryStoreError {
+                // Manifest committed but file is orphaned. Remove from UI and warn.
+                workouts.removeAll { $0.id == workout.id }
+                applyDeletionSelection(
+                    deletingSelectedWorkout: deletingSelectedWorkout,
+                    deletingComparisonWorkout: deletingComparisonWorkout
+                )
+                errorMessage = storeError.localizedDescription
                 showingError = true
-                return
+            } catch let deleteError {
+                // Manifest transaction failed. No changes were made.
+                errorMessage = "Could not delete workout; no changes were made: \(deleteError.localizedDescription)"
+                showingError = true
             }
+        } else {
+            // No store: just update in-memory state (demo-only mode).
+            workouts.removeAll { $0.id == workout.id }
+            applyDeletionSelection(
+                deletingSelectedWorkout: deletingSelectedWorkout,
+                deletingComparisonWorkout: deletingComparisonWorkout
+            )
         }
-
-        workouts = remainingWorkouts
-
-        applyDeletionSelection(
-            deletingSelectedWorkout: deletingSelectedWorkout,
-            deletingComparisonWorkout: deletingComparisonWorkout
-        )
     }
 
     private func applyDeletionSelection(
@@ -316,14 +294,7 @@ class AppState: ObservableObject {
     ) {
         if deletingSelectedWorkout {
             clearComparison()
-            selectedWorkout = workouts.first
-            selectedSegment = nil
-            if let first = workouts.first {
-                replayController.load(first)
-                detectedSegments = first.segments
-            } else {
-                detectedSegments = []
-            }
+            selectWorkout(workouts.first, persistSelection: false)
         } else if deletingComparisonWorkout {
             clearComparison()
         }
