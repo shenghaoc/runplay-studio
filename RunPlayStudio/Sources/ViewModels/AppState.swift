@@ -44,9 +44,6 @@ class AppState: ObservableObject {
     /// The import service for parsing workout files off the main actor.
     private let importService: WorkoutImportServicing?
 
-    /// Handle for the current import task (cancelled on deinit or new import).
-    private var importTask: Task<Void, Never>?
-
     /// Handle for the current selection persistence task.
     private var selectionTask: Task<Void, Never>?
 
@@ -75,7 +72,6 @@ class AppState: ObservableObject {
     }
 
     deinit {
-        importTask?.cancel()
         selectionTask?.cancel()
     }
 

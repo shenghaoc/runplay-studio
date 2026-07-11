@@ -268,6 +268,65 @@ final class AppStateAsyncTests: XCTestCase {
         XCTAssertFalse(appState.isComparing)
         XCTAssertNil(appState.comparisonWorkout)
     }
+
+    // MARK: - Cancellation
+
+    func testCancelledImportDoesNotAddToUI() async throws {
+        let store = makeStore()
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let workout = makeWorkout(name: "Cancelled Import")
+        let url = try writeImportFile(for: workout)
+
+        // Use a slow import service that we can cancel before it completes.
+        let slowService = SlowImportService(delaySeconds: 5.0)
+        let appState = AppState(storeActor: storeActor, importService: slowService)
+
+        let task = Task { await appState.importWorkout(from: url) }
+
+        // Give the task time to start and set operationState.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // Cancel before the slow import completes.
+        task.cancel()
+
+        // Wait for the task to finish.
+        _ = await task.value
+
+        // The workout should NOT have been added.
+        XCTAssertTrue(appState.workouts.isEmpty)
+        XCTAssertEqual(appState.operationState, .idle)
+    }
+
+    func testCancelledSelectionDoesNotShowError() async throws {
+        let store = makeStore()
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let w1 = makeWorkout(name: "A")
+        let w2 = makeWorkout(name: "B")
+        try store.saveWorkout(w1)
+        try store.saveWorkout(w2)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [w1.id, w2.id],
+            selectedWorkoutID: w1.id
+        ))
+
+        let appState = AppState(storeActor: storeActor, importService: WorkoutImportService())
+        await appState.start()
+
+        // Rapidly select w1 then w2. The first selection task should be cancelled.
+        appState.selectWorkout(w1)
+        appState.selectWorkout(w2)
+
+        // Wait for persistence.
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        // No error should be shown from the cancelled selection.
+        XCTAssertFalse(appState.showingError)
+        XCTAssertEqual(appState.selectedWorkout?.id, w2.id)
+
+        // Manifest should reflect w2.
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.selectedWorkoutID, w2.id)
+    }
 }
 
 // MARK: - Test Fakes
@@ -319,4 +378,19 @@ private final class TestFileDeleteFailingStore: WorkoutLibraryStoring, @unchecke
     }
 
     func workoutExists(id: UUID) -> Bool { id == workout.id }
+}
+
+/// Import service that delays for a controllable duration, allowing cancellation testing.
+private actor SlowImportService: WorkoutImportServicing {
+    private let delaySeconds: Double
+
+    init(delaySeconds: Double) {
+        self.delaySeconds = delaySeconds
+    }
+
+    func importWorkout(from url: URL) async throws -> RunWorkout {
+        try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+        try Task.checkCancellation()
+        return try WorkoutImporterFactory.importWorkout(from: url)
+    }
 }
