@@ -5,7 +5,9 @@ import RunPlayCore
 @MainActor
 final class AppStatePersistenceTests: XCTestCase {
 
-    private var tempDir: URL!
+    // XCTest lifecycle overrides are nonisolated even though this test case's
+    // test methods run on the main actor.
+    nonisolated(unsafe) private var tempDir: URL!
 
     override func setUp() {
         super.setUp()
