@@ -10,7 +10,7 @@
 #
 # Requirements:
 #   - macOS 14.0+
-#   - Xcode 16.0+ (Swift 6.0)
+#   - Xcode 26.4+ (Swift 6.3)
 #
 # Used in CI for demo artifact packaging; can also be run locally.
 # The resulting .app is unsigned and not notarized — for demo/testing only.
@@ -28,7 +28,7 @@ APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 BINARY="$REPO_ROOT/.build/release/$APP_NAME"
 
 echo "==> Building release binary..."
-swift build -c release --package-path "$REPO_ROOT"
+swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors
 
 if [[ ! -f "$BINARY" ]]; then
     echo "ERROR: Release binary not found at $BINARY" >&2

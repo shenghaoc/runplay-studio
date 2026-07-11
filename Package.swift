@@ -61,5 +61,6 @@ let package = Package(
         .macOS(.v14)
     ],
     products: products,
-    targets: targets
+    targets: targets,
+    swiftLanguageModes: [.v6]
 )

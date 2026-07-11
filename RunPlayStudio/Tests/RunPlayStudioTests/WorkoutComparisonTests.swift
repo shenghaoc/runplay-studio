@@ -693,7 +693,7 @@ final class WorkoutComparisonTests: XCTestCase {
     // MARK: - Helpers
 
     private func loadFixture(_ path: String) throws -> RunWorkout {
-        let testFile = URL(fileURLWithPath: #filePath)
+        let testFile = URL(filePath: #filePath)
         let url = testFile
             .deletingLastPathComponent()  // WorkoutComparisonTests
             .deletingLastPathComponent()  // RunPlayStudioTests

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The source format of a workout file.
-public enum WorkoutSource: String, Codable, Hashable, CaseIterable {
+public enum WorkoutSource: String, Codable, Hashable, CaseIterable, Sendable {
     case json
     case gpx
     case tcx

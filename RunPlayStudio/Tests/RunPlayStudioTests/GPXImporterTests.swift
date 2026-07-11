@@ -345,7 +345,7 @@ final class GPXImporterTests: XCTestCase {
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {
-        let testFile = URL(fileURLWithPath: #filePath)
+        let testFile = URL(filePath: #filePath)
         let resourcesURL = testFile
             .deletingLastPathComponent()  // GPXImporterTests
             .deletingLastPathComponent()  // RunPlayStudioTests

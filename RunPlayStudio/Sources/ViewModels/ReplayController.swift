@@ -7,6 +7,7 @@ import Combine
 ///
 /// Thin Combine/Timer wrapper around `PlaybackEngine` (RunPlayCore).
 /// Timer-driven playback updates current position at 30fps.
+@MainActor
 class ReplayController: ObservableObject {
 
     // MARK: - Published State (mirrors PlaybackEngine)
@@ -149,7 +150,9 @@ class ReplayController: ObservableObject {
         stopTimer()
         let interval = updateInterval
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.advancePlayback(by: interval)
+            Task { @MainActor [weak self] in
+                self?.advancePlayback(by: interval)
+            }
         }
     }
 

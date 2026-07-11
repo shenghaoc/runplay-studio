@@ -1,7 +1,7 @@
 import Foundation
 
 /// JSON-serializable workout summary for export.
-public struct WorkoutExportSummary: Codable {
+public struct WorkoutExportSummary: Codable, Sendable {
     public let appName: String
     public let exportVersion: String
     public let exportDate: Date
@@ -56,7 +56,7 @@ public struct WorkoutExportSummary: Codable {
 }
 
 /// Exportable split data.
-public struct SplitExport: Codable {
+public struct SplitExport: Codable, Sendable {
     public let splitIndex: Int
     public let startDistanceKm: Double
     public let endDistanceKm: Double
@@ -79,7 +79,7 @@ public struct SplitExport: Codable {
 }
 
 /// Exportable segment highlight data.
-public struct SegmentExport: Codable {
+public struct SegmentExport: Codable, Sendable {
     public let type: String
     public let title: String
     public let description: String

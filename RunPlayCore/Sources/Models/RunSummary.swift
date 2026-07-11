@@ -1,7 +1,7 @@
 import Foundation
 
 /// Aggregated metrics for an entire running workout.
-public struct RunSummary: Codable, Hashable {
+public struct RunSummary: Codable, Hashable, Sendable {
     public var totalDistanceMeters: Double
     public var totalElapsedSeconds: Double
     public var averagePaceSecondsPerKilometer: Double

@@ -482,7 +482,7 @@ final class ExportServiceTests: XCTestCase {
     }
 
     private func loadFixture(_ relativePath: String) throws -> RunWorkout {
-        let baseURL = URL(fileURLWithPath: #filePath)
+        let baseURL = URL(filePath: #filePath)
             .deletingLastPathComponent()  // ExportServiceTests
             .deletingLastPathComponent()  // RunPlayStudioTests
             .deletingLastPathComponent()  // Tests

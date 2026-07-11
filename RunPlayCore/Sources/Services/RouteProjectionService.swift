@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Uses a local tangent plane projection centered on the route midpoint.
 /// The Y axis represents elevation with configurable exaggeration.
-public struct RouteProjectionService {
+public struct RouteProjectionService: Sendable {
 
     public init() {}
 

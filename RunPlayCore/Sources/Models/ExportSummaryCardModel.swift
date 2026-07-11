@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Contains everything needed to render the summary card without
 /// depending on live workout state or UI frameworks.
-public struct ExportSummaryCardModel {
+public struct ExportSummaryCardModel: Sendable {
     public let appBranding: String
     public let workoutTitle: String
     public let dateText: String
@@ -29,7 +29,7 @@ public struct ExportSummaryCardModel {
     // Footer
     public let privacyNote: String
 
-    public struct SegmentCardItem: Identifiable {
+    public struct SegmentCardItem: Identifiable, Sendable {
         public let id = UUID()
         public let icon: String
         public let title: String
@@ -37,7 +37,7 @@ public struct ExportSummaryCardModel {
         public let color: String
     }
 
-    public struct SplitCardItem: Identifiable {
+    public struct SplitCardItem: Identifiable, Sendable {
         public let id = UUID()
         public let index: Int
         public let distance: String

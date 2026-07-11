@@ -3,13 +3,24 @@ name: Package Demo
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   package:
     name: Build demo .app artifact
     runs-on: macos-26
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
+
+    - name: Select Xcode 26.4
+      run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+
+    - name: Verify Swift 6.3
+      run: |
+        swift --version
+        swift --version | grep -q 'Swift version 6.3'
 
     - name: Build and package
       run: ./scripts/package-demo.sh .build/artifacts

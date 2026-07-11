@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This is a snapshot of the route point data at the current position,
 /// used to drive the current metrics panel and synchronized views.
-public struct SelectedMetrics {
+public struct SelectedMetrics: Sendable {
     public var elapsedSeconds: Double?
     public var distanceMeters: Double?
     public var paceSecondsPerKilometer: Double?

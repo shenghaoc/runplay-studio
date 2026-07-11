@@ -1,7 +1,7 @@
 import Foundation
 
 /// A pair of workouts selected for comparison.
-public struct ComparisonPair {
+public struct ComparisonPair: Sendable {
     public let primary: RunWorkout
     public let comparison: RunWorkout
 
@@ -12,7 +12,7 @@ public struct ComparisonPair {
 }
 
 /// Summary of differences between two workouts.
-public struct WorkoutComparisonSummary {
+public struct WorkoutComparisonSummary: Sendable {
     public let primaryTitle: String
     public let comparisonTitle: String
 
@@ -120,7 +120,7 @@ public struct WorkoutComparisonSummary {
 }
 
 /// Result of a comparison.
-public enum ComparisonResult {
+public enum ComparisonResult: Sendable {
     case primary
     case comparison
     case tie
@@ -137,7 +137,7 @@ public enum ComparisonResult {
 }
 
 /// Comparison of a single split between two workouts.
-public struct SplitComparison: Identifiable {
+public struct SplitComparison: Identifiable, Sendable {
     public let id = UUID()
     public let splitIndex: Int
     public let primarySplit: RunSplit?
@@ -173,7 +173,7 @@ public struct SplitComparison: Identifiable {
 }
 
 /// A point in the pace comparison series over distance.
-public struct ComparisonMetricPoint: Identifiable {
+public struct ComparisonMetricPoint: Identifiable, Sendable {
     public let id = UUID()
     public let distanceMeters: Double
     public let primaryPace: Double?
@@ -188,7 +188,7 @@ public struct ComparisonMetricPoint: Identifiable {
 }
 
 /// Metrics at a user-selected distance along a comparison route pair.
-public struct ComparisonDistanceMetrics {
+public struct ComparisonDistanceMetrics: Sendable {
     public let selectedDistanceMeters: Double
     public let primaryElapsedSeconds: Double?
     public let comparisonElapsedSeconds: Double?
@@ -279,7 +279,7 @@ public struct ComparisonDistanceMetrics {
 }
 
 /// Warning about a comparison.
-public enum ComparisonWarning: String, CaseIterable {
+public enum ComparisonWarning: String, CaseIterable, Sendable {
     case differentDistances = "Runs have significantly different distances"
     case insufficientOverlap = "Insufficient distance overlap for comparison"
     case differentRouteShape = "Routes differ; comparison uses distance alignment"

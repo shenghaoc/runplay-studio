@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Uses a single shared origin (center of the primary route's bounding box) so
 /// both routes preserve their relative geographic positions when overlaid.
-public struct ComparisonRouteProjectionService {
+public struct ComparisonRouteProjectionService: Sendable {
 
     public init() {}
 

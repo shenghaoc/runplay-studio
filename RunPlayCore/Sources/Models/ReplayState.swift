@@ -1,14 +1,14 @@
 import Foundation
 
 /// Playback state for route replay.
-public enum PlaybackState: String, Codable {
+public enum PlaybackState: String, Codable, Sendable {
     case stopped
     case playing
     case paused
 }
 
 /// Controls for the route replay timeline.
-public struct ReplayState {
+public struct ReplayState: Sendable {
     public var playbackState: PlaybackState
     public var currentTime: Double
     public var currentDistance: Double

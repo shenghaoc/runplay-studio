@@ -1,7 +1,7 @@
 import Foundation
 
 /// A route point projected into 3D local meter-space coordinates for scene rendering.
-public struct RouteScenePoint: Identifiable {
+public struct RouteScenePoint: Identifiable, Sendable {
     public let id: UUID
     public var xMeters: Double
     public var yMeters: Double
