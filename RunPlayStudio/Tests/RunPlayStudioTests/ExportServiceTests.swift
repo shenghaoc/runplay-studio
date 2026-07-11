@@ -2,6 +2,7 @@ import XCTest
 import RunPlayCore
 @testable import RunPlayStudio
 
+@MainActor
 final class ExportServiceTests: XCTestCase {
 
     let exportService = ExportService()
@@ -223,15 +224,9 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertDemoExportContainsNoPrivateMarkers(segmentText)
         XCTAssertDemoExportContainsNoPrivateMarkers(combinedText)
 
-        do {
-            let png = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
-            XCTAssertGreaterThan(png.data.count, 8)
-            XCTAssertEqual(Array(png.data.prefix(8)), pngSignature)
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("rendering") ||
-                         error.localizedDescription.contains("size"),
-                         "Unexpected error: \(error.localizedDescription)")
-        }
+        let png = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
+        XCTAssertGreaterThan(png.data.count, 8)
+        XCTAssertEqual(Array(png.data.prefix(8)), pngSignature)
     }
 
     // MARK: - Filename Builder
@@ -413,34 +408,19 @@ final class ExportServiceTests: XCTestCase {
         let workout = createSampleWorkout()
         let segments = createSampleSegments()
 
-        // PNG rendering requires window context, may fail in headless CI
-        do {
-            let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
-            XCTAssertGreaterThan(result.data.count, 0)
-            XCTAssertEqual(result.format, .png)
-            XCTAssertTrue(result.filename.hasSuffix(".png"))
-        } catch {
-            // Expected in headless CI - verify error is about rendering, not data
-            XCTAssertTrue(error.localizedDescription.contains("rendering") ||
-                         error.localizedDescription.contains("size"),
-                         "Unexpected error: \(error.localizedDescription)")
-        }
+        let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
+        XCTAssertGreaterThan(result.data.count, 0)
+        XCTAssertEqual(result.format, .png)
+        XCTAssertTrue(result.filename.hasSuffix(".png"))
     }
 
     func testPNGDataHasValidSignature() throws {
         let workout = createSampleWorkout()
 
-        // PNG rendering requires window context, may fail in headless CI
-        do {
-            let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: [])
-            let data = result.data
-            XCTAssertGreaterThanOrEqual(data.count, 8)
-            XCTAssertEqual(Array(data.prefix(8)), pngSignature)
-        } catch {
-            // Expected in headless CI
-            XCTAssertTrue(error.localizedDescription.contains("rendering") ||
-                         error.localizedDescription.contains("size"))
-        }
+        let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: [])
+        let data = result.data
+        XCTAssertGreaterThanOrEqual(data.count, 8)
+        XCTAssertEqual(Array(data.prefix(8)), pngSignature)
     }
 
     // MARK: - Helpers

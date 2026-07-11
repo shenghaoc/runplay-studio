@@ -10,23 +10,26 @@ import SceneKit
 /// - `cameraAngleX`: elevation angle in degrees. Positive = camera above target (looking down).
 ///   Range: 1° (nearly horizontal) to 89° (nearly straight down).
 /// - `cameraAngleY`: azimuth angle in degrees. 0° = front, 90° = right side, etc.
-class SceneCameraController: ObservableObject {
+@MainActor
+public class SceneCameraController: ObservableObject {
 
     // MARK: - Published State
 
-    @Published var cameraDistance: CGFloat = 500
-    @Published var cameraAngleX: CGFloat = 30  // degrees, positive = above
-    @Published var cameraAngleY: CGFloat = 45  // degrees, azimuth
-    @Published private(set) var activeCameraNode: SCNNode?
+    @Published public var cameraDistance: CGFloat = 500
+    @Published public var cameraAngleX: CGFloat = 30  // degrees, positive = above
+    @Published public var cameraAngleY: CGFloat = 45  // degrees, azimuth
+    @Published public private(set) var activeCameraNode: SCNNode?
 
     // MARK: - Configuration
 
-    let minDistance: CGFloat = 50
+    public let minDistance: CGFloat = 50
     /// Upper bound for camera distance; dynamically expanded for large routes.
-    private(set) var maxDistance: CGFloat = 2000
+    public private(set) var maxDistance: CGFloat = 2000
     private let baseMaxDistance: CGFloat = 2000
-    let minAngleX: CGFloat = 1    // nearly horizontal
-    let maxAngleX: CGFloat = 89   // nearly straight down
+    public let minAngleX: CGFloat = 1    // nearly horizontal
+    public let maxAngleX: CGFloat = 89   // nearly straight down
+
+    public init() {}
 
     /// Absolute ceiling to prevent runaway values from bad input.
     private let absoluteMaxDistance: CGFloat = 200_000
@@ -38,7 +41,7 @@ class SceneCameraController: ObservableObject {
 
     /// Set up camera in a scene.
     @discardableResult
-    func setupCamera(in scene: SCNScene, lookingAt center: SCNVector3) -> SCNNode {
+    public func setupCamera(in scene: SCNScene, lookingAt center: SCNVector3) -> SCNNode {
         let camera = SCNCamera()
         camera.zNear = 1
         camera.zFar = 100_000
@@ -56,7 +59,7 @@ class SceneCameraController: ObservableObject {
     }
 
     /// Update camera position based on current angles and distance.
-    func updateCameraPosition(lookingAt target: SCNVector3) {
+    public func updateCameraPosition(lookingAt target: SCNVector3) {
         guard let camera = cameraNode else { return }
         targetPoint = Self.finiteVector(target, fallback: targetPoint)
 
@@ -82,7 +85,7 @@ class SceneCameraController: ObservableObject {
     }
 
     /// Orbit by delta angles.
-    func orbit(deltaX: CGFloat, deltaY: CGFloat) {
+    public func orbit(deltaX: CGFloat, deltaY: CGFloat) {
         cameraAngleY += deltaX
         // Negate deltaY so dragging up increases elevation (camera goes higher)
         cameraAngleX = max(minAngleX, min(maxAngleX, cameraAngleX - deltaY))
@@ -90,7 +93,7 @@ class SceneCameraController: ObservableObject {
     }
 
     /// Zoom by delta (positive = zoom in).
-    func zoom(delta: CGFloat) {
+    public func zoom(delta: CGFloat) {
         let safeDelta = delta.isFinite ? delta : 0
         cameraDistance = Self.clampFinite(
             cameraDistance - safeDelta,
@@ -102,7 +105,7 @@ class SceneCameraController: ObservableObject {
     }
 
     /// Reset camera to default position.
-    func reset() {
+    public func reset() {
         cameraDistance = 500
         cameraAngleX = 30
         cameraAngleY = 45
@@ -114,7 +117,7 @@ class SceneCameraController: ObservableObject {
     /// Derives camera distance from route extent and field of view so that
     /// both tiny sample routes and marathon-scale routes are fully visible.
     /// Also updates `zFar` so very large routes are not clipped.
-    func fitToRoute(center: SCNVector3, extent: CGFloat) {
+    public func fitToRoute(center: SCNVector3, extent: CGFloat) {
         let safeCenter = Self.finiteVector(center, fallback: SCNVector3(0, 0, 0))
         let safeExtent = Self.clampFinite(extent, min: 0, max: absoluteMaxDistance, fallback: minDistance)
         let fov = Self.clampFinite(
@@ -150,14 +153,14 @@ class SceneCameraController: ObservableObject {
     }
 
     /// Focus camera on a specific route point.
-    func focusOn(point: RouteScenePoint, distance: CGFloat = 200) {
+    public func focusOn(point: RouteScenePoint, distance: CGFloat = 200) {
         let target = SCNVector3(point.xMeters, point.yMeters, point.zMeters)
         cameraDistance = Self.clampFinite(distance, min: minDistance, max: max(200, maxDistance), fallback: 200)
         updateCameraPosition(lookingAt: target)
     }
 
     /// Set preset view angles.
-    func setPresetView(_ preset: CameraPreset) {
+    public func setPresetView(_ preset: CameraPreset) {
         switch preset {
         case .default:
             cameraAngleX = 30
@@ -190,7 +193,7 @@ class SceneCameraController: ObservableObject {
     }
 }
 
-enum CameraPreset {
+public enum CameraPreset {
     case `default`
     case topDown
     case side

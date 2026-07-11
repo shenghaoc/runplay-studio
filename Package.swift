@@ -1,8 +1,11 @@
 // swift-tools-version:5.9
+// Keep the tools baseline and Swift 5 language mode until a dedicated
+// toolchain/runner upgrade changes them together.
 import PackageDescription
 
 var targets: [Target] = [
-    // Platform-neutral core library (no SwiftUI, AppKit, MapKit, Charts, CoreLocation)
+    // Cross-platform core: Foundation (and conditional FoundationXML) only.
+    // This target and its tests are the complete package graph on Linux.
     .target(
         name: "RunPlayCore",
         dependencies: [],
@@ -20,12 +23,25 @@ var products: [Product] = [
     .library(name: "RunPlayCore", targets: ["RunPlayCore"]),
 ]
 
-// macOS-only targets (require SwiftUI, AppKit, MapKit, Charts)
+// macOS-only layers are absent from the Linux package graph.
 #if os(macOS)
 targets.append(contentsOf: [
+    // macOS non-UI platform layer: SceneKit, AppKit value types, MapKit,
+    // and Combine are allowed; SwiftUI, Charts, and presentation code are not.
+    .target(
+        name: "RunPlayPlatform",
+        dependencies: ["RunPlayCore"],
+        path: "RunPlayPlatform/Sources"
+    ),
+    .testTarget(
+        name: "RunPlayPlatformTests",
+        dependencies: ["RunPlayCore", "RunPlayPlatform"],
+        path: "RunPlayPlatform/Tests/RunPlayPlatformTests"
+    ),
+    // macOS UI layer: owns the app lifecycle and all SwiftUI/Charts code.
     .executableTarget(
         name: "RunPlayStudio",
-        dependencies: ["RunPlayCore"],
+        dependencies: ["RunPlayCore", "RunPlayPlatform"],
         path: "RunPlayStudio/Sources",
         resources: [
             .process("../Resources")
@@ -33,10 +49,11 @@ targets.append(contentsOf: [
     ),
     .testTarget(
         name: "RunPlayStudioTests",
-        dependencies: ["RunPlayStudio"],
+        dependencies: ["RunPlayCore", "RunPlayPlatform", "RunPlayStudio"],
         path: "RunPlayStudio/Tests/RunPlayStudioTests"
     ),
 ])
+products.append(.library(name: "RunPlayPlatform", targets: ["RunPlayPlatform"]))
 products.append(.executable(name: "RunPlayStudio", targets: ["RunPlayStudio"]))
 #endif
 
@@ -46,5 +63,6 @@ let package = Package(
         .macOS(.v14)
     ],
     products: products,
-    targets: targets
+    targets: targets,
+    swiftLanguageVersions: [.v5]
 )

@@ -1,9 +1,11 @@
 import SceneKit
 import RunPlayCore
+import RunPlayPlatform
 import XCTest
 
 @testable import RunPlayStudio
 
+@MainActor
 final class SceneCameraControllerTests: XCTestCase {
 
     func testSetupCameraInstallsActivePointOfView() {

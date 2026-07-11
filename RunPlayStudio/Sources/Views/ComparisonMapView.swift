@@ -1,4 +1,5 @@
 import RunPlayCore
+import RunPlayPlatform
 import SwiftUI
 
 /// Displays both comparison routes on one Apple Maps surface with a native 2D/3D toggle.

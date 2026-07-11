@@ -1,5 +1,6 @@
 import XCTest
 import RunPlayCore
+import RunPlayPlatform
 @testable import RunPlayStudio
 
 final class RouteColoringTests: XCTestCase {
@@ -134,6 +135,19 @@ final class RouteColoringTests: XCTestCase {
         let points = [RouteScenePoint(xMeters: 0, yMeters: 0, zMeters: 0, sourceIndex: 0, distanceFromStartMeters: 0, elapsedSeconds: 0)]
         let colors = coloringService.computeSegmentColors(points: points, mode: .pace)
         XCTAssertTrue(colors.isEmpty)
+    }
+
+    func testElevationColoringHandlesNonFiniteSegmentElevation() {
+        let points = [
+            RouteScenePoint(xMeters: 0, yMeters: 0, zMeters: 0, sourceIndex: 0, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RouteScenePoint(xMeters: 1, yMeters: 10, zMeters: 0, sourceIndex: 1, distanceFromStartMeters: 1, elapsedSeconds: 1),
+            RouteScenePoint(xMeters: 2, yMeters: .nan, zMeters: 0, sourceIndex: 2, distanceFromStartMeters: 2, elapsedSeconds: 2)
+        ]
+
+        let colors = coloringService.computeSegmentColors(points: points, mode: .elevation)
+
+        XCTAssertEqual(colors.count, 2)
+        XCTAssertEqual(colors[1], .systemGreen)
     }
 
     // MARK: - Segment Pace Tests

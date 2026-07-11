@@ -1,11 +1,9 @@
-import RunPlayCore
-
 extension Array where Element == RouteScenePoint {
     /// Finds the projected point that best represents a source route-point index.
     ///
     /// Projection can filter invalid coordinates, so a direct source-index match
     /// is preferred and a distance-based lookup is used as a fallback.
-    func scenePoint(
+    public func scenePoint(
         forRouteIndex routeIndex: Int,
         in routePoints: [RoutePoint]
     ) -> RouteScenePoint? {

@@ -12,22 +12,24 @@ import SceneKit
 /// - Current position marker (yellow cone indicating direction)
 /// - Optional kilometer markers
 /// - Adaptive ground grid
-class RouteSceneBuilder {
+public class RouteSceneBuilder {
 
     // MARK: - Configuration
 
-    var routeColor: NSColor = .systemBlue
-    var routeRadius: CGFloat = 0.8
-    var startMarkerColor: NSColor = .systemGreen
-    var finishMarkerColor: NSColor = .systemRed
-    var currentMarkerColor: NSColor = .systemYellow
-    var markerRadius: CGFloat = 2.0
-    var showKilometerMarkers: Bool = true { didSet { updateKmMarkerVisibility() } }
-    var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
-    var colorMode: RouteColorMode = .singleColor
+    public var routeColor: NSColor = .systemBlue
+    public var routeRadius: CGFloat = 0.8
+    public var startMarkerColor: NSColor = .systemGreen
+    public var finishMarkerColor: NSColor = .systemRed
+    public var currentMarkerColor: NSColor = .systemYellow
+    public var markerRadius: CGFloat = 2.0
+    public var showKilometerMarkers: Bool = true { didSet { updateKmMarkerVisibility() } }
+    public var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
+    public var colorMode: RouteColorMode = .singleColor
 
     /// The coloring service for computing segment colors.
-    let coloringService = RouteColoringService()
+    public let coloringService = RouteColoringService()
+
+    public init() {}
 
     // MARK: - Scene Elements (for toggling)
 
@@ -46,7 +48,7 @@ class RouteSceneBuilder {
     // MARK: - Build Scene
 
     /// Build a complete 3D scene from scene points.
-    func buildScene(from points: [RouteScenePoint]) -> SCNScene {
+    public func buildScene(from points: [RouteScenePoint]) -> SCNScene {
         self.scenePoints = points
         let scene = SCNScene()
 
@@ -101,7 +103,7 @@ class RouteSceneBuilder {
     }
 
     /// Update the current position marker.
-    func updateCurrentPosition(to point: RouteScenePoint) {
+    public func updateCurrentPosition(to point: RouteScenePoint) {
         guard let marker = currentNode else { return }
 
         // Position above route surface
@@ -120,7 +122,7 @@ class RouteSceneBuilder {
     /// Creates a highlight tube above the route for the given distance range.
     /// Returns a node that should be added to the scene.
     @discardableResult
-    func highlightSegment(_ segment: SegmentHighlight, in scene: SCNScene) -> SCNNode? {
+    public func highlightSegment(_ segment: SegmentHighlight, in scene: SCNScene) -> SCNNode? {
         // Remove previous highlight
         segmentHighlightNode?.removeFromParentNode()
         segmentHighlightNode = nil
@@ -182,7 +184,7 @@ class RouteSceneBuilder {
     }
 
     /// Remove segment highlight from the scene.
-    func clearSegmentHighlight() {
+    public func clearSegmentHighlight() {
         segmentHighlightNode?.removeFromParentNode()
         segmentHighlightNode = nil
     }
@@ -223,7 +225,7 @@ class RouteSceneBuilder {
     }
 
     /// Get the bounding box for camera fitting.
-    var routeBoundingBox: (center: SCNVector3, extent: CGFloat) {
+    public var routeBoundingBox: (center: SCNVector3, extent: CGFloat) {
         let projection = RouteProjectionService()
         let bbox = projection.boundingBox(of: scenePoints)
         let center = SCNVector3(
