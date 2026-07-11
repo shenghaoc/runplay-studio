@@ -151,7 +151,11 @@ class AppState: ObservableObject {
             // while addWorkout was running on the actor, do not mutate UI state.
             try Task.checkCancellation()
 
-            workouts.append(workout)
+            if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
+                workouts[existingIndex] = workout
+            } else {
+                workouts.append(workout)
+            }
             selectedWorkout = workout
             replayController.load(workout)
             detectedSegments = workout.segments

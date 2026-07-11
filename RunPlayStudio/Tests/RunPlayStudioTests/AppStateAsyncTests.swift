@@ -149,6 +149,24 @@ final class AppStateAsyncTests: XCTestCase {
         XCTAssertEqual(appState.selectedWorkout?.metadata.name, "Import State Test")
     }
 
+    func testReimportingSameWorkoutDoesNotDuplicateUIEntry() async throws {
+        let store = makeStore()
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let workout = makeWorkout(name: "Imported Once")
+        let appState = AppState(
+            storeActor: storeActor,
+            importService: FixedWorkoutImportService(workout: workout)
+        )
+        let url = tempDir.appendingPathComponent("same-workout.json")
+
+        await appState.importWorkout(from: url)
+        await appState.importWorkout(from: url)
+
+        XCTAssertEqual(appState.workouts.map(\.id), [workout.id])
+        XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
+        XCTAssertEqual(try store.loadManifest().workoutIDs, [workout.id])
+    }
+
     func testParseFailureDoesNotAddToUI() async throws {
         let store = makeStore()
         let storeActor = WorkoutLibraryStoreActor(store: store)
@@ -392,5 +410,17 @@ private actor SlowImportService: WorkoutImportServicing {
         try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
         try Task.checkCancellation()
         return try WorkoutImporterFactory.importWorkout(from: url)
+    }
+}
+
+private actor FixedWorkoutImportService: WorkoutImportServicing {
+    private let workout: RunWorkout
+
+    init(workout: RunWorkout) {
+        self.workout = workout
+    }
+
+    func importWorkout(from url: URL) async throws -> RunWorkout {
+        workout
     }
 }
