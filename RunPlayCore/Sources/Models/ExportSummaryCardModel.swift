@@ -45,6 +45,16 @@ public struct ExportSummaryCardModel {
         public let duration: String
     }
 
+    // ⚡ Bolt: Cache date formatter to avoid expensive initialization on struct init
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        formatter.dateStyle = .long
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     /// Build from workout and detected segments.
     public init(workout: RunWorkout, segments: [SegmentHighlight]) {
         self.appBranding = "RunPlay Studio"
@@ -53,10 +63,7 @@ public struct ExportSummaryCardModel {
 
         // Date
         if let date = workout.metadata.startDate {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .long
-            formatter.timeStyle = .short
-            self.dateText = formatter.string(from: date)
+            self.dateText = ExportSummaryCardModel.dateFormatter.string(from: date)
         } else {
             self.dateText = "Unknown date"
         }

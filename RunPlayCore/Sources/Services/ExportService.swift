@@ -271,10 +271,16 @@ public enum ExportFilenameBuilder {
             .lowercased()
     }
 
-    private static func formatDateForFilename(_ date: Date) -> String {
+    // ⚡ Bolt: Cache date formatter to avoid expensive initialization
+    private static let filenameDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        formatter.timeZone = TimeZone.current
-        return formatter.string(from: date)
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        return formatter
+    }()
+
+    private static func formatDateForFilename(_ date: Date) -> String {
+        return filenameDateFormatter.string(from: date)
     }
 }
