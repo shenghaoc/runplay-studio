@@ -9,3 +9,7 @@
 ## 2025-06-25 - DateFormatter Initialization Overhead in Parsing Loops
 **Learning:** Instantiating `ISO8601DateFormatter` (an Objective-C bridged class with locale/calendar setup) on every trackpoint parsed in GPX/TCX files causes significant CPU overhead and object churn in Swift.
 **Action:** Cache `DateFormatter` instances as instance properties when they are used inside large loops, especially in file importers parsing thousands of nodes.
+
+## 2025-07-11 - DateFormatter Allocation in Computed Properties and Render Logic
+**Learning:** `DateFormatter` was being instantiated inside computed properties (like `RunWorkout.displayName`) and synchronous initialization/rendering functions (like `ExportSummaryCardModel.init` and `ExportFilenameBuilder.formatDateForFilename`). Since these are accessed frequently in UI lists or repeatedly during exports, the repeated allocations caused unnecessary performance bottlenecks.
+**Action:** Always replace inline `DateFormatter` instantiations in frequently accessed synchronous logic with `private static let` cached instances to guarantee single-time configuration.
