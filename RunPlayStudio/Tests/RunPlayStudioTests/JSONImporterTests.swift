@@ -115,7 +115,7 @@ final class JSONImporterTests: XCTestCase {
     // MARK: - Helpers
 
     private func resourceURL(_ path: String) -> URL {
-        let testFile = URL(fileURLWithPath: #filePath)
+        let testFile = URL(filePath: #filePath)
         return testFile
             .deletingLastPathComponent()  // JSONImporterTests
             .deletingLastPathComponent()  // RunPlayStudioTests

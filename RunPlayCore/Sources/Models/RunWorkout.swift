@@ -1,7 +1,7 @@
 import Foundation
 
 /// A complete running workout with route data, analysis, and metadata.
-public struct RunWorkout: Identifiable, Codable, Hashable {
+public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var metadata: WorkoutMetadata
     public var source: WorkoutSource
@@ -28,16 +28,23 @@ public struct RunWorkout: Identifiable, Codable, Hashable {
         self.segments = segments
     }
 
+    // ⚡ Bolt: Cache date formatter to avoid expensive initialization on property access
+    private static let displayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     /// Display name for the workout.
     public var displayName: String {
         if let name = metadata.name, !name.isEmpty {
             return name
         }
         if let date = metadata.startDate {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            return formatter.string(from: date)
+            return RunWorkout.displayFormatter.string(from: date)
         }
         return "Untitled Run"
     }

@@ -9,7 +9,7 @@ import FoundationXML
 /// - TrainingCenterDatabase > Activities > Activity > Lap > Track > Trackpoint
 /// - Time, Position/LatitudeDegrees, Position/LongitudeDegrees
 /// - AltitudeMeters, DistanceMeters, HeartRateBpm/Value, Cadence
-public struct TCXImporter: WorkoutImporting {
+public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     public init() {}
     public var supportedExtensions: [String] { ["tcx"] }
 

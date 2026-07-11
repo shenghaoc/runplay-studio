@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Platform-neutral — no AppKit/SwiftUI dependencies.
 /// Color mapping stays in `RouteColoringService` (RunPlayPlatform).
-public struct RouteColorMetrics {
+public struct RouteColorMetrics: Sendable {
 
     public init() {}
 
@@ -156,7 +156,7 @@ public struct RouteColorMetrics {
     // MARK: - Helpers
 
     /// Smooth an array of values using a moving average, skipping NaN.
-    public func smoothValues(_ values: [Double], windowSize: Int) -> [Double] {
+    private func smoothValues(_ values: [Double], windowSize: Int) -> [Double] {
         guard values.count > 1 else { return values }
         let halfWindow = windowSize / 2
         var result: [Double] = []
@@ -199,7 +199,7 @@ public struct RouteColorMetrics {
 // MARK: - Scale Types
 
 /// Pace color scale for legend display (data only, no colors).
-public struct PaceColorScale {
+public struct PaceColorScale: Sendable {
     public let fastestPace: Double   // seconds per km
     public let medianPace: Double
     public let slowestPace: Double
@@ -222,7 +222,7 @@ public struct PaceColorScale {
 }
 
 /// Heart rate color scale for legend display (data only, no colors).
-public struct HeartRateColorScale {
+public struct HeartRateColorScale: Sendable {
     public let lowHR: Double
     public let medianHR: Double
     public let highHR: Double

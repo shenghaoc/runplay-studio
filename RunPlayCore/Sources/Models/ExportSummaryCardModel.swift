@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Contains everything needed to render the summary card without
 /// depending on live workout state or UI frameworks.
-public struct ExportSummaryCardModel {
+public struct ExportSummaryCardModel: Sendable {
     public let appBranding: String
     public let workoutTitle: String
     public let dateText: String
@@ -29,7 +29,7 @@ public struct ExportSummaryCardModel {
     // Footer
     public let privacyNote: String
 
-    public struct SegmentCardItem: Identifiable {
+    public struct SegmentCardItem: Identifiable, Sendable {
         public let id = UUID()
         public let icon: String
         public let title: String
@@ -37,13 +37,23 @@ public struct ExportSummaryCardModel {
         public let color: String
     }
 
-    public struct SplitCardItem: Identifiable {
+    public struct SplitCardItem: Identifiable, Sendable {
         public let id = UUID()
         public let index: Int
         public let distance: String
         public let pace: String
         public let duration: String
     }
+
+    // ⚡ Bolt: Cache date formatter to avoid expensive initialization on struct init
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        formatter.dateStyle = .long
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     /// Build from workout and detected segments.
     public init(workout: RunWorkout, segments: [SegmentHighlight]) {
@@ -53,10 +63,7 @@ public struct ExportSummaryCardModel {
 
         // Date
         if let date = workout.metadata.startDate {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .long
-            formatter.timeStyle = .short
-            self.dateText = formatter.string(from: date)
+            self.dateText = ExportSummaryCardModel.dateFormatter.string(from: date)
         } else {
             self.dateText = "Unknown date"
         }

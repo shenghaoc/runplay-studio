@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol for workout file importers.
-public protocol WorkoutImporting {
+public protocol WorkoutImporting: Sendable {
     /// The file formats this importer supports.
     var supportedExtensions: [String] { get }
 
@@ -23,7 +23,7 @@ extension WorkoutImporting {
 }
 
 /// Errors that can occur during workout import.
-public enum WorkoutImportError: Error, LocalizedError {
+public enum WorkoutImportError: Error, LocalizedError, Sendable {
     case fileNotFound(URL)
     case invalidFormat(String)
     case parsingError(String)

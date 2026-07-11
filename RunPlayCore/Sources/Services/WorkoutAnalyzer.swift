@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This is a pure logic service with no side effects beyond modifying the workout.
 /// Uses platform-neutral `GeoDistance` instead of CoreLocation.
-public struct WorkoutAnalyzer {
+public struct WorkoutAnalyzer: Sendable {
 
     public init() {}
 

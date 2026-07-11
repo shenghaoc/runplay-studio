@@ -1,7 +1,7 @@
 import Foundation
 
 /// Distance strategy used when normalizing imported route points.
-public enum RouteDistancePolicy {
+public enum RouteDistancePolicy: Sendable {
     /// Recompute cumulative distance from coordinates.
     case computeFromCoordinates
     /// Use supplied cumulative distances only when the complete series is valid.

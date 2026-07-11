@@ -1,7 +1,7 @@
 import Foundation
 
 /// Export formats supported by RunPlay Studio (core, platform-neutral).
-public enum ExportFormat: String, CaseIterable {
+public enum ExportFormat: String, CaseIterable, Sendable {
     case json = "JSON Summary"
     case splitsCSV = "Splits CSV"
     case segmentsCSV = "Segments CSV"
@@ -26,7 +26,7 @@ public enum ExportFormat: String, CaseIterable {
 }
 
 /// Errors that can occur during export.
-public enum ExportError: Error, LocalizedError {
+public enum ExportError: Error, LocalizedError, Sendable {
     case noData
     case encodingFailed(String)
     case fileWriteFailed(String)
@@ -43,7 +43,7 @@ public enum ExportError: Error, LocalizedError {
 }
 
 /// Result of an export operation.
-public struct ExportResult {
+public struct ExportResult: Sendable {
     public let format: ExportFormat
     public let filename: String
     public let data: Data
@@ -56,7 +56,7 @@ public struct ExportResult {
 }
 
 /// Service for exporting workout data to various formats.
-public struct ExportService {
+public struct ExportService: Sendable {
 
     public init() {}
 
@@ -271,10 +271,16 @@ public enum ExportFilenameBuilder {
             .lowercased()
     }
 
-    private static func formatDateForFilename(_ date: Date) -> String {
+    // ⚡ Bolt: Cache date formatter to avoid expensive initialization
+    private static let filenameDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        formatter.timeZone = TimeZone.current
-        return formatter.string(from: date)
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        return formatter
+    }()
+
+    private static func formatDateForFilename(_ date: Date) -> String {
+        return filenameDateFormatter.string(from: date)
     }
 }

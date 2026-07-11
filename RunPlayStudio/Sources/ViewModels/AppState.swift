@@ -80,7 +80,7 @@ class AppState: ObservableObject {
         let relativePath = [subdirectory, "\(resource).\(fileExtension)"]
             .compactMap { $0 }
             .joined(separator: "/")
-        let devURL = URL(fileURLWithPath: "RunPlayStudio/Resources/\(relativePath)")
+        let devURL = URL(filePath: "RunPlayStudio/Resources/\(relativePath)")
         if FileManager.default.fileExists(atPath: devURL.path) {
             loadWorkout(from: devURL)
         }

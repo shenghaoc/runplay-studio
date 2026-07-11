@@ -450,7 +450,7 @@ final class ComparisonProjectionTests: XCTestCase {
     }
 
     private func loadFixture(_ path: String) throws -> RunWorkout {
-        let testFile = URL(fileURLWithPath: #filePath)
+        let testFile = URL(filePath: #filePath)
         let url = testFile
             .deletingLastPathComponent()  // ComparisonProjectionTests
             .deletingLastPathComponent()  // RunPlayStudioTests

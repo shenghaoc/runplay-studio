@@ -2,16 +2,19 @@ import XCTest
 import RunPlayCore
 @testable import RunPlayStudio
 
+@MainActor
 final class ReplayControllerTests: XCTestCase {
 
     var controller: ReplayController!
     var workout: RunWorkout!
 
-    override func setUp() {
-        super.setUp()
-        controller = ReplayController()
-        workout = createSampleWorkout()
-        controller.load(workout)
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            controller = ReplayController()
+            workout = createSampleWorkout()
+            controller.load(workout)
+        }
     }
 
     func testInitialState() {

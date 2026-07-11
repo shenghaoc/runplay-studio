@@ -1,7 +1,7 @@
 import Foundation
 
 /// A notable segment of a running route.
-public struct SegmentHighlight: Identifiable, Codable, Hashable {
+public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var type: SegmentType
     public var title: String
@@ -70,7 +70,7 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable {
 }
 
 /// Types of notable route segments.
-public enum SegmentType: String, Codable, Hashable, CaseIterable {
+public enum SegmentType: String, Codable, Hashable, CaseIterable, Sendable {
     case fastest400m
     case fastest1km
     case slowest1km

@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Provides distance-based comparison without complex route matching.
 /// Handles different workout distances, missing data, and edge cases safely.
-public struct WorkoutComparisonService {
+public struct WorkoutComparisonService: Sendable {
 
     public init() {}
 

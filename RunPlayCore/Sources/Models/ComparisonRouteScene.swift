@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Contains the projected primary and comparison routes, combined bounding box,
 /// and any warnings that apply to the comparison.
-public struct ComparisonRouteScene {
+public struct ComparisonRouteScene: Sendable {
     /// Primary route projected into shared local meter-space.
     public let primaryRoute: [RouteScenePoint]
 

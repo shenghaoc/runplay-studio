@@ -101,9 +101,9 @@ See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
 
 ## Build Requirements
 
-- macOS 14.0+
-- Xcode 15.0+ (for SwiftUI features)
-- Swift 5.9+
+- macOS 26.0+
+- Xcode 26.4+ (for the Swift 6.3 toolchain)
+- Swift 6.3+
 
 ---
 

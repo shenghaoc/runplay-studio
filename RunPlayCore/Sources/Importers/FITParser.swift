@@ -1,7 +1,7 @@
 import Foundation
 
 /// Errors that can occur during FIT parsing.
-public enum FITError: Error, LocalizedError {
+public enum FITError: Error, LocalizedError, Sendable {
     case emptyFile
     case invalidHeader
     case unsupportedProtocol(UInt8)
@@ -34,7 +34,7 @@ public enum FITError: Error, LocalizedError {
 }
 
 /// Raw FIT record message with field values.
-public struct FITRecordMessage {
+public struct FITRecordMessage: Sendable {
 
     public var timestamp: UInt32?
     public var positionLat: Int32?      // semicircles
@@ -49,7 +49,7 @@ public struct FITRecordMessage {
 }
 
 /// FIT field definition from definition message.
-public struct FITFieldDefinition {
+public struct FITFieldDefinition: Sendable {
 
     public let fieldNumber: UInt8
     public let size: UInt8
@@ -57,7 +57,7 @@ public struct FITFieldDefinition {
 }
 
 /// FIT definition message for a local message type.
-public struct FITDefinitionMessage {
+public struct FITDefinitionMessage: Sendable {
 
     public let architecture: UInt8      // 0=little-endian, 1=big-endian
     public let globalMessageNumber: UInt16
@@ -66,7 +66,7 @@ public struct FITDefinitionMessage {
 }
 
 /// FIT developer field definition from a definition message.
-struct FITDeveloperFieldDefinition {
+struct FITDeveloperFieldDefinition: Sendable {
     let fieldNumber: UInt8
     let size: UInt8
     let developerDataIndex: UInt8
