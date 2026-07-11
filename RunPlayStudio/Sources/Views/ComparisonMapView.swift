@@ -176,12 +176,17 @@ struct ComparisonMapView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Jump to start (0 km)")
+                // Distance omitted — already announced in the "Distance Along Route" header
+                .accessibilityLabel("Jump to start")
+                .disabled(commonDistance <= 0)
 
                 Slider(
                     value: $appState.selectedComparisonDistanceMeters,
                     in: 0...max(commonDistance, 1),
                     step: max(commonDistance / 500, 1)
                 )
+                .accessibilityLabel("Distance along route")
+                .accessibilityValue(DisplayFormatter.formatDistanceKm(appState.clampedComparisonDistanceMeters))
                 .disabled(commonDistance <= 0)
 
                 Button {
@@ -190,7 +195,10 @@ struct ComparisonMapView: View {
                     Image(systemName: "forward.end.fill")
                 }
                 .buttonStyle(.plain)
-                .help("Jump to end (\(String(format: "%.2f", commonDistance / 1000)) km)")
+                .help("Jump to end (\(DisplayFormatter.formatDistanceKm(commonDistance)))")
+                // Distance omitted — already announced in the "Distance Along Route" header
+                .accessibilityLabel("Jump to end")
+                .accessibilityValue(DisplayFormatter.formatDistanceKm(commonDistance))
                 .disabled(commonDistance <= 0)
             }
 
