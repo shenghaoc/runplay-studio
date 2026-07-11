@@ -92,6 +92,7 @@ The reverse dependencies are forbidden: Core must not import Platform or Studio,
 ### Swift Version Baseline
 
 - `swift-tools-version:6.3` with Swift 6 language mode.
+- Deployment target: macOS 26.
 - Linux CI: Ubuntu 24.04 with Swift 6.3.3 (pre-installed).
 - macOS CI: macOS 26 with Xcode 26.4 and Swift 6.3.x.
 - CI asserts the Swift 6.3 toolchain and treats compiler warnings as errors.

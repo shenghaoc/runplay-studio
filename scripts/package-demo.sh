@@ -9,7 +9,7 @@
 #   <output-dir>/RunPlayStudio.app.zip
 #
 # Requirements:
-#   - macOS 14.0+
+#   - macOS 26.0+
 #   - Xcode 26.4+ (Swift 6.3)
 #
 # Used in CI for demo artifact packaging; can also be run locally.
@@ -73,7 +73,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>26.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

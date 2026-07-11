@@ -187,7 +187,7 @@ time/pace delta readout remained present after toggling back to 2D.
 
 ## MapKit Status
 
-The comparison and single-route MapKit views now use the macOS 14 `Map` APIs
+The comparison and single-route MapKit views use the modern SwiftUI `Map` APIs
 with `MapPolyline`, `Annotation`, and `MapCameraPosition`. The previous
 deprecation warnings from route map overlays are removed in current builds.
 

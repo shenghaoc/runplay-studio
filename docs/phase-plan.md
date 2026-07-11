@@ -112,7 +112,7 @@
 - [x] Pure logic tests for comparison edge cases
 - [x] Bundled comparison demo fixture for immediate dogfooding
 - [x] Manual GUI dogfooding with bundled runs and a local TCX import
-- [x] macOS 14 MapKit overlay API modernization for route maps
+- [x] MapKit overlay API modernization for route maps
 - [x] Clearer distance-alignment warning for different route shapes
 - [x] Comparison selected-distance markers with time/pace delta readout
 
