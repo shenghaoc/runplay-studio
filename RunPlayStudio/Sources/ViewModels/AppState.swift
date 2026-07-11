@@ -24,9 +24,109 @@ class AppState: ObservableObject {
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
 
-    init(loadSampleWorkout: Bool = true) {
+    /// The store used for persistence. Nil only when `loadSampleWorkout` is false
+    /// (used in tests that construct AppState without a store).
+    private let store: WorkoutLibraryStoring?
+
+    /// Create AppState with an optional store injection.
+    ///
+    /// - Parameters:
+    ///   - store: The persistence store to use. Pass `nil` to skip persistence (tests only).
+    ///   - loadSampleWorkout: Whether to load demos if no persisted workouts exist.
+    init(store: WorkoutLibraryStoring? = nil, loadSampleWorkout: Bool = true) {
+        self.store = store
+
         if loadSampleWorkout {
-            self.loadSampleWorkouts()
+            if let store {
+                loadFromStore(store)
+            } else {
+                // No store provided: fall back to legacy demo-only behavior.
+                loadSampleWorkouts()
+            }
+        }
+    }
+
+    /// Convenience init for production: creates a store rooted at the given directory.
+    convenience init(libraryRoot: URL, loadSampleWorkout: Bool = true) {
+        let store = FileWorkoutLibraryStore(rootURL: libraryRoot)
+        self.init(store: store, loadSampleWorkout: loadSampleWorkout)
+    }
+
+    // MARK: - Startup
+
+    /// Attempt to load the persisted library. On failure, fall back to demos.
+    private func loadFromStore(_ store: WorkoutLibraryStoring) {
+        do {
+            let manifest = try store.loadManifest()
+            guard !manifest.workoutIDs.isEmpty else {
+                // Empty library — load demos as the empty-library experience.
+                loadSampleWorkouts()
+                return
+            }
+
+            var loaded: [RunWorkout] = []
+            var validIDs: [UUID] = []
+            var corruptWarnings: [String] = []
+            var missingIDs: [UUID] = []
+
+            for id in manifest.workoutIDs {
+                do {
+                    let workout = try store.loadWorkout(id: id)
+                    loaded.append(workout)
+                    validIDs.append(id)
+                } catch let error as WorkoutLibraryError {
+                    switch error {
+                    case .workoutFileMissing:
+                        missingIDs.append(id)
+                        corruptWarnings.append("Workout \(id.uuidString.prefix(8))… file missing — skipped")
+                    case .workoutCorrupted:
+                        corruptWarnings.append("Workout \(id.uuidString.prefix(8))… corrupted — skipped")
+                    default:
+                        corruptWarnings.append("Workout \(id.uuidString.prefix(8))… error: \(error.localizedDescription)")
+                    }
+                } catch {
+                    corruptWarnings.append("Workout \(id.uuidString.prefix(8))… unexpected error: \(error.localizedDescription)")
+                }
+            }
+
+            guard !loaded.isEmpty else {
+                // All workouts failed — fall back to demos.
+                if !corruptWarnings.isEmpty {
+                    errorMessage = "Library recovery:\n" + corruptWarnings.joined(separator: "\n")
+                    showingError = true
+                }
+                loadSampleWorkouts()
+                return
+            }
+
+            // Repair manifest if workouts were skipped.
+            if validIDs.count != manifest.workoutIDs.count {
+                var repaired = manifest
+                repaired.workoutIDs = validIDs
+                if let sel = repaired.selectedWorkoutID, !validIDs.contains(sel) {
+                    repaired.selectedWorkoutID = validIDs.first
+                }
+                try? store.saveManifest(repaired)
+            }
+
+            self.workouts = loaded
+
+            // Restore selection.
+            if let selID = manifest.selectedWorkoutID,
+               let selected = loaded.first(where: { $0.id == selID }) {
+                selectWorkout(selected, persistSelection: false)
+            } else {
+                selectWorkout(loaded.first, persistSelection: false)
+            }
+
+            // Show corruption warnings after state is set.
+            if !corruptWarnings.isEmpty {
+                errorMessage = "Some workouts could not be loaded:\n" + corruptWarnings.joined(separator: "\n")
+                showingError = true
+            }
+        } catch {
+            // Manifest load failed — try demos.
+            loadSampleWorkouts()
         }
     }
 
@@ -37,18 +137,37 @@ class AppState: ObservableObject {
         loadBundledWorkout(resource: "comparison_park_run", extension: "json", subdirectory: "fixtures")
 
         if workouts.count > initialCount {
-            selectWorkout(workouts[initialCount])
+            selectWorkout(workouts[initialCount], persistSelection: false)
         }
     }
+
+    // MARK: - Import
 
     /// Import a workout from a file URL.
     func loadWorkout(from url: URL) {
         do {
             let workout = try WorkoutImporterFactory.importWorkout(from: url)
+
+            // Persist first. If persistence fails, don't add to in-memory state.
+            if let store {
+                do {
+                    try store.saveWorkout(workout)
+                    var manifest = (try? store.loadManifest()) ?? WorkoutLibraryManifest()
+                    manifest.workoutIDs.append(workout.id)
+                    manifest.selectedWorkoutID = workout.id
+                    try store.saveManifest(manifest)
+                } catch {
+                    errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
+                    showingError = true
+                    return
+                }
+            }
+
             workouts.append(workout)
             selectedWorkout = workout
             replayController.load(workout)
-            detectedSegments = SegmentDetector.detectSegments(from: workout)
+            // Use persisted segments from the analyzed workout.
+            detectedSegments = workout.segments
             selectedSegment = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -71,7 +190,7 @@ class AppState: ObservableObject {
     private func loadBundledWorkout(resource: String, extension fileExtension: String, subdirectory: String? = nil) {
         // Primary: Bundle.main (works when launched from Xcode or built .app)
         if let url = Bundle.main.url(forResource: resource, withExtension: fileExtension, subdirectory: subdirectory) {
-            loadWorkout(from: url)
+            loadWorkoutFromBundled(url: url)
             return
         }
 
@@ -82,12 +201,26 @@ class AppState: ObservableObject {
             .joined(separator: "/")
         let devURL = URL(filePath: "RunPlayStudio/Resources/\(relativePath)")
         if FileManager.default.fileExists(atPath: devURL.path) {
-            loadWorkout(from: devURL)
+            loadWorkoutFromBundled(url: devURL)
         }
     }
 
+    /// Load a bundled workout WITHOUT persisting it (bundled demos are not user library entries).
+    private func loadWorkoutFromBundled(url: URL) {
+        do {
+            let workout = try WorkoutImporterFactory.importWorkout(from: url)
+            workouts.append(workout)
+            // Use persisted segments from the analyzed workout.
+            detectedSegments = workout.segments
+        } catch {
+            // Silently skip bundled workouts that fail to load.
+        }
+    }
+
+    // MARK: - Selection
+
     /// Select a workout for viewing.
-    func selectWorkout(_ workout: RunWorkout?) {
+    func selectWorkout(_ workout: RunWorkout?, persistSelection: Bool = true) {
         selectedWorkout = workout
         selectedSegment = nil
         if let workout, comparisonWorkout?.id == workout.id {
@@ -95,18 +228,45 @@ class AppState: ObservableObject {
         }
         if let workout = workout {
             replayController.load(workout)
-            detectedSegments = SegmentDetector.detectSegments(from: workout)
+            // Use persisted segments instead of recomputing.
+            detectedSegments = workout.segments
         } else {
             detectedSegments = []
         }
+
+        if persistSelection, let store, let workout {
+            persistSelectedWorkout(workout.id, store: store)
+        }
     }
+
+    /// Persist the selected workout ID to the manifest.
+    private func persistSelectedWorkout(_ id: UUID, store: WorkoutLibraryStoring) {
+        guard var manifest = try? store.loadManifest() else { return }
+        manifest.selectedWorkoutID = id
+        try? store.saveManifest(manifest)
+    }
+
+    // MARK: - Deletion
 
     /// Delete a workout.
     func deleteWorkout(_ workout: RunWorkout) {
         let deletingSelectedWorkout = selectedWorkout?.id == workout.id
         let deletingComparisonWorkout = comparisonWorkout?.id == workout.id
 
+        // Remove from in-memory state.
         workouts.removeAll { $0.id == workout.id }
+
+        // Persist deletion.
+        if let store {
+            try? store.deleteWorkout(id: workout.id)
+            if var manifest = try? store.loadManifest() {
+                manifest.workoutIDs.removeAll { $0 == workout.id }
+                if deletingSelectedWorkout {
+                    manifest.selectedWorkoutID = workouts.first?.id
+                }
+                try? store.saveManifest(manifest)
+            }
+        }
 
         if deletingSelectedWorkout {
             clearComparison()
@@ -114,9 +274,14 @@ class AppState: ObservableObject {
             selectedSegment = nil
             if let first = workouts.first {
                 replayController.load(first)
-                detectedSegments = SegmentDetector.detectSegments(from: first)
+                detectedSegments = first.segments
             } else {
                 detectedSegments = []
+            }
+
+            // Persist new selection.
+            if let store, let newSelected = workouts.first {
+                persistSelectedWorkout(newSelected.id, store: store)
             }
         } else if deletingComparisonWorkout {
             clearComparison()

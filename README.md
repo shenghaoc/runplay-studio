@@ -51,10 +51,11 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 
 RunPlay Studio is a **local-only** application:
 
-- **Local workout processing** — Workout data is processed on your Mac. Imported files remain at their original locations, and exported files remain where you save them.
+- **Local workout processing** — Workout data is processed on your Mac. Imported workouts are stored locally in the app's `Application Support/RunPlayStudio/` directory. The original imported file is not modified; the normalized workout snapshot remains available even if the original file is moved or deleted.
 - **No app-operated cloud, accounts, or telemetry** — The app has no backend service, sign-up/login, usage tracking, or phone-home behavior.
 - **No AI APIs** — No external AI services are used.
 - **MapKit map content** — Apple MapKit loads map content from Apple services over the network. Requests cover the map region derived from your route coordinates, so the general area of your route is visible to Apple Maps. No workout file data or metrics are sent by the app.
+- **Deleting a workout** removes the stored library copy, not the original imported file.
 
 For manual dogfooding with real workouts, keep private files in ignored local
 paths and follow [docs/private-data.md](docs/private-data.md). Public fixtures
@@ -79,7 +80,7 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 |-------|--------|
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (140 tests, platform-neutral) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (174 tests, platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Manual GUI verification | See `docs/manual-testing.md` |
 

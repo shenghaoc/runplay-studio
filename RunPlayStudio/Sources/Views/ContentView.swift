@@ -11,7 +11,15 @@ extension UTType {
 
 /// Main content view with sidebar, 3D route view, and detail panels.
 struct ContentView: View {
-    @StateObject private var appState = AppState()
+    @StateObject private var appState = AppState(
+        libraryRoot: ContentView.defaultLibraryRoot
+    )
+
+    /// Default library root in Application Support.
+    static var defaultLibraryRoot: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("RunPlayStudio", isDirectory: true)
+    }
 
     var body: some View {
         NavigationSplitView {
