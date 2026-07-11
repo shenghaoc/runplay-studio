@@ -247,19 +247,28 @@ class AppState: ObservableObject {
         let remainingWorkouts = workouts.filter { $0.id != workout.id }
         let newSelectedID = deletingSelectedWorkout ? remainingWorkouts.first?.id : nil
 
+        // Cancel pending selection persistence to prevent a stale write
+        // from saving the deleted workout as selected after removal.
+        selectionTask?.cancel()
+
         if let storeActor {
             operationState = .deleting(workoutID: workout.id)
             defer { operationState = .idle }
 
             do {
-                let result = try await storeActor.deleteWorkout(
+                // Persist the deletion. The actor handles manifest transaction.
+                // We ignore the result and always use the UI-level selection
+                // snapshot, because the UI state is authoritative for display.
+                try await storeActor.deleteWorkout(
                     id: workout.id,
                     newSelectedID: newSelectedID
                 )
 
-                switch result {
-                case .deletedSelected:
-                    workouts = remainingWorkouts
+                // Always use the UI-level selection snapshot. The actor's
+                // manifest may disagree if selection persistence was pending
+                // or failed, but the UI state is authoritative for display.
+                workouts = remainingWorkouts
+                if deletingSelectedWorkout {
                     clearComparison()
                     selectedWorkout = remainingWorkouts.first
                     selectedSegment = nil
@@ -269,20 +278,8 @@ class AppState: ObservableObject {
                     } else {
                         detectedSegments = []
                     }
-
-                case .deletedNonSelected:
-                    workouts = remainingWorkouts
-                    if deletingComparisonWorkout {
-                        clearComparison()
-                    }
-
-                case .notInManifest:
-                    // Bundled demo or non-persisted workout. Remove from memory only.
-                    workouts = remainingWorkouts
-                    applyDeletionSelection(
-                        deletingSelectedWorkout: deletingSelectedWorkout,
-                        deletingComparisonWorkout: deletingComparisonWorkout
-                    )
+                } else if deletingComparisonWorkout {
+                    clearComparison()
                 }
             } catch let storeError as WorkoutLibraryStoreError {
                 // Manifest committed but file is orphaned. Remove from UI and warn.

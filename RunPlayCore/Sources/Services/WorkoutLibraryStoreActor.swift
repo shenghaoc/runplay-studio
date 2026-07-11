@@ -229,8 +229,19 @@ public actor WorkoutLibraryStoreActor {
     ///
     /// Actor serialization guarantees that concurrent selection writes
     /// execute in FIFO order, so the last enqueued write always wins.
+    ///
+    /// If no manifest exists (e.g. bundled demos), this is a silent no-op
+    /// because demos are intentionally not in the user library.
     public func setSelectedWorkoutID(_ id: UUID?) throws {
-        var manifest = try store.loadManifest()
+        var manifest: WorkoutLibraryManifest
+        do {
+            manifest = try store.loadManifest()
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                return // Bundled demos have no persisted selection.
+            }
+            throw error
+        }
         manifest.selectedWorkoutID = id
         try store.saveManifest(manifest)
     }
