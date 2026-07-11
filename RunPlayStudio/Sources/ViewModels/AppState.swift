@@ -14,6 +14,7 @@ class AppState: ObservableObject {
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
+    @Published private(set) var isLoadingLibrary = false
 
     // Comparison state
     @Published var comparisonWorkout: RunWorkout?
@@ -28,17 +29,35 @@ class AppState: ObservableObject {
     /// (used in tests that construct AppState without a store).
     private let store: WorkoutLibraryStoring?
 
+    private struct SendableStore: @unchecked Sendable {
+        let value: WorkoutLibraryStoring
+    }
+
+    private enum LibraryLoadResult {
+        case demos(errorMessage: String?)
+        case workouts([RunWorkout], selectedWorkoutID: UUID?, warning: String?)
+    }
+
     /// Create AppState with an optional store injection.
     ///
     /// - Parameters:
     ///   - store: The persistence store to use. Pass `nil` to skip persistence (tests only).
     ///   - loadSampleWorkout: Whether to load demos if no persisted workouts exist.
-    init(store: WorkoutLibraryStoring? = nil, loadSampleWorkout: Bool = true) {
+    init(
+        store: WorkoutLibraryStoring? = nil,
+        loadSampleWorkout: Bool = true,
+        loadStoreAsynchronously: Bool = false
+    ) {
         self.store = store
 
         if loadSampleWorkout {
             if let store {
-                loadFromStore(store)
+                if loadStoreAsynchronously {
+                    isLoadingLibrary = true
+                    loadFromStoreInBackground(store)
+                } else {
+                    applyLibraryLoadResult(Self.readLibrary(from: store))
+                }
             } else {
                 // No store provided: fall back to legacy demo-only behavior.
                 loadSampleWorkouts()
@@ -49,19 +68,35 @@ class AppState: ObservableObject {
     /// Convenience init for production: creates a store rooted at the given directory.
     convenience init(libraryRoot: URL, loadSampleWorkout: Bool = true) {
         let store = FileWorkoutLibraryStore(rootURL: libraryRoot)
-        self.init(store: store, loadSampleWorkout: loadSampleWorkout)
+        self.init(
+            store: store,
+            loadSampleWorkout: loadSampleWorkout,
+            loadStoreAsynchronously: true
+        )
     }
 
     // MARK: - Startup
 
-    /// Attempt to load the persisted library. On failure, fall back to demos.
-    private func loadFromStore(_ store: WorkoutLibraryStoring) {
+    /// Load and decode persisted workouts away from the main actor, then publish
+    /// the resulting state on the main actor.
+    private func loadFromStoreInBackground(_ store: WorkoutLibraryStoring) {
+        let sendableStore = SendableStore(value: store)
+        Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.readLibrary(from: sendableStore.value)
+            }.value
+            guard let self else { return }
+            applyLibraryLoadResult(result)
+            isLoadingLibrary = false
+        }
+    }
+
+    /// Read the persisted library without touching observable UI state.
+    nonisolated private static func readLibrary(from store: WorkoutLibraryStoring) -> LibraryLoadResult {
         do {
             let manifest = try store.loadManifest()
             guard !manifest.workoutIDs.isEmpty else {
-                // Empty library — load demos as the empty-library experience.
-                loadSampleWorkouts()
-                return
+                return .demos(errorMessage: nil)
             }
 
             var loaded: [RunWorkout] = []
@@ -90,13 +125,10 @@ class AppState: ObservableObject {
             }
 
             guard !loaded.isEmpty else {
-                // All workouts failed — fall back to demos.
-                if !corruptWarnings.isEmpty {
-                    errorMessage = "Library recovery:\n" + corruptWarnings.joined(separator: "\n")
-                    showingError = true
-                }
-                loadSampleWorkouts()
-                return
+                let warning = corruptWarnings.isEmpty
+                    ? nil
+                    : "Library recovery:\n" + corruptWarnings.joined(separator: "\n")
+                return .demos(errorMessage: warning)
             }
 
             // Repair manifest if workouts were skipped.
@@ -106,39 +138,47 @@ class AppState: ObservableObject {
                 if let sel = repaired.selectedWorkoutID, !validIDs.contains(sel) {
                     repaired.selectedWorkoutID = validIDs.first
                 }
-                try? store.saveManifest(repaired)
+                do {
+                    try store.saveManifest(repaired)
+                } catch {
+                    corruptWarnings.append("Could not repair library manifest: \(error.localizedDescription)")
+                }
             }
 
-            self.workouts = loaded
-
-            // Restore selection.
-            if let selID = manifest.selectedWorkoutID,
-               let selected = loaded.first(where: { $0.id == selID }) {
-                selectWorkout(selected, persistSelection: false)
-            } else {
-                selectWorkout(loaded.first, persistSelection: false)
-            }
-
-            // Show corruption warnings after state is set.
-            if !corruptWarnings.isEmpty {
-                errorMessage = "Some workouts could not be loaded:\n" + corruptWarnings.joined(separator: "\n")
-                showingError = true
-            }
+            let warning = corruptWarnings.isEmpty
+                ? nil
+                : "Some workouts could not be loaded:\n" + corruptWarnings.joined(separator: "\n")
+            return .workouts(loaded, selectedWorkoutID: manifest.selectedWorkoutID, warning: warning)
         } catch let error as WorkoutLibraryError {
             switch error {
             case .manifestMissing:
-                // First launch — no manifest yet. Silent fallback to demos.
-                break
+                return .demos(errorMessage: nil)
             default:
-                // Corrupt manifest or unsupported version — warn the user.
-                errorMessage = "Failed to load library: \(error.localizedDescription)"
+                return .demos(errorMessage: "Failed to load library: \(error.localizedDescription)")
+            }
+        } catch {
+            return .demos(errorMessage: "Unexpected error loading library: \(error.localizedDescription)")
+        }
+    }
+
+    private func applyLibraryLoadResult(_ result: LibraryLoadResult) {
+        switch result {
+        case .demos(let loadErrorMessage):
+            loadSampleWorkouts()
+            if let loadErrorMessage {
+                errorMessage = loadErrorMessage
                 showingError = true
             }
-            loadSampleWorkouts()
-        } catch {
-            errorMessage = "Unexpected error loading library: \(error.localizedDescription)"
-            showingError = true
-            loadSampleWorkouts()
+        case .workouts(let loaded, let selectedWorkoutID, let warning):
+            workouts = loaded
+            let selected = selectedWorkoutID.flatMap { id in
+                loaded.first(where: { $0.id == id })
+            } ?? loaded.first
+            selectWorkout(selected, persistSelection: false)
+            if let warning {
+                errorMessage = warning
+                showingError = true
+            }
         }
     }
 
@@ -273,21 +313,35 @@ class AppState: ObservableObject {
     func deleteWorkout(_ workout: RunWorkout) {
         let deletingSelectedWorkout = selectedWorkout?.id == workout.id
         let deletingComparisonWorkout = comparisonWorkout?.id == workout.id
+        let remainingWorkouts = workouts.filter { $0.id != workout.id }
 
-        // Remove from in-memory state.
-        workouts.removeAll { $0.id == workout.id }
-
-        // Persist deletion.
-        if let store {
-            try? store.deleteWorkout(id: workout.id)
-            if var manifest = try? store.loadManifest() {
+        // Persist the logical deletion before publishing it to the UI. If the
+        // manifest cannot be updated, leave both disk and memory unchanged.
+        if let store, store.workoutExists(id: workout.id) {
+            do {
+                var manifest = try store.loadManifest()
                 manifest.workoutIDs.removeAll { $0 == workout.id }
                 if deletingSelectedWorkout {
-                    manifest.selectedWorkoutID = workouts.first?.id
+                    manifest.selectedWorkoutID = remainingWorkouts.first?.id
                 }
-                try? store.saveManifest(manifest)
+                try store.saveManifest(manifest)
+            } catch {
+                errorMessage = "Could not delete workout: \(error.localizedDescription)"
+                showingError = true
+                return
+            }
+
+            do {
+                try store.deleteWorkout(id: workout.id)
+            } catch {
+                // The manifest no longer references this workout, so complete
+                // the logical deletion while reporting the orphaned file.
+                errorMessage = "Workout removed from the library, but its stored file could not be deleted: \(error.localizedDescription)"
+                showingError = true
             }
         }
+
+        workouts = remainingWorkouts
 
         if deletingSelectedWorkout {
             clearComparison()

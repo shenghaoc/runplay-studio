@@ -157,6 +157,33 @@ final class AppStatePersistenceTests: XCTestCase {
         XCTAssertEqual(freshAppState.selectedWorkout?.id, w2.id)
     }
 
+    func testDeleteManifestFailureLeavesPublishedStateUnchanged() {
+        let workout = makeWorkout(name: "Cannot Delete")
+        let store = ManifestSaveFailingStore(workout: workout)
+        let appState = AppState(store: store, loadSampleWorkout: false)
+        appState.workouts = [workout]
+        appState.selectedWorkout = workout
+
+        appState.deleteWorkout(workout)
+
+        XCTAssertEqual(appState.workouts.map(\.id), [workout.id])
+        XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
+        XCTAssertTrue(appState.showingError)
+        XCTAssertTrue(appState.errorMessage?.contains("Could not delete workout") == true)
+        XCTAssertFalse(store.didDeleteWorkoutFile)
+    }
+
+    func testDeleteBundledDemoDoesNotRequirePersistedManifest() {
+        let appState = AppState(store: makeStore())
+        let demo = appState.workouts[0]
+        let initialCount = appState.workouts.count
+
+        appState.deleteWorkout(demo)
+
+        XCTAssertEqual(appState.workouts.count, initialCount - 1)
+        XCTAssertFalse(appState.showingError)
+    }
+
     // MARK: - Deleting Comparison Workout Clears Comparison State
 
     func testDeleteComparisonWorkoutClearsComparison() throws {
@@ -235,6 +262,8 @@ final class AppStatePersistenceTests: XCTestCase {
 
         // Should fall back to demos.
         XCTAssertGreaterThanOrEqual(appState.workouts.count, 1)
+        XCTAssertTrue(appState.showingError)
+        XCTAssertTrue(appState.errorMessage?.contains("Failed to load library") == true)
     }
 
     // MARK: - Corrupt Workout File Skips It
@@ -297,5 +326,64 @@ final class AppStatePersistenceTests: XCTestCase {
         let appState = AppState(store: nil, loadSampleWorkout: false)
         XCTAssertTrue(appState.workouts.isEmpty)
         XCTAssertNil(appState.selectedWorkout)
+    }
+
+    func testAsynchronousStartupLoadsPersistedWorkout() async throws {
+        let store = makeStore()
+        let workout = makeWorkout(name: "Background Load")
+        try store.saveWorkout(workout)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id
+        ))
+
+        let appState = AppState(
+            store: store,
+            loadStoreAsynchronously: true
+        )
+
+        for _ in 0..<1_000 where appState.isLoadingLibrary {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        XCTAssertFalse(appState.isLoadingLibrary)
+        XCTAssertEqual(appState.workouts.map(\.id), [workout.id])
+        XCTAssertEqual(appState.selectedWorkout?.id, workout.id)
+    }
+}
+
+private final class ManifestSaveFailingStore: WorkoutLibraryStoring {
+    private let workout: RunWorkout
+    private let manifest: WorkoutLibraryManifest
+    private(set) var didDeleteWorkoutFile = false
+
+    init(workout: RunWorkout) {
+        self.workout = workout
+        self.manifest = WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id
+        )
+    }
+
+    func loadManifest() throws -> WorkoutLibraryManifest {
+        manifest
+    }
+
+    func saveManifest(_ manifest: WorkoutLibraryManifest) throws {
+        throw WorkoutLibraryError.writeFailed("simulated manifest failure")
+    }
+
+    func loadWorkout(id: UUID) throws -> RunWorkout {
+        workout
+    }
+
+    func saveWorkout(_ workout: RunWorkout) throws {}
+
+    func deleteWorkout(id: UUID) throws {
+        didDeleteWorkoutFile = true
+    }
+
+    func workoutExists(id: UUID) -> Bool {
+        id == workout.id
     }
 }

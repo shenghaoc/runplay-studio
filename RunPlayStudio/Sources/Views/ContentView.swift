@@ -66,10 +66,17 @@ struct ContentView: View {
         ) { result in
             appState.handleImport(result)
         }
-        .alert("Import Error", isPresented: $appState.showingError) {
+        .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("OK") { appState.errorMessage = nil }
         } message: {
             Text(appState.errorMessage ?? "Unknown error")
+        }
+        .disabled(appState.isLoadingLibrary)
+        .overlay {
+            if appState.isLoadingLibrary {
+                ProgressView("Loading workout library…")
+                    .padding()
+            }
         }
     }
 }
