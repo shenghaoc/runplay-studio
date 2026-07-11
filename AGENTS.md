@@ -92,7 +92,7 @@ The reverse dependencies are forbidden: Core must not import Platform or Studio,
 ### Swift Version Baseline
 
 - `swift-tools-version:6.0` with Swift 6 language mode.
-- Linux CI: Ubuntu 24.04 Arm64 with Swift 6.3.3 (pre-installed).
+- Linux CI: Ubuntu 24.04 with Swift 6.3.3 (pre-installed).
 - macOS CI: macOS 26 + Xcode 26.6.
 
 ### RunPlayCore — Platform-Neutral Target
@@ -166,6 +166,6 @@ The reverse dependencies are forbidden: Core must not import Platform or Studio,
 ## CI
 
 - `core-linux` and `macos` are independent jobs with no `needs:` dependency, so GitHub Actions can run them in parallel.
-- Linux Core gate: Ubuntu 24.04 Arm64 + Swift 6.3.3, then `swift build --target RunPlayCore` and `swift test --filter RunPlayCoreTests`.
+- Linux Core gate: Ubuntu 24.04 + Swift 6.3.3, then `swift build --target RunPlayCore` and `swift test --filter RunPlayCoreTests`.
 - macOS full-stack gate: build and test Core, Platform, and Studio with `swift build` and `swift test`.
 - Platform-only local gate: `swift build --target RunPlayPlatform` and `swift test --filter RunPlayPlatformTests`.
