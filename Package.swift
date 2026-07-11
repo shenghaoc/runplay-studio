@@ -1,8 +1,11 @@
 // swift-tools-version:5.9
+// Keep the tools baseline and Swift 5 language mode until a dedicated
+// toolchain/runner upgrade changes them together.
 import PackageDescription
 
 var targets: [Target] = [
-    // Platform-neutral core library (no SwiftUI, AppKit, MapKit, Charts, CoreLocation)
+    // Cross-platform core: Foundation (and conditional FoundationXML) only.
+    // This target and its tests are the complete package graph on Linux.
     .target(
         name: "RunPlayCore",
         dependencies: [],
@@ -20,10 +23,11 @@ var products: [Product] = [
     .library(name: "RunPlayCore", targets: ["RunPlayCore"]),
 ]
 
-// macOS-only targets (require SceneKit, AppKit, MapKit — but not SwiftUI)
+// macOS-only layers are absent from the Linux package graph.
 #if os(macOS)
 targets.append(contentsOf: [
-    // macOS platform layer (SceneKit, AppKit, MapKit, Combine — no SwiftUI)
+    // macOS non-UI platform layer: SceneKit, AppKit value types, MapKit,
+    // and Combine are allowed; SwiftUI, Charts, and presentation code are not.
     .target(
         name: "RunPlayPlatform",
         dependencies: ["RunPlayCore"],
@@ -31,10 +35,10 @@ targets.append(contentsOf: [
     ),
     .testTarget(
         name: "RunPlayPlatformTests",
-        dependencies: ["RunPlayPlatform"],
+        dependencies: ["RunPlayCore", "RunPlayPlatform"],
         path: "RunPlayPlatform/Tests/RunPlayPlatformTests"
     ),
-    // macOS GUI layer (SwiftUI, Charts)
+    // macOS UI layer: owns the app lifecycle and all SwiftUI/Charts code.
     .executableTarget(
         name: "RunPlayStudio",
         dependencies: ["RunPlayCore", "RunPlayPlatform"],
@@ -45,7 +49,7 @@ targets.append(contentsOf: [
     ),
     .testTarget(
         name: "RunPlayStudioTests",
-        dependencies: ["RunPlayStudio"],
+        dependencies: ["RunPlayCore", "RunPlayPlatform", "RunPlayStudio"],
         path: "RunPlayStudio/Tests/RunPlayStudioTests"
     ),
 ])
@@ -59,5 +63,6 @@ let package = Package(
         .macOS(.v14)
     ],
     products: products,
-    targets: targets
+    targets: targets,
+    swiftLanguageVersions: [.v5]
 )
