@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: swift-actions/setup-swift@v2
         with:
-          swift-version: '6.3'
+          swift-version: '6.2'
       - name: Build RunPlayCore
         run: swift build --target RunPlayCore
       - name: Test RunPlayCore
@@ -27,6 +27,9 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2'
       - name: Build RunPlayPlatform
         run: swift build --target RunPlayPlatform
       - name: Test RunPlayPlatform
@@ -38,6 +41,9 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2'
       - name: Build
         run: swift build
       - name: Test
