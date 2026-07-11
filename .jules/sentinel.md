@@ -11,4 +11,4 @@
 ## 2024-07-09 - CSV Injection Prevention in Export Service
 **Vulnerability:** Found missing mitigation for CSV Formula Injection in `ExportService.swift`. Unescaped spreadsheet formulas can be executed by applications like Microsoft Excel if user-supplied data (such as segment titles or string payloads starting with =, +, - or @) is directly appended to the output.
 **Learning:** Spreadsheets treat fields starting with =, +, -, and @ as formulas and will evaluate them. In Swift, one must strip whitespace before detecting these, and allow real numbers while prepending a single quote to potential formula strings.
-**Prevention:** In CSV-exporting mechanisms such as `CSVRow.escape`, check if the non-numeric field string starts with `=, +, -, @` and prepend a single quote (`'`) to ensure the field is interpreted as text rather than a potentially malicious formula.
+**Prevention:** In CSV-exporting mechanisms such as `CSVRow.escape`, check if the non-numeric field string starts with `=, +, -, @, \t, or \r` and prepend a single quote (`'`) to ensure the field is interpreted as text rather than a potentially malicious formula.

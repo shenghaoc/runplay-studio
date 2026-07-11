@@ -199,13 +199,13 @@ public enum CSVRow {
     /// Mitigates CSV Injection (OWASP A1.4) by prepending a single quote to non-numeric fields
     /// starting with `=, +, -, @`. Effective in Excel, Google Sheets, and LibreOffice Calc.
     /// NOTE: The single-quote prefix is not part of RFC 4180; behavior in other applications may vary.
-    /// Non-whitespace characters that could start a spreadsheet formula (OWASP A1.4).
-    private static let dangerousPrefixes: Set<Character> = ["=", "+", "-", "@"]
+    /// Characters that could start a spreadsheet formula (OWASP A1.4).
+    private static let dangerousPrefixes: Set<Character> = ["=", "+", "-", "@", "\t", "\r"]
 
     public static func escape(_ field: String) -> String {
         var safeField = field
 
-        // CSV Injection mitigation: check first non-whitespace character for dangerous prefixes.
+        // CSV Injection mitigation: check first character for dangerous prefixes.
         if let first = field.first {
             if dangerousPrefixes.contains(first) {
                 // Fast path: first char is already a dangerous prefix, no trimming needed
