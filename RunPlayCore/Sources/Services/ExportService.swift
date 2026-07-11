@@ -215,7 +215,6 @@ public enum CSVRow {
                 }
             } else if first.isWhitespace {
                 // Slow path: leading whitespace — trim to find the real first char.
-                // OWASP also recommends handling tab and vertical tab as dangerous prefixes.
                 let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
                 if let trimmedFirst = trimmed.first, dangerousPrefixes.contains(trimmedFirst) {
                     let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
