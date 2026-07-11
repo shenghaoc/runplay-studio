@@ -11,6 +11,8 @@ public struct RouteScenePoint: Identifiable, Sendable {
     public var elapsedSeconds: Double
     public var paceSecondsPerKilometer: Double?
     public var heartRateBPM: Double?
+    /// Segment index carried from the source RoutePoint.
+    public var routeSegmentIndex: Int
 
     public init(
         id: UUID = UUID(),
@@ -21,7 +23,8 @@ public struct RouteScenePoint: Identifiable, Sendable {
         distanceFromStartMeters: Double,
         elapsedSeconds: Double,
         paceSecondsPerKilometer: Double? = nil,
-        heartRateBPM: Double? = nil
+        heartRateBPM: Double? = nil,
+        routeSegmentIndex: Int = 0
     ) {
         self.id = id
         self.xMeters = xMeters
@@ -32,5 +35,6 @@ public struct RouteScenePoint: Identifiable, Sendable {
         self.elapsedSeconds = elapsedSeconds
         self.paceSecondsPerKilometer = paceSecondsPerKilometer
         self.heartRateBPM = heartRateBPM
+        self.routeSegmentIndex = routeSegmentIndex
     }
 }

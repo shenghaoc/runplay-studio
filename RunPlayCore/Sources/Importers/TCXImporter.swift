@@ -5,10 +5,13 @@ import FoundationXML
 
 /// Imports workouts from TCX (Training Center XML) files.
 ///
-/// Supports common TCX structure:
+/// Supports TCX structure:
 /// - TrainingCenterDatabase > Activities > Activity > Lap > Track > Trackpoint
-/// - Time, Position/LatitudeDegrees, Position/LongitudeDegrees
-/// - AltitudeMeters, DistanceMeters, HeartRateBpm/Value, Cadence
+/// - Each `<Track>` starts a new `routeSegmentIndex`.
+/// - Each `<Lap>` also starts a new segment index.
+/// - Distance is rebased per-track to prevent cross-segment phantom distance.
+/// - Multi-activity files: if exactly one activity has GPS data, it is imported;
+///   if multiple activities have GPS data, an error is thrown.
 public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     public init() {}
     public var supportedExtensions: [String] { ["tcx"] }
@@ -16,61 +19,117 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
         let data = try Data(contentsOf: url)
-        guard let xml = String(data: data, encoding: .utf8) else {
-            throw WorkoutImportError.invalidFormat("Could not read file as UTF-8")
-        }
-
-        return try parseTCX(xml, sourceURL: url)
+        return try importWorkout(data: data, sourceURL: url)
     }
 
-    // MARK: - Private
+    /// Internal entry point for testability with raw Data.
+    func importWorkout(data: Data, sourceURL: URL) throws -> RunWorkout {
+        let rawActivities = try parseTCXData(data)
 
-    private func parseTCX(_ xml: String, sourceURL: URL) throws -> RunWorkout {
-        let parser = TCXXMLParser(xml: xml)
-        let rawResult = try parser.parse()
-
-        guard !rawResult.trackpoints.isEmpty else {
-            throw WorkoutImportError.missingData("No trackpoints found in TCX file")
+        guard !rawActivities.isEmpty else {
+            throw WorkoutImportError.missingData("No activities found in TCX file")
         }
 
-        // Filter to only trackpoints with valid coordinates
-        let validPoints = rawResult.trackpoints.filter { tp in
-            GeoDistance.isValidCoordinate(lat: tp.latitude, lon: tp.longitude)
+        // Select the activity with GPS data.
+        let gpsActivities = rawActivities.filter { activity in
+            activity.laps.contains { lap in
+                lap.tracks.contains { track in
+                    track.points.contains { tp in
+                        GeoDistance.isValidCoordinate(lat: tp.latitude, lon: tp.longitude)
+                    }
+                }
+            }
         }
 
-        guard !validPoints.isEmpty else {
+        if gpsActivities.isEmpty {
             throw WorkoutImportError.missingData("No trackpoints with valid coordinates found")
         }
 
-        // Require at least some timestamps for meaningful pace/duration analysis.
-        // Missing timestamps between known points are interpolated below.
-        guard let timestamps = RouteTimestampResolver.resolve(validPoints.map(\.time)),
+        if gpsActivities.count > 1 {
+            throw WorkoutImportError.invalidFormat("TCX file contains multiple GPS activities; only single-activity files are supported")
+        }
+
+        let activity = gpsActivities[0]
+
+        // Flatten all tracks from all laps, preserving segment boundaries.
+        // Each (lap, track) pair becomes one segment.
+        struct SegmentData {
+            var points: [RawTCXTrackpoint]
+        }
+        var segments: [SegmentData] = []
+        for lap in activity.laps {
+            for track in lap.tracks {
+                let validPoints = track.points.filter { tp in
+                    GeoDistance.isValidCoordinate(lat: tp.latitude, lon: tp.longitude)
+                }
+                if !validPoints.isEmpty {
+                    segments.append(SegmentData(points: validPoints))
+                }
+            }
+        }
+
+        guard !segments.isEmpty else {
+            throw WorkoutImportError.missingData("No trackpoints with valid coordinates found")
+        }
+
+        // Flatten for timestamp resolution.
+        let allValidPoints = segments.flatMap(\.points)
+
+        // Resolve timestamps
+        guard let timestamps = RouteTimestampResolver.resolve(allValidPoints.map(\.time)),
               let startDate = timestamps.first else {
             throw WorkoutImportError.missingData("TCX file has no timestamps; cannot compute pace or duration")
         }
 
-        let hasCompleteSuppliedDistanceSeries = validPoints.allSatisfy { point in
-            guard let distance = point.distanceMeters else { return false }
-            return distance.isFinite && distance >= 0
-        }
-
+        // Build route points with segment indexes.
         var routePoints: [RoutePoint] = []
+        var globalIndex = 0
+        var hasAnySuppliedDistance = false
+        var allSuppliedDistancesValid = true
 
-        for (raw, timestamp) in zip(validPoints, timestamps) {
-            let elapsed = timestamp.timeIntervalSince(startDate)
+        for (segmentIdx, segment) in segments.enumerated() {
+            // Rebase distance within this segment so it starts from 0.
+            let rebasedDistance = rebaseDistance(segment.points.map(\.distanceMeters))
 
-            let point = RoutePoint(
-                timestamp: timestamp,
-                latitude: raw.latitude,
-                longitude: raw.longitude,
-                altitudeMeters: raw.altitudeMeters,
-                distanceFromStartMeters: raw.distanceMeters ?? 0,
-                elapsedSeconds: elapsed,
-                heartRateBPM: raw.heartRateBPM.map { Double($0) },
-                cadence: raw.cadence.map { Double($0) }
-            )
-            routePoints.append(point)
+            // Check raw distance completeness before rebasing.
+            for raw in segment.points {
+                if let d = raw.distanceMeters {
+                    hasAnySuppliedDistance = true
+                    if !d.isFinite || d < 0 {
+                        allSuppliedDistancesValid = false
+                    }
+                } else {
+                    allSuppliedDistancesValid = false
+                }
+            }
+
+            for (localIdx, raw) in segment.points.enumerated() {
+                let timestamp = timestamps[globalIndex]
+                globalIndex += 1
+
+                let elapsed = timestamp.timeIntervalSince(startDate)
+                let dist = localIdx < rebasedDistance.count ? (rebasedDistance[localIdx] ?? 0) : 0
+
+                let point = RoutePoint(
+                    timestamp: timestamp,
+                    latitude: raw.latitude,
+                    longitude: raw.longitude,
+                    altitudeMeters: raw.altitudeMeters,
+                    distanceFromStartMeters: dist,
+                    elapsedSeconds: elapsed,
+                    heartRateBPM: raw.heartRateBPM.map { Double($0) },
+                    cadence: raw.cadence.map { Double($0) },
+                    routeSegmentIndex: segmentIdx
+                )
+                routePoints.append(point)
+            }
         }
+
+        guard !routePoints.isEmpty else {
+            throw WorkoutImportError.missingData("No valid coordinates found in TCX file")
+        }
+
+        let hasCompleteSuppliedDistanceSeries = hasAnySuppliedDistance && allSuppliedDistancesValid
 
         routePoints = RoutePointSanitizer.normalize(
             routePoints,
@@ -80,8 +139,8 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         // Build metadata
         let metadata = WorkoutMetadata(
             name: sourceURL.deletingPathExtension().lastPathComponent,
-            activityType: rawResult.sport ?? "running",
-            startDate: rawResult.activityId ?? routePoints.first?.timestamp,
+            activityType: activity.sport ?? "running",
+            startDate: activity.activityId ?? routePoints.first?.timestamp,
             endDate: routePoints.last?.timestamp
         )
 
@@ -91,20 +150,44 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             routePoints: routePoints
         )
 
-        // Run analysis
         let analyzer = WorkoutAnalyzer()
         analyzer.analyze(&workout)
 
         return workout
     }
+
+    // MARK: - Distance Rebasing
+
+    /// Rebase a per-track distance series so it starts from 0.
+    ///
+    /// If the series starts at a nonzero value, subtract that offset from all entries.
+    /// Returns `nil` for entries where the input was `nil`.
+    private func rebaseDistance(_ distances: [Double?]) -> [Double?] {
+        guard let firstNonNil = distances.first(where: { $0 != nil }) ?? nil else {
+            return distances
+        }
+        let offset = firstNonNil
+        return distances.map { $0.map { max(0, $0 - offset) } }
+    }
 }
 
 // MARK: - TCX XML Parser
 
-private struct RawTCXResult {
-    var trackpoints: [RawTCXTrackpoint]
+/// A parsed TCX activity with laps and tracks.
+private struct RawTCXActivity {
     var sport: String?
     var activityId: Date?
+    var laps: [RawTCXLap]
+}
+
+/// A lap containing one or more tracks.
+private struct RawTCXLap {
+    var tracks: [RawTCXTrack]
+}
+
+/// A track containing ordered trackpoints.
+private struct RawTCXTrack {
+    var points: [RawTCXTrackpoint]
 }
 
 private struct RawTCXTrackpoint {
@@ -117,19 +200,31 @@ private struct RawTCXTrackpoint {
     var cadence: Int?
 }
 
+/// TCX XML parser that preserves activity/lap/track hierarchy.
 private class TCXXMLParser: NSObject, XMLParserDelegate {
-    private let xml: String
-    private var result = RawTCXResult(trackpoints: [])
+    private let data: Data
+    private var activities: [RawTCXActivity] = []
 
-    // Current parsing state
-    private var currentElement: String = ""
-    private var currentText: String = ""
+    // Hierarchy tracking
+    private var inActivity = false
+    private var inLap = false
+    private var inTrack = false
     private var inTrackpoint = false
     private var inPosition = false
     private var inHeartRate = false
-    private var inActivity = false
 
-    // Current trackpoint being built
+    // Current activity state
+    private var currentSport: String?
+    private var currentActivityId: Date?
+
+    // Current lap tracks accumulator
+    private var currentLapTracks: [RawTCXTrack] = []
+    private var currentActivityLaps: [RawTCXLap] = []
+
+    // Current track points accumulator
+    private var currentTrackPoints: [RawTCXTrackpoint] = []
+
+    // Current trackpoint state
     private var currentTime: Date?
     private var currentLat: Double?
     private var currentLon: Double?
@@ -138,15 +233,17 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     private var currentHR: Int?
     private var currentCadence: Int?
 
-    init(xml: String) {
-        self.xml = xml
+    // Character accumulation
+    private var currentText: String = ""
+
+    // Error tracking
+    private var parseError: String?
+
+    init(data: Data) {
+        self.data = data
     }
 
-    func parse() throws -> RawTCXResult {
-        guard let data = xml.data(using: .utf8) else {
-            throw WorkoutImportError.invalidFormat("Could not encode XML as UTF-8")
-        }
-
+    func parse() throws -> [RawTCXActivity] {
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.shouldProcessNamespaces = false
@@ -154,10 +251,15 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         parser.shouldResolveExternalEntities = false
 
         guard parser.parse() else {
-            throw WorkoutImportError.parsingError("TCX XML parsing failed")
+            let line = parser.lineNumber
+            let col = parser.columnNumber
+            if let error = parseError {
+                throw WorkoutImportError.parsingError("TCX parsing failed at line \(line), column \(col): \(error)")
+            }
+            throw WorkoutImportError.parsingError("TCX parsing failed at line \(line), column \(col)")
         }
 
-        return result
+        return activities
     }
 
     // MARK: - XMLParserDelegate
@@ -169,15 +271,20 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         qualifiedName: String?,
         attributes: [String: String]
     ) {
-        currentElement = elementName
         currentText = ""
 
         switch elementName {
         case "Activity":
             inActivity = true
-            if let sport = attributes["Sport"] {
-                result.sport = sport.lowercased()
-            }
+            currentSport = attributes["Sport"]?.lowercased()
+            currentActivityId = nil
+            currentActivityLaps = []
+        case "Lap":
+            inLap = true
+            currentLapTracks = []
+        case "Track":
+            inTrack = true
+            currentTrackPoints = []
         case "Trackpoint":
             inTrackpoint = true
             currentTime = nil
@@ -211,7 +318,7 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         switch elementName {
         case "Id":
             if inActivity {
-                result.activityId = parseISO8601(text)
+                currentActivityId = parseISO8601(text)
             }
         case "Time":
             if inTrackpoint {
@@ -247,7 +354,7 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             inPosition = false
         case "Trackpoint":
             if inTrackpoint, let lat = currentLat, let lon = currentLon {
-                result.trackpoints.append(RawTCXTrackpoint(
+                currentTrackPoints.append(RawTCXTrackpoint(
                     time: currentTime,
                     latitude: lat,
                     longitude: lon,
@@ -258,14 +365,39 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
                 ))
             }
             inTrackpoint = false
+        case "Track":
+            if inTrack {
+                currentLapTracks.append(RawTCXTrack(points: currentTrackPoints))
+                currentTrackPoints = []
+                inTrack = false
+            }
+        case "Lap":
+            if inLap {
+                currentActivityLaps.append(RawTCXLap(tracks: currentLapTracks))
+                currentLapTracks = []
+                inLap = false
+            }
         case "Activity":
-            inActivity = false
+            if inActivity {
+                activities.append(RawTCXActivity(
+                    sport: currentSport,
+                    activityId: currentActivityId,
+                    laps: currentActivityLaps
+                ))
+                currentActivityLaps = []
+                inActivity = false
+            }
         default:
             break
         }
     }
 
-    // ⚡ Bolt: Cache date formatters to avoid expensive initialization on every trackpoint
+    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+        self.parseError = parseError.localizedDescription
+    }
+
+    // MARK: - Date Parsing
+
     private let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -284,4 +416,11 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         }
         return iso8601StandardFormatter.date(from: string)
     }
+}
+
+// MARK: - Data-based parsing entry point
+
+private func parseTCXData(_ data: Data) throws -> [RawTCXActivity] {
+    let parser = TCXXMLParser(data: data)
+    return try parser.parse()
 }

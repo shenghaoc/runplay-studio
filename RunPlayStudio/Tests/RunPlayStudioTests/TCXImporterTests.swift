@@ -398,6 +398,200 @@ final class TCXImporterTests: XCTestCase {
         }
     }
 
+    // MARK: - Segment-Aware Tests
+
+    func testTCXMultipleTracksGetDistinctSegmentIndexes() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:40:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.3000</LatitudeDegrees><LongitudeDegrees>103.7800</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:40:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.3010</LatitudeDegrees><LongitudeDegrees>103.7810</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let tempURL = try createTempTCX(tcx)
+        let workout = try importer.importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 4)
+        // First track: segment 0
+        XCTAssertEqual(workout.routePoints[0].routeSegmentIndex, 0)
+        XCTAssertEqual(workout.routePoints[1].routeSegmentIndex, 0)
+        // Second track: segment 1
+        XCTAssertEqual(workout.routePoints[2].routeSegmentIndex, 1)
+        XCTAssertEqual(workout.routePoints[3].routeSegmentIndex, 1)
+    }
+
+    func testTCXDistanceIsRebasedPerTrack() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                    <DistanceMeters>1000</DistanceMeters>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                    <DistanceMeters>1050</DistanceMeters>
+                  </Trackpoint>
+                </Track>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:40:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.3000</LatitudeDegrees><LongitudeDegrees>103.7800</LongitudeDegrees></Position>
+                    <DistanceMeters>500</DistanceMeters>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:40:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.3010</LatitudeDegrees><LongitudeDegrees>103.7810</LongitudeDegrees></Position>
+                    <DistanceMeters>550</DistanceMeters>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let tempURL = try createTempTCX(tcx)
+        let workout = try importer.importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 4)
+
+        // First track: rebased from 1000 → starts at 0, second point at ~50
+        XCTAssertEqual(workout.routePoints[0].distanceFromStartMeters, 0, accuracy: 0.01)
+        XCTAssertEqual(workout.routePoints[1].distanceFromStartMeters, 50, accuracy: 1)
+
+        // Second track: cumulative distance continues from prior segment end (~50).
+        // The sanitizer adds computed distance from coordinates on top.
+        let seg2Start = workout.routePoints[2].distanceFromStartMeters
+        XCTAssertGreaterThanOrEqual(seg2Start, 49, "Second segment should continue from prior end")
+
+        // Distance should be monotonically non-decreasing across segments.
+        XCTAssertGreaterThanOrEqual(
+            workout.routePoints[3].distanceFromStartMeters,
+            seg2Start,
+            "Distance should not decrease across segments"
+        )
+    }
+
+    func testTCXNoPhantomDistanceAcrossLaps() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+              <!-- Far-away lap -->
+              <Lap StartTime="2026-07-05T08:00:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T08:00:00.000Z</Time>
+                    <Position><LatitudeDegrees>2.0000</LatitudeDegrees><LongitudeDegrees>104.0000</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T08:00:10.000Z</Time>
+                    <Position><LatitudeDegrees>2.0010</LatitudeDegrees><LongitudeDegrees>104.0010</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let tempURL = try createTempTCX(tcx)
+        let workout = try importer.importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 4)
+        // Total distance should not include the ~100km GPS gap between laps.
+        let totalDistance = workout.routePoints.last!.distanceFromStartMeters
+        XCTAssertLessThan(totalDistance, 1000, "Total distance should not include GPS gap")
+    }
+
+    func testTCXMultipleGPSActivitiesThrowsError() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+            <Activity Sport="Running">
+              <Id>2026-07-05T08:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T08:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T08:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.3000</LatitudeDegrees><LongitudeDegrees>103.7800</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let tempURL = try createTempTCX(tcx)
+        XCTAssertThrowsError(try importer.importWorkout(from: tempURL)) { error in
+            guard case WorkoutImportError.invalidFormat = error else {
+                XCTFail("Expected invalidFormat error for multiple activities, got \(error)")
+                return
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {

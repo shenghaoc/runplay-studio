@@ -252,16 +252,31 @@ public class RouteSceneBuilder {
     private func calculateDirection(at index: Int) -> simd_float3 {
         guard scenePoints.count >= 2 else { return simd_float3(0, 0, 1) }
 
-        // Use a window of points to smooth direction
-        let lookAhead = min(3, scenePoints.count - index - 1)
-        guard lookAhead > 0 else {
-            // At the end, use previous direction
-            let prev = scenePoints[max(0, index - 1)]
-            let curr = scenePoints[index]
-            let dx = Float(curr.xMeters - prev.xMeters)
-            let dz = Float(curr.zMeters - prev.zMeters)
-            let len = sqrt(dx * dx + dz * dz)
-            return len > 0 ? simd_float3(dx / len, 0, dz / len) : simd_float3(0, 0, 1)
+        let currentSegment = scenePoints[index].routeSegmentIndex
+
+        // Use a window of points to smooth direction, staying within the same segment.
+        var lookAhead = 0
+        for j in 1...min(3, scenePoints.count - index - 1) {
+            if scenePoints[index + j].routeSegmentIndex == currentSegment {
+                lookAhead = j
+            } else {
+                break
+            }
+        }
+
+        if lookAhead == 0 {
+            // At the end of a segment, look backward within the same segment.
+            for j in 1...min(3, index) {
+                if scenePoints[index - j].routeSegmentIndex == currentSegment {
+                    let prev = scenePoints[index - j]
+                    let curr = scenePoints[index]
+                    let dx = Float(curr.xMeters - prev.xMeters)
+                    let dz = Float(curr.zMeters - prev.zMeters)
+                    let len = sqrt(dx * dx + dz * dz)
+                    return len > 0 ? simd_float3(dx / len, 0, dz / len) : simd_float3(0, 0, 1)
+                }
+            }
+            return simd_float3(0, 0, 1)
         }
 
         let curr = scenePoints[index]
@@ -329,9 +344,13 @@ public class RouteSceneBuilder {
         )
 
         // Create tubes between consecutive points, skipping zero-length segments
+        // and cross-segment-boundary connections.
         for i in 0..<(points.count - 1) {
             let from = points[i]
             let to = points[i + 1]
+
+            // Don't draw a tube connecting two different route segments.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else { continue }
 
             let start = SCNVector3(from.xMeters, from.yMeters, from.zMeters)
             let end = SCNVector3(to.xMeters, to.yMeters, to.zMeters)

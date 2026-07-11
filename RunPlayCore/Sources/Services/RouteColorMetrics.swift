@@ -15,6 +15,7 @@ public struct RouteColorMetrics: Sendable {
     ///
     /// Returns smoothed pace values in seconds per kilometer.
     /// Invalid values are replaced with the median.
+    /// Does not compute pace across route segment boundaries.
     public func computeSegmentPace(points: [RouteScenePoint]) -> [Double] {
         guard points.count >= 2 else { return [] }
 
@@ -23,6 +24,12 @@ public struct RouteColorMetrics: Sendable {
         for i in 0..<(points.count - 1) {
             let from = points[i]
             let to = points[i + 1]
+
+            // Skip cross-segment-boundary computation.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else {
+                rawPace.append(.nan)
+                continue
+            }
 
             let distance = to.distanceFromStartMeters - from.distanceFromStartMeters
             let time = to.elapsedSeconds - from.elapsedSeconds
@@ -76,6 +83,7 @@ public struct RouteColorMetrics: Sendable {
     /// Compute heart rate values for each segment.
     ///
     /// Returns smoothed HR values. Invalid values are replaced with the median.
+    /// Does not compute across route segment boundaries.
     public func computeSegmentHeartRate(points: [RouteScenePoint]) -> [Double] {
         guard points.count >= 2 else { return [] }
 
@@ -84,6 +92,12 @@ public struct RouteColorMetrics: Sendable {
         for i in 0..<(points.count - 1) {
             let from = points[i]
             let to = points[i + 1]
+
+            // Skip cross-segment-boundary computation.
+            guard from.routeSegmentIndex == to.routeSegmentIndex else {
+                rawHR.append(.nan)
+                continue
+            }
 
             // Average HR of the two points
             let hr1 = from.heartRateBPM

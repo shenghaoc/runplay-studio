@@ -24,6 +24,9 @@ public struct WorkoutAnalyzer: Sendable {
     }
 
     /// Calculate derived metrics for each route point (speed, pace).
+    ///
+    /// Skips computation across segment boundaries so no fake speed or pace
+    /// is generated between disconnected route segments.
     private func calculateDerivedMetrics(_ workout: inout RunWorkout) {
         let points = workout.routePoints
         guard points.count >= 2 else { return }
@@ -31,6 +34,9 @@ public struct WorkoutAnalyzer: Sendable {
         for i in 1..<points.count {
             let prev = points[i - 1]
             let curr = points[i]
+
+            // Skip cross-segment-boundary computation.
+            guard curr.routeSegmentIndex == prev.routeSegmentIndex else { continue }
 
             // Calculate speed if not already set
             if workout.routePoints[i].speedMetersPerSecond == nil {
@@ -77,12 +83,16 @@ public struct WorkoutAnalyzer: Sendable {
         }
 
         // Elevation (simple sum of positive/negative deltas)
+        // Skip deltas across segment boundaries.
         var elevGain: Double = 0
         var elevLoss: Double = 0
         var prevAltitude: Double?
+        var prevSegmentIndex: Int?
 
         for point in points {
-            if let alt = point.altitudeMeters, let prev = prevAltitude, alt.isFinite, prev.isFinite {
+            if let alt = point.altitudeMeters, let prev = prevAltitude,
+               alt.isFinite, prev.isFinite,
+               point.routeSegmentIndex == prevSegmentIndex {
                 let diff = alt - prev
                 if diff > 0 {
                     elevGain += diff
@@ -91,6 +101,7 @@ public struct WorkoutAnalyzer: Sendable {
                 }
             }
             prevAltitude = point.altitudeMeters
+            prevSegmentIndex = point.routeSegmentIndex
         }
 
         // Heart rate - filter to valid range to exclude outliers
