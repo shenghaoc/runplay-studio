@@ -167,7 +167,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             return distances
         }
         let offset = firstNonNil
-        return distances.map { $0.map { max(0, $0 - offset) } }
+        return distances.map { $0.map { $0 - offset } }
     }
 }
 

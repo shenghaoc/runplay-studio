@@ -76,9 +76,10 @@ public enum RoutePointSanitizer {
         var segmentStartCumulative: Double = 0
 
         for point in ordered {
+            let compactSegmentIndex = indexMap[point.routeSegmentIndex] ?? 0
             let isSegmentStart: Bool
             if let last = normalized.last {
-                isSegmentStart = point.routeSegmentIndex != last.routeSegmentIndex
+                isSegmentStart = compactSegmentIndex != last.routeSegmentIndex
             } else {
                 isSegmentStart = true
             }
@@ -118,8 +119,6 @@ public enum RoutePointSanitizer {
             } else {
                 elapsed = Double(normalized.count)
             }
-
-            let compactSegmentIndex = indexMap[point.routeSegmentIndex] ?? 0
 
             normalized.append(RoutePoint(
                 id: point.id,

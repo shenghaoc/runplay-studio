@@ -272,7 +272,8 @@ public enum RoutePointInterpolator {
     private static func lastDuplicateIndex(startingAt index: Int, distance: Double, in points: [RoutePoint]) -> Int {
         var lastAtDistance = index
         while lastAtDistance + 1 < points.count &&
-              points[lastAtDistance + 1].distanceFromStartMeters == distance {
+              points[lastAtDistance + 1].distanceFromStartMeters == distance &&
+              points[lastAtDistance + 1].routeSegmentIndex == points[index].routeSegmentIndex {
             lastAtDistance += 1
         }
         return lastAtDistance
@@ -281,7 +282,8 @@ public enum RoutePointInterpolator {
     private static func lastDuplicateIndex(startingAt index: Int, distance: Double, in points: [RouteScenePoint]) -> Int {
         var lastAtDistance = index
         while lastAtDistance + 1 < points.count &&
-              points[lastAtDistance + 1].distanceFromStartMeters == distance {
+              points[lastAtDistance + 1].distanceFromStartMeters == distance &&
+              points[lastAtDistance + 1].routeSegmentIndex == points[index].routeSegmentIndex {
             lastAtDistance += 1
         }
         return lastAtDistance
