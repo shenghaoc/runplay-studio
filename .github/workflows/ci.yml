@@ -10,7 +10,7 @@ jobs:
   # RunPlayCore: Pure Swift domain logic — test on Linux for cross-platform validation
   core-linux:
     name: RunPlayCore (Linux)
-    runs-on: ubuntu-26.04-arm
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
       - name: Verify Swift version
