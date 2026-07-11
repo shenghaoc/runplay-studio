@@ -10,7 +10,7 @@ import FoundationXML
 /// - elevation (optional)
 /// - time (optional)
 /// - heart rate via extensions (optional)
-public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
+public struct GPXImporter: WorkoutImporting, Sendable {
     public init() {}
     public var supportedExtensions: [String] { ["gpx"] }
 
