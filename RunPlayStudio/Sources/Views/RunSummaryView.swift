@@ -15,42 +15,47 @@ struct RunSummaryView: View {
 
             Grid(alignment: .leading, horizontalSpacing: AppDesign.Spacing.xLarge, verticalSpacing: AppDesign.Spacing.small) {
                 GridRow {
-                    MetricLabel(label: "Distance", value: summary.formattedDistance, color: AppDesign.MetricColor.distance)
-                    MetricLabel(label: "Duration", value: summary.formattedDuration, color: AppDesign.MetricColor.duration)
+                    MetricDisplay(label: "Distance", value: summary.formattedDistance, color: AppDesign.MetricColor.distance, layout: .leading)
+                    MetricDisplay(label: "Duration", value: summary.formattedDuration, color: AppDesign.MetricColor.duration, layout: .leading)
                 }
                 GridRow {
-                    MetricLabel(label: "Avg Pace", value: summary.formattedPace, color: AppDesign.MetricColor.pace)
-                    MetricLabel(
+                    MetricDisplay(label: "Avg Pace", value: summary.formattedPace, color: AppDesign.MetricColor.pace, layout: .leading)
+                    MetricDisplay(
                         label: "Avg Speed",
                         value: DisplayFormatter.formatSpeedKmh(summary.averageSpeedMetersPerSecond),
-                        color: AppDesign.MetricColor.speed
+                        color: AppDesign.MetricColor.speed,
+                        layout: .leading
                     )
                 }
                 GridRow {
-                    MetricLabel(
+                    MetricDisplay(
                         label: "Elev Gain",
                         value: DisplayFormatter.formatElevation(summary.elevationGainMeters),
-                        color: AppDesign.MetricColor.elevation
+                        color: AppDesign.MetricColor.elevation,
+                        layout: .leading
                     )
-                    MetricLabel(
+                    MetricDisplay(
                         label: "Elev Loss",
                         value: DisplayFormatter.formatElevation(summary.elevationLossMeters),
-                        color: AppDesign.softPurple
+                        color: AppDesign.softPurple,
+                        layout: .leading
                     )
                 }
 
                 if let avgHR = summary.averageHeartRateBPM, avgHR.isFinite {
                     GridRow {
-                        MetricLabel(
+                        MetricDisplay(
                             label: "Avg HR",
                             value: DisplayFormatter.formatHeartRate(avgHR),
-                            color: AppDesign.MetricColor.heartRate
+                            color: AppDesign.MetricColor.heartRate,
+                            layout: .leading
                         )
                         if let maxHR = summary.maxHeartRateBPM, maxHR.isFinite {
-                            MetricLabel(
+                            MetricDisplay(
                                 label: "Max HR",
                                 value: DisplayFormatter.formatHeartRate(maxHR),
-                                color: AppDesign.MetricColor.heartRate
+                                color: AppDesign.MetricColor.heartRate,
+                                layout: .leading
                             )
                         }
                     }
@@ -60,21 +65,3 @@ struct RunSummaryView: View {
     }
 }
 
-// MARK: - Metric Label
-
-struct MetricLabel: View {
-    let label: String
-    let value: String
-    var color: Color = .primary
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
-            Text(label)
-                .font(AppDesign.Typography.compactLabel)
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(AppDesign.Typography.metricValue.monospacedDigit())
-                .foregroundStyle(color)
-        }
-    }
-}

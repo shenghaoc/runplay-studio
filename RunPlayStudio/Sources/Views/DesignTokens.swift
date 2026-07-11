@@ -1,3 +1,4 @@
+import RunPlayPlatform
 import SwiftUI
 
 /// Central design tokens for RunPlay Studio.
@@ -32,12 +33,21 @@ enum AppDesign {
     enum MetricColor {
         static let distance = primaryBlue
         static let duration = Color(hex: 0x64D2FF)
-        static let pace = primaryBlue
+        /// Slightly lighter blue than distance, so pace/distance are distinguishable.
+        static let pace = Color(hex: 0x409CFF)
         static let speed = comparisonOrange
         static let elevation = energeticGreen
         static let heartRate = alertRed
         static let cadence = softPurple
         static let split = comparisonOrange
+    }
+
+    // MARK: - Semantic Helpers
+
+    /// Returns a green/red color for positive/negative deltas, with a dead-zone threshold.
+    static func deltaColor(_ delta: Double?, threshold: Double = 0.5) -> Color {
+        guard let d = delta, d.isFinite, abs(d) >= threshold else { return .secondary }
+        return d < 0 ? energeticGreen : alertRed
     }
 
     // MARK: - Spacing Scale
@@ -94,6 +104,9 @@ enum AppDesign {
 
         /// Compact label — used for very tight label text.
         static let compactLabel = Font.system(size: 9, weight: .medium, design: .default)
+
+        /// Compact icon — used for inline icons in tight spaces like sidebar rows.
+        static let compactIcon = Font.system(size: 8, weight: .medium)
     }
 
     // MARK: - Background Treatments
@@ -122,5 +135,66 @@ extension Color {
             blue: Double(hex & 0xFF) / 255.0,
             opacity: opacity
         )
+    }
+}
+
+// MARK: - Shared Map Components
+
+/// A compact map-mode indicator (2D/3D) for use in map overlays and legends.
+struct MapModeBadge: View {
+    let displayMode: RouteMapDisplayMode
+
+    var body: some View {
+        HStack(spacing: AppDesign.Spacing.xxSmall) {
+            Circle()
+                .fill(displayMode == .threeD ? AppDesign.MetricColor.elevation : AppDesign.MetricColor.distance)
+                .frame(width: 5, height: 5)
+            Text(displayMode == .threeD ? "3D" : "2D")
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
+// MARK: - Shared Metric Components
+
+/// Unified metric display — shows a label, value, and optional icon with a semantic color.
+///
+/// Supports two layout modes:
+/// - `.centered` (default) — used in compact badge contexts like the live metrics panel.
+/// - `.leading` — used in summary cards and detail rows.
+struct MetricDisplay: View {
+    enum Layout {
+        case centered, leading
+    }
+
+    let label: String
+    let value: String
+    var icon: String? = nil
+    var color: Color = .primary
+    var layout: Layout = .centered
+
+    var body: some View {
+        VStack(alignment: alignment, spacing: AppDesign.Spacing.xxSmall) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(color.opacity(0.7))
+            }
+
+            Text(value)
+                .font(AppDesign.Typography.metricValue.monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Text(label)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var alignment: HorizontalAlignment {
+        layout == .leading ? .leading : .center
     }
 }

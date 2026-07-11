@@ -182,8 +182,6 @@ struct SplitComparisonTableView: View {
     }
 
     private func deltaColor(_ delta: Double?) -> Color {
-        guard let d = delta else { return .secondary }
-        if abs(d) < 5 { return .secondary }
-        return d < 0 ? AppDesign.energeticGreen : AppDesign.alertRed
+        AppDesign.deltaColor(delta, threshold: 5)
     }
 }

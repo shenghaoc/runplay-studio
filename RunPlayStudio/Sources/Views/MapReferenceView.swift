@@ -52,14 +52,7 @@ struct MapReferenceView: View {
     }
 
     private var mapModeBadge: some View {
-        HStack(spacing: AppDesign.Spacing.xxSmall) {
-            Circle()
-                .fill(displayMode == .threeD ? AppDesign.MetricColor.elevation : AppDesign.MetricColor.distance)
-                .frame(width: 5, height: 5)
-            Text(displayMode == .threeD ? "3D" : "2D")
-                .font(AppDesign.Typography.compactMetric)
-                .foregroundStyle(.secondary)
-        }
+        MapModeBadge(displayMode: displayMode)
         .padding(.horizontal, AppDesign.Spacing.medium)
         .padding(.vertical, AppDesign.Spacing.small)
         .background(.regularMaterial)

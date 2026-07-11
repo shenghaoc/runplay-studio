@@ -5,6 +5,11 @@ import RunPlayCore
 ///
 /// Fixed-size card layout that renders consistently for image export.
 /// Does not depend on MapKit or SceneKit content.
+///
+/// **Typography note:** This view intentionally uses inline `.system(size:)` calls
+/// instead of `AppDesign.Typography` tokens because the export card renders at a
+/// fixed 1200x1600pt canvas — the standard typography scale is too small at this
+/// resolution. If the export dimensions change, revisit these sizes.
 struct ExportSummaryCardView: View {
     let model: ExportSummaryCardModel
 

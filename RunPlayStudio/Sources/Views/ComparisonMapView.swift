@@ -104,14 +104,7 @@ struct ComparisonMapView: View {
 
     private var comparisonLegend: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
-            HStack(spacing: AppDesign.Spacing.xxSmall) {
-                Circle()
-                    .fill(displayMode == .threeD ? AppDesign.MetricColor.elevation : AppDesign.MetricColor.distance)
-                    .frame(width: 5, height: 5)
-                Text(displayMode == .threeD ? "3D" : "2D")
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.tertiary)
-            }
+            MapModeBadge(displayMode: displayMode)
             legendRow(color: AppDesign.primaryBlue, label: "Primary: \(primaryWorkout.displayName)")
             legendRow(color: AppDesign.comparisonOrange, label: "Comp.: \(comparisonWorkout.displayName)")
 
@@ -246,7 +239,6 @@ struct ComparisonMapView: View {
     }
 
     private func deltaColor(_ delta: Double?) -> Color {
-        guard let delta, delta.isFinite, abs(delta) >= 0.5 else { return .secondary }
-        return delta < 0 ? AppDesign.energeticGreen : AppDesign.alertRed
+        AppDesign.deltaColor(delta)
     }
 }

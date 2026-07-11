@@ -95,7 +95,7 @@ struct WorkoutRow: View {
                 if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
                     HStack(spacing: AppDesign.Spacing.xxSmall) {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 8))
+                            .font(AppDesign.Typography.compactIcon)
                         Text(String(format: "%.0f bpm avg", avgHR))
                             .font(AppDesign.Typography.compactLabel)
                     }
@@ -109,7 +109,7 @@ struct WorkoutRow: View {
     private func metricPill(icon: String, value: String) -> some View {
         HStack(spacing: AppDesign.Spacing.xxSmall) {
             Image(systemName: icon)
-                .font(.system(size: 8))
+                .font(AppDesign.Typography.compactIcon)
                 .foregroundStyle(.tertiary)
             Text(value)
                 .font(AppDesign.Typography.compactLabel)
