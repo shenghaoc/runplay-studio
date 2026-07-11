@@ -263,6 +263,85 @@ final class GPXImporterTests: XCTestCase {
         }
     }
 
+    // MARK: - Timestamp Parsing
+
+    func testGPXStandardTimestampParses() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>2026-07-05T07:05:00Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 300, accuracy: 1)
+    }
+
+    func testGPXFractionalTimestampParses() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>2026-07-05T07:00:00.500Z</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>2026-07-05T07:05:00.123Z</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        let workout = try GPXImporter().importWorkout(from: tempURL)
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 299.623, accuracy: 0.01)
+    }
+
+    func testGPXInvalidTimestampRejectsFile() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk>
+            <trkseg>
+              <trkpt lat="1.2966" lon="103.7764">
+                <time>not-a-date</time>
+              </trkpt>
+              <trkpt lat="1.2970" lon="103.7770">
+                <time>also-not-a-date</time>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+        """
+
+        let data = Data(gpx.utf8)
+        let tempURL = try writeTempFile(data: data, extension: "gpx")
+        XCTAssertThrowsError(try GPXImporter().importWorkout(from: tempURL)) { error in
+            guard case WorkoutImportError.missingData = error else {
+                XCTFail("Expected missingData error, got \(error)")
+                return
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {

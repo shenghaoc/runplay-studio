@@ -147,16 +147,17 @@ Use bundled synthetic data for committed artifacts.
 - [x] Map shows the route polyline with start/finish annotations
 - [x] Summary metrics bar is visible below the map
 - [x] Replay controls are accessible from the Overview tab
-- [ ] Native MapKit pitch toggle switches the Map tab between 2D and 3D
+- [x] Native MapKit pitch toggle switches the Overview map between 2D and 3D
 - [x] Charts tab still works when selected
-- [x] Map tab still works when selected
+- [x] Overview and Charts are the only detail tabs; no duplicate Map tab is shown
 
-Latest default view notes (2026-07-08):
+Latest default view notes:
 
-- All items verified by human owner in a normal desktop session.
-- Overview tab is the default landing view with map and route overlay.
-- Summary metrics and replay controls are accessible.
-- The old separate 3D Route tab has been removed; Map and Charts remain.
+- On 2026-07-08, a human owner verified the prior map, summary, replay, and
+  Charts flow in a normal desktop session.
+- On 2026-07-11, the bundled sample was launched from the SwiftPM app bundle:
+  Overview and Charts were the only detail tabs, and the Overview map toggled
+  between native 2D and 3D presentations.
 
 ## Replay Visual Smoke Checklist
 
@@ -172,12 +173,11 @@ Environment:
 
 Checklist:
 
-- [ ] **Overview tab playback**: press Play, yellow 2D marker advances along the route on the map.
-- [ ] **Map tab playback**: switch to Map tab, press Play, yellow 2D marker advances.
-- [ ] **Pitch toggle during playback**: toggle the Map between 2D and 3D while
+- [x] **Overview tab playback**: press Play, yellow 2D marker advances along the route on the map.
+- [x] **Pitch toggle during playback**: toggle the Overview map between 2D and 3D while
   playing; the same marker continues advancing on the same route.
-- [ ] **Current metrics panel**: during playback, the metrics panel (distance, pace, HR) updates at each tick.
-- [ ] **Charts tab**: switch to Charts tab, press Play, the current-distance indicator follows playback.
+- [x] **Current metrics panel**: during playback, the metrics panel (distance, pace, HR) updates at each tick.
+- [x] **Charts tab**: switch to Charts tab, press Play, the current-distance indicator follows playback.
 - [ ] **Step forward**: press step-forward button, marker advances one route point.
 - [ ] **Step backward**: press step-backward button, marker moves back one route point.
 - [ ] **Slider seek**: drag the chart distance slider, marker jumps to the seeked position.

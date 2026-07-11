@@ -99,6 +99,7 @@ final class ExportServiceTests: XCTestCase {
 
     func testCSVMitigatesFormulaInjection() {
         // Valid numbers: no injection prefix (comma decimal gets standard CSV quoting only)
+        XCTAssertEqual(CSVRow.escape("-30"), "-30")
         XCTAssertEqual(CSVRow.escape("-30.5"), "-30.5")
         XCTAssertEqual(CSVRow.escape("+42.0"), "+42.0")
         XCTAssertEqual(CSVRow.escape("-30,5"), "\"-30,5\"")

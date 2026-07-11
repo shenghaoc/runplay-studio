@@ -301,6 +301,103 @@ final class TCXImporterTests: XCTestCase {
         }
     }
 
+    // MARK: - Timestamp Parsing
+
+    func testTCXStandardTimestampParses() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:35:00Z</Time>
+                    <Position><LatitudeDegrees>1.2976</LatitudeDegrees><LongitudeDegrees>103.7774</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let url = try createTempTCX(tcx)
+        let workout = try importer.importWorkout(from: url)
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 300, accuracy: 1)
+    }
+
+    func testTCXFractionalTimestampParses() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:35:00.500Z</Time>
+                    <Position><LatitudeDegrees>1.2976</LatitudeDegrees><LongitudeDegrees>103.7774</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let url = try createTempTCX(tcx)
+        let workout = try importer.importWorkout(from: url)
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 300.5, accuracy: 0.01)
+    }
+
+    func testTCXInvalidTimestampRejectsFile() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>not-a-date</Id>
+              <Lap StartTime="not-a-date">
+                <Track>
+                  <Trackpoint>
+                    <Time>not-a-date</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>also-not-a-date</Time>
+                    <Position><LatitudeDegrees>1.2976</LatitudeDegrees><LongitudeDegrees>103.7774</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let url = try createTempTCX(tcx)
+        XCTAssertThrowsError(try importer.importWorkout(from: url)) { error in
+            guard case WorkoutImportError.missingData = error else {
+                XCTFail("Expected missingData error, got \(error)")
+                return
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {
