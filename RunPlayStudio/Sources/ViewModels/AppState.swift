@@ -235,8 +235,9 @@ class AppState: ObservableObject {
     func deleteWorkout(_ workout: RunWorkout) async {
         let deletingSelectedWorkout = selectedWorkout?.id == workout.id
         let deletingComparisonWorkout = comparisonWorkout?.id == workout.id
-        let remainingWorkouts = workouts.filter { $0.id != workout.id }
-        let newSelectedID = deletingSelectedWorkout ? remainingWorkouts.first?.id : nil
+        let newSelectedID = deletingSelectedWorkout
+            ? workouts.first(where: { $0.id != workout.id })?.id
+            : nil
 
         // Cancel pending selection persistence to prevent a stale write
         // from saving the deleted workout as selected after removal.
@@ -279,7 +280,7 @@ class AppState: ObservableObject {
             }
         } else {
             // No store: just update in-memory state (demo-only mode).
-            workouts = remainingWorkouts
+            workouts.removeAll { $0.id == workout.id }
             applyDeletionSelection(
                 deletingSelectedWorkout: deletingSelectedWorkout,
                 deletingComparisonWorkout: deletingComparisonWorkout
@@ -293,14 +294,7 @@ class AppState: ObservableObject {
     ) {
         if deletingSelectedWorkout {
             clearComparison()
-            selectedWorkout = workouts.first
-            selectedSegment = nil
-            if let first = workouts.first {
-                replayController.load(first)
-                detectedSegments = first.segments
-            } else {
-                detectedSegments = []
-            }
+            selectWorkout(workouts.first, persistSelection: false)
         } else if deletingComparisonWorkout {
             clearComparison()
         }
