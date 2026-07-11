@@ -91,9 +91,9 @@ The reverse dependencies are forbidden: Core must not import Platform or Studio,
 
 ### Swift Version Baseline
 
-- `swift-tools-version:6.0` with Swift 6 language mode.
+- `swift-tools-version:6.3` with Swift 6 language mode.
 - Linux CI: Ubuntu 24.04 with Swift 6.3.3 (pre-installed).
-- macOS CI: macOS 26 + Xcode 26.6.
+- macOS CI: macOS 26 with Swift 6.3.2 (default Xcode).
 
 ### RunPlayCore — Platform-Neutral Target
 
