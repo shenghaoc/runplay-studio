@@ -6,7 +6,7 @@ bundled synthetic demo data.
 ## Prerequisites
 
 - macOS 14.0+
-- Xcode 15.0+ or Swift 5.9+ toolchain
+- Xcode 16.0+ or Swift 6.0+ toolchain
 - Clone the repository and build:
 
 ```bash

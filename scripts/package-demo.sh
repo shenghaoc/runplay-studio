@@ -10,7 +10,7 @@
 #
 # Requirements:
 #   - macOS 14.0+
-#   - Xcode 15.0+ (Swift 5.9)
+#   - Xcode 16.0+ (Swift 6.0)
 #
 # Used in CI for demo artifact packaging; can also be run locally.
 # The resulting .app is unsigned and not notarized — for demo/testing only.

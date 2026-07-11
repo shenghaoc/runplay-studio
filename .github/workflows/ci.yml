@@ -23,11 +23,11 @@ jobs:
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio)
   macos:
     name: macOS (Full Stack)
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
       - name: Build
         run: swift build
       - name: Test

@@ -1,6 +1,4 @@
-// swift-tools-version:5.9
-// Keep the tools baseline and Swift 5 language mode until a dedicated
-// toolchain/runner upgrade changes them together.
+// swift-tools-version:6.0
 import PackageDescription
 
 var targets: [Target] = [
