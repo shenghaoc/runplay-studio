@@ -7,6 +7,7 @@ import Charts
 ///
 /// Shows pace, elevation, and heart rate over distance with
 /// optional current position indicator and click/drag to seek.
+/// Uses semantic colors from the design system for each metric type.
 struct MetricsChartView: View {
     let routePoints: [RoutePoint]
     var currentDistance: Double = 0
@@ -25,40 +26,75 @@ struct MetricsChartView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Metric picker
-            Picker("Metric", selection: $selectedMetric) {
-                ForEach(MetricType.allCases, id: \.self) { metric in
-                    Text(metric.rawValue).tag(metric)
+        VStack(spacing: AppDesign.Spacing.medium) {
+            // Metric picker with semantic color indicator
+            HStack {
+                Picker("Metric", selection: $selectedMetric) {
+                    ForEach(MetricType.allCases, id: \.self) { metric in
+                        Text(metric.rawValue).tag(metric)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 360)
+
+                Spacer()
+
+                // Current value readout
+                if currentDistance > 0, !chartData.isEmpty {
+                    HStack(spacing: AppDesign.Spacing.xxSmall) {
+                        Circle()
+                            .fill(chartColor)
+                            .frame(width: 6, height: 6)
+                        Text(formatValue(valueForDistance(currentDistance)))
+                            .font(AppDesign.Typography.compactMetric.monospacedDigit())
+                            .foregroundStyle(chartColor)
+                    }
                 }
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal)
 
             // Chart
             ZStack {
                 Chart {
                     ForEach(chartData) { point in
+                        AreaMark(
+                            x: .value("Distance (km)", point.distanceKm),
+                            y: .value(selectedMetric.rawValue, point.value)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [chartColor.opacity(0.15), chartColor.opacity(0.02)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+
                         LineMark(
                             x: .value("Distance (km)", point.distanceKm),
                             y: .value(selectedMetric.rawValue, point.value)
                         )
                         .foregroundStyle(chartColor)
                         .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
                     }
 
                     // Current position indicator
                     let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
                     if displayDistance > 0 {
                         RuleMark(x: .value("Current", displayDistance / 1000))
-                            .foregroundStyle(isDragging ? .orange : .yellow)
-                            .lineStyle(StrokeStyle(lineWidth: isDragging ? 3 : 2, dash: [5, 5]))
+                            .foregroundStyle(isDragging ? AppDesign.comparisonOrange : AppDesign.warmYellow)
+                            .lineStyle(StrokeStyle(lineWidth: isDragging ? 2.5 : 1.5, dash: [6, 4]))
                             .annotation(position: .top, alignment: .center) {
                                 Text(formatValue(valueForDistance(displayDistance)))
-                                    .font(.caption)
-                                    .padding(4)
-                                    .background((isDragging ? Color.orange : Color.yellow).opacity(0.2))
-                                    .cornerRadius(4)
+                                    .font(AppDesign.Typography.compactMetric)
+                                    .padding(.horizontal, AppDesign.Spacing.small)
+                                    .padding(.vertical, AppDesign.Spacing.xxSmall)
+                                    .background(
+                                        Capsule()
+                                            .fill(.ultraThinMaterial)
+                                            .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                                    )
                             }
                     }
                 }
@@ -86,6 +122,7 @@ struct MetricsChartView: View {
                             }
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .chartYAxis {
@@ -94,17 +131,29 @@ struct MetricsChartView: View {
                             Text(formatAxisValue(value.as(Double.self) ?? 0))
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
-                .frame(height: 150)
+                .frame(height: 180)
+                .padding(.horizontal)
 
                 if chartData.isEmpty {
-                    Text(noDataMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    noDataOverlay
                 }
             }
-            .padding(.horizontal)
+        }
+    }
+
+    // MARK: - No Data Overlay
+
+    private var noDataOverlay: some View {
+        VStack(spacing: AppDesign.Spacing.small) {
+            Image(systemName: selectedMetric == .heartRate ? "heart.slash" : "chart.line.downtrend.xyaxis")
+                .font(.title2)
+                .foregroundStyle(.tertiary)
+            Text(noDataMessage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -168,15 +217,15 @@ struct MetricsChartView: View {
 
     private var chartColor: Color {
         switch selectedMetric {
-        case .elevation: return .green
-        case .pace: return .blue
-        case .heartRate: return .red
-        case .speed: return .orange
+        case .elevation: return AppDesign.MetricColor.elevation
+        case .pace: return AppDesign.MetricColor.pace
+        case .heartRate: return AppDesign.MetricColor.heartRate
+        case .speed: return AppDesign.MetricColor.speed
         }
     }
 
     private var noDataMessage: String {
-        selectedMetric == .heartRate ? "No heart rate data" : "No chart data"
+        selectedMetric == .heartRate ? "No heart rate data available" : "No chart data available"
     }
 
     private func valueForDistance(_ distance: Double) -> Double {

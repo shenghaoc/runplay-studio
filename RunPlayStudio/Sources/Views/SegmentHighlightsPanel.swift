@@ -2,6 +2,9 @@ import SwiftUI
 import RunPlayCore
 
 /// Panel showing detected segments with selection capability.
+///
+/// Uses pill-shaped segment cards with subtle color coding and
+/// a smooth selection animation for a polished feel.
 struct SegmentHighlightsPanel: View {
     let segments: [SegmentHighlight]
     @Binding var selectedSegment: SegmentHighlight?
@@ -9,34 +12,37 @@ struct SegmentHighlightsPanel: View {
     var onClear: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             HStack {
                 Text("Segments")
-                    .font(.headline)
+                    .font(AppDesign.Typography.sectionHeadline)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 if selectedSegment != nil {
                     Button("Clear") {
                         selectedSegment = nil
                         onClear?()
                     }
-                    .font(.caption)
+                    .font(AppDesign.Typography.compactMetric)
                     .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                 }
             }
 
             if segments.isEmpty {
                 Text("No segments detected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, AppDesign.Spacing.xSmall)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: AppDesign.Spacing.small) {
                         ForEach(segments) { segment in
                             let isSelected = selectedSegment?.id == segment.id
                             Button {
-                                selectedSegment = segment
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedSegment = segment
+                                }
                                 onSelect?(segment)
                             } label: {
                                 SegmentCard(
@@ -58,57 +64,68 @@ struct SegmentHighlightsPanel: View {
 }
 
 /// Card displaying a single segment highlight.
+///
+/// Uses a compact pill layout with an accent-colored leading edge
+/// and subtle background treatment for selection state.
 struct SegmentCard: View {
     let segment: SegmentHighlight
     let isSelected: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: segment.type.icon)
-                    .font(.caption2)
-                    .foregroundStyle(segmentColor)
-                Text(segment.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-            }
+        HStack(spacing: AppDesign.Spacing.small) {
+            // Accent bar
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(segmentColor)
+                .frame(width: 2.5)
 
-            Text(segment.subtitle)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+                HStack(spacing: AppDesign.Spacing.xxSmall) {
+                    Image(systemName: segment.type.icon)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(segmentColor)
+                    Text(segment.title)
+                        .font(AppDesign.Typography.compactMetric)
+                        .lineLimit(1)
+                }
 
-            HStack(spacing: 8) {
-                Label(segment.formattedDistance, systemImage: "ruler")
-                Label(segment.formattedDuration, systemImage: "clock")
-            }
-            .font(.system(size: 9))
-            .foregroundStyle(.secondary)
+                Text(segment.subtitle)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
 
-            if !segment.formattedElevation.isEmpty {
-                Label(segment.formattedElevation, systemImage: "mountain.2")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: AppDesign.Spacing.small) {
+                    Label(segment.formattedDistance, systemImage: "ruler")
+                    Label(segment.formattedDuration, systemImage: "clock")
+                    if !segment.formattedElevation.isEmpty {
+                        Label(segment.formattedElevation, systemImage: "mountain.2")
+                    }
+                }
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.quaternary)
             }
         }
-        .padding(8)
-        .frame(minWidth: 120)
-        .background(isSelected ? segmentColor.opacity(0.15) : Color.secondary.opacity(0.05))
-        .cornerRadius(8)
+        .padding(.horizontal, AppDesign.Spacing.medium)
+        .padding(.vertical, AppDesign.Spacing.small)
+        .background(
+            RoundedRectangle(cornerRadius: AppDesign.Radius.medium)
+                .fill(isSelected ? segmentColor.opacity(0.1) : AppDesign.cardBackground)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? segmentColor : Color.clear, lineWidth: 2)
+            RoundedRectangle(cornerRadius: AppDesign.Radius.medium)
+                .strokeBorder(
+                    isSelected ? segmentColor.opacity(0.4) : Color.clear,
+                    lineWidth: 1
+                )
         )
     }
 
     private var segmentColor: Color {
         switch segment.type {
-        case .fastest400m, .fastest1km: return .blue
-        case .slowest1km: return .red
-        case .biggestClimb: return .orange
-        case .biggestDescent: return .purple
-        case .slowdown: return .yellow
-        case .custom: return .gray
+        case .fastest400m, .fastest1km: return AppDesign.MetricColor.pace
+        case .slowest1km: return AppDesign.MetricColor.heartRate
+        case .biggestClimb: return AppDesign.MetricColor.elevation
+        case .biggestDescent: return AppDesign.softPurple
+        case .slowdown: return AppDesign.warmYellow
+        case .custom: return .secondary
         }
     }
 }

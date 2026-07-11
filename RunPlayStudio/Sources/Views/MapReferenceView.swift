@@ -3,6 +3,9 @@ import RunPlayPlatform
 import SwiftUI
 
 /// Displays a route on one Apple Maps surface with an in-map 2D/3D control.
+///
+/// Uses pill-shaped overlays and subtle material backgrounds
+/// for map controls that don't compete with the route visualization.
 struct MapReferenceView: View {
     let routePoints: [RoutePoint]
     var currentPointIndex: Int = 0
@@ -33,26 +36,34 @@ struct MapReferenceView: View {
             controlBottomInset: 0
         )
         .overlay(alignment: .topLeading) {
-            mapBadge
+            mapModeBadge
         }
         .overlay(alignment: .topTrailing) {
             Button {
                 fitRequest += 1
             } label: {
                 Label("Fit Route", systemImage: "viewfinder")
+                    .font(AppDesign.Typography.compactMetric)
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
             .padding()
         }
     }
 
-    private var mapBadge: some View {
-        Text(displayMode == .threeD ? "Apple Maps 3D" : "Apple Maps 2D")
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
-            .padding()
+    private var mapModeBadge: some View {
+        HStack(spacing: AppDesign.Spacing.xxSmall) {
+            Circle()
+                .fill(displayMode == .threeD ? AppDesign.MetricColor.elevation : AppDesign.MetricColor.distance)
+                .frame(width: 5, height: 5)
+            Text(displayMode == .threeD ? "3D" : "2D")
+                .font(AppDesign.Typography.compactMetric)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, AppDesign.Spacing.medium)
+        .padding(.vertical, AppDesign.Spacing.small)
+        .background(.regularMaterial)
+        .clipShape(Capsule())
+        .padding()
     }
 }

@@ -103,77 +103,87 @@ struct ComparisonMapView: View {
     }
 
     private var comparisonLegend: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(displayMode == .threeD ? "Apple Maps 3D" : "Apple Maps 2D")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            legendRow(color: .blue, label: "Primary: \(primaryWorkout.displayName)")
-            legendRow(color: .orange, label: "Comp.: \(comparisonWorkout.displayName)")
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+            HStack(spacing: AppDesign.Spacing.xxSmall) {
+                Circle()
+                    .fill(displayMode == .threeD ? AppDesign.MetricColor.elevation : AppDesign.MetricColor.distance)
+                    .frame(width: 5, height: 5)
+                Text(displayMode == .threeD ? "3D" : "2D")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+            }
+            legendRow(color: AppDesign.primaryBlue, label: "Primary: \(primaryWorkout.displayName)")
+            legendRow(color: AppDesign.comparisonOrange, label: "Comp.: \(comparisonWorkout.displayName)")
 
             Divider()
 
-            HStack(spacing: 6) {
-                Circle().fill(.green).frame(width: 8, height: 8)
+            HStack(spacing: AppDesign.Spacing.small) {
+                Circle().fill(AppDesign.energeticGreen).frame(width: 6, height: 6)
                 Text("Start")
+                    .font(AppDesign.Typography.compactLabel)
             }
-            HStack(spacing: 6) {
-                Circle().fill(.red).frame(width: 8, height: 8)
+            HStack(spacing: AppDesign.Spacing.small) {
+                Circle().fill(AppDesign.alertRed).frame(width: 6, height: 6)
                 Text("Finish")
+                    .font(AppDesign.Typography.compactLabel)
             }
         }
         .font(.caption)
-        .padding(8)
+        .padding(AppDesign.Spacing.medium)
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 
     private func legendRow(color: Color, label: String) -> some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2)
+        HStack(spacing: AppDesign.Spacing.small) {
+            RoundedRectangle(cornerRadius: 1.5)
                 .fill(color)
-                .frame(width: 18, height: 4)
-            Text(label).lineLimit(1)
+                .frame(width: 16, height: 3)
+            Text(label)
+                .font(AppDesign.Typography.compactLabel)
+                .lineLimit(1)
         }
     }
 
     private var comparisonWarnings: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
             ForEach(warnings, id: \.self) { warning in
                 Label(warning.rawValue, systemImage: warning.icon)
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(AppDesign.comparisonOrange)
             }
         }
-        .padding(8)
+        .padding(AppDesign.Spacing.medium)
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 
     private var distanceSliderBar: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: AppDesign.Spacing.small) {
             HStack {
                 Text("Distance Along Route")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
                 Spacer()
                 Text(appState.comparisonDistanceMetrics.selectedDistanceFormatted)
-                    .font(.caption.monospacedDigit())
+                    .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 if commonDistance > 0 {
                     Text("/ \(String(format: "%.2f km", commonDistance / 1000))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.tertiary)
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: AppDesign.Spacing.small) {
                 Button {
                     appState.selectedComparisonDistanceMeters = 0
                 } label: {
                     Image(systemName: "backward.end.fill")
+                        .font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .help("Jump to start (0 km)")
-                // Distance omitted — already announced in the "Distance Along Route" header
                 .accessibilityLabel("Jump to start")
                 .disabled(commonDistance <= 0)
 
@@ -182,6 +192,7 @@ struct ComparisonMapView: View {
                     in: 0...max(commonDistance, 1),
                     step: max(commonDistance / 500, 1)
                 )
+                .tint(AppDesign.comparisonOrange)
                 .accessibilityLabel("Distance along route")
                 .accessibilityValue(DisplayFormatter.formatDistanceKm(appState.clampedComparisonDistanceMeters))
                 .disabled(commonDistance <= 0)
@@ -190,10 +201,11 @@ struct ComparisonMapView: View {
                     appState.selectedComparisonDistanceMeters = commonDistance
                 } label: {
                     Image(systemName: "forward.end.fill")
+                        .font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .help("Jump to end (\(DisplayFormatter.formatDistanceKm(commonDistance)))")
-                // Distance omitted — already announced in the "Distance Along Route" header
                 .accessibilityLabel("Jump to end")
                 .accessibilityValue(DisplayFormatter.formatDistanceKm(commonDistance))
                 .disabled(commonDistance <= 0)
@@ -201,22 +213,22 @@ struct ComparisonMapView: View {
 
             comparisonDistanceMetricsRow
         }
-        .padding(8)
+        .padding(AppDesign.Spacing.medium)
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 
     private var comparisonDistanceMetricsRow: some View {
         let metrics = appState.comparisonDistanceMetrics
-        return HStack(spacing: 16) {
-            metricBadge(label: "Primary", value: metrics.primaryElapsedFormatted, color: .blue)
-            metricBadge(label: "Comp.", value: metrics.comparisonElapsedFormatted, color: .orange)
+        return HStack(spacing: AppDesign.Spacing.large) {
+            metricBadge(label: "Primary", value: metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
+            metricBadge(label: "Comp.", value: metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
             metricBadge(label: "Δ Time", value: metrics.timeDeltaFormatted, color: deltaColor(metrics.timeDeltaSeconds))
 
             Divider().frame(height: 16)
 
-            metricBadge(label: "Primary Pace", value: metrics.primaryPaceFormatted, color: .blue)
-            metricBadge(label: "Comp. Pace", value: metrics.comparisonPaceFormatted, color: .orange)
+            metricBadge(label: "Primary Pace", value: metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
+            metricBadge(label: "Comp. Pace", value: metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
             metricBadge(label: "Δ Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
         }
         .frame(height: 24)
@@ -225,16 +237,16 @@ struct ComparisonMapView: View {
     private func metricBadge(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 1) {
             Text(label)
-                .font(.system(size: 8))
-                .foregroundStyle(.secondary)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
             Text(value)
-                .font(.system(size: 10).monospacedDigit())
+                .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 .foregroundStyle(color)
         }
     }
 
     private func deltaColor(_ delta: Double?) -> Color {
         guard let delta, delta.isFinite, abs(delta) >= 0.5 else { return .secondary }
-        return delta < 0 ? .green : .red
+        return delta < 0 ? AppDesign.energeticGreen : AppDesign.alertRed
     }
 }

@@ -4,19 +4,21 @@ import Charts
 
 
 /// Chart showing pace comparison over distance.
+///
+/// Uses semantic colors from the design system for primary/comparison routes.
 struct ComparisonChartView: View {
     let metrics: [ComparisonMetricPoint]
     let primaryName: String
     let comparisonName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             HStack(alignment: .lastTextBaseline) {
                 Text("Pace Over Distance")
-                    .font(.headline)
+                    .font(AppDesign.Typography.sectionHeadline)
                 Text("(lower is faster)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
             }
 
             if metrics.isEmpty {
@@ -31,6 +33,7 @@ struct ComparisonChartView: View {
                             )
                             .foregroundStyle(by: .value("Run", primaryName))
                             .interpolationMethod(.catmullRom)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
                         }
 
                         if let comparisonPace = point.comparisonPace, comparisonPace.isFinite {
@@ -40,12 +43,13 @@ struct ComparisonChartView: View {
                             )
                             .foregroundStyle(by: .value("Run", comparisonName))
                             .interpolationMethod(.catmullRom)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
                         }
                     }
                 }
                 .chartForegroundStyleScale([
-                    primaryName: .blue,
-                    comparisonName: .red
+                    primaryName: AppDesign.primaryBlue,
+                    comparisonName: AppDesign.comparisonOrange
                 ])
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 6)) { value in
@@ -55,6 +59,7 @@ struct ComparisonChartView: View {
                             }
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .chartYAxis {
@@ -67,16 +72,17 @@ struct ComparisonChartView: View {
                             }
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .chartLegend(position: .bottom) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: AppDesign.Spacing.xLarge) {
                         Label(truncatedName(primaryName), systemImage: "circle.fill")
-                            .foregroundStyle(.blue)
-                            .font(.caption)
+                            .foregroundStyle(AppDesign.primaryBlue)
+                            .font(AppDesign.Typography.compactMetric)
                         Label(truncatedName(comparisonName), systemImage: "circle.fill")
-                            .foregroundStyle(.red)
-                            .font(.caption)
+                            .foregroundStyle(AppDesign.comparisonOrange)
+                            .font(AppDesign.Typography.compactMetric)
                     }
                 }
             }
@@ -95,10 +101,10 @@ struct ComparisonChartView: View {
 
 struct ComparisonChartEmptyView: View {
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: AppDesign.Spacing.small) {
             Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary)
+                .font(.title2)
+                .foregroundStyle(.tertiary)
             Text("No pace data to chart")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -116,14 +122,15 @@ struct SplitComparisonTableView: View {
     let splits: [SplitComparison]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             Text("Split Comparison")
-                .font(.headline)
+                .font(AppDesign.Typography.sectionHeadline)
+                .foregroundStyle(.secondary)
 
             if splits.isEmpty {
                 Text("No splits to compare")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 60)
             } else {
                 Table(splits) {
@@ -137,9 +144,10 @@ struct SplitComparisonTableView: View {
                         if let s = split.primarySplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
+                                .foregroundStyle(AppDesign.primaryBlue)
                         } else {
                             Text("—")
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.quaternary)
                         }
                     }
                     .width(90)
@@ -148,9 +156,10 @@ struct SplitComparisonTableView: View {
                         if let s = split.comparisonSplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
+                                .foregroundStyle(AppDesign.comparisonOrange)
                         } else {
                             Text("—")
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.quaternary)
                         }
                     }
                     .width(110)
@@ -164,7 +173,7 @@ struct SplitComparisonTableView: View {
 
                     TableColumn("Winner") { split in
                         Text(split.winner.label)
-                            .font(.caption)
+                            .font(AppDesign.Typography.compactMetric)
                     }
                     .width(80)
                 }
@@ -175,6 +184,6 @@ struct SplitComparisonTableView: View {
     private func deltaColor(_ delta: Double?) -> Color {
         guard let d = delta else { return .secondary }
         if abs(d) < 5 { return .secondary }
-        return d < 0 ? .green : .red
+        return d < 0 ? AppDesign.energeticGreen : AppDesign.alertRed
     }
 }

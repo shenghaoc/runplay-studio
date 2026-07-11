@@ -12,7 +12,7 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $selectedWorkout) {
-            Section("Runs") {
+            Section {
                 ForEach(workouts) { workout in
                     WorkoutRow(workout: workout)
                         .tag(workout)
@@ -29,6 +29,11 @@ struct SidebarView: View {
                         workoutToDelete = workouts[index]
                     }
                 }
+            } header: {
+                Text("Runs")
+                    .font(AppDesign.Typography.compactLabel)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.tertiary)
             }
         }
         .listStyle(.sidebar)
@@ -70,27 +75,52 @@ struct WorkoutRow: View {
     let workout: RunWorkout
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(workout.displayName)
-                .font(.headline)
-                .lineLimit(1)
+        HStack(spacing: AppDesign.Spacing.medium) {
+            // Left accent bar colored by HR zone
+            RoundedRectangle(cornerRadius: 2)
+                .fill(accentColor)
+                .frame(width: 3)
 
-            HStack(spacing: 12) {
-                Label(workout.summary.formattedDistance, systemImage: "figure.run")
-                Label(workout.summary.formattedDuration, systemImage: "clock")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+                Text(workout.displayName)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
 
-            if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
-                Label(
-                    String(format: "%.0f bpm avg", avgHR),
-                    systemImage: "heart.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(.red)
+                HStack(spacing: AppDesign.Spacing.large) {
+                    metricPill(icon: "figure.run", value: workout.summary.formattedDistance)
+                    metricPill(icon: "clock", value: workout.summary.formattedDuration)
+                }
+
+                if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
+                    HStack(spacing: AppDesign.Spacing.xxSmall) {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 8))
+                        Text(String(format: "%.0f bpm avg", avgHR))
+                            .font(AppDesign.Typography.compactLabel)
+                    }
+                    .foregroundStyle(AppDesign.MetricColor.heartRate)
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, AppDesign.Spacing.xSmall)
+    }
+
+    private func metricPill(icon: String, value: String) -> some View {
+        HStack(spacing: AppDesign.Spacing.xxSmall) {
+            Image(systemName: icon)
+                .font(.system(size: 8))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var accentColor: Color {
+        if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
+            return AppDesign.MetricColor.heartRate.opacity(0.6)
+        }
+        return AppDesign.MetricColor.distance.opacity(0.4)
     }
 }

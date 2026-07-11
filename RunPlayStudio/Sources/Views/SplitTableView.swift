@@ -2,34 +2,34 @@ import SwiftUI
 import RunPlayCore
 
 /// Displays kilometer splits in a table format with current split highlighting.
+///
+/// Uses semantic colors for the current split indicator and improved typography.
 struct SplitTableView: View {
     let splits: [RunSplit]
     var currentSplitIndex: Int? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             Text("Splits")
-                .font(.headline)
+                .font(AppDesign.Typography.sectionHeadline)
+                .foregroundStyle(.secondary)
 
             // Current split highlight
             if let idx = currentSplitIndex, idx < splits.count {
                 let split = splits[idx]
-                HStack {
+                HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: "flag.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(AppDesign.comparisonOrange)
                     Text("Current: Split \(split.splitIndex)")
-                        .font(.caption)
-                        .fontWeight(.medium)
+                        .font(AppDesign.Typography.compactMetric)
                     Text(split.formattedPace)
-                        .font(.caption)
-                        .monospacedDigit()
+                        .font(AppDesign.Typography.compactMetric.monospacedDigit())
                     Text(split.formattedElapsed)
-                        .font(.caption)
-                        .monospacedDigit()
+                        .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 }
-                .padding(6)
-                .background(.orange.opacity(0.1))
-                .cornerRadius(6)
+                .padding(AppDesign.Spacing.small)
+                .background(AppDesign.comparisonOrange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.small))
             }
 
             Table(splits) {
@@ -38,7 +38,7 @@ struct SplitTableView: View {
                         if currentSplitIndex != nil && splits.firstIndex(where: { $0.id == split.id }) == currentSplitIndex {
                             Image(systemName: "circle.fill")
                                 .font(.system(size: 6))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppDesign.comparisonOrange)
                         }
                         Text("\(split.splitIndex)")
                             .monospacedDigit()
@@ -68,8 +68,10 @@ struct SplitTableView: View {
                     if let hr = split.averageHeartRateBPM {
                         Text("\(Int(hr)) bpm")
                             .monospacedDigit()
+                            .foregroundStyle(AppDesign.MetricColor.heartRate)
                     } else {
                         Text("—")
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .width(70)
@@ -78,8 +80,10 @@ struct SplitTableView: View {
                     if let elev = split.elevationGainMeters {
                         Text(String(format: "+%.0f m", elev))
                             .monospacedDigit()
+                            .foregroundStyle(AppDesign.MetricColor.elevation)
                     } else {
                         Text("—")
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .width(70)

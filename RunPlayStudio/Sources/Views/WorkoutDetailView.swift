@@ -2,6 +2,9 @@ import SwiftUI
 import RunPlayCore
 
 /// Main detail view for a selected workout showing Apple Maps, charts, and summary.
+///
+/// Uses grouped backgrounds instead of divider-heavy layouts to create
+/// visual hierarchy without clutter.
 struct WorkoutDetailView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
@@ -22,36 +25,65 @@ struct WorkoutDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tab picker
+            // Tab picker — subtle background instead of standalone
+            tabPickerSection
+
+            // Main content area (map or charts)
+            mainContentArea
+
+            // Bottom panels: segments, metrics, replay, summary
+            bottomPanels
+        }
+    }
+
+    // MARK: - Tab Picker
+
+    private var tabPickerSection: some View {
+        HStack {
             Picker("View", selection: $selectedTab) {
                 ForEach(ViewTab.allCases, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
-            .padding()
+            .frame(maxWidth: 240)
 
-            // Main content
-            switch selectedTab {
-            case .overview:
-                OverviewView(
-                    workout: workout,
-                    currentPointIndex: replayController.state.currentPointIndex
-                )
-            case .charts:
-                MetricsChartView(
-                    routePoints: workout.routePoints,
-                    currentDistance: replayController.state.currentDistance,
-                    onSeek: { distance in
-                        replayController.pause()
-                        replayController.seekToDistance(distance)
-                    }
-                )
-            }
+            Spacer()
+        }
+        .padding(.horizontal, AppDesign.Spacing.xLarge)
+        .padding(.vertical, AppDesign.Spacing.medium)
+        .background(AppDesign.panelBackground)
+    }
 
-            Divider()
+    // MARK: - Main Content
 
-            // Segment highlights
+    @ViewBuilder
+    private var mainContentArea: some View {
+        switch selectedTab {
+        case .overview:
+            OverviewView(
+                workout: workout,
+                currentPointIndex: replayController.state.currentPointIndex
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .charts:
+            MetricsChartView(
+                routePoints: workout.routePoints,
+                currentDistance: replayController.state.currentDistance,
+                onSeek: { distance in
+                    replayController.pause()
+                    replayController.seekToDistance(distance)
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: - Bottom Panels
+
+    private var bottomPanels: some View {
+        VStack(spacing: 0) {
+            // Segment highlights (if any)
             if !appState.detectedSegments.isEmpty {
                 SegmentHighlightsPanel(
                     segments: appState.detectedSegments,
@@ -61,11 +93,9 @@ struct WorkoutDetailView: View {
                     },
                     onClear: {}
                 )
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-
-                Divider()
+                .padding(.horizontal, AppDesign.Spacing.xLarge)
+                .padding(.vertical, AppDesign.Spacing.small)
+                .background(AppDesign.panelBackground)
             }
 
             // Current metrics panel
@@ -74,26 +104,23 @@ struct WorkoutDetailView: View {
                 hasHeartRate: workout.hasHeartRateData,
                 hasCadence: workout.hasCadenceData
             )
-            .padding(.horizontal)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial)
+            .padding(.horizontal, AppDesign.Spacing.xLarge)
+            .padding(.vertical, AppDesign.Spacing.small)
+            .background(AppDesign.panelBackground)
 
-            Divider()
-
-            // Bottom panel: replay controls + summary
-            HStack(spacing: 16) {
-                // Replay controls
+            // Replay controls + summary
+            HStack(spacing: AppDesign.Spacing.xLarge) {
                 ReplayControlsView(controller: replayController)
                     .frame(maxWidth: .infinity)
 
                 Divider()
+                    .padding(.vertical, AppDesign.Spacing.xSmall)
 
-                // Summary
                 RunSummaryView(summary: workout.summary)
                     .frame(maxWidth: .infinity)
             }
-            .padding()
-            .background(.ultraThinMaterial)
+            .padding(AppDesign.Spacing.xLarge)
+            .background(AppDesign.panelBackground)
         }
     }
 

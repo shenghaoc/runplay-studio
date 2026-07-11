@@ -61,20 +61,26 @@ struct ExportSummaryCardView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             Text(model.appBranding)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(.blue)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [AppDesign.primaryBlue, AppDesign.MetricColor.pace],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
 
             Text(model.workoutTitle)
-                .font(.system(size: 36, weight: .bold))
+                .font(.system(size: 34, weight: .bold))
                 .lineLimit(2)
 
-            HStack(spacing: 16) {
+            HStack(spacing: AppDesign.Spacing.xLarge) {
                 Label(model.dateText, systemImage: "calendar")
                 Label(model.sourceText, systemImage: "square.and.arrow.down")
             }
-            .font(.system(size: 18))
+            .font(.system(size: 17))
             .foregroundStyle(.secondary)
         }
     }
@@ -82,27 +88,27 @@ struct ExportSummaryCardView: View {
     // MARK: - Main Metrics
 
     private var metricsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             Text("Summary")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.tertiary)
 
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible()),
                 GridItem(.flexible())
-            ], spacing: 20) {
-                MetricTile(label: "Distance", value: model.distanceText, icon: "figure.run")
-                MetricTile(label: "Duration", value: model.durationText, icon: "clock")
-                MetricTile(label: "Avg Pace", value: model.paceText, icon: "speedometer")
-                MetricTile(label: "Elev Gain", value: model.elevationGainText, icon: "arrow.up.circle")
-                MetricTile(label: "Elev Loss", value: model.elevationLossText, icon: "arrow.down.circle")
+            ], spacing: AppDesign.Spacing.large) {
+                MetricTile(label: "Distance", value: model.distanceText, icon: "figure.run", color: AppDesign.MetricColor.distance)
+                MetricTile(label: "Duration", value: model.durationText, icon: "clock", color: AppDesign.MetricColor.duration)
+                MetricTile(label: "Avg Pace", value: model.paceText, icon: "speedometer", color: AppDesign.MetricColor.pace)
+                MetricTile(label: "Elev Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: AppDesign.MetricColor.elevation)
+                MetricTile(label: "Elev Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: AppDesign.softPurple)
 
                 if let hr = model.heartRateText {
-                    MetricTile(label: "Avg HR", value: hr, icon: "heart.fill", color: .red)
+                    MetricTile(label: "Avg HR", value: hr, icon: "heart.fill", color: AppDesign.MetricColor.heartRate)
                 }
                 if let maxHR = model.maxHeartRateText {
-                    MetricTile(label: "Max HR", value: maxHR, icon: "heart.circle.fill", color: .red)
+                    MetricTile(label: "Max HR", value: maxHR, icon: "heart.circle.fill", color: AppDesign.MetricColor.heartRate)
                 }
 
                 MetricTile(label: "Points", value: model.pointCountText, icon: "point.3.connected.trianglepath.dotted")
@@ -113,27 +119,27 @@ struct ExportSummaryCardView: View {
     // MARK: - Segments
 
     private var segmentsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             Text("Key Segments")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.tertiary)
 
             ForEach(model.segments) { segment in
                 HStack {
                     Image(systemName: segment.icon)
-                        .font(.system(size: 16))
-                        .frame(width: 24)
+                        .font(.system(size: 14))
+                        .frame(width: 20)
                         .foregroundStyle(colorForSegment(segment.color))
 
                     Text(segment.title)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
 
                     Spacer()
 
                     Text(segment.value)
-                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                        .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -141,10 +147,10 @@ struct ExportSummaryCardView: View {
     // MARK: - Splits
 
     private var splitsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             Text("Splits")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.tertiary)
 
             // Header
             HStack {
@@ -157,8 +163,8 @@ struct ExportSummaryCardView: View {
                 Text("Time")
                     .frame(width: 60, alignment: .leading)
             }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.tertiary)
 
             ForEach(model.splits) { split in
                 HStack {
@@ -171,7 +177,7 @@ struct ExportSummaryCardView: View {
                     Text(split.duration)
                         .frame(width: 60, alignment: .leading)
                 }
-                .font(.system(size: 15).monospacedDigit())
+                .font(.system(size: 14, design: .rounded).monospacedDigit())
             }
         }
     }
@@ -179,11 +185,11 @@ struct ExportSummaryCardView: View {
     // MARK: - Footer
 
     private var footerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
             Divider()
             Text(model.privacyNote)
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -191,17 +197,19 @@ struct ExportSummaryCardView: View {
 
     private func colorForSegment(_ name: String) -> Color {
         switch name {
-        case "blue": return .blue
-        case "red": return .red
-        case "orange": return .orange
-        case "purple": return .purple
-        case "yellow": return .yellow
-        default: return .gray
+        case "blue": return AppDesign.primaryBlue
+        case "red": return AppDesign.alertRed
+        case "orange": return AppDesign.comparisonOrange
+        case "purple": return AppDesign.softPurple
+        case "yellow": return AppDesign.warmYellow
+        default: return .secondary
         }
     }
 }
 
 /// Single metric tile for the summary card.
+///
+/// Uses semantic colors and improved typography from the design system.
 struct MetricTile: View {
     let label: String
     let value: String
@@ -209,23 +217,23 @@ struct MetricTile: View {
     var color: Color = .primary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            HStack(spacing: AppDesign.Spacing.small) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(color.opacity(0.7))
                 Text(label)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
             }
 
             Text(value)
-                .font(.system(size: 22, weight: .bold).monospacedDigit())
+                .font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.secondary.opacity(0.1))
-        .cornerRadius(8)
+        .padding(AppDesign.Spacing.medium)
+        .background(AppDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 }

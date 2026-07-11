@@ -2,6 +2,9 @@ import SwiftUI
 import RunPlayCore
 
 /// Main comparison view showing two workouts side by side.
+///
+/// Uses the design system's comparison orange for visual identity
+/// and improved spacing throughout.
 struct CompareView: View {
     @ObservedObject var appState: AppState
 
@@ -11,15 +14,11 @@ struct CompareView: View {
             comparisonSelector
 
             if let pair = appState.comparisonPair {
-                Divider()
-
                 // Summary deltas
                 if let summary = appState.comparisonSummary {
                     ComparisonSummaryView(summary: summary)
-                        .padding()
-                        .background(.ultraThinMaterial)
-
-                    Divider()
+                        .padding(AppDesign.Spacing.xLarge)
+                        .background(AppDesign.panelBackground)
                 }
 
                 // One MapKit surface; the in-map control toggles 2D/3D.
@@ -38,15 +37,13 @@ struct CompareView: View {
                         .frame(minWidth: 300)
                 }
 
-                Divider()
-
                 ComparisonChartView(
                     metrics: appState.comparisonMetrics,
                     primaryName: pair.primary.displayName,
                     comparisonName: pair.comparison.displayName
                 )
                 .frame(height: 200)
-                .padding()
+                .padding(AppDesign.Spacing.xLarge)
             } else {
                 ComparisonEmptyView(
                     workoutCount: appState.workouts.count,
@@ -59,36 +56,36 @@ struct CompareView: View {
     // MARK: - Selector
 
     private var comparisonSelector: some View {
-        HStack {
+        HStack(spacing: AppDesign.Spacing.xLarge) {
             // Primary workout
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
                 Text("Primary Run")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
                 Text(appState.selectedWorkout?.displayName ?? "None")
-                    .font(.headline)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                     .lineLimit(1)
-                Text("Current selection")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
-            Spacer()
-
             Image(systemName: "arrow.left.arrow.right")
-                .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(.quaternary)
 
             Spacer()
 
             // Comparison workout
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: AppDesign.Spacing.xxSmall) {
                 Text("Compare Against")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
 
                 if appState.availableForComparison.isEmpty {
                     Text(appState.workouts.count < 2 ? "Import another run" : "No other workouts")
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                 } else {
                     Picker("Compare Against", selection: Binding(
                         get: { appState.comparisonWorkout },
@@ -104,8 +101,8 @@ struct CompareView: View {
 
                 if let message = appState.comparisonSelectionMessage {
                     Text(message)
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(AppDesign.comparisonOrange)
                 }
             }
 
@@ -113,10 +110,11 @@ struct CompareView: View {
                 Button("Clear") {
                     appState.clearComparison()
                 }
-                .font(.caption)
+                .font(AppDesign.Typography.compactMetric)
             }
         }
-        .padding()
+        .padding(AppDesign.Spacing.xLarge)
+        .background(AppDesign.panelBackground)
     }
 }
 
@@ -126,9 +124,9 @@ struct ComparisonSummaryView: View {
     let summary: WorkoutComparisonSummary
 
     var body: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 4) {
-                HStack {
+        VStack(spacing: AppDesign.Spacing.large) {
+            VStack(spacing: AppDesign.Spacing.xxSmall) {
+                HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: winnerIcon)
                         .foregroundStyle(winnerColor)
                     Text(summary.winner.label)
@@ -137,13 +135,13 @@ struct ComparisonSummaryView: View {
                 }
 
                 Text("\(summary.primaryTitle) vs \(summary.comparisonTitle)")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
             // Metric deltas
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: AppDesign.Spacing.medium)], spacing: AppDesign.Spacing.medium) {
                 DeltaCard(label: "Distance", value: summary.distanceDeltaFormatted)
                 DeltaCard(label: "Duration", value: summary.durationDeltaFormatted)
                 DeltaCard(label: "Pace (min/km)", value: summary.paceDeltaFormatted)
@@ -158,32 +156,32 @@ struct ComparisonSummaryView: View {
 
             // Warnings
             if !summary.warnings.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
                     ForEach(summary.warnings, id: \.self) { warning in
-                        HStack(alignment: .top, spacing: 6) {
+                        HStack(alignment: .top, spacing: AppDesign.Spacing.small) {
                             Image(systemName: warning.icon)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppDesign.comparisonOrange)
                                 .frame(width: 16)
                             Text(warning.rawValue)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
+                                .font(.subheadline)
+                                .foregroundStyle(AppDesign.comparisonOrange)
                         }
                     }
 
                     if summary.warnings.contains(.differentDistances) {
-                        HStack(alignment: .top, spacing: 6) {
+                        HStack(alignment: .top, spacing: AppDesign.Spacing.small) {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 16)
                             Text("Charts and splits compare the overlapping \(commonDistanceLabel) only.")
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .padding(8)
-                .background(Color.orange.opacity(0.08))
-                .cornerRadius(6)
+                .padding(AppDesign.Spacing.medium)
+                .background(AppDesign.comparisonOrange.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -200,8 +198,8 @@ struct ComparisonSummaryView: View {
 
     private var winnerColor: Color {
         switch summary.winner {
-        case .primary: return .green
-        case .comparison: return .red
+        case .primary: return AppDesign.energeticGreen
+        case .comparison: return AppDesign.alertRed
         case .tie: return .secondary
         case .unavailable: return .secondary
         }
@@ -218,21 +216,20 @@ struct DeltaCard: View {
     let value: String
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: AppDesign.Spacing.xxSmall) {
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
             Text(value)
-                .font(.subheadline)
-                .monospacedDigit()
+                .font(AppDesign.Typography.metricValue.monospacedDigit())
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.secondary.opacity(0.1))
-        .cornerRadius(8)
+        .padding(.horizontal, AppDesign.Spacing.medium)
+        .padding(.vertical, AppDesign.Spacing.small)
+        .background(AppDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 }
 
@@ -243,15 +240,17 @@ struct ComparisonEmptyView: View {
     let primaryName: String?
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: AppDesign.Spacing.xLarge) {
             Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(.tertiary)
 
             Text(title)
-                .font(.title2)
+                .font(.title3)
+                .fontWeight(.semibold)
 
             Text(message)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
