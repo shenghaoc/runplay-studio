@@ -2,77 +2,45 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  build-macos:
-    name: macOS (full app)
-    runs-on: macos-14
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-
-    - name: Swift Package Describe
-      run: swift package describe
-
-    - name: Build
-      run: swift build
-
-    - name: Test
-      shell: bash
-      run: |
-        # shell: bash provides set -eo pipefail; capture exit code so we can
-        # write the test summary even when tests fail.
-        set +e
-        swift test 2>&1 | tee test-output.txt
-        TEST_EXIT=$?
-        set -e
-        # Report test count to step summary
-        TEST_SUMMARY=$(grep -E 'Executed [0-9]+ test' test-output.txt | tail -1 || true)
-        if [[ -n "$TEST_SUMMARY" ]]; then
-          echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "$TEST_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
-        fi
-        exit $TEST_EXIT
-
+  # RunPlayCore: Pure Swift domain logic — test on Linux for cross-platform validation
   core-linux:
     name: RunPlayCore (Linux)
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '5.9'
+      - name: Verify Swift version
+        run: swift --version
+      - name: Build RunPlayCore
+        run: swift build --target RunPlayCore
+      - name: Test RunPlayCore
+        run: swift test --filter RunPlayCoreTests
 
-    - name: Set up Swift
-      uses: swift-actions/setup-swift@v2
-      with:
-        swift-version: "5.9"
-
-    - name: Swift Version
-      run: swift --version
-
-    - name: Build RunPlayCore
-      run: swift build --target RunPlayCore
-
-    - name: Test RunPlayCore
-      run: swift test --filter RunPlayCoreTests
-
+  # RunPlayPlatform: macOS non-UI layer (SceneKit, AppKit, MapKit)
   platform-macos:
     name: RunPlayPlatform (macOS)
-    runs-on: macos-14
-
+    runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: Build RunPlayPlatform
+        run: swift build --target RunPlayPlatform
+      - name: Test RunPlayPlatform
+        run: swift test --filter RunPlayPlatformTests
 
-    - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-
-    - name: Build RunPlayPlatform
-      run: swift build --target RunPlayPlatform
-
-    - name: Test RunPlayPlatform
-      run: swift test --filter RunPlayPlatformTests
+  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio)
+  macos:
+    name: macOS (Full Stack)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
