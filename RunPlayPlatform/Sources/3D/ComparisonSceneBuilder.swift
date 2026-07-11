@@ -10,15 +10,17 @@ import SceneKit
 /// - Comparison route (orange) with cyan start / magenta finish markers
 /// - Shared ground grid sized for both routes
 /// - Legend text identifying each route
-class ComparisonSceneBuilder {
+public class ComparisonSceneBuilder {
 
     // MARK: - Configuration
 
-    var primaryRouteColor: NSColor = .systemBlue
-    var comparisonRouteColor: NSColor = .systemOrange
-    var routeRadius: CGFloat = 0.8
-    var markerRadius: CGFloat = 2.0
-    var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
+    public var primaryRouteColor: NSColor = .systemBlue
+    public var comparisonRouteColor: NSColor = .systemOrange
+    public var routeRadius: CGFloat = 0.8
+    public var markerRadius: CGFloat = 2.0
+    public var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
+
+    public init() {}
 
     // MARK: - Scene Elements
 
@@ -33,7 +35,7 @@ class ComparisonSceneBuilder {
     // MARK: - Build Scene
 
     /// Build a complete 3D comparison scene from a `ComparisonRouteScene`.
-    func buildScene(from comparisonScene: ComparisonRouteScene) -> SCNScene {
+    public func buildScene(from comparisonScene: ComparisonRouteScene) -> SCNScene {
         let scene = SCNScene()
         scene.background.contents = NSColor.windowBackgroundColor
 
@@ -93,7 +95,7 @@ class ComparisonSceneBuilder {
     // MARK: - Bounding Box
 
     /// Get the bounding box for camera fitting from a comparison scene.
-    func routeBoundingBox(for comparisonScene: ComparisonRouteScene) -> (center: SCNVector3, extent: CGFloat) {
+    public func routeBoundingBox(for comparisonScene: ComparisonRouteScene) -> (center: SCNVector3, extent: CGFloat) {
         let center = SCNVector3(
             CGFloat(comparisonScene.center.x),
             CGFloat(comparisonScene.center.y),
@@ -111,15 +113,15 @@ class ComparisonSceneBuilder {
 
     // MARK: - Distance Markers
 
-    var primaryDistanceMarkerColor: NSColor = .systemBlue
-    var comparisonDistanceMarkerColor: NSColor = .systemOrange
-    var distanceMarkerRadius: CGFloat = 1.5
+    public var primaryDistanceMarkerColor: NSColor = .systemBlue
+    public var comparisonDistanceMarkerColor: NSColor = .systemOrange
+    public var distanceMarkerRadius: CGFloat = 1.5
 
     /// Update the distance markers in the scene at the given interpolated points.
     ///
     /// Removes any existing distance markers and adds new ones.
     /// Pass `nil` for a point to hide that marker.
-    func updateDistanceMarkers(
+    public func updateDistanceMarkers(
         in scene: SCNScene,
         primaryPoint: RouteScenePoint?,
         comparisonPoint: RouteScenePoint?

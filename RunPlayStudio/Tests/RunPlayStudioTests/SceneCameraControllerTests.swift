@@ -1,5 +1,6 @@
 import SceneKit
 import RunPlayCore
+import RunPlayPlatform
 import XCTest
 
 @testable import RunPlayStudio

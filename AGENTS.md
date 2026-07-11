@@ -17,24 +17,31 @@ RunPlayCore/          # Platform-neutral library (no UI frameworks)
   Sources/
     Models/           # Data types (RunWorkout, RoutePoint, etc.)
     Importers/        # JSON, GPX, TCX, FIT importers
-    Services/         # Analysis, splits, segments, comparison, export
+    Services/         # Analysis, splits, segments, comparison, export, playback
+    3D/               # Platform-neutral lookup helpers
   Tests/
-    RunPlayCoreTests/ # Platform-neutral tests
+    RunPlayCoreTests/ # Platform-neutral tests (builds on Linux)
 
-RunPlayStudio/        # macOS executable (SwiftUI, MapKit)
+RunPlayPlatform/      # macOS platform layer (no SwiftUI)
+  Sources/
+    Services/         # Route coloring (NSColor), PNG renderer, map data types
+    3D/               # SceneKit builders and camera controller
+  Tests/
+    RunPlayPlatformTests/ # macOS platform tests
+
+RunPlayStudio/        # macOS GUI layer (SwiftUI, Charts)
   Sources/
     Views/            # SwiftUI views
-    ViewModels/       # AppState, ReplayController
-    3D/               # Legacy SceneKit prototype utilities (not the shipped map UI)
-    Services/         # macOS-only services (PNG export, route coloring)
+    ViewModels/       # AppState, ReplayController (Combine/Timer wrapper)
+    Services/         # GUI-specific services (PNG export with views)
   Tests/
-    RunPlayStudioTests/ # macOS-specific tests
+    RunPlayStudioTests/ # macOS GUI tests
   Resources/          # Sample data and fixtures
 ```
 
 ## Build & Test Commands
 
-### Core-only (platform-neutral, Codex Cloud compatible)
+### Core-only (platform-neutral, Linux compatible)
 
 ```bash
 # Build core library
@@ -42,6 +49,16 @@ swift build --target RunPlayCore
 
 # Run core tests only
 swift test --filter RunPlayCoreTests
+```
+
+### Platform layer (macOS, no SwiftUI)
+
+```bash
+# Build platform library
+swift build --target RunPlayPlatform
+
+# Run platform tests
+swift test --filter RunPlayPlatformTests
 ```
 
 ### Full macOS build and test
@@ -62,13 +79,35 @@ open Package.swift
 
 ## Key Architecture Decisions
 
+### Three-Layer Architecture
+
+- **RunPlayCore** — Pure Swift, cross-platform (macOS + Linux). No Apple frameworks.
+- **RunPlayPlatform** — macOS non-GUI layer (SceneKit, AppKit, MapKit, Combine). No SwiftUI.
+- **RunPlayStudio** — macOS GUI layer (SwiftUI, Charts). Depends on both Core and Platform.
+
+Dependency flow: `RunPlayStudio → RunPlayPlatform → RunPlayCore`
+
 ### RunPlayCore — Platform-Neutral Target
 
-- **No** SwiftUI, AppKit, MapKit, Charts, CoreLocation
+- **No** SwiftUI, AppKit, SceneKit, MapKit, Charts, CoreLocation
 - Uses `GeoDistance` (haversine) instead of `CLLocation.distance(from:)`
 - Uses `#if canImport(FoundationXML)` for Linux XML parsing
 - All types are `public` for cross-module access
-- `PNGExportRenderer` stays in RunPlayStudio (requires AppKit)
+- Contains pure computation: `RouteColorMetrics`, `PlaybackEngine`
+
+### RunPlayPlatform — macOS Platform Layer
+
+- SceneKit 3D builders (`RouteSceneBuilder`, `ComparisonSceneBuilder`, `SceneCameraController`)
+- AppKit color mapping (`RouteColoringService`)
+- MapKit data types (`RouteMapData`)
+- Generic PNG rendering (`PNGExportRenderer`)
+- **No** SwiftUI views
+
+### RunPlayStudio — macOS GUI Layer
+
+- SwiftUI views and `@MainActor` view models
+- `ReplayController` wraps `PlaybackEngine` with Combine/Timer
+- PNG export with concrete SwiftUI views (`ExportServicePNGExtension`)
 
 ### File Import
 
@@ -119,4 +158,5 @@ open Package.swift
 
 - macOS build/test: `swift test`
 - Core-only test: `swift test --filter RunPlayCoreTests`
+- Platform test: `swift test --filter RunPlayPlatformTests`
 - Linux CI: `swift build --target RunPlayCore && swift test --filter RunPlayCoreTests` (Ubuntu, Swift 5.9+)

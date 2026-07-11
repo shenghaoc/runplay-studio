@@ -20,12 +20,24 @@ var products: [Product] = [
     .library(name: "RunPlayCore", targets: ["RunPlayCore"]),
 ]
 
-// macOS-only targets (require SwiftUI, AppKit, MapKit, Charts)
+// macOS-only targets (require SceneKit, AppKit, MapKit — but not SwiftUI)
 #if os(macOS)
 targets.append(contentsOf: [
+    // macOS platform layer (SceneKit, AppKit, MapKit, Combine — no SwiftUI)
+    .target(
+        name: "RunPlayPlatform",
+        dependencies: ["RunPlayCore"],
+        path: "RunPlayPlatform/Sources"
+    ),
+    .testTarget(
+        name: "RunPlayPlatformTests",
+        dependencies: ["RunPlayPlatform"],
+        path: "RunPlayPlatform/Tests/RunPlayPlatformTests"
+    ),
+    // macOS GUI layer (SwiftUI, Charts)
     .executableTarget(
         name: "RunPlayStudio",
-        dependencies: ["RunPlayCore"],
+        dependencies: ["RunPlayCore", "RunPlayPlatform"],
         path: "RunPlayStudio/Sources",
         resources: [
             .process("../Resources")
@@ -37,6 +49,7 @@ targets.append(contentsOf: [
         path: "RunPlayStudio/Tests/RunPlayStudioTests"
     ),
 ])
+products.append(.library(name: "RunPlayPlatform", targets: ["RunPlayPlatform"]))
 products.append(.executable(name: "RunPlayStudio", targets: ["RunPlayStudio"]))
 #endif
 

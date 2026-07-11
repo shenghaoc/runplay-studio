@@ -1,4 +1,5 @@
 import RunPlayCore
+import RunPlayPlatform
 import AppKit
 
 /// macOS-only PNG export support.
@@ -8,7 +9,9 @@ struct PNGExportService {
 
     /// Export workout summary as PNG image (macOS only).
     static func exportSummaryPNG(workout: RunWorkout, segments: [SegmentHighlight]) throws -> ExportResult {
-        let data = try PNGExportRenderer.renderSummaryCard(workout: workout, segments: segments)
+        let model = ExportSummaryCardModel(workout: workout, segments: segments)
+        let view = ExportSummaryCardView(model: model)
+        let data = try PNGExportRenderer.renderPNG(from: view)
         let filename = ExportFilenameBuilder.filename(for: workout, format: .png)
         return ExportResult(format: .png, filename: filename, data: data)
     }

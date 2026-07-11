@@ -1,5 +1,6 @@
 import XCTest
 import RunPlayCore
+import RunPlayPlatform
 @testable import RunPlayStudio
 
 final class ComparisonProjectionTests: XCTestCase {
