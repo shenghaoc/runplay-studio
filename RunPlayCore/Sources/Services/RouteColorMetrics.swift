@@ -156,7 +156,7 @@ public struct RouteColorMetrics: Sendable {
     // MARK: - Helpers
 
     /// Smooth an array of values using a moving average, skipping NaN.
-    public func smoothValues(_ values: [Double], windowSize: Int) -> [Double] {
+    private func smoothValues(_ values: [Double], windowSize: Int) -> [Double] {
         guard values.count > 1 else { return values }
         let halfWindow = windowSize / 2
         var result: [Double] = []
