@@ -186,7 +186,7 @@ struct ComparisonMapView: View {
                     step: max(commonDistance / 500, 1)
                 )
                 .accessibilityLabel("Distance along route")
-                .accessibilityValue(DisplayFormatter.formatDistanceKm(commonDistance))
+                .accessibilityValue(DisplayFormatter.formatDistanceKm(appState.clampedComparisonDistanceMeters))
                 .disabled(commonDistance <= 0)
 
                 Button {
