@@ -136,7 +136,7 @@ final class ExportServiceTests: XCTestCase {
 
         // Tab or carriage return prefix (OWASP A1.4)
         XCTAssertEqual(CSVRow.escape("\tcmd|' /C calc'!A0"), "'\tcmd|' /C calc'!A0")
-        XCTAssertEqual(CSVRow.escape("\rcmd|' /C calc'!A0"), "'\rcmd|' /C calc'!A0")
+        XCTAssertEqual(CSVRow.escape("\rcmd|' /C calc'!A0"), "\"'\rcmd|' /C calc'!A0\"")
 
         // Vertical tab-initiated formula (OWASP A1.4)
         XCTAssertEqual(CSVRow.escape("\u{0B}=CMD('/c calc')"), "'\u{0B}=CMD('/c calc')")
