@@ -81,6 +81,7 @@ class AppState: ObservableObject {
     ///
     /// Call from `.task` on the root view. Sets `operationState` to
     /// `.loadingLibrary` while loading and `.idle` when complete.
+    /// Always resets to `.idle` even if the task is cancelled.
     func start() async {
         guard let storeActor else {
             loadSampleWorkouts()
@@ -88,10 +89,10 @@ class AppState: ObservableObject {
         }
 
         operationState = .loadingLibrary
+        defer { operationState = .idle }
 
         let result = await storeActor.loadLibrary()
         applyLibraryLoadResult(result)
-        operationState = .idle
     }
 
     private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
@@ -145,6 +146,11 @@ class AppState: ObservableObject {
         do {
             let workout = try await importService.importWorkout(from: url)
             try await storeActor.addWorkout(workout, select: true)
+
+            // Check cancellation after persistence — if the task was cancelled
+            // while addWorkout was running on the actor, do not mutate UI state.
+            try Task.checkCancellation()
+
             workouts.append(workout)
             selectedWorkout = workout
             replayController.load(workout)
@@ -153,19 +159,7 @@ class AppState: ObservableObject {
         } catch is CancellationError {
             // Cancelled — do not add to UI.
         } catch {
-            errorMessage = error.localizedDescription
-            showingError = true
-        }
-    }
-
-    /// Handle file import result from SwiftUI's `.fileImporter`.
-    func handleImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            Task { await importWorkout(from: url) }
-        case .failure(let error):
-            errorMessage = error.localizedDescription
+            errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
             showingError = true
         }
     }
@@ -264,35 +258,17 @@ class AppState: ObservableObject {
                 // manifest may disagree if selection persistence was pending
                 // or failed, but the UI state is authoritative for display.
                 workouts = remainingWorkouts
-                if deletingSelectedWorkout {
-                    clearComparison()
-                    selectedWorkout = remainingWorkouts.first
-                    selectedSegment = nil
-                    if let first = remainingWorkouts.first {
-                        replayController.load(first)
-                        detectedSegments = first.segments
-                    } else {
-                        detectedSegments = []
-                    }
-                } else if deletingComparisonWorkout {
-                    clearComparison()
-                }
+                applyDeletionSelection(
+                    deletingSelectedWorkout: deletingSelectedWorkout,
+                    deletingComparisonWorkout: deletingComparisonWorkout
+                )
             } catch let storeError as WorkoutLibraryStoreError {
                 // Manifest committed but file is orphaned. Remove from UI and warn.
                 workouts = remainingWorkouts
-                if deletingSelectedWorkout {
-                    clearComparison()
-                    selectedWorkout = remainingWorkouts.first
-                    selectedSegment = nil
-                    if let first = remainingWorkouts.first {
-                        replayController.load(first)
-                        detectedSegments = first.segments
-                    } else {
-                        detectedSegments = []
-                    }
-                } else if deletingComparisonWorkout {
-                    clearComparison()
-                }
+                applyDeletionSelection(
+                    deletingSelectedWorkout: deletingSelectedWorkout,
+                    deletingComparisonWorkout: deletingComparisonWorkout
+                )
                 errorMessage = storeError.localizedDescription
                 showingError = true
             } catch let deleteError {

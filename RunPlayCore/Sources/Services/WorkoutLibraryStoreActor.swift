@@ -25,16 +25,12 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
 public actor WorkoutLibraryStoreActor {
 
     private let store: WorkoutLibraryStoring
-    private let fileManager: FileManager
 
     /// Create a store actor backed by the given storage implementation.
     ///
-    /// - Parameters:
-    ///   - store: The low-level storage implementation (injectable for testing).
-    ///   - fileManager: Injectable for testing.
-    public init(store: WorkoutLibraryStoring, fileManager: FileManager = .default) {
+    /// - Parameter store: The low-level storage implementation (injectable for testing).
+    public init(store: WorkoutLibraryStoring) {
         self.store = store
-        self.fileManager = fileManager
     }
 
     // MARK: - Load Library
