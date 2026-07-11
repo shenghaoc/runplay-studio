@@ -60,3 +60,19 @@ jobs:
 
     - name: Test RunPlayCore
       run: swift test --filter RunPlayCoreTests
+
+  platform-macos:
+    name: RunPlayPlatform (macOS)
+    runs-on: macos-14
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+    - name: Build RunPlayPlatform
+      run: swift build --target RunPlayPlatform
+
+    - name: Test RunPlayPlatform
+      run: swift test --filter RunPlayPlatformTests
