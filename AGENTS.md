@@ -119,14 +119,13 @@ spec tasks must not edit the same shared files concurrently.
 performance, `palette.md` for accessibility, and `sentinel.md` for security.
 Add a concise dated entry only for a concrete reusable finding and its
 preventive action. Do not use it for task status, speculative advice, or copied
-policy. See [.jules/README.md](.jules/README.md).
+policy.
 
 ## Validation
 
 Use the shared verification interface so local work and CI stay aligned:
 
 ```bash
-./scripts/verify.sh agent-config  # Agent, Kiro, and documentation configuration
 ./scripts/verify.sh core          # RunPlayCore changes
 ./scripts/verify.sh platform      # RunPlayPlatform changes on macOS
 ./scripts/verify.sh full          # Studio, package, CI, or cross-layer changes

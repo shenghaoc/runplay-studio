@@ -46,7 +46,6 @@ cd ../runplay-<task>
 Use the shared verification interface:
 
 ```bash
-./scripts/verify.sh agent-config
 ./scripts/verify.sh core
 ./scripts/verify.sh platform
 ./scripts/verify.sh full

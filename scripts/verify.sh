@@ -6,7 +6,6 @@ usage() {
 Usage: ./scripts/verify.sh <mode>
 
 Modes:
-  agent-config  Verify canonical agent, Kiro, and documentation configuration.
   core          Build and test RunPlayCore with warnings treated as errors.
   platform      Build and test RunPlayPlatform on macOS with warnings as errors.
   full          Build and test the full macOS package with warnings as errors.
@@ -36,9 +35,6 @@ repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repository_root"
 
 case "$1" in
-  agent-config)
-    run ./scripts/check-agent-setup.sh
-    ;;
   core)
     run swift build --target RunPlayCore -Xswiftc -warnings-as-errors
     run swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
