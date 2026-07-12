@@ -34,14 +34,19 @@ struct SegmentHighlightsPanel: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(segments) { segment in
-                            SegmentCard(
-                                segment: segment,
-                                isSelected: selectedSegment?.id == segment.id
-                            )
-                            .onTapGesture {
+                            let isSelected = selectedSegment?.id == segment.id
+                            Button {
                                 selectedSegment = segment
                                 onSelect?(segment)
+                            } label: {
+                                SegmentCard(
+                                    segment: segment,
+                                    isSelected: isSelected
+                                )
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                            .help(isSelected ? "Selected segment" : "Select segment")
                         }
                     }
                 }
