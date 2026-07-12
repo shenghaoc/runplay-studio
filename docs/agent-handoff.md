@@ -29,7 +29,7 @@ Latest verified result:
 
 ## Completed Capabilities
 
-- Local import: JSON, GPX, TCX, and basic FIT activity files
+- Local import: JSON, GPX, TCX, and common FIT running-activity files
 - Import normalization rejects invalid coordinates, requires at least one
   GPX/TCX/FIT timestamp for timing analysis, interpolates partial missing
   timestamps, rebases first nonzero TCX/FIT distances, and prevents mixed

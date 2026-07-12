@@ -148,6 +148,39 @@ final class FITParserTests: XCTestCase {
         XCTAssertGreaterThan(points[1].distanceFromStartMeters, points[0].distanceFromStartMeters)
     }
 
+    func testParserEnforcesDecodedMessageLimit() {
+        let data = Self.fitData(rawContent: Self.eventStreamContent(messageCount: 3))
+
+        XCTAssertThrowsError(
+            try FITParser.parse(
+                data: data,
+                isCancelled: { false },
+                maximumDecodedMessageCount: 2
+            )
+        ) { error in
+            guard case FITError.corruptedData(let message) = error else {
+                XCTFail("Expected decoded-message limit error, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("Decoded message count exceeds maximum"))
+        }
+    }
+
+    func testParserCooperativelyCancelsAtCheckpoint() {
+        let data = Self.fitData(rawContent: Self.eventStreamContent(messageCount: 1_001))
+        var cancellationChecks = 0
+
+        XCTAssertThrowsError(
+            try FITParser.parse(data: data, isCancelled: {
+                cancellationChecks += 1
+                return cancellationChecks == 2
+            })
+        ) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(cancellationChecks, 2)
+    }
+
     func testFITDecoderReturnsEmptyWhenGPSRecordsHaveNoTimestamps() {
         let records = [
             Self.record(timestamp: nil, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
@@ -206,6 +239,22 @@ final class FITParserTests: XCTestCase {
             content.append(contentsOf: [0x12, 0x34])
         }
         return fitData(rawContent: content)
+    }
+
+    private static func eventStreamContent(messageCount: Int) -> Data {
+        var content = Data()
+        content.append(0x40) // definition, local type 0
+        content.append(0x00) // reserved
+        content.append(0x00) // little-endian
+        content.append(contentsOf: [0x15, 0x00]) // global msg 21 (event)
+        content.append(1)
+        writeField(0, size: 1, type: 0, to: &content) // event enum
+
+        for _ in 0..<messageCount {
+            content.append(0x00)
+            content.append(0)
+        }
+        return content
     }
 
     private static func fitData(
@@ -502,23 +551,36 @@ final class FITParserTests: XCTestCase {
     func testDeviceInfoMessageIsParsed() throws {
         var content = Data()
 
-        // Definition for device_info (global 23)
+        // Definition for device_info (global 23), using official profile fields.
         content.append(0x40)
         content.append(0x00)
         content.append(0x00)
         content.append(contentsOf: [0x17, 0x00]) // global msg 23 (device_info)
-        content.append(3)
+        content.append(9)
         Self.writeField(253, size: 4, type: 134, to: &content) // timestamp
-        Self.writeField(1, size: 2, type: 132, to: &content)   // manufacturer
-        Self.writeField(2, size: 2, type: 132, to: &content)   // product
+        Self.writeField(0, size: 1, type: 2, to: &content)     // device_index
+        Self.writeField(1, size: 1, type: 2, to: &content)     // device_type
+        Self.writeField(2, size: 2, type: 132, to: &content)   // manufacturer
+        Self.writeField(3, size: 4, type: 140, to: &content)   // serial_number (uint32z)
+        Self.writeField(4, size: 2, type: 132, to: &content)   // product
+        Self.writeField(5, size: 2, type: 132, to: &content)   // software_version
+        Self.writeField(6, size: 1, type: 2, to: &content)     // hardware_version
+        Self.writeField(27, size: 10, type: 7, to: &content)   // product_name
 
         // Device info data
         content.append(0x00)
         Self.append(UInt32(1_000_000), to: &content)
+        content.append(0) // device index
+        content.append(1) // device type
         let manufacturer: UInt16 = 1 // Garmin
         content.append(contentsOf: withUnsafeBytes(of: manufacturer.littleEndian) { Array($0) })
+        Self.append(UInt32(123_456), to: &content)
         let product: UInt16 = 3111
         content.append(contentsOf: withUnsafeBytes(of: product.littleEndian) { Array($0) })
+        let softwareVersion: UInt16 = 123
+        content.append(contentsOf: withUnsafeBytes(of: softwareVersion.littleEndian) { Array($0) })
+        content.append(7) // hardware version
+        content.append(contentsOf: Array("Forerunner".utf8))
 
         // Record
         Self.writeDefinition(to: &content)
@@ -532,8 +594,80 @@ final class FITParserTests: XCTestCase {
         let decoded = try FITParser.parse(data: data)
 
         XCTAssertEqual(decoded.deviceInfo.count, 1)
+        XCTAssertEqual(decoded.deviceInfo[0].deviceIndex, 0)
+        XCTAssertEqual(decoded.deviceInfo[0].deviceType, 1)
         XCTAssertEqual(decoded.deviceInfo[0].manufacturer, 1)
+        XCTAssertEqual(decoded.deviceInfo[0].serialNumber, 123_456)
         XCTAssertEqual(decoded.deviceInfo[0].product, 3111)
+        XCTAssertEqual(decoded.deviceInfo[0].softwareVersion, 123)
+        XCTAssertEqual(decoded.deviceInfo[0].hardwareVersion, 7)
+        XCTAssertEqual(decoded.deviceInfo[0].productName, "Forerunner")
+    }
+
+    func testLapMessageUsesOfficialProfileFieldNumbers() throws {
+        var content = Data()
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x13, 0x00]) // global msg 19 (lap)
+        content.append(5)
+        Self.writeField(21, size: 2, type: 132, to: &content) // total_ascent
+        Self.writeField(22, size: 2, type: 132, to: &content) // total_descent
+        Self.writeField(24, size: 1, type: 0, to: &content)   // lap_trigger
+        Self.writeField(25, size: 1, type: 0, to: &content)   // sport
+        Self.writeField(26, size: 1, type: 2, to: &content)   // event_group
+
+        content.append(0x00)
+        let ascent: UInt16 = 432
+        let descent: UInt16 = 123
+        content.append(contentsOf: withUnsafeBytes(of: ascent.littleEndian) { Array($0) })
+        content.append(contentsOf: withUnsafeBytes(of: descent.littleEndian) { Array($0) })
+        content.append(2)
+        content.append(FITSport.running.rawValue)
+        content.append(4)
+
+        let decoded = try FITParser.parse(data: Self.fitData(rawContent: content))
+
+        XCTAssertEqual(decoded.laps.count, 1)
+        XCTAssertEqual(decoded.laps[0].totalAscent, ascent)
+        XCTAssertEqual(decoded.laps[0].totalDescent, descent)
+        XCTAssertEqual(decoded.laps[0].lapTrigger, 2)
+        XCTAssertEqual(decoded.laps[0].sport, FITSport.running.rawValue)
+        XCTAssertEqual(decoded.laps[0].eventGroup, 4)
+    }
+
+    func testSessionMessageUsesOfficialProfileFieldNumbers() throws {
+        var content = Data()
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x12, 0x00]) // global msg 18 (session)
+        content.append(6)
+        Self.writeField(23, size: 2, type: 132, to: &content) // total_descent
+        Self.writeField(27, size: 1, type: 2, to: &content)   // event_group
+        Self.writeField(28, size: 1, type: 0, to: &content)   // trigger
+        Self.writeField(29, size: 4, type: 133, to: &content) // nec_lat
+        Self.writeField(30, size: 4, type: 133, to: &content) // nec_long
+        Self.writeField(31, size: 4, type: 133, to: &content) // swc_lat
+
+        content.append(0x00)
+        let descent: UInt16 = 321
+        content.append(contentsOf: withUnsafeBytes(of: descent.littleEndian) { Array($0) })
+        content.append(3)
+        content.append(1)
+        Self.append(Self.semicircles(40.0), to: &content)
+        Self.append(Self.semicircles(-75.0), to: &content)
+        Self.append(Self.semicircles(39.0), to: &content)
+
+        let decoded = try FITParser.parse(data: Self.fitData(rawContent: content))
+
+        XCTAssertEqual(decoded.sessions.count, 1)
+        XCTAssertEqual(decoded.sessions[0].totalDescent, descent)
+        XCTAssertEqual(decoded.sessions[0].eventGroup, 3)
+        XCTAssertEqual(decoded.sessions[0].trigger, 1)
+        XCTAssertEqual(decoded.sessions[0].necLat, Self.semicircles(40.0))
+        XCTAssertEqual(decoded.sessions[0].necLong, Self.semicircles(-75.0))
+        XCTAssertEqual(decoded.sessions[0].swcLat, Self.semicircles(39.0))
     }
 
     // MARK: - Enhanced Metrics Tests
@@ -711,9 +845,15 @@ final class FITParserTests: XCTestCase {
         }
 
         let points = try FITDecoder.decode(decodedFile: decodedFile)
-        // All 6 records should be present (segmentation preserves all records,
-        // just marks boundaries)
-        XCTAssertEqual(points.count, 6)
+        // The record collected during the paused interval is excluded, and the
+        // resumed route starts a new segment without a geographic distance jump.
+        XCTAssertEqual(points.count, 5)
+        XCTAssertEqual(points.map(\.routeSegmentIndex), [0, 0, 0, 1, 1])
+        XCTAssertEqual(
+            points[3].distanceFromStartMeters,
+            points[2].distanceFromStartMeters,
+            accuracy: 0.001
+        )
     }
 
     // MARK: - Ordered Messages Test

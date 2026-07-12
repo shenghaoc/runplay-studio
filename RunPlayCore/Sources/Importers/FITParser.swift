@@ -106,7 +106,8 @@ public struct FITParser {
     static let maxDefinitions: Int = 256
     static let maxFieldCount: Int = 256
     static let maxFieldSize: Int = 255
-    static let maxRecordCount: Int = 1_000_000
+    static let maxDeveloperFieldCount: Int = 64
+    static let maxDecodedMessageCount: Int = 1_000_000
 
     /// Checkpoint interval for cancellation checks (every N records).
     static let cancellationCheckInterval: Int = 1000
@@ -118,6 +119,24 @@ public struct FITParser {
         data: Data,
         isCancelled: @escaping () -> Bool = { false }
     ) throws -> FITDecodedFile {
+        try parse(
+            data: data,
+            isCancelled: isCancelled,
+            maximumDecodedMessageCount: maxDecodedMessageCount
+        )
+    }
+
+    /// Internal entry point with a configurable limit so resource protection
+    /// remains directly testable without constructing a huge fixture.
+    static func parse(
+        data: Data,
+        isCancelled: @escaping () -> Bool,
+        maximumDecodedMessageCount: Int
+    ) throws -> FITDecodedFile {
+        guard maximumDecodedMessageCount > 0 else {
+            throw FITError.corruptedData("Maximum decoded message count must be positive")
+        }
+
         guard !data.isEmpty else {
             throw FITError.emptyFile
         }
@@ -133,16 +152,21 @@ public struct FITParser {
 
         // Parse data records
         var definitions: [UInt8: FITDefinitionMessage] = [:]
+        var definitionCount = 0
         var decodedFile = FITDecodedFile()
         var messageIndex = 0
         var lastTimestamp: UInt32 = 0
         var hasBaselineTimestamp = false
-        var recordCount = 0
 
         while offset < dataEndOffset {
             // Cooperative cancellation check
             if messageIndex % cancellationCheckInterval == 0 && isCancelled() {
                 throw CancellationError()
+            }
+            guard messageIndex < maximumDecodedMessageCount else {
+                throw FITError.corruptedData(
+                    "Decoded message count exceeds maximum of \(maximumDecodedMessageCount)"
+                )
             }
 
             guard offset < dataEndOffset else { break }
@@ -228,10 +252,6 @@ public struct FITParser {
                     record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
                     record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
                     decodedFile.records.append(record)
-                    recordCount += 1
-                    if recordCount > maxRecordCount {
-                        throw FITError.corruptedData("Record count exceeds maximum of \(maxRecordCount)")
-                    }
 
                 case FITGlobalMessage.event.rawValue:
                     var event = FITEventMessage()
@@ -296,7 +316,7 @@ public struct FITParser {
                     session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
                     session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
                     session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
-                    session.eventGroup = fieldValues[23]?.uint8Value  // eventGroup — no enum case (conflicts with totalDescent)
+                    session.eventGroup = fieldValues[FITSessionField.eventGroup.rawValue]?.uint8Value
                     session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
                     session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
                     session.necLat = fieldValues[FITSessionField.necLat.rawValue]?.int32Value
@@ -332,6 +352,12 @@ public struct FITParser {
                 let localType = recordHeader & 0x0F
 
                 if isDefinition {
+                    definitionCount += 1
+                    guard definitionCount <= maxDefinitions else {
+                        throw FITError.corruptedData(
+                            "Definition count exceeds maximum of \(maxDefinitions)"
+                        )
+                    }
                     let def = try parseDefinition(
                         data: data,
                         offset: &offset,
@@ -355,7 +381,7 @@ public struct FITParser {
                         hasBaselineTimestamp: &hasBaselineTimestamp,
                         messageIndex: &messageIndex,
                         decodedFile: &decodedFile,
-                        recordCount: &recordCount
+                        maximumDecodedMessageCount: maximumDecodedMessageCount
                     )
                 }
             }
@@ -474,6 +500,9 @@ public struct FITParser {
 
             let fieldNum = data[offset]
             let fieldSize = data[offset + 1]
+            guard fieldSize > 0 else {
+                throw FITError.corruptedData("Field \(fieldNum) has zero size")
+            }
             guard Int(fieldSize) <= maxFieldSize else {
                 throw FITError.corruptedData("Field size \(fieldSize) exceeds maximum \(maxFieldSize)")
             }
@@ -505,6 +534,11 @@ public struct FITParser {
             }
 
             let developerFieldCount = Int(data[offset])
+            guard developerFieldCount <= maxDeveloperFieldCount else {
+                throw FITError.corruptedData(
+                    "Developer field count \(developerFieldCount) exceeds maximum \(maxDeveloperFieldCount)"
+                )
+            }
             offset += 1
 
             var parsedDeveloperFields: [FITDeveloperFieldDefinition] = []
@@ -514,9 +548,14 @@ public struct FITParser {
                     throw FITError.unexpectedEndOfFile
                 }
 
+                let fieldNumber = data[offset]
+                let fieldSize = data[offset + 1]
+                guard fieldSize > 0 else {
+                    throw FITError.corruptedData("Developer field \(fieldNumber) has zero size")
+                }
                 parsedDeveloperFields.append(FITDeveloperFieldDefinition(
-                    fieldNumber: data[offset],
-                    size: data[offset + 1],
+                    fieldNumber: fieldNumber,
+                    size: fieldSize,
                     developerDataIndex: data[offset + 2]
                 ))
                 offset += 3
@@ -547,7 +586,7 @@ public struct FITParser {
         hasBaselineTimestamp: inout Bool,
         messageIndex: inout Int,
         decodedFile: inout FITDecodedFile,
-        recordCount: inout Int
+        maximumDecodedMessageCount: Int
     ) throws {
         let dataSize = definition.totalDataSize
         guard offset + dataSize <= dataEndOffset else {
@@ -592,6 +631,11 @@ public struct FITParser {
 
         // Build typed message based on global message number
         messageIndex += 1
+        guard messageIndex <= maximumDecodedMessageCount else {
+            throw FITError.corruptedData(
+                "Decoded message count exceeds maximum of \(maximumDecodedMessageCount)"
+            )
+        }
 
         switch definition.globalMessageNumber {
         case FITGlobalMessage.fileID.rawValue:
@@ -618,10 +662,6 @@ public struct FITParser {
             record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
             record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
             decodedFile.records.append(record)
-            recordCount += 1
-            if recordCount > maxRecordCount {
-                throw FITError.corruptedData("Record count exceeds maximum of \(maxRecordCount)")
-            }
 
         case FITGlobalMessage.event.rawValue:
             var event = FITEventMessage()
@@ -676,7 +716,7 @@ public struct FITParser {
             session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
             session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
             session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
-            session.eventGroup = fieldValues[23]?.uint8Value  // eventGroup — no enum case (conflicts with totalDescent)
+            session.eventGroup = fieldValues[FITSessionField.eventGroup.rawValue]?.uint8Value
             session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
             session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
             session.necLat = fieldValues[FITSessionField.necLat.rawValue]?.int32Value

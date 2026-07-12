@@ -269,14 +269,14 @@ public enum FITSessionField: UInt8 {
     case averageHeartRate = 16
     case maximumHeartRate = 17
     case averageCadence = 18
-    case trigger = 24
-    case necLong = 29
-    case necLat = 30
-    case swcLong = 31
-    case swcLat = 32
     case event = 0
     case eventType = 1
-    // eventGroup = 23 conflicts with totalDescent; use raw value 23 directly
+    case eventGroup = 27
+    case trigger = 28
+    case necLat = 29
+    case necLong = 30
+    case swcLat = 31
+    case swcLong = 32
 }
 
 /// Known field numbers for lap messages (global message 19).
@@ -290,8 +290,8 @@ public enum FITLapField: UInt8 {
     case totalElapsedTime = 7
     case totalTimerTime = 8
     case totalDistance = 9
-    case totalAscent = 22
-    case totalDescent = 23
+    case totalAscent = 21
+    case totalDescent = 22
     case averageSpeed = 13
     case maximumSpeed = 14
     case averageHeartRate = 15
@@ -299,9 +299,9 @@ public enum FITLapField: UInt8 {
     case averageCadence = 17
     case event = 0
     case eventType = 1
-    case eventGroup = 24
-    case lapTrigger = 25
-    case sport = 26
+    case lapTrigger = 24
+    case sport = 25
+    case eventGroup = 26
 }
 
 /// Known field numbers for file_id messages (global message 0).
@@ -317,14 +317,14 @@ public enum FITFileIDField: UInt8 {
 /// Known field numbers for device_info messages (global message 23).
 public enum FITDeviceInfoField: UInt8 {
     case timestamp = 253
-    case serialNumber = 0
-    case manufacturer = 1
-    case product = 2
-    case softwareVersion = 3
-    case hardwareVersion = 4
-    case deviceIndex = 6
-    case deviceType = 5
-    case productName = 9
+    case deviceIndex = 0
+    case deviceType = 1
+    case manufacturer = 2
+    case serialNumber = 3
+    case product = 4
+    case softwareVersion = 5
+    case hardwareVersion = 6
+    case productName = 27
 }
 
 /// Known field numbers for activity messages (global message 34).

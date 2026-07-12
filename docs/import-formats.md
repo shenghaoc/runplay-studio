@@ -10,13 +10,16 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | JSON | Full support | Native fixture format with route points, metadata, biometrics, and derived analysis. |
 | GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. At least one timestamp is required for pace/duration analysis; partial missing timestamps are interpolated. |
 | TCX | Track support | Parses one GPS-bearing activity's laps, tracks, trackpoints, distance, elevation, heart rate, and cadence. Each track remains disconnected and is rebased independently; files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
-| FIT | Basic support | Parses common activity records for GPS, altitude, speed, heart rate, and cadence. Requires at least one timestamp. CRC-16 validation (header and file) rejects corrupted files with a descriptive error. Compressed timestamp headers fail with a controlled unsupported-data error. |
+| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, and device-info messages. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. One unambiguous GPS-bearing running session is imported when session metadata exists; valid GPS records fall back to one legacy activity when it does not. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
 ## Current Limitations
 
 - Import is file-based and local-only.
-- FIT support targets basic activity files, not the full FIT profile.
+- FIT support targets common running activity files, not the full FIT profile. It was implemented against Garmin FIT SDK Profile 21.205.0.
+- FIT developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
+- FIT timer start/stop events separate route segments without adding geographic distance across a pause. Elapsed timestamps remain elapsed time, not moving time.
+- FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages.
 - FIT signed coordinate decoding uses bit-pattern semantics for western and
   southern hemisphere coordinates.
 - Import normalization filters invalid coordinates, preserves source track

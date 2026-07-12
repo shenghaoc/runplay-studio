@@ -8,6 +8,17 @@ Current stabilization note: the 2026-07-11 persistence final gate passed
 direct Xcode package scheme test. Specific manual GUI passes are documented per
 checklist below; not all GUI behaviors have been manually verified.
 
+## FIT Import Checklist
+
+Use synthetic FIT fixtures only. These are manual checks to perform in a GUI
+session; they are not claims of a completed manual pass.
+
+- [ ] Import a compressed-timestamp FIT running activity and verify its route, duration, replay, and charts.
+- [ ] Import a FIT activity with timer stop/start events and verify the map and replay do not bridge the paused gap.
+- [ ] Import enhanced altitude/speed values and confirm they are not truncated.
+- [ ] Confirm a non-running FIT activity and an ambiguous multi-running-session FIT file show clear import errors.
+- [ ] Cancel a large FIT import and confirm it is neither displayed nor persisted after relaunch.
+
 ## Persistent Workout Library Checklist
 
 Use a synthetic fixture and confirm the original fixture checksum before and

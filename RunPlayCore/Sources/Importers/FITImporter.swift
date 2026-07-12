@@ -18,7 +18,7 @@ public struct FITImporter: WorkoutImporting {
         let decodedFile: FITDecodedFile
         do {
             let data = try Data(contentsOf: url)
-            decodedFile = try FITParser.parse(data: data)
+            decodedFile = try FITParser.parse(data: data, isCancelled: { Task.isCancelled })
         } catch let error as FITError {
             throw WorkoutImportError.parsingError(error.localizedDescription)
         } catch let error as CancellationError {

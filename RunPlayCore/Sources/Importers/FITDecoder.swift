@@ -28,24 +28,31 @@ public struct FITDecoder {
         let selection = try selectSession(from: decodedFile)
         let records: [FITRecordMessage]
         let segments: [RouteSegment]
+        let usesTimerSegmentation: Bool
 
         switch selection {
         case .selected(let session, _):
             // Filter records to those within the session timeframe
             records = filterRecords(decodedFile.records, for: session)
+            let sessionEvents = filterEvents(decodedFile.events, for: session)
             // Build segments from timer events
             segments = buildSegments(
-                events: decodedFile.events,
+                events: sessionEvents,
                 records: records
             )
+            usesTimerSegmentation = sessionEvents.contains {
+                $0.timerEventType != nil && $0.timestamp != nil
+            }
         case .legacyFallback:
             records = decodedFile.records
             segments = []
+            usesTimerSegmentation = false
         }
 
         return try decodeRecordsToRoutePoints(
             records: records,
-            segments: segments
+            segments: segments,
+            usesTimerSegmentation: usesTimerSegmentation
         )
     }
 
@@ -156,23 +163,23 @@ public struct FITDecoder {
 
         // Determine which sessions (by index) have GPS data in records
         var sessionsWithRecordGPS = Set<Int>()
-        
+
         for record in decodedFile.records {
             guard let lat = record.positionLat, let lon = record.positionLong else { continue }
             guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else { continue }
             guard let timestamp = record.timestamp else { continue }
-            
+
             // Find which session(s) this record belongs to
             for (sessionIndex, session) in decodedFile.sessions.enumerated() {
                 guard let sessionStart = session.startTime else { continue }
-                
+
                 // Check if record is within the session timeframe
                 if let sessionEnd = session.timestamp {
                     guard timestamp >= sessionStart && timestamp <= sessionEnd else { continue }
                 } else {
                     guard timestamp >= sessionStart else { continue }
                 }
-                
+
                 sessionsWithRecordGPS.insert(sessionIndex)
             }
         }
@@ -252,12 +259,29 @@ public struct FITDecoder {
             return records
         }
 
-        // Filter records that are at or after the session start time
-        // and at or before the session end time (if available)
+        // A timestamp is required to associate a record with a selected session.
+        // Unattributed records must not contaminate a multi-session import.
         return records.filter { record in
-            guard let recordTimestamp = record.timestamp else { return true }
+            guard let recordTimestamp = record.timestamp else { return false }
             if recordTimestamp < sessionStart { return false }
             if let sessionEnd = session.timestamp, recordTimestamp > sessionEnd { return false }
+            return true
+        }
+    }
+
+    /// Keep only timestamped events that can belong to the selected session.
+    private static func filterEvents(
+        _ events: [FITEventMessage],
+        for session: FITSessionMessage
+    ) -> [FITEventMessage] {
+        guard let sessionStart = session.startTime else {
+            return events
+        }
+
+        return events.filter { event in
+            guard let timestamp = event.timestamp else { return false }
+            if timestamp < sessionStart { return false }
+            if let sessionEnd = session.timestamp, timestamp > sessionEnd { return false }
             return true
         }
     }
@@ -268,8 +292,6 @@ public struct FITDecoder {
     struct RouteSegment: Sendable {
         let startIndex: Int
         let endIndex: Int   // inclusive
-        let startTimestamp: UInt32
-        let endTimestamp: UInt32?
     }
 
     /// Build route segments from timer events.
@@ -287,9 +309,10 @@ public struct FITDecoder {
 
         guard !timerEvents.isEmpty else { return [] }
 
+        guard !records.isEmpty else { return [] }
+
         var segments: [RouteSegment] = []
         var segmentStartIndex: Int?
-        var segmentStartTimestamp: UInt32?
 
         for event in timerEvents {
             guard let eventType = event.timerEventType,
@@ -297,43 +320,30 @@ public struct FITDecoder {
 
             switch eventType {
             case .start:
-                if let startIdx = segmentStartIndex {
-                    // End previous segment at this point
-                    let endIdx = findRecordIndex(
-                        forTimestamp: timestamp,
-                        in: records,
-                        startIndex: startIdx
-                    )
-                    segments.append(RouteSegment(
-                        startIndex: startIdx,
-                        endIndex: endIdx ?? records.count - 1,
-                        startTimestamp: segmentStartTimestamp ?? 0,
-                        endTimestamp: timestamp
-                    ))
-                }
-                segmentStartIndex = findRecordIndex(
-                    forTimestamp: timestamp,
-                    in: records,
-                    startIndex: segmentStartIndex ?? 0
-                ) ?? segmentStartIndex
-                segmentStartTimestamp = timestamp
+                // Consecutive starts do not create empty or overlapping segments.
+                guard segmentStartIndex == nil else { continue }
+                segmentStartIndex = firstRecordIndex(
+                    atOrAfter: timestamp,
+                    in: records
+                )
 
             case .stop, .stopAll:
-                if let startIdx = segmentStartIndex {
-                    let endIdx = findRecordIndex(
-                        forTimestamp: timestamp,
+                // Some devices omit the initial start event. Preserve records up
+                // to the first stop as the continuous fallback segment.
+                let startIdx = segmentStartIndex ?? (segments.isEmpty ? 0 : nil)
+                if let startIdx,
+                   let endIdx = lastRecordIndex(
+                        atOrBefore: timestamp,
                         in: records,
-                        startIndex: startIdx
-                    ) ?? records.count - 1
+                        startingAt: startIdx
+                   ),
+                   startIdx <= endIdx {
                     segments.append(RouteSegment(
                         startIndex: startIdx,
-                        endIndex: endIdx,
-                        startTimestamp: segmentStartTimestamp ?? 0,
-                        endTimestamp: timestamp
+                        endIndex: endIdx
                     ))
-                    segmentStartIndex = nil
-                    segmentStartTimestamp = nil
                 }
+                segmentStartIndex = nil
 
             default:
                 break
@@ -344,22 +354,19 @@ public struct FITDecoder {
         if let startIdx = segmentStartIndex {
             segments.append(RouteSegment(
                 startIndex: startIdx,
-                endIndex: records.count - 1,
-                startTimestamp: segmentStartTimestamp ?? 0,
-                endTimestamp: nil
+                endIndex: records.count - 1
             ))
         }
 
         return segments
     }
 
-    /// Find the record index for a given timestamp.
-    private static func findRecordIndex(
-        forTimestamp timestamp: UInt32,
-        in records: [FITRecordMessage],
-        startIndex: Int
+    /// Find the first record at or after an event timestamp.
+    private static func firstRecordIndex(
+        atOrAfter timestamp: UInt32,
+        in records: [FITRecordMessage]
     ) -> Int? {
-        for i in startIndex..<records.count {
+        for i in records.indices {
             if let recordTs = records[i].timestamp, recordTs >= timestamp {
                 return i
             }
@@ -367,24 +374,52 @@ public struct FITDecoder {
         return nil
     }
 
+    /// Find the last record at or before an event timestamp in the active range.
+    private static func lastRecordIndex(
+        atOrBefore timestamp: UInt32,
+        in records: [FITRecordMessage],
+        startingAt startIndex: Int
+    ) -> Int? {
+        var result: Int?
+        for i in startIndex..<records.count {
+            guard let recordTimestamp = records[i].timestamp else { continue }
+            if recordTimestamp > timestamp { break }
+            result = i
+        }
+        return result
+    }
+
     // MARK: - Record Decoding with Segmentation
 
     /// Decode records into RoutePoints with segment awareness.
     private static func decodeRecordsToRoutePoints(
         records: [FITRecordMessage],
-        segments: [RouteSegment]
+        segments: [RouteSegment],
+        usesTimerSegmentation: Bool
     ) throws -> [RoutePoint] {
-        let validRecords = records.filter { record in
+        let validRecords = records.enumerated().compactMap { index, record -> (record: FITRecordMessage, segmentIndex: Int)? in
             guard let lat = record.positionLat, let lon = record.positionLong else {
-                return false
+                return nil
             }
-            return lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate
+            guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else {
+                return nil
+            }
+
+            let segmentIndex = segments.firstIndex {
+                index >= $0.startIndex && index <= $0.endIndex
+            }
+            if usesTimerSegmentation, segmentIndex == nil {
+                // Records between a stop and subsequent start belong to the pause.
+                return nil
+            }
+            return (record, segmentIndex ?? 0)
         }
 
         guard !validRecords.isEmpty else { return [] }
 
         let resolvedTimestamps = RouteTimestampResolver.resolve(
-            validRecords.map { record in
+            validRecords.map { entry in
+                let record = entry.record
                 guard let timestamp = record.timestamp, timestamp != FITParser.invalidUint32 else {
                     return nil
                 }
@@ -395,7 +430,8 @@ public struct FITDecoder {
             return []
         }
 
-        let hasCompleteDistanceSeries = validRecords.allSatisfy { record in
+        let hasCompleteDistanceSeries = validRecords.allSatisfy { entry in
+            let record = entry.record
             guard let distance = record.distance else { return false }
             return distance != FITParser.invalidUint32
         }
@@ -403,7 +439,8 @@ public struct FITDecoder {
         var routePoints: [RoutePoint] = []
         routePoints.reserveCapacity(validRecords.count)
 
-        for (index, record) in validRecords.enumerated() {
+        for (index, entry) in validRecords.enumerated() {
+            let record = entry.record
             let lat = FITParser.semicirclesToDegrees(record.positionLat ?? FITParser.invalidCoordinate)
             let lon = FITParser.semicirclesToDegrees(record.positionLong ?? FITParser.invalidCoordinate)
             guard GeoDistance.isValidCoordinate(lat: lat, lon: lon) else {
@@ -441,7 +478,8 @@ public struct FITDecoder {
                 elapsedSeconds: timestamp.timeIntervalSince(startDate),
                 speedMetersPerSecond: speed,
                 heartRateBPM: heartRate,
-                cadence: cadence
+                cadence: cadence,
+                routeSegmentIndex: entry.segmentIndex
             )
             routePoints.append(point)
         }
