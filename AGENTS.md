@@ -10,6 +10,12 @@
 - No handoff-only commits. Never update a handoff file solely because the latest commit hash changed.
 - `git log` is the source of truth for the latest commit.
 
+## Project-wide Constraints
+
+- Keep the package free of third-party dependencies; use the platform frameworks and Swift standard library already declared by `Package.swift`.
+- RunPlay Studio is local-only: do not add an app-operated cloud backend, account system, telemetry, analytics, or AI API without an explicit product decision.
+- Never commit real workout data. Store private files in the gitignored `local-workouts/` or `private-workouts/` directories; committed fixtures, demo assets, and exports must be synthetic or anonymized.
+
 ## Repository Structure
 
 ```
