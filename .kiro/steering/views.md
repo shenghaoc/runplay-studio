@@ -50,3 +50,24 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 | Distance/pace calculations | RunPlayCore |
 | Route projection, segment detection | RunPlayCore |
 | File I/O, manifest, persistence | RunPlayCore |
+
+## Running the app for manual verification
+
+This is a Swift Package — there is no `.xcodeproj`. Open in Xcode with:
+
+```bash
+open Package.swift
+```
+
+Then select the **RunPlayStudio** scheme and **My Mac** destination, and press
+**⌘R**. Do not use `swift run` — the executable target requires macOS GUI
+context that `swift run` does not provide.
+
+Alternatively, build a local `.app` bundle:
+
+```bash
+./scripts/package-demo.sh
+# Output: .build/artifacts/RunPlayStudio.app
+```
+
+All manual GUI verification checklists are in `docs/manual-testing.md`.
