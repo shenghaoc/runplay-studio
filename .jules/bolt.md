@@ -13,3 +13,7 @@
 ## 2025-07-11 - DateFormatter Allocation in Computed Properties and Render Logic
 **Learning:** `DateFormatter` was being instantiated inside computed properties (like `RunWorkout.displayName`) and synchronous initialization/rendering functions (like `ExportSummaryCardModel.init` and `ExportFilenameBuilder.formatDateForFilename`). Since these are accessed frequently in UI lists or repeatedly during exports, the repeated allocations caused unnecessary performance bottlenecks.
 **Action:** Always replace inline `DateFormatter` instantiations in frequently accessed synchronous logic with `private static let` cached instances to guarantee single-time configuration.
+
+## 2025-07-28 - Array Allocation in MetricSmoother
+**Learning:** `MetricSmoother.smoothHeartRate` used `.compactMap { ... }.reduce(0, +)` inside its windowing loop. Because this executes for every point parsed, it resulted in massive intermediate array allocations, causing heavy GC overhead.
+**Action:** Replace `compactMap`/`reduce` inside O(N) loops with inline `for` loops to accumulate state variables without generating throwaway arrays.
