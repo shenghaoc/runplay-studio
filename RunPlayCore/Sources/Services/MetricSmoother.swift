@@ -62,8 +62,7 @@ public struct MetricSmoother {
 
         for index in points.indices {
             guard let current = points[index].heartRateBPM,
-                  current.isFinite,
-                  MetricValidation.validHeartRateRange.contains(current)
+                  MetricValidation.isValidHeartRate(current)
             else {
                 continue
             }
@@ -83,8 +82,7 @@ public struct MetricSmoother {
                 // Don't smooth across segment boundaries.
                 guard point.routeSegmentIndex == segmentIndex else { continue }
                 guard let hr = point.heartRateBPM,
-                      hr.isFinite,
-                      MetricValidation.validHeartRateRange.contains(hr)
+                      MetricValidation.isValidHeartRate(hr)
                 else {
                     continue
                 }
