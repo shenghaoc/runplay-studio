@@ -31,6 +31,9 @@ public struct FITImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No records found in FIT file")
         }
 
+        // Get the selected session index before decoding
+        let selectedSessionIndex = try FITDecoder.selectedSessionIndex(from: decodedFile)
+
         // Decode records with session selection and segmentation
         let routePoints = try FITDecoder.decode(decodedFile: decodedFile)
 
@@ -38,9 +41,10 @@ public struct FITImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
         }
 
-        // Build metadata from session and device info
+        // Build metadata from selected session and device info
         let metadata = buildMetadata(
             decodedFile: decodedFile,
+            selectedSessionIndex: selectedSessionIndex,
             fileName: url.deletingPathExtension().lastPathComponent,
             routePoints: routePoints
         )
@@ -63,12 +67,16 @@ public struct FITImporter: WorkoutImporting {
     /// Build workout metadata from FIT session and device messages.
     private func buildMetadata(
         decodedFile: FITDecodedFile,
+        selectedSessionIndex: Int?,
         fileName: String,
         routePoints: [RoutePoint]
     ) -> WorkoutMetadata {
-        // Activity type from session sport
+        // Activity type from selected session sport, or first session if none selected
         let activityType: String
-        if let session = decodedFile.sessions.first,
+        let session = selectedSessionIndex.flatMap { decodedFile.sessions.indices.contains($0) ? decodedFile.sessions[$0] : nil }
+            ?? decodedFile.sessions.first
+
+        if let session = session,
            let sport = session.sport,
            let sportType = FITSport(rawValue: sport) {
             activityType = activityTypeFromSport(sportType)

@@ -193,11 +193,15 @@ public struct FITParser {
                         // Timestamp field is encoded in the compressed header, not in payload
                         continue
                     }
-                    let value = try reader.readBaseTypeValue(
+                    // Use readBaseTypeArray to consume all field.size bytes
+                    let values = try reader.readBaseTypeArray(
                         baseType: field.baseType,
                         fieldSize: Int(field.size)
                     )
-                    fieldValues[field.fieldNumber] = value
+                    // Store the first value; multi-element fields are handled by readBaseTypeArray
+                    if let firstValue = values.first {
+                        fieldValues[field.fieldNumber] = firstValue
+                    }
                 }
 
                 // Skip developer fields
@@ -237,7 +241,88 @@ public struct FITParser {
                     event.eventGroup = fieldValues[FITEventField.eventGroup.rawValue]?.uint8Value
                     decodedFile.events.append(event)
 
+                case FITGlobalMessage.fileID.rawValue:
+                    var msg = FITFileIDMessage()
+                    msg.type = fieldValues[FITFileIDField.type.rawValue]?.uint8Value
+                    msg.manufacturer = fieldValues[FITFileIDField.manufacturer.rawValue]?.uint16Value
+                    msg.product = fieldValues[FITFileIDField.product.rawValue]?.uint16Value
+                    msg.serialNumber = fieldValues[FITFileIDField.serialNumber.rawValue]?.uint32Value
+                    msg.timeCreated = fieldValues[FITFileIDField.timeCreated.rawValue]?.uint32Value
+                    msg.number = fieldValues[FITFileIDField.number.rawValue]?.uint16Value
+                    decodedFile.fileID = msg
+
+                case FITGlobalMessage.lap.rawValue:
+                    var lap = FITLapMessage()
+                    lap.timestamp = fieldValues[FITLapField.timestamp.rawValue]?.uint32Value
+                    lap.startTime = fieldValues[FITLapField.startTime.rawValue]?.uint32Value
+                    lap.startPositionLat = fieldValues[FITLapField.startPositionLat.rawValue]?.int32Value
+                    lap.startPositionLong = fieldValues[FITLapField.startPositionLong.rawValue]?.int32Value
+                    lap.endPositionLat = fieldValues[FITLapField.endPositionLat.rawValue]?.int32Value
+                    lap.endPositionLong = fieldValues[FITLapField.endPositionLong.rawValue]?.int32Value
+                    lap.totalElapsedTime = fieldValues[FITLapField.totalElapsedTime.rawValue]?.uint32Value
+                    lap.totalTimerTime = fieldValues[FITLapField.totalTimerTime.rawValue]?.uint32Value
+                    lap.totalDistance = fieldValues[FITLapField.totalDistance.rawValue]?.uint32Value
+                    lap.totalAscent = fieldValues[FITLapField.totalAscent.rawValue]?.uint16Value
+                    lap.totalDescent = fieldValues[FITLapField.totalDescent.rawValue]?.uint16Value
+                    lap.averageSpeed = fieldValues[FITLapField.averageSpeed.rawValue]?.uint16Value
+                    lap.maximumSpeed = fieldValues[FITLapField.maximumSpeed.rawValue]?.uint16Value
+                    lap.averageHeartRate = fieldValues[FITLapField.averageHeartRate.rawValue]?.uint8Value
+                    lap.maximumHeartRate = fieldValues[FITLapField.maximumHeartRate.rawValue]?.uint8Value
+                    lap.averageCadence = fieldValues[FITLapField.averageCadence.rawValue]?.uint8Value
+                    lap.event = fieldValues[FITLapField.event.rawValue]?.uint8Value
+                    lap.eventType = fieldValues[FITLapField.eventType.rawValue]?.uint8Value
+                    lap.eventGroup = fieldValues[FITLapField.eventGroup.rawValue]?.uint8Value
+                    lap.lapTrigger = fieldValues[FITLapField.lapTrigger.rawValue]?.uint8Value
+                    lap.sport = fieldValues[FITLapField.sport.rawValue]?.uint8Value
+                    decodedFile.laps.append(lap)
+
+                case FITGlobalMessage.session.rawValue:
+                    var session = FITSessionMessage()
+                    session.timestamp = fieldValues[FITSessionField.timestamp.rawValue]?.uint32Value
+                    session.startTime = fieldValues[FITSessionField.startTime.rawValue]?.uint32Value
+                    session.startPositionLat = fieldValues[FITSessionField.startPositionLat.rawValue]?.int32Value
+                    session.startPositionLong = fieldValues[FITSessionField.startPositionLong.rawValue]?.int32Value
+                    session.sport = fieldValues[FITSessionField.sport.rawValue]?.uint8Value
+                    session.subSport = fieldValues[FITSessionField.subSport.rawValue]?.uint8Value
+                    session.totalElapsedTime = fieldValues[FITSessionField.totalElapsedTime.rawValue]?.uint32Value
+                    session.totalTimerTime = fieldValues[FITSessionField.totalTimerTime.rawValue]?.uint32Value
+                    session.totalDistance = fieldValues[FITSessionField.totalDistance.rawValue]?.uint32Value
+                    session.totalAscent = fieldValues[FITSessionField.totalAscent.rawValue]?.uint16Value
+                    session.totalDescent = fieldValues[FITSessionField.totalDescent.rawValue]?.uint16Value
+                    session.averageSpeed = fieldValues[FITSessionField.averageSpeed.rawValue]?.uint16Value
+                    session.maximumSpeed = fieldValues[FITSessionField.maximumSpeed.rawValue]?.uint16Value
+                    session.averageHeartRate = fieldValues[FITSessionField.averageHeartRate.rawValue]?.uint8Value
+                    session.maximumHeartRate = fieldValues[FITSessionField.maximumHeartRate.rawValue]?.uint8Value
+                    session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
+                    session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
+                    session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
+                    session.eventGroup = fieldValues[23]?.uint8Value  // eventGroup — no enum case (conflicts with totalDescent)
+                    session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
+                    session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
+                    session.necLat = fieldValues[FITSessionField.necLat.rawValue]?.int32Value
+                    session.swcLong = fieldValues[FITSessionField.swcLong.rawValue]?.int32Value
+                    session.swcLat = fieldValues[FITSessionField.swcLat.rawValue]?.int32Value
+                    decodedFile.sessions.append(session)
+
+                case FITGlobalMessage.activity.rawValue:
+                    // Activity messages parsed but not stored separately in this version
+                    break
+
+                case FITGlobalMessage.deviceInfo.rawValue:
+                    var deviceInfo = FITDeviceInfoMessage()
+                    deviceInfo.timestamp = fieldValues[FITDeviceInfoField.timestamp.rawValue]?.uint32Value
+                    deviceInfo.serialNumber = fieldValues[FITDeviceInfoField.serialNumber.rawValue]?.uint32Value
+                    deviceInfo.manufacturer = fieldValues[FITDeviceInfoField.manufacturer.rawValue]?.uint16Value
+                    deviceInfo.product = fieldValues[FITDeviceInfoField.product.rawValue]?.uint16Value
+                    deviceInfo.softwareVersion = fieldValues[FITDeviceInfoField.softwareVersion.rawValue]?.uint16Value
+                    deviceInfo.hardwareVersion = fieldValues[FITDeviceInfoField.hardwareVersion.rawValue]?.uint8Value
+                    deviceInfo.deviceIndex = fieldValues[FITDeviceInfoField.deviceIndex.rawValue]?.uint8Value
+                    deviceInfo.deviceType = fieldValues[FITDeviceInfoField.deviceType.rawValue]?.uint8Value
+                    deviceInfo.productName = fieldValues[FITDeviceInfoField.productName.rawValue]?.stringValue
+                    decodedFile.deviceInfo.append(deviceInfo)
+
                 default:
+                    // Unknown messages are skipped silently
                     break
                 }
             } else {
@@ -480,11 +565,15 @@ public struct FITParser {
         // Read field values
         var fieldValues: [UInt8: FITFieldValue] = [:]
         for field in definition.fields {
-            let value = try reader.readBaseTypeValue(
+            // Use readBaseTypeArray to consume all field.size bytes
+            let values = try reader.readBaseTypeArray(
                 baseType: field.baseType,
                 fieldSize: Int(field.size)
             )
-            fieldValues[field.fieldNumber] = value
+            // Store the first value; multi-element fields are handled by readBaseTypeArray
+            if let firstValue = values.first {
+                fieldValues[field.fieldNumber] = firstValue
+            }
         }
 
         // Skip developer fields

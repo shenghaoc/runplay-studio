@@ -11,7 +11,7 @@ public struct FITDecoder {
     /// Session selection result.
     public enum SessionSelection: Sendable {
         /// Exactly one GPS-bearing running session found.
-        case selected(FITSessionMessage)
+        case selected(FITSessionMessage, index: Int)
         /// No session messages but valid GPS records exist (legacy fallback).
         case legacyFallback
     }
@@ -30,7 +30,7 @@ public struct FITDecoder {
         let segments: [RouteSegment]
 
         switch selection {
-        case .selected(let session):
+        case .selected(let session, _):
             // Filter records to those within the session timeframe
             records = filterRecords(decodedFile.records, for: session)
             // Build segments from timer events
@@ -47,6 +47,18 @@ public struct FITDecoder {
             records: records,
             segments: segments
         )
+    }
+
+    /// Select a session and return both the session and its index.
+    /// Returns nil if legacy fallback should be used.
+    public static func selectedSessionIndex(from decodedFile: FITDecodedFile) throws -> Int? {
+        let selection = try selectSession(from: decodedFile)
+        switch selection {
+        case .selected(_, let index):
+            return index
+        case .legacyFallback:
+            return nil
+        }
     }
 
     /// Convert FIT record messages to RoutePoints (legacy API).
@@ -142,10 +154,33 @@ public struct FITDecoder {
             return .legacyFallback
         }
 
-        // Find GPS-bearing sessions
-        var gpsSessions: [(session: FITSessionMessage, hasGPS: Bool)] = []
+        // Determine which sessions (by index) have GPS data in records
+        var sessionsWithRecordGPS = Set<Int>()
+        
+        for record in decodedFile.records {
+            guard let lat = record.positionLat, let lon = record.positionLong else { continue }
+            guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else { continue }
+            guard let timestamp = record.timestamp else { continue }
+            
+            // Find which session(s) this record belongs to
+            for (sessionIndex, session) in decodedFile.sessions.enumerated() {
+                guard let sessionStart = session.startTime else { continue }
+                
+                // Check if record is within the session timeframe
+                if let sessionEnd = session.timestamp {
+                    guard timestamp >= sessionStart && timestamp <= sessionEnd else { continue }
+                } else {
+                    guard timestamp >= sessionStart else { continue }
+                }
+                
+                sessionsWithRecordGPS.insert(sessionIndex)
+            }
+        }
 
-        for session in decodedFile.sessions {
+        // Find GPS-bearing sessions (either by start coords or by records with GPS)
+        var gpsSessions: [(index: Int, session: FITSessionMessage, hasGPS: Bool)] = []
+
+        for (index, session) in decodedFile.sessions.enumerated() {
             // A session has GPS if it has valid start coordinates
             let hasValidCoordinates: Bool
             if let lat = session.startPositionLat,
@@ -155,7 +190,11 @@ public struct FITDecoder {
             } else {
                 hasValidCoordinates = false
             }
-            gpsSessions.append((session: session, hasGPS: hasValidCoordinates))
+
+            // Or if it has records with GPS data
+            let hasRecordGPS = hasValidCoordinates || sessionsWithRecordGPS.contains(index)
+
+            gpsSessions.append((index: index, session: session, hasGPS: hasRecordGPS))
         }
 
         // Filter to GPS-bearing running sessions
@@ -171,7 +210,7 @@ public struct FITDecoder {
 
         if gpsRunningSessions.count == 1 {
             // Exactly one GPS-bearing running session - select it
-            return .selected(gpsRunningSessions[0].session)
+            return .selected(gpsRunningSessions[0].session, index: gpsRunningSessions[0].index)
         } else if gpsRunningSessions.count > 1 {
             // Multiple GPS-bearing running sessions - ambiguous
             throw WorkoutImportError.parsingError(
