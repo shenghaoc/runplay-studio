@@ -18,8 +18,8 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 
 | Type | Role |
 |------|------|
-| `AppState` | Central `@MainActor @Observable` coordinator. Owns `workouts`, `selectedWorkout`, `replayController`, comparison state, and library operation state. |
-| `ReplayController` | `@MainActor @Observable` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
+| `AppState` | Central `@MainActor ObservableObject` coordinator. Owns `workouts`, `selectedWorkout`, `replayController`, comparison state, and library operation state. |
+| `ReplayController` | `@MainActor ObservableObject` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
 | `ContentView` | Root view. Hosts the sidebar and detail split. Owns the `.fileImporter` modifier and delegates import to `AppState`. |
 | `WorkoutDetailView` | Detail host. Provides shared replay controls, metrics panel, and tab picker (Overview / Charts). |
 | `OverviewView` | Default landing tab. Embeds `RouteMapCanvas` and passes the current point index from `ReplayController`. |
@@ -29,10 +29,10 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 
 ## Patterns
 
-- Views read `AppState` and `ReplayController` via direct property access —
-  no `@StateObject` or `@ObservedObject` (using Swift `@Observable`).
-- Chart drag-to-seek: dragging any chart calls
-  `replayController.seek(to:)` and sets `playbackState = .paused`.
+- `ContentView` owns `AppState` with `@StateObject`; dependent views use
+  `@ObservedObject` for `AppState` and `ReplayController`.
+- Chart drag-to-seek: `WorkoutDetailView` pauses `ReplayController`, then calls
+  `seekToDistance(_:)` with the distance emitted by `MetricsChartView`.
 - Map 2D/3D toggle: changes `MapCamera.pitch` on the shared `MapCameraPosition`
   — does not swap the map view or renderer.
 - `RouteMapCanvas` is reused for single-run and comparison maps; do not create
@@ -60,8 +60,7 @@ open Package.swift
 ```
 
 Then select the **RunPlayStudio** scheme and **My Mac** destination, and press
-**⌘R**. Do not use `swift run` — the executable target requires macOS GUI
-context that `swift run` does not provide.
+**⌘R**. Use this Xcode path for interactive GUI verification and debugging.
 
 Alternatively, build a local `.app` bundle:
 

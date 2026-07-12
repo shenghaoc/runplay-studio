@@ -117,14 +117,16 @@ See [docs/private-data.md](docs/private-data.md) and
 
 ## Kiro
 
-Kiro is the primary development environment for this repository. All other
-agents are secondary.
+Kiro is the primary development environment for this repository. Codex,
+Claude Code, Gemini CLI, GitHub Copilot, and other agents remain supported
+through the same canonical contract.
 
-**Steering** (`.kiro/steering/`) is the authoritative Kiro context layer.
-Steering files use `inclusion: always`, `inclusion: fileMatch`, or
-`inclusion: auto` to inject the right context at the right time. Do not
-duplicate steering content in `AGENTS.md` or `docs/`; use `#[[file:...]]`
-references to pull in live sources instead.
+**Steering** (`.kiro/steering/`) supplies scoped Kiro context under this
+canonical policy. Steering files use `inclusion: always`, `inclusion:
+fileMatch`, or `inclusion: auto` to inject the right context at the right time.
+Keep durable repository facts in source, tests, `Package.swift`, CI, this file,
+or the relevant `docs/` reference; use `#[[file:...]]` references so steering
+does not become a competing copy.
 
 **Specs** (`.kiro/specs/`) are task artifacts: one spec per branch per PR.
 Keep requirements, design, and tasks scoped to the PR. Checked task boxes do
