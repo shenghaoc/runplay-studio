@@ -32,7 +32,7 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
-| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; requires at least one timestamp; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -196,12 +196,12 @@ To build a local `.app` bundle:
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp for pace/duration analysis; partial missing timestamps are interpolated; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
-| FIT    | ✅ Basic support | Binary format with GPS, altitude, HR, cadence; requires at least one timestamp; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
 
-**FIT limitations**: CRC validation is not implemented. Compressed timestamp headers fail with a controlled unsupported-data error. Only record messages (global message 20) are parsed. Signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres.
+**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. The importer requires one unambiguous GPS-bearing running session when session metadata is present; without sessions, it retains a legacy single-activity fallback. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
 
 ## App Features
 
@@ -294,7 +294,7 @@ Compare two completed runs side by side:
 ## Limitations
 
 - Comparison is distance-aligned only — no dynamic time warping or route matching
-- FIT support is basic — CRC validation is not implemented; compressed timestamp headers fail with a controlled unsupported-data error; only record messages (global message 20) are parsed; signed coordinate decoding uses bit-pattern semantics for western/southern hemispheres
+- FIT support targets common running activities rather than the full FIT profile; developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported
 - No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)

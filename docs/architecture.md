@@ -61,6 +61,20 @@ public protocol WorkoutImporting {
 
 The `WorkoutImporterFactory` dispatches by file extension. The SwiftUI file picker allows generic data files so `.tcx` and `.fit` files remain selectable even when the system does not declare dedicated UTIs; unsupported extensions are rejected by the importer factory.
 
+### FIT activity decoding
+
+`FITParser` independently decodes the FIT binary stream into ordered standard
+message values before `FITDecoder` interprets one running activity. The parser validates
+header/file CRCs, definition architecture and field types, compressed timestamp
+headers, invalid sentinels, and bounded resource use. It retains file-ID,
+record, event, lap, session, activity, and device-info messages in source order.
+`FITDecoder` selects one
+unambiguous GPS-bearing running session, filters its records and timer events,
+and assigns `routeSegmentIndex` values so normalization, analysis, replay, and
+map rendering do not bridge pause/resume gaps. The implementation targets common
+running activities from Garmin FIT SDK Profile 21.205.0; developer metrics and
+other unsupported FIT profile features remain skipped rather than interpreted.
+
 ### Workout library persistence
 
 `WorkoutLibraryStoring`, `FileWorkoutLibraryStore`, and

@@ -6,6 +6,9 @@ public enum RouteDistancePolicy: Sendable {
     case computeFromCoordinates
     /// Use supplied cumulative distances only when the complete series is valid.
     case useSuppliedDistancesWhenValid
+    /// Use a supplied series for each segment that is complete and monotonic;
+    /// recompute only invalid segments from their coordinates.
+    case useSuppliedDistancesPerSegment
 }
 
 /// Normalizes route data before analysis and UI code consume it.
@@ -62,6 +65,14 @@ public enum RoutePointSanitizer {
 
         let useSuppliedDistances = distancePolicy == .useSuppliedDistancesWhenValid
             && hasValidSuppliedDistanceSeries(ordered)
+        let suppliedDistanceSegments: Set<Int>
+        if distancePolicy == .useSuppliedDistancesPerSegment {
+            suppliedDistanceSegments = Set(segmentGroups.compactMap { segmentIndex, points in
+                hasValidSuppliedDistanceSeries(points) ? segmentIndex : nil
+            })
+        } else {
+            suppliedDistanceSegments = []
+        }
 
         let useTimestampElapsed = elapsedSpan(from: ordered) > 0
         let useSuppliedElapsed = !useTimestampElapsed && hasValidElapsedSeries(ordered)
@@ -85,17 +96,19 @@ public enum RoutePointSanitizer {
             }
 
             let distance: Double
+            let useSuppliedDistanceForSegment = useSuppliedDistances
+                || suppliedDistanceSegments.contains(point.routeSegmentIndex)
             if isSegmentStart {
                 // At a segment boundary: continue cumulative distance from prior
                 // segment end. No geographic jump is added.
                 segmentStartCumulative = normalized.last?.distanceFromStartMeters ?? 0
                 distance = segmentStartCumulative
-                if useSuppliedDistances {
+                if useSuppliedDistanceForSegment {
                     // Record this segment's first supplied distance as the base
                     // so subsequent points in this segment compute relative deltas.
                     segmentDistanceBase = point.distanceFromStartMeters
                 }
-            } else if useSuppliedDistances {
+            } else if useSuppliedDistanceForSegment {
                 // Within a segment: compute absolute position using supplied distance,
                 // offset by the segment's base, added to segment start cumulative.
                 distance = segmentStartCumulative

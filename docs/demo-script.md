@@ -112,7 +112,7 @@ The app launches with two bundled synthetic demo runs pre-loaded.
   needed.
 - If you import your own runs, keep them in `local-workouts/` or
   `private-workouts/` (both are gitignored).
-- The app supports JSON, GPX, TCX, and basic FIT file imports.
+- The app supports JSON, GPX, TCX, and common FIT running-activity imports.
 - Comparison works best when both runs cover similar routes and distances.
 - For very different route lengths, warnings explain that only the common
   distance is compared.

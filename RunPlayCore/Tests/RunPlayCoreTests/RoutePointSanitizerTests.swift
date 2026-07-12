@@ -38,6 +38,26 @@ final class RoutePointSanitizerTests: XCTestCase {
         XCTAssertEqual(normalized[1].distanceFromStartMeters, 100, accuracy: 0.001)
     }
 
+    func testPerSegmentDistancePolicyKeepsValidSegmentsWhenAnotherIsMissingData() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let points = [
+            point(start, lat: 1.0, lon: 103.0, distance: 500, elapsed: 0, segment: 0),
+            point(start.addingTimeInterval(10), lat: 1.0001, lon: 103.0001, distance: 1_500, elapsed: 10, segment: 0),
+            point(start.addingTimeInterval(20), lat: 1.01, lon: 103.01, distance: .nan, elapsed: 20, segment: 1),
+            point(start.addingTimeInterval(30), lat: 1.0101, lon: 103.0101, distance: .nan, elapsed: 30, segment: 1)
+        ]
+
+        let normalized = RoutePointSanitizer.normalize(
+            points,
+            distancePolicy: .useSuppliedDistancesPerSegment
+        )
+
+        XCTAssertEqual(normalized[0].distanceFromStartMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(normalized[1].distanceFromStartMeters, 1_000, accuracy: 0.001)
+        XCTAssertEqual(normalized[2].distanceFromStartMeters, 1_000, accuracy: 0.001)
+        XCTAssertGreaterThan(normalized[3].distanceFromStartMeters, 1_000)
+    }
+
     func testSplitCalculationInterpolatesUnevenSamples() {
         let start = Date(timeIntervalSince1970: 1_000)
         let points = [
@@ -129,7 +149,8 @@ final class RoutePointSanitizerTests: XCTestCase {
         lon: Double,
         distance: Double,
         elapsed: Double,
-        heartRate: Double? = nil
+        heartRate: Double? = nil,
+        segment: Int = 0
     ) -> RoutePoint {
         RoutePoint(
             timestamp: timestamp,
@@ -137,7 +158,8 @@ final class RoutePointSanitizerTests: XCTestCase {
             longitude: lon,
             distanceFromStartMeters: distance,
             elapsedSeconds: elapsed,
-            heartRateBPM: heartRate
+            heartRateBPM: heartRate,
+            routeSegmentIndex: segment
         )
     }
 }
