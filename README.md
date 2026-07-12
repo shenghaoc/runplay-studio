@@ -96,7 +96,9 @@ swift build --target RunPlayCore
 swift test --filter RunPlayCoreTests
 ```
 
-See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
+See [AGENTS.md](AGENTS.md) for repository and agent-working rules, and
+[docs/architecture.md](docs/architecture.md) for detailed architecture and
+testing guidance.
 
 ---
 
