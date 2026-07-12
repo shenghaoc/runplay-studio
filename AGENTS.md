@@ -231,7 +231,7 @@ swift test --filter AppStateAsyncTests
 
 - Header and file CRCs are validated; a `0x0000` header CRC is treated as absent
 - Compressed timestamp headers are supported with 5-bit offset wrap handling (window size 32)
-- Multiple message types are decoded: record (global 20), session (18), event (21), lap (19), device_info (23), file_id (0)
+- Multiple message types are decoded and retained in source order: record (20), session (18), event (21), lap (19), device_info (23), file_id (0), and activity (34)
 - Session selection policy: prefer single GPS-bearing running session; reject multiple or non-running
 - Timer start/stop events create route segments so maps, replay, and analysis do not bridge paused gaps
 - Resource limits: 100 MB file size, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages

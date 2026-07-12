@@ -201,7 +201,7 @@ To build a local `.app` bundle:
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
 
-**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, standard record/session/lap/event/device/file-ID messages, and preserve timer pause/resume route gaps. The importer requires one unambiguous GPS-bearing running session when session metadata is present; without sessions, it retains a legacy single-activity fallback. Developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
+**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. The importer requires one unambiguous GPS-bearing running session when session metadata is present; without sessions, it retains a legacy single-activity fallback. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
 
 ## App Features
 

@@ -43,9 +43,9 @@ public enum FITError: Error, LocalizedError, Sendable {
 
 /// FIT field definition from definition message.
 public struct FITFieldDefinition: Sendable {
-    let fieldNumber: UInt8
-    let size: UInt8
-    let baseType: FITBaseType
+    public let fieldNumber: UInt8
+    public let size: UInt8
+    public let baseType: FITBaseType
 
     public init(fieldNumber: UInt8, size: UInt8, baseType: FITBaseType) {
         self.fieldNumber = fieldNumber
@@ -56,23 +56,41 @@ public struct FITFieldDefinition: Sendable {
 
 /// FIT definition message for a local message type.
 public struct FITDefinitionMessage: Sendable {
-    let architecture: UInt8      // 0=little-endian, 1=big-endian
-    let globalMessageNumber: UInt16
-    let fields: [FITFieldDefinition]
-    let developerFields: [FITDeveloperFieldDefinition]
+    public let architecture: UInt8      // 0=little-endian, 1=big-endian
+    public let globalMessageNumber: UInt16
+    public let fields: [FITFieldDefinition]
+    public let developerFields: [FITDeveloperFieldDefinition]
+
+    public init(
+        architecture: UInt8,
+        globalMessageNumber: UInt16,
+        fields: [FITFieldDefinition],
+        developerFields: [FITDeveloperFieldDefinition]
+    ) {
+        self.architecture = architecture
+        self.globalMessageNumber = globalMessageNumber
+        self.fields = fields
+        self.developerFields = developerFields
+    }
 
     /// Total data size in bytes for a data message using this definition.
-    var totalDataSize: Int {
+    public var totalDataSize: Int {
         fields.reduce(0) { $0 + Int($1.size) }
             + developerFields.reduce(0) { $0 + Int($1.size) }
     }
 }
 
 /// FIT developer field definition from a definition message.
-struct FITDeveloperFieldDefinition: Sendable {
-    let fieldNumber: UInt8
-    let size: UInt8
-    let developerDataIndex: UInt8
+public struct FITDeveloperFieldDefinition: Sendable {
+    public let fieldNumber: UInt8
+    public let size: UInt8
+    public let developerDataIndex: UInt8
+
+    public init(fieldNumber: UInt8, size: UInt8, developerDataIndex: UInt8) {
+        self.fieldNumber = fieldNumber
+        self.size = size
+        self.developerDataIndex = developerDataIndex
+    }
 }
 
 /// Parser for FIT binary files.
@@ -194,10 +212,14 @@ public struct FITParser {
                 lastTimestamp = timestamp
 
                 // Parse the data message (compressed headers don't include the timestamp field)
-                let timestampFieldSize = def.fields
-                    .first { $0.fieldNumber == 253 }
-                    .map { Int($0.size) } ?? 0
-                let dataSize = def.totalDataSize - timestampFieldSize
+                guard let timestampField = def.fields.first,
+                      timestampField.fieldNumber == FITRecordField.timestamp.rawValue,
+                      timestampField.size == 4,
+                      timestampField.baseType == .uint32
+                else {
+                    throw FITError.invalidCompressedDefinition
+                }
+                let dataSize = def.totalDataSize - Int(timestampField.size)
                 guard offset + dataSize <= dataEndOffset else {
                     throw FITError.unexpectedEndOfFile
                 }
@@ -237,119 +259,23 @@ public struct FITParser {
 
                 messageIndex += 1
 
-                switch def.globalMessageNumber {
-                case FITGlobalMessage.record.rawValue:
-                    var record = FITRecordMessage()
-                    record.timestamp = timestamp
-                    record.positionLat = fieldValues[FITRecordField.positionLat.rawValue]?.int32Value
-                    record.positionLong = fieldValues[FITRecordField.positionLong.rawValue]?.int32Value
-                    record.altitude = fieldValues[FITRecordField.altitude.rawValue]?.uint16Value
-                    record.enhancedAltitude = fieldValues[FITRecordField.enhancedAltitude.rawValue]?.uint32Value
-                    record.distance = fieldValues[FITRecordField.distance.rawValue]?.uint32Value
-                    record.speed = fieldValues[FITRecordField.speed.rawValue]?.uint16Value
-                    record.enhancedSpeed = fieldValues[FITRecordField.enhancedSpeed.rawValue]?.uint32Value
-                    record.heartRate = fieldValues[FITRecordField.heartRate.rawValue]?.uint8Value
-                    record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
-                    record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
-                    decodedFile.records.append(record)
-
-                case FITGlobalMessage.event.rawValue:
-                    var event = FITEventMessage()
-                    event.timestamp = timestamp
-                    event.event = fieldValues[FITEventField.event.rawValue]?.uint8Value
-                    event.eventType = fieldValues[FITEventField.eventType.rawValue]?.uint8Value
-                    event.eventGroup = fieldValues[FITEventField.eventGroup.rawValue]?.uint8Value
-                    decodedFile.events.append(event)
-
-                case FITGlobalMessage.fileID.rawValue:
-                    var msg = FITFileIDMessage()
-                    msg.type = fieldValues[FITFileIDField.type.rawValue]?.uint8Value
-                    msg.manufacturer = fieldValues[FITFileIDField.manufacturer.rawValue]?.uint16Value
-                    msg.product = fieldValues[FITFileIDField.product.rawValue]?.uint16Value
-                    msg.serialNumber = fieldValues[FITFileIDField.serialNumber.rawValue]?.uint32Value
-                    msg.timeCreated = fieldValues[FITFileIDField.timeCreated.rawValue]?.uint32Value
-                    msg.number = fieldValues[FITFileIDField.number.rawValue]?.uint16Value
-                    decodedFile.fileID = msg
-
-                case FITGlobalMessage.lap.rawValue:
-                    var lap = FITLapMessage()
-                    lap.timestamp = fieldValues[FITLapField.timestamp.rawValue]?.uint32Value
-                    lap.startTime = fieldValues[FITLapField.startTime.rawValue]?.uint32Value
-                    lap.startPositionLat = fieldValues[FITLapField.startPositionLat.rawValue]?.int32Value
-                    lap.startPositionLong = fieldValues[FITLapField.startPositionLong.rawValue]?.int32Value
-                    lap.endPositionLat = fieldValues[FITLapField.endPositionLat.rawValue]?.int32Value
-                    lap.endPositionLong = fieldValues[FITLapField.endPositionLong.rawValue]?.int32Value
-                    lap.totalElapsedTime = fieldValues[FITLapField.totalElapsedTime.rawValue]?.uint32Value
-                    lap.totalTimerTime = fieldValues[FITLapField.totalTimerTime.rawValue]?.uint32Value
-                    lap.totalDistance = fieldValues[FITLapField.totalDistance.rawValue]?.uint32Value
-                    lap.totalAscent = fieldValues[FITLapField.totalAscent.rawValue]?.uint16Value
-                    lap.totalDescent = fieldValues[FITLapField.totalDescent.rawValue]?.uint16Value
-                    lap.averageSpeed = fieldValues[FITLapField.averageSpeed.rawValue]?.uint16Value
-                    lap.maximumSpeed = fieldValues[FITLapField.maximumSpeed.rawValue]?.uint16Value
-                    lap.averageHeartRate = fieldValues[FITLapField.averageHeartRate.rawValue]?.uint8Value
-                    lap.maximumHeartRate = fieldValues[FITLapField.maximumHeartRate.rawValue]?.uint8Value
-                    lap.averageCadence = fieldValues[FITLapField.averageCadence.rawValue]?.uint8Value
-                    lap.event = fieldValues[FITLapField.event.rawValue]?.uint8Value
-                    lap.eventType = fieldValues[FITLapField.eventType.rawValue]?.uint8Value
-                    lap.eventGroup = fieldValues[FITLapField.eventGroup.rawValue]?.uint8Value
-                    lap.lapTrigger = fieldValues[FITLapField.lapTrigger.rawValue]?.uint8Value
-                    lap.sport = fieldValues[FITLapField.sport.rawValue]?.uint8Value
-                    decodedFile.laps.append(lap)
-
-                case FITGlobalMessage.session.rawValue:
-                    var session = FITSessionMessage()
-                    session.timestamp = fieldValues[FITSessionField.timestamp.rawValue]?.uint32Value
-                    session.startTime = fieldValues[FITSessionField.startTime.rawValue]?.uint32Value
-                    session.startPositionLat = fieldValues[FITSessionField.startPositionLat.rawValue]?.int32Value
-                    session.startPositionLong = fieldValues[FITSessionField.startPositionLong.rawValue]?.int32Value
-                    session.sport = fieldValues[FITSessionField.sport.rawValue]?.uint8Value
-                    session.subSport = fieldValues[FITSessionField.subSport.rawValue]?.uint8Value
-                    session.totalElapsedTime = fieldValues[FITSessionField.totalElapsedTime.rawValue]?.uint32Value
-                    session.totalTimerTime = fieldValues[FITSessionField.totalTimerTime.rawValue]?.uint32Value
-                    session.totalDistance = fieldValues[FITSessionField.totalDistance.rawValue]?.uint32Value
-                    session.totalAscent = fieldValues[FITSessionField.totalAscent.rawValue]?.uint16Value
-                    session.totalDescent = fieldValues[FITSessionField.totalDescent.rawValue]?.uint16Value
-                    session.averageSpeed = fieldValues[FITSessionField.averageSpeed.rawValue]?.uint16Value
-                    session.maximumSpeed = fieldValues[FITSessionField.maximumSpeed.rawValue]?.uint16Value
-                    session.averageHeartRate = fieldValues[FITSessionField.averageHeartRate.rawValue]?.uint8Value
-                    session.maximumHeartRate = fieldValues[FITSessionField.maximumHeartRate.rawValue]?.uint8Value
-                    session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
-                    session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
-                    session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
-                    session.eventGroup = fieldValues[FITSessionField.eventGroup.rawValue]?.uint8Value
-                    session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
-                    session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
-                    session.necLat = fieldValues[FITSessionField.necLat.rawValue]?.int32Value
-                    session.swcLong = fieldValues[FITSessionField.swcLong.rawValue]?.int32Value
-                    session.swcLat = fieldValues[FITSessionField.swcLat.rawValue]?.int32Value
-                    decodedFile.sessions.append(session)
-
-                case FITGlobalMessage.activity.rawValue:
-                    // Activity messages parsed but not stored separately in this version
-                    break
-
-                case FITGlobalMessage.deviceInfo.rawValue:
-                    var deviceInfo = FITDeviceInfoMessage()
-                    deviceInfo.timestamp = fieldValues[FITDeviceInfoField.timestamp.rawValue]?.uint32Value
-                    deviceInfo.serialNumber = fieldValues[FITDeviceInfoField.serialNumber.rawValue]?.uint32Value
-                    deviceInfo.manufacturer = fieldValues[FITDeviceInfoField.manufacturer.rawValue]?.uint16Value
-                    deviceInfo.product = fieldValues[FITDeviceInfoField.product.rawValue]?.uint16Value
-                    deviceInfo.softwareVersion = fieldValues[FITDeviceInfoField.softwareVersion.rawValue]?.uint16Value
-                    deviceInfo.hardwareVersion = fieldValues[FITDeviceInfoField.hardwareVersion.rawValue]?.uint8Value
-                    deviceInfo.deviceIndex = fieldValues[FITDeviceInfoField.deviceIndex.rawValue]?.uint8Value
-                    deviceInfo.deviceType = fieldValues[FITDeviceInfoField.deviceType.rawValue]?.uint8Value
-                    deviceInfo.productName = fieldValues[FITDeviceInfoField.productName.rawValue]?.stringValue
-                    decodedFile.deviceInfo.append(deviceInfo)
-
-                default:
-                    // Unknown messages are skipped silently
-                    break
-                }
+                appendDecodedMessage(
+                    globalMessageNumber: def.globalMessageNumber,
+                    fieldValues: fieldValues,
+                    timestampOverride: timestamp,
+                    decodedFile: &decodedFile
+                )
             } else {
                 // Normal or definition message
                 let isDefinition = (recordHeader & 0x40) != 0
                 let hasDeveloperData = isDefinition && (recordHeader & 0x20) != 0
                 let localType = recordHeader & 0x0F
+
+                guard recordHeader & 0x10 == 0,
+                      isDefinition || recordHeader & 0x20 == 0
+                else {
+                    throw FITError.corruptedData("FIT record header has reserved bits set")
+                }
 
                 if isDefinition {
                     definitionCount += 1
@@ -465,7 +391,9 @@ public struct FITParser {
             throw FITError.unexpectedEndOfFile
         }
 
-        let _ = data[offset] // reserved byte
+        guard data[offset] == 0 else {
+            throw FITError.corruptedData("FIT definition reserved byte must be zero")
+        }
         offset += 1
 
         let architecture = data[offset]
@@ -486,8 +414,10 @@ public struct FITParser {
         offset += 2
 
         let fieldCount = Int(data[offset])
-        guard fieldCount <= maxFieldCount else {
-            throw FITError.corruptedData("Field count \(fieldCount) exceeds maximum \(maxFieldCount)")
+        guard fieldCount > 0, fieldCount <= maxFieldCount else {
+            throw FITError.corruptedData(
+                "Field count must be between 1 and \(maxFieldCount); received \(fieldCount)"
+            )
         }
         offset += 1
 
@@ -534,9 +464,9 @@ public struct FITParser {
             }
 
             let developerFieldCount = Int(data[offset])
-            guard developerFieldCount <= maxDeveloperFieldCount else {
+            guard developerFieldCount > 0, developerFieldCount <= maxDeveloperFieldCount else {
                 throw FITError.corruptedData(
-                    "Developer field count \(developerFieldCount) exceeds maximum \(maxDeveloperFieldCount)"
+                    "Developer field count must be between 1 and \(maxDeveloperFieldCount); received \(developerFieldCount)"
                 )
             }
             offset += 1
@@ -629,7 +559,6 @@ public struct FITParser {
             hasBaselineTimestamp = true
         }
 
-        // Build typed message based on global message number
         messageIndex += 1
         guard messageIndex <= maximumDecodedMessageCount else {
             throw FITError.corruptedData(
@@ -637,7 +566,27 @@ public struct FITParser {
             )
         }
 
-        switch definition.globalMessageNumber {
+        appendDecodedMessage(
+            globalMessageNumber: definition.globalMessageNumber,
+            fieldValues: fieldValues,
+            timestampOverride: nil,
+            decodedFile: &decodedFile
+        )
+    }
+
+    /// Append a supported standard message to its typed collection and the
+    /// source-order collection. Compressed records pass their timestamp through
+    /// `timestampOverride` because the header replaces field 253 in the payload.
+    private static func appendDecodedMessage(
+        globalMessageNumber: UInt16,
+        fieldValues: [UInt8: FITFieldValue],
+        timestampOverride: UInt32?,
+        decodedFile: inout FITDecodedFile
+    ) {
+        let timestamp = timestampOverride
+            ?? fieldValues[FITRecordField.timestamp.rawValue]?.uint32Value
+
+        switch globalMessageNumber {
         case FITGlobalMessage.fileID.rawValue:
             var msg = FITFileIDMessage()
             msg.type = fieldValues[FITFileIDField.type.rawValue]?.uint8Value
@@ -647,10 +596,11 @@ public struct FITParser {
             msg.timeCreated = fieldValues[FITFileIDField.timeCreated.rawValue]?.uint32Value
             msg.number = fieldValues[FITFileIDField.number.rawValue]?.uint16Value
             decodedFile.fileID = msg
+            decodedFile.orderedMessages.append(.fileID(msg))
 
         case FITGlobalMessage.record.rawValue:
             var record = FITRecordMessage()
-            record.timestamp = fieldValues[FITRecordField.timestamp.rawValue]?.uint32Value
+            record.timestamp = timestamp
             record.positionLat = fieldValues[FITRecordField.positionLat.rawValue]?.int32Value
             record.positionLong = fieldValues[FITRecordField.positionLong.rawValue]?.int32Value
             record.altitude = fieldValues[FITRecordField.altitude.rawValue]?.uint16Value
@@ -662,18 +612,20 @@ public struct FITParser {
             record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
             record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
             decodedFile.records.append(record)
+            decodedFile.orderedMessages.append(.record(record))
 
         case FITGlobalMessage.event.rawValue:
             var event = FITEventMessage()
-            event.timestamp = fieldValues[FITEventField.timestamp.rawValue]?.uint32Value
+            event.timestamp = timestamp
             event.event = fieldValues[FITEventField.event.rawValue]?.uint8Value
             event.eventType = fieldValues[FITEventField.eventType.rawValue]?.uint8Value
             event.eventGroup = fieldValues[FITEventField.eventGroup.rawValue]?.uint8Value
             decodedFile.events.append(event)
+            decodedFile.orderedMessages.append(.event(event))
 
         case FITGlobalMessage.lap.rawValue:
             var lap = FITLapMessage()
-            lap.timestamp = fieldValues[FITLapField.timestamp.rawValue]?.uint32Value
+            lap.timestamp = timestamp
             lap.startTime = fieldValues[FITLapField.startTime.rawValue]?.uint32Value
             lap.startPositionLat = fieldValues[FITLapField.startPositionLat.rawValue]?.int32Value
             lap.startPositionLong = fieldValues[FITLapField.startPositionLong.rawValue]?.int32Value
@@ -695,10 +647,11 @@ public struct FITParser {
             lap.lapTrigger = fieldValues[FITLapField.lapTrigger.rawValue]?.uint8Value
             lap.sport = fieldValues[FITLapField.sport.rawValue]?.uint8Value
             decodedFile.laps.append(lap)
+            decodedFile.orderedMessages.append(.lap(lap))
 
         case FITGlobalMessage.session.rawValue:
             var session = FITSessionMessage()
-            session.timestamp = fieldValues[FITSessionField.timestamp.rawValue]?.uint32Value
+            session.timestamp = timestamp
             session.startTime = fieldValues[FITSessionField.startTime.rawValue]?.uint32Value
             session.startPositionLat = fieldValues[FITSessionField.startPositionLat.rawValue]?.int32Value
             session.startPositionLong = fieldValues[FITSessionField.startPositionLong.rawValue]?.int32Value
@@ -723,14 +676,24 @@ public struct FITParser {
             session.swcLong = fieldValues[FITSessionField.swcLong.rawValue]?.int32Value
             session.swcLat = fieldValues[FITSessionField.swcLat.rawValue]?.int32Value
             decodedFile.sessions.append(session)
+            decodedFile.orderedMessages.append(.session(session))
 
         case FITGlobalMessage.activity.rawValue:
-            // Activity messages parsed but not stored separately in this version
-            break
+            var activity = FITActivityMessage()
+            activity.timestamp = timestamp
+            activity.totalTimerTime = fieldValues[FITActivityField.totalTimerTime.rawValue]?.uint32Value
+            activity.localTimestamp = fieldValues[FITActivityField.localTimestamp.rawValue]?.uint32Value
+            activity.numSessions = fieldValues[FITActivityField.numSessions.rawValue]?.uint16Value
+            activity.type = fieldValues[FITActivityField.type.rawValue]?.uint8Value
+            activity.event = fieldValues[FITActivityField.event.rawValue]?.uint8Value
+            activity.eventType = fieldValues[FITActivityField.eventType.rawValue]?.uint8Value
+            activity.eventGroup = fieldValues[FITActivityField.eventGroup.rawValue]?.uint8Value
+            decodedFile.activities.append(activity)
+            decodedFile.orderedMessages.append(.activity(activity))
 
         case FITGlobalMessage.deviceInfo.rawValue:
             var deviceInfo = FITDeviceInfoMessage()
-            deviceInfo.timestamp = fieldValues[FITDeviceInfoField.timestamp.rawValue]?.uint32Value
+            deviceInfo.timestamp = timestamp
             deviceInfo.serialNumber = fieldValues[FITDeviceInfoField.serialNumber.rawValue]?.uint32Value
             deviceInfo.manufacturer = fieldValues[FITDeviceInfoField.manufacturer.rawValue]?.uint16Value
             deviceInfo.product = fieldValues[FITDeviceInfoField.product.rawValue]?.uint16Value
@@ -740,6 +703,7 @@ public struct FITParser {
             deviceInfo.deviceType = fieldValues[FITDeviceInfoField.deviceType.rawValue]?.uint8Value
             deviceInfo.productName = fieldValues[FITDeviceInfoField.productName.rawValue]?.stringValue
             decodedFile.deviceInfo.append(deviceInfo)
+            decodedFile.orderedMessages.append(.deviceInfo(deviceInfo))
 
         default:
             // Unknown messages are skipped silently

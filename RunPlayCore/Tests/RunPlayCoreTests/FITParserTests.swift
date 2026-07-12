@@ -432,6 +432,83 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(decoded.events[0].timestamp, baselineTimestamp + 5)
     }
 
+    func testCompressedSessionRetainsReconstructedTimestamp() throws {
+        var content = Data()
+
+        // Local type 0 establishes the compressed-timestamp baseline.
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x14, 0x00]) // record
+        content.append(2)
+        Self.writeField(253, size: 4, type: 134, to: &content)
+        Self.writeField(0, size: 4, type: 133, to: &content)
+
+        // Local type 1 is a session whose timestamp will be compressed.
+        content.append(0x41)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x12, 0x00]) // session
+        content.append(3)
+        Self.writeField(253, size: 4, type: 134, to: &content)
+        Self.writeField(2, size: 4, type: 134, to: &content)
+        Self.writeField(5, size: 1, type: 2, to: &content)
+
+        let baselineTimestamp: UInt32 = 1_000
+        content.append(0x00)
+        Self.append(baselineTimestamp, to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+
+        // Baseline's low five bits are 8, so offset 18 reconstructs +10 seconds.
+        content.append(0x80 | (1 << 5) | 18)
+        Self.append(UInt32(900), to: &content)
+        content.append(FITSport.running.rawValue)
+
+        let decoded = try FITParser.parse(data: Self.fitData(rawContent: content))
+
+        XCTAssertEqual(decoded.sessions.count, 1)
+        XCTAssertEqual(decoded.sessions[0].timestamp, 1_010)
+        XCTAssertEqual(decoded.sessions[0].startTime, 900)
+        XCTAssertEqual(decoded.sessions[0].sport, FITSport.running.rawValue)
+        guard case .session(let session) = decoded.orderedMessages.last else {
+            return XCTFail("Expected compressed session to be retained in source order")
+        }
+        XCTAssertEqual(session.timestamp, 1_010)
+    }
+
+    func testCompressedHeaderRejectsDefinitionWithoutLeadingTimestamp() {
+        var content = Data()
+
+        // Local type 0 establishes a timestamp baseline.
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x14, 0x00])
+        content.append(2)
+        Self.writeField(253, size: 4, type: 134, to: &content)
+        Self.writeField(0, size: 4, type: 133, to: &content)
+
+        // Local type 1 has no timestamp field and cannot use a compressed header.
+        content.append(0x41)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x15, 0x00])
+        content.append(1)
+        Self.writeField(0, size: 1, type: 2, to: &content)
+
+        content.append(0x00)
+        Self.append(UInt32(1_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+
+        content.append(0x80 | (1 << 5) | 10)
+
+        XCTAssertThrowsError(try FITParser.parse(data: Self.fitData(rawContent: content))) { error in
+            guard case FITError.invalidCompressedDefinition = error else {
+                return XCTFail("Expected invalidCompressedDefinition, got \(error)")
+            }
+        }
+    }
+
     // MARK: - Multi-Message Type Tests
 
     func testFileIDMessageIsParsed() throws {
@@ -546,6 +623,47 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(decoded.events[0].event, 0) // timer
         XCTAssertEqual(decoded.events[0].eventType, 0) // start
         XCTAssertEqual(decoded.events[0].timerEventType, .start)
+    }
+
+    func testActivityMessageAndSourceOrderAreRetained() throws {
+        var content = Data()
+
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x22, 0x00]) // global msg 34 (activity)
+        content.append(4)
+        Self.writeField(253, size: 4, type: 134, to: &content)
+        Self.writeField(0, size: 4, type: 134, to: &content)
+        Self.writeField(2, size: 2, type: 132, to: &content)
+        Self.writeField(3, size: 1, type: 0, to: &content)
+
+        content.append(0x00)
+        Self.append(UInt32(1_000_100), to: &content)
+        Self.append(UInt32(60_000), to: &content)
+        let sessionCount: UInt16 = 1
+        content.append(contentsOf: withUnsafeBytes(of: sessionCount.littleEndian) { Array($0) })
+        content.append(0) // manual activity type
+
+        Self.writeDefinition(to: &content)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let decoded = try FITParser.parse(data: Self.fitData(rawContent: content))
+
+        XCTAssertEqual(decoded.activities.count, 1)
+        XCTAssertEqual(decoded.activities[0].timestamp, 1_000_100)
+        XCTAssertEqual(decoded.activities[0].totalTimerTime, 60_000)
+        XCTAssertEqual(decoded.activities[0].numSessions, 1)
+        XCTAssertEqual(decoded.orderedMessages.count, 2)
+        guard case .activity = decoded.orderedMessages[0],
+              case .record = decoded.orderedMessages[1]
+        else {
+            return XCTFail("Expected activity then record source order")
+        }
     }
 
     func testDeviceInfoMessageIsParsed() throws {
@@ -688,30 +806,48 @@ final class FITParserTests: XCTestCase {
         Self.writeField(78, size: 4, type: 134, to: &content)  // enhanced_altitude (uint32)
         Self.writeField(73, size: 4, type: 134, to: &content)  // enhanced_speed (uint32)
 
-        // Data message with enhanced altitude = 2550 (means (2550/5) - 500 = 10 meters)
-        // and enhanced speed = 3500 (means 3500/1000 = 3.5 m/s)
+        // Values exceed UInt16 so this catches any accidental truncation of the
+        // profile-defined UInt32 enhanced fields.
         content.append(0x00)
         Self.append(UInt32(1_000_000), to: &content)
         Self.append(Self.semicircles(37.7749), to: &content)
         Self.append(Self.semicircles(-122.4194), to: &content)
         Self.append(UInt32(0), to: &content)
-        Self.append(UInt32(2550), to: &content) // enhanced_altitude
-        Self.append(UInt32(3500), to: &content) // enhanced_speed
+        Self.append(UInt32(100_000), to: &content) // enhanced_altitude
+        Self.append(UInt32(200_000), to: &content) // enhanced_speed
 
         let data = Self.fitData(rawContent: content)
         let decoded = try FITParser.parse(data: data)
 
         XCTAssertEqual(decoded.records.count, 1)
-        XCTAssertEqual(decoded.records[0].enhancedAltitude, 2550)
-        XCTAssertEqual(decoded.records[0].enhancedSpeed, 3500)
+        XCTAssertEqual(decoded.records[0].enhancedAltitude, 100_000)
+        XCTAssertEqual(decoded.records[0].enhancedSpeed, 200_000)
 
         // Verify the decoder uses enhanced values
         let points = FITDecoder.decode(records: decoded.records)
         XCTAssertEqual(points.count, 1)
-        // enhanced altitude: (2550 / 5.0) - 500 = 10.0
-        XCTAssertEqual(points[0].altitudeMeters ?? 0, 10.0, accuracy: 0.01)
-        // enhanced speed: 3500 / 1000.0 = 3.5
-        XCTAssertEqual(points[0].speedMetersPerSecond ?? 0, 3.5, accuracy: 0.01)
+        // enhanced altitude: (100000 / 5.0) - 500 = 19500.0
+        XCTAssertEqual(points[0].altitudeMeters ?? 0, 19_500.0, accuracy: 0.01)
+        // enhanced speed: 200000 / 1000.0 = 200.0
+        XCTAssertEqual(points[0].speedMetersPerSecond ?? 0, 200.0, accuracy: 0.01)
+    }
+
+    func testInvalidEnhancedMetricFallsBackToLegacyValue() {
+        var record = Self.record(
+            timestamp: 1_000,
+            latDegrees: 37.7749,
+            lonDegrees: -122.4194,
+            distanceMeters: 0
+        )
+        record.enhancedAltitude = FITParser.invalidUint32
+        record.altitude = 2_550 // 10m
+        record.enhancedSpeed = FITParser.invalidUint32
+        record.speed = 3_500 // 3.5m/s
+
+        let points = FITDecoder.decode(records: [record])
+
+        XCTAssertEqual(points[0].altitudeMeters, 10.0)
+        XCTAssertEqual(points[0].speedMetersPerSecond, 3.5)
     }
 
     // MARK: - Session Selection Tests
@@ -740,6 +876,27 @@ final class FITParserTests: XCTestCase {
 
         let points = try FITDecoder.decode(decodedFile: decodedFile)
         XCTAssertEqual(points.count, 5)
+    }
+
+    func testSessionAssociationDerivesStartTimeFromElapsedDuration() throws {
+        var decodedFile = FITDecodedFile()
+        var session = FITSessionMessage()
+        session.sport = FITSport.running.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        session.timestamp = 1_000_100
+        session.totalElapsedTime = 100_000 // milliseconds
+        decodedFile.sessions = [session]
+
+        decodedFile.records = [
+            Self.record(timestamp: 1_000_000, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            Self.record(timestamp: 1_000_100, latDegrees: 37.7750, lonDegrees: -122.4195, distanceMeters: 20),
+            Self.record(timestamp: 1_000_101, latDegrees: 37.7751, lonDegrees: -122.4196, distanceMeters: 40)
+        ]
+
+        let points = try FITDecoder.decode(decodedFile: decodedFile)
+
+        XCTAssertEqual(points.count, 2)
     }
 
     func testSessionSelectionRejectsMultipleRunningSessions() throws {
@@ -779,6 +936,23 @@ final class FITParserTests: XCTestCase {
             guard case WorkoutImportError.parsingError(let message) = error else {
                 XCTFail("Expected parsingError, got \(error)")
                 return
+            }
+            XCTAssertTrue(message.contains("non-running"))
+        }
+    }
+
+    func testSessionSelectionRejectsHikingSport() throws {
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.hiking.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        decodedFile.sessions = [session]
+
+        XCTAssertThrowsError(try FITDecoder.decode(decodedFile: decodedFile)) { error in
+            guard case WorkoutImportError.parsingError(let message) = error else {
+                return XCTFail("Expected parsingError, got \(error)")
             }
             XCTAssertTrue(message.contains("non-running"))
         }

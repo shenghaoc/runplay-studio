@@ -10,6 +10,9 @@ public struct FITDecodedFile: Sendable {
     public var laps: [FITLapMessage]
     public var events: [FITEventMessage]
     public var records: [FITRecordMessage]
+    public var activities: [FITActivityMessage]
+    /// All supported standard messages in their original on-disk order.
+    public var orderedMessages: [FITOrderedMessage]
 
     public init(
         fileID: FITFileIDMessage? = nil,
@@ -17,7 +20,9 @@ public struct FITDecodedFile: Sendable {
         sessions: [FITSessionMessage] = [],
         laps: [FITLapMessage] = [],
         events: [FITEventMessage] = [],
-        records: [FITRecordMessage] = []
+        records: [FITRecordMessage] = [],
+        activities: [FITActivityMessage] = [],
+        orderedMessages: [FITOrderedMessage] = []
     ) {
         self.fileID = fileID
         self.deviceInfo = deviceInfo
@@ -25,7 +30,21 @@ public struct FITDecodedFile: Sendable {
         self.laps = laps
         self.events = events
         self.records = records
+        self.activities = activities
+        self.orderedMessages = orderedMessages
     }
+}
+
+/// A supported standard FIT message, retained in source order for consumers
+/// that need to associate records, timer events, and summary metadata.
+public enum FITOrderedMessage: Sendable {
+    case fileID(FITFileIDMessage)
+    case record(FITRecordMessage)
+    case event(FITEventMessage)
+    case lap(FITLapMessage)
+    case session(FITSessionMessage)
+    case activity(FITActivityMessage)
+    case deviceInfo(FITDeviceInfoMessage)
 }
 
 // MARK: - File ID (Global Message 0)
@@ -402,11 +421,6 @@ public enum FITSport: UInt8, Sendable {
 
     /// Whether this sport represents a running activity.
     public var isRunning: Bool {
-        switch self {
-        case .running, .walking, .hiking, .generic, .training, .all:
-            return true
-        default:
-            return false
-        }
+        self == .running
     }
 }

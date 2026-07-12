@@ -33,8 +33,16 @@ public struct FITDecoder {
         switch selection {
         case .selected(let session, _):
             // Filter records to those within the session timeframe
-            records = filterRecords(decodedFile.records, for: session)
-            let sessionEvents = filterEvents(decodedFile.events, for: session)
+            records = try filterRecords(
+                decodedFile.records,
+                for: session,
+                totalSessionCount: decodedFile.sessions.count
+            )
+            let sessionEvents = try filterEvents(
+                decodedFile.events,
+                for: session,
+                totalSessionCount: decodedFile.sessions.count
+            )
             // Build segments from timer events
             segments = buildSegments(
                 events: sessionEvents,
@@ -96,11 +104,6 @@ public struct FITDecoder {
             return []
         }
 
-        let hasCompleteDistanceSeries = validRecords.allSatisfy { record in
-            guard let distance = record.distance else { return false }
-            return distance != FITParser.invalidUint32
-        }
-
         var routePoints: [RoutePoint] = []
         routePoints.reserveCapacity(validRecords.count)
 
@@ -131,7 +134,7 @@ public struct FITDecoder {
             let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
-            } ?? 0
+            } ?? .nan
 
             let point = RoutePoint(
                 timestamp: timestamp,
@@ -149,7 +152,7 @@ public struct FITDecoder {
 
         return RoutePointSanitizer.normalize(
             routePoints,
-            distancePolicy: hasCompleteDistanceSeries ? .useSuppliedDistancesWhenValid : .computeFromCoordinates
+            distancePolicy: .useSuppliedDistancesPerSegment
         )
     }
 
@@ -171,7 +174,7 @@ public struct FITDecoder {
 
             // Find which session(s) this record belongs to
             for (sessionIndex, session) in decodedFile.sessions.enumerated() {
-                guard let sessionStart = session.startTime else { continue }
+            guard let sessionStart = sessionStartTime(for: session) else { continue }
 
                 // Check if record is within the session timeframe
                 if let sessionEnd = session.timestamp {
@@ -252,10 +255,15 @@ public struct FITDecoder {
     /// Filter records to those within the session timeframe.
     private static func filterRecords(
         _ records: [FITRecordMessage],
-        for session: FITSessionMessage
-    ) -> [FITRecordMessage] {
-        // If session has no start time, return all records
-        guard let sessionStart = session.startTime else {
+        for session: FITSessionMessage,
+        totalSessionCount: Int
+    ) throws -> [FITRecordMessage] {
+        guard let sessionStart = sessionStartTime(for: session) else {
+            guard totalSessionCount == 1 else {
+                throw WorkoutImportError.parsingError(
+                    "Cannot safely associate FIT records with one of multiple sessions without a session start time"
+                )
+            }
             return records
         }
 
@@ -272,9 +280,15 @@ public struct FITDecoder {
     /// Keep only timestamped events that can belong to the selected session.
     private static func filterEvents(
         _ events: [FITEventMessage],
-        for session: FITSessionMessage
-    ) -> [FITEventMessage] {
-        guard let sessionStart = session.startTime else {
+        for session: FITSessionMessage,
+        totalSessionCount: Int
+    ) throws -> [FITEventMessage] {
+        guard let sessionStart = sessionStartTime(for: session) else {
+            guard totalSessionCount == 1 else {
+                throw WorkoutImportError.parsingError(
+                    "Cannot safely associate FIT timer events with one of multiple sessions without a session start time"
+                )
+            }
             return events
         }
 
@@ -284,6 +298,25 @@ public struct FITDecoder {
             if let sessionEnd = session.timestamp, timestamp > sessionEnd { return false }
             return true
         }
+    }
+
+    /// FIT session messages normally include `start_time`; when they do not,
+    /// derive it from the end timestamp and profile-scaled total elapsed time.
+    /// Returning nil keeps multi-session imports fail-safe rather than merging
+    /// records that cannot be attributed to one session.
+    private static func sessionStartTime(for session: FITSessionMessage) -> UInt32? {
+        if let startTime = session.startTime {
+            return startTime
+        }
+        guard let endTime = session.timestamp,
+              let totalElapsedMilliseconds = session.totalElapsedTime
+        else {
+            return nil
+        }
+
+        let elapsedSeconds = totalElapsedMilliseconds / 1_000
+        guard elapsedSeconds <= endTime else { return nil }
+        return endTime - elapsedSeconds
     }
 
     // MARK: - Route Segmentation from Timer Events
@@ -430,12 +463,6 @@ public struct FITDecoder {
             return []
         }
 
-        let hasCompleteDistanceSeries = validRecords.allSatisfy { entry in
-            let record = entry.record
-            guard let distance = record.distance else { return false }
-            return distance != FITParser.invalidUint32
-        }
-
         var routePoints: [RoutePoint] = []
         routePoints.reserveCapacity(validRecords.count)
 
@@ -467,7 +494,7 @@ public struct FITDecoder {
             let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
-            } ?? 0
+            } ?? .nan
 
             let point = RoutePoint(
                 timestamp: timestamp,
@@ -486,7 +513,7 @@ public struct FITDecoder {
 
         return RoutePointSanitizer.normalize(
             routePoints,
-            distancePolicy: hasCompleteDistanceSeries ? .useSuppliedDistancesWhenValid : .computeFromCoordinates
+            distancePolicy: .useSuppliedDistancesPerSegment
         )
     }
 
