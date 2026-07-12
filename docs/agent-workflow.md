@@ -1,14 +1,12 @@
 # RunPlay Studio — Agent Workflow
 
-This document contains the durable procedure for coding agents. It complements
-[AGENTS.md](../AGENTS.md), which is the concise canonical instruction file.
-Use pull-request descriptions and comments—not committed documentation—for
-task-specific handoffs, current branch state, and verification results.
+This document is the durable procedure behind the concise canonical
+[AGENTS.md](../AGENTS.md). Use the live PR, `git log`, and CI for task-specific
+handoff and current verification state; do not commit status-only documents.
 
-## Start Safely
+## Start A Task
 
-Begin every task by checking the exact repository state. For a pull-request
-task, use its number instead of assuming the current branch is correct.
+Inspect the exact assigned branch or PR before editing:
 
 ```bash
 git status --short
@@ -18,90 +16,86 @@ git log --oneline -10
 git diff origin/main...HEAD --stat
 ```
 
-Read the affected code, tests, and the relevant focused documentation before
-editing. Treat `Package.swift`, source, tests, and CI as authoritative if they
-conflict with prose.
+Read the affected source, tests, and focused references before changing code.
+Run the appropriate `./scripts/verify.sh` mode before and after meaningful
+changes. If the worktree is not clean, preserve unexplained changes and clarify
+ownership instead of discarding them.
 
-## Parallel Agent Isolation
+## Isolate Parallel Work
 
-One agent owns one branch and one worktree. Start from fresh `origin/main`
-unless continuing the exact pull request assigned to that agent.
+Create a dedicated worktree and branch from fresh `origin/main` for a new task:
 
 ```bash
 git fetch origin
-git worktree add -b <type>/<short-task> ../runplay-studio-<task> origin/main
-cd ../runplay-studio-<task>
+git worktree add -b <type>/<short-task> ../runplay-<task> origin/main
+cd ../runplay-<task>
 ```
 
-- Never share a working tree or branch with another agent.
-- Do not reset, rebase, force-push, or clean files owned by another agent.
-- Keep each PR focused on one concern. Use a new branch and worktree for an
-  independent follow-up.
-- Before publishing a rebased branch, confirm its merge base and use
-  `git push --force-with-lease`, never an unguarded force push.
-
-## Find The Right Detail
-
-| Need | Source |
-| --- | --- |
-| Module ownership, data flow, and framework boundaries | [Architecture](architecture.md) |
-| Import support and format limitations | [Import formats](import-formats.md) |
-| GUI and release-facing checks | [Manual testing](manual-testing.md) |
-| Local-only product policy | [Privacy](privacy.md) and [private-data policy](private-data.md) |
-| Product sequencing | [Phase plan](phase-plan.md) |
-
-Do not copy detailed implementation procedures into `AGENTS.md` or vendor
-adapter files. Link to the focused document instead.
+- One task uses one branch, one worktree, and one PR.
+- Open a draft PR early. Declare scope, non-goals, affected files or layers,
+  dependent PRs, and manual verification needs.
+- Keep shared coordination files to one active owner at a time: `AGENTS.md`,
+  `Package.swift`, CI, `AppState`, shared architecture docs, and Kiro steering.
+- Do not reset, rebase, force-push, amend, delete, or clean work owned by
+  another agent. Rebase only your own branch; use `--force-with-lease` only
+  after confirming its merge base.
+- Do not opportunistically refactor outside the requested scope.
 
 ## Change And Validate
 
-Choose validation based on the changed surface. Start narrow, then run the
-full warning-clean package gate when shared behavior, package configuration,
-CI, or cross-layer integration is affected.
+Use the shared verification interface:
 
 ```bash
-# Core-only work
-swift build --target RunPlayCore -Xswiftc -warnings-as-errors
-swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
-
-# Platform-only work (macOS)
-swift build --target RunPlayPlatform -Xswiftc -warnings-as-errors
-swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors
-
-# Full package gate (macOS)
+./scripts/verify.sh agent-config
+./scripts/verify.sh core
+./scripts/verify.sh platform
+./scripts/verify.sh full
 git diff --check
-swift build -Xswiftc -warnings-as-errors
-swift test -Xswiftc -warnings-as-errors
 ```
 
-Run the applicable manual checklist for user-visible changes. Do not claim GUI
-verification without performing it; report the command and the exact boundary
-instead.
+Run the narrowest mode first. Use `full` for Studio, package, CI, or cross-layer
+changes. Run [manual testing](manual-testing.md) for user-visible changes, and
+state precisely what was and was not manually verified.
 
-## Handoff And Publish
+Focused references:
 
-Use the PR body as the durable task handoff for that PR:
+| Need | Source |
+| --- | --- |
+| Product purpose and local build | [README](../README.md) |
+| Module boundaries and data flow | [Architecture](architecture.md) |
+| Import behavior and limits | [Import formats](import-formats.md) |
+| Private-data hygiene | [Private-data policy](private-data.md) |
+| Planning context | [Phase plan](phase-plan.md) |
 
-- objective and explicit non-goals;
-- changed files and behavior;
-- validation actually run and its result;
-- known limitations, follow-up work, or manual checks still needed.
+## Kiro
 
-Use PR comments for interim coordination. Do not add a committed document only
-to record a commit hash, a check result, a branch name, or temporary task
-status. `git log`, the live PR, and CI are the current-state sources.
+Kiro automatically loads root `AGENTS.md`. Its foundational steering files use
+scoped inclusion to provide Kiro-specific routing and live workspace references;
+they are not a second policy system.
 
-Before requesting review, inspect the final diff, confirm the PR points at the
-intended head, and ensure the description matches the actual change.
+Specs are task artifacts, not canonical policy. One spec belongs to one branch and one PR; keep its requirements, design, and tasks aligned with that PR's scope. Do not create or update a task spec on `main`, use a spec to coordinate unrelated PRs, or put private data, secrets, transient hashes, or handoff status in it. Checked task boxes do not prove completion—tests and CI do. Parallel Kiro tasks must not modify the same shared files concurrently.
 
-## Record Reusable Learnings
+## Handoff, Takeover, And Cleanup
 
-Keep reusable learnings under `.jules/`:
+Use the PR body as the task handoff. It must include:
 
-- `bolt.md` — performance and scalability;
-- `palette.md` — accessibility and interaction design;
-- `sentinel.md` — security and data safety.
+- objective, explicit non-goals, and affected layers;
+- changed behavior and files;
+- exact validation run and its outcome;
+- manual checks, risks, rollback, and dependent or conflicting PRs.
 
-Add an entry only after a completed change reveals a durable rule. Use a date,
-the lesson, and the concrete prevention or action. Do not copy `AGENTS.md`,
-restate project architecture, or leave task-status notes there.
+Use comments for interim coordination. Do not add a committed file only to
+record a branch name, commit hash, check result, or temporary status.
+
+Before taking over an existing PR, read its body and comments, inspect the live
+head, branch diff, review threads, and CI. Update the PR handoff before changing
+scope. After merge, remove only your own worktree and local branch when no
+longer needed; never delete another agent's workspace or branch.
+
+## Durable Learnings
+
+`.jules/` holds curated reusable learnings: `bolt.md` for performance,
+`palette.md` for accessibility, and `sentinel.md` for security. Add only a
+concrete lesson with its affected subsystem and prevention. Consolidate
+duplicates; do not append task status, copied policy, speculative advice,
+private data, secrets, or commit hashes.

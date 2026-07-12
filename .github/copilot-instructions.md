@@ -1,3 +1,5 @@
-# Copilot Instructions
+# GitHub Copilot Instructions
 
-Before working in this repository, read and follow the canonical [AGENTS.md](../AGENTS.md) instructions. Do not introduce guidance that conflicts with that file.
+The canonical repository instructions are in [AGENTS.md](../AGENTS.md).
+Read and follow that file before editing. Do not duplicate or override project
+policy here.

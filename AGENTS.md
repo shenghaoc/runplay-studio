@@ -1,82 +1,148 @@
 # AGENTS.md — RunPlay Studio
 
-This is the canonical repository instruction file for every coding agent. Keep
-it concise and durable. `CLAUDE.md`, `GEMINI.md`, and
-`.github/copilot-instructions.md` are adapters only and must not duplicate or
-override it.
+RunPlay Studio is a native macOS application for local, post-run GPS workout
+visualization, replay, analysis, comparison, and export. It is not a live
+tracker, cloud service, social network, web app, or AI product.
 
-## Source Of Truth
+This is the canonical operating contract for every coding agent. It supersedes
+historical rapid-prototyping prompts that instructed agents to work directly on
+`main` or leave transient handoff status in committed documentation.
 
-- Source code, tests, CI workflows, and `Package.swift` are executable truth.
-  When they disagree with prose, follow the executable source and correct the
-  documentation in the same change when appropriate.
-- Use the focused document for detailed procedure: [architecture](docs/architecture.md),
-  [manual testing](docs/manual-testing.md), [import formats](docs/import-formats.md),
-  [privacy](docs/privacy.md), [private-data policy](docs/private-data.md), and
-  [agent workflow](docs/agent-workflow.md).
-- Do not use root instructions or committed documentation to record a branch's
-  current commit, PR state, pending handoff, or latest verification result.
-  Use `git log`, the live pull request, and CI for that transient state.
+## Instruction Hierarchy
 
-## Branch And PR Workflow
+1. Source code, tests, `Package.swift`, and CI workflows are executable truth.
+2. This root `AGENTS.md` defines repository operating policy.
+3. Linked documentation provides detailed reference material.
+4. Tool entrypoints—including Claude, Gemini, Copilot, and Kiro steering—must
+   defer to this file and must not duplicate or override policy.
+5. `.jules/` files are advisory historical learnings. `.kiro/specs/` files are
+   task artifacts. Neither overrides this file or executable truth.
 
-- **Never commit directly to `main`.** Create a focused branch from current
-  `origin/main`, make small reviewable commits, and open a PR.
-- Each parallel agent needs its own branch, worktree, and PR. Do not share a
-  worktree, write to another agent's branch, or mix unrelated changes.
-- Keep PR descriptions and comments as task handoffs: state the objective,
-  scope, validation, and remaining questions there. Do not make hash-only or
-  status-only documentation commits.
+When prose conflicts with implementation, inspect the implementation, tests,
+and CI. Correct durable documentation drift in the same change when relevant;
+do not silently follow stale prose.
 
-## Project Guardrails
+## Agent Startup
 
-- Keep the package free of third-party dependencies unless an explicit product
-  decision approves one.
-- RunPlay Studio is local-only. Do not add app-operated cloud services,
-  accounts, telemetry, analytics, or AI APIs without an explicit product
-  decision.
-- Never commit real workout data. Private files belong in the gitignored
-  `local-workouts/` or `private-workouts/` directories; committed fixtures,
-  demo assets, and exports must be synthetic or anonymized.
+Before editing:
+
+1. Read this file and only the detailed references relevant to the task.
+2. Run `git status --short`; never discard unexplained user or agent changes.
+3. Fetch `origin`, confirm the current branch, merge base, and assigned PR.
+4. Inspect the affected implementation and tests before proposing a change.
+5. Run the narrowest relevant baseline verification command.
+6. Open or update a draft PR with its scope and explicit non-goals before
+   implementation work becomes broad.
+
+## Branch, Worktree, And PR Rules
+
+- **Never commit directly to `main` and never rewrite or force-push it.**
+- One task equals one branch, one worktree, and one PR. Do not let agents share
+  a checkout or branch.
+- Start new work from current `origin/main`; rebase only the branch you own.
+- Do not rebase, reset, amend, clean, force-push, merge, or delete another
+  agent's branch or worktree without the owner's explicit direction.
+- Make small logical commits and push useful checkpoints to the feature branch.
+- Do not create handoff-only commits or store current commit hashes in committed
+  documentation. `git log`, the live PR, and CI are the current-state sources.
+- PR descriptions and comments are task handoffs. Record objective, scope,
+  non-goals, validation actually run, and remaining manual checks there.
+
+## Parallel-Agent Safety
+
+- Each PR must declare its intended files or subsystem. Avoid unrelated nearby
+  cleanup.
+- Serialize changes to shared coordination files: `AGENTS.md`, `Package.swift`,
+  CI workflows, `AppState`, shared architecture documents, and Kiro steering.
+- Do not overwrite unexplained changes or resurrect commits removed by a history
+  cleanup.
+- After rebasing onto updated `main`, rerun the relevant verification suite.
+
+The detailed workflow, safe takeover procedure, and cleanup steps are in
+[docs/agent-workflow.md](docs/agent-workflow.md).
 
 ## Architecture Boundaries
 
-Dependency flow is `RunPlayStudio → RunPlayPlatform → RunPlayCore`; reverse
-dependencies are forbidden.
+Dependency direction is `RunPlayStudio → RunPlayPlatform → RunPlayCore`.
+Reverse dependencies are forbidden.
 
-- **RunPlayCore** is cross-platform Foundation logic. It may conditionally use
+- **RunPlayCore** is cross-platform Foundation logic with conditional
   `FoundationXML`; it must not import UI, map, graphics, Core Location, or
-  Combine frameworks. Use `GeoDistance`, not `CLLocation`, for core distance
-  calculations.
-- **RunPlayPlatform** is macOS non-UI code for SceneKit, AppKit, MapKit, and
-  non-UI Combine adapters. It must not depend on `RunPlayStudio`.
-- **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, and `@MainActor` UI
-  state.
-- The package uses Swift 6 language mode, tools version 6.3, and macOS 26.
-  `Package.swift` keeps Core in the Linux package graph and gates macOS layers
-  with `#if os(macOS)`.
+  Combine frameworks. Use `GeoDistance`, not `CLLocation`, for core distance.
+- **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
+  MapKit, and non-UI Combine. It must not depend on `RunPlayStudio`.
+- **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
+  export.
+
+See [docs/architecture.md](docs/architecture.md) and
+[Package.swift](Package.swift) for the live architecture and package graph.
+
+## Project Invariants
+
+- Do not add a third-party dependency without explicit owner approval and
+  license review.
+- Keep the app local-only. Do not add an app-operated backend, accounts,
+  telemetry, analytics, cloud sync, or AI API without an explicit product
+  decision.
+- Never commit real workout data, screenshots, or exports. Private dogfood
+  files belong only in ignored `local-workouts/` or `private-workouts/` paths;
+  committed fixtures and demo assets must be synthetic or anonymized.
+- Use explicit `git add <path>` for changes that could include local data.
+  Before committing, inspect `git status --short` and
+  `git diff --cached --name-status`.
+
+See [docs/private-data.md](docs/private-data.md) and
+[docs/privacy.md](docs/privacy.md) for detail.
+
+## Change Discipline
+
+- Make the smallest coherent change that satisfies the assigned task.
+- Preserve public APIs unless the task explicitly changes them.
+- Add or update focused tests for behavior changes.
+- Do not claim GUI, format, platform, or workflow support without verification;
+  report the actual command or manual boundary instead.
+- Keep documentation tied to durable behavior, never transient branch status.
+
+## Kiro And Durable Learnings
+
+Kiro is a supported first-class environment. Root `AGENTS.md` is canonical;
+`.kiro/steering/` supplies scoped Kiro context through its declared inclusion
+modes and live file references. Do not add Kiro hooks in this repository.
+
+Kiro specs are task artifacts: one spec belongs to one branch and one PR. Keep
+requirements, design, and tasks aligned with the PR scope. Checked task boxes
+do not prove completion; tests and CI do. Specs must not contain private data,
+secrets, transient commit hashes, or repository-wide handoff status. Parallel
+spec tasks must not edit the same shared files concurrently.
+
+`.jules/` is the single lowercase home for reusable learnings: `bolt.md` for
+performance, `palette.md` for accessibility, and `sentinel.md` for security.
+Add a concise dated entry only for a concrete reusable finding and its
+preventive action. Do not use it for task status, speculative advice, or copied
+policy. See [.jules/README.md](.jules/README.md).
 
 ## Validation
 
-Run the narrowest relevant gate first, then the full package gate for changes
-that touch shared, package, CI, or integration behavior. CI treats warnings as
-errors; use the same standard locally.
+Use the shared verification interface so local work and CI stay aligned:
 
 ```bash
+./scripts/verify.sh agent-config  # Agent, Kiro, and documentation configuration
+./scripts/verify.sh core          # RunPlayCore changes
+./scripts/verify.sh platform      # RunPlayPlatform changes on macOS
+./scripts/verify.sh full          # Studio, package, CI, or cross-layer changes
 git diff --check
-swift build -Xswiftc -warnings-as-errors
-swift test -Xswiftc -warnings-as-errors
 ```
 
-For Core-only work, use `swift build --target RunPlayCore` and
-`swift test --filter RunPlayCoreTests`. Full commands and manual QA procedures
-are in [docs/agent-workflow.md](docs/agent-workflow.md) and
+GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
 
-## Durable Learnings
+## Detailed References
 
-`.jules/` is the single lowercase home for durable, reusable learnings:
-`bolt.md` for performance, `palette.md` for accessibility, and `sentinel.md`
-for security. Add a concise dated learning only when a completed change yields
-a reusable rule; include the prevention or action. Do not use these files for
-PR status, temporary task notes, or duplicated repository instructions.
+- [README.md](README.md) — product overview and local build entrypoint
+- [docs/architecture.md](docs/architecture.md) — data flow and abstractions
+- [docs/import-formats.md](docs/import-formats.md) — supported formats and limits
+- [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
+- [docs/private-data.md](docs/private-data.md) — private-data hygiene
+- [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
+- [docs/agent-workflow.md](docs/agent-workflow.md) — detailed agent procedure
+- [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior
