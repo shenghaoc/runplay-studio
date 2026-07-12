@@ -115,23 +115,32 @@ See [docs/private-data.md](docs/private-data.md) and
   report the actual command or manual boundary instead.
 - Keep documentation tied to durable behavior, never transient branch status.
 
-## Kiro And Durable Learnings
+## Kiro
 
-Kiro is a supported first-class environment. Root `AGENTS.md` is canonical;
-`.kiro/steering/` supplies scoped Kiro context through its declared inclusion
-modes and live file references. Do not add Kiro hooks in this repository.
+Kiro is the primary development environment for this repository. All other
+agents are secondary.
 
-Kiro specs are task artifacts: one spec belongs to one branch and one PR. Keep
-requirements, design, and tasks aligned with the PR scope. Checked task boxes
-do not prove completion; tests and CI do. Specs must not contain private data,
+**Steering** (`.kiro/steering/`) is the authoritative Kiro context layer.
+Steering files use `inclusion: always`, `inclusion: fileMatch`, or
+`inclusion: auto` to inject the right context at the right time. Do not
+duplicate steering content in `AGENTS.md` or `docs/`; use `#[[file:...]]`
+references to pull in live sources instead.
+
+**Specs** (`.kiro/specs/`) are task artifacts: one spec per branch per PR.
+Keep requirements, design, and tasks scoped to the PR. Checked task boxes do
+not prove completion — tests and CI do. Specs must not contain private data,
 secrets, transient commit hashes, or repository-wide handoff status. Parallel
 spec tasks must not edit the same shared files concurrently.
 
-`.jules/` is the single lowercase home for reusable learnings: `bolt.md` for
-performance, `palette.md` for accessibility, and `sentinel.md` for security.
-Add a concise dated entry only for a concrete reusable finding and its
-preventive action. Do not use it for task status, speculative advice, or copied
-policy.
+**Hooks** may be added to `.kiro/hooks/` when they provide genuine workflow
+value (e.g., running `./scripts/verify.sh core` automatically after saving a
+Core source file). Keep hooks narrowly scoped and document their trigger and
+action in the hook file.
+
+**Durable learnings** live in `.jules/`: `bolt.md` for performance,
+`palette.md` for accessibility, `sentinel.md` for security. Add a concise
+dated entry only for a concrete reusable finding and its preventive action.
+Do not use these files for task status, speculative advice, or copied policy.
 
 ## Validation
 

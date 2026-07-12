@@ -16,8 +16,6 @@ Core product invariants:
 - Committed workouts, fixtures, exports, and screenshots must be synthetic or
   anonymized.
 
-Root `AGENTS.md` is loaded automatically and is the canonical repository
-policy.
-
+Repository policy: #[[file:AGENTS.md]]
 Product reference: #[[file:README.md]]
 Privacy reference: #[[file:docs/private-data.md]]
