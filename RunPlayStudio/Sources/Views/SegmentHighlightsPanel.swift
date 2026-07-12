@@ -45,6 +45,8 @@ struct SegmentHighlightsPanel: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(segment.title)
+                            .accessibilityValue("\(segment.subtitle), \(segment.formattedDistance), \(segment.formattedDuration)")
                             .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                             .help(isSelected ? "Selected segment" : "Select segment")
                         }
