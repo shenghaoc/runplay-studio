@@ -72,19 +72,28 @@ public struct MetricSmoother {
 
             let start = max(points.startIndex, index - halfWindow)
             let end = min(points.endIndex, index + halfWindow + 1)
-            let values = points[start..<end].compactMap { point -> Double? in
+
+            // ⚡ Bolt: Use an inline loop instead of .compactMap { ... }.reduce(0, +)
+            // to avoid intermediate array allocations on every window slide (O(N)).
+            var sum = 0.0
+            var count = 0
+
+            for j in start..<end {
+                let point = points[j]
                 // Don't smooth across segment boundaries.
-                guard point.routeSegmentIndex == segmentIndex else { return nil }
+                guard point.routeSegmentIndex == segmentIndex else { continue }
                 guard let hr = point.heartRateBPM,
                       hr.isFinite,
                       MetricValidation.validHeartRateRange.contains(hr)
                 else {
-                    return nil
+                    continue
                 }
-                return hr
+                sum += hr
+                count += 1
             }
-            guard !values.isEmpty else { continue }
-            result[index] = values.reduce(0, +) / Double(values.count)
+
+            guard count > 0 else { continue }
+            result[index] = sum / Double(count)
         }
 
         return result
