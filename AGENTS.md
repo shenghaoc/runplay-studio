@@ -39,14 +39,29 @@ Before editing:
 - **Never commit directly to `main` and never rewrite or force-push it.**
 - One task equals one branch, one worktree, and one PR. Do not let agents share
   a checkout or branch.
-- Start new work from current `origin/main`; rebase only the branch you own.
+- Start new work from current `origin/main` in a dedicated worktree, for example:
+
+  ```bash
+  git fetch origin
+  git worktree add -b <type>/<short-task> ../runplay-<task> origin/main
+  cd ../runplay-<task>
+  ```
+
+- Rebase only the branch you own. Use `--force-with-lease` only when publishing
+  your own rebased branch after checking its live remote head; never force-push
+  `main`.
 - Do not rebase, reset, amend, clean, force-push, merge, or delete another
   agent's branch or worktree without the owner's explicit direction.
 - Make small logical commits and push useful checkpoints to the feature branch.
+- Open a draft PR early. Record objective, scope, non-goals, validation actually
+  run, remaining manual checks, and dependent or conflicting PRs in the PR body.
+  Use comments for interim coordination.
 - Do not create handoff-only commits or store current commit hashes in committed
   documentation. `git log`, the live PR, and CI are the current-state sources.
-- PR descriptions and comments are task handoffs. Record objective, scope,
-  non-goals, validation actually run, and remaining manual checks there.
+- Before taking over an existing PR: read its body and comments, inspect the live
+  head, branch diff, review threads, and CI; update the PR handoff before changing
+  scope. After merge, remove only your own worktree and local branch when no
+  longer needed.
 
 ## Parallel-Agent Safety
 
@@ -57,9 +72,6 @@ Before editing:
 - Do not overwrite unexplained changes or resurrect commits removed by a history
   cleanup.
 - After rebasing onto updated `main`, rerun the relevant verification suite.
-
-The detailed workflow, safe takeover procedure, and cleanup steps are in
-[docs/agent-workflow.md](docs/agent-workflow.md).
 
 ## Architecture Boundaries
 
@@ -143,5 +155,4 @@ GUI changes additionally require the relevant honest manual check in
 - [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene
 - [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
-- [docs/agent-workflow.md](docs/agent-workflow.md) — detailed agent procedure
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior
