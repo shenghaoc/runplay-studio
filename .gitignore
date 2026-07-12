@@ -41,6 +41,10 @@ Icon
 .idea/
 .vscode/
 
+# Local agent settings (shared instructions remain tracked)
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Generated
 *.generated.swift
 dist/
