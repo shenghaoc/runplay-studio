@@ -1,0 +1,11 @@
+{
+  "name": "runplay-cli",
+  "description": "Repository coding agent for RunPlay Studio",
+  "prompt": "Follow AGENTS.md as the canonical repository policy and use workspace steering for scoped context.",
+  "tools": ["read", "write", "shell"],
+  "allowedTools": ["read"],
+  "resources": [
+    "file://AGENTS.md",
+    "file://.kiro/steering/**/*.md"
+  ]
+}

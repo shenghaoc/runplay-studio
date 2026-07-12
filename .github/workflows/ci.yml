@@ -21,7 +21,7 @@ jobs:
           swift --version
           swift --version | grep -q 'Swift version 6.3'
       - name: Verify RunPlayCore
-        run: ./scripts/verify.sh core
+        run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
 
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio)
   macos:
@@ -36,4 +36,4 @@ jobs:
           swift --version
           swift --version | grep -q 'Swift version 6.3'
       - name: Verify full package
-        run: ./scripts/verify.sh full
+        run: swift test -Xswiftc -warnings-as-errors

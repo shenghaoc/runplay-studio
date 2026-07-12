@@ -14,9 +14,8 @@ This is a **Swift Package** — there is no `.xcodeproj`. Xcode opens it via
 `.swiftpm/xcode/xcshareddata/xcschemes/`. Do not create or reference an
 `.xcodeproj` file.
 
-Use the shared verification interface and live repository sources rather than
-copying toolchain versions, CI commands, or workflow behavior into steering.
+Use the warning-clean commands in root `AGENTS.md` and the live repository
+sources rather than copying toolchain versions or CI behavior into steering.
 
 Package definition: #[[file:Package.swift]]
-Agent verification: #[[file:scripts/verify.sh]]
 Continuous integration: #[[file:.github/workflows/ci.yml]]

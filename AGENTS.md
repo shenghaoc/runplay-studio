@@ -135,9 +135,14 @@ secrets, transient commit hashes, or repository-wide handoff status. Parallel
 spec tasks must not edit the same shared files concurrently.
 
 **Hooks** may be added to `.kiro/hooks/` when they provide genuine workflow
-value (e.g., running `./scripts/verify.sh core` automatically after saving a
-Core source file). Keep hooks narrowly scoped and document their trigger and
-action in the hook file.
+value. Keep hooks narrowly scoped and document their trigger and action in the
+hook file; do not use hooks to bypass review or silently mutate shared files.
+
+**Kiro CLI custom agents** live in `.kiro/agents/`. The checked-in
+`runplay-cli.json` is a thin project adapter: it loads this file and workspace
+steering explicitly, exposes only the tools needed for repository work, and
+pre-approves read-only access only. Do not pin a model or duplicate repository
+policy in an agent configuration.
 
 **Durable learnings** live in `.jules/`: `bolt.md` for performance,
 `palette.md` for accessibility, `sentinel.md` for security. Add a concise
@@ -146,12 +151,12 @@ Do not use these files for task status, speculative advice, or copied policy.
 
 ## Validation
 
-Use the shared verification interface so local work and CI stay aligned:
+Use the same warning-clean SwiftPM commands enforced by CI:
 
 ```bash
-./scripts/verify.sh core          # RunPlayCore changes
-./scripts/verify.sh platform      # RunPlayPlatform changes on macOS
-./scripts/verify.sh full          # Studio, package, CI, or cross-layer changes
+swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
+swift test -Xswiftc -warnings-as-errors                               # macOS full stack
 git diff --check
 ```
 
