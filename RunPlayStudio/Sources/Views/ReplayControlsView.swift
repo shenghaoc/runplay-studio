@@ -41,8 +41,9 @@ struct ReplayControlsView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Step backward")
+                .help("Step backward (←)")
                 .accessibilityLabel("Step backward")
+                .keyboardShortcut(.leftArrow, modifiers: [])
                 .disabled(!controller.isPlaying && controller.state.currentTime == 0)
 
                 // Play/Pause — prominent circular button
@@ -68,8 +69,9 @@ struct ReplayControlsView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Step forward")
+                .help("Step forward (→)")
                 .accessibilityLabel("Step forward")
+                .keyboardShortcut(.rightArrow, modifiers: [])
                 .disabled(!controller.isPlaying && controller.state.currentTime >= controller.state.totalDuration)
 
                 Spacer()
@@ -78,7 +80,7 @@ struct ReplayControlsView: View {
                 HStack(spacing: AppDesign.Spacing.xxSmall) {
                     Text("Speed")
                         .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
 
                     ForEach(ReplayController.speedOptions, id: \.self) { speed in
                         Button(action: { controller.setSpeed(speed) }) {

@@ -43,12 +43,12 @@ struct ExportView: View {
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")
         }
-        .alert("Export Error", isPresented: $showingError) {
+        .alert("Export Failed", isPresented: $showingError) {
             Button("OK") { exportError = nil }
         } message: {
-            Text(exportError ?? "Unknown error")
+            Text(exportError ?? "An unknown error occurred while exporting.")
         }
-        .alert("Export Successful", isPresented: $showingSuccess) {
+        .alert("Export Complete", isPresented: $showingSuccess) {
             Button("OK") { exportSuccess = nil }
         } message: {
             Text(exportSuccess ?? "")
@@ -123,7 +123,7 @@ struct ExportView: View {
     }
 
     private func showError(_ message: String) {
-        exportError = message
+        exportError = "Export failed: \(message). Try choosing a different location or format."
         showingError = true
     }
 

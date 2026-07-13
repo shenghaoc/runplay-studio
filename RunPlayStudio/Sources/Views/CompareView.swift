@@ -68,6 +68,7 @@ struct CompareView: View {
                     .fontWeight(.semibold)
                     .lineLimit(1)
             }
+            .help("The main run being compared")
 
             Spacer()
 
@@ -99,6 +100,7 @@ struct CompareView: View {
                         }
                     }
                     .frame(maxWidth: 200)
+                    .help("Choose a workout to compare against the primary run")
                 }
 
                 if let message = appState.comparisonSelectionMessage {
@@ -113,6 +115,7 @@ struct CompareView: View {
                     appState.clearComparison()
                 }
                 .font(AppDesign.Typography.compactMetric)
+                .help("Exit comparison mode")
             }
         }
         .padding(AppDesign.Spacing.xLarge)

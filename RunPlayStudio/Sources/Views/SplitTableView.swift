@@ -28,8 +28,12 @@ struct SplitTableView: View {
                         .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 }
                 .padding(AppDesign.Spacing.small)
-                .background(AppDesign.comparisonOrange.opacity(0.08))
+                .background(AppDesign.comparisonOrange.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.small))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDesign.Radius.small)
+                        .strokeBorder(AppDesign.comparisonOrange.opacity(0.3), lineWidth: 1)
+                )
             }
 
             Table(splits) {

@@ -172,10 +172,15 @@ struct SplitComparisonTableView: View {
                     .width(90)
 
                     TableColumn("Winner") { split in
-                        Text(split.winner.label)
-                            .font(AppDesign.Typography.compactMetric)
+                        HStack(spacing: AppDesign.Spacing.xxSmall) {
+                            Image(systemName: winnerIcon(for: split.winner))
+                                .font(.system(size: 10, weight: .medium))
+                            Text(split.winner.label)
+                                .font(AppDesign.Typography.compactMetric)
+                        }
+                        .foregroundStyle(winnerColor(for: split.winner))
                     }
-                    .width(80)
+                    .width(140)
                 }
             }
         }
@@ -183,5 +188,23 @@ struct SplitComparisonTableView: View {
 
     private func deltaColor(_ delta: Double?) -> Color {
         AppDesign.deltaColor(delta, threshold: 5)
+    }
+
+    private func winnerIcon(for result: RunPlayCore.ComparisonResult) -> String {
+        switch result {
+        case .primary: return "1.circle.fill"
+        case .comparison: return "2.circle.fill"
+        case .tie: return "equal.circle.fill"
+        case .unavailable: return "questionmark.circle"
+        }
+    }
+
+    private func winnerColor(for result: RunPlayCore.ComparisonResult) -> Color {
+        switch result {
+        case .primary: return AppDesign.primaryBlue
+        case .comparison: return AppDesign.comparisonOrange
+        case .tie: return .secondary
+        case .unavailable: return .secondary
+        }
     }
 }

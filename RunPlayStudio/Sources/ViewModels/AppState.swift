@@ -159,9 +159,27 @@ class AppState: ObservableObject {
             selectWorkout(workout, persistSelection: false)
         } catch is CancellationError {
             // Cancelled — do not add to UI.
+        } catch let error as WorkoutImportError {
+            errorMessage = importErrorMessage(for: error, filename: filename)
+            showingError = true
         } catch {
             errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
             showingError = true
+        }
+    }
+
+    private func importErrorMessage(for error: WorkoutImportError, filename: String) -> String {
+        switch error {
+        case .unsupportedFormat(let ext):
+            return "'\(filename)' uses the .\(ext) format, which isn't supported. Import a GPX, TCX, FIT, or JSON file instead."
+        case .parsingError(let detail):
+            return "'\(filename)' couldn't be parsed. \(detail)"
+        case .missingData(let detail):
+            return "'\(filename)' is missing required data. \(detail)"
+        case .invalidFormat(let detail):
+            return "'\(filename)' has an invalid format. \(detail)"
+        case .fileNotFound:
+            return "Couldn't find the selected file. Try importing again."
         }
     }
 

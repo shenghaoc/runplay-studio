@@ -48,6 +48,8 @@ struct SidebarView: View {
                 Button(action: onImport) {
                     Label("Import", systemImage: "plus")
                 }
+                .keyboardShortcut("i", modifiers: .command)
+                .help("Import a workout file (⌘I)")
             }
         }
         .alert("Delete Run", isPresented: Binding(

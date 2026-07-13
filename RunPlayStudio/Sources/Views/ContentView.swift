@@ -105,7 +105,7 @@ struct ContentView: View {
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("OK") { appState.errorMessage = nil }
         } message: {
-            Text(appState.errorMessage ?? "Unknown error")
+            Text(appState.errorMessage ?? "An unknown error occurred while importing the file.")
         }
         .task {
             await appState.start()
