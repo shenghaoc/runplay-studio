@@ -58,8 +58,52 @@ public struct FITImporter: WorkoutImporting {
         // Run analysis
         let analyzer = WorkoutAnalyzer()
         analyzer.analyze(&workout)
+        workout.analysisWarnings = timingWarnings(
+            decodedFile: decodedFile,
+            selectedSessionIndex: selectedSessionIndex,
+            summary: workout.summary
+        )
 
         return workout
+    }
+
+    /// FIT session totals are validation signals only. Route timestamps and
+    /// route-segment boundaries remain the cross-format source of truth.
+    private func timingWarnings(
+        decodedFile: FITDecodedFile,
+        selectedSessionIndex: Int?,
+        summary: RunSummary
+    ) -> [WorkoutAnalysisWarning] {
+        guard let selectedSessionIndex,
+              decodedFile.sessions.indices.contains(selectedSessionIndex)
+        else {
+            return []
+        }
+
+        let session = decodedFile.sessions[selectedSessionIndex]
+        var warnings: [WorkoutAnalysisWarning] = []
+
+        if let sourceElapsed = decodedSeconds(session.totalElapsedTime),
+           differsMaterially(sourceElapsed, from: summary.totalElapsedSeconds) {
+            warnings.append(.sourceElapsedTimeMismatch)
+        }
+        if let sourceActive = decodedSeconds(session.totalTimerTime),
+           differsMaterially(sourceActive, from: summary.totalActiveSeconds) {
+            warnings.append(.sourceActiveTimeMismatch)
+        }
+
+        return warnings
+    }
+
+    private func decodedSeconds(_ milliseconds: UInt32?) -> Double? {
+        guard let milliseconds, milliseconds != FITParser.invalidUint32 else { return nil }
+        return Double(milliseconds) / 1000
+    }
+
+    private func differsMaterially(_ source: Double, from route: Double) -> Bool {
+        guard source.isFinite, route.isFinite, source >= 0, route >= 0 else { return false }
+        let tolerance = max(5, route * 0.02)
+        return abs(source - route) > tolerance
     }
 
     // MARK: - Metadata Population

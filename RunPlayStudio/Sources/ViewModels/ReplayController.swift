@@ -116,6 +116,9 @@ class ReplayController: ObservableObject {
         engine.currentSceneIndex
     }
 
+    var canStepBackward: Bool { engine.canStepBackward }
+    var canStepForward: Bool { engine.canStepForward }
+
     /// Selected metrics at the current position.
     var selectedMetrics: SelectedMetrics {
         engine.selectedMetrics

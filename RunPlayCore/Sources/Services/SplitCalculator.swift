@@ -1,103 +1,70 @@
 import Foundation
 
-/// Calculates kilometer splits from a running workout.
+/// Calculates global kilometer splits from a running workout.
 public struct SplitCalculator {
 
-    /// Calculate 1km splits for a workout without crossing route-segment gaps.
     public static func calculateSplits(from workout: RunWorkout) -> [RunSplit] {
-        let points = workout.routePoints
-        guard points.count >= 2 else { return [] }
+        calculateSplits(from: workout, timeline: WorkoutTimeline(workout: workout))
+    }
 
+    /// Route-segment boundaries do not reset cumulative split distance. A pause
+    /// exactly on a split boundary is excluded from both neighboring splits by
+    /// the timeline's explicit range-start/range-end rule.
+    public static func calculateSplits(
+        from workout: RunWorkout,
+        timeline: WorkoutTimeline
+    ) -> [RunSplit] {
+        guard workout.routePoints.count >= 2,
+              timeline.totalDistanceMeters > timeline.startDistanceMeters
+        else {
+            return []
+        }
+
+        let splitDistance = 1000.0
         var splits: [RunSplit] = []
-        let splitDistance: Double = 1000.0 // 1 km
         var splitIndex = 1
+        var splitStart = timeline.startDistanceMeters
 
-        for segmentPoints in contiguousSegments(in: points) {
-            guard let first = segmentPoints.first,
-                  let last = segmentPoints.last,
-                  first.distanceFromStartMeters.isFinite,
-                  last.distanceFromStartMeters.isFinite,
-                  last.distanceFromStartMeters > first.distanceFromStartMeters
+        while splitStart < timeline.totalDistanceMeters {
+            let splitEnd = min(splitStart + splitDistance, timeline.totalDistanceMeters)
+            let distance = splitEnd - splitStart
+            guard distance > 0,
+                  let range = timeline.distanceRange(from: splitStart, to: splitEnd)
             else {
-                continue
+                break
             }
 
-            var currentSplitStart = first.distanceFromStartMeters
-            let segmentEnd = last.distanceFromStartMeters
+            let activePace = pace(seconds: range.activeSeconds, distanceMeters: distance)
+            let elapsedPace = pace(seconds: range.elapsedSeconds, distanceMeters: distance)
 
-            while currentSplitStart < segmentEnd {
-                let splitEnd = min(currentSplitStart + splitDistance, segmentEnd)
+            splits.append(RunSplit(
+                splitIndex: splitIndex,
+                distanceMeters: distance,
+                elapsedSeconds: range.elapsedSeconds,
+                activeSeconds: range.activeSeconds,
+                paceSecondsPerKilometer: activePace,
+                elapsedPaceSecondsPerKilometer: elapsedPace,
+                averageHeartRateBPM: timeline.averageHeartRate(from: splitStart, to: splitEnd),
+                elevationGainMeters: timeline.elevationGain(from: splitStart, to: splitEnd),
+                startDistanceMeters: splitStart,
+                endDistanceMeters: splitEnd
+            ))
 
-                guard
-                    let firstPoint = RoutePointInterpolator.point(at: currentSplitStart, in: segmentPoints),
-                    let lastPoint = RoutePointInterpolator.point(at: splitEnd, in: segmentPoints)
-                else {
-                    currentSplitStart = splitEnd
-                    continue
-                }
-
-                let actualDistance = splitEnd - currentSplitStart
-                let elapsed = lastPoint.elapsedSeconds - firstPoint.elapsedSeconds
-
-                guard actualDistance > 0, elapsed > 0, elapsed.isFinite else {
-                    currentSplitStart = splitEnd
-                    continue
-                }
-
-                let pace = (elapsed / actualDistance) * 1000.0
-
-                let avgHR = RoutePointInterpolator.averageHeartRate(
-                    in: segmentPoints,
-                    from: currentSplitStart,
-                    to: splitEnd
-                )
-                let elevGain = RoutePointInterpolator.elevationGain(
-                    in: segmentPoints,
-                    from: currentSplitStart,
-                    to: splitEnd
-                )
-
-                let split = RunSplit(
-                    splitIndex: splitIndex,
-                    distanceMeters: actualDistance,
-                    elapsedSeconds: elapsed,
-                    paceSecondsPerKilometer: pace,
-                    averageHeartRateBPM: avgHR,
-                    elevationGainMeters: elevGain,
-                    startDistanceMeters: currentSplitStart,
-                    endDistanceMeters: currentSplitStart + actualDistance
-                )
-                splits.append(split)
-                splitIndex += 1
-
-                currentSplitStart = splitEnd
-            }
+            splitIndex += 1
+            splitStart = splitEnd
         }
 
         return splits
     }
 
-    private static func contiguousSegments(in points: [RoutePoint]) -> [[RoutePoint]] {
-        guard let first = points.first else { return [] }
-
-        var segments: [[RoutePoint]] = []
-        var currentSegmentIndex = first.routeSegmentIndex
-        var currentPoints: [RoutePoint] = []
-
-        for point in points {
-            if point.routeSegmentIndex != currentSegmentIndex {
-                if !currentPoints.isEmpty {
-                    segments.append(currentPoints)
-                }
-                currentSegmentIndex = point.routeSegmentIndex
-                currentPoints = []
-            }
-            currentPoints.append(point)
+    private static func pace(seconds: Double, distanceMeters: Double) -> Double {
+        guard seconds.isFinite,
+              seconds > 0,
+              distanceMeters.isFinite,
+              distanceMeters > 0
+        else {
+            return 0
         }
-
-        if !currentPoints.isEmpty {
-            segments.append(currentPoints)
-        }
-        return segments
+        return (seconds / distanceMeters) * 1000
     }
 }

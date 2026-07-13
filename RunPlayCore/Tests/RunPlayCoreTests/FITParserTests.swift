@@ -1028,6 +1028,12 @@ final class FITParserTests: XCTestCase {
             points[2].distanceFromStartMeters,
             accuracy: 0.001
         )
+
+        var workout = RunWorkout(routePoints: points)
+        WorkoutAnalyzer().analyze(&workout)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 100, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 60, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalPausedSeconds, 40, accuracy: 0.001)
     }
 
     // MARK: - Ordered Messages Test

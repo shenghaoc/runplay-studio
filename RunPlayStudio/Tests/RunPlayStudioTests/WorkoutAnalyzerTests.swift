@@ -22,6 +22,8 @@ final class WorkoutAnalyzerTests: XCTestCase {
 
         XCTAssertEqual(workout.summary.totalDistanceMeters, 5000, accuracy: 10)
         XCTAssertEqual(workout.summary.totalElapsedSeconds, 1500, accuracy: 1)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 1500, accuracy: 1)
+        XCTAssertEqual(workout.summary.totalPausedSeconds, 0, accuracy: 1)
         XCTAssertGreaterThan(workout.summary.averagePaceSecondsPerKilometer, 0)
         XCTAssertGreaterThan(workout.summary.averageSpeedMetersPerSecond, 0)
     }
@@ -57,7 +59,7 @@ final class WorkoutAnalyzerTests: XCTestCase {
         XCTAssertLessThanOrEqual(workout.summary.averageHeartRateBPM!, 140)
     }
 
-    func testSummaryExcludesElapsedGapsBetweenRouteSegments() {
+    func testSummarySeparatesElapsedActiveAndPausedTime() {
         let start = Date()
         let points = [
             RoutePoint(timestamp: start, latitude: 37.7749, longitude: -122.4194, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
@@ -69,8 +71,15 @@ final class WorkoutAnalyzerTests: XCTestCase {
 
         WorkoutAnalyzer().analyze(&workout)
 
-        XCTAssertEqual(workout.summary.totalElapsedSeconds, 600, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 600, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalPausedSeconds, 3_300, accuracy: 0.001)
         XCTAssertEqual(workout.summary.averagePaceSecondsPerKilometer, 300, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.elapsedPaceSecondsPerKilometer, 1_950, accuracy: 0.001)
+        let replay = PlaybackEngine()
+        replay.load(workout)
+        XCTAssertEqual(replay.state.totalDuration, workout.summary.totalElapsedSeconds, accuracy: 0.001)
+        XCTAssertEqual(workout.analysisVersion, RunWorkout.currentAnalysisVersion)
     }
 
     // MARK: - Helpers

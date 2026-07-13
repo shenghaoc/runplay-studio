@@ -42,6 +42,39 @@ struct FITFixtureBuilder {
         return data
     }
 
+    /// Build the same route with one selected running session whose elapsed
+    /// and timer totals can validate (or intentionally disagree with) the
+    /// route-derived clocks.
+    static func buildSampleRunWithSession(
+        elapsedSeconds: UInt32,
+        timerSeconds: UInt32
+    ) -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: elapsedSeconds,
+            timerSeconds: timerSeconds,
+            to: &content
+        )
+
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
     /// Build a FIT file with invalid header.
     static func buildInvalidHeader() -> Data {
         var data = Data()
@@ -112,6 +145,33 @@ struct FITFixtureBuilder {
 
         // cadence (field 4, size 1, type 2 = uint8)
         writeFieldDef(field: 4, size: 1, type: 2, to: &data)
+    }
+
+    private static func writeSessionDefinitionMessage(to data: inout Data) {
+        data.append(0x41) // definition, local type 1
+        data.append(0x00) // reserved
+        data.append(0x00) // little-endian
+        data.append(contentsOf: [0x12, 0x00]) // global message 18 (session)
+        data.append(5)
+        writeFieldDef(field: 253, size: 4, type: 134, to: &data) // timestamp
+        writeFieldDef(field: 2, size: 4, type: 134, to: &data)   // start_time
+        writeFieldDef(field: 5, size: 1, type: 2, to: &data)     // sport
+        writeFieldDef(field: 7, size: 4, type: 134, to: &data)   // total_elapsed_time
+        writeFieldDef(field: 8, size: 4, type: 134, to: &data)   // total_timer_time
+    }
+
+    private static func writeSessionMessage(
+        elapsedSeconds: UInt32,
+        timerSeconds: UInt32,
+        to data: inout Data
+    ) {
+        let baseTimestamp: UInt32 = 1_000_000_000
+        data.append(0x01) // data message, local type 1
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + 290).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: baseTimestamp.littleEndian) { Array($0) })
+        data.append(FITSport.running.rawValue)
+        data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
     }
 
     private static func writeFieldDef(field: UInt8, size: UInt8, type: UInt8, to data: inout Data) {
