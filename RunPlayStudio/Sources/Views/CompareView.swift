@@ -62,24 +62,22 @@ struct CompareView: View {
     // MARK: - Selector
 
     private var comparisonSelector: some View {
+        ViewThatFits(in: .horizontal) {
+            // Wide layout
+            wideComparisonSelector
+            // Compact layout
+            compactComparisonSelector
+        }
+    }
+
+    private var wideComparisonSelector: some View {
         HStack(spacing: AppDesign.Spacing.xxLarge) {
             Text("COMPARE")
                 .font(.caption2.weight(.semibold))
                 .tracking(1.2)
                 .foregroundStyle(.tertiary)
 
-            // Primary workout
-            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
-                Text("Primary Run")
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-                Text(appState.selectedWorkout?.displayName ?? "None")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-            }
-            .help("The main run being compared")
+            workoutLabel("Primary Run", name: appState.selectedWorkout?.displayName ?? "None")
 
             Spacer(minLength: AppDesign.Spacing.large)
 
@@ -87,51 +85,99 @@ struct CompareView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(AppDesign.comparisonOrange)
 
-            // Comparison workout
-            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
-                Text("Compare Against")
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-
-                if appState.availableForComparison.isEmpty {
-                    Text(appState.workouts.count < 2 ? "Import another run" : "No other workouts")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                } else {
-                    Picker("Compare Against", selection: Binding(
-                        get: { appState.comparisonWorkout },
-                        set: { appState.setComparison($0) }
-                    )) {
-                        Text("Select workout").tag(nil as RunWorkout?)
-                        ForEach(appState.availableForComparison) { workout in
-                            Text(workout.displayName).tag(workout as RunWorkout?)
-                        }
-                    }
-                    .frame(width: 220)
-                    .help("Choose a workout to compare against the primary run")
-                }
-
-                if let message = appState.comparisonSelectionMessage {
-                    Text(message)
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(AppDesign.comparisonOrange)
-                }
-            }
+            comparisonPickerSection
 
             Spacer()
 
+            clearButton
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
+
+    private var compactComparisonSelector: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+            HStack {
+                workoutLabel("Primary Run", name: appState.selectedWorkout?.displayName ?? "None")
+                Spacer()
+                clearButton
+            }
+
+            HStack {
+                Image(systemName: "arrow.down")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppDesign.comparisonOrange)
+                Text("vs.")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+            }
+
+            comparisonPickerSection
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
+
+    private func workoutLabel(_ role: String, name: String) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text(role)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+            Text(name)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .help("The main run being compared")
+        }
+    }
+
+    private var comparisonPickerSection: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text("Compare Against")
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+
+            if appState.availableForComparison.isEmpty {
+                Text(appState.workouts.count < 2 ? "Import another run" : "No other workouts")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Picker("Compare Against", selection: Binding(
+                    get: { appState.comparisonWorkout },
+                    set: { appState.setComparison($0) }
+                )) {
+                    Text("Select workout").tag(nil as RunWorkout?)
+                    ForEach(appState.availableForComparison) { workout in
+                        Text(workout.displayName).tag(workout as RunWorkout?)
+                    }
+                }
+                .frame(minWidth: 160, idealWidth: 220, maxWidth: 280)
+                .help("Choose a workout to compare against the primary run")
+            }
+
+            if let message = appState.comparisonSelectionMessage {
+                Text(message)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(AppDesign.comparisonOrange)
+            }
+        }
+    }
+
+    private var clearButton: some View {
+        Group {
             if appState.isComparing {
                 Button("Clear") {
                     appState.clearComparison()
                 }
                 .font(AppDesign.Typography.compactMetric)
+                .controlSize(.regular)
                 .help("Exit comparison mode")
             }
         }
-        .padding(.horizontal, AppDesign.Spacing.xxLarge)
-        .padding(.vertical, AppDesign.Spacing.large)
-        .background(AppDesign.panelBackground)
     }
 }
 

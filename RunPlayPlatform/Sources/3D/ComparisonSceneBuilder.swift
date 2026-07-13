@@ -1,6 +1,11 @@
 import Foundation
 import RunPlayCore
 import SceneKit
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 
 /// Builds a SceneKit scene for 3D route comparison visualization.
@@ -14,8 +19,8 @@ public class ComparisonSceneBuilder {
 
     // MARK: - Configuration
 
-    public var primaryRouteColor: NSColor = .systemBlue
-    public var comparisonRouteColor: NSColor = .systemOrange
+    public var primaryRouteColor: PlatformColor = .systemBlue
+    public var comparisonRouteColor: PlatformColor = .systemOrange
     public var routeRadius: CGFloat = 0.8
     public var markerRadius: CGFloat = 2.0
     public var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
@@ -37,7 +42,7 @@ public class ComparisonSceneBuilder {
     /// Build a complete 3D comparison scene from a `ComparisonRouteScene`.
     public func buildScene(from comparisonScene: ComparisonRouteScene) -> SCNScene {
         let scene = SCNScene()
-        scene.background.contents = NSColor.windowBackgroundColor
+        scene.background.contents = PlatformColor.windowBackgroundColor
 
         setupLighting(in: scene)
 
@@ -113,8 +118,8 @@ public class ComparisonSceneBuilder {
 
     // MARK: - Distance Markers
 
-    public var primaryDistanceMarkerColor: NSColor = .systemBlue
-    public var comparisonDistanceMarkerColor: NSColor = .systemOrange
+    public var primaryDistanceMarkerColor: PlatformColor = .systemBlue
+    public var comparisonDistanceMarkerColor: PlatformColor = .systemOrange
     public var distanceMarkerRadius: CGFloat = 1.5
 
     /// Update the distance markers in the scene at the given interpolated points.
@@ -152,13 +157,13 @@ public class ComparisonSceneBuilder {
         }
     }
 
-    private func createDistanceMarker(at point: RouteScenePoint, color: NSColor, label: String) -> SCNNode {
+    private func createDistanceMarker(at point: RouteScenePoint, color: PlatformColor, label: String) -> SCNNode {
         let parent = SCNNode()
 
         let sphere = SCNSphere(radius: distanceMarkerRadius)
         sphere.firstMaterial?.diffuse.contents = color
         sphere.firstMaterial?.lightingModel = .blinn
-        sphere.firstMaterial?.specular.contents = NSColor.white
+        sphere.firstMaterial?.specular.contents = PlatformColor.white
         parent.addChildNode(SCNNode(geometry: sphere))
 
         let glow = SCNSphere(radius: distanceMarkerRadius * 1.8)
@@ -187,14 +192,14 @@ public class ComparisonSceneBuilder {
     private func setupLighting(in scene: SCNScene) {
         let ambient = SCNLight()
         ambient.type = .ambient
-        ambient.color = NSColor(white: 0.5, alpha: 1.0)
+        ambient.color = PlatformColor(white: 0.5, alpha: 1.0)
         let ambientNode = SCNNode()
         ambientNode.light = ambient
         scene.rootNode.addChildNode(ambientNode)
 
         let keyLight = SCNLight()
         keyLight.type = .directional
-        keyLight.color = NSColor(white: 0.9, alpha: 1.0)
+        keyLight.color = PlatformColor(white: 0.9, alpha: 1.0)
         keyLight.intensity = 800
         keyLight.castsShadow = true
         let keyNode = SCNNode()
@@ -204,7 +209,7 @@ public class ComparisonSceneBuilder {
 
         let fillLight = SCNLight()
         fillLight.type = .directional
-        fillLight.color = NSColor(white: 0.4, alpha: 1.0)
+        fillLight.color = PlatformColor(white: 0.4, alpha: 1.0)
         fillLight.intensity = 300
         let fillNode = SCNNode()
         fillNode.light = fillLight
@@ -213,7 +218,7 @@ public class ComparisonSceneBuilder {
 
         let topLight = SCNLight()
         topLight.type = .omni
-        topLight.color = NSColor(white: 0.3, alpha: 1.0)
+        topLight.color = PlatformColor(white: 0.3, alpha: 1.0)
         topLight.intensity = 400
         topLight.zFar = 2000
         let topNode = SCNNode()
@@ -224,7 +229,7 @@ public class ComparisonSceneBuilder {
 
     // MARK: - Route Geometry
 
-    private func createRoute(from points: [RouteScenePoint], color: NSColor) -> SCNNode {
+    private func createRoute(from points: [RouteScenePoint], color: PlatformColor) -> SCNNode {
         let parent = SCNNode()
         guard points.count >= 2 else { return parent }
 
@@ -251,7 +256,7 @@ public class ComparisonSceneBuilder {
         return parent
     }
 
-    private func createTube(from start: SCNVector3, to end: SCNVector3, radius: CGFloat, color: NSColor) -> SCNNode {
+    private func createTube(from start: SCNVector3, to end: SCNVector3, radius: CGFloat, color: PlatformColor) -> SCNNode {
         let dx = end.x - start.x
         let dy = end.y - start.y
         let dz = end.z - start.z
@@ -263,7 +268,7 @@ public class ComparisonSceneBuilder {
         tube.radialSegmentCount = 8
         tube.firstMaterial?.diffuse.contents = color
         tube.firstMaterial?.lightingModel = .blinn
-        tube.firstMaterial?.specular.contents = NSColor(white: 0.3, alpha: 1.0)
+        tube.firstMaterial?.specular.contents = PlatformColor(white: 0.3, alpha: 1.0)
 
         let node = SCNNode(geometry: tube)
         node.position = SCNVector3(
@@ -295,13 +300,13 @@ public class ComparisonSceneBuilder {
 
     // MARK: - Markers
 
-    private func createStartMarker(at point: RouteScenePoint, color: NSColor, label: String) -> SCNNode {
+    private func createStartMarker(at point: RouteScenePoint, color: PlatformColor, label: String) -> SCNNode {
         let parent = SCNNode()
 
         let sphere = SCNSphere(radius: markerRadius * 1.5)
         sphere.firstMaterial?.diffuse.contents = color
         sphere.firstMaterial?.lightingModel = .blinn
-        sphere.firstMaterial?.specular.contents = NSColor.white
+        sphere.firstMaterial?.specular.contents = PlatformColor.white
         parent.addChildNode(SCNNode(geometry: sphere))
 
         let glow = SCNSphere(radius: markerRadius * 2.0)
@@ -317,13 +322,13 @@ public class ComparisonSceneBuilder {
         return parent
     }
 
-    private func createFinishMarker(at point: RouteScenePoint, color: NSColor, label: String) -> SCNNode {
+    private func createFinishMarker(at point: RouteScenePoint, color: PlatformColor, label: String) -> SCNNode {
         let parent = SCNNode()
 
         let sphere = SCNSphere(radius: markerRadius * 1.5)
         sphere.firstMaterial?.diffuse.contents = color
         sphere.firstMaterial?.lightingModel = .blinn
-        sphere.firstMaterial?.specular.contents = NSColor.white
+        sphere.firstMaterial?.specular.contents = PlatformColor.white
         parent.addChildNode(SCNNode(geometry: sphere))
 
         let glow = SCNSphere(radius: markerRadius * 2.0)
@@ -380,9 +385,9 @@ public class ComparisonSceneBuilder {
 
     // MARK: - Text
 
-    private func createTextSprite(_ text: String, color: NSColor, fontSize: CGFloat) -> SCNNode {
+    private func createTextSprite(_ text: String, color: PlatformColor, fontSize: CGFloat) -> SCNNode {
         let textGeometry = SCNText(string: text, extrusionDepth: 0.5)
-        textGeometry.font = NSFont.boldSystemFont(ofSize: fontSize)
+        textGeometry.font = PlatformFont.boldSystemFont(ofSize: fontSize)
         textGeometry.firstMaterial?.diffuse.contents = color
         textGeometry.firstMaterial?.lightingModel = .constant
         textGeometry.flatness = 0.1
@@ -419,7 +424,7 @@ public class ComparisonSceneBuilder {
         }
 
         let gridSize = CGFloat(extent) * 0.8
-        let gridColor = NSColor.separatorColor.withAlphaComponent(0.3)
+        let gridColor = PlatformColor.separatorColor.withAlphaComponent(0.3)
 
         let center = SCNVector3(
             CGFloat((bounds.min.x + bounds.max.x) / 2),
@@ -450,7 +455,7 @@ public class ComparisonSceneBuilder {
         return parent
     }
 
-    private func createLine(from start: SCNVector3, to end: SCNVector3, color: NSColor) -> SCNNode {
+    private func createLine(from start: SCNVector3, to end: SCNVector3, color: PlatformColor) -> SCNNode {
         let indices: [Int32] = [0, 1]
         let source = SCNGeometrySource(vertices: [start, end])
         let element = SCNGeometryElement(indices: indices, primitiveType: .line)

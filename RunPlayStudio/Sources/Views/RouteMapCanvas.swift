@@ -73,11 +73,11 @@ struct RouteMapCanvas: View {
                     updatePitch(nextMode, animated: true)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .controlSize(.regular)
                 .help(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
                 .accessibilityLabel(displayMode == .threeD ? "Show in 2D" : "Show in 3D")
                 MapZoomStepper(scope: mapScope)
-                    .controlSize(.small)
+                    .controlSize(.regular)
             }
             .padding()
             .padding(.bottom, controlBottomInset)

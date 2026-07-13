@@ -34,10 +34,11 @@ struct ReplayControlsView: View {
 
             // Playback controls row
             HStack(spacing: AppDesign.Spacing.xLarge) {
-                // Step backward
+                // Step backward — 44pt touch target
                 Button(action: controller.stepBackward) {
                     Image(systemName: "backward.frame.fill")
                         .font(.body)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -46,11 +47,11 @@ struct ReplayControlsView: View {
                 .keyboardShortcut(.leftArrow, modifiers: .option)
                 .disabled(!controller.isPlaying && controller.state.currentTime == 0)
 
-                // Play/Pause — prominent circular button
+                // Play/Pause — prominent circular button, 44pt touch target
                 Button(action: controller.togglePlayPause) {
                     Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title3.weight(.semibold))
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .background(
                             Circle()
                                 .fill(.ultraThinMaterial)
@@ -62,10 +63,11 @@ struct ReplayControlsView: View {
                 .accessibilityLabel(controller.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
                 .keyboardShortcut(.space, modifiers: [])
 
-                // Step forward
+                // Step forward — 44pt touch target
                 Button(action: controller.stepForward) {
                     Image(systemName: "forward.frame.fill")
                         .font(.body)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -76,42 +78,34 @@ struct ReplayControlsView: View {
 
                 Spacer()
 
-                // Speed control pills
-                HStack(spacing: AppDesign.Spacing.xxSmall) {
-                    Text("Speed")
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.secondary)
+                // Speed control — pills on wide, compact on narrow
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: AppDesign.Spacing.xxSmall) {
+                        Text("Speed")
+                            .font(AppDesign.Typography.compactLabel)
+                            .foregroundStyle(.secondary)
 
-                    ForEach(ReplayController.speedOptions, id: \.self) { speed in
-                        Button(action: { controller.setSpeed(speed) }) {
-                            Text(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))
-                                .font(AppDesign.Typography.compactMetric)
-                                .padding(.horizontal, AppDesign.Spacing.small)
-                                .padding(.vertical, AppDesign.Spacing.xxSmall)
-                                .background(
-                                    Capsule()
-                                        .fill(
-                                            controller.state.playbackSpeed == speed
-                                                ? AppDesign.primaryBlue.opacity(0.15)
-                                                : Color.clear
-                                        )
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(
-                                            controller.state.playbackSpeed == speed
-                                                ? AppDesign.primaryBlue.opacity(0.3)
-                                                : Color.clear,
-                                            lineWidth: 1
-                                        )
-                                )
+                        ForEach(ReplayController.speedOptions, id: \.self) { speed in
+                            speedPill(speed)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(
-                            controller.state.playbackSpeed == speed
-                                ? AppDesign.primaryBlue
-                                : .secondary
-                        )
+                    }
+
+                    HStack(spacing: AppDesign.Spacing.xxSmall) {
+                        Text("Speed")
+                            .font(AppDesign.Typography.compactLabel)
+                            .foregroundStyle(.secondary)
+
+                        Picker("Speed", selection: Binding(
+                            get: { controller.state.playbackSpeed },
+                            set: { controller.setSpeed($0) }
+                        )) {
+                            ForEach(ReplayController.speedOptions, id: \.self) { speed in
+                                Text(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))
+                                    .tag(speed)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .controlSize(.regular)
                     }
                 }
 
@@ -123,5 +117,38 @@ struct ReplayControlsView: View {
                     .foregroundStyle(AppDesign.MetricColor.distance)
             }
         }
+    }
+
+    private func speedPill(_ speed: Double) -> some View {
+        Button(action: { controller.setSpeed(speed) }) {
+            Text(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))
+                .font(AppDesign.Typography.compactMetric)
+                .padding(.horizontal, AppDesign.Spacing.small)
+                .padding(.vertical, AppDesign.Spacing.medium)
+                .frame(minHeight: 44)
+                .background(
+                    Capsule()
+                        .fill(
+                            controller.state.playbackSpeed == speed
+                                ? AppDesign.primaryBlue.opacity(0.15)
+                                : Color.clear
+                        )
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            controller.state.playbackSpeed == speed
+                                ? AppDesign.primaryBlue.opacity(0.3)
+                                : Color.clear,
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(
+            controller.state.playbackSpeed == speed
+                ? AppDesign.primaryBlue
+                : .secondary
+        )
     }
 }

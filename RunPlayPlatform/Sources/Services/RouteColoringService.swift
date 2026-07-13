@@ -1,6 +1,10 @@
 import Foundation
 import RunPlayCore
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 
 /// Route coloring mode for 3D visualization.
@@ -16,7 +20,7 @@ public enum RouteColorMode: String, CaseIterable, Identifiable {
 /// Computes colors for route segments based on metrics like pace.
 ///
 /// Delegates pure computation to `RouteColorMetrics` (RunPlayCore).
-/// Color mapping uses AppKit's `NSColor`.
+/// Color mapping uses `PlatformColor` (NSColor on macOS, UIColor on iOS).
 public struct RouteColoringService {
 
     private let metrics = RouteColorMetrics()
@@ -30,8 +34,8 @@ public struct RouteColoringService {
     public func computeSegmentColors(
         points: [RouteScenePoint],
         mode: RouteColorMode,
-        defaultColor: NSColor = .systemBlue
-    ) -> [NSColor] {
+        defaultColor: PlatformColor = .systemBlue
+    ) -> [PlatformColor] {
         guard points.count >= 2 else { return [] }
 
         switch mode {
@@ -78,7 +82,7 @@ public struct RouteColoringService {
 
 extension RouteColoringService {
 
-    private func computePaceColors(points: [RouteScenePoint], defaultColor: NSColor) -> [NSColor] {
+    private func computePaceColors(points: [RouteScenePoint], defaultColor: PlatformColor) -> [PlatformColor] {
         let paceValues = metrics.computeSegmentPace(points: points)
         guard !paceValues.isEmpty else {
             return Array(repeating: defaultColor, count: points.count - 1)
@@ -98,13 +102,13 @@ extension RouteColoringService {
         }
     }
 
-    private func computeElevationColors(points: [RouteScenePoint], defaultColor: NSColor) -> [NSColor] {
+    private func computeElevationColors(points: [RouteScenePoint], defaultColor: PlatformColor) -> [PlatformColor] {
         let elevations = points.map { $0.yMeters }
         guard let minElev = elevations.min(), let maxElev = elevations.max(), maxElev > minElev else {
             return Array(repeating: defaultColor, count: points.count - 1)
         }
 
-        var colors: [NSColor] = []
+        var colors: [PlatformColor] = []
         for i in 0..<(points.count - 1) {
             let avgElev = (elevations[i] + elevations[i + 1]) / 2
             let fraction = (avgElev - minElev) / (maxElev - minElev)
@@ -114,9 +118,9 @@ extension RouteColoringService {
     }
 
     /// Map pace to color: fast = blue/cyan, slow = red/yellow
-    private func paceToColor(pace: Double, fastBound: Double, slowBound: Double) -> NSColor {
+    private func paceToColor(pace: Double, fastBound: Double, slowBound: Double) -> PlatformColor {
         guard pace.isFinite && !pace.isNaN else {
-            return NSColor.systemBlue
+            return PlatformColor.systemBlue
         }
 
         // Clamp to bounds
@@ -124,7 +128,7 @@ extension RouteColoringService {
 
         // Normalize: 0 = fastest (blue), 1 = slowest (red)
         let range = slowBound - fastBound
-        guard range > 0 else { return NSColor.systemBlue }
+        guard range > 0 else { return PlatformColor.systemBlue }
         let t = (clamped - fastBound) / range
 
         // Color gradient: blue -> cyan -> green -> yellow -> red
@@ -133,7 +137,7 @@ extension RouteColoringService {
         let saturation = 0.8
         let brightness = 0.9
 
-        return NSColor(
+        return PlatformColor(
             hue: hue,
             saturation: saturation,
             brightness: brightness,
@@ -142,17 +146,17 @@ extension RouteColoringService {
     }
 
     /// Map elevation fraction to color: low = green, high = brown
-    private func elevationToColor(fraction: Double) -> NSColor {
+    private func elevationToColor(fraction: Double) -> PlatformColor {
         guard fraction.isFinite else { return .systemGreen }
         let t = max(0, min(1, fraction))
         // Green (0.33) to brown/orange (0.08)
         let hue = 0.33 - 0.25 * t
-        return NSColor(hue: hue, saturation: 0.7, brightness: 0.8, alpha: 1.0)
+        return PlatformColor(hue: hue, saturation: 0.7, brightness: 0.8, alpha: 1.0)
     }
 
     // MARK: - Heart Rate Colors
 
-    private func computeHeartRateColors(points: [RouteScenePoint], defaultColor: NSColor) -> [NSColor] {
+    private func computeHeartRateColors(points: [RouteScenePoint], defaultColor: PlatformColor) -> [PlatformColor] {
         let hrValues = metrics.computeSegmentHeartRate(points: points)
         guard !hrValues.isEmpty else {
             return Array(repeating: defaultColor, count: points.count - 1)
@@ -173,9 +177,9 @@ extension RouteColoringService {
     }
 
     /// Map heart rate to color: low HR = blue/green, moderate = yellow/orange, high = red/purple
-    private func heartRateToColor(hr: Double, lowBound: Double, highBound: Double) -> NSColor {
+    private func heartRateToColor(hr: Double, lowBound: Double, highBound: Double) -> PlatformColor {
         guard hr.isFinite && !hr.isNaN else {
-            return NSColor.systemGreen
+            return PlatformColor.systemGreen
         }
 
         // Clamp to bounds
@@ -183,7 +187,7 @@ extension RouteColoringService {
 
         // Normalize: 0 = low HR (blue/green), 1 = high HR (red/purple)
         let range = highBound - lowBound
-        guard range > 0 else { return NSColor.systemGreen }
+        guard range > 0 else { return PlatformColor.systemGreen }
         let t = (clamped - lowBound) / range
 
         // Color gradient: blue -> cyan -> green -> yellow -> orange -> red
@@ -192,7 +196,7 @@ extension RouteColoringService {
         let saturation = 0.8
         let brightness = 0.9
 
-        return NSColor(
+        return PlatformColor(
             hue: hue,
             saturation: saturation,
             brightness: brightness,

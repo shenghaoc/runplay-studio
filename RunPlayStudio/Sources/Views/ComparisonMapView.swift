@@ -172,7 +172,8 @@ struct ComparisonMapView: View {
                     appState.selectedComparisonDistanceMeters = 0
                 } label: {
                     Image(systemName: "backward.end.fill")
-                        .font(.system(size: 10))
+                        .font(.body)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -194,7 +195,8 @@ struct ComparisonMapView: View {
                     appState.selectedComparisonDistanceMeters = commonDistance
                 } label: {
                     Image(systemName: "forward.end.fill")
-                        .font(.system(size: 10))
+                        .font(.body)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)

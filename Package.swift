@@ -21,8 +21,8 @@ var products: [Product] = [
     .library(name: "RunPlayCore", targets: ["RunPlayCore"]),
 ]
 
-// macOS-only layers are absent from the Linux package graph.
-#if os(macOS)
+// macOS/iOS layers are absent from the Linux package graph.
+#if os(macOS) || os(iOS)
 targets.append(contentsOf: [
     // macOS non-UI platform layer: SceneKit, AppKit value types, MapKit,
     // and Combine are allowed; SwiftUI, Charts, and presentation code are not.
@@ -58,7 +58,8 @@ products.append(.executable(name: "RunPlayStudio", targets: ["RunPlayStudio"]))
 let package = Package(
     name: "RunPlayStudio",
     platforms: [
-        .macOS(.v26)
+        .macOS(.v26),
+        .iOS(.v26),
     ],
     products: products,
     targets: targets,
