@@ -120,6 +120,38 @@ final class WorkoutTimelineTests: XCTestCase {
         XCTAssertEqual(range.pausedSeconds, 3_000, accuracy: 0.001)
     }
 
+    func testElevationInterpolationPreservesBelowSeaLevelAltitudes() {
+        let timeline = WorkoutTimeline(routePoints: [
+            RoutePoint(
+                timestamp: start,
+                latitude: 1,
+                longitude: 1,
+                altitudeMeters: -30,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0
+            ),
+            RoutePoint(
+                timestamp: start.addingTimeInterval(300),
+                latitude: 1.01,
+                longitude: 1,
+                altitudeMeters: -10,
+                distanceFromStartMeters: 1_000,
+                elapsedSeconds: 300
+            )
+        ])
+
+        XCTAssertEqual(
+            timeline.signedElevationChange(from: 250, to: 750) ?? -1,
+            10,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            timeline.elevationGain(from: 250, to: 750) ?? -1,
+            10,
+            accuracy: 0.001
+        )
+    }
+
     func testDuplicateDistanceBoundaryUsesStopForEndAndResumeForStart() throws {
         let timeline = WorkoutTimeline(routePoints: pausedRoute())
         let end = try XCTUnwrap(timeline.distanceSample(at: 600, boundary: .rangeEnd))

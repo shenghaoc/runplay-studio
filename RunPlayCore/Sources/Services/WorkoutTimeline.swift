@@ -503,7 +503,6 @@ public struct WorkoutTimeline: Sendable {
     }
 
     private static func interpolate(_ first: Double, _ second: Double, _ fraction: Double) -> Double {
-        let value = first + ((second - first) * fraction)
-        return nonNegativeFinite(value)
+        first + ((second - first) * fraction)
     }
 }
