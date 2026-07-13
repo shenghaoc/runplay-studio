@@ -162,9 +162,16 @@ public struct RouteColorMetrics: Sendable {
 
     /// Check if points have usable heart rate data.
     public func hasHeartRateData(points: [RouteScenePoint]) -> Bool {
-        let hrValues = points.compactMap { $0.heartRateBPM }
-        let validCount = hrValues.filter { $0 >= 40 && $0 <= 230 && $0.isFinite }.count
-        return validCount >= 2
+        // ⚡ Bolt: Replaced .compactMap { ... }.filter { ... }.count chain with inline loop.
+        // This avoids intermediate O(N) array allocations and short-circuits early for O(1) best-case performance.
+        var validCount = 0
+        for point in points {
+            if let hr = point.heartRateBPM, hr >= 40, hr <= 230, hr.isFinite {
+                validCount += 1
+                if validCount >= 2 { return true }
+            }
+        }
+        return false
     }
 
     // MARK: - Helpers

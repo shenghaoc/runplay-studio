@@ -94,11 +94,24 @@ public struct WorkoutAnalyzer: Sendable {
             previousSegmentIndex = point.routeSegmentIndex
         }
 
-        let heartRates = points.compactMap(\.heartRateBPM)
-            .filter { Self.validHeartRateRange.contains($0) && $0.isFinite }
-        let averageHeartRate = heartRates.isEmpty
-            ? nil
-            : heartRates.reduce(0, +) / Double(heartRates.count)
+        // ⚡ Bolt: Replaced .compactMap { ... }.filter { ... }.reduce chain with inline loop.
+        // This avoids intermediate O(N) array allocations for heart rate aggregations.
+        var sumHR: Double = 0
+        var countHR = 0
+        var maxHR: Double? = nil
+
+        for point in points {
+            if let hr = point.heartRateBPM, Self.validHeartRateRange.contains(hr), hr.isFinite {
+                sumHR += hr
+                countHR += 1
+                if let currentMax = maxHR {
+                    maxHR = max(currentMax, hr)
+                } else {
+                    maxHR = hr
+                }
+            }
+        }
+        let averageHeartRate = countHR > 0 ? sumHR / Double(countHR) : nil
 
         return RunSummary(
             totalDistanceMeters: totalDistance,
@@ -112,7 +125,7 @@ public struct WorkoutAnalyzer: Sendable {
             elevationGainMeters: elevationGain,
             elevationLossMeters: elevationLoss,
             averageHeartRateBPM: averageHeartRate,
-            maxHeartRateBPM: heartRates.max()
+            maxHeartRateBPM: maxHR
         )
     }
 
