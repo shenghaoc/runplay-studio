@@ -117,7 +117,7 @@ struct WorkoutRow: View {
     private func metricPill(icon: String, value: String, color: Color = .secondary) -> some View {
         HStack(spacing: AppDesign.Spacing.xxSmall) {
             Image(systemName: icon)
-                .font(AppDesign.Typography.compactIcon)
+                .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(color.opacity(0.8))
             Text(value)
                 .font(AppDesign.Typography.compactLabel)

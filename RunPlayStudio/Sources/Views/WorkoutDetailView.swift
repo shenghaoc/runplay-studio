@@ -76,7 +76,7 @@ struct WorkoutDetailView: View {
                     .tracking(1.2)
                     .foregroundStyle(.tertiary)
                 Text(workout.displayName)
-                    .font(.title2.weight(.semibold))
+                    .font(AppDesign.Typography.heading2)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -105,10 +105,10 @@ struct WorkoutDetailView: View {
     private func headerMetric(_ label: String, _ value: String, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
             Text(value)
-                .font(.system(.title3, design: .rounded, weight: .semibold).monospacedDigit())
+                .font(AppDesign.Typography.metricLarge.monospacedDigit())
                 .foregroundStyle(color)
             Text(label)
-                .font(.caption2.weight(.medium))
+                .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(.tertiary)
         }
         .frame(minWidth: 72, alignment: .leading)
@@ -121,7 +121,7 @@ struct WorkoutDetailView: View {
             Image(systemName: "location.slash")
                 .foregroundStyle(AppDesign.warmYellow)
             Text("No GPS route data — only HR, cadence, and summary metrics are available.")
-                .font(.subheadline)
+                .font(AppDesign.Typography.secondary)
             Spacer()
         }
         .padding(.horizontal, AppDesign.Spacing.xLarge)
@@ -151,7 +151,7 @@ struct WorkoutDetailView: View {
             Spacer()
 
             Text(tabContext)
-                .font(.caption)
+                .font(AppDesign.Typography.compactMetric)
                 .foregroundStyle(.tertiary)
         }
     }

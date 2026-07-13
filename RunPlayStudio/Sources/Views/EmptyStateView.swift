@@ -24,7 +24,7 @@ struct EmptyStateView: View {
                         .shadow(color: AppDesign.primaryBlue.opacity(0.15), radius: 20, y: 8)
 
                     Image(systemName: "figure.run")
-                        .font(.system(size: 48, weight: .light))
+                        .font(AppDesign.Typography.emptyStateIcon)
                         .foregroundStyle(AppDesign.primaryBlue)
                 }
                 .scaleEffect(appeared ? 1.0 : 0.8)
@@ -33,11 +33,10 @@ struct EmptyStateView: View {
                 // Title and description
                 VStack(spacing: AppDesign.Spacing.medium) {
                     Text("No Run Selected")
-                        .font(.title2)
-                        .fontWeight(.bold)
+                        .font(AppDesign.Typography.heading2)
 
                     Text("Import a GPX, TCX, FIT, or JSON file\nto visualize your run")
-                        .font(.subheadline)
+                        .font(AppDesign.Typography.secondary)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .lineSpacing(2)
@@ -48,7 +47,7 @@ struct EmptyStateView: View {
                 // CTA button
                 Button(action: onImport) {
                     Label("Import File", systemImage: "doc.badge.plus")
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppDesign.Typography.bodySemibold)
                         .padding(.horizontal, AppDesign.Spacing.xxLarge)
                         .padding(.vertical, AppDesign.Spacing.medium)
                 }

@@ -31,7 +31,7 @@ struct SegmentHighlightsPanel: View {
 
             if segments.isEmpty {
                 Text("No segments detected")
-                    .font(.subheadline)
+                    .font(AppDesign.Typography.secondary)
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, AppDesign.Spacing.xSmall)
             } else {
@@ -75,7 +75,7 @@ struct SegmentCard: View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
             HStack(spacing: AppDesign.Spacing.xxSmall) {
                 Image(systemName: segment.type.icon)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(segmentColor)
                 Text(segment.title)
                     .font(AppDesign.Typography.compactMetric)

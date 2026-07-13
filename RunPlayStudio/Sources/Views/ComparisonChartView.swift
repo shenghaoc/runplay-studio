@@ -106,10 +106,10 @@ struct ComparisonChartEmptyView: View {
                 .font(.title2)
                 .foregroundStyle(.tertiary)
             Text("No pace data to chart")
-                .font(.subheadline)
+                .font(AppDesign.Typography.secondary)
                 .foregroundStyle(.secondary)
             Text("Both runs need GPS route points with timing data to build a pace comparison.")
-                .font(.caption)
+                .font(AppDesign.Typography.compactMetric)
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, minHeight: 120)
@@ -129,7 +129,7 @@ struct SplitComparisonTableView: View {
 
             if splits.isEmpty {
                 Text("No splits to compare")
-                    .font(.subheadline)
+                    .font(AppDesign.Typography.secondary)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 60)
             } else {
@@ -174,7 +174,7 @@ struct SplitComparisonTableView: View {
                     TableColumn("Winner") { split in
                         HStack(spacing: AppDesign.Spacing.xxSmall) {
                             Image(systemName: winnerIcon(for: split.winner))
-                                .font(.system(size: 10, weight: .medium))
+                                .font(AppDesign.Typography.compactLabel)
                             Text(split.winner.label)
                                 .font(AppDesign.Typography.compactMetric)
                         }

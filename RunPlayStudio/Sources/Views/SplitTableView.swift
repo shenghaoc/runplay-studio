@@ -48,7 +48,7 @@ struct SplitTableView: View {
                     HStack {
                         if split.id == activeSplitID {
                             Image(systemName: "circle.fill")
-                                .font(.system(size: 6))
+                                .font(AppDesign.Typography.compactLabel)
                                 .foregroundStyle(AppDesign.comparisonOrange)
                         }
                         Text("\(split.splitIndex)")

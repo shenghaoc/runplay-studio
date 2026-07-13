@@ -121,7 +121,7 @@ struct ComparisonMapView: View {
                     .font(AppDesign.Typography.compactLabel)
             }
         }
-        .font(.caption)
+        .font(AppDesign.Typography.compactMetric)
         .padding(AppDesign.Spacing.medium)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))

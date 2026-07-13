@@ -170,11 +170,11 @@ struct MetricsChartView: View {
         let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
         return HStack(spacing: AppDesign.Spacing.small) {
             Text("Jump to")
-                .font(.caption)
+                .font(AppDesign.Typography.compactMetric)
                 .foregroundStyle(.tertiary)
 
             TextField("km", text: $seekDistanceKmText)
-                .font(.caption.monospacedDigit())
+                .font(AppDesign.Typography.monoCaption)
                 .frame(width: 80)
                 .textFieldStyle(.roundedBorder)
                 .focused($seekFieldFocused)
@@ -190,7 +190,7 @@ struct MetricsChartView: View {
                 }
             ), in: 0...max(totalKm, 0.01), step: 0.1) {
                 Text(String(format: "%.2f / %.2f km", currentDistance / 1000, totalKm))
-                    .font(.caption.monospacedDigit())
+                    .font(AppDesign.Typography.monoCaption)
             }
             .accessibilityLabel("Adjust jump distance")
             .accessibilityValue(String(format: "%.2f km", currentDistance / 1000))
@@ -215,7 +215,7 @@ struct MetricsChartView: View {
                 .font(.title2)
                 .foregroundStyle(.tertiary)
             Text(noDataMessage)
-                .font(.subheadline)
+                .font(AppDesign.Typography.secondary)
                 .foregroundStyle(.secondary)
         }
     }

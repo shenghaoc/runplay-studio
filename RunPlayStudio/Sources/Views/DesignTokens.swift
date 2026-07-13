@@ -85,30 +85,83 @@ enum AppDesign {
     }
 
     // MARK: - Typography
+    //
+    // Semantic type tokens with clear role assignments.
+    // Uses SwiftUI semantic font sizes to respect Dynamic Type.
+    // Weights are assigned by role, not by feel:
+    //   .bold     — primary data, hero values
+    //   .semibold — section heads, metric values
+    //   .medium   — labels, captions, secondary text
+    //   .regular  — body prose (default .body)
 
     enum Typography {
-        /// Large hero metric — used for primary values in summary cards.
-        static let heroMetric = Font.system(.title, design: .rounded, weight: .bold)
+        /// Display — largest hero numbers in export cards and key stat callouts.
+        /// `.largeTitle` ~26pt on macOS.
+        static let display = Font.system(.largeTitle, design: .rounded, weight: .bold)
 
-        /// Section headline — used for panel titles.
-        static let sectionHeadline = Font.system(.subheadline, design: .default, weight: .semibold)
+        /// Page / panel title — primary heading for a screen or major section.
+        /// `.title` ~22pt on macOS.
+        static let heading1 = Font.system(.title, design: .default, weight: .bold)
 
-        /// Metric value — used for data values in badges and cards.
-        static let metricValue = Font.system(.callout, design: .default, weight: .semibold)
+        /// Section heading — card titles, chart headers, detail view headers.
+        /// `.title2` ~17pt on macOS.
+        static let heading2 = Font.title2.weight(.semibold)
 
-        /// Metric label — used for labels beneath values.
-        static let metricLabel = Font.system(.caption2, design: .default, weight: .medium)
+        /// Sub-section heading — compare panels, export sub-headers.
+        /// `.title3` ~15pt on macOS.
+        static let heading3 = Font.title3.weight(.semibold)
 
-        /// Compact metric — used for tight spaces like comparison badges.
-        /// Uses `.caption` for Dynamic Type compatibility (~12pt on macOS).
+        /// Section headline — panel titles, picker labels, filter bars.
+        /// `.headline` ~13pt semibold on macOS.
+        static let sectionHeadline = Font.headline.weight(.semibold)
+
+        /// Primary body text — prose, descriptions, list rows.
+        static let body = Font.body
+
+        /// Body text with semibold weight — emphasis in prose.
+        static let bodySemibold = Font.body.weight(.semibold)
+
+        /// Secondary / helper text — chart footnotes, hints, metadata.
+        /// `.subheadline` ~11pt on macOS.
+        static let secondary = Font.subheadline
+
+        /// Large metric value — prominent data numbers (title3 at ~15pt).
+        /// Used for key metrics in detail panels and comparison cards.
+        static let metricLarge = Font.system(.title3, design: .rounded, weight: .semibold)
+
+        /// Standard metric value — data numbers in badges, cards, and tables.
+        /// `.callout` ~12pt semibold on macOS.
+        static let metricValue = Font.callout.weight(.semibold)
+
+        /// Metric label — label text beneath metric values.
+        /// `.caption` ~11pt medium on macOS.
+        static let metricLabel = Font.caption.weight(.medium)
+
+        /// Compact metric — tighter data numbers for badge / sidebar contexts.
+        /// `.caption` ~11pt medium on macOS (same base size as metricLabel, different context).
         static let compactMetric = Font.caption.weight(.medium)
 
-        /// Compact label — used for very tight label text.
-        /// Uses `.caption2` for Dynamic Type compatibility (~10pt on macOS).
+        /// Compact label — smallest label text for tight spaces.
+        /// `.caption2` ~10pt medium on macOS. Minimum readable size.
         static let compactLabel = Font.caption2.weight(.medium)
 
-        /// Compact icon — used for inline icons in tight spaces like sidebar rows.
-        static let compactIcon = Font.system(size: 8, weight: .medium)
+        /// Monospaced number value — aligns digits in tables and comparison columns.
+        /// Uses `.body` design for readability at standard size; apply `.monospacedDigit()`.
+        static let monoValue = Font.body.monospacedDigit()
+
+        /// Monospaced number caption — compact aligned digits.
+        /// Uses `.caption`; apply `.monospacedDigit()`.
+        static let monoCaption = Font.caption.monospacedDigit()
+
+        /// Empty-state icon — decorative symbol in empty views.
+        /// `.largeTitle` weight .light for airy presence.
+        static let emptyStateIcon = Font.system(size: 40, weight: .light)
+
+        /// Empty-state heading — what the user should do.
+        static let emptyStateHeading = Font.title2
+
+        /// Empty-state body — why the feature matters.
+        static let emptyStateBody = Font.subheadline
     }
 
     // MARK: - Background Treatments

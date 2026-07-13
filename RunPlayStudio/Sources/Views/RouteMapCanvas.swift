@@ -56,7 +56,7 @@ struct RouteMapCanvas: View {
                             .stroke(.white, lineWidth: 2)
                             .frame(width: 20, height: 20)
                         Text(marker.style.glyph)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(AppDesign.Typography.compactLabel.weight(.bold))
                             .foregroundStyle(marker.style == .current ? .black : .white)
                     }
                     .accessibilityLabel(marker.title)

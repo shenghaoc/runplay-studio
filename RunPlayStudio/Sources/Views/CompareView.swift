@@ -284,21 +284,20 @@ struct ComparisonEmptyView: View {
     var body: some View {
         VStack(spacing: AppDesign.Spacing.xLarge) {
             Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 48, weight: .light))
+                .font(AppDesign.Typography.emptyStateIcon)
                 .foregroundStyle(.tertiary)
 
             Text(title)
-                .font(.title3)
-                .fontWeight(.semibold)
+                .font(AppDesign.Typography.heading3)
 
             Text(message)
-                .font(.subheadline)
+                .font(AppDesign.Typography.secondary)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             if workoutCount >= 2 && primaryName != nil {
-                Text("Use the \"Compare Against\" picker above to select a second run.")
-                    .font(.caption)
+                Text("Use the \"Compare With\" picker above to select a second run.")
+                    .font(AppDesign.Typography.compactMetric)
                     .foregroundStyle(.tertiary)
             }
         }

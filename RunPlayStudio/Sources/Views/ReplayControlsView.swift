@@ -50,7 +50,7 @@ struct ReplayControlsView: View {
                 // Play/Pause — prominent circular button, 44pt touch target
                 Button(action: controller.togglePlayPause) {
                     Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title3.weight(.semibold))
+                        .font(AppDesign.Typography.heading3)
                         .frame(width: 44, height: 44)
                         .background(
                             Circle()
