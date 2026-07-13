@@ -213,7 +213,9 @@ struct ComparisonSummaryView: View {
             }
             .frame(maxWidth: .infinity)
 
-            if !summary.warnings.isEmpty {
+            if summary.warnings.contains(where: {
+                $0 == .differentDistances || $0 == .differentRouteShape || $0 == .insufficientOverlap
+            }) {
                 HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: "info.circle")
                     Text("Aligned over \(commonDistanceLabel)")

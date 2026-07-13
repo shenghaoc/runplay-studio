@@ -22,6 +22,10 @@ struct CurrentMetricsPanel: View {
                 MetricDisplay(label: "HR", value: metrics.formattedHeartRate, icon: "heart.fill", color: AppDesign.MetricColor.heartRate)
             }
 
+            if hasCadence {
+                MetricDisplay(label: "Cad", value: metrics.formattedCadence, icon: "shoeprints.fill", color: AppDesign.MetricColor.cadence)
+            }
+
             MetricDisplay(label: "Split", value: metrics.formattedSplit, icon: "flag", color: AppDesign.MetricColor.split)
         }
     }

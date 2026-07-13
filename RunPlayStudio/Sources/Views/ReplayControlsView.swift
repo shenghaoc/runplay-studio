@@ -39,6 +39,7 @@ struct ReplayControlsView: View {
                     Image(systemName: "backward.frame.fill")
                         .font(.body)
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -67,6 +68,7 @@ struct ReplayControlsView: View {
                     Image(systemName: "forward.frame.fill")
                         .font(.body)
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -126,6 +128,7 @@ struct ReplayControlsView: View {
                 .padding(.horizontal, AppDesign.Spacing.small)
                 .padding(.vertical, AppDesign.Spacing.medium)
                 .frame(minHeight: 44)
+                .contentShape(Capsule())
                 .background(
                     Capsule()
                         .fill(
