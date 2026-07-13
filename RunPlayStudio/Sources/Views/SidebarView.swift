@@ -37,6 +37,7 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
         .onDeleteCommand {
             if let selectedWorkout {
                 workoutToDelete = selectedWorkout
@@ -88,35 +89,46 @@ struct WorkoutRow: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .lineLimit(1)
+                    .truncationMode(.middle)
 
-                HStack(spacing: AppDesign.Spacing.large) {
+                HStack(spacing: AppDesign.Spacing.small) {
                     metricPill(icon: "figure.run", value: workout.summary.formattedDistance)
+                    metadataSeparator
                     metricPill(icon: "clock", value: workout.summary.formattedDuration)
-                }
 
-                if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
-                    HStack(spacing: AppDesign.Spacing.xxSmall) {
-                        Image(systemName: "heart.fill")
-                            .font(AppDesign.Typography.compactIcon)
-                        Text(String(format: "%.0f bpm avg", avgHR))
-                            .font(AppDesign.Typography.compactLabel)
+                    if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
+                        metadataSeparator
+                        metricPill(
+                            icon: "heart.fill",
+                            value: String(format: "%.0f bpm", avgHR),
+                            color: AppDesign.MetricColor.heartRate
+                        )
                     }
-                    .foregroundStyle(AppDesign.MetricColor.heartRate)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, AppDesign.Spacing.xSmall)
+        .help(workout.displayName)
     }
 
-    private func metricPill(icon: String, value: String) -> some View {
+    private func metricPill(icon: String, value: String, color: Color = .secondary) -> some View {
         HStack(spacing: AppDesign.Spacing.xxSmall) {
             Image(systemName: icon)
                 .font(AppDesign.Typography.compactIcon)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(color.opacity(0.8))
             Text(value)
                 .font(AppDesign.Typography.compactLabel)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(color)
+                .lineLimit(1)
         }
+    }
+
+    private var metadataSeparator: some View {
+        Text("·")
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.quaternary)
+            .accessibilityHidden(true)
     }
 
     private var accentColor: Color {

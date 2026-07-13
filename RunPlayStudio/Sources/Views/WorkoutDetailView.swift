@@ -78,7 +78,10 @@ struct WorkoutDetailView: View {
                 Text(workout.displayName)
                     .font(.title2.weight(.semibold))
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            .frame(maxWidth: 260, alignment: .leading)
+            .help(workout.displayName)
 
             Spacer(minLength: AppDesign.Spacing.xLarge)
 
