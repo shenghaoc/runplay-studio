@@ -45,6 +45,9 @@ Icon
 CLAUDE.local.md
 .claude/settings.local.json
 
+# Session artifacts (managed by tools)
+.impeccable/
+
 # Generated
 *.generated.swift
 dist/

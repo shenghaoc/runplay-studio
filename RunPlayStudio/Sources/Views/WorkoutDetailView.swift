@@ -53,6 +53,7 @@ struct WorkoutDetailView: View {
                 .ignoresSafeArea()
         }
         .focused($isFocused)
+        .focusable()
         .onAppear { isFocused = true }
         .onKeyPress(characters: .alphanumerics, phases: .down) { press in
             guard press.modifiers == .command else { return .ignored }

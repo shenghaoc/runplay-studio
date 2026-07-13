@@ -128,6 +128,7 @@ struct MetricsChartView: View {
                             .foregroundStyle(.quaternary)
                     }
                 }
+                .chartYScale(domain: .automatic(includesZero: false))
                 .chartYAxis {
                     AxisMarks(values: .automatic(desiredCount: 5)) { value in
                         AxisValueLabel {

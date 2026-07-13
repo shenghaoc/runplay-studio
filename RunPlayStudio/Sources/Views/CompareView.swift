@@ -23,7 +23,7 @@ struct CompareView: View {
                         ComparisonMapView(
                             primaryWorkout: pair.primary,
                             comparisonWorkout: pair.comparison,
-                            warnings: [],
+                            warnings: appState.comparisonSummary?.warnings ?? [],
                             appState: appState
                         )
                         .layoutPriority(1)

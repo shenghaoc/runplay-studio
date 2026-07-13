@@ -9,6 +9,7 @@ struct EmptyStateView: View {
     var onImport: () -> Void
 
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -73,8 +74,12 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
+            if reduceMotion {
                 appeared = true
+            } else {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
+                    appeared = true
+                }
             }
         }
     }
