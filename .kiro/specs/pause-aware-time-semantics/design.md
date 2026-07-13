@@ -25,15 +25,20 @@ or geographic interpolation crosses a gap.
 
 The initializer builds three safe arrays aligned to source route points:
 
-1. elapsed seconds from each timestamp relative to the initial route timestamp;
-   invalid or regressing intermediate timestamps hold the prior position rather
-   than borrowing separately stored elapsed values;
+1. elapsed seconds from each timestamp relative to the initial route timestamp.
+   If the timestamps do not span but the normalized route has a positive final
+   `elapsedSeconds`, that series provides the elapsed clock; otherwise invalid
+   or regressing intermediate timestamps hold the prior position rather than
+   borrowing separately stored elapsed values;
 2. active seconds as a prefix sum of positive, finite adjacent timestamp deltas
    within the same `routeSegmentIndex`; invalid deltas add no active time;
 3. non-decreasing cumulative distance.
 
 Elapsed total is the sanitized final route timestamp minus the initial route
-timestamp; active and paused totals preserve finite non-negative invariants.
+timestamp, with the normalized elapsed-series fallback for non-spanning
+timestamps. In that fallback, elapsed is active because the source supplies no
+reliable pause boundary. Active and paused totals preserve finite non-negative
+invariants.
 `DistanceSample` returns elapsed and active clocks plus a real source index.
 `DistanceRange` subtracts those samples and exposes the covered source range.
 The service never mutates the route or persists active time per point.

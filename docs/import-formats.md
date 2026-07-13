@@ -18,7 +18,7 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 - Import is file-based and local-only.
 - FIT support targets common running activity files, not the full FIT profile. It was implemented against Garmin FIT SDK Profile 21.205.0.
 - FIT developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
-- All formats use route-derived clocks: elapsed is final timestamp minus initial timestamp; active sums positive adjacent deltas within a continuous route segment; paused is elapsed minus active. Moving time is not estimated.
+- All formats use route-derived clocks: elapsed is final timestamp minus initial timestamp, falling back to a normalized per-point elapsed series only when timestamps do not span. Active sums positive adjacent deltas within a continuous route segment; the fallback treats all elapsed time as active because it cannot infer pauses. Paused is elapsed minus active. Moving time is not estimated.
 - FIT timer start/stop events separate route segments without adding geographic distance across a pause. Supplied FIT distance is rebased per complete segment; segments with missing or invalid distance use their coordinates instead. Route-point elapsed timestamps remain elapsed time.
 - FIT selected-session elapsed/timer totals validate the route-derived clocks but never blindly replace them. Material mismatches (more than five seconds or two percent) produce import warnings.
 - FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages.

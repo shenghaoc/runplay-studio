@@ -87,8 +87,11 @@ warning without replacing the route result.
 `WorkoutAnalyzer`, `SplitCalculator`, `SegmentDetector`, `PlaybackEngine`,
 `WorkoutComparisonService`, and export models.
 
-- elapsed time is the final timestamp minus the first timestamp;
-- active time sums positive adjacent deltas within one route segment;
+- elapsed time is the final timestamp minus the first timestamp, falling back
+  to normalized per-point elapsed values only when timestamps do not span;
+- active time sums positive adjacent deltas within one route segment; the
+  timestamp-free fallback treats elapsed time as active because it cannot infer
+  pauses;
 - paused time is elapsed minus active;
 - distance sampling returns both clocks and never interpolates geography across
   a segment boundary;

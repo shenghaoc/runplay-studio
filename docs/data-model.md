@@ -3,9 +3,12 @@
 ## Time terminology
 
 - **Elapsed time** is the final route timestamp minus the initial route
-  timestamp. It includes pauses and recording gaps.
+  timestamp. It includes pauses and recording gaps. When timestamps do not
+  span but normalized route points carry a valid elapsed series, that series is
+  used instead.
 - **Active time** is the sum of positive timestamp deltas between adjacent
-  points with the same `routeSegmentIndex`.
+  points with the same `routeSegmentIndex`. The elapsed-series fallback treats
+  all elapsed time as active because pause boundaries cannot be determined.
 - **Paused time** is elapsed minus active, clamped to a finite non-negative
   value.
 - **Moving time** is not estimated. Active time must not be presented as moving

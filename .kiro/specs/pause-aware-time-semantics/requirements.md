@@ -18,9 +18,12 @@ misrepresented.
 #### Acceptance Criteria
 
 1. Elapsed time SHALL equal final route timestamp minus initial route timestamp
-   and SHALL include pauses and recording gaps.
+   and SHALL include pauses and recording gaps. When timestamps do not span but
+   normalized points contain a valid elapsed series, that series SHALL provide
+   elapsed time instead.
 2. Active time SHALL sum only positive adjacent timestamp deltas whose points
-   share a `routeSegmentIndex`.
+   share a `routeSegmentIndex`. For the supplied-elapsed fallback, all elapsed
+   time SHALL be active because pause boundaries cannot be inferred.
 3. Paused time SHALL equal elapsed minus active and SHALL be finite and
    non-negative.
 4. A platform-neutral `WorkoutTimeline` SHALL be the shared source of truth for

@@ -15,9 +15,11 @@ public enum WorkoutDistanceBoundaryRole: Sendable {
 /// Platform-neutral authority for elapsed, active, pause, distance, and replay
 /// time semantics.
 ///
-/// Valid route timestamps define the elapsed clock. The active clock sums only
-/// positive adjacent timestamp deltas inside the same route segment. The
-/// original route points are never mutated.
+/// Valid route timestamps define the elapsed clock. When timestamps do not
+/// span but normalized points contain a valid elapsed series, that series is
+/// used instead and is treated as active because pause boundaries are unknown.
+/// Otherwise, the active clock sums only positive adjacent timestamp deltas
+/// inside the same route segment. The original route points are never mutated.
 public struct WorkoutTimeline: Sendable {
 
     /// Time values at a cumulative route distance.

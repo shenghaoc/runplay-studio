@@ -200,7 +200,7 @@ To build a local `.app` bundle:
 | Format | Status | Notes |
 |--------|--------|-------|
 | JSON   | ✅ Full support | Native format, all fields supported |
-| GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; HR/cadence via extensions |
+| GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
 | FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
