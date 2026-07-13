@@ -18,4 +18,4 @@
 - [x] Run warning-clean Xcode workspace tests and `git diff --check`.
 - [x] Complete a fresh packaged-app HIG and workflow pass for all primary modes
   and comparison using bundled or synthetic data.
-- [ ] Verify the exact-head GitHub checks and review-thread state.
+- [x] Verify the exact-head GitHub checks and review-thread state.
