@@ -20,5 +20,6 @@
   suite warning-clean.
 - [x] Run `swift package describe`, final Core/full warning-clean gates, Xcode
   package-scheme tests, and packaged-app launch verification.
-- [ ] Reconcile the final diff, publish a reviewable commit series, push the
-  branch, and open a draft PR with exact validation and honest manual status.
+- [x] Reconcile the final diff, publish a reviewable commit series, push the
+  branch, and maintain a reviewable PR with exact validation and honest manual
+  status.
