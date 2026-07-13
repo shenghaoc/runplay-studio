@@ -1,8 +1,6 @@
 import SwiftUI
 import RunPlayCore
-#if os(macOS)
 import AppKit
-#endif
 import UniformTypeIdentifiers
 
 /// Export menu/button for exporting workout data.
@@ -109,7 +107,6 @@ struct ExportView: View {
     }
 
     private func saveFile(_ result: ExportResult) {
-#if os(macOS)
         let panel = NSSavePanel()
         panel.nameFieldStringValue = result.filename
         panel.canCreateDirectories = true
@@ -128,20 +125,6 @@ struct ExportView: View {
                 }
             }
         }
-#else
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(result.filename)
-        do {
-            try result.data.write(to: tempURL)
-            let controller = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let rootVC = windowScene.windows.first?.rootViewController {
-                rootVC.present(controller, animated: true)
-            }
-            showSuccess("Share options opened")
-        } catch {
-            showError("Failed to export: \(error.localizedDescription)")
-        }
-#endif
     }
 
     private func showError(_ message: String) {

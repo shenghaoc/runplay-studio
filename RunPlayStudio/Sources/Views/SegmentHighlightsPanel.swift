@@ -78,12 +78,13 @@ struct SegmentCard: View {
                     .foregroundStyle(segmentColor)
                 Text(segment.title)
                     .font(AppDesign.Typography.compactMetric)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
 
             Text(segment.subtitle)
                 .font(AppDesign.Typography.compactLabel)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
 
             HStack(spacing: AppDesign.Spacing.small) {
                 Label(segment.formattedDistance, systemImage: "ruler")
@@ -93,7 +94,7 @@ struct SegmentCard: View {
                 }
             }
             .font(AppDesign.Typography.compactLabel)
-            .foregroundStyle(.quaternary)
+            .foregroundStyle(.secondary)
         }
         .padding(.horizontal, AppDesign.Spacing.medium)
         .padding(.vertical, AppDesign.Spacing.small)
@@ -104,7 +105,7 @@ struct SegmentCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: AppDesign.Radius.medium)
                 .strokeBorder(
-                    isSelected ? segmentColor.opacity(0.4) : Color.clear,
+                    isSelected ? segmentColor.opacity(0.5) : Color.primary.opacity(0.08),
                     lineWidth: 1
                 )
         )

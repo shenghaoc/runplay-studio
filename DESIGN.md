@@ -13,12 +13,12 @@ colors:
 typography:
   hero:
     fontFamily: "SF Pro Rounded, system-ui"
-    fontSize: "title"
+    fontSize: "largeTitle"
     fontWeight: 700
     design: rounded
   section-headline:
     fontFamily: "SF Pro Text, system-ui"
-    fontSize: "subheadline"
+    fontSize: "headline"
     fontWeight: 600
   metric-value:
     fontFamily: "SF Pro Text, system-ui"
@@ -26,11 +26,11 @@ typography:
     fontWeight: 600
   metric-label:
     fontFamily: "SF Pro Text, system-ui"
-    fontSize: "caption2"
+    fontSize: "caption"
     fontWeight: 500
   compact-label:
     fontFamily: "SF Pro Text, system-ui"
-    fontSize: "9pt"
+    fontSize: "caption2"
     fontWeight: 500
 rounded:
   sm: "6pt"
@@ -55,7 +55,7 @@ components:
     backgroundColor: "transparent"
     textColor: "inherit"
   card-panel:
-    backgroundColor: "primary.opacity(0.03)"
+    backgroundColor: "NSColor.controlBackgroundColor"
     rounded: "{rounded.md}"
   card-active:
     backgroundColor: "accentColor.opacity(0.08)"
@@ -70,7 +70,7 @@ components:
 
 RunPlay Studio is a precision instrument for runners who take their data seriously — closer to a cartographer's workstation than a fitness app. The interface is clean and analytical: a map dominates the visual field, metrics orbit with semantic purpose, and all chrome exists to serve data comprehension. Every pixel of decoration is questioned.
 
-The system is **flat and tonal** — depth comes from subtle opacity layering, not shadows. Surfaces breathe through generous spacing and restrained backgrounds. Color is vibrant but never gratuitous: each hue carries a specific semantic role, and no color appears without meaning.
+The system is **flat and tonal** — depth comes from native adaptive surfaces, not decorative shadows. Surfaces breathe through generous spacing and restrained backgrounds. Color is vibrant but never gratuitous: each hue carries a specific semantic role, and no color appears without meaning.
 
 This system explicitly rejects the Strava/Garmin aesthetic: no dark/black-heavy schemes, no social feeds, no gamification badges, no motivational copy. The vibe is "field notebook meets DAW" — a tool that disappears so the data can speak.
 
@@ -80,7 +80,7 @@ This system explicitly rejects the Strava/Garmin aesthetic: no dark/black-heavy 
 - Flat tonal depth via opacity-based backgrounds (0.03–0.08)
 - System-native typography (SF Pro) — no custom fonts
 - Monospaced digits on all metric values for precise comparison
-- Vibrant but controlled palette — no more than 7 named colors
+- Vibrant but controlled palette — one small, fixed set of semantic colors
 
 ## 2. Colors
 
@@ -116,19 +116,19 @@ The palette is vibrant and semantic — each color carries meaning about the dat
 **Character:** Clean, native, unpretentious. The system font feels at home on macOS without drawing attention to itself. Rounded display weight on hero metrics adds warmth without sacrificing precision. Monospaced digits ensure numbers align for scannable comparison.
 
 ### Hierarchy
-- **Hero Metric** (.title, rounded, bold): Large primary values in summary cards and export previews. The only use of the rounded design modifier.
-- **Section Headline** (.subheadline, semibold): Panel titles, section headers. Secondary color.
+- **Hero Metric** (.largeTitle, rounded, bold): Large primary values in summary cards and export previews. The only use of the rounded design modifier.
+- **Section Headline** (.headline, semibold): Panel titles, section headers. Secondary color.
 - **Metric Value** (.callout, semibold, monospaced): Data values in badges, cards, and tables. Colored by semantic metric type.
-- **Metric Label** (.caption2, medium): Labels beneath metric values. Tertiary color.
-- **Compact Metric** (11pt, medium): Tight-space values in comparison badges and sidebar rows.
-- **Compact Label** (9pt, medium): The smallest text tier — sidebar metadata, pill labels, chart axis labels.
+- **Metric Label** (.caption, medium): Labels beneath metric values. Tertiary color.
+- **Compact Metric** (`caption`, medium): Tight-space values in comparison badges and sidebar rows.
+- **Compact Label** (`caption2`, medium): The smallest text tier — sidebar metadata, pill labels, chart axis labels.
 
 ## 4. Elevation
 
-The system uses **flat tonal layering** — no shadows, no z-index tricks. Depth is conveyed through opacity-based background treatments on a native window background:
+The system uses **flat tonal layering**. Depth is conveyed through native adaptive backgrounds rather than decorative shadows:
 
-- **Panel Background:** `Color.primary.opacity(0.03)` — subtle grouped background for panels.
-- **Card Background:** `Color.primary.opacity(0.04)` — slightly elevated card surfaces.
+- **Panel Background:** `controlBackgroundColor` — native grouped surface for panels.
+- **Card Background:** `underPageBackgroundColor` — subtly separated card surfaces.
 - **Active Card Background:** `Color.accentColor.opacity(0.08)` — selected or highlighted cards.
 - **Overlay Background:** `Color(nsColor: .controlBackgroundColor).opacity(0.85)` — map control overlays.
 
@@ -151,20 +151,20 @@ The core data atom: label + value + optional icon, colored by semantic metric ty
 
 ### Cards / Panels
 - **Corner Style:** 8pt radius (medium). Larger hero cards use 12–16pt.
-- **Background:** `.opacity(0.03–0.04)` on primary foreground color — adapts to light/dark mode automatically.
-- **Border:** None. Surface separation via background tint, not strokes.
+- **Background:** Native `controlBackgroundColor` panels and `underPageBackgroundColor` cards, adapting automatically to system appearance.
+- **Border:** Usually none. Compact interactive segment cards use a 1pt low-contrast boundary so they remain recognizable as controls.
 - **Internal Padding:** 8–12pt (inner to component scale).
 
 ### Navigation
-- **Sidebar:** Native `.sidebar` list style. Workout rows with left accent bar (3pt wide, 2pt radius) colored by HR zone.
+- **Sidebar:** Native `.sidebar` list style. Workout rows use one leading running symbol, one title line, and one compact metadata line.
 - **Tab Bar:** Horizontal picker for workout detail tabs (Overview, Charts, Splits, Segments).
 - **Toolbar:** Primary action buttons (Compare, Export) in the toolbar, not inline.
 
 ### Format Pills
-Small badges showing supported import/export formats. Compact label typography (9pt medium) with panel background fill and 6pt radius. Used in empty state and format hints.
+Small badges showing supported import/export formats. Semantic `.caption2` medium typography with panel background fill and 6pt radius. Used in empty state and format hints.
 
 ### Empty State
-Gradient backdrop (window background → blue tint → window background), hero icon in a material circle with subtle glow, staggered spring entrance animation. Import CTA uses `.borderedProminent` with large control size.
+Native workspace background, hero icon in a material circle, and a reduced-motion-aware entrance. Import CTA uses `.borderedProminent` with large control size.
 
 ## 6. Do's and Don'ts
 
@@ -172,7 +172,7 @@ Gradient backdrop (window background → blue tint → window background), hero 
 - **Do** use Run Blue (#0A84FF) exclusively for the primary route and primary actions — its rarity on screen makes it meaningful.
 - **Do** use monospaced digits on all metric values so numbers align for scannable comparison.
 - **Do** use semantic metric colors consistently: distance=blue, pace=sky, speed=orange, elevation=green, heart rate=red, cadence=purple.
-- **Do** use opacity-based backgrounds (0.03–0.08 range) for surface separation — never borders or shadows.
+- **Do** use native adaptive surfaces and restrained semantic tints for separation — never decorative shadows.
 - **Do** keep the map as the dominant visual element. Metrics support the map, not the reverse.
 - **Do** prefer native SwiftUI components and SF Symbols over custom-drawn equivalents.
 - **Do** use system font scaling (Dynamic Type) so the interface respects the user's accessibility settings.
@@ -180,7 +180,7 @@ Gradient backdrop (window background → blue tint → window background), hero 
 ### Don't:
 - **Don't** look like Strava or Garmin — no dark/black-heavy schemes, no social feeds, no gamification badges, no leaderboard aesthetics.
 - **Don't** introduce decorative colors. Every color maps to a data type or UI role. No "accent for accent's sake."
-- **Don't** use shadows for depth. The system is flat and tonal. Use opacity-based backgrounds instead.
+- **Don't** use shadows for depth. The system is flat and tonal. Use native adaptive backgrounds instead.
 - **Don't** use gradient text (`background-clip: text` equivalent). Solid semantic colors only.
 - **Don't** use side-stripe borders greater than 1pt as decorative accents on cards or panels.
 - **Don't** add gamification language ("You crushed it!", "New record!", streaks, challenges).

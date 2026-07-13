@@ -38,13 +38,11 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
-#if os(macOS)
         .onDeleteCommand {
             if let selectedWorkout {
                 workoutToDelete = selectedWorkout
             }
         }
-#endif
         .navigationTitle("RunPlay Studio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

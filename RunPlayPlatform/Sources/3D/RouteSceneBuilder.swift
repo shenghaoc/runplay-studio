@@ -1,11 +1,7 @@
 import Foundation
 import RunPlayCore
 import SceneKit
-#if canImport(AppKit)
 import AppKit
-#elseif canImport(UIKit)
-import UIKit
-#endif
 
 
 /// Builds a SceneKit scene for 3D route visualization.
@@ -21,11 +17,11 @@ public class RouteSceneBuilder {
 
     // MARK: - Configuration
 
-    public var routeColor: PlatformColor = .systemBlue
+    public var routeColor: NSColor = .systemBlue
     public var routeRadius: CGFloat = 0.8
-    public var startMarkerColor: PlatformColor = .systemGreen
-    public var finishMarkerColor: PlatformColor = .systemRed
-    public var currentMarkerColor: PlatformColor = .systemYellow
+    public var startMarkerColor: NSColor = .systemGreen
+    public var finishMarkerColor: NSColor = .systemRed
+    public var currentMarkerColor: NSColor = .systemYellow
     public var markerRadius: CGFloat = 2.0
     public var showKilometerMarkers: Bool = true { didSet { updateKmMarkerVisibility() } }
     public var showGroundGrid: Bool = true { didSet { updateGridVisibility() } }
@@ -58,7 +54,7 @@ public class RouteSceneBuilder {
         let scene = SCNScene()
 
         // Background
-        scene.background.contents = PlatformColor.windowBackgroundColor
+        scene.background.contents = NSColor.windowBackgroundColor
 
         // Lighting
         setupLighting(in: scene)
@@ -199,18 +195,18 @@ public class RouteSceneBuilder {
 
     // MARK: - Segment Highlight Helpers
 
-    private func segmentHighlightColor(for type: SegmentType) -> PlatformColor {
+    private func segmentHighlightColor(for type: SegmentType) -> NSColor {
         switch type {
-        case .fastest400m, .fastest1km: return PlatformColor.systemBlue.withAlphaComponent(0.7)
-        case .slowest1km: return PlatformColor.systemRed.withAlphaComponent(0.7)
-        case .biggestClimb: return PlatformColor.systemOrange.withAlphaComponent(0.7)
-        case .biggestDescent: return PlatformColor.systemPurple.withAlphaComponent(0.7)
-        case .slowdown: return PlatformColor.systemYellow.withAlphaComponent(0.7)
-        case .custom: return PlatformColor.systemGray.withAlphaComponent(0.7)
+        case .fastest400m, .fastest1km: return NSColor.systemBlue.withAlphaComponent(0.7)
+        case .slowest1km: return NSColor.systemRed.withAlphaComponent(0.7)
+        case .biggestClimb: return NSColor.systemOrange.withAlphaComponent(0.7)
+        case .biggestDescent: return NSColor.systemPurple.withAlphaComponent(0.7)
+        case .slowdown: return NSColor.systemYellow.withAlphaComponent(0.7)
+        case .custom: return NSColor.systemGray.withAlphaComponent(0.7)
         }
     }
 
-    private func createSegmentMarker(at point: RouteScenePoint, color: PlatformColor, label: String) -> SCNNode {
+    private func createSegmentMarker(at point: RouteScenePoint, color: NSColor, label: String) -> SCNNode {
         let parent = SCNNode()
 
         // Sphere
@@ -221,8 +217,8 @@ public class RouteSceneBuilder {
 
         // Label
         let text = SCNText(string: label, extrusionDepth: 0.3)
-        text.font = PlatformFont.boldSystemFont(ofSize: 2)
-        text.firstMaterial?.diffuse.contents = PlatformColor.white
+        text.font = NSFont.boldSystemFont(ofSize: 2)
+        text.firstMaterial?.diffuse.contents = NSColor.white
         text.firstMaterial?.lightingModel = .constant
         let textNode = SCNNode(geometry: text)
         textNode.position = SCNVector3(0, markerRadius * 1.5, 0)
@@ -307,7 +303,7 @@ public class RouteSceneBuilder {
         // Ambient light for base visibility
         let ambient = SCNLight()
         ambient.type = .ambient
-        ambient.color = PlatformColor(white: 0.5, alpha: 1.0)
+        ambient.color = NSColor(white: 0.5, alpha: 1.0)
         let ambientNode = SCNNode()
         ambientNode.light = ambient
         scene.rootNode.addChildNode(ambientNode)
@@ -315,7 +311,7 @@ public class RouteSceneBuilder {
         // Key light (directional, angled from above-left)
         let keyLight = SCNLight()
         keyLight.type = .directional
-        keyLight.color = PlatformColor(white: 0.9, alpha: 1.0)
+        keyLight.color = NSColor(white: 0.9, alpha: 1.0)
         keyLight.intensity = 800
         keyLight.castsShadow = true
         let keyNode = SCNNode()
@@ -326,7 +322,7 @@ public class RouteSceneBuilder {
         // Fill light (softer, from opposite side)
         let fillLight = SCNLight()
         fillLight.type = .directional
-        fillLight.color = PlatformColor(white: 0.4, alpha: 1.0)
+        fillLight.color = NSColor(white: 0.4, alpha: 1.0)
         fillLight.intensity = 300
         let fillNode = SCNNode()
         fillNode.light = fillLight
@@ -336,7 +332,7 @@ public class RouteSceneBuilder {
         // Top light for the route
         let topLight = SCNLight()
         topLight.type = .omni
-        topLight.color = PlatformColor(white: 0.3, alpha: 1.0)
+        topLight.color = NSColor(white: 0.3, alpha: 1.0)
         topLight.intensity = 400
         topLight.zFar = 2000
         let topNode = SCNNode()
@@ -384,7 +380,7 @@ public class RouteSceneBuilder {
         return parent
     }
 
-    private func createTube(from start: SCNVector3, to end: SCNVector3, radius: CGFloat, color: PlatformColor) -> SCNNode {
+    private func createTube(from start: SCNVector3, to end: SCNVector3, radius: CGFloat, color: NSColor) -> SCNNode {
         let dx = end.x - start.x
         let dy = end.y - start.y
         let dz = end.z - start.z
@@ -396,7 +392,7 @@ public class RouteSceneBuilder {
         tube.radialSegmentCount = 8
         tube.firstMaterial?.diffuse.contents = color
         tube.firstMaterial?.lightingModel = .blinn
-        tube.firstMaterial?.specular.contents = PlatformColor(white: 0.3, alpha: 1.0)
+        tube.firstMaterial?.specular.contents = NSColor(white: 0.3, alpha: 1.0)
 
         let node = SCNNode(geometry: tube)
         node.position = SCNVector3(
@@ -437,7 +433,7 @@ public class RouteSceneBuilder {
         let sphere = SCNSphere(radius: markerRadius * 1.5)
         sphere.firstMaterial?.diffuse.contents = startMarkerColor
         sphere.firstMaterial?.lightingModel = .blinn
-        sphere.firstMaterial?.specular.contents = PlatformColor.white
+        sphere.firstMaterial?.specular.contents = NSColor.white
         parent.addChildNode(SCNNode(geometry: sphere))
 
         // Glow
@@ -462,7 +458,7 @@ public class RouteSceneBuilder {
         let sphere = SCNSphere(radius: markerRadius * 1.5)
         sphere.firstMaterial?.diffuse.contents = finishMarkerColor
         sphere.firstMaterial?.lightingModel = .blinn
-        sphere.firstMaterial?.specular.contents = PlatformColor.white
+        sphere.firstMaterial?.specular.contents = NSColor.white
         parent.addChildNode(SCNNode(geometry: sphere))
 
         // Glow
@@ -487,7 +483,7 @@ public class RouteSceneBuilder {
         let cone = SCNCone(topRadius: 0, bottomRadius: markerRadius * 1.2, height: markerRadius * 3)
         cone.firstMaterial?.diffuse.contents = currentMarkerColor
         cone.firstMaterial?.lightingModel = .blinn
-        cone.firstMaterial?.specular.contents = PlatformColor.white
+        cone.firstMaterial?.specular.contents = NSColor.white
         cone.firstMaterial?.emission.contents = currentMarkerColor.withAlphaComponent(0.3)
 
         let coneNode = SCNNode(geometry: cone)
@@ -517,9 +513,9 @@ public class RouteSceneBuilder {
         marker.eulerAngles = SCNVector3(0, angle, 0)
     }
 
-    private func createTextSprite(_ text: String, color: PlatformColor, fontSize: CGFloat) -> SCNNode {
+    private func createTextSprite(_ text: String, color: NSColor, fontSize: CGFloat) -> SCNNode {
         let textGeometry = SCNText(string: text, extrusionDepth: 0.5)
-        textGeometry.font = PlatformFont.boldSystemFont(ofSize: fontSize)
+        textGeometry.font = NSFont.boldSystemFont(ofSize: fontSize)
         textGeometry.firstMaterial?.diffuse.contents = color
         textGeometry.firstMaterial?.lightingModel = .constant
         textGeometry.flatness = 0.1
@@ -558,7 +554,7 @@ public class RouteSceneBuilder {
 
         // Pole
         let pole = SCNCylinder(radius: 0.3, height: 8)
-        pole.firstMaterial?.diffuse.contents = PlatformColor.systemOrange
+        pole.firstMaterial?.diffuse.contents = NSColor.systemOrange
         pole.firstMaterial?.lightingModel = .blinn
         let poleNode = SCNNode(geometry: pole)
         poleNode.position = SCNVector3(0, 4, 0)
@@ -566,7 +562,7 @@ public class RouteSceneBuilder {
 
         // Sphere on top
         let sphere = SCNSphere(radius: 1.5)
-        sphere.firstMaterial?.diffuse.contents = PlatformColor.systemOrange
+        sphere.firstMaterial?.diffuse.contents = NSColor.systemOrange
         sphere.firstMaterial?.lightingModel = .blinn
         let sphereNode = SCNNode(geometry: sphere)
         sphereNode.position = SCNVector3(0, 9, 0)
@@ -601,7 +597,7 @@ public class RouteSceneBuilder {
         }
 
         let gridSize = CGFloat(extent) * 0.8 // Slightly larger than route
-        let gridColor = PlatformColor.separatorColor.withAlphaComponent(0.3)
+        let gridColor = NSColor.separatorColor.withAlphaComponent(0.3)
 
         let center = SCNVector3(
             (CGFloat(bbox.min.x) + CGFloat(bbox.max.x)) / 2,
@@ -634,7 +630,7 @@ public class RouteSceneBuilder {
         return parent
     }
 
-    private func createLine(from start: SCNVector3, to end: SCNVector3, color: PlatformColor) -> SCNNode {
+    private func createLine(from start: SCNVector3, to end: SCNVector3, color: NSColor) -> SCNNode {
         let indices: [Int32] = [0, 1]
         let source = SCNGeometrySource(vertices: [start, end])
         let element = SCNGeometryElement(indices: indices, primitiveType: .line)

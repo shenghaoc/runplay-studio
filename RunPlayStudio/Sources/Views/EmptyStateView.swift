@@ -3,8 +3,8 @@ import RunPlayCore
 
 /// Shown when no workout is selected, prompting user to import or load a sample.
 ///
-/// Uses a warm gradient backdrop and staggered entrance animation to create
-/// an inviting first impression instead of a generic placeholder.
+/// Uses a focused native workspace and a reduced-motion-aware entrance to make
+/// the next action clear without competing with the workout experience.
 struct EmptyStateView: View {
     var onImport: () -> Void
 
@@ -17,12 +17,11 @@ struct EmptyStateView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: AppDesign.Spacing.xxxLarge) {
-                // Hero icon with subtle glow
+                // Hero icon
                 ZStack {
                     Circle()
                         .fill(.ultraThinMaterial)
                         .frame(width: 120, height: 120)
-                        .shadow(color: AppDesign.primaryBlue.opacity(0.15), radius: 20, y: 8)
 
                     Image(systemName: "figure.run")
                         .font(AppDesign.Typography.emptyStateIcon)

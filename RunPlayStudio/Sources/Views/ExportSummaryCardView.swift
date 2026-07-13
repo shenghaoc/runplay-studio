@@ -60,11 +60,7 @@ struct ExportSummaryCardView: View {
                 .padding(.bottom, 40)
         }
         .frame(width: cardWidth, height: cardHeight)
-#if os(macOS)
         .background(Color(nsColor: .windowBackgroundColor))
-#else
-        .background(Color(uiColor: .systemBackground))
-#endif
     }
 
     // MARK: - Header

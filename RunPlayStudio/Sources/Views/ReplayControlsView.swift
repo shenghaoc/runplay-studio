@@ -3,8 +3,8 @@ import RunPlayCore
 
 /// Controls for the route replay: play/pause, timeline, speed.
 ///
-/// Uses pill-style speed selectors and a prominent play button
-/// with a subtle circular background for better visual hierarchy.
+/// Uses pill-style speed selectors and a prominent play button with a native
+/// material background for clear visual hierarchy.
 struct ReplayControlsView: View {
     @ObservedObject var controller: ReplayController
 
@@ -55,7 +55,6 @@ struct ReplayControlsView: View {
                         .background(
                             Circle()
                                 .fill(.ultraThinMaterial)
-                                .shadow(color: AppDesign.primaryBlue.opacity(0.2), radius: 4, y: 2)
                         )
                 }
                 .buttonStyle(.plain)
@@ -105,6 +104,7 @@ struct ReplayControlsView: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .labelsHidden()
                         .controlSize(.regular)
                     }
                 }

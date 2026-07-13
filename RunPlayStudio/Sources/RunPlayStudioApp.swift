@@ -7,9 +7,10 @@ struct RunPlayStudioApp: App {
         WindowGroup {
             ContentView()
         }
-#if os(macOS)
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
-#endif
+        .commands {
+            WorkoutViewCommands()
+        }
     }
 }

@@ -167,7 +167,6 @@ enum AppDesign {
     // MARK: - Background Treatments
 
     /// Opaque grouped surface. Avoids muddy transparency over maps and charts.
-    #if os(macOS)
     static let panelBackground = Color(nsColor: .controlBackgroundColor)
 
     /// Card background with subtle warmth.
@@ -181,21 +180,6 @@ enum AppDesign {
 
     /// The stable canvas behind every analysis workspace.
     static let workspaceBackground = Color(nsColor: .windowBackgroundColor)
-    #else
-    static let panelBackground = Color(uiColor: .systemBackground)
-
-    /// Card background with subtle warmth.
-    static let cardBackground = Color(uiColor: .secondarySystemBackground)
-
-    /// Active/selected card background.
-    static let activeCardBackground = Color.accentColor.opacity(0.08)
-
-    /// Overlay backdrop for map controls.
-    static let overlayBackground = Color(uiColor: .systemBackground).opacity(0.85)
-
-    /// The stable canvas behind every analysis workspace.
-    static let workspaceBackground = Color(uiColor: .systemBackground)
-    #endif
 }
 
 // MARK: - Color Hex Initializer

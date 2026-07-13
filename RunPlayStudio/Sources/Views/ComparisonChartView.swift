@@ -165,24 +165,20 @@ struct SplitComparisonTableView: View {
                     .width(110)
 
                     TableColumn("Δ Pace") { split in
-                        Text(split.formattedPaceDelta)
-                            .monospacedDigit()
-                            .foregroundStyle(deltaColor(split.paceDeltaSecondsPerKm))
-                    }
-                    .width(90)
-
-                    TableColumn("Winner") { split in
                         HStack(spacing: AppDesign.Spacing.xxSmall) {
                             Image(systemName: winnerIcon(for: split.winner))
                                 .font(AppDesign.Typography.compactLabel)
-                            Text(split.winner.label)
-                                .font(AppDesign.Typography.compactMetric)
+                                .accessibilityHidden(true)
+                            Text(split.formattedPaceDelta)
+                                .monospacedDigit()
                         }
-                        .foregroundStyle(winnerColor(for: split.winner))
+                        .foregroundStyle(deltaColor(split.paceDeltaSecondsPerKm))
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Split \(split.splitIndex) winner: \(split.winner.label)")
+                        .accessibilityLabel(
+                            "Pace difference \(split.formattedPaceDelta); \(split.winner.label)"
+                        )
                     }
-                    .width(140)
+                    .width(110)
                 }
             }
         }
@@ -201,12 +197,4 @@ struct SplitComparisonTableView: View {
         }
     }
 
-    private func winnerColor(for result: RunPlayCore.ComparisonResult) -> Color {
-        switch result {
-        case .primary: return AppDesign.primaryBlue
-        case .comparison: return AppDesign.comparisonOrange
-        case .tie: return .secondary
-        case .unavailable: return .secondary
-        }
-    }
 }

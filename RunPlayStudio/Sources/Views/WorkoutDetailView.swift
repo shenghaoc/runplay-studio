@@ -11,7 +11,6 @@ struct WorkoutDetailView: View {
     @ObservedObject private var replayController: ReplayController
 
     @State private var selectedTab: ViewTab = .overview
-    @FocusState private var isFocused: Bool
 
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
@@ -52,19 +51,7 @@ struct WorkoutDetailView: View {
             AppDesign.workspaceBackground
                 .ignoresSafeArea()
         }
-        .focusable()
-        .focused($isFocused)
-        .onAppear { isFocused = true }
-        .onKeyPress(characters: .alphanumerics, phases: .down) { press in
-            guard press.modifiers == .command else { return .ignored }
-            switch press.characters {
-            case "1": selectedTab = .overview; return .handled
-            case "2": selectedTab = .charts; return .handled
-            case "3": selectedTab = .splits; return .handled
-            case "4": selectedTab = .segments; return .handled
-            default: return .ignored
-            }
-        }
+        .focusedSceneValue(\.workoutTabSelection, $selectedTab)
     }
 
     // MARK: - GPS Warning Banner
@@ -104,7 +91,7 @@ struct WorkoutDetailView: View {
                 }
             )
             .padding(.vertical, AppDesign.Spacing.large)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .panelBackground()
         case .splits:
             SplitTableView(

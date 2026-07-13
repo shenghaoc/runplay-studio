@@ -224,7 +224,7 @@ public struct FITDecoder {
         } else if gpsRunningSessions.count > 1 {
             // Multiple GPS-bearing running sessions - ambiguous
             throw WorkoutImportError.parsingError(
-            "This FIT file contains \(gpsRunningSessions.count) runs. Only single-run files are supported."
+                "This FIT file contains \(gpsRunningSessions.count) runs. Only single-run files are supported."
             )
         } else if anyGPSSessions.isEmpty {
             // No GPS sessions at all - try legacy fallback
@@ -244,7 +244,8 @@ public struct FITDecoder {
                     return FITSport(rawValue: sport).map { String(describing: $0) } ?? "unknown"
                 }
                 throw WorkoutImportError.parsingError(
-                    "This FIT file contains a \(sportNames.joined(separator: ", ")) activity. Only running workouts are supported."
+                    "This FIT file contains a \(sportNames.joined(separator: ", ")) activity. "
+                        + "Only running workouts are supported."
                 )
             }
 

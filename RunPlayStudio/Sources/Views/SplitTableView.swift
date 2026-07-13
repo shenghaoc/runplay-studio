@@ -45,12 +45,12 @@ struct SplitTableView: View {
 
             Table(splits) {
                 TableColumn("Split") { split in
-                    HStack {
-                        if split.id == activeSplitID {
-                            Image(systemName: "circle.fill")
-                                .font(AppDesign.Typography.compactLabel)
-                                .foregroundStyle(AppDesign.comparisonOrange)
-                        }
+                    HStack(spacing: AppDesign.Spacing.small) {
+                        Image(systemName: "circle.fill")
+                            .font(AppDesign.Typography.compactLabel)
+                            .foregroundStyle(AppDesign.comparisonOrange)
+                            .opacity(split.id == activeSplitID ? 1 : 0)
+                            .accessibilityHidden(true)
                         Text("\(split.splitIndex)")
                             .monospacedDigit()
                     }

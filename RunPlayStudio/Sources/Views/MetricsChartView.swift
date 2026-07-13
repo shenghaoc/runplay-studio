@@ -96,7 +96,6 @@ struct MetricsChartView: View {
                                     .background(
                                         Capsule()
                                             .fill(.ultraThinMaterial)
-                                            .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
                                     )
                             }
                     }

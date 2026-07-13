@@ -108,7 +108,7 @@ struct ContentView: View {
                 appState.showingError = true
             }
         }
-        .alert("Import Error", isPresented: $appState.showingError) {
+        .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("Got it") { appState.errorMessage = nil }
         } message: {
             Text(appState.errorMessage ?? "Something went wrong. Please try again.")
