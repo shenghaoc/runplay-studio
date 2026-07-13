@@ -1,0 +1,79 @@
+{
+  "id": "11111111-1111-1111-1111-111111111111",
+  "metadata": {
+    "activityType": "running",
+    "deviceName": "Legacy Watch",
+    "endDate": "2024-01-01T01:05:00Z",
+    "name": "Legacy Paused Run",
+    "notes": "Preserve this metadata during migration",
+    "startDate": "2024-01-01T00:00:00Z"
+  },
+  "routePoints": [
+    {
+      "distanceFromStartMeters": 0,
+      "elapsedSeconds": 0,
+      "id": "00000000-0000-0000-0000-000000000001",
+      "latitude": 1,
+      "longitude": 1,
+      "routeSegmentIndex": 0,
+      "timestamp": "2024-01-01T00:00:00Z"
+    },
+    {
+      "distanceFromStartMeters": 1000,
+      "elapsedSeconds": 300,
+      "id": "00000000-0000-0000-0000-000000000002",
+      "latitude": 1.01,
+      "longitude": 1,
+      "routeSegmentIndex": 0,
+      "timestamp": "2024-01-01T00:05:00Z"
+    },
+    {
+      "distanceFromStartMeters": 1000,
+      "elapsedSeconds": 3600,
+      "id": "00000000-0000-0000-0000-000000000003",
+      "latitude": 1.02,
+      "longitude": 1,
+      "routeSegmentIndex": 1,
+      "timestamp": "2024-01-01T01:00:00Z"
+    },
+    {
+      "distanceFromStartMeters": 2000,
+      "elapsedSeconds": 3900,
+      "id": "00000000-0000-0000-0000-000000000004",
+      "latitude": 1.03,
+      "longitude": 1,
+      "routeSegmentIndex": 1,
+      "timestamp": "2024-01-01T01:05:00Z"
+    }
+  ],
+  "segments": [],
+  "source": "gpx",
+  "splits": [
+    {
+      "distanceMeters": 1000,
+      "elapsedSeconds": 300,
+      "endDistanceMeters": 1000,
+      "id": "22222222-2222-2222-2222-222222222222",
+      "paceSecondsPerKilometer": 300,
+      "splitIndex": 1,
+      "startDistanceMeters": 0
+    },
+    {
+      "distanceMeters": 1000,
+      "elapsedSeconds": 300,
+      "endDistanceMeters": 2000,
+      "id": "33333333-3333-3333-3333-333333333333",
+      "paceSecondsPerKilometer": 300,
+      "splitIndex": 2,
+      "startDistanceMeters": 1000
+    }
+  ],
+  "summary": {
+    "averagePaceSecondsPerKilometer": 300,
+    "averageSpeedMetersPerSecond": 3.3333333333333335,
+    "elevationGainMeters": 0,
+    "elevationLossMeters": 0,
+    "totalDistanceMeters": 2000,
+    "totalElapsedSeconds": 600
+  }
+}

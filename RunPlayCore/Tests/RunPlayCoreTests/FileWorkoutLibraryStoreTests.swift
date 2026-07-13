@@ -240,6 +240,30 @@ final class FileWorkoutLibraryStoreTests: XCTestCase {
         }
     }
 
+    func testWorkoutMissingRequiredSummaryFieldIsReportedCorrupted() throws {
+        let workout = makeWorkout()
+        try store.saveWorkout(workout)
+
+        let workoutURL = tempDir
+            .appendingPathComponent("workouts")
+            .appendingPathComponent("\(workout.id.uuidString).json")
+        let data = try Data(contentsOf: workoutURL)
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var summary = try XCTUnwrap(json["summary"] as? [String: Any])
+        summary.removeValue(forKey: "totalDistanceMeters")
+        json["summary"] = summary
+        try JSONSerialization.data(withJSONObject: json).write(to: workoutURL, options: .atomic)
+
+        XCTAssertThrowsError(try store.loadWorkout(id: workout.id)) { error in
+            guard case WorkoutLibraryError.workoutCorrupted = error else {
+                XCTFail("Expected workoutCorrupted, got \(error)")
+                return
+            }
+        }
+    }
+
     // MARK: - Corrupt Manifest
 
     func testCorruptManifestThrows() throws {

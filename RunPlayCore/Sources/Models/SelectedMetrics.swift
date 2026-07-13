@@ -6,6 +6,8 @@ import Foundation
 /// used to drive the current metrics panel and synchronized views.
 public struct SelectedMetrics: Sendable {
     public var elapsedSeconds: Double?
+    public var activeSeconds: Double?
+    public var isInRecordingGap: Bool
     public var distanceMeters: Double?
     public var paceSecondsPerKilometer: Double?
     public var altitudeMeters: Double?
@@ -24,7 +26,35 @@ public struct SelectedMetrics: Sendable {
         cadence: Double? = nil,
         splitIndex: Int? = nil
     ) {
+        self.init(
+            elapsedSeconds: elapsedSeconds,
+            activeSeconds: nil,
+            isInRecordingGap: false,
+            distanceMeters: distanceMeters,
+            paceSecondsPerKilometer: paceSecondsPerKilometer,
+            altitudeMeters: altitudeMeters,
+            heartRateBPM: heartRateBPM,
+            speedMetersPerSecond: speedMetersPerSecond,
+            cadence: cadence,
+            splitIndex: splitIndex
+        )
+    }
+
+    public init(
+        elapsedSeconds: Double? = nil,
+        activeSeconds: Double?,
+        isInRecordingGap: Bool = false,
+        distanceMeters: Double? = nil,
+        paceSecondsPerKilometer: Double? = nil,
+        altitudeMeters: Double? = nil,
+        heartRateBPM: Double? = nil,
+        speedMetersPerSecond: Double? = nil,
+        cadence: Double? = nil,
+        splitIndex: Int? = nil
+    ) {
         self.elapsedSeconds = elapsedSeconds
+        self.activeSeconds = activeSeconds
+        self.isInRecordingGap = isInRecordingGap
         self.distanceMeters = distanceMeters
         self.paceSecondsPerKilometer = paceSecondsPerKilometer
         self.altitudeMeters = altitudeMeters
@@ -36,6 +66,10 @@ public struct SelectedMetrics: Sendable {
 
     public var formattedElapsed: String {
         DisplayFormatter.formatElapsed(elapsedSeconds)
+    }
+
+    public var formattedActive: String {
+        DisplayFormatter.formatElapsed(activeSeconds)
     }
 
     public var formattedDistance: String {
