@@ -2,51 +2,50 @@ import SwiftUI
 import RunPlayCore
 
 /// Main comparison view showing two workouts side by side.
+///
+/// Uses the design system's comparison orange for visual identity
+/// and improved spacing throughout.
 struct CompareView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
         VStack(spacing: 0) {
-            // Workout selector
             comparisonSelector
+            Divider()
 
             if let pair = appState.comparisonPair {
-                Divider()
+                VStack(spacing: AppDesign.Spacing.large) {
+                    if let summary = appState.comparisonSummary {
+                        ComparisonSummaryView(summary: summary)
+                    }
 
-                // Summary deltas
-                if let summary = appState.comparisonSummary {
-                    ComparisonSummaryView(summary: summary)
-                        .padding()
-                        .background(.ultraThinMaterial)
+                    HStack(spacing: AppDesign.Spacing.large) {
+                        ComparisonMapView(
+                            primaryWorkout: pair.primary,
+                            comparisonWorkout: pair.comparison,
+                            warnings: appState.comparisonSummary?.warnings ?? [],
+                            appState: appState
+                        )
+                        .layoutPriority(1)
+                        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
 
-                    Divider()
-                }
+                        SplitComparisonTableView(splits: appState.splitComparisons)
+                            .padding(AppDesign.Spacing.large)
+                            .frame(minWidth: 380, maxWidth: 480, maxHeight: .infinity)
+                            .panelBackground()
+                    }
+                    .layoutPriority(1)
 
-                // One MapKit surface; the in-map control toggles 2D/3D.
-                HStack(spacing: 0) {
-                    ComparisonMapView(
-                        primaryWorkout: pair.primary,
-                        comparisonWorkout: pair.comparison,
-                        warnings: appState.comparisonSummary?.warnings ?? [],
-                        appState: appState
+                    ComparisonChartView(
+                        metrics: appState.comparisonMetrics,
+                        primaryName: pair.primary.displayName,
+                        comparisonName: pair.comparison.displayName
                     )
-                    .frame(minWidth: 500)
-
-                    Divider()
-
-                    SplitComparisonTableView(splits: appState.splitComparisons)
-                        .frame(minWidth: 300)
+                    .padding(AppDesign.Spacing.large)
+                    .frame(height: 190)
+                    .panelBackground()
                 }
-
-                Divider()
-
-                ComparisonChartView(
-                    metrics: appState.comparisonMetrics,
-                    primaryName: pair.primary.displayName,
-                    comparisonName: pair.comparison.displayName
-                )
-                .frame(height: 200)
-                .padding()
+                .padding(AppDesign.Spacing.large)
             } else {
                 ComparisonEmptyView(
                     workoutCount: appState.workouts.count,
@@ -54,69 +53,129 @@ struct CompareView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppDesign.workspaceBackground)
     }
 
     // MARK: - Selector
 
     private var comparisonSelector: some View {
-        HStack {
-            // Primary workout
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Primary Run")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(appState.selectedWorkout?.displayName ?? "None")
-                    .font(.headline)
-                    .lineLimit(1)
-                Text("Current selection")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+        ViewThatFits(in: .horizontal) {
+            // Wide layout
+            wideComparisonSelector
+            // Compact layout
+            compactComparisonSelector
+        }
+    }
 
-            Spacer()
+    private var wideComparisonSelector: some View {
+        HStack(spacing: AppDesign.Spacing.xxLarge) {
+            Text("COMPARE")
+                .font(.caption2.weight(.semibold))
+                .tracking(1.2)
+                .foregroundStyle(.tertiary)
+
+            workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
+
+            Spacer(minLength: AppDesign.Spacing.large)
 
             Image(systemName: "arrow.left.arrow.right")
-                .foregroundStyle(.secondary)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppDesign.comparisonOrange)
+
+            comparisonPickerSection
 
             Spacer()
 
-            // Comparison workout
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("Compare Against")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            clearButton
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
 
-                if appState.availableForComparison.isEmpty {
-                    Text(appState.workouts.count < 2 ? "Import another run" : "No other workouts")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Compare Against", selection: Binding(
-                        get: { appState.comparisonWorkout },
-                        set: { appState.setComparison($0) }
-                    )) {
-                        Text("Select workout").tag(nil as RunWorkout?)
-                        ForEach(appState.availableForComparison) { workout in
-                            Text(workout.displayName).tag(workout as RunWorkout?)
-                        }
-                    }
-                    .frame(maxWidth: 200)
-                }
-
-                if let message = appState.comparisonSelectionMessage {
-                    Text(message)
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
+    private var compactComparisonSelector: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+            HStack {
+                workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
+                Spacer()
+                clearButton
             }
 
-            if appState.isComparing {
-                Button("Clear") {
-                    appState.clearComparison()
+            HStack {
+                Image(systemName: "arrow.down")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppDesign.comparisonOrange)
+                Text("vs.")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+            }
+
+            comparisonPickerSection
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
+
+    private func workoutLabel(_ role: String, name: String) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text(role)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+            Text(name)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .help("Your selected run for comparison")
+        }
+    }
+
+    private var comparisonPickerSection: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text("Compare With")
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+
+            if appState.availableForComparison.isEmpty {
+                Text(appState.workouts.count < 2 ? "Import another run" : "No other workouts")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Picker("Compare With", selection: Binding(
+                    get: { appState.comparisonWorkout },
+                    set: { appState.setComparison($0) }
+                )) {
+                    Text("Select workout").tag(nil as RunWorkout?)
+                    ForEach(appState.availableForComparison) { workout in
+                        Text(workout.displayName).tag(workout as RunWorkout?)
+                    }
                 }
-                .font(.caption)
+                .frame(minWidth: 160, idealWidth: 220, maxWidth: 280)
+                .help("Choose another run to compare")
+            }
+
+            if let message = appState.comparisonSelectionMessage {
+                Text(message)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(AppDesign.comparisonOrange)
             }
         }
-        .padding()
+    }
+
+    private var clearButton: some View {
+        Group {
+            if appState.isComparing {
+                Button("Clear Comparison") {
+                    appState.clearComparison()
+                }
+                .font(AppDesign.Typography.compactMetric)
+                .controlSize(.regular)
+                .help("Exit comparison mode")
+            }
+        }
     }
 }
 
@@ -126,9 +185,9 @@ struct ComparisonSummaryView: View {
     let summary: WorkoutComparisonSummary
 
     var body: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 4) {
-                HStack {
+        HStack(spacing: AppDesign.Spacing.large) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+                HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: winnerIcon)
                         .foregroundStyle(winnerColor)
                     Text(summary.winner.label)
@@ -136,57 +195,37 @@ struct ComparisonSummaryView: View {
                         .foregroundStyle(winnerColor)
                 }
 
-                Text("\(summary.primaryTitle) vs \(summary.comparisonTitle)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Text("OVERALL RESULT")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1)
+                    .foregroundStyle(.tertiary)
             }
+            .frame(minWidth: 150, alignment: .leading)
 
-            // Metric deltas
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 12)], spacing: 12) {
+            HStack(spacing: AppDesign.Spacing.small) {
                 DeltaCard(label: "Distance", value: summary.distanceDeltaFormatted)
                 DeltaCard(label: "Duration", value: summary.durationDeltaFormatted)
-                DeltaCard(label: "Pace (min/km)", value: summary.paceDeltaFormatted)
-                DeltaCard(label: "Elevation Gain", value: summary.elevationGainDeltaFormatted)
+                DeltaCard(label: "Pace", value: summary.paceDeltaFormatted)
+                DeltaCard(label: "Elevation", value: summary.elevationGainDeltaFormatted)
                 if let avgHR = summary.avgHRDeltaFormatted {
                     DeltaCard(label: "Avg HR", value: avgHR)
                 }
-                if let maxHR = summary.maxHRDeltaFormatted {
-                    DeltaCard(label: "Max HR", value: maxHR)
-                }
             }
+            .frame(maxWidth: .infinity)
 
-            // Warnings
-            if !summary.warnings.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(summary.warnings, id: \.self) { warning in
-                        HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: warning.icon)
-                                .foregroundStyle(.orange)
-                                .frame(width: 16)
-                            Text(warning.rawValue)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-
-                    if summary.warnings.contains(.differentDistances) {
-                        HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 16)
-                            Text("Charts and splits compare the overlapping \(commonDistanceLabel) only.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+            if summary.warnings.contains(where: {
+                $0 == .differentDistances || $0 == .differentRouteShape || $0 == .insufficientOverlap
+            }) {
+                HStack(spacing: AppDesign.Spacing.small) {
+                    Image(systemName: "info.circle")
+                    Text("Aligned over \(commonDistanceLabel)")
                 }
-                .padding(8)
-                .background(Color.orange.opacity(0.08))
-                .cornerRadius(6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
+        .padding(AppDesign.Spacing.large)
+        .panelBackground()
     }
 
     private var winnerIcon: String {
@@ -200,8 +239,8 @@ struct ComparisonSummaryView: View {
 
     private var winnerColor: Color {
         switch summary.winner {
-        case .primary: return .green
-        case .comparison: return .red
+        case .primary: return AppDesign.energeticGreen
+        case .comparison: return AppDesign.alertRed
         case .tie: return .secondary
         case .unavailable: return .secondary
         }
@@ -218,21 +257,20 @@ struct DeltaCard: View {
     let value: String
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: AppDesign.Spacing.xxSmall) {
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
             Text(value)
-                .font(.subheadline)
-                .monospacedDigit()
+                .font(AppDesign.Typography.metricValue.monospacedDigit())
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.secondary.opacity(0.1))
-        .cornerRadius(8)
+        .padding(.horizontal, AppDesign.Spacing.medium)
+        .padding(.vertical, AppDesign.Spacing.small)
+        .background(AppDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 }
 
@@ -243,21 +281,22 @@ struct ComparisonEmptyView: View {
     let primaryName: String?
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: AppDesign.Spacing.xLarge) {
             Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+                .font(AppDesign.Typography.emptyStateIcon)
+                .foregroundStyle(.tertiary)
 
             Text(title)
-                .font(.title2)
+                .font(AppDesign.Typography.heading3)
 
             Text(message)
+                .font(AppDesign.Typography.secondary)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             if workoutCount >= 2 && primaryName != nil {
-                Text("Use the \"Compare Against\" picker above to select a second run.")
-                    .font(.caption)
+                Text("Use the \"Compare With\" picker above to select a second run.")
+                    .font(AppDesign.Typography.compactMetric)
                     .foregroundStyle(.tertiary)
             }
         }

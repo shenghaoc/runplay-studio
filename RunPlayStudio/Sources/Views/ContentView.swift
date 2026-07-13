@@ -65,10 +65,16 @@ struct ContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .primaryAction) {
                                 HStack {
-                                    if !appState.availableForComparison.isEmpty {
+                                    if appState.isComparing {
+                                        Button(action: { appState.clearComparison() }) {
+                                            Label("End Comparison", systemImage: "arrow.left.arrow.right")
+                                        }
+                                        .help("Exit comparison mode")
+                                    } else if !appState.availableForComparison.isEmpty {
                                         Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
                                             Label("Compare", systemImage: "arrow.left.arrow.right")
                                         }
+                                        .help("Compare with another run")
                                     }
 
                                     ExportView(
@@ -103,9 +109,9 @@ struct ContentView: View {
             }
         }
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
-            Button("OK") { appState.errorMessage = nil }
+            Button("Got it") { appState.errorMessage = nil }
         } message: {
-            Text(appState.errorMessage ?? "Unknown error")
+            Text(appState.errorMessage ?? "Something went wrong. Please try again.")
         }
         .task {
             await appState.start()
@@ -126,7 +132,7 @@ struct ContentView: View {
             ProgressView("Importing \(filename)…")
                 .padding()
         case .deleting:
-            ProgressView()
+            ProgressView("Deleting…")
                 .padding()
         case .idle:
             EmptyView()

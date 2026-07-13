@@ -4,19 +4,21 @@ import Charts
 
 
 /// Chart showing pace comparison over distance.
+///
+/// Uses semantic colors from the design system for primary/comparison routes.
 struct ComparisonChartView: View {
     let metrics: [ComparisonMetricPoint]
     let primaryName: String
     let comparisonName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             HStack(alignment: .lastTextBaseline) {
                 Text("Pace Over Distance")
-                    .font(.headline)
+                    .font(AppDesign.Typography.sectionHeadline)
                 Text("(lower is faster)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
             }
 
             if metrics.isEmpty {
@@ -31,6 +33,7 @@ struct ComparisonChartView: View {
                             )
                             .foregroundStyle(by: .value("Run", primaryName))
                             .interpolationMethod(.catmullRom)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
                         }
 
                         if let comparisonPace = point.comparisonPace, comparisonPace.isFinite {
@@ -40,12 +43,13 @@ struct ComparisonChartView: View {
                             )
                             .foregroundStyle(by: .value("Run", comparisonName))
                             .interpolationMethod(.catmullRom)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
                         }
                     }
                 }
                 .chartForegroundStyleScale([
-                    primaryName: .blue,
-                    comparisonName: .red
+                    primaryName: AppDesign.primaryBlue,
+                    comparisonName: AppDesign.comparisonOrange
                 ])
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 6)) { value in
@@ -55,6 +59,7 @@ struct ComparisonChartView: View {
                             }
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .chartYAxis {
@@ -67,16 +72,17 @@ struct ComparisonChartView: View {
                             }
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
                 .chartLegend(position: .bottom) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: AppDesign.Spacing.xLarge) {
                         Label(truncatedName(primaryName), systemImage: "circle.fill")
-                            .foregroundStyle(.blue)
-                            .font(.caption)
+                            .foregroundStyle(AppDesign.primaryBlue)
+                            .font(AppDesign.Typography.compactMetric)
                         Label(truncatedName(comparisonName), systemImage: "circle.fill")
-                            .foregroundStyle(.red)
-                            .font(.caption)
+                            .foregroundStyle(AppDesign.comparisonOrange)
+                            .font(AppDesign.Typography.compactMetric)
                     }
                 }
             }
@@ -95,15 +101,15 @@ struct ComparisonChartView: View {
 
 struct ComparisonChartEmptyView: View {
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: AppDesign.Spacing.small) {
             Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary)
+                .font(.title2)
+                .foregroundStyle(.tertiary)
             Text("No pace data to chart")
-                .font(.subheadline)
+                .font(AppDesign.Typography.secondary)
                 .foregroundStyle(.secondary)
             Text("Both runs need GPS route points with timing data to build a pace comparison.")
-                .font(.caption)
+                .font(AppDesign.Typography.compactMetric)
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, minHeight: 120)
@@ -116,14 +122,15 @@ struct SplitComparisonTableView: View {
     let splits: [SplitComparison]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             Text("Split Comparison")
-                .font(.headline)
+                .font(AppDesign.Typography.sectionHeadline)
+                .foregroundStyle(.secondary)
 
             if splits.isEmpty {
                 Text("No splits to compare")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(AppDesign.Typography.secondary)
+                    .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 60)
             } else {
                 Table(splits) {
@@ -133,48 +140,61 @@ struct SplitComparisonTableView: View {
                     }
                     .width(35)
 
-                    TableColumn("Primary (min/km)") { split in
+                    TableColumn("Selected (min/km)") { split in
                         if let s = split.primarySplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
+                                .foregroundStyle(AppDesign.primaryBlue)
                         } else {
                             Text("—")
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.quaternary)
                         }
                     }
                     .width(90)
 
-                    TableColumn("Comp. (min/km)") { split in
+                    TableColumn("Comparison (min/km)") { split in
                         if let s = split.comparisonSplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
+                                .foregroundStyle(AppDesign.comparisonOrange)
                         } else {
                             Text("—")
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.quaternary)
                         }
                     }
                     .width(110)
 
                     TableColumn("Δ Pace") { split in
-                        Text(split.formattedPaceDelta)
-                            .monospacedDigit()
-                            .foregroundStyle(deltaColor(split.paceDeltaSecondsPerKm))
+                        HStack(spacing: AppDesign.Spacing.xxSmall) {
+                            Image(systemName: winnerIcon(for: split.winner))
+                                .font(AppDesign.Typography.compactLabel)
+                                .accessibilityHidden(true)
+                            Text(split.formattedPaceDelta)
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(deltaColor(split.paceDeltaSecondsPerKm))
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(
+                            "Pace difference \(split.formattedPaceDelta); \(split.winner.label)"
+                        )
                     }
-                    .width(90)
-
-                    TableColumn("Winner") { split in
-                        Text(split.winner.label)
-                            .font(.caption)
-                    }
-                    .width(80)
+                    .width(110)
                 }
             }
         }
     }
 
     private func deltaColor(_ delta: Double?) -> Color {
-        guard let d = delta else { return .secondary }
-        if abs(d) < 5 { return .secondary }
-        return d < 0 ? .green : .red
+        AppDesign.deltaColor(delta, threshold: 5)
     }
+
+    private func winnerIcon(for result: RunPlayCore.ComparisonResult) -> String {
+        switch result {
+        case .primary: return "1.circle.fill"
+        case .comparison: return "2.circle.fill"
+        case .tie: return "equal.circle.fill"
+        case .unavailable: return "questionmark.circle"
+        }
+    }
+
 }

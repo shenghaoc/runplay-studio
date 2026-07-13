@@ -1,6 +1,7 @@
 import Foundation
 import RunPlayCore
 import SceneKit
+import AppKit
 
 
 /// Builds a SceneKit scene for 3D route comparison visualization.

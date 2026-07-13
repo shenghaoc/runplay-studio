@@ -58,7 +58,7 @@ products.append(.executable(name: "RunPlayStudio", targets: ["RunPlayStudio"]))
 let package = Package(
     name: "RunPlayStudio",
     platforms: [
-        .macOS(.v26)
+        .macOS(.v26),
     ],
     products: products,
     targets: targets,

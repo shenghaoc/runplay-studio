@@ -917,7 +917,7 @@ final class FITParserTests: XCTestCase {
                 XCTFail("Expected parsingError, got \(error)")
                 return
             }
-            XCTAssertTrue(message.contains("2 GPS-bearing running sessions"))
+            XCTAssertTrue(message.contains("2 runs"))
         }
     }
 
@@ -937,7 +937,7 @@ final class FITParserTests: XCTestCase {
                 XCTFail("Expected parsingError, got \(error)")
                 return
             }
-            XCTAssertTrue(message.contains("non-running"))
+            XCTAssertTrue(message.contains("Only running workouts"))
         }
     }
 
@@ -954,7 +954,7 @@ final class FITParserTests: XCTestCase {
             guard case WorkoutImportError.parsingError(let message) = error else {
                 return XCTFail("Expected parsingError, got \(error)")
             }
-            XCTAssertTrue(message.contains("non-running"))
+            XCTAssertTrue(message.contains("Only running workouts"))
         }
     }
 

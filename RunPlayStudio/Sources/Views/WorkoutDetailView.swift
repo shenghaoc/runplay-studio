@@ -2,6 +2,9 @@ import SwiftUI
 import RunPlayCore
 
 /// Main detail view for a selected workout showing Apple Maps, charts, and summary.
+///
+/// Uses grouped backgrounds instead of divider-heavy layouts to create
+/// visual hierarchy without clutter.
 struct WorkoutDetailView: View {
     let workout: RunWorkout
     @ObservedObject var appState: AppState
@@ -15,89 +18,232 @@ struct WorkoutDetailView: View {
         self._replayController = ObservedObject(wrappedValue: appState.replayController)
     }
 
-    enum ViewTab: String, CaseIterable {
+    enum ViewTab: String, CaseIterable, Identifiable {
         case overview = "Overview"
         case charts = "Charts"
+        case splits = "Splits"
+        case segments = "Segments"
+
+        var id: String { rawValue }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tab picker
-            Picker("View", selection: $selectedTab) {
-                ForEach(ViewTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
+            // GPS data warning banner
+            if workout.routePoints.isEmpty {
+                gpsWarningBanner
             }
-            .pickerStyle(.segmented)
-            .padding()
 
-            // Main content
-            switch selectedTab {
-            case .overview:
-                OverviewView(
-                    workout: workout,
-                    currentPointIndex: replayController.state.currentPointIndex
-                )
-            case .charts:
-                MetricsChartView(
-                    routePoints: workout.routePoints,
-                    currentDistance: replayController.state.currentDistance,
-                    onSeek: { distance in
-                        replayController.pause()
-                        replayController.seekToDistance(distance)
-                    }
-                )
-            }
+            WorkoutHeaderView(workout: workout)
 
             Divider()
 
-            // Segment highlights
-            if !appState.detectedSegments.isEmpty {
-                SegmentHighlightsPanel(
-                    segments: appState.detectedSegments,
-                    selectedSegment: $appState.selectedSegment,
-                    onSelect: { segment in
-                        seekToSegment(segment)
-                    },
-                    onClear: {}
-                )
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-
-                Divider()
+            VStack(spacing: AppDesign.Spacing.large) {
+                TabBarView(selectedTab: $selectedTab)
+                mainContentArea
+                    .layoutPriority(1)
+                replayDock
             }
+            .padding(AppDesign.Spacing.large)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            AppDesign.workspaceBackground
+                .ignoresSafeArea()
+        }
+        .focusedSceneValue(\.workoutTabSelection, $selectedTab)
+    }
 
-            // Current metrics panel
+    // MARK: - GPS Warning Banner
+
+    private var gpsWarningBanner: some View {
+        HStack(spacing: AppDesign.Spacing.small) {
+            Image(systemName: "location.slash")
+                .foregroundStyle(AppDesign.warmYellow)
+            Text("No GPS route data — only HR, cadence, and summary metrics are available.")
+                .font(AppDesign.Typography.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, AppDesign.Spacing.xLarge)
+        .padding(.vertical, AppDesign.Spacing.small)
+        .background(AppDesign.warmYellow.opacity(0.08))
+    }
+
+    // MARK: - Main Content
+
+    @ViewBuilder
+    private var mainContentArea: some View {
+        switch selectedTab {
+        case .overview:
+            OverviewView(
+                workout: workout,
+                currentPointIndex: replayController.state.currentPointIndex
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+        case .charts:
+            MetricsChartView(
+                routePoints: workout.routePoints,
+                currentDistance: replayController.state.currentDistance,
+                onSeek: { distance in
+                    replayController.pause()
+                    replayController.seekToDistance(distance)
+                }
+            )
+            .padding(.vertical, AppDesign.Spacing.large)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .panelBackground()
+        case .splits:
+            SplitTableView(
+                splits: workout.splits,
+                currentSplitIndex: currentSplitIndex
+            )
+            .padding(AppDesign.Spacing.xLarge)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .panelBackground()
+        case .segments:
+            SegmentHighlightsPanel(
+                segments: appState.detectedSegments,
+                selectedSegment: $appState.selectedSegment,
+                onSelect: { segment in
+                    seekToSegment(segment)
+                },
+                onClear: {}
+            )
+            .padding(AppDesign.Spacing.xLarge)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .panelBackground()
+        }
+    }
+
+    // MARK: - Replay Dock
+
+    private var replayDock: some View {
+        HStack(spacing: AppDesign.Spacing.xxLarge) {
             CurrentMetricsPanel(
                 metrics: replayController.selectedMetrics,
                 hasHeartRate: workout.hasHeartRateData,
                 hasCadence: workout.hasCadenceData
             )
-            .padding(.horizontal)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial)
+            .frame(maxWidth: 460)
 
             Divider()
+                .frame(height: 48)
 
-            // Bottom panel: replay controls + summary
-            HStack(spacing: 16) {
-                // Replay controls
-                ReplayControlsView(controller: replayController)
-                    .frame(maxWidth: .infinity)
-
-                Divider()
-
-                // Summary
-                RunSummaryView(summary: workout.summary)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding()
-            .background(.ultraThinMaterial)
+            ReplayControlsView(controller: replayController)
+                .frame(maxWidth: .infinity)
         }
+        .padding(.horizontal, AppDesign.Spacing.xLarge)
+        .padding(.vertical, AppDesign.Spacing.medium)
+        .panelBackground()
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func seekToSegment(_ segment: SegmentHighlight) {
         replayController.seekToDistance(segment.startDistanceMeters)
+    }
+
+    /// Current split index based on replay distance.
+    private var currentSplitIndex: Int? {
+        let distance = replayController.state.currentDistance
+        guard let idx = workout.splits.firstIndex(where: {
+            distance >= $0.startDistanceMeters
+                && (distance < $0.endDistanceMeters || $0.id == workout.splits.last?.id)
+        }) else { return nil }
+        return idx
+    }
+}
+
+// MARK: - Extracted Static Subviews
+
+/// Workout metrics header — isolated from replay controller so SwiftUI skips
+/// diffing this sub-tree during 30fps playback ticks.
+private struct WorkoutHeaderView: View {
+    let workout: RunWorkout
+
+    var body: some View {
+        HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+                Text("WORKOUT")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(.tertiary)
+                Text(workout.displayName)
+                    .font(AppDesign.Typography.heading2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: 260, alignment: .leading)
+            .help(workout.displayName)
+
+            Spacer(minLength: AppDesign.Spacing.xLarge)
+
+            headerMetric("Distance", workout.summary.formattedDistance, AppDesign.MetricColor.distance)
+            headerMetric("Duration", workout.summary.formattedDuration, AppDesign.MetricColor.duration)
+            headerMetric("Avg Pace", workout.summary.formattedPace, AppDesign.MetricColor.pace)
+            headerMetric(
+                "Elevation",
+                DisplayFormatter.formatElevation(workout.summary.elevationGainMeters),
+                AppDesign.MetricColor.elevation
+            )
+            if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
+                headerMetric("Avg HR", DisplayFormatter.formatHeartRate(heartRate), AppDesign.MetricColor.heartRate)
+            }
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
+
+    private func headerMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text(value)
+                .font(AppDesign.Typography.metricLarge.monospacedDigit())
+                .foregroundStyle(color)
+            Text(label)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+    }
+}
+
+/// Tab bar with contextual help — isolated from replay controller so SwiftUI
+/// skips diffing this sub-tree during 30fps playback ticks.
+private struct TabBarView: View {
+    @Binding var selectedTab: WorkoutDetailView.ViewTab
+
+    var body: some View {
+        HStack {
+            Picker("View", selection: $selectedTab) {
+                ForEach(WorkoutDetailView.ViewTab.allCases) { tab in
+                    Text(tab.rawValue)
+                        .tag(tab)
+                        .help(tab == .overview
+                              ? "Map and route visualization (⌘1)"
+                              : tab == .charts
+                              ? "Pace, HR, and elevation charts (⌘2)"
+                              : tab == .splits
+                              ? "Kilometer split table (⌘3)"
+                              : "Auto-detected segments (⌘4)")
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Spacer()
+
+            Text(tabContext)
+                .font(AppDesign.Typography.compactMetric)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var tabContext: String {
+        switch selectedTab {
+        case .overview: return "Route replay"
+        case .charts: return "Drag the chart to navigate"
+        case .splits: return "Kilometer breakdown"
+        case .segments: return "Detected highlights"
+        }
     }
 }

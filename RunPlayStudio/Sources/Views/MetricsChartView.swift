@@ -7,6 +7,7 @@ import Charts
 ///
 /// Shows pace, elevation, and heart rate over distance with
 /// optional current position indicator and click/drag to seek.
+/// Uses semantic colors from the design system for each metric type.
 struct MetricsChartView: View {
     let routePoints: [RoutePoint]
     var currentDistance: Double = 0
@@ -16,6 +17,9 @@ struct MetricsChartView: View {
     @State private var selectedMetric: MetricType = .elevation
     @State private var isDragging: Bool = false
     @State private var dragDistance: Double? = nil
+    @State private var chartData: [ChartDataPoint] = []
+    @State private var seekDistanceKmText: String = ""
+    @FocusState private var seekFieldFocused: Bool
 
     enum MetricType: String, CaseIterable {
         case elevation = "Elevation"
@@ -25,40 +29,74 @@ struct MetricsChartView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Metric picker
-            Picker("Metric", selection: $selectedMetric) {
-                ForEach(MetricType.allCases, id: \.self) { metric in
-                    Text(metric.rawValue).tag(metric)
+        VStack(spacing: AppDesign.Spacing.medium) {
+            // Metric picker with semantic color indicator
+            HStack {
+                Picker("Metric", selection: $selectedMetric) {
+                    ForEach(MetricType.allCases, id: \.self) { metric in
+                        Text(metric.rawValue).tag(metric)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 360)
+
+                Spacer()
+
+                // Current value readout
+                if currentDistance > 0, !chartData.isEmpty {
+                    HStack(spacing: AppDesign.Spacing.xxSmall) {
+                        Circle()
+                            .fill(chartColor)
+                            .frame(width: 6, height: 6)
+                        Text(formatValue(valueForDistance(currentDistance)))
+                            .font(AppDesign.Typography.compactMetric.monospacedDigit())
+                            .foregroundStyle(chartColor)
+                    }
                 }
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal)
 
             // Chart
             ZStack {
                 Chart {
                     ForEach(chartData) { point in
+                        AreaMark(
+                            x: .value("Distance (km)", point.distanceKm),
+                            y: .value(selectedMetric.rawValue, point.value)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [chartColor.opacity(0.15), chartColor.opacity(0.02)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+
                         LineMark(
                             x: .value("Distance (km)", point.distanceKm),
                             y: .value(selectedMetric.rawValue, point.value)
                         )
                         .foregroundStyle(chartColor)
                         .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
                     }
 
                     // Current position indicator
                     let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
                     if displayDistance > 0 {
                         RuleMark(x: .value("Current", displayDistance / 1000))
-                            .foregroundStyle(isDragging ? .orange : .yellow)
-                            .lineStyle(StrokeStyle(lineWidth: isDragging ? 3 : 2, dash: [5, 5]))
+                            .foregroundStyle(isDragging ? AppDesign.comparisonOrange : AppDesign.warmYellow)
+                            .lineStyle(StrokeStyle(lineWidth: isDragging ? 2.5 : 1.5, dash: [6, 4]))
                             .annotation(position: .top, alignment: .center) {
                                 Text(formatValue(valueForDistance(displayDistance)))
-                                    .font(.caption)
-                                    .padding(4)
-                                    .background((isDragging ? Color.orange : Color.yellow).opacity(0.2))
-                                    .cornerRadius(4)
+                                    .font(AppDesign.Typography.compactMetric)
+                                    .padding(.horizontal, AppDesign.Spacing.small)
+                                    .padding(.vertical, AppDesign.Spacing.xxSmall)
+                                    .background(
+                                        Capsule()
+                                            .fill(.ultraThinMaterial)
+                                    )
                             }
                     }
                 }
@@ -86,25 +124,110 @@ struct MetricsChartView: View {
                             }
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
+                .chartYScale(domain: .automatic(includesZero: false))
                 .chartYAxis {
                     AxisMarks(values: .automatic(desiredCount: 5)) { value in
                         AxisValueLabel {
                             Text(formatAxisValue(value.as(Double.self) ?? 0))
                         }
                         AxisGridLine()
+                            .foregroundStyle(.quaternary)
                     }
                 }
-                .frame(height: 150)
+                .frame(height: 180)
+                .padding(.horizontal)
 
                 if chartData.isEmpty {
-                    Text(noDataMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    noDataOverlay
                 }
             }
-            .padding(.horizontal)
+
+            // Keyboard-accessible seek alternative — hidden by default
+            if !chartData.isEmpty {
+                DisclosureGroup("Jump to distance") {
+                    seekDistanceContent
+                        .padding(.top, AppDesign.Spacing.xSmall)
+                }
+                .font(AppDesign.Typography.compactMetric)
+                .padding(.horizontal)
+            }
+        }
+        .onAppear {
+            refreshChartData()
+            seekDistanceKmText = String(format: "%.2f", currentDistance / 1000)
+        }
+        .onChange(of: selectedMetric) { _, _ in refreshChartData() }
+        .onChange(of: routePoints) { _, _ in refreshChartData() }
+        .onChange(of: smoothingWindow) { _, _ in refreshChartData() }
+        .onChange(of: currentDistance) { _, newValue in
+            if !seekFieldFocused {
+                seekDistanceKmText = String(format: "%.2f", newValue / 1000)
+            }
+        }
+        .onChange(of: seekFieldFocused) { _, isFocused in
+            if !isFocused {
+                let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
+                commitSeekDistance(totalKm)
+            }
+        }
+    }
+
+    // MARK: - Seek Distance Control
+
+    private var seekDistanceContent: some View {
+        let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
+        return HStack(spacing: AppDesign.Spacing.small) {
+            Text("Jump to")
+                .font(AppDesign.Typography.compactMetric)
+                .foregroundStyle(.tertiary)
+
+            TextField("km", text: $seekDistanceKmText)
+                .font(AppDesign.Typography.monoCaption)
+                .frame(width: 80)
+                .textFieldStyle(.roundedBorder)
+                .focused($seekFieldFocused)
+                .accessibilityLabel("Jump to distance in kilometers")
+                .onSubmit { commitSeekDistance(totalKm) }
+
+            Stepper(value: Binding(
+                get: { currentDistance / 1000 },
+                set: { newKm in
+                    let distance = max(0, min(newKm * 1000, totalKm * 1000))
+                    onSeek?(distance)
+                    seekDistanceKmText = String(format: "%.2f", newKm)
+                }
+            ), in: 0...max(totalKm, 0.01), step: 0.1) {
+                Text(String(format: "%.2f / %.2f km", currentDistance / 1000, totalKm))
+                    .font(AppDesign.Typography.monoCaption)
+            }
+            .accessibilityLabel("Adjust jump distance")
+            .accessibilityValue(String(format: "%.2f km", currentDistance / 1000))
+        }
+        .padding(.horizontal)
+    }
+
+    private func commitSeekDistance(_ totalKm: Double) {
+        guard let km = Double(seekDistanceKmText.replacingOccurrences(of: ",", with: ".")),
+              km >= 0, km <= totalKm else {
+            seekDistanceKmText = String(format: "%.2f", currentDistance / 1000)
+            return
+        }
+        onSeek?(km * 1000)
+    }
+
+    // MARK: - No Data Overlay
+
+    private var noDataOverlay: some View {
+        VStack(spacing: AppDesign.Spacing.small) {
+            Image(systemName: selectedMetric == .heartRate ? "heart.slash" : "chart.line.downtrend.xyaxis")
+                .font(.title2)
+                .foregroundStyle(.tertiary)
+            Text(noDataMessage)
+                .font(AppDesign.Typography.secondary)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -143,7 +266,7 @@ struct MetricsChartView: View {
         let value: Double
     }
 
-    private var chartData: [ChartDataPoint] {
+    private func refreshChartData() {
         let smoothedValues: [Double?]
 
         switch selectedMetric {
@@ -157,7 +280,7 @@ struct MetricsChartView: View {
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
 
-        return zip(routePoints, smoothedValues).compactMap { point, value in
+        chartData = zip(routePoints, smoothedValues).compactMap { point, value in
             guard let v = value else { return nil }
             return ChartDataPoint(
                 distanceKm: point.distanceFromStartMeters / 1000,
@@ -168,15 +291,15 @@ struct MetricsChartView: View {
 
     private var chartColor: Color {
         switch selectedMetric {
-        case .elevation: return .green
-        case .pace: return .blue
-        case .heartRate: return .red
-        case .speed: return .orange
+        case .elevation: return AppDesign.MetricColor.elevation
+        case .pace: return AppDesign.MetricColor.pace
+        case .heartRate: return AppDesign.MetricColor.heartRate
+        case .speed: return AppDesign.MetricColor.speed
         }
     }
 
     private var noDataMessage: String {
-        selectedMetric == .heartRate ? "No heart rate data" : "No chart data"
+        selectedMetric == .heartRate ? "No heart rate data available" : "No chart data available"
     }
 
     private func valueForDistance(_ distance: Double) -> Double {
@@ -204,7 +327,7 @@ struct MetricsChartView: View {
             let secs = Int(value) % 60
             return "\(mins):\(String(format: "%02d", secs)) /km"
         case .heartRate:
-            guard value.isFinite else { return "No HR" }
+            guard value.isFinite else { return "No HR data" }
             return "\(Int(value)) bpm"
         case .speed: return String(format: "%.1f m/s", value)
         }

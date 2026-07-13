@@ -56,7 +56,7 @@ struct RouteMapCanvas: View {
                             .stroke(.white, lineWidth: 2)
                             .frame(width: 20, height: 20)
                         Text(marker.style.glyph)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(AppDesign.Typography.compactLabel.weight(.bold))
                             .foregroundStyle(marker.style == .current ? .black : .white)
                     }
                     .accessibilityLabel(marker.title)
@@ -66,18 +66,19 @@ struct RouteMapCanvas: View {
         .mapStyle(.standard(elevation: .realistic))
         .mapScope(mapScope)
         .overlay(alignment: .bottomTrailing) {
-            VStack(spacing: 8) {
+            VStack(spacing: AppDesign.Spacing.small) {
                 Button(displayMode == .threeD ? "2D" : "3D") {
                     let nextMode: RouteMapDisplayMode = displayMode == .threeD ? .twoD : .threeD
                     displayMode = nextMode
                     updatePitch(nextMode, animated: true)
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
                 .help(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
-                .accessibilityLabel(displayMode == .threeD ? "Show in 2D" : "Show in 3D")
+                .accessibilityLabel(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
                 MapZoomStepper(scope: mapScope)
+                    .controlSize(.regular)
             }
-            .controlSize(.small)
             .padding()
             .padding(.bottom, controlBottomInset)
         }

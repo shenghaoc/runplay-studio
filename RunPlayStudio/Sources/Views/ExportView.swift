@@ -20,35 +20,40 @@ struct ExportView: View {
             Button(action: { exportJSON() }) {
                 Label("Export Summary (JSON)", systemImage: "doc.text")
             }
+            .accessibilityLabel("Export workout summary as JSON")
 
             Button(action: { exportSplitsCSV() }) {
                 Label("Export Splits (CSV)", systemImage: "tablecells")
             }
+            .accessibilityLabel("Export kilometer splits as CSV")
 
             Button(action: { exportSegmentsCSV() }) {
                 Label("Export Segments (CSV)", systemImage: "chart.xyaxis.line")
             }
+            .accessibilityLabel("Export detected segments as CSV")
 
             Divider()
 
             Button(action: { exportPNG() }) {
                 Label("Export Summary Card (PNG)", systemImage: "photo")
             }
+            .accessibilityLabel("Export summary card as PNG image")
 
             Divider()
 
             Button(action: { exportCombinedCSV() }) {
                 Label("Export All (CSV)", systemImage: "doc.plaintext")
             }
+            .accessibilityLabel("Export all splits and segments as combined CSV")
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")
         }
-        .alert("Export Error", isPresented: $showingError) {
+        .alert("Export Failed", isPresented: $showingError) {
             Button("OK") { exportError = nil }
         } message: {
-            Text(exportError ?? "Unknown error")
+            Text(exportError ?? "An unknown error occurred while exporting.")
         }
-        .alert("Export Successful", isPresented: $showingSuccess) {
+        .alert("Export Complete", isPresented: $showingSuccess) {
             Button("OK") { exportSuccess = nil }
         } message: {
             Text(exportSuccess ?? "")
@@ -123,7 +128,7 @@ struct ExportView: View {
     }
 
     private func showError(_ message: String) {
-        exportError = message
+        exportError = "Export failed: \(message). Try choosing a different location or format."
         showingError = true
     }
 
