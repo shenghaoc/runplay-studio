@@ -13,9 +13,13 @@ struct CurrentMetricsPanel: View {
 
     var body: some View {
         HStack(spacing: AppDesign.Spacing.large) {
-            MetricDisplay(label: "Time", value: metrics.formattedElapsed, icon: "clock", color: AppDesign.MetricColor.duration)
+            MetricDisplay(label: "Elapsed", value: metrics.formattedElapsed, icon: "clock", color: AppDesign.MetricColor.duration)
+                .help("Elapsed time follows the replay clock and includes recording gaps.")
+            MetricDisplay(label: "Active", value: metrics.formattedActive, icon: "timer", color: AppDesign.MetricColor.duration)
+                .help("Active time remains fixed during recording gaps.")
             MetricDisplay(label: "Distance", value: metrics.formattedDistance, icon: "ruler", color: AppDesign.MetricColor.distance)
             MetricDisplay(label: "Pace", value: metrics.formattedPace, icon: "speedometer", color: AppDesign.MetricColor.pace)
+                .help("Pace uses active time.")
             MetricDisplay(label: "Elev", value: metrics.formattedElevation, icon: "mountain.2", color: AppDesign.MetricColor.elevation)
 
             if hasHeartRate {
@@ -27,6 +31,18 @@ struct CurrentMetricsPanel: View {
             }
 
             MetricDisplay(label: "Split", value: metrics.formattedSplit, icon: "flag", color: AppDesign.MetricColor.split)
+
+            if metrics.isInRecordingGap {
+                Label("Recording gap", systemImage: "pause.fill")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(AppDesign.comparisonOrange)
+                    .padding(.horizontal, AppDesign.Spacing.small)
+                    .padding(.vertical, AppDesign.Spacing.xSmall)
+                    .background(AppDesign.comparisonOrange.opacity(0.12), in: Capsule())
+                    .help("Elapsed time is advancing while active time and distance remain fixed.")
+                    .accessibilityLabel("Recording gap")
+                    .accessibilityHint("Elapsed time is advancing while active time and distance remain fixed")
+            }
         }
     }
 }

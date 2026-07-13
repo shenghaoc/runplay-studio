@@ -1,33 +1,29 @@
 import Foundation
 
 /// Pure model for the PNG summary card.
-///
-/// Contains everything needed to render the summary card without
-/// depending on live workout state or UI frameworks.
 public struct ExportSummaryCardModel: Sendable {
     public let appBranding: String
     public let workoutTitle: String
     public let dateText: String
     public let sourceText: String
-
-    // Main metrics
     public let distanceText: String
-    public let durationText: String
-    public let paceText: String
+    public let elapsedTimeText: String
+    public let activeTimeText: String
+    public let pausedTimeText: String
+    public let activePaceText: String
+    public let elapsedPaceText: String
     public let elevationGainText: String
     public let elevationLossText: String
     public let heartRateText: String?
     public let maxHeartRateText: String?
     public let pointCountText: String
-
-    // Segments
     public let segments: [SegmentCardItem]
-
-    // Splits summary
     public let splits: [SplitCardItem]
-
-    // Footer
     public let privacyNote: String
+
+    /// Source-compatible display aliases.
+    public var durationText: String { elapsedTimeText }
+    public var paceText: String { activePaceText }
 
     public struct SegmentCardItem: Identifiable, Sendable {
         public let id = UUID()
@@ -41,11 +37,14 @@ public struct ExportSummaryCardModel: Sendable {
         public let id = UUID()
         public let index: Int
         public let distance: String
-        public let pace: String
-        public let duration: String
+        public let elapsed: String
+        public let active: String
+        public let activePace: String
+        public let elapsedPace: String
+        public var pace: String { activePace }
+        public var duration: String { elapsed }
     }
 
-    // ⚡ Bolt: Cache date formatter to avoid expensive initialization on struct init
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.autoupdatingCurrent
@@ -55,60 +54,47 @@ public struct ExportSummaryCardModel: Sendable {
         return formatter
     }()
 
-    /// Build from workout and detected segments.
     public init(workout: RunWorkout, segments: [SegmentHighlight]) {
-        self.appBranding = "RunPlay Studio"
-        self.workoutTitle = workout.displayName
-        self.sourceText = workout.source.displayName
+        appBranding = "RunPlay Studio"
+        workoutTitle = workout.displayName
+        sourceText = workout.source.displayName
+        dateText = workout.metadata.startDate.map(Self.dateFormatter.string) ?? "Unknown date"
 
-        // Date
-        if let date = workout.metadata.startDate {
-            self.dateText = ExportSummaryCardModel.dateFormatter.string(from: date)
-        } else {
-            self.dateText = "Unknown date"
+        let summary = workout.summary
+        distanceText = DisplayFormatter.formatDistanceKm(summary.totalDistanceMeters)
+        elapsedTimeText = summary.formattedElapsed
+        activeTimeText = summary.formattedActive
+        pausedTimeText = summary.formattedPaused
+        activePaceText = summary.formattedPace
+        elapsedPaceText = summary.formattedElapsedPace
+        elevationGainText = DisplayFormatter.formatElevationDelta(summary.elevationGainMeters)
+        elevationLossText = DisplayFormatter.formatElevationDelta(-summary.elevationLossMeters)
+        heartRateText = summary.averageHeartRateBPM.flatMap { value in
+            value.isFinite ? DisplayFormatter.formatHeartRate(value) : nil
         }
-
-        // Main metrics
-        self.distanceText = DisplayFormatter.formatDistanceKm(workout.summary.totalDistanceMeters)
-        self.durationText = workout.summary.formattedDuration
-        self.paceText = workout.summary.formattedPace
-        self.elevationGainText = DisplayFormatter.formatElevationDelta(workout.summary.elevationGainMeters)
-        self.elevationLossText = DisplayFormatter.formatElevationDelta(-workout.summary.elevationLossMeters)
-
-        if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite {
-            self.heartRateText = DisplayFormatter.formatHeartRate(avgHR)
-        } else {
-            self.heartRateText = nil
+        maxHeartRateText = summary.maxHeartRateBPM.flatMap { value in
+            value.isFinite ? DisplayFormatter.formatHeartRate(value) : nil
         }
+        pointCountText = "\(workout.routePoints.count) points"
 
-        if let maxHR = workout.summary.maxHeartRateBPM, maxHR.isFinite {
-            self.maxHeartRateText = DisplayFormatter.formatHeartRate(maxHR)
-        } else {
-            self.maxHeartRateText = nil
-        }
-
-        self.pointCountText = "\(workout.routePoints.count) points"
-
-        // Segments
-        self.segments = segments.prefix(5).map { seg in
+        self.segments = segments.prefix(5).map { segment in
             SegmentCardItem(
-                icon: seg.type.icon,
-                title: seg.title,
-                value: seg.subtitle,
-                color: seg.type.color
+                icon: segment.type.icon,
+                title: segment.title,
+                value: segment.subtitle,
+                color: segment.type.color
             )
         }
-
-        // Splits
-        self.splits = workout.splits.prefix(10).map { split in
+        splits = workout.splits.prefix(10).map { split in
             SplitCardItem(
                 index: split.splitIndex,
                 distance: DisplayFormatter.formatDistanceKm(split.distanceMeters),
-                pace: split.formattedPace,
-                duration: split.formattedElapsed
+                elapsed: split.formattedElapsed,
+                active: split.formattedActive,
+                activePace: split.formattedPace,
+                elapsedPace: split.formattedElapsedPace
             )
         }
-
-        self.privacyNote = "Generated locally by RunPlay Studio • No cloud upload • No account required"
+        privacyNote = "Generated locally by RunPlay Studio • No cloud upload • No account required"
     }
 }

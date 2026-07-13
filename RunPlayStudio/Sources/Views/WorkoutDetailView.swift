@@ -96,7 +96,7 @@ struct WorkoutDetailView: View {
         case .splits:
             SplitTableView(
                 splits: workout.splits,
-                currentSplitIndex: currentSplitIndex
+                currentSplitIndex: replayController.selectedMetrics.splitIndex
             )
             .padding(AppDesign.Spacing.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -125,7 +125,7 @@ struct WorkoutDetailView: View {
                 hasHeartRate: workout.hasHeartRateData,
                 hasCadence: workout.hasCadenceData
             )
-            .frame(maxWidth: 460)
+            .frame(maxWidth: 620)
 
             Divider()
                 .frame(height: 48)
@@ -143,15 +143,6 @@ struct WorkoutDetailView: View {
         replayController.seekToDistance(segment.startDistanceMeters)
     }
 
-    /// Current split index based on replay distance.
-    private var currentSplitIndex: Int? {
-        let distance = replayController.state.currentDistance
-        guard let idx = workout.splits.firstIndex(where: {
-            distance >= $0.startDistanceMeters
-                && (distance < $0.endDistanceMeters || $0.id == workout.splits.last?.id)
-        }) else { return nil }
-        return idx
-    }
 }
 
 // MARK: - Extracted Static Subviews
@@ -178,16 +169,43 @@ private struct WorkoutHeaderView: View {
 
             Spacer(minLength: AppDesign.Spacing.xLarge)
 
-            headerMetric("Distance", workout.summary.formattedDistance, AppDesign.MetricColor.distance)
-            headerMetric("Duration", workout.summary.formattedDuration, AppDesign.MetricColor.duration)
-            headerMetric("Avg Pace", workout.summary.formattedPace, AppDesign.MetricColor.pace)
+            headerMetric(
+                "Distance",
+                workout.summary.formattedDistance,
+                AppDesign.MetricColor.distance,
+                help: "Total recorded route distance."
+            )
+            headerMetric(
+                "Elapsed",
+                workout.summary.formattedElapsed,
+                AppDesign.MetricColor.duration,
+                help: "Elapsed time includes pauses and recording gaps."
+            )
+            headerMetric(
+                "Active",
+                workout.summary.formattedActive,
+                AppDesign.MetricColor.duration,
+                help: "Active time excludes recording gaps between route segments."
+            )
+            headerMetric(
+                "Pace",
+                workout.summary.formattedPace,
+                AppDesign.MetricColor.pace,
+                help: "Pace uses active time and excludes recording gaps."
+            )
             headerMetric(
                 "Elevation",
                 DisplayFormatter.formatElevation(workout.summary.elevationGainMeters),
-                AppDesign.MetricColor.elevation
+                AppDesign.MetricColor.elevation,
+                help: "Recorded elevation gain."
             )
             if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
-                headerMetric("Avg HR", DisplayFormatter.formatHeartRate(heartRate), AppDesign.MetricColor.heartRate)
+                headerMetric(
+                    "Avg HR",
+                    DisplayFormatter.formatHeartRate(heartRate),
+                    AppDesign.MetricColor.heartRate,
+                    help: "Average recorded heart rate."
+                )
             }
         }
         .padding(.horizontal, AppDesign.Spacing.xxLarge)
@@ -195,7 +213,7 @@ private struct WorkoutHeaderView: View {
         .background(AppDesign.panelBackground)
     }
 
-    private func headerMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+    private func headerMetric(_ label: String, _ value: String, _ color: Color, help: String) -> some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
             Text(value)
                 .font(AppDesign.Typography.metricLarge.monospacedDigit())
@@ -205,6 +223,11 @@ private struct WorkoutHeaderView: View {
                 .foregroundStyle(.tertiary)
         }
         .frame(minWidth: 72, alignment: .leading)
+        .help(help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
+        .accessibilityHint(help)
     }
 }
 

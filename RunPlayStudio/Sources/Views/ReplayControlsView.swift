@@ -25,12 +25,19 @@ struct ReplayControlsView: View {
                     in: 0...1
                 )
                 .tint(AppDesign.primaryBlue)
+                .help("Replay follows elapsed time, including pauses and recording gaps.")
+                .accessibilityLabel("Elapsed replay time")
+                .accessibilityValue(
+                    "\(controller.state.formattedCurrentTime) of \(controller.state.formattedTotalDuration)"
+                )
 
                 Text(controller.state.formattedTotalDuration)
                     .font(AppDesign.Typography.compactMetric.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 48, alignment: .leading)
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Elapsed replay timeline")
 
             // Playback controls row
             HStack(spacing: AppDesign.Spacing.xLarge) {
@@ -46,7 +53,7 @@ struct ReplayControlsView: View {
                 .help("Step backward (⌥←)")
                 .accessibilityLabel("Step backward")
                 .keyboardShortcut(.leftArrow, modifiers: .option)
-                .disabled(!controller.isPlaying && controller.state.currentTime == 0)
+                .disabled(!controller.canStepBackward)
 
                 // Play/Pause — prominent circular button, 44pt touch target
                 Button(action: controller.togglePlayPause) {
@@ -75,7 +82,7 @@ struct ReplayControlsView: View {
                 .help("Step forward (⌥→)")
                 .accessibilityLabel("Step forward")
                 .keyboardShortcut(.rightArrow, modifiers: .option)
-                .disabled(!controller.isPlaying && controller.state.currentTime >= controller.state.totalDuration)
+                .disabled(!controller.canStepForward)
 
                 Spacer()
 

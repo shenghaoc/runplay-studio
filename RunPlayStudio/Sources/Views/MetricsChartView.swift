@@ -23,7 +23,7 @@ struct MetricsChartView: View {
 
     enum MetricType: String, CaseIterable {
         case elevation = "Elevation"
-        case pace = "Pace"
+        case pace = "Active Pace"
         case heartRate = "Heart Rate"
         case speed = "Speed"
     }
@@ -39,6 +39,17 @@ struct MetricsChartView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 360)
+                .accessibilityLabel("Chart metric")
+                .accessibilityHint(
+                    selectedMetric == .pace
+                        ? "Active pace uses recorded time and excludes recording gaps."
+                        : "Select the metric shown over distance."
+                )
+                .help(
+                    selectedMetric == .pace
+                        ? "Active pace uses recorded time and excludes recording gaps."
+                        : "Select the metric shown over distance."
+                )
 
                 Spacer()
 

@@ -1,191 +1,152 @@
 import Foundation
 
-/// Service for comparing two workouts.
-///
-/// Provides distance-based comparison without complex route matching.
-/// Handles different workout distances, missing data, and edge cases safely.
+/// Distance-aligned workout comparison with explicit elapsed and active clocks.
 public struct WorkoutComparisonService: Sendable {
+
+    public static let pauseDurationWarningThresholdSeconds: Double = 30
 
     public init() {}
 
-    /// Compare two workouts and produce a summary.
     public func compare(primary: RunWorkout, comparison: RunWorkout) -> WorkoutComparisonSummary {
-        let primarySummary = primary.summary
-        let comparisonSummary = comparison.summary
-
-        // Distance delta
-        let distanceDelta = primarySummary.totalDistanceMeters - comparisonSummary.totalDistanceMeters
-
-        // Duration delta
-        let durationDelta = primarySummary.totalElapsedSeconds - comparisonSummary.totalElapsedSeconds
-
-        // Pace delta
-        let paceDelta = primarySummary.averagePaceSecondsPerKilometer - comparisonSummary.averagePaceSecondsPerKilometer
-
-        // Elevation delta
-        let elevDelta = primarySummary.elevationGainMeters - comparisonSummary.elevationGainMeters
-
-        // Heart rate deltas
-        let avgHRDelta: Double?
-        if let pHR = primarySummary.averageHeartRateBPM, let cHR = comparisonSummary.averageHeartRateBPM {
-            avgHRDelta = pHR - cHR
-        } else {
-            avgHRDelta = nil
-        }
-
-        let maxHRDelta: Double?
-        if let pHR = primarySummary.maxHeartRateBPM, let cHR = comparisonSummary.maxHeartRateBPM {
-            maxHRDelta = pHR - cHR
-        } else {
-            maxHRDelta = nil
-        }
-
-        // Generate warnings
-        let warnings = generateWarnings(primary: primary, comparison: comparison)
+        let primaryTimeline = WorkoutTimeline(workout: primary)
+        let comparisonTimeline = WorkoutTimeline(workout: comparison)
+        let primaryDistance = primaryTimeline.totalDistanceMeters
+        let comparisonDistance = comparisonTimeline.totalDistanceMeters
+        let primaryActivePace = pace(
+            seconds: primaryTimeline.totalActiveSeconds,
+            distanceMeters: primaryDistance
+        )
+        let comparisonActivePace = pace(
+            seconds: comparisonTimeline.totalActiveSeconds,
+            distanceMeters: comparisonDistance
+        )
+        let primaryElapsedPace = pace(
+            seconds: primaryTimeline.totalElapsedSeconds,
+            distanceMeters: primaryDistance
+        )
+        let comparisonElapsedPace = pace(
+            seconds: comparisonTimeline.totalElapsedSeconds,
+            distanceMeters: comparisonDistance
+        )
 
         return WorkoutComparisonSummary(
             primaryTitle: primary.displayName,
             comparisonTitle: comparison.displayName,
-            primaryDistanceMeters: primarySummary.totalDistanceMeters,
-            comparisonDistanceMeters: comparisonSummary.totalDistanceMeters,
-            distanceDeltaMeters: distanceDelta,
-            primaryDurationSeconds: primarySummary.totalElapsedSeconds,
-            comparisonDurationSeconds: comparisonSummary.totalElapsedSeconds,
-            durationDeltaSeconds: durationDelta,
-            primaryPaceSecondsPerKm: primarySummary.averagePaceSecondsPerKilometer,
-            comparisonPaceSecondsPerKm: comparisonSummary.averagePaceSecondsPerKilometer,
-            paceDeltaSecondsPerKm: paceDelta,
-            primaryElevationGainMeters: primarySummary.elevationGainMeters,
-            comparisonElevationGainMeters: comparisonSummary.elevationGainMeters,
-            elevationGainDeltaMeters: elevDelta,
-            primaryAvgHR: primarySummary.averageHeartRateBPM,
-            comparisonAvgHR: comparisonSummary.averageHeartRateBPM,
-            avgHRDelta: avgHRDelta,
-            primaryMaxHR: primarySummary.maxHeartRateBPM,
-            comparisonMaxHR: comparisonSummary.maxHeartRateBPM,
-            maxHRDelta: maxHRDelta,
+            primaryDistanceMeters: primaryDistance,
+            comparisonDistanceMeters: comparisonDistance,
+            distanceDeltaMeters: primaryDistance - comparisonDistance,
+            primaryElapsedSeconds: primaryTimeline.totalElapsedSeconds,
+            comparisonElapsedSeconds: comparisonTimeline.totalElapsedSeconds,
+            elapsedTimeDeltaSeconds: primaryTimeline.totalElapsedSeconds - comparisonTimeline.totalElapsedSeconds,
+            primaryActiveSeconds: primaryTimeline.totalActiveSeconds,
+            comparisonActiveSeconds: comparisonTimeline.totalActiveSeconds,
+            activeTimeDeltaSeconds: primaryTimeline.totalActiveSeconds - comparisonTimeline.totalActiveSeconds,
+            primaryPausedSeconds: primaryTimeline.totalPausedSeconds,
+            comparisonPausedSeconds: comparisonTimeline.totalPausedSeconds,
+            pausedTimeDeltaSeconds: primaryTimeline.totalPausedSeconds - comparisonTimeline.totalPausedSeconds,
+            primaryPaceSecondsPerKm: primaryActivePace,
+            comparisonPaceSecondsPerKm: comparisonActivePace,
+            paceDeltaSecondsPerKm: primaryActivePace - comparisonActivePace,
+            primaryElapsedPaceSecondsPerKm: primaryElapsedPace,
+            comparisonElapsedPaceSecondsPerKm: comparisonElapsedPace,
+            elapsedPaceDeltaSecondsPerKm: primaryElapsedPace - comparisonElapsedPace,
+            primaryElevationGainMeters: finiteNonNegative(primary.summary.elevationGainMeters),
+            comparisonElevationGainMeters: finiteNonNegative(comparison.summary.elevationGainMeters),
+            elevationGainDeltaMeters: finiteNonNegative(primary.summary.elevationGainMeters)
+                - finiteNonNegative(comparison.summary.elevationGainMeters),
+            primaryAvgHR: finite(primary.summary.averageHeartRateBPM),
+            comparisonAvgHR: finite(comparison.summary.averageHeartRateBPM),
+            avgHRDelta: difference(primary.summary.averageHeartRateBPM, comparison.summary.averageHeartRateBPM),
+            primaryMaxHR: finite(primary.summary.maxHeartRateBPM),
+            comparisonMaxHR: finite(comparison.summary.maxHeartRateBPM),
+            maxHRDelta: difference(primary.summary.maxHeartRateBPM, comparison.summary.maxHeartRateBPM),
             primaryPointCount: primary.routePoints.count,
             comparisonPointCount: comparison.routePoints.count,
-            warnings: warnings
+            warnings: generateWarnings(
+                primary: primary,
+                comparison: comparison,
+                primaryTimeline: primaryTimeline,
+                comparisonTimeline: comparisonTimeline
+            )
         )
     }
 
-    /// Compare splits between two workouts.
     public func compareSplits(primary: RunWorkout, comparison: RunWorkout) -> [SplitComparison] {
-        let maxSplits = max(primary.splits.count, comparison.splits.count)
-        var comparisons: [SplitComparison] = []
-
-        for i in 0..<maxSplits {
-            let primarySplit = i < primary.splits.count ? primary.splits[i] : nil
-            let comparisonSplit = i < comparison.splits.count ? comparison.splits[i] : nil
-
-            let durationDelta: Double?
-            let paceDelta: Double?
+        let count = max(primary.splits.count, comparison.splits.count)
+        return (0..<count).map { index in
+            let primarySplit = primary.splits.indices.contains(index) ? primary.splits[index] : nil
+            let comparisonSplit = comparison.splits.indices.contains(index) ? comparison.splits[index] : nil
+            let elapsedDelta = optionalDifference(primarySplit?.elapsedSeconds, comparisonSplit?.elapsedSeconds)
+            let activeDelta = optionalDifference(primarySplit?.activeSeconds, comparisonSplit?.activeSeconds)
+            let paceDelta = optionalDifference(
+                primarySplit?.paceSecondsPerKilometer,
+                comparisonSplit?.paceSecondsPerKilometer
+            )
             let winner: ComparisonResult
-
-            if let p = primarySplit, let c = comparisonSplit {
-                durationDelta = p.elapsedSeconds - c.elapsedSeconds
-                paceDelta = p.paceSecondsPerKilometer - c.paceSecondsPerKilometer
-
-                if let pd = paceDelta, abs(pd) < 5 {
-                    winner = .tie
-                } else if let pd = paceDelta {
-                    winner = pd > 0 ? .comparison : .primary
-                } else {
-                    winner = .unavailable
-                }
+            if let paceDelta, paceDelta.isFinite {
+                winner = abs(paceDelta) < 5 ? .tie : (paceDelta > 0 ? .comparison : .primary)
             } else {
-                durationDelta = nil
-                paceDelta = nil
                 winner = .unavailable
             }
 
-            comparisons.append(SplitComparison(
-                splitIndex: i + 1,
+            return SplitComparison(
+                splitIndex: index + 1,
                 primarySplit: primarySplit,
                 comparisonSplit: comparisonSplit,
-                durationDeltaSeconds: durationDelta,
+                elapsedDurationDeltaSeconds: elapsedDelta,
+                activeDurationDeltaSeconds: activeDelta,
                 paceDeltaSecondsPerKm: paceDelta,
                 winner: winner
-            ))
+            )
         }
-
-        return comparisons
     }
 
-    /// Generate pace comparison metric series over distance.
-    ///
-    /// Aligns by distance, sampling at regular intervals.
-    /// Clamps to common distance range.
     public func compareMetricsOverDistance(
         primary: RunWorkout,
         comparison: RunWorkout,
         sampleIntervalMeters: Double = 100
     ) -> [ComparisonMetricPoint] {
-        let primaryPoints = primary.routePoints
-        let comparisonPoints = comparison.routePoints
-
-        guard !primaryPoints.isEmpty && !comparisonPoints.isEmpty else {
+        guard !primary.routePoints.isEmpty,
+              !comparison.routePoints.isEmpty,
+              sampleIntervalMeters.isFinite,
+              sampleIntervalMeters > 0
+        else {
             return []
         }
-        guard sampleIntervalMeters.isFinite && sampleIntervalMeters > 0 else {
-            return []
-        }
 
-        // Use common distance range
-        let maxDistance = min(
-            primaryPoints.last?.distanceFromStartMeters ?? 0,
-            comparisonPoints.last?.distanceFromStartMeters ?? 0
-        )
+        let maximumDistance = commonDistance(primary: primary, comparison: comparison)
+        guard maximumDistance > 0 else { return [] }
 
-        guard maxDistance > 0 else { return [] }
-
-        var points: [ComparisonMetricPoint] = []
+        var result: [ComparisonMetricPoint] = []
         var distance: Double = 0
+        while distance <= maximumDistance {
+            let primaryPoint = RoutePointInterpolator.point(at: distance, in: primary.routePoints)
+            let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparison.routePoints)
+            let primaryPace = positiveFinite(primaryPoint?.paceSecondsPerKilometer)
+            let comparisonPace = positiveFinite(comparisonPoint?.paceSecondsPerKilometer)
 
-        while distance <= maxDistance {
-            let primaryPoint = RoutePointInterpolator.point(at: distance, in: primaryPoints)
-            let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparisonPoints)
-
-            let paceDelta: Double?
-            if let pp = primaryPoint?.paceSecondsPerKilometer,
-               let cp = comparisonPoint?.paceSecondsPerKilometer,
-               pp.isFinite && cp.isFinite {
-                paceDelta = pp - cp
-            } else {
-                paceDelta = nil
-            }
-
-            points.append(ComparisonMetricPoint(
+            result.append(ComparisonMetricPoint(
                 distanceMeters: distance,
-                primaryPace: finite(primaryPoint?.paceSecondsPerKilometer),
-                comparisonPace: finite(comparisonPoint?.paceSecondsPerKilometer),
-                paceDelta: paceDelta,
+                primaryPace: primaryPace,
+                comparisonPace: comparisonPace,
+                paceDelta: optionalDifference(primaryPace, comparisonPace),
                 primaryElevation: finite(primaryPoint?.altitudeMeters),
                 comparisonElevation: finite(comparisonPoint?.altitudeMeters),
                 primaryHR: finite(primaryPoint?.heartRateBPM),
                 comparisonHR: finite(comparisonPoint?.heartRateBPM)
             ))
-
             distance += sampleIntervalMeters
         }
-
-        return points
+        return result
     }
 
-    // MARK: - Distance Selection
-
-    /// Maximum common distance for both routes, clamped to zero if either has no data.
     public func commonDistance(primary: RunWorkout, comparison: RunWorkout) -> Double {
-        let pd = primary.routePoints.last?.distanceFromStartMeters ?? 0
-        let cd = comparison.routePoints.last?.distanceFromStartMeters ?? 0
-        return max(0, min(pd, cd))
+        min(
+            WorkoutTimeline(workout: primary).totalDistanceMeters,
+            WorkoutTimeline(workout: comparison).totalDistanceMeters
+        )
     }
 
-    /// Compute comparison metrics at a selected distance along both routes.
-    ///
-    /// Interpolates between the two nearest points on each route.
-    /// Returns `nil` values for metrics when route data is missing or non-finite.
     public func metricsAtDistance(
         _ selectedDistance: Double,
         primary: RunWorkout,
@@ -193,114 +154,93 @@ public struct WorkoutComparisonService: Sendable {
         primaryScenePoints: [RouteScenePoint] = [],
         comparisonScenePoints: [RouteScenePoint] = []
     ) -> ComparisonDistanceMetrics {
-        guard selectedDistance >= 0, selectedDistance.isFinite else {
-            return ComparisonDistanceMetrics(
-                selectedDistanceMeters: 0,
-                primaryElapsedSeconds: nil, comparisonElapsedSeconds: nil,
-                timeDeltaSeconds: nil,
-                primaryPaceSecondsPerKm: nil, comparisonPaceSecondsPerKm: nil,
-                paceDeltaSecondsPerKm: nil,
-                primaryScenePoint: nil, comparisonScenePoint: nil
-            )
+        guard selectedDistance.isFinite, selectedDistance >= 0 else {
+            return emptyDistanceMetrics
         }
 
-        let primaryInterp = RoutePointInterpolator.point(at: selectedDistance, in: primary.routePoints)
-        let comparisonInterp = RoutePointInterpolator.point(at: selectedDistance, in: comparison.routePoints)
-
-        let primaryElapsed = finite(primaryInterp?.elapsedSeconds)
-        let comparisonElapsed = finite(comparisonInterp?.elapsedSeconds)
-        let timeDelta: Double?
-        if let pe = primaryElapsed, let ce = comparisonElapsed {
-            timeDelta = pe - ce
-        } else {
-            timeDelta = nil
-        }
-
-        let primaryPace = finite(primaryInterp?.paceSecondsPerKilometer)
-        let comparisonPace = finite(comparisonInterp?.paceSecondsPerKilometer)
-        let paceDelta: Double?
-        if let pp = primaryPace, let cp = comparisonPace {
-            paceDelta = pp - cp
-        } else {
-            paceDelta = nil
-        }
-
-        let primaryScene = RoutePointInterpolator.scenePoint(at: selectedDistance, in: primaryScenePoints)
-        let comparisonScene = RoutePointInterpolator.scenePoint(at: selectedDistance, in: comparisonScenePoints)
+        let primaryTimeline = WorkoutTimeline(workout: primary)
+        let comparisonTimeline = WorkoutTimeline(workout: comparison)
+        let clampedDistance = min(
+            selectedDistance,
+            min(primaryTimeline.totalDistanceMeters, comparisonTimeline.totalDistanceMeters)
+        )
+        let primarySample = primaryTimeline.distanceSample(at: clampedDistance, boundary: .rangeEnd)
+        let comparisonSample = comparisonTimeline.distanceSample(at: clampedDistance, boundary: .rangeEnd)
+        let primaryElapsed = primarySample?.elapsedSeconds
+        let comparisonElapsed = comparisonSample?.elapsedSeconds
+        let primaryActive = primarySample?.activeSeconds
+        let comparisonActive = comparisonSample?.activeSeconds
+        let coveredDistance = clampedDistance - max(
+            primaryTimeline.startDistanceMeters,
+            comparisonTimeline.startDistanceMeters
+        )
+        let primaryPace = cumulativePace(seconds: primaryActive, distanceMeters: coveredDistance)
+        let comparisonPace = cumulativePace(seconds: comparisonActive, distanceMeters: coveredDistance)
 
         return ComparisonDistanceMetrics(
-            selectedDistanceMeters: selectedDistance,
+            selectedDistanceMeters: clampedDistance,
             primaryElapsedSeconds: primaryElapsed,
             comparisonElapsedSeconds: comparisonElapsed,
-            timeDeltaSeconds: timeDelta,
+            timeDeltaSeconds: optionalDifference(primaryElapsed, comparisonElapsed),
             primaryPaceSecondsPerKm: primaryPace,
             comparisonPaceSecondsPerKm: comparisonPace,
-            paceDeltaSecondsPerKm: paceDelta,
-            primaryScenePoint: primaryScene,
-            comparisonScenePoint: comparisonScene
+            paceDeltaSecondsPerKm: optionalDifference(primaryPace, comparisonPace),
+            primaryActiveSeconds: primaryActive,
+            comparisonActiveSeconds: comparisonActive,
+            activeTimeDeltaSeconds: optionalDifference(primaryActive, comparisonActive),
+            primaryScenePoint: RoutePointInterpolator.scenePoint(at: clampedDistance, in: primaryScenePoints),
+            comparisonScenePoint: RoutePointInterpolator.scenePoint(at: clampedDistance, in: comparisonScenePoints)
         )
     }
 
-    // MARK: - Helpers
-
-    private func finite(_ value: Double?) -> Double? {
-        guard let value, value.isFinite else { return nil }
-        return value
+    private var emptyDistanceMetrics: ComparisonDistanceMetrics {
+        ComparisonDistanceMetrics(
+            selectedDistanceMeters: 0,
+            primaryElapsedSeconds: nil,
+            comparisonElapsedSeconds: nil,
+            timeDeltaSeconds: nil,
+            primaryPaceSecondsPerKm: nil,
+            comparisonPaceSecondsPerKm: nil,
+            paceDeltaSecondsPerKm: nil,
+            primaryActiveSeconds: nil,
+            comparisonActiveSeconds: nil,
+            activeTimeDeltaSeconds: nil,
+            primaryScenePoint: nil,
+            comparisonScenePoint: nil
+        )
     }
 
-    private func generateWarnings(primary: RunWorkout, comparison: RunWorkout) -> [ComparisonWarning] {
+    private func generateWarnings(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryTimeline: WorkoutTimeline,
+        comparisonTimeline: WorkoutTimeline
+    ) -> [ComparisonWarning] {
         var warnings: [ComparisonWarning] = []
+        let primaryDistance = primaryTimeline.totalDistanceMeters
+        let comparisonDistance = comparisonTimeline.totalDistanceMeters
+        let distanceRatio = primaryDistance > 0 ? comparisonDistance / primaryDistance : 0
 
-        let primaryDist = primary.summary.totalDistanceMeters
-        let comparisonDist = comparison.summary.totalDistanceMeters
-
-        // Different distances
-        let distRatio = primaryDist > 0 ? comparisonDist / primaryDist : 0
-        if distRatio < 0.7 || distRatio > 1.4 {
-            warnings.append(.differentDistances)
+        if distanceRatio < 0.7 || distanceRatio > 1.4 { warnings.append(.differentDistances) }
+        if min(primaryDistance, comparisonDistance) < 500 { warnings.append(.insufficientOverlap) }
+        if primary.routePoints.count < 10 || comparison.routePoints.count < 10 { warnings.append(.tooFewPoints) }
+        if routeEndpointsDiffer(primary: primary, comparison: comparison) { warnings.append(.differentRouteShape) }
+        if abs(primaryTimeline.totalPausedSeconds - comparisonTimeline.totalPausedSeconds)
+            >= Self.pauseDurationWarningThresholdSeconds {
+            warnings.append(.differentPauseDurations)
         }
-
-        // Insufficient overlap
-        let commonDist = min(primaryDist, comparisonDist)
-        if commonDist < 500 {
-            warnings.append(.insufficientOverlap)
-        }
-
-        // Too few points
-        if primary.routePoints.count < 10 || comparison.routePoints.count < 10 {
-            warnings.append(.tooFewPoints)
-        }
-
-        if routeEndpointsDiffer(primary: primary, comparison: comparison) {
-            warnings.append(.differentRouteShape)
-        }
-
-        // Missing heart rate
-        if !primary.hasHeartRateData || !comparison.hasHeartRateData {
-            warnings.append(.missingHeartRate)
-        }
-
-        // Missing elevation
-        if !primary.hasAltitudeData || !comparison.hasAltitudeData {
-            warnings.append(.missingElevation)
-        }
-
+        if !primary.hasHeartRateData || !comparison.hasHeartRateData { warnings.append(.missingHeartRate) }
+        if !primary.hasAltitudeData || !comparison.hasAltitudeData { warnings.append(.missingElevation) }
         return warnings
     }
 
     private func routeEndpointsDiffer(primary: RunWorkout, comparison: RunWorkout) -> Bool {
-        let commonDistance = min(primary.summary.totalDistanceMeters, comparison.summary.totalDistanceMeters)
-        guard commonDistance > 0 else {
-            return false
-        }
-
-        let threshold = max(200, min(commonDistance * 0.1, 1_000))
-        let sampleDistances = [0, commonDistance * 0.5, commonDistance]
-
-        return sampleDistances.contains { distance in
-            guard
-                let primaryPoint = RoutePointInterpolator.point(at: distance, in: primary.routePoints),
-                let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparison.routePoints)
+        let common = commonDistance(primary: primary, comparison: comparison)
+        guard common > 0 else { return false }
+        let threshold = max(200, min(common * 0.1, 1000))
+        return [0, common * 0.5, common].contains { distance in
+            guard let primaryPoint = RoutePointInterpolator.point(at: distance, in: primary.routePoints),
+                  let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparison.routePoints)
             else {
                 return false
             }
@@ -308,17 +248,52 @@ public struct WorkoutComparisonService: Sendable {
         }
     }
 
-    private func coordinateDistance(_ a: RoutePoint, _ b: RoutePoint) -> Double {
-        guard GeoDistance.isValidCoordinate(lat: a.latitude, lon: a.longitude),
-              GeoDistance.isValidCoordinate(lat: b.latitude, lon: b.longitude) else {
+    private func coordinateDistance(_ first: RoutePoint, _ second: RoutePoint) -> Double {
+        guard GeoDistance.isValidCoordinate(lat: first.latitude, lon: first.longitude),
+              GeoDistance.isValidCoordinate(lat: second.latitude, lon: second.longitude)
+        else {
             return .infinity
         }
-
         return GeoDistance.distanceMeters(
-            fromLat: a.latitude,
-            lon: a.longitude,
-            toLat: b.latitude,
-            lon: b.longitude
+            fromLat: first.latitude,
+            lon: first.longitude,
+            toLat: second.latitude,
+            lon: second.longitude
         )
+    }
+
+    private func pace(seconds: Double, distanceMeters: Double) -> Double {
+        guard seconds.isFinite, seconds > 0, distanceMeters.isFinite, distanceMeters > 0 else { return 0 }
+        return (seconds / distanceMeters) * 1000
+    }
+
+    private func cumulativePace(seconds: Double?, distanceMeters: Double) -> Double? {
+        guard let seconds, seconds.isFinite, seconds > 0, distanceMeters.isFinite, distanceMeters > 0 else {
+            return nil
+        }
+        return (seconds / distanceMeters) * 1000
+    }
+
+    private func finite(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+
+    private func positiveFinite(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    private func finiteNonNegative(_ value: Double) -> Double {
+        value.isFinite ? max(0, value) : 0
+    }
+
+    private func difference(_ first: Double?, _ second: Double?) -> Double? {
+        optionalDifference(first, second)
+    }
+
+    private func optionalDifference(_ first: Double?, _ second: Double?) -> Double? {
+        guard let first, let second, first.isFinite, second.isFinite else { return nil }
+        return first - second
     }
 }

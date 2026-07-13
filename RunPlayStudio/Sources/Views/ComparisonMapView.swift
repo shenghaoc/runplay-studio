@@ -73,7 +73,7 @@ struct ComparisonMapView: View {
                 routes: routes,
                 markers: markers,
                 fitRequest: fitRequest,
-                controlBottomInset: 104
+                controlBottomInset: 168
             )
 
             VStack {
@@ -215,29 +215,52 @@ struct ComparisonMapView: View {
 
     private var comparisonDistanceMetricsRow: some View {
         let metrics = appState.comparisonDistanceMetrics
-        return HStack(spacing: AppDesign.Spacing.large) {
-            metricBadge(label: "Selected", value: metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
-            metricBadge(label: "Comparison", value: metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
-            metricBadge(label: "Δ Time", value: metrics.timeDeltaFormatted, color: deltaColor(metrics.timeDeltaSeconds))
+        return Grid(horizontalSpacing: AppDesign.Spacing.large, verticalSpacing: AppDesign.Spacing.xSmall) {
+            GridRow {
+                Text("")
+                Text("Selected")
+                Text("Comparison")
+                Text("Delta")
+            }
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.tertiary)
 
-            Divider().frame(height: 16)
+            GridRow {
+                metricLabel("Elapsed")
+                metricValue(metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.elapsedTimeDeltaFormatted, color: deltaColor(metrics.elapsedTimeDeltaSeconds))
+            }
 
-            metricBadge(label: "Selected Pace", value: metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
-            metricBadge(label: "Comparison Pace", value: metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
-            metricBadge(label: "Δ Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
+            GridRow {
+                metricLabel("Active")
+                metricValue(metrics.primaryActiveFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonActiveFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.activeTimeDeltaFormatted, color: deltaColor(metrics.activeTimeDeltaSeconds))
+            }
+
+            GridRow {
+                metricLabel("Active Pace")
+                metricValue(metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
+            }
         }
-        .frame(height: 24)
+        .help("Elapsed includes pauses. Active and pace exclude recording gaps.")
     }
 
-    private func metricBadge(label: String, value: String, color: Color) -> some View {
-        VStack(spacing: 1) {
-            Text(label)
-                .font(AppDesign.Typography.compactLabel)
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(AppDesign.Typography.compactMetric.monospacedDigit())
-                .foregroundStyle(color)
-        }
+    private func metricLabel(_ label: String) -> some View {
+        Text(label)
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func metricValue(_ value: String, color: Color) -> some View {
+        Text(value)
+            .font(AppDesign.Typography.compactMetric.monospacedDigit())
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     private func deltaColor(_ delta: Double?) -> Color {

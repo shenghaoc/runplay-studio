@@ -1,6 +1,5 @@
 import Foundation
 
-/// A pair of workouts selected for comparison.
 public struct ComparisonPair: Sendable {
     public let primary: RunWorkout
     public let comparison: RunWorkout
@@ -11,115 +10,130 @@ public struct ComparisonPair: Sendable {
     }
 }
 
-/// Summary of differences between two workouts.
+/// Summary differences with explicit elapsed, active, and paused clocks.
 public struct WorkoutComparisonSummary: Sendable {
     public let primaryTitle: String
     public let comparisonTitle: String
 
-    // Distance
     public let primaryDistanceMeters: Double
     public let comparisonDistanceMeters: Double
     public let distanceDeltaMeters: Double
 
-    // Duration
-    public let primaryDurationSeconds: Double
-    public let comparisonDurationSeconds: Double
-    public let durationDeltaSeconds: Double
+    public let primaryElapsedSeconds: Double
+    public let comparisonElapsedSeconds: Double
+    public let elapsedTimeDeltaSeconds: Double
+    public let primaryActiveSeconds: Double
+    public let comparisonActiveSeconds: Double
+    public let activeTimeDeltaSeconds: Double
+    public let primaryPausedSeconds: Double
+    public let comparisonPausedSeconds: Double
+    public let pausedTimeDeltaSeconds: Double
 
-    // Pace
+    /// Source-compatible pace fields use active time.
     public let primaryPaceSecondsPerKm: Double
     public let comparisonPaceSecondsPerKm: Double
     public let paceDeltaSecondsPerKm: Double
+    public let primaryElapsedPaceSecondsPerKm: Double
+    public let comparisonElapsedPaceSecondsPerKm: Double
+    public let elapsedPaceDeltaSecondsPerKm: Double
 
-    // Elevation
     public let primaryElevationGainMeters: Double
     public let comparisonElevationGainMeters: Double
     public let elevationGainDeltaMeters: Double
-
-    // Heart rate (optional)
     public let primaryAvgHR: Double?
     public let comparisonAvgHR: Double?
     public let avgHRDelta: Double?
     public let primaryMaxHR: Double?
     public let comparisonMaxHR: Double?
     public let maxHRDelta: Double?
-
-    // Point counts
     public let primaryPointCount: Int
     public let comparisonPointCount: Int
-
-    // Warnings
     public let warnings: [ComparisonWarning]
 
+    /// Compatibility aliases. Duration now always means true elapsed time.
+    public var primaryDurationSeconds: Double { primaryElapsedSeconds }
+    public var comparisonDurationSeconds: Double { comparisonElapsedSeconds }
+    public var durationDeltaSeconds: Double { elapsedTimeDeltaSeconds }
+
     public var distanceDeltaFormatted: String {
-        let km = distanceDeltaMeters / 1000
-        if abs(km) < 0.005 {
-            return "0.00 km even"
-        }
-        return String(format: "%+.2f km %@", km, km > 0 ? "longer" : "shorter")
+        guard distanceDeltaMeters.isFinite else { return "N/A" }
+        let kilometers = distanceDeltaMeters / 1000
+        if abs(kilometers) < 0.005 { return "0.00 km even" }
+        return String(
+            format: "%+.2f km %@",
+            kilometers,
+            kilometers > 0 ? "longer" : "shorter"
+        )
     }
 
-    public var durationDeltaFormatted: String {
-        formatTimeDelta(durationDeltaSeconds, suffix: nil, positiveLabel: "slower", negativeLabel: "faster")
+    public var elapsedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            elapsedTimeDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
     }
+
+    public var activeTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            activeTimeDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
+    }
+
+    public var pausedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            pausedTimeDeltaSeconds,
+            positiveLabel: "more paused",
+            negativeLabel: "less paused"
+        )
+    }
+
+    public var durationDeltaFormatted: String { elapsedTimeDeltaFormatted }
 
     public var paceDeltaFormatted: String {
-        formatTimeDelta(paceDeltaSecondsPerKm, suffix: "/km", positiveLabel: "slower", negativeLabel: "faster")
+        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: "/km")
+    }
+
+    public var elapsedPaceDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(elapsedPaceDeltaSecondsPerKm, suffix: "/km")
     }
 
     public var elevationGainDeltaFormatted: String {
-        if abs(elevationGainDeltaMeters) < 0.5 {
-            return "0 m even"
-        }
-        return String(format: "%+.0f m %@", elevationGainDeltaMeters, elevationGainDeltaMeters > 0 ? "higher" : "lower")
+        guard elevationGainDeltaMeters.isFinite else { return "N/A" }
+        if abs(elevationGainDeltaMeters) < 0.5 { return "0 m even" }
+        return String(
+            format: "%+.0f m %@",
+            elevationGainDeltaMeters,
+            elevationGainDeltaMeters > 0 ? "higher" : "lower"
+        )
     }
 
-    public var avgHRDeltaFormatted: String? {
-        formatHeartRateDelta(avgHRDelta)
-    }
+    public var avgHRDeltaFormatted: String? { Self.formatHeartRateDelta(avgHRDelta) }
+    public var maxHRDeltaFormatted: String? { Self.formatHeartRateDelta(maxHRDelta) }
 
-    public var maxHRDeltaFormatted: String? {
-        formatHeartRateDelta(maxHRDelta)
-    }
-
+    /// Winner is determined only by active pace.
     public var winner: ComparisonResult {
-        let paceDiff = paceDeltaSecondsPerKm
-        if abs(paceDiff) < 5 {
-            return .tie
+        guard primaryPaceSecondsPerKm.isFinite,
+              comparisonPaceSecondsPerKm.isFinite,
+              primaryPaceSecondsPerKm > 0,
+              comparisonPaceSecondsPerKm > 0,
+              paceDeltaSecondsPerKm.isFinite
+        else {
+            return .unavailable
         }
-        return paceDiff > 0 ? .comparison : .primary
+        if abs(paceDeltaSecondsPerKm) < 5 { return .tie }
+        return paceDeltaSecondsPerKm > 0 ? .comparison : .primary
     }
 
-    private func formatTimeDelta(
-        _ delta: Double,
-        suffix: String?,
-        positiveLabel: String,
-        negativeLabel: String
-    ) -> String {
-        let suffixText = suffix.map { " \($0)" } ?? ""
-        guard delta.isFinite else { return "N/A" }
-        if abs(delta) < 0.5 {
-            return "0:00\(suffixText) even"
-        }
-
-        let rounded = Int(abs(delta).rounded())
-        let minutes = rounded / 60
-        let seconds = rounded % 60
-        let sign = delta > 0 ? "+" : "-"
-        let label = delta > 0 ? positiveLabel : negativeLabel
-        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
-    }
-
-    private func formatHeartRateDelta(_ delta: Double?) -> String? {
+    private static func formatHeartRateDelta(_ delta: Double?) -> String? {
         guard let delta, delta.isFinite else { return nil }
-        if abs(delta) < 0.5 {
-            return "0 bpm even"
-        }
+        if abs(delta) < 0.5 { return "0 bpm even" }
         return String(format: "%+.0f bpm %@", delta, delta > 0 ? "higher" : "lower")
     }
 }
 
-/// Result of a comparison.
 public enum ComparisonResult: Sendable {
     case primary
     case comparison
@@ -136,43 +150,41 @@ public enum ComparisonResult: Sendable {
     }
 }
 
-/// Comparison of a single split between two workouts.
 public struct SplitComparison: Identifiable, Sendable {
     public let id = UUID()
     public let splitIndex: Int
     public let primarySplit: RunSplit?
     public let comparisonSplit: RunSplit?
-    public let durationDeltaSeconds: Double?
+    public let elapsedDurationDeltaSeconds: Double?
+    public let activeDurationDeltaSeconds: Double?
     public let paceDeltaSecondsPerKm: Double?
     public let winner: ComparisonResult
 
+    public var durationDeltaSeconds: Double? { elapsedDurationDeltaSeconds }
+
     public var formattedDurationDelta: String {
-        guard let delta = durationDeltaSeconds else { return "—" }
-        return Self.formatTimeDelta(delta, suffix: nil)
+        DisplayFormatter.formatSignedDurationDelta(
+            elapsedDurationDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
+    }
+
+    public var formattedElapsedDurationDelta: String { formattedDurationDelta }
+
+    public var formattedActiveDurationDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            activeDurationDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
     }
 
     public var formattedPaceDelta: String {
-        guard let delta = paceDeltaSecondsPerKm else { return "—" }
-        return Self.formatTimeDelta(delta, suffix: "/km")
-    }
-
-    private static func formatTimeDelta(_ delta: Double, suffix: String?) -> String {
-        let suffixText = suffix.map { " \($0)" } ?? ""
-        guard delta.isFinite else { return "N/A" }
-        if abs(delta) < 0.5 {
-            return "0:00\(suffixText) even"
-        }
-
-        let rounded = Int(abs(delta).rounded())
-        let minutes = rounded / 60
-        let seconds = rounded % 60
-        let sign = delta > 0 ? "+" : "-"
-        let label = delta > 0 ? "slower" : "faster"
-        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
+        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: "/km")
     }
 }
 
-/// A point in the pace comparison series over distance.
 public struct ComparisonMetricPoint: Identifiable, Sendable {
     public let id = UUID()
     public let distanceMeters: Double
@@ -187,17 +199,24 @@ public struct ComparisonMetricPoint: Identifiable, Sendable {
     public var distanceKm: Double { distanceMeters / 1000 }
 }
 
-/// Metrics at a user-selected distance along a comparison route pair.
+/// Metrics at one cumulative distance, using first-arrival (`rangeEnd`) time
+/// when a stop and resume share the exact same distance.
 public struct ComparisonDistanceMetrics: Sendable {
     public let selectedDistanceMeters: Double
     public let primaryElapsedSeconds: Double?
     public let comparisonElapsedSeconds: Double?
+    /// Compatibility alias for elapsed-time delta.
     public let timeDeltaSeconds: Double?
+    public let primaryActiveSeconds: Double?
+    public let comparisonActiveSeconds: Double?
+    public let activeTimeDeltaSeconds: Double?
     public let primaryPaceSecondsPerKm: Double?
     public let comparisonPaceSecondsPerKm: Double?
     public let paceDeltaSecondsPerKm: Double?
     public let primaryScenePoint: RouteScenePoint?
     public let comparisonScenePoint: RouteScenePoint?
+
+    public var elapsedTimeDeltaSeconds: Double? { timeDeltaSeconds }
 
     public init(
         selectedDistanceMeters: Double,
@@ -210,79 +229,100 @@ public struct ComparisonDistanceMetrics: Sendable {
         primaryScenePoint: RouteScenePoint?,
         comparisonScenePoint: RouteScenePoint?
     ) {
-        self.selectedDistanceMeters = selectedDistanceMeters
-        self.primaryElapsedSeconds = primaryElapsedSeconds
-        self.comparisonElapsedSeconds = comparisonElapsedSeconds
-        self.timeDeltaSeconds = timeDeltaSeconds
-        self.primaryPaceSecondsPerKm = primaryPaceSecondsPerKm
-        self.comparisonPaceSecondsPerKm = comparisonPaceSecondsPerKm
-        self.paceDeltaSecondsPerKm = paceDeltaSecondsPerKm
+        self.init(
+            selectedDistanceMeters: selectedDistanceMeters,
+            primaryElapsedSeconds: primaryElapsedSeconds,
+            comparisonElapsedSeconds: comparisonElapsedSeconds,
+            timeDeltaSeconds: timeDeltaSeconds,
+            primaryPaceSecondsPerKm: primaryPaceSecondsPerKm,
+            comparisonPaceSecondsPerKm: comparisonPaceSecondsPerKm,
+            paceDeltaSecondsPerKm: paceDeltaSecondsPerKm,
+            primaryActiveSeconds: nil,
+            comparisonActiveSeconds: nil,
+            activeTimeDeltaSeconds: nil,
+            primaryScenePoint: primaryScenePoint,
+            comparisonScenePoint: comparisonScenePoint
+        )
+    }
+
+    public init(
+        selectedDistanceMeters: Double,
+        primaryElapsedSeconds: Double?,
+        comparisonElapsedSeconds: Double?,
+        timeDeltaSeconds: Double?,
+        primaryPaceSecondsPerKm: Double?,
+        comparisonPaceSecondsPerKm: Double?,
+        paceDeltaSecondsPerKm: Double?,
+        primaryActiveSeconds: Double?,
+        comparisonActiveSeconds: Double? = nil,
+        activeTimeDeltaSeconds: Double? = nil,
+        primaryScenePoint: RouteScenePoint?,
+        comparisonScenePoint: RouteScenePoint?
+    ) {
+        self.selectedDistanceMeters = Self.nonNegativeFinite(selectedDistanceMeters)
+        self.primaryElapsedSeconds = Self.nonNegativeFiniteOptional(primaryElapsedSeconds)
+        self.comparisonElapsedSeconds = Self.nonNegativeFiniteOptional(comparisonElapsedSeconds)
+        self.timeDeltaSeconds = Self.finiteOptional(timeDeltaSeconds)
+        self.primaryActiveSeconds = Self.nonNegativeFiniteOptional(primaryActiveSeconds)
+        self.comparisonActiveSeconds = Self.nonNegativeFiniteOptional(comparisonActiveSeconds)
+        self.activeTimeDeltaSeconds = Self.finiteOptional(activeTimeDeltaSeconds)
+        self.primaryPaceSecondsPerKm = Self.positiveFiniteOptional(primaryPaceSecondsPerKm)
+        self.comparisonPaceSecondsPerKm = Self.positiveFiniteOptional(comparisonPaceSecondsPerKm)
+        self.paceDeltaSecondsPerKm = Self.finiteOptional(paceDeltaSecondsPerKm)
         self.primaryScenePoint = primaryScenePoint
         self.comparisonScenePoint = comparisonScenePoint
     }
 
     public var selectedDistanceFormatted: String {
-        String(format: "%.2f km", selectedDistanceMeters / 1000)
+        DisplayFormatter.formatDistanceKm(selectedDistanceMeters)
     }
-
-    public var primaryElapsedFormatted: String {
-        formatElapsed(primaryElapsedSeconds)
+    public var primaryElapsedFormatted: String { DisplayFormatter.formatElapsed(primaryElapsedSeconds) }
+    public var comparisonElapsedFormatted: String { DisplayFormatter.formatElapsed(comparisonElapsedSeconds) }
+    public var primaryActiveFormatted: String { DisplayFormatter.formatElapsed(primaryActiveSeconds) }
+    public var comparisonActiveFormatted: String { DisplayFormatter.formatElapsed(comparisonActiveSeconds) }
+    public var timeDeltaFormatted: String { elapsedTimeDeltaFormatted }
+    public var elapsedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            elapsedTimeDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
     }
-
-    public var comparisonElapsedFormatted: String {
-        formatElapsed(comparisonElapsedSeconds)
+    public var activeTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            activeTimeDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
     }
-
-    public var timeDeltaFormatted: String {
-        formatTimeDelta(timeDeltaSeconds, suffix: nil, positiveLabel: "slower", negativeLabel: "faster")
-    }
-
-    public var primaryPaceFormatted: String {
-        formatPace(primaryPaceSecondsPerKm)
-    }
-
-    public var comparisonPaceFormatted: String {
-        formatPace(comparisonPaceSecondsPerKm)
-    }
-
+    public var primaryPaceFormatted: String { DisplayFormatter.formatPace(primaryPaceSecondsPerKm) }
+    public var comparisonPaceFormatted: String { DisplayFormatter.formatPace(comparisonPaceSecondsPerKm) }
     public var paceDeltaFormatted: String {
-        formatTimeDelta(paceDeltaSecondsPerKm, suffix: "/km", positiveLabel: "slower", negativeLabel: "faster")
+        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: "/km")
     }
 
-    private func formatElapsed(_ seconds: Double?) -> String {
-        guard let seconds, seconds.isFinite else { return "--:--" }
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+    private static func nonNegativeFinite(_ value: Double) -> Double {
+        value.isFinite ? max(0, value) : 0
     }
-
-    private func formatPace(_ pace: Double?) -> String {
-        guard let pace, pace.isFinite, pace > 0 else { return "--:-- /km" }
-        let mins = Int(pace) / 60
-        let secs = Int(pace) % 60
-        return String(format: "%d:%02d /km", mins, secs)
+    private static func finiteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return value
     }
-
-    private func formatTimeDelta(_ delta: Double?, suffix: String?, positiveLabel: String, negativeLabel: String) -> String {
-        let suffixText = suffix.map { " \($0)" } ?? ""
-        guard let delta, delta.isFinite else { return "N/A" }
-        if abs(delta) < 0.5 {
-            return "0:00\(suffixText) even"
-        }
-        let rounded = Int(abs(delta).rounded())
-        let minutes = rounded / 60
-        let seconds = rounded % 60
-        let sign = delta > 0 ? "+" : "-"
-        let label = delta > 0 ? positiveLabel : negativeLabel
-        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
+    private static func nonNegativeFiniteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+    private static func positiveFiniteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0 else { return nil }
+        return value
     }
 }
 
-/// Warning about a comparison.
 public enum ComparisonWarning: String, CaseIterable, Sendable {
     case differentDistances = "Runs have significantly different distances"
     case insufficientOverlap = "Not enough overlapping distance to compare"
     case differentRouteShape = "Routes differ; comparison based on distance"
+    case differentPauseDurations = "Runs contain different pause durations; active and elapsed comparisons may differ"
     case missingHeartRate = "One or both runs lack heart rate data"
     case missingElevation = "One or both runs lack elevation data"
     case tooFewPoints = "One or both runs have very few data points"
@@ -292,6 +332,7 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
         case .differentDistances: return "ruler"
         case .insufficientOverlap: return "exclamationmark.triangle"
         case .differentRouteShape: return "map"
+        case .differentPauseDurations: return "pause.circle"
         case .missingHeartRate: return "heart"
         case .missingElevation: return "mountain.2"
         case .tooFewPoints: return "chart.dots.scatterplot"

@@ -195,17 +195,26 @@ struct ComparisonSummaryView: View {
                         .foregroundStyle(winnerColor)
                 }
 
-                Text("OVERALL RESULT")
+                Text("ACTIVE PACE RESULT")
                     .font(.caption2.weight(.semibold))
                     .tracking(1)
                     .foregroundStyle(.tertiary)
             }
             .frame(minWidth: 150, alignment: .leading)
 
-            HStack(spacing: AppDesign.Spacing.small) {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 104), spacing: AppDesign.Spacing.small)],
+                spacing: AppDesign.Spacing.small
+            ) {
                 DeltaCard(label: "Distance", value: summary.distanceDeltaFormatted)
-                DeltaCard(label: "Duration", value: summary.durationDeltaFormatted)
-                DeltaCard(label: "Pace", value: summary.paceDeltaFormatted)
+                DeltaCard(label: "Active Time", value: summary.activeTimeDeltaFormatted)
+                    .help("Active time excludes recording gaps.")
+                DeltaCard(label: "Elapsed Time", value: summary.elapsedTimeDeltaFormatted)
+                    .help("Elapsed time includes pauses and recording gaps.")
+                DeltaCard(label: "Paused", value: summary.pausedTimeDeltaFormatted)
+                    .help("Paused time is elapsed time minus active time.")
+                DeltaCard(label: "Active Pace", value: summary.paceDeltaFormatted)
+                    .help("Pace is calculated from active time.")
                 DeltaCard(label: "Elevation", value: summary.elevationGainDeltaFormatted)
                 if let avgHR = summary.avgHRDeltaFormatted {
                     DeltaCard(label: "Avg HR", value: avgHR)
@@ -214,7 +223,10 @@ struct ComparisonSummaryView: View {
             .frame(maxWidth: .infinity)
 
             if summary.warnings.contains(where: {
-                $0 == .differentDistances || $0 == .differentRouteShape || $0 == .insufficientOverlap
+                $0 == .differentDistances
+                    || $0 == .differentRouteShape
+                    || $0 == .insufficientOverlap
+                    || $0 == .differentPauseDurations
             }) {
                 HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: "info.circle")
