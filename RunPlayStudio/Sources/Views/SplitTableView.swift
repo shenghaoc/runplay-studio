@@ -9,6 +9,10 @@ struct SplitTableView: View {
     var currentSplitIndex: Int? = nil
 
     var body: some View {
+        let activeSplitID = currentSplitIndex.flatMap { index in
+            index >= 0 && index < splits.count ? splits[index].id : nil
+        }
+
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             Text("Splits")
                 .font(AppDesign.Typography.sectionHeadline)
@@ -39,7 +43,7 @@ struct SplitTableView: View {
             Table(splits) {
                 TableColumn("Split") { split in
                     HStack {
-                        if currentSplitIndex != nil && splits.firstIndex(where: { $0.id == split.id }) == currentSplitIndex {
+                        if split.id == activeSplitID {
                             Image(systemName: "circle.fill")
                                 .font(.system(size: 6))
                                 .foregroundStyle(AppDesign.comparisonOrange)

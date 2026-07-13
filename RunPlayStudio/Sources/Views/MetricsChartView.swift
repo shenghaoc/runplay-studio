@@ -17,6 +17,7 @@ struct MetricsChartView: View {
     @State private var selectedMetric: MetricType = .elevation
     @State private var isDragging: Bool = false
     @State private var dragDistance: Double? = nil
+    @State private var chartData: [ChartDataPoint] = []
 
     enum MetricType: String, CaseIterable {
         case elevation = "Elevation"
@@ -142,6 +143,10 @@ struct MetricsChartView: View {
                 }
             }
         }
+        .onAppear(perform: refreshChartData)
+        .onChange(of: selectedMetric) { _, _ in refreshChartData() }
+        .onChange(of: routePoints) { _, _ in refreshChartData() }
+        .onChange(of: smoothingWindow) { _, _ in refreshChartData() }
     }
 
     // MARK: - No Data Overlay
@@ -192,7 +197,7 @@ struct MetricsChartView: View {
         let value: Double
     }
 
-    private var chartData: [ChartDataPoint] {
+    private func refreshChartData() {
         let smoothedValues: [Double?]
 
         switch selectedMetric {
@@ -206,7 +211,7 @@ struct MetricsChartView: View {
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
 
-        return zip(routePoints, smoothedValues).compactMap { point, value in
+        chartData = zip(routePoints, smoothedValues).compactMap { point, value in
             guard let v = value else { return nil }
             return ChartDataPoint(
                 distanceKm: point.distanceFromStartMeters / 1000,
