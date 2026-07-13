@@ -53,11 +53,14 @@ workflow to remain operable and understandable without pointer-only gestures.
 #### Acceptance Criteria
 
 1. Import, workout tabs, play or pause, and frame stepping SHALL have documented
-   keyboard paths that do not override normal text-field navigation.
+   keyboard paths that do not override normal text-field navigation. Replay
+   play or pause SHALL use Option-Space, and frame stepping SHALL use
+   Option-arrow shortcuts.
 2. Workout-tab shortcuts SHALL be registered as native window-wide commands so
    they keep working when the sidebar, map, or chart owns keyboard focus.
 3. Interactive chart seeking SHALL provide a labeled text-field and stepper
-   alternative to drag gestures.
+   alternative to drag gestures, and a valid typed distance SHALL be committed
+   both on submit and when the field loses focus.
 4. The empty-state entrance SHALL honor Reduce Motion.
 5. Destructive actions SHALL use a destructive role and explicit confirmation.
 

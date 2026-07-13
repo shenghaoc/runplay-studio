@@ -40,10 +40,12 @@ the compared route. Comparison warnings remain visible in the map context.
 
 The detail view publishes its tab binding through scene-focused values, and a
 native Workout command menu owns Cmd+1 through Cmd+4. The shortcuts therefore
-continue to work while the sidebar, map, or chart owns keyboard focus. Frame
-stepping uses Option-arrow shortcuts so chart seek text remains editable. Chart
-dragging is supplemented by a labeled numeric field and stepper. Empty-state
-motion is disabled when Reduce Motion is enabled.
+continue to work while the sidebar, map, or chart owns keyboard focus. Replay
+play or pause uses Option-Space and frame stepping uses Option-arrow shortcuts,
+so chart seek text remains editable. Chart dragging is supplemented by a
+labeled numeric field and stepper; valid typed distances commit on submit or
+when that field loses focus. Empty-state motion is disabled when Reduce Motion
+is enabled.
 
 ### Performance
 
