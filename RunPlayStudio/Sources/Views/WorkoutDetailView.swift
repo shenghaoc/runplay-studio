@@ -52,8 +52,8 @@ struct WorkoutDetailView: View {
             AppDesign.workspaceBackground
                 .ignoresSafeArea()
         }
-        .focused($isFocused)
         .focusable()
+        .focused($isFocused)
         .onAppear { isFocused = true }
         .onKeyPress(characters: .alphanumerics, phases: .down) { press in
             guard press.modifiers == .command else { return .ignored }

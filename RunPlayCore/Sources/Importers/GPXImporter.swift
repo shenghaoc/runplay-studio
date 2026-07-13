@@ -151,9 +151,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
     // Character accumulation
     private var currentText: String = ""
 
-    // Error tracking
-    private var parseError: String?
-
     init(data: Data) {
         self.data = data
     }
@@ -166,11 +163,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         parser.shouldResolveExternalEntities = false
 
         guard parser.parse() else {
-            let line = parser.lineNumber
-            let col = parser.columnNumber
-            if let error = parseError {
-                throw WorkoutImportError.parsingError("This GPX file could not be read. Try re-exporting it.")
-            }
             throw WorkoutImportError.parsingError("This GPX file could not be read. Try re-exporting it.")
         }
 
@@ -265,10 +257,6 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         default:
             break
         }
-    }
-
-    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
-        self.parseError = parseError.localizedDescription
     }
 
     // MARK: - Date Parsing
