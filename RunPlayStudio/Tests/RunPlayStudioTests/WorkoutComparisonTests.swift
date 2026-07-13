@@ -264,7 +264,7 @@ final class WorkoutComparisonTests: XCTestCase {
         let summary = service.compare(primary: primary, comparison: comparison)
 
         XCTAssertTrue(summary.warnings.contains(.differentRouteShape))
-        XCTAssertEqual(ComparisonWarning.differentRouteShape.rawValue, "Routes differ; comparison uses distance alignment")
+        XCTAssertEqual(ComparisonWarning.differentRouteShape.rawValue, "Routes differ; comparison based on distance")
     }
 
     // MARK: - Edge Cases
@@ -684,8 +684,8 @@ final class WorkoutComparisonTests: XCTestCase {
     }
 
     func testComparisonResultLabels() {
-        XCTAssertEqual(ComparisonResult.primary.label, "Primary faster")
-        XCTAssertEqual(ComparisonResult.comparison.label, "Comparison faster")
+        XCTAssertEqual(ComparisonResult.primary.label, "Selected run faster")
+        XCTAssertEqual(ComparisonResult.comparison.label, "Compared run faster")
         XCTAssertEqual(ComparisonResult.tie.label, "About the same")
         XCTAssertEqual(ComparisonResult.unavailable.label, "N/A")
     }

@@ -140,7 +140,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(35)
 
-                    TableColumn("Primary (min/km)") { split in
+                    TableColumn("Selected (min/km)") { split in
                         if let s = split.primarySplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
@@ -152,7 +152,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(90)
 
-                    TableColumn("Comp. (min/km)") { split in
+                    TableColumn("Comparison (min/km)") { split in
                         if let s = split.comparisonSplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()

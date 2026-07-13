@@ -224,7 +224,7 @@ public struct FITDecoder {
         } else if gpsRunningSessions.count > 1 {
             // Multiple GPS-bearing running sessions - ambiguous
             throw WorkoutImportError.parsingError(
-                "FIT file contains \(gpsRunningSessions.count) GPS-bearing running sessions. Cannot determine which to import."
+            "This FIT file contains \(gpsRunningSessions.count) runs. Only single-run files are supported."
             )
         } else if anyGPSSessions.isEmpty {
             // No GPS sessions at all - try legacy fallback
@@ -244,7 +244,7 @@ public struct FITDecoder {
                     return FITSport(rawValue: sport).map { String(describing: $0) } ?? "unknown"
                 }
                 throw WorkoutImportError.parsingError(
-                    "FIT file contains non-running activity: \(sportNames.joined(separator: ", "))"
+                    "This FIT file contains a \(sportNames.joined(separator: ", ")) activity. Only running workouts are supported."
                 )
             }
 
@@ -261,7 +261,7 @@ public struct FITDecoder {
         guard let sessionStart = sessionStartTime(for: session) else {
             guard totalSessionCount == 1 else {
                 throw WorkoutImportError.parsingError(
-                    "Cannot safely associate FIT records with one of multiple sessions without a session start time"
+                    "Could not match GPS data to runs in this FIT file"
                 )
             }
             return records
@@ -286,7 +286,7 @@ public struct FITDecoder {
         guard let sessionStart = sessionStartTime(for: session) else {
             guard totalSessionCount == 1 else {
                 throw WorkoutImportError.parsingError(
-                    "Cannot safely associate FIT timer events with one of multiple sessions without a session start time"
+                    "Could not match timing data to runs in this FIT file"
                 )
             }
             return events

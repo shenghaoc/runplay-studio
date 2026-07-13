@@ -71,7 +71,7 @@ public struct WorkoutComparisonSummary: Sendable {
         if abs(elevationGainDeltaMeters) < 0.5 {
             return "0 m even"
         }
-        return String(format: "%+.0f m %@", elevationGainDeltaMeters, elevationGainDeltaMeters > 0 ? "more gain" : "less gain")
+        return String(format: "%+.0f m %@", elevationGainDeltaMeters, elevationGainDeltaMeters > 0 ? "higher" : "lower")
     }
 
     public var avgHRDeltaFormatted: String? {
@@ -128,8 +128,8 @@ public enum ComparisonResult: Sendable {
 
     public var label: String {
         switch self {
-        case .primary: return "Primary faster"
-        case .comparison: return "Comparison faster"
+        case .primary: return "Selected run faster"
+        case .comparison: return "Compared run faster"
         case .tie: return "About the same"
         case .unavailable: return "N/A"
         }
@@ -281,8 +281,8 @@ public struct ComparisonDistanceMetrics: Sendable {
 /// Warning about a comparison.
 public enum ComparisonWarning: String, CaseIterable, Sendable {
     case differentDistances = "Runs have significantly different distances"
-    case insufficientOverlap = "Insufficient distance overlap for comparison"
-    case differentRouteShape = "Routes differ; comparison uses distance alignment"
+    case insufficientOverlap = "Not enough overlapping distance to compare"
+    case differentRouteShape = "Routes differ; comparison based on distance"
     case missingHeartRate = "One or both runs lack heart rate data"
     case missingElevation = "One or both runs lack elevation data"
     case tooFewPoints = "One or both runs have very few data points"

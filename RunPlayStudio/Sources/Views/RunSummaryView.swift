@@ -29,13 +29,13 @@ struct RunSummaryView: View {
                 }
                 GridRow {
                     MetricDisplay(
-                        label: "Elev Gain",
+                        label: "Elevation Gain",
                         value: DisplayFormatter.formatElevation(summary.elevationGainMeters),
                         color: AppDesign.MetricColor.elevation,
                         layout: .leading
                     )
                     MetricDisplay(
-                        label: "Elev Loss",
+                        label: "Elevation Loss",
                         value: DisplayFormatter.formatElevation(summary.elevationLossMeters),
                         color: AppDesign.softPurple,
                         layout: .leading

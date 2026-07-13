@@ -216,14 +216,14 @@ struct ComparisonMapView: View {
     private var comparisonDistanceMetricsRow: some View {
         let metrics = appState.comparisonDistanceMetrics
         return HStack(spacing: AppDesign.Spacing.large) {
-            metricBadge(label: "Primary", value: metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
-            metricBadge(label: "Comp.", value: metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
+            metricBadge(label: "Selected", value: metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
+            metricBadge(label: "Comparison", value: metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
             metricBadge(label: "Δ Time", value: metrics.timeDeltaFormatted, color: deltaColor(metrics.timeDeltaSeconds))
 
             Divider().frame(height: 16)
 
-            metricBadge(label: "Primary Pace", value: metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
-            metricBadge(label: "Comp. Pace", value: metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
+            metricBadge(label: "Selected Pace", value: metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
+            metricBadge(label: "Comparison Pace", value: metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
             metricBadge(label: "Δ Pace", value: metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
         }
         .frame(height: 24)

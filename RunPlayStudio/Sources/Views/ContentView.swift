@@ -67,7 +67,7 @@ struct ContentView: View {
                                 HStack {
                                     if appState.isComparing {
                                         Button(action: { appState.clearComparison() }) {
-                                            Label("End Compare", systemImage: "arrow.left.arrow.right")
+                                            Label("End Comparison", systemImage: "arrow.left.arrow.right")
                                         }
                                         .help("Exit comparison mode")
                                     } else if !appState.availableForComparison.isEmpty {
@@ -108,10 +108,10 @@ struct ContentView: View {
                 appState.showingError = true
             }
         }
-        .alert("RunPlay Studio", isPresented: $appState.showingError) {
-            Button("OK") { appState.errorMessage = nil }
+        .alert("Import Error", isPresented: $appState.showingError) {
+            Button("Got it") { appState.errorMessage = nil }
         } message: {
-            Text(appState.errorMessage ?? "An unknown error occurred while importing the file.")
+            Text(appState.errorMessage ?? "Something went wrong. Please try again.")
         }
         .task {
             await appState.start()
@@ -132,7 +132,7 @@ struct ContentView: View {
             ProgressView("Importing \(filename)…")
                 .padding()
         case .deleting:
-            ProgressView()
+            ProgressView("Deleting…")
                 .padding()
         case .idle:
             EmptyView()

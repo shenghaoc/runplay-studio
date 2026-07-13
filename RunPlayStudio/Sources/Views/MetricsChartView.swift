@@ -169,7 +169,7 @@ struct MetricsChartView: View {
     private var seekDistanceControl: some View {
         let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
         return HStack(spacing: AppDesign.Spacing.small) {
-            Text("Seek")
+            Text("Jump to")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
@@ -178,7 +178,7 @@ struct MetricsChartView: View {
                 .frame(width: 80)
                 .textFieldStyle(.roundedBorder)
                 .focused($seekFieldFocused)
-                .accessibilityLabel("Seek to distance in kilometers")
+                .accessibilityLabel("Jump to distance in kilometers")
                 .onSubmit { commitSeekDistance(totalKm) }
 
             Stepper(value: Binding(
@@ -192,7 +192,7 @@ struct MetricsChartView: View {
                 Text(String(format: "%.2f / %.2f km", currentDistance / 1000, totalKm))
                     .font(.caption.monospacedDigit())
             }
-            .accessibilityLabel("Adjust seek distance")
+            .accessibilityLabel("Adjust jump distance")
             .accessibilityValue(String(format: "%.2f km", currentDistance / 1000))
         }
         .padding(.horizontal)
@@ -316,7 +316,7 @@ struct MetricsChartView: View {
             let secs = Int(value) % 60
             return "\(mins):\(String(format: "%02d", secs)) /km"
         case .heartRate:
-            guard value.isFinite else { return "No HR" }
+            guard value.isFinite else { return "No HR data" }
             return "\(Int(value)) bpm"
         case .speed: return String(format: "%.1f m/s", value)
         }

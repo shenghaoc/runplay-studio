@@ -37,7 +37,7 @@ public enum WorkoutImportError: Error, LocalizedError, Sendable {
         case .invalidFormat(let detail):
             return "Invalid file format: \(detail)"
         case .parsingError(let detail):
-            return "Parsing error: \(detail)"
+            return "Import error: \(detail)"
         case .missingData(let detail):
             return "Missing data: \(detail)"
         case .unsupportedFormat(let ext):

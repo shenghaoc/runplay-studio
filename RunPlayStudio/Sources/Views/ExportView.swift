@@ -137,7 +137,7 @@ struct ExportView: View {
                let rootVC = windowScene.windows.first?.rootViewController {
                 rootVC.present(controller, animated: true)
             }
-            showSuccess("Share sheet opened")
+            showSuccess("Share options opened")
         } catch {
             showError("Failed to export: \(error.localizedDescription)")
         }

@@ -163,7 +163,7 @@ class AppState: ObservableObject {
             errorMessage = importErrorMessage(for: error, filename: filename)
             showingError = true
         } catch {
-            errorMessage = "Import succeeded but could not be saved: \(error.localizedDescription)"
+            errorMessage = "Imported but could not save — the file may be read-only. Details: \(error.localizedDescription)"
             showingError = true
         }
     }

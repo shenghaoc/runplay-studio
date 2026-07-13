@@ -75,7 +75,7 @@ struct RouteMapCanvas: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
                 .help(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
-                .accessibilityLabel(displayMode == .threeD ? "Show in 2D" : "Show in 3D")
+                .accessibilityLabel(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
                 MapZoomStepper(scope: mapScope)
                     .controlSize(.regular)
             }

@@ -25,7 +25,7 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
 
         let allRawPoints = rawSegments.flatMap(\.points)
         guard !allRawPoints.isEmpty else {
-            throw WorkoutImportError.missingData("No trackpoints found in GPX file")
+            throw WorkoutImportError.missingData("No GPS route data found in this GPX file")
         }
 
         // Build RoutePoints with segment indexes, preserving raw timestamps.
@@ -169,9 +169,9 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
             let line = parser.lineNumber
             let col = parser.columnNumber
             if let error = parseError {
-                throw WorkoutImportError.parsingError("GPX parsing failed at line \(line), column \(col): \(error)")
+                throw WorkoutImportError.parsingError("This GPX file could not be read. Try re-exporting it.")
             }
-            throw WorkoutImportError.parsingError("GPX parsing failed at line \(line), column \(col)")
+            throw WorkoutImportError.parsingError("This GPX file could not be read. Try re-exporting it.")
         }
 
         return segments

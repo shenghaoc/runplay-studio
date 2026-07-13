@@ -159,7 +159,7 @@ struct WorkoutDetailView: View {
     private var tabContext: String {
         switch selectedTab {
         case .overview: return "Route replay"
-        case .charts: return "Drag the chart to scrub"
+        case .charts: return "Drag the chart to navigate"
         case .splits: return "Kilometer breakdown"
         case .segments: return "Detected highlights"
         }

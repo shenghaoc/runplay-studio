@@ -104,8 +104,8 @@ struct ExportSummaryCardView: View {
                 MetricTile(label: "Distance", value: model.distanceText, icon: "figure.run", color: AppDesign.MetricColor.distance)
                 MetricTile(label: "Duration", value: model.durationText, icon: "clock", color: AppDesign.MetricColor.duration)
                 MetricTile(label: "Avg Pace", value: model.paceText, icon: "speedometer", color: AppDesign.MetricColor.pace)
-                MetricTile(label: "Elev Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: AppDesign.MetricColor.elevation)
-                MetricTile(label: "Elev Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: AppDesign.softPurple)
+                MetricTile(label: "Elevation Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: AppDesign.MetricColor.elevation)
+                MetricTile(label: "Elevation Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: AppDesign.softPurple)
 
                 if let hr = model.heartRateText {
                     MetricTile(label: "Avg HR", value: hr, icon: "heart.fill", color: AppDesign.MetricColor.heartRate)
@@ -114,7 +114,7 @@ struct ExportSummaryCardView: View {
                     MetricTile(label: "Max HR", value: maxHR, icon: "heart.circle.fill", color: AppDesign.MetricColor.heartRate)
                 }
 
-                MetricTile(label: "Points", value: model.pointCountText, icon: "point.3.connected.trianglepath.dotted")
+                MetricTile(label: "Data Points", value: model.pointCountText, icon: "point.3.connected.trianglepath.dotted")
             }
         }
     }

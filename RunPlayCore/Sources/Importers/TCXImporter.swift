@@ -42,7 +42,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         if gpsActivities.isEmpty {
-            throw WorkoutImportError.missingData("No trackpoints with valid coordinates found")
+            throw WorkoutImportError.missingData("No GPS route data with valid coordinates found")
         }
 
         if gpsActivities.count > 1 {
@@ -69,7 +69,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         guard !segments.isEmpty else {
-            throw WorkoutImportError.missingData("No trackpoints with valid coordinates found")
+            throw WorkoutImportError.missingData("No GPS route data with valid coordinates found")
         }
 
         // Flatten for timestamp resolution.
@@ -254,9 +254,9 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             let line = parser.lineNumber
             let col = parser.columnNumber
             if let error = parseError {
-                throw WorkoutImportError.parsingError("TCX parsing failed at line \(line), column \(col): \(error)")
+                throw WorkoutImportError.parsingError("This TCX file could not be read. Try re-exporting it.")
             }
-            throw WorkoutImportError.parsingError("TCX parsing failed at line \(line), column \(col)")
+            throw WorkoutImportError.parsingError("This TCX file could not be read. Try re-exporting it.")
         }
 
         return activities

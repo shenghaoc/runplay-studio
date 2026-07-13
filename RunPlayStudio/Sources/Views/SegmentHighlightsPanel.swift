@@ -19,7 +19,7 @@ struct SegmentHighlightsPanel: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if selectedSegment != nil {
-                    Button("Clear") {
+                    Button("Clear Selection") {
                         selectedSegment = nil
                         onClear?()
                     }

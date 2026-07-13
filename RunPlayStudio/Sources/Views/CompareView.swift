@@ -77,7 +77,7 @@ struct CompareView: View {
                 .tracking(1.2)
                 .foregroundStyle(.tertiary)
 
-            workoutLabel("Primary Run", name: appState.selectedWorkout?.displayName ?? "None")
+            workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
 
             Spacer(minLength: AppDesign.Spacing.large)
 
@@ -99,7 +99,7 @@ struct CompareView: View {
     private var compactComparisonSelector: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             HStack {
-                workoutLabel("Primary Run", name: appState.selectedWorkout?.displayName ?? "None")
+                workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
                 Spacer()
                 clearButton
             }
@@ -130,13 +130,13 @@ struct CompareView: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .lineLimit(1)
-                .help("The main run being compared")
+                .help("Your selected run for comparison")
         }
     }
 
     private var comparisonPickerSection: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
-            Text("Compare Against")
+            Text("Compare With")
                 .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
@@ -146,7 +146,7 @@ struct CompareView: View {
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
             } else {
-                Picker("Compare Against", selection: Binding(
+                Picker("Compare With", selection: Binding(
                     get: { appState.comparisonWorkout },
                     set: { appState.setComparison($0) }
                 )) {
@@ -156,7 +156,7 @@ struct CompareView: View {
                     }
                 }
                 .frame(minWidth: 160, idealWidth: 220, maxWidth: 280)
-                .help("Choose a workout to compare against the primary run")
+                .help("Choose another run to compare")
             }
 
             if let message = appState.comparisonSelectionMessage {
@@ -170,7 +170,7 @@ struct CompareView: View {
     private var clearButton: some View {
         Group {
             if appState.isComparing {
-                Button("Clear") {
+                Button("Clear Comparison") {
                     appState.clearComparison()
                 }
                 .font(AppDesign.Typography.compactMetric)
