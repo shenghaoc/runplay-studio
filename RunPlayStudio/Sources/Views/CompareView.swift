@@ -32,8 +32,7 @@ struct CompareView: View {
                         SplitComparisonTableView(splits: appState.splitComparisons)
                             .padding(AppDesign.Spacing.large)
                             .frame(minWidth: 380, maxWidth: 480, maxHeight: .infinity)
-                            .background(AppDesign.panelBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+                            .panelBackground()
                     }
                     .layoutPriority(1)
 
@@ -44,8 +43,7 @@ struct CompareView: View {
                     )
                     .padding(AppDesign.Spacing.large)
                     .frame(height: 190)
-                    .background(AppDesign.panelBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+                    .panelBackground()
                 }
                 .padding(AppDesign.Spacing.large)
             } else {
@@ -225,8 +223,7 @@ struct ComparisonSummaryView: View {
             }
         }
         .padding(AppDesign.Spacing.large)
-        .background(AppDesign.panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+        .panelBackground()
     }
 
     private var winnerIcon: String {

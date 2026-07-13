@@ -272,3 +272,16 @@ struct MetricDisplay: View {
         layout == .leading ? .leading : .center
     }
 }
+
+// MARK: - View Modifiers
+
+extension View {
+    /// Applies the standard panel background: control-background fill clipped to a large rounded rect.
+    ///
+    /// Use this on any panel, card, or container that should sit on the workspace background
+    /// with the system's standard surface color and a consistent corner radius.
+    func panelBackground() -> some View {
+        background(AppDesign.panelBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+    }
+}

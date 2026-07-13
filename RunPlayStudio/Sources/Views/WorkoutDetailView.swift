@@ -105,8 +105,7 @@ struct WorkoutDetailView: View {
             )
             .padding(.vertical, AppDesign.Spacing.large)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(AppDesign.panelBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+            .panelBackground()
         case .splits:
             SplitTableView(
                 splits: workout.splits,
@@ -114,8 +113,7 @@ struct WorkoutDetailView: View {
             )
             .padding(AppDesign.Spacing.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(AppDesign.panelBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+            .panelBackground()
         case .segments:
             SegmentHighlightsPanel(
                 segments: appState.detectedSegments,
@@ -127,8 +125,7 @@ struct WorkoutDetailView: View {
             )
             .padding(AppDesign.Spacing.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(AppDesign.panelBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+            .panelBackground()
         }
     }
 
@@ -151,8 +148,7 @@ struct WorkoutDetailView: View {
         }
         .padding(.horizontal, AppDesign.Spacing.xLarge)
         .padding(.vertical, AppDesign.Spacing.medium)
-        .background(AppDesign.panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+        .panelBackground()
         .fixedSize(horizontal: false, vertical: true)
     }
 
