@@ -50,10 +50,10 @@
 
 ### Route Comparison ✅
 - Distance-aligned comparison (no dynamic time warping)
-- Summary metric deltas, split comparison table, pace-over-distance chart
+- Summary metric deltas, split active-pace table, active-pace-over-distance chart
 - Shared `RouteMapCanvas` for comparison overlay
-- Distance slider with interpolated P/C markers and time/pace delta readout
-- Warnings: different distances, insufficient overlap, missing HR/elevation
+- Distance slider with P/C markers plus explicit elapsed-time, active-time, and active-pace delta readout
+- Warnings: different distances, pause-duration mismatch, insufficient overlap, missing HR/elevation
 
 ### Unified Apple Maps 2D/3D Presentation ✅
 - Single SwiftUI `Map` surface replacing legacy SceneKit prototype

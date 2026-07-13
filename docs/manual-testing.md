@@ -7,6 +7,22 @@ Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
 checklist below; unchecked items have not been manually verified.
 
+## Pause-Aware Time Semantics Checklist
+
+- [ ] Import or generate a workout with a visible pause.
+- [ ] Confirm summary shows different Active and Elapsed durations.
+- [ ] Confirm replay total equals Elapsed.
+- [ ] Start replay and watch it enter the pause.
+- [ ] Confirm the marker remains at the stop point until resume.
+- [ ] Confirm distance and active time remain fixed while elapsed time advances.
+- [ ] Confirm a kilometre split crossing the pause is still one kilometre split.
+- [ ] Confirm split active pace excludes the pause.
+- [ ] Compare the paused run against an otherwise identical uninterrupted run.
+- [ ] Confirm active and elapsed deltas are distinguished.
+- [ ] Export JSON, CSV, and PNG and inspect the labels.
+- [ ] Relaunch and confirm migrated analysis remains correct.
+- [ ] Confirm GPX, TCX, FIT, map, charts, deletion, and persistence still work.
+
 ## FIT Import Checklist
 
 Use synthetic FIT fixtures only. These are manual checks to perform in a GUI
@@ -79,9 +95,12 @@ Checklist:
 - [x] Select a primary workout.
 - [x] Select a comparison workout.
 - [x] Verify the current primary workout is not offered as its own comparison.
-- [x] Verify summary delta cards appear with pace in min/km.
-- [x] Verify split comparison table headers show min/km units.
-- [x] Verify pace-over-distance comparison chart appears with workout names in legend.
+- [ ] Verify summary delta cards distinguish Active Time, Elapsed Time, Paused,
+  and Active Pace (min/km).
+- [ ] Verify the split table title says "Split Active Pace (min/km)" and its
+  Selected, Comparison, and delta columns remain readable.
+- [ ] Verify the active-pace-over-distance comparison chart appears with
+  workout names in the legend.
 - [x] Verify chart axes show Distance (km) and min/km.
 - [x] Verify chart subtitle says "lower is faster".
 - [x] Verify 2D route overlay appears.
@@ -134,7 +153,8 @@ Implementation checks:
 - [x] Verify distance readout shows "0.00 km / X.XX km" format.
 - [x] Move the slider and verify both P and C markers appear on the routes.
 - [x] Verify markers move along the routes as the slider is scrubbed.
-- [x] Verify elapsed time and pace readouts update for both routes.
+- [ ] Verify elapsed time, active time, and active pace readouts update for both
+  routes.
 - [x] Test at a midpoint distance.
 - [ ] Verify the slider is disabled when routes are empty.
 - [x] Toggle pitch while the slider is active and confirm markers remain on the
@@ -158,13 +178,16 @@ Comparison dogfood record (2026-07-08):
 - [x] Chart y-axis shows min/km units.
 - [x] Chart x-axis shows Distance (km).
 - [x] Chart subtitle says "lower is faster".
-- [x] Split comparison table headers show min/km units.
+- [ ] Split comparison table title shows Active Pace and min/km units without
+  truncation.
 - [x] Proper empty states when comparison data is unavailable.
 - [x] Warnings appear for different distances, insufficient overlap, missing data.
 
 Comparison chart readability record (2026-07-08):
 
-- Manual GUI pass confirmed all chart readability improvements are working.
+- This record predates the pause-aware labels in the current branch. The
+  unchanged chart layout was verified then; the reset items above require a
+  fresh GUI pass.
 - Legend displays actual workout names.
 - Axes and table headers show clear min/km units.
 - Empty states and warnings display correctly.
