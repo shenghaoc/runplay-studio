@@ -146,9 +146,14 @@ struct MetricsChartView: View {
                 }
             }
 
-            // VoiceOver-friendly seek alternative
+            // Keyboard-accessible seek alternative — hidden by default
             if !chartData.isEmpty {
-                seekDistanceControl
+                DisclosureGroup("Jump to distance") {
+                    seekDistanceContent
+                        .padding(.top, AppDesign.Spacing.xSmall)
+                }
+                .font(AppDesign.Typography.compactMetric)
+                .padding(.horizontal)
             }
         }
         .onAppear {
@@ -165,9 +170,9 @@ struct MetricsChartView: View {
         }
     }
 
-    // MARK: - Seek Distance Control (VoiceOver alternative)
+    // MARK: - Seek Distance Control
 
-    private var seekDistanceControl: some View {
+    private var seekDistanceContent: some View {
         let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
         return HStack(spacing: AppDesign.Spacing.small) {
             Text("Jump to")

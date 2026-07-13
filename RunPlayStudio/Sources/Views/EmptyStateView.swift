@@ -13,8 +13,8 @@ struct EmptyStateView: View {
 
     var body: some View {
         ZStack {
-            // Atmospheric gradient backdrop
-            gradientBackground
+            AppDesign.workspaceBackground
+                .ignoresSafeArea()
 
             VStack(spacing: AppDesign.Spacing.xxxLarge) {
                 // Hero icon with subtle glow
@@ -82,31 +82,5 @@ struct EmptyStateView: View {
                 }
             }
         }
-    }
-
-    private var gradientBackground: some View {
-#if os(macOS)
-        LinearGradient(
-            colors: [
-                Color(nsColor: .windowBackgroundColor),
-                AppDesign.primaryBlue.opacity(0.03),
-                Color(nsColor: .windowBackgroundColor),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-#else
-        LinearGradient(
-            colors: [
-                Color(uiColor: .systemBackground),
-                AppDesign.primaryBlue.opacity(0.03),
-                Color(uiColor: .systemBackground),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-#endif
     }
 }

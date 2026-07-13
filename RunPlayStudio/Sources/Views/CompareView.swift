@@ -267,7 +267,7 @@ struct DeltaCard: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, AppDesign.Spacing.medium)
         .padding(.vertical, AppDesign.Spacing.small)
-        .background(Color.primary.opacity(0.035))
+        .background(AppDesign.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 }
