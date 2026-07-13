@@ -49,6 +49,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         var heartRateBPM: Double?
         var cadence: Double?
         var horizontalAccuracy: Double?
+        var routeSegmentIndex: Int?
     }
 
     private func convertToWorkout(_ raw: RawWorkout) throws -> RunWorkout {
@@ -89,14 +90,17 @@ public struct JSONWorkoutImporter: WorkoutImporting {
                 paceSecondsPerKilometer: rawPoint.paceSecondsPerKilometer,
                 heartRateBPM: rawPoint.heartRateBPM,
                 cadence: rawPoint.cadence,
-                horizontalAccuracy: rawPoint.horizontalAccuracy
+                horizontalAccuracy: rawPoint.horizontalAccuracy,
+                routeSegmentIndex: rawPoint.routeSegmentIndex ?? 0
             )
             routePoints.append(point)
         }
 
         routePoints = RoutePointSanitizer.normalize(
             routePoints,
-            distancePolicy: hasCompleteSuppliedDistanceSeries ? .useSuppliedDistancesWhenValid : .computeFromCoordinates
+            distancePolicy: hasCompleteSuppliedDistanceSeries
+                ? .useSuppliedDistancesPerSegment
+                : .computeFromCoordinates
         )
 
         guard !routePoints.isEmpty else {

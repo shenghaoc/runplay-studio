@@ -3,7 +3,7 @@ import RunPlayCore
 import Charts
 
 
-/// Chart showing pace comparison over distance.
+/// Chart showing active-pace comparison over distance.
 ///
 /// Uses semantic colors from the design system for primary/comparison routes.
 struct ComparisonChartView: View {
@@ -14,12 +14,13 @@ struct ComparisonChartView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             HStack(alignment: .lastTextBaseline) {
-                Text("Pace Over Distance")
+                Text("Active Pace Over Distance")
                     .font(AppDesign.Typography.sectionHeadline)
                 Text("(lower is faster)")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.tertiary)
             }
+            .help("Pace uses active time and excludes recording gaps.")
 
             if metrics.isEmpty {
                 ComparisonChartEmptyView()
@@ -123,9 +124,10 @@ struct SplitComparisonTableView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
-            Text("Split Comparison")
+            Text("Split Active Pace (min/km)")
                 .font(AppDesign.Typography.sectionHeadline)
                 .foregroundStyle(.secondary)
+                .help("Split comparison uses active time and excludes recording gaps.")
 
             if splits.isEmpty {
                 Text("No splits to compare")
@@ -140,7 +142,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(35)
 
-                    TableColumn("Selected (min/km)") { split in
+                    TableColumn("Selected") { split in
                         if let s = split.primarySplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
@@ -152,7 +154,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(90)
 
-                    TableColumn("Comparison (min/km)") { split in
+                    TableColumn("Comparison") { split in
                         if let s = split.comparisonSplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
@@ -164,7 +166,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(110)
 
-                    TableColumn("Δ Pace") { split in
+                    TableColumn("Δ") { split in
                         HStack(spacing: AppDesign.Spacing.xxSmall) {
                             Image(systemName: winnerIcon(for: split.winner))
                                 .font(AppDesign.Typography.compactLabel)
@@ -175,7 +177,7 @@ struct SplitComparisonTableView: View {
                         .foregroundStyle(deltaColor(split.paceDeltaSecondsPerKm))
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(
-                            "Pace difference \(split.formattedPaceDelta); \(split.winner.label)"
+                            "Active pace difference \(split.formattedPaceDelta); \(split.winner.label)"
                         )
                     }
                     .width(110)

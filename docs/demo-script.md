@@ -29,6 +29,8 @@ The app launches with two bundled synthetic demo runs pre-loaded.
 - Point out the sidebar listing the two demo runs (a 5K park run and a
   comparison park run).
 - Click one run to select it as the primary.
+- Point out **Elapsed**, **Active**, and **Pace** in the summary. Elapsed
+  includes recording gaps; Active and Pace exclude them.
 
 > **Key point:** No account, no cloud, no sign-up. Everything runs locally.
 
@@ -63,11 +65,11 @@ The app launches with two bundled synthetic demo runs pre-loaded.
 - Switch to the **Compare** tab.
 - The primary run is already selected. Pick the other bundled run as the
   comparison.
-- Show the **summary deltas**: distance, duration, pace (min/km), elevation
+- Show the **summary deltas**: distance, Active Time, Elapsed Time, active pace (min/km), elevation
   gain, heart rate — each with faster/slower or longer/shorter labels.
-- Show the **split comparison table** with per-kilometer pace, delta, and
+- Show the **split active-pace comparison table** with min/km values, delta, and
   winner columns.
-- Show the **pace over distance chart** with both runs plotted. Point out
+- Show the **active pace over distance chart** with both runs plotted. Point out
   the legend uses actual workout names and the y-axis shows min/km.
 - If warnings appear (different distances, missing data), explain what they
   mean.
@@ -83,7 +85,8 @@ The app launches with two bundled synthetic demo runs pre-loaded.
 - Use the **distance slider** at the bottom to scrub along the common route
   distance.
 - As you drag, both "P" and "C" markers move along their routes, and the
-  readout shows elapsed time and pace deltas at that distance.
+  readout distinguishes elapsed-time, active-time, and active-pace deltas at
+  that distance.
 - Try the start, midpoint, and end positions.
 
 > **Key point:** The comparison distance slider lets you see exactly where
@@ -94,6 +97,8 @@ The app launches with two bundled synthetic demo runs pre-loaded.
 - Open the **Export** menu.
 - Show the available export formats: JSON summary, splits CSV, segments CSV,
   combined CSV, and PNG summary card.
+- Point out that clock and pace labels are explicit: elapsed, active, paused,
+  active pace, and elapsed pace.
 - Explain that all exports are local files — nothing is uploaded.
 
 > **Key point:** Export your data in standard formats for analysis elsewhere.
@@ -114,6 +119,8 @@ The app launches with two bundled synthetic demo runs pre-loaded.
   `private-workouts/` (both are gitignored).
 - The app supports JSON, GPX, TCX, and common FIT running-activity imports.
 - Comparison works best when both runs cover similar routes and distances.
+- Moving-time estimation is not implemented; Active means recorded time inside
+  continuous route segments.
 - For very different route lengths, warnings explain that only the common
   distance is compared.
 

@@ -60,8 +60,29 @@ public actor WorkoutLibraryStoreActor {
 
             for id in manifest.workoutIDs {
                 do {
-                    loaded.append(try store.loadWorkout(id: id))
+                    var workout = try store.loadWorkout(id: id)
                     validIDs.append(id)
+
+                    if workout.analysisVersion < RunWorkout.currentAnalysisVersion {
+                        WorkoutAnalyzer().reanalyzePreservingRoutePoints(&workout)
+                        loaded.append(workout)
+
+                        // FileWorkoutLibraryStore replaces each snapshot
+                        // atomically. A failed rewrite leaves the original
+                        // legacy file intact and the upgraded workout visible
+                        // in memory; migration is retried on the next launch.
+                        do {
+                            try store.saveWorkout(workout)
+                        } catch {
+                            warnings.append(
+                                "Workout \(id.uuidString.prefix(8))… analysis was upgraded in memory "
+                                    + "but could not be saved: \(error.localizedDescription)"
+                            )
+                        }
+                    } else {
+                        // Never downgrade a snapshot written by a newer app.
+                        loaded.append(workout)
+                    }
                 } catch let error as WorkoutLibraryError {
                     switch error {
                     case .workoutFileMissing:
@@ -100,7 +121,7 @@ public actor WorkoutLibraryStoreActor {
 
             let warning = warnings.isEmpty
                 ? nil
-                : "Some workouts could not be loaded:\n" + warnings.joined(separator: "\n")
+                : "Library warnings:\n" + warnings.joined(separator: "\n")
             return .workouts(loaded, selectedWorkoutID: selectedWorkoutID, warning: warning)
         } catch let error as WorkoutLibraryError {
             if case .manifestMissing = error {

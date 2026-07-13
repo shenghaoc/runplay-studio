@@ -13,7 +13,10 @@ var targets: [Target] = [
     .testTarget(
         name: "RunPlayCoreTests",
         dependencies: ["RunPlayCore"],
-        path: "RunPlayCore/Tests/RunPlayCoreTests"
+        path: "RunPlayCore/Tests/RunPlayCoreTests",
+        resources: [
+            .process("Fixtures")
+        ]
     ),
 ]
 

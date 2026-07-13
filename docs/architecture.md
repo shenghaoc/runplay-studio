@@ -3,9 +3,9 @@
 ## Data Flow
 
 ```
-Import File → Importer → RoutePointSanitizer → Normalized Model → Analyzer → Workout Library
-                                                     ↘ Replay Controller → Views
-                                                     ↘ Comparison Service → Compare View
+Import File → Importer → RoutePointSanitizer → Normalized Model → WorkoutTimeline → Analyzer → Workout Library
+                                                                        ↘ Replay Controller → Views
+                                                                        ↘ Comparison Service → Compare View
                                                      ↘ Route Coordinates → MapKit 2D/3D View
 ```
 
@@ -14,11 +14,12 @@ Import File → Importer → RoutePointSanitizer → Normalized Model → Analyz
 1. **Import**: User selects file (JSON, GPX, TCX, FIT)
 2. **Parse**: Format-specific importer parses raw data
 3. **Normalize**: `RoutePointSanitizer` validates coordinates, preserves route-segment boundaries, and ensures cumulative distance does not include a recording gap
-4. **Analyze**: `WorkoutAnalyzer` calculates gap-safe distance, pace, elevation, splits, and segments
-5. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized workout and versioned manifest
-6. **Control**: `ReplayController` manages playback state and timeline
-7. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries
-8. **Compare**: `WorkoutComparisonService` compares two loaded workouts by summary metrics, split index, and distance-aligned metric series
+4. **Derive clocks**: `WorkoutTimeline` establishes elapsed, active, and paused time without mutating route timestamps
+5. **Analyze**: `WorkoutAnalyzer` calculates pace, elevation, global-distance splits, and active-pace segments from that timeline
+6. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized workout and versioned analysis snapshot
+7. **Control**: `ReplayController` drives an elapsed-clock `PlaybackEngine`
+8. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries
+9. **Compare**: `WorkoutComparisonService` compares elapsed, active, paused, and active-pace values by summary, split, and selected distance
 
 ## Module Structure
 
@@ -74,6 +75,35 @@ and assigns `routeSegmentIndex` values so normalization, analysis, replay, and
 map rendering do not bridge pause/resume gaps. The implementation targets common
 running activities from Garmin FIT SDK Profile 21.205.0; developer metrics and
 other unsupported FIT profile features remain skipped rather than interpreted.
+Selected-session `total_elapsed_time` and `total_timer_time` are validation
+signals only. Route timestamps and timer-derived segment indexes remain the
+cross-format source of truth. A difference greater than five seconds or two
+percent of the route-derived value, whichever is larger, produces an import
+warning without replacing the route result.
+
+### WorkoutTimeline
+
+`WorkoutTimeline` is the single platform-neutral semantic authority consumed by
+`WorkoutAnalyzer`, `SplitCalculator`, `SegmentDetector`, `PlaybackEngine`,
+`WorkoutComparisonService`, and export models.
+
+- elapsed time is the final timestamp minus the first timestamp, falling back
+  to normalized per-point elapsed values only when timestamps do not span;
+- active time sums positive adjacent deltas within one route segment; the
+  timestamp-free fallback treats elapsed time as active because it cannot infer
+  pauses;
+- paused time is elapsed minus active;
+- distance sampling returns both clocks and never interpolates geography across
+  a segment boundary;
+- duplicate-distance range starts use the resumed point, while range ends use
+  the pre-pause endpoint;
+- replay lookup returns the latest real point whose elapsed time is at or before
+  the replay clock.
+
+Global kilometre splits and pace windows may span route segments because their
+distance axis is cumulative. Primitive time, elevation, smoothing, and
+coordinate interpolation remain segment-local, so no synthetic cross-gap
+sample is created.
 
 ### Workout library persistence
 
@@ -83,6 +113,13 @@ normalized workout snapshots beneath Application Support using atomic writes.
 `RunPlayStudio` supplies the production root URL and applies background load
 results to `AppState`; bundled demos remain SwiftPM resources rather than user
 library entries.
+
+`RunWorkout.analysisVersion` versions derived analysis independently from the
+manifest schema. During actor-isolated library loading, a stale workout is
+reanalysed from its stored route, returned upgraded in memory, and atomically
+rewritten. If the rewrite fails, the workout stays visible with a warning and
+the legacy file remains intact for retry on the next launch. No manifest schema
+bump is required.
 
 ### GeoDistance
 
@@ -97,7 +134,8 @@ public enum GeoDistance {
 
 ### RoutePointInterpolator
 
-Distance-based interpolation helpers used by SplitCalculator, SegmentDetector, and WorkoutComparisonService:
+Distance-based interpolation helpers used for route coordinates and chart
+metrics. Pause-aware clocks and split boundaries use `WorkoutTimeline` instead:
 
 ```swift
 public enum RoutePointInterpolator {
@@ -127,9 +165,16 @@ public struct WorkoutComparisonService {
 
 The service clamps metric series to the common distance, filters non-finite
 metric values, handles missing heart-rate/elevation data, and returns warnings
-instead of crashing on weak comparisons. The `metricsAtDistance` method uses
-linear interpolation between the two nearest points on each route to compute
-elapsed time, pace, and selected route coordinates at any distance.
+instead of crashing on weak comparisons. Summary comparison distinguishes
+elapsed, active, paused, active-pace, and elapsed-pace deltas. At selected
+distance, `WorkoutTimeline` supplies elapsed and active time plus cumulative
+active pace; route coordinates still use segment-local interpolation. Runs with
+materially different pause durations receive an informative warning.
+
+Replay remains on elapsed time, so its total duration equals summary elapsed
+time. Inside a route gap the clock advances while the marker, distance, point
+metrics, and active time remain at the stop endpoint. The resume point appears
+only at its exact timestamp; no pause coordinates are synthesized.
 
 ### RouteMapCanvas
 
@@ -168,3 +213,4 @@ interpolates selected-distance markers without introducing another renderer.
 
 - AVFoundation for video export
 - HealthKit for direct Apple Health import
+- Moving-time estimation with an explicitly chosen speed threshold

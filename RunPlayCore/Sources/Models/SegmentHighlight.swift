@@ -10,6 +10,7 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
     public var endDistanceMeters: Double
     public var startElapsedSeconds: Double
     public var endElapsedSeconds: Double
+    /// Active duration. Elapsed endpoints remain available separately.
     public var durationSeconds: Double
     public var distanceMeters: Double
     public var paceSecondsPerKilometer: Double?
@@ -58,6 +59,13 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
 
     public var formattedDuration: String {
         DisplayFormatter.formatElapsed(durationSeconds)
+    }
+
+    public var activeDurationSeconds: Double { durationSeconds }
+
+    public var elapsedDurationSeconds: Double {
+        guard startElapsedSeconds.isFinite, endElapsedSeconds.isFinite else { return 0 }
+        return max(0, endElapsedSeconds - startElapsedSeconds)
     }
 
     public var formattedDistance: String {

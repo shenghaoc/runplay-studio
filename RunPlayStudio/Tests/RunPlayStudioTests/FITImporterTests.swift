@@ -71,6 +71,31 @@ final class FITImporterTests: XCTestCase {
         XCTAssertGreaterThan(workout.summary.totalElapsedSeconds, 0)
     }
 
+    func testAgreeingSessionClockTotalsProduceNoWarning() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithSession(
+            elapsedSeconds: 290,
+            timerSeconds: 290
+        )
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 290, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 290, accuracy: 0.001)
+        XCTAssertTrue(workout.analysisWarnings.isEmpty)
+    }
+
+    func testInconsistentSessionClockTotalsWarnWhileRouteRemainsAuthoritative() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithSession(
+            elapsedSeconds: 1_000,
+            timerSeconds: 900
+        )
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 290, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 290, accuracy: 0.001)
+        XCTAssertTrue(workout.analysisWarnings.contains(.sourceElapsedTimeMismatch))
+        XCTAssertTrue(workout.analysisWarnings.contains(.sourceActiveTimeMismatch))
+    }
+
     // MARK: - Timestamps
 
     func testTimestampsAreMonotonic() throws {

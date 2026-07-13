@@ -10,14 +10,18 @@ A native macOS post-run 2D/3D route replay and analysis app for runners.
 
 RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with an Apple Maps 2D/3D route view, synchronized charts, split analysis, and segment highlights.
 
+Time labels are pause-aware: **Elapsed** includes recording gaps, **Active**
+excludes gaps between continuous route segments, and **Pace** uses active time.
+Moving-time threshold estimation is not implemented.
+
 ---
 
 ## Highlights
 
 - **Apple Maps 2D/3D replay** — One route map with a native pitch toggle and synchronized timeline controls
 - **Synchronized views** — Map and charts stay in sync with the timeline
-- **Route comparison** — Summary deltas, pace chart, and a shared 2D/3D Apple Maps overlay
-- **Segment detection** — Auto-identify fastest 400m, fastest 1km, slowest 1km, biggest climb/descent
+- **Route comparison** — Elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay
+- **Segment detection** — Auto-identify active-pace fastest/slowest windows and biggest climb/descent
 - **Chart click/drag to seek** — Click or drag on charts to navigate the run
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 
@@ -41,9 +45,9 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 
 | Format | Description |
 |--------|-------------|
-| JSON   | Complete workout summary with splits and segments |
-| CSV    | Splits, segments, or combined data |
-| PNG    | Polished summary card (1200×1600) |
+| JSON   | Explicit elapsed, active, paused, pace, split, and segment fields |
+| CSV    | Splits and segments with explicit clock and pace columns |
+| PNG    | Polished summary card with explicit clock labels (1200×1600) |
 
 ---
 
@@ -196,7 +200,7 @@ To build a local `.app` bundle:
 | Format | Status | Notes |
 |--------|--------|-------|
 | JSON   | ✅ Full support | Native format, all fields supported |
-| GPX    | ✅ Track support | Requires at least one timestamp for pace/duration analysis; partial missing timestamps are interpolated; HR/cadence via extensions |
+| GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
 | FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
@@ -227,7 +231,8 @@ pitched 3D perspective; it does not switch to a custom SceneKit world.
 
 ### Overview (Default)
 - Map with route overlay as the default landing view
-- Run summary metrics and replay controls
+- Run summary metrics for Distance, Elapsed, Active, and active Pace
+- Replay controls whose total duration is elapsed time
 - Real map context via Apple MapKit (loads map tiles from Apple services)
 
 ### Map View (MapKit)
@@ -241,8 +246,8 @@ pitched 3D perspective; it does not switch to a custom SceneKit world.
 - Heart-rate chart shows an explicit no-data state when usable HR samples are unavailable
 
 ### Split Analysis
-- Automatic kilometer splits
-- Per-split pace, elevation gain, heart rate
+- Automatic global kilometer splits that continue through pauses
+- Per-split elapsed time, active time, active pace, elapsed pace, elevation gain, and heart rate
 - Fastest/slowest segment highlighting
 - Current split highlighted during replay
 
@@ -254,6 +259,10 @@ All views stay in sync with the replay position:
 - Current metrics panel shows real-time data
 - Timeline slider drives all views
 
+Replay runs on elapsed time. During a recording gap its clock advances while
+the marker, distance, and active time hold at the pre-pause endpoint; the marker
+jumps to the real resume point only at the resume timestamp.
+
 Chart drag behavior: dragging on any chart pauses playback and seeks to the selected position. Visual feedback shows an orange indicator during drag.
 
 ### Segment Detection
@@ -264,13 +273,16 @@ Automatically identifies key run segments:
 - Biggest climb
 - Biggest descent
 
-Segments are detected using distance-based sliding windows for accuracy with uneven GPS sampling. Selecting a segment highlights it in 3D and seeks the replay to its start.
+Segments are detected using distance-based sliding windows and active time for
+pace. Windows may continue across a pause in cumulative distance, while
+elevation and geographic interpolation never bridge the gap. Selecting a
+segment highlights it in 3D and seeks the replay to its start.
 
 ### Export
 Export workout data as local files:
-- **JSON Summary** — Complete workout data with splits and segments
-- **Splits CSV** — Kilometer splits with pace, elevation, heart rate
-- **Segments CSV** — Detected segments with metrics
+- **JSON Summary** — Elapsed, active, paused, active/elapsed pace, splits, and segments
+- **Splits CSV** — Explicit elapsed/active duration and pace columns, elevation, and heart rate
+- **Segments CSV** — Active duration/pace with elapsed endpoints and metrics
 - **Combined CSV** — Splits and segments in one file
 - **PNG Summary Card** — Polished stats card image (1200×1600)
 
@@ -282,20 +294,21 @@ The README demo image is generated from bundled synthetic data.
 
 Compare two completed runs side by side:
 
-- Summary deltas for distance, duration, pace, elevation, and heart rate
-- Per-split comparison table with pace, delta, and winner columns
-- Pace over distance chart with actual workout names in the legend
+- Summary deltas for distance, Active Time, Elapsed Time, paused time, active pace, elevation, and heart rate
+- Per-split comparison table with explicitly labelled active pace, delta, and winner columns
+- Active pace over distance chart with actual workout names in the legend
 - One comparison map whose native pitch toggle switches both route overlays
   between 2D and 3D
 - Distance slider to scrub along the common route and see where both runners
-  were at each point, with elapsed time and pace delta readout
-- Warnings for different distances, route shapes, and missing data
+  were at each point, with elapsed-time, active-time, and active-pace deltas
+- Warnings for different pause durations, distances, route shapes, and missing data
 
 ---
 
 ## Limitations
 
 - Comparison is distance-aligned only — no dynamic time warping or route matching
+- Moving-time estimation is not implemented; Active is recorded time inside continuous route segments
 - FIT support targets common running activities rather than the full FIT profile; developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported
 - No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface

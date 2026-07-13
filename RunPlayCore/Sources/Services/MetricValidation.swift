@@ -26,7 +26,11 @@ public enum DisplayFormatter {
 
     /// Format elapsed seconds as HH:MM:SS or MM:SS.
     public static func formatDuration(_ seconds: Double?) -> String {
-        guard let value = seconds, value.isFinite, value >= 0 else { return "--:--" }
+        guard let value = seconds,
+              value.isFinite,
+              value >= 0,
+              value < Double(Int.max)
+        else { return "--:--" }
         let totalSeconds = Int(value)
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
@@ -39,7 +43,11 @@ public enum DisplayFormatter {
 
     /// Format elapsed seconds as MM:SS (no hours).
     public static func formatElapsed(_ seconds: Double?) -> String {
-        guard let value = seconds, value.isFinite, value >= 0 else { return "--:--" }
+        guard let value = seconds,
+              value.isFinite,
+              value >= 0,
+              value < Double(Int.max)
+        else { return "--:--" }
         let totalSeconds = Int(value)
         let minutes = totalSeconds / 60
         let secs = totalSeconds % 60
@@ -50,7 +58,11 @@ public enum DisplayFormatter {
 
     /// Format pace in seconds per kilometer as M:SS /km.
     public static func formatPace(_ paceSecondsPerKm: Double?) -> String {
-        guard let value = paceSecondsPerKm, value.isFinite, value > 0 else { return "--:-- /km" }
+        guard let value = paceSecondsPerKm,
+              value.isFinite,
+              value > 0,
+              value < Double(Int.max)
+        else { return "--:-- /km" }
         let mins = Int(value) / 60
         let secs = Int(value) % 60
         return String(format: "%d:%02d /km", mins, secs)
@@ -58,7 +70,11 @@ public enum DisplayFormatter {
 
     /// Format pace in seconds per kilometer as M:SS (no "/km" suffix, for narrow table contexts).
     public static func formatPaceShort(_ paceSecondsPerKm: Double?) -> String {
-        guard let value = paceSecondsPerKm, value.isFinite, value > 0 else { return "--:--" }
+        guard let value = paceSecondsPerKm,
+              value.isFinite,
+              value > 0,
+              value < Double(Int.max)
+        else { return "--:--" }
         let mins = Int(value) / 60
         let secs = Int(value) % 60
         return String(format: "%d:%02d", mins, secs)
@@ -141,5 +157,33 @@ public enum DisplayFormatter {
     public static func formatOptionalNumber(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "" }
         return formatNumber(value)
+    }
+
+    /// Format a signed duration delta without unsafe conversion of huge finite
+    /// values. Positive and negative labels describe the primary value.
+    public static func formatSignedDurationDelta(
+        _ delta: Double?,
+        suffix: String? = nil,
+        positiveLabel: String = "slower",
+        negativeLabel: String = "faster"
+    ) -> String {
+        guard let delta,
+              delta.isFinite,
+              abs(delta) < Double(Int.max)
+        else {
+            return "N/A"
+        }
+
+        let suffixText = suffix.map { " \($0)" } ?? ""
+        if abs(delta) < 0.5 {
+            return "0:00\(suffixText) even"
+        }
+
+        let rounded = Int(abs(delta).rounded())
+        let minutes = rounded / 60
+        let seconds = rounded % 60
+        let sign = delta > 0 ? "+" : "-"
+        let label = delta > 0 ? positiveLabel : negativeLabel
+        return "\(sign)\(minutes):\(String(format: "%02d", seconds))\(suffixText) \(label)"
     }
 }

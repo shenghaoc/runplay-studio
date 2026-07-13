@@ -94,7 +94,9 @@ struct WorkoutRow: View {
                 HStack(spacing: AppDesign.Spacing.small) {
                     metricPill(icon: "figure.run", value: workout.summary.formattedDistance)
                     metadataSeparator
-                    metricPill(icon: "clock", value: workout.summary.formattedDuration)
+                    metricPill(icon: "clock", value: workout.summary.formattedElapsed)
+                        .help("Elapsed time, including pauses and recording gaps.")
+                        .accessibilityLabel("Elapsed \(workout.summary.formattedElapsed)")
 
                     if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
                         metadataSeparator

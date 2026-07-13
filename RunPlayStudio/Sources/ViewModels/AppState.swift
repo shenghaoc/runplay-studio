@@ -157,6 +157,11 @@ class AppState: ObservableObject {
                 workouts.append(workout)
             }
             selectWorkout(workout, persistSelection: false)
+            if !workout.analysisWarnings.isEmpty {
+                errorMessage = "Imported with timing warnings:\n"
+                    + workout.analysisWarnings.map(\.message).joined(separator: "\n")
+                showingError = true
+            }
         } catch is CancellationError {
             // Cancelled — do not add to UI.
         } catch let error as WorkoutImportError {

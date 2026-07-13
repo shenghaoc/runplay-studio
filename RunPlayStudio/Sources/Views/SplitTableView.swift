@@ -26,9 +26,11 @@ struct SplitTableView: View {
                         .foregroundStyle(AppDesign.comparisonOrange)
                     Text("Current: Split \(split.splitIndex)")
                         .font(AppDesign.Typography.compactMetric)
-                    Text(split.formattedPace)
+                    Text("Active pace \(split.formattedPace)")
                         .font(AppDesign.Typography.compactMetric.monospacedDigit())
-                    Text(split.formattedElapsed)
+                    Text("Active \(split.formattedActive)")
+                        .font(AppDesign.Typography.compactMetric.monospacedDigit())
+                    Text("Elapsed \(split.formattedElapsed)")
                         .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 }
                 .padding(AppDesign.Spacing.small)
@@ -40,7 +42,9 @@ struct SplitTableView: View {
                 )
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Current split \(split.splitIndex)")
-                .accessibilityValue("Pace \(split.formattedPace), time \(split.formattedElapsed)")
+                .accessibilityValue(
+                    "Active pace \(split.formattedPace), active time \(split.formattedActive), elapsed time \(split.formattedElapsed)"
+                )
             }
 
             Table(splits) {
@@ -55,7 +59,9 @@ struct SplitTableView: View {
                             .monospacedDigit()
                     }
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Split \(split.splitIndex), distance \(String(format: "%.2f km", split.distanceMeters / 1000)), time \(split.formattedElapsed), pace \(split.formattedPace)")
+                    .accessibilityLabel(
+                        "Split \(split.splitIndex), distance \(String(format: "%.2f km", split.distanceMeters / 1000)), elapsed \(split.formattedElapsed), active \(split.formattedActive), active pace \(split.formattedPace)"
+                    )
                 }
                 .width(50)
 
@@ -65,17 +71,29 @@ struct SplitTableView: View {
                 }
                 .width(80)
 
-                TableColumn("Time") { split in
+                TableColumn("Elapsed") { split in
                     Text(split.formattedElapsed)
                         .monospacedDigit()
                 }
                 .width(60)
 
-                TableColumn("Pace") { split in
+                TableColumn("Active") { split in
+                    Text(split.formattedActive)
+                        .monospacedDigit()
+                }
+                .width(60)
+
+                TableColumn("Active Pace") { split in
                     Text(split.formattedPace)
                         .monospacedDigit()
                 }
-                .width(70)
+                .width(85)
+
+                TableColumn("Elapsed Pace") { split in
+                    Text(split.formattedElapsedPace)
+                        .monospacedDigit()
+                }
+                .width(90)
 
                 TableColumn("HR") { split in
                     if let hr = split.averageHeartRateBPM {

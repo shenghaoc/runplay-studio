@@ -95,11 +95,15 @@ struct ExportSummaryCardView: View {
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible()),
+                GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: AppDesign.Spacing.large) {
                 MetricTile(label: "Distance", value: model.distanceText, icon: "figure.run", color: AppDesign.MetricColor.distance)
-                MetricTile(label: "Duration", value: model.durationText, icon: "clock", color: AppDesign.MetricColor.duration)
-                MetricTile(label: "Avg Pace", value: model.paceText, icon: "speedometer", color: AppDesign.MetricColor.pace)
+                MetricTile(label: "Elapsed", value: model.elapsedTimeText, icon: "clock", color: AppDesign.MetricColor.duration)
+                MetricTile(label: "Active", value: model.activeTimeText, icon: "timer", color: AppDesign.MetricColor.duration)
+                MetricTile(label: "Paused", value: model.pausedTimeText, icon: "pause.circle", color: .secondary)
+                MetricTile(label: "Active Pace", value: model.activePaceText, icon: "speedometer", color: AppDesign.MetricColor.pace)
+                MetricTile(label: "Elapsed Pace", value: model.elapsedPaceText, icon: "clock.arrow.circlepath", color: AppDesign.MetricColor.pace)
                 MetricTile(label: "Elevation Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: AppDesign.MetricColor.elevation)
                 MetricTile(label: "Elevation Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: AppDesign.softPurple)
 
@@ -157,10 +161,14 @@ struct ExportSummaryCardView: View {
                     .frame(width: 50, alignment: .leading)
                 Text("Distance")
                     .frame(width: 80, alignment: .leading)
-                Text("Pace")
-                    .frame(width: 80, alignment: .leading)
-                Text("Time")
-                    .frame(width: 60, alignment: .leading)
+                Text("Elapsed")
+                    .frame(width: 70, alignment: .leading)
+                Text("Active")
+                    .frame(width: 70, alignment: .leading)
+                Text("Active Pace")
+                    .frame(width: 90, alignment: .leading)
+                Text("Elapsed Pace")
+                    .frame(width: 90, alignment: .leading)
             }
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.tertiary)
@@ -171,10 +179,14 @@ struct ExportSummaryCardView: View {
                         .frame(width: 50, alignment: .leading)
                     Text(split.distance)
                         .frame(width: 80, alignment: .leading)
-                    Text(split.pace)
-                        .frame(width: 80, alignment: .leading)
-                    Text(split.duration)
-                        .frame(width: 60, alignment: .leading)
+                    Text(split.elapsed)
+                        .frame(width: 70, alignment: .leading)
+                    Text(split.active)
+                        .frame(width: 70, alignment: .leading)
+                    Text(split.activePace)
+                        .frame(width: 90, alignment: .leading)
+                    Text(split.elapsedPace)
+                        .frame(width: 90, alignment: .leading)
                 }
                 .font(.system(size: 14, design: .rounded).monospacedDigit())
             }
@@ -229,6 +241,8 @@ struct MetricTile: View {
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
+                .minimumScaleFactor(0.75)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppDesign.Spacing.medium)

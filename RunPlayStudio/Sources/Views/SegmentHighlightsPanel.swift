@@ -52,7 +52,10 @@ struct SegmentHighlightsPanel: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(segment.title)
-                            .accessibilityValue("\(segment.subtitle), \(segment.formattedDistance), \(segment.formattedDuration)")
+                            .accessibilityValue(
+                                "\(segment.subtitle), \(segment.formattedDistance), active time \(segment.formattedDuration)"
+                            )
+                            .help("Segment duration and pace use active time and exclude recording gaps.")
                             .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                         }
                     }
@@ -88,7 +91,7 @@ struct SegmentCard: View {
 
             HStack(spacing: AppDesign.Spacing.small) {
                 Label(segment.formattedDistance, systemImage: "ruler")
-                Label(segment.formattedDuration, systemImage: "clock")
+                Label("Active \(segment.formattedDuration)", systemImage: "timer")
                 if !segment.formattedElevation.isEmpty {
                     Label(segment.formattedElevation, systemImage: "mountain.2")
                 }

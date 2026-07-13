@@ -1,5 +1,24 @@
 # RunPlay Studio — Data Model
 
+## Time terminology
+
+- **Elapsed time** is the final route timestamp minus the initial route
+  timestamp. It includes pauses and recording gaps. When timestamps do not
+  span but normalized route points carry a valid elapsed series, that series is
+  used instead.
+- **Active time** is the sum of positive timestamp deltas between adjacent
+  points with the same `routeSegmentIndex`. The elapsed-series fallback treats
+  all elapsed time as active because pause boundaries cannot be determined.
+- **Paused time** is elapsed minus active, clamped to a finite non-negative
+  value.
+- **Moving time** is not estimated. Active time must not be presented as moving
+  time.
+
+`WorkoutTimeline` is the platform-neutral authority for these clocks. It also
+derives active time at each point, clock values at cumulative distance, and the
+route state at an elapsed replay time without mutating or persisting another
+clock on every route point.
+
 ## Core Types
 
 ### RunWorkout
@@ -15,8 +34,15 @@ struct RunWorkout: Identifiable, Codable, Hashable {
     var splits: [RunSplit]
     var summary: RunSummary
     var segments: [SegmentHighlight]
+    var analysisVersion: Int
+    var analysisWarnings: [WorkoutAnalysisWarning]
 }
 ```
+
+Snapshots without `analysisVersion` decode as legacy version `0`. The current
+version is reanalysed from stored route points during library load and then
+atomically rewritten. Identity, metadata, source, route points, library order,
+and selection are preserved.
 
 ### RoutePoint
 
@@ -45,6 +71,10 @@ point. It is zero-based after normalization. Rendering and analysis do not
 connect points with different indexes. Older persisted snapshots omit this
 field and decode with index `0` for backward compatibility.
 
+`elapsedSeconds` always means elapsed time since the workout's first route
+timestamp. It is never rewritten to remove pauses. Active time is derived by
+`WorkoutTimeline`.
+
 ### RunSplit
 
 A kilometer or mile split with summary metrics.
@@ -55,13 +85,21 @@ struct RunSplit: Identifiable, Codable {
     var splitIndex: Int          // 1-based
     var distanceMeters: Double   // 1000 for 1km splits
     var elapsedSeconds: Double
-    var paceSecondsPerKilometer: Double
+    var activeSeconds: Double
+    var paceSecondsPerKilometer: Double        // active pace
+    var elapsedPaceSecondsPerKilometer: Double
     var averageHeartRateBPM: Double?
     var elevationGainMeters: Double?
     var startDistanceMeters: Double
     var endDistanceMeters: Double
 }
 ```
+
+Splits follow global cumulative distance across route-segment boundaries. Only
+the final workout remainder is partial. For an exact duplicate distance at a
+stop/resume boundary, a range start uses the resumed segment's first point and
+a range end uses the prior segment's final point. Time can aggregate across
+segments, but coordinate/elevation interpolation never crosses a gap.
 
 ### RunSummary
 
@@ -70,9 +108,13 @@ Aggregated metrics for the entire run.
 ```swift
 struct RunSummary: Codable {
     var totalDistanceMeters: Double
-    var totalElapsedSeconds: Double  // active elapsed time; recording gaps excluded
-    var averagePaceSecondsPerKilometer: Double
-    var averageSpeedMetersPerSecond: Double
+    var totalElapsedSeconds: Double
+    var totalActiveSeconds: Double
+    var totalPausedSeconds: Double
+    var averagePaceSecondsPerKilometer: Double       // active pace
+    var elapsedPaceSecondsPerKilometer: Double
+    var averageSpeedMetersPerSecond: Double          // active speed
+    var elapsedAverageSpeedMetersPerSecond: Double
     var elevationGainMeters: Double
     var elevationLossMeters: Double
     var averageHeartRateBPM: Double?
@@ -80,6 +122,11 @@ struct RunSummary: Codable {
     var caloriesEstimate: Double?
 }
 ```
+
+All clock, pace, and speed values are finite and non-negative. No-pause routes
+have equal elapsed and active values. The compatibility names
+`averagePaceSecondsPerKilometer` and `averageSpeedMetersPerSecond` retain active
+semantics; explicit elapsed variants are additive.
 
 ### WorkoutSource
 
@@ -97,6 +144,11 @@ enum WorkoutSource: String, Codable {
     case unknown
 }
 ```
+
+Pace-based fastest/slowest windows use active time and may span route-segment
+boundaries in cumulative distance. Their `durationSeconds` is active duration;
+elapsed endpoints remain available separately. Elevation deltas never bridge a
+route gap.
 
 ### WorkoutMetadata
 
@@ -174,15 +226,24 @@ struct WorkoutComparisonSummary {
     let comparisonDistanceMeters: Double
     let distanceDeltaMeters: Double
 
-    // Duration
-    let primaryDurationSeconds: Double
-    let comparisonDurationSeconds: Double
-    let durationDeltaSeconds: Double
+    // Explicit clocks
+    let primaryElapsedSeconds: Double
+    let comparisonElapsedSeconds: Double
+    let elapsedTimeDeltaSeconds: Double
+    let primaryActiveSeconds: Double
+    let comparisonActiveSeconds: Double
+    let activeTimeDeltaSeconds: Double
+    let primaryPausedSeconds: Double
+    let comparisonPausedSeconds: Double
+    let pausedTimeDeltaSeconds: Double
 
-    // Pace
+    // Active and elapsed pace
     let primaryPaceSecondsPerKm: Double
     let comparisonPaceSecondsPerKm: Double
     let paceDeltaSecondsPerKm: Double
+    let primaryElapsedPaceSecondsPerKm: Double
+    let comparisonElapsedPaceSecondsPerKm: Double
+    let elapsedPaceDeltaSecondsPerKm: Double
 
     // Elevation
     let primaryElevationGainMeters: Double
@@ -212,7 +273,8 @@ struct SplitComparison: Identifiable {
     let splitIndex: Int
     let primarySplit: RunSplit?
     let comparisonSplit: RunSplit?
-    let durationDeltaSeconds: Double?
+    let elapsedDurationDeltaSeconds: Double?
+    let activeDurationDeltaSeconds: Double?
     let paceDeltaSecondsPerKm: Double?
     let winner: ComparisonResult
 }
@@ -247,6 +309,7 @@ enum ComparisonWarning {
     case missingHeartRate
     case missingElevation
     case tooFewPoints
+    case differentPauseDurations
 }
 ```
 
@@ -259,7 +322,10 @@ struct ComparisonDistanceMetrics {
     let selectedDistanceMeters: Double
     let primaryElapsedSeconds: Double?
     let comparisonElapsedSeconds: Double?
-    let timeDeltaSeconds: Double?
+    let timeDeltaSeconds: Double?              // elapsed compatibility alias
+    let primaryActiveSeconds: Double?
+    let comparisonActiveSeconds: Double?
+    let activeTimeDeltaSeconds: Double?
     let primaryPaceSecondsPerKm: Double?
     let comparisonPaceSecondsPerKm: Double?
     let paceDeltaSecondsPerKm: Double?
@@ -267,6 +333,10 @@ struct ComparisonDistanceMetrics {
     let comparisonScenePoint: RouteScenePoint?
 }
 ```
+
+Selected-distance clocks use `WorkoutTimeline` and the same explicit duplicate
+boundary rule as splits. Active pace is cumulative active time divided by the
+covered distance.
 
 ## 3D Types
 
@@ -319,11 +389,11 @@ enum PlaybackState {
 
 struct ReplayState {
     var playbackState: PlaybackState
-    var currentTime: Double          // seconds from start
+    var currentTime: Double          // elapsed seconds from start
     var currentDistance: Double       // meters from start
     var currentPointIndex: Int
     var playbackSpeed: Double        // 1.0, 2.0, 0.5, etc.
-    var totalDuration: Double
+    var totalDuration: Double        // total elapsed seconds
     var totalDistance: Double
 
     // Computed properties
@@ -335,3 +405,15 @@ struct ReplayState {
     var formattedSpeed: String
 }
 ```
+
+Replay uses the elapsed clock. During a recording gap the latest route point at
+or before `currentTime` remains selected until the exact resume timestamp.
+`SelectedMetrics` exposes elapsed time, active time, distance, point metrics,
+and `isInRecordingGap`; active time and distance hold while elapsed advances.
+
+## Migration limitation
+
+Legacy snapshots that already contain `routeSegmentIndex` can recover correct
+pause semantics through reanalysis. Older snapshots that predate that field
+decode every point into segment `0`; a pause boundary absent from the stored
+route cannot be reconstructed and the original activity must be reimported.

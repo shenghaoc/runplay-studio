@@ -15,9 +15,10 @@ final class ExportServiceTests: XCTestCase {
         let lines = csv.split(separator: "\n").map(String.init)
 
         XCTAssertFalse(lines.isEmpty)
-        XCTAssertTrue(lines[0].contains("Split"))
-        XCTAssertTrue(lines[0].contains("Pace"))
-        XCTAssertTrue(lines[0].contains("Duration"))
+        XCTAssertEqual(
+            lines[0],
+            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Active_Pace_min_km,Elapsed_Pace_min_km,Elevation_Gain_m,Avg_HR_bpm"
+        )
     }
 
     func testSplitsCSVHasExpectedRowCount() {
@@ -152,12 +153,46 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNotNil(json)
 
         XCTAssertEqual(json?["appName"] as? String, "RunPlay Studio")
-        XCTAssertEqual(json?["exportVersion"] as? String, "1.0")
+        XCTAssertEqual(json?["exportVersion"] as? String, "2.0")
         XCTAssertNotNil(json?["privacyNote"])
         XCTAssertNotNil(json?["workoutTitle"])
         XCTAssertNotNil(json?["totalDistanceMeters"])
         XCTAssertNotNil(json?["totalDurationSeconds"])
         XCTAssertNotNil(json?["averagePaceSecondsPerKilometer"])
+    }
+
+    func testPausedWorkoutExportsExplicitSummaryAndSplitClocks() throws {
+        let workout = createPausedWorkout()
+        let result = try exportService.exportWorkoutSummaryJSON(workout: workout, segments: [])
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        )
+
+        XCTAssertEqual(json["totalElapsedSeconds"] as? Double, 3_300)
+        XCTAssertEqual(json["totalActiveSeconds"] as? Double, 300)
+        XCTAssertEqual(json["totalPausedSeconds"] as? Double, 3_000)
+        XCTAssertEqual(json["activePaceSecondsPerKilometer"] as? Double, 300)
+        XCTAssertEqual(json["elapsedPaceSecondsPerKilometer"] as? Double, 3_300)
+
+        let splits = try XCTUnwrap(json["splits"] as? [[String: Any]])
+        let first = try XCTUnwrap(splits.first)
+        XCTAssertEqual(first["elapsedDurationSeconds"] as? Double, 3_300)
+        XCTAssertEqual(first["activeDurationSeconds"] as? Double, 300)
+
+        let csv = exportService.generateSplitsCSV(workout: workout)
+        let rows = csv.split(separator: "\n").map(String.init)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertTrue(rows[1].contains("3300,300,5,55"))
+
+        let card = ExportSummaryCardModel(workout: workout, segments: [])
+        XCTAssertEqual(card.elapsedTimeText, "55:00")
+        XCTAssertEqual(card.activeTimeText, "05:00")
+        XCTAssertEqual(card.pausedTimeText, "50:00")
+        XCTAssertNotEqual(card.activePaceText, card.elapsedPaceText)
+
+        let png = try PNGExportService.exportSummaryPNG(workout: workout, segments: [])
+        XCTAssertGreaterThan(png.data.count, pngSignature.count)
+        XCTAssertEqual(Array(png.data.prefix(pngSignature.count)), pngSignature)
     }
 
     func testJSONSummaryContainsSplits() throws {
@@ -295,18 +330,48 @@ final class ExportServiceTests: XCTestCase {
     // MARK: - Non-finite Export Safety
 
     func testExportSplitsCSVWithNonFiniteValuesDoesNotContainNaN() {
-        // Create a workout with NaN/Inf values that could propagate
-        let points = [
-            RoutePoint(timestamp: Date(), latitude: 37.7749, longitude: -122.4194,
-                      altitudeMeters: .nan, distanceFromStartMeters: 0, elapsedSeconds: 0),
-            RoutePoint(timestamp: Date(), latitude: 37.7750, longitude: -122.4193,
-                      altitudeMeters: .infinity, distanceFromStartMeters: 1000, elapsedSeconds: 300)
-        ]
-        let workout = RunWorkout(routePoints: points)
+        var split = RunSplit(
+            splitIndex: 1,
+            elapsedSeconds: 300,
+            paceSecondsPerKilometer: 300,
+            startDistanceMeters: 0,
+            endDistanceMeters: 1_000
+        )
+        split.elapsedSeconds = .nan
+        split.activeSeconds = .infinity
+        split.paceSecondsPerKilometer = .nan
+        split.elapsedPaceSecondsPerKilometer = .infinity
+        split.elevationGainMeters = .nan
+        split.averageHeartRateBPM = .infinity
+        let workout = RunWorkout(splits: [split])
         let csv = exportService.generateSplitsCSV(workout: workout)
+        let rows = csv.split(separator: "\n").map(String.init)
+        let fields = rows[1].split(separator: ",", omittingEmptySubsequences: false)
 
-        XCTAssertFalse(csv.contains("nan"), "CSV should not contain 'nan'")
-        XCTAssertFalse(csv.contains("inf"), "CSV should not contain 'inf'")
+        XCTAssertEqual(fields.count, 10)
+        XCTAssertTrue(fields[4...9].allSatisfy(\.isEmpty))
+        XCTAssertFalse(csv.lowercased().contains("nan"))
+        XCTAssertFalse(csv.lowercased().contains("inf"))
+    }
+
+    func testJSONSummarySanitizesNonFiniteMetrics() throws {
+        var workout = createSampleWorkout()
+        workout.summary.totalElapsedSeconds = .nan
+        workout.summary.totalActiveSeconds = .infinity
+        workout.summary.totalPausedSeconds = -.infinity
+        workout.summary.averagePaceSecondsPerKilometer = .nan
+        workout.summary.elapsedPaceSecondsPerKilometer = .infinity
+
+        let result = try exportService.exportWorkoutSummaryJSON(workout: workout, segments: [])
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        )
+
+        XCTAssertEqual(json["totalElapsedSeconds"] as? Double, 0)
+        XCTAssertEqual(json["totalActiveSeconds"] as? Double, 0)
+        XCTAssertEqual(json["totalPausedSeconds"] as? Double, 0)
+        XCTAssertEqual(json["activePaceSecondsPerKilometer"] as? Double, 0)
+        XCTAssertEqual(json["elapsedPaceSecondsPerKilometer"] as? Double, 0)
     }
 
     func testExportSegmentsCSVWithNonFinitePaceDoesNotCrash() {
@@ -465,6 +530,19 @@ final class ExportServiceTests: XCTestCase {
                 elapsedSeconds: Double(i) * 30
             )
         }
+    }
+
+    private func createPausedWorkout() -> RunWorkout {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 1, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(180), latitude: 1.006, longitude: 1, distanceFromStartMeters: 600, elapsedSeconds: 180, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(3_180), latitude: 1.006, longitude: 1, distanceFromStartMeters: 600, elapsedSeconds: 3_180, routeSegmentIndex: 1),
+            RoutePoint(timestamp: start.addingTimeInterval(3_300), latitude: 1.01, longitude: 1, distanceFromStartMeters: 1_000, elapsedSeconds: 3_300, routeSegmentIndex: 1)
+        ]
+        var workout = RunWorkout(routePoints: points)
+        WorkoutAnalyzer().analyze(&workout)
+        return workout
     }
 
     private func createSampleSegments() -> [SegmentHighlight] {

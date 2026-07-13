@@ -102,6 +102,28 @@ final class SegmentDetectionTests: XCTestCase {
         XCTAssertNil(segments.first { $0.type == .biggestDescent })
     }
 
+    func testPaceWindowSpansPauseUsingActiveTime() throws {
+        let start = Date()
+        let workout = RunWorkout(routePoints: [
+            segmentPoint(start: start, time: 0, distance: 0, segment: 0),
+            segmentPoint(start: start, time: 150, distance: 500, segment: 0),
+            segmentPoint(start: start, time: 1_150, distance: 500, segment: 1),
+            segmentPoint(start: start, time: 1_300, distance: 1_000, segment: 1),
+            segmentPoint(start: start, time: 1_600, distance: 1_500, segment: 1),
+            segmentPoint(start: start, time: 1_900, distance: 2_000, segment: 1)
+        ])
+
+        let fastest = try XCTUnwrap(
+            SegmentDetector.detectSegments(from: workout).first { $0.type == .fastest1km }
+        )
+
+        XCTAssertEqual(fastest.startDistanceMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(fastest.endDistanceMeters, 1_000, accuracy: 0.001)
+        XCTAssertEqual(fastest.activeDurationSeconds, 300, accuracy: 0.001)
+        XCTAssertEqual(fastest.elapsedDurationSeconds, 1_300, accuracy: 0.001)
+        XCTAssertEqual(fastest.paceSecondsPerKilometer ?? -1, 300, accuracy: 0.001)
+    }
+
     // MARK: - Edge Cases
 
     func testShortRouteReturnsNoSegments() {
@@ -268,6 +290,18 @@ final class SegmentDetectionTests: XCTestCase {
             altitudeMeters: nil,
             distanceFromStartMeters: distance,
             elapsedSeconds: distance / 3.0 // ~3 m/s pace
+        )
+    }
+
+    private func segmentPoint(start: Date, time: Double, distance: Double, segment: Int) -> RoutePoint {
+        RoutePoint(
+            timestamp: start.addingTimeInterval(time),
+            latitude: 1 + (distance / 100_000),
+            longitude: 1,
+            altitudeMeters: 10,
+            distanceFromStartMeters: distance,
+            elapsedSeconds: time,
+            routeSegmentIndex: segment
         )
     }
 

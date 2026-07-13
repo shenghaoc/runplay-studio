@@ -79,6 +79,90 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         XCTAssertEqual(selectedID, workout.id)
     }
 
+    func testLegacyFixtureDecodesWithVersionZeroAndSafeFieldFallbacks() throws {
+        let workout = try decodeLegacyPausedFixture()
+
+        XCTAssertEqual(workout.analysisVersion, RunWorkout.legacyAnalysisVersion)
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 600, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 600, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalPausedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(workout.splits.first?.activeSeconds ?? -1, 300, accuracy: 0.001)
+        XCTAssertEqual(
+            workout.splits.first?.elapsedPaceSecondsPerKilometer ?? -1,
+            300,
+            accuracy: 0.001
+        )
+    }
+
+    func testLoadMigratesLegacyFixtureAndPersistsWithoutChangingLibraryIdentity() async throws {
+        let legacy = try decodeLegacyPausedFixture()
+        try store.ensureDirectoriesExist()
+        let fixtureData = try Data(contentsOf: legacyFixtureURL())
+        let workoutURL = tempDir
+            .appendingPathComponent("workouts", isDirectory: true)
+            .appendingPathComponent("\(legacy.id.uuidString).json")
+        try fixtureData.write(to: workoutURL, options: .atomic)
+
+        let second = makeWorkout(name: "Second")
+        try store.saveWorkout(second)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [legacy.id, second.id],
+            selectedWorkoutID: legacy.id
+        ))
+
+        let originalPointIDs = legacy.routePoints.map(\.id)
+        let originalSegments = legacy.routePoints.map(\.routeSegmentIndex)
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let result = await actor.loadLibrary()
+
+        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+            XCTFail("Expected migrated workouts, got \(result)")
+            return
+        }
+
+        XCTAssertNil(warning)
+        XCTAssertEqual(loaded.map(\.id), [legacy.id, second.id])
+        XCTAssertEqual(selectedID, legacy.id)
+        let migrated = try XCTUnwrap(loaded.first)
+        XCTAssertEqual(migrated.id, legacy.id)
+        XCTAssertEqual(migrated.metadata, legacy.metadata)
+        XCTAssertEqual(migrated.source, legacy.source)
+        XCTAssertEqual(migrated.routePoints.map(\.id), originalPointIDs)
+        XCTAssertEqual(migrated.routePoints.map(\.routeSegmentIndex), originalSegments)
+        XCTAssertEqual(migrated.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(migrated.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
+        XCTAssertEqual(migrated.summary.totalActiveSeconds, 600, accuracy: 0.001)
+        XCTAssertEqual(migrated.summary.totalPausedSeconds, 3_300, accuracy: 0.001)
+
+        let persisted = try store.loadWorkout(id: legacy.id)
+        XCTAssertEqual(persisted.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(persisted.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.workoutIDs, [legacy.id, second.id])
+        XCTAssertEqual(manifest.selectedWorkoutID, legacy.id)
+        XCTAssertEqual(manifest.version, WorkoutLibraryManifest.currentVersion)
+    }
+
+    func testMigrationWriteFailureKeepsUpgradedWorkoutVisibleAndLegacySnapshotRetryable() async throws {
+        let legacy = try decodeLegacyPausedFixture()
+        let failingStore = UpgradeWriteFailingStore(workout: legacy)
+        let actor = WorkoutLibraryStoreActor(store: failingStore)
+
+        let result = await actor.loadLibrary()
+
+        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+            XCTFail("Expected in-memory workout, got \(result)")
+            return
+        }
+        let migrated = try XCTUnwrap(loaded.first)
+        XCTAssertEqual(selectedID, legacy.id)
+        XCTAssertEqual(migrated.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(migrated.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
+        XCTAssertTrue(warning?.contains("upgraded in memory") == true)
+        XCTAssertEqual(failingStore.saveWorkoutCallCount, 1)
+        XCTAssertEqual(failingStore.storedWorkout.analysisVersion, RunWorkout.legacyAnalysisVersion)
+    }
+
     // MARK: - Concurrent Additions Preserve All IDs
 
     func testConcurrentAdditionsPreserveAllIDs() async throws {
@@ -358,6 +442,21 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         XCTAssertEqual(loaded.first?.routePoints.count, pointCount)
         XCTAssertEqual(loaded.first?.metadata.name, "Large Workout")
     }
+
+    private func legacyFixtureURL() throws -> URL {
+        try XCTUnwrap(
+            Bundle.module.url(
+                forResource: "legacy-paused-workout-v0",
+                withExtension: "json"
+            )
+        )
+    }
+
+    private func decodeLegacyPausedFixture() throws -> RunWorkout {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(RunWorkout.self, from: Data(contentsOf: legacyFixtureURL()))
+    }
 }
 
 // MARK: - Test Fakes
@@ -463,4 +562,35 @@ private final class ManifestCorruptedStore: WorkoutLibraryStoring, @unchecked Se
     func deleteWorkout(id: UUID) throws {}
 
     func workoutExists(id: UUID) -> Bool { false }
+}
+
+private final class UpgradeWriteFailingStore: WorkoutLibraryStoring, @unchecked Sendable {
+    let storedWorkout: RunWorkout
+    private var manifest: WorkoutLibraryManifest
+    private(set) var saveWorkoutCallCount = 0
+
+    init(workout: RunWorkout) {
+        storedWorkout = workout
+        manifest = WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id
+        )
+    }
+
+    func loadManifest() throws -> WorkoutLibraryManifest { manifest }
+
+    func saveManifest(_ manifest: WorkoutLibraryManifest) throws {
+        self.manifest = manifest
+    }
+
+    func loadWorkout(id: UUID) throws -> RunWorkout { storedWorkout }
+
+    func saveWorkout(_ workout: RunWorkout) throws {
+        saveWorkoutCallCount += 1
+        throw WorkoutLibraryError.writeFailed("simulated analysis-upgrade write failure")
+    }
+
+    func deleteWorkout(id: UUID) throws {}
+
+    func workoutExists(id: UUID) -> Bool { id == storedWorkout.id }
 }

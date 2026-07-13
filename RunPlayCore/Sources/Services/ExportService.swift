@@ -118,20 +118,23 @@ public struct ExportService: Sendable {
 
         // Header
         lines.append(CSVRow.joined([
-            "Split", "Start_km", "End_km", "Distance_km", "Duration",
-            "Pace_min_km", "Elevation_Gain_m", "Avg_HR_bpm"
+            "Split", "Start_km", "End_km", "Distance_km",
+            "Elapsed_Duration_s", "Active_Duration_s",
+            "Active_Pace_min_km", "Elapsed_Pace_min_km",
+            "Elevation_Gain_m", "Avg_HR_bpm"
         ]))
 
         // Data rows
         for split in workout.splits {
-            let paceMin = split.paceSecondsPerKilometer / 60.0
             lines.append(CSVRow.joined([
                 "\(split.splitIndex)",
                 formatNumber(split.startDistanceMeters / 1000),
                 formatNumber(split.endDistanceMeters / 1000),
                 formatNumber(split.distanceMeters / 1000),
-                split.formattedElapsed,
-                formatNumber(paceMin),
+                formatNumber(split.elapsedSeconds),
+                formatNumber(split.activeSeconds),
+                formatNumber(split.paceSecondsPerKilometer / 60),
+                formatNumber(split.elapsedPaceSecondsPerKilometer / 60),
                 split.elevationGainMeters.map { formatNumber($0) } ?? "",
                 split.averageHeartRateBPM.map { formatNumber($0) } ?? ""
             ]))
@@ -146,8 +149,8 @@ public struct ExportService: Sendable {
         // Header
         lines.append(CSVRow.joined([
             "Type", "Title", "Start_km", "End_km", "Distance_km",
-            "Start_Time_s", "End_Time_s", "Duration",
-            "Pace_min_km", "Elevation_Delta_m", "Avg_HR_bpm", "Description"
+            "Start_Elapsed_s", "End_Elapsed_s", "Active_Duration_s", "Elapsed_Duration_s",
+            "Active_Pace_min_km", "Elevation_Delta_m", "Avg_HR_bpm", "Description"
         ]))
 
         // Data rows
@@ -161,7 +164,8 @@ public struct ExportService: Sendable {
                 formatNumber(seg.distanceMeters / 1000),
                 formatNumber(seg.startElapsedSeconds),
                 formatNumber(seg.endElapsedSeconds),
-                seg.formattedDuration,
+                formatNumber(seg.activeDurationSeconds),
+                formatNumber(seg.elapsedDurationSeconds),
                 seg.paceSecondsPerKilometer != nil ? formatNumber(paceMin) : "",
                 seg.elevationDeltaMeters.map { formatNumber($0) } ?? "",
                 seg.averageHeartRate.map { formatNumber($0) } ?? "",

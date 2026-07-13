@@ -112,6 +112,30 @@ final class JSONImporterTests: XCTestCase {
         }
     }
 
+    func testRouteSegmentsPreservePauseAwareClocksAndGlobalDistance() throws {
+        let json = """
+        {
+            "metadata": { "name": "Paused JSON Run", "activityType": "running" },
+            "routePoints": [
+                { "timestamp": "2026-01-01T00:00:00Z", "latitude": 1.0, "longitude": 1.0, "distanceFromStartMeters": 0, "routeSegmentIndex": 0 },
+                { "timestamp": "2026-01-01T00:03:00Z", "latitude": 1.006, "longitude": 1.0, "distanceFromStartMeters": 600, "routeSegmentIndex": 0 },
+                { "timestamp": "2026-01-01T00:53:00Z", "latitude": 1.006, "longitude": 1.0, "distanceFromStartMeters": 600, "routeSegmentIndex": 1 },
+                { "timestamp": "2026-01-01T00:55:00Z", "latitude": 1.01, "longitude": 1.0, "distanceFromStartMeters": 1000, "routeSegmentIndex": 1 }
+            ]
+        }
+        """
+
+        let workout = try JSONWorkoutImporter().importWorkout(from: Data(json.utf8))
+
+        XCTAssertEqual(workout.routePoints.map(\.routeSegmentIndex), [0, 0, 1, 1])
+        XCTAssertEqual(workout.routePoints.map(\.distanceFromStartMeters), [0, 600, 600, 1_000])
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 3_300, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 300, accuracy: 0.001)
+        XCTAssertEqual(workout.summary.totalPausedSeconds, 3_000, accuracy: 0.001)
+        XCTAssertEqual(workout.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(workout.splits.count, 1)
+    }
+
     // MARK: - Helpers
 
     private func resourceURL(_ path: String) -> URL {

@@ -1,150 +1,149 @@
 import Foundation
 
-/// Analyzes a workout and populates derived metrics.
-///
-/// This is a pure logic service with no side effects beyond modifying the workout.
-/// Uses platform-neutral `GeoDistance` instead of CoreLocation.
+/// Analyzes a normalized workout and populates derived metrics.
 public struct WorkoutAnalyzer: Sendable {
 
     public init() {}
 
-    /// Valid heart rate range for filtering outliers.
     public static let validHeartRateRange: ClosedRange<Double> = 30...230
 
-    /// Analyze a workout in-place, calculating summary, splits, and segments.
-    ///
-    /// Precondition: `workout.routePoints` must already be normalized via
-    /// `RoutePointSanitizer.normalize()`. All importers (JSON, GPX, TCX, FIT)
-    /// perform normalization before calling this method.
+    /// Analyze a workout in place using `WorkoutTimeline` as the sole time
+    /// authority for the summary, splits, and notable pace windows.
     public func analyze(_ workout: inout RunWorkout) {
-        calculateDerivedMetrics(&workout)
-        workout.summary = calculateSummary(workout)
-        workout.splits = SplitCalculator.calculateSplits(from: workout)
-        workout.segments = SegmentDetector.detectSegments(from: workout)
+        let timeline = WorkoutTimeline(workout: workout)
+        calculateDerivedMetrics(&workout, timeline: timeline)
+        workout.summary = calculateSummary(workout, timeline: timeline)
+        workout.splits = SplitCalculator.calculateSplits(from: workout, timeline: timeline)
+        workout.segments = SegmentDetector.detectSegments(from: workout, timeline: timeline)
+        workout.analysisVersion = RunWorkout.currentAnalysisVersion
     }
 
-    /// Calculate derived metrics for each route point (speed, pace).
-    ///
-    /// Skips computation across segment boundaries so no fake speed or pace
-    /// is generated between disconnected route segments.
-    private func calculateDerivedMetrics(_ workout: inout RunWorkout) {
+    /// Recompute stale persisted analysis while preserving the exact stored
+    /// route-point payload, including IDs and optional source metrics.
+    public func reanalyzePreservingRoutePoints(_ workout: inout RunWorkout) {
+        let storedRoutePoints = workout.routePoints
+        analyze(&workout)
+        workout.routePoints = storedRoutePoints
+    }
+
+    private func calculateDerivedMetrics(_ workout: inout RunWorkout, timeline: WorkoutTimeline) {
         let points = workout.routePoints
         guard points.count >= 2 else { return }
 
-        for i in 1..<points.count {
-            let prev = points[i - 1]
-            let curr = points[i]
-
-            // Skip cross-segment-boundary computation.
-            guard curr.routeSegmentIndex == prev.routeSegmentIndex else { continue }
-
-            // Calculate speed if not already set
-            if workout.routePoints[i].speedMetersPerSecond == nil {
-                let distance = GeoDistance.distanceMeters(
-                    fromLat: prev.latitude, lon: prev.longitude,
-                    toLat: curr.latitude, lon: curr.longitude
-                )
-                let time = curr.elapsedSeconds - prev.elapsedSeconds
-                if time > 0 {
-                    workout.routePoints[i].speedMetersPerSecond = distance / time
-                }
-            }
-
-            // Calculate pace if not already set
-            if workout.routePoints[i].paceSecondsPerKilometer == nil,
-               let speed = workout.routePoints[i].speedMetersPerSecond, speed > 0 {
-                workout.routePoints[i].paceSecondsPerKilometer = 1000.0 / speed
-            }
-        }
-    }
-
-    /// Calculate overall workout summary.
-    private func calculateSummary(_ workout: RunWorkout) -> RunSummary {
-        let points = workout.routePoints
-        guard !points.isEmpty else { return RunSummary() }
-
-        let totalDistance = points.last?.distanceFromStartMeters ?? 0
-        let totalTime = activeElapsedSeconds(in: points)
-
-        // Average pace
-        let avgPace: Double
-        if totalDistance > 0 && totalTime > 0 {
-            avgPace = (totalTime / totalDistance) * 1000.0
-        } else {
-            avgPace = 0
-        }
-
-        // Average speed
-        let avgSpeed: Double
-        if totalTime > 0 && totalDistance > 0 {
-            avgSpeed = totalDistance / totalTime
-        } else {
-            avgSpeed = 0
-        }
-
-        // Elevation (simple sum of positive/negative deltas)
-        // Skip deltas across segment boundaries.
-        var elevGain: Double = 0
-        var elevLoss: Double = 0
-        var prevAltitude: Double?
-        var prevSegmentIndex: Int?
-
-        for point in points {
-            if let alt = point.altitudeMeters, let prev = prevAltitude,
-               alt.isFinite, prev.isFinite,
-               point.routeSegmentIndex == prevSegmentIndex {
-                let diff = alt - prev
-                if diff > 0 {
-                    elevGain += diff
-                } else {
-                    elevLoss += abs(diff)
-                }
-            }
-            prevAltitude = point.altitudeMeters
-            prevSegmentIndex = point.routeSegmentIndex
-        }
-
-        // Heart rate - filter to valid range to exclude outliers
-        let hrValues = points.compactMap { $0.heartRateBPM }
-            .filter { Self.validHeartRateRange.contains($0) && $0.isFinite }
-        let avgHR = hrValues.isEmpty ? nil : hrValues.reduce(0, +) / Double(hrValues.count)
-        let maxHR = hrValues.max()
-
-        return RunSummary(
-            totalDistanceMeters: totalDistance,
-            totalElapsedSeconds: totalTime,
-            averagePaceSecondsPerKilometer: avgPace,
-            averageSpeedMetersPerSecond: avgSpeed,
-            elevationGainMeters: elevGain,
-            elevationLossMeters: elevLoss,
-            averageHeartRateBPM: avgHR,
-            maxHeartRateBPM: maxHR
-        )
-    }
-
-    /// Sum elapsed time within continuous route segments, excluding recording gaps.
-    private func activeElapsedSeconds(in points: [RoutePoint]) -> Double {
-        guard points.count >= 2 else { return 0 }
-
-        var total: Double = 0
         for index in 1..<points.count {
             let previous = points[index - 1]
             let current = points[index]
-            guard current.routeSegmentIndex == previous.routeSegmentIndex else { continue }
+            guard current.routeSegmentIndex == previous.routeSegmentIndex,
+                  let previousElapsed = timeline.elapsedSeconds(atPointIndex: index - 1),
+                  let currentElapsed = timeline.elapsedSeconds(atPointIndex: index)
+            else {
+                continue
+            }
 
-            let elapsed = current.elapsedSeconds - previous.elapsedSeconds
-            if elapsed.isFinite, elapsed > 0 {
-                total += elapsed
+            if workout.routePoints[index].speedMetersPerSecond == nil {
+                let distance = GeoDistance.distanceMeters(
+                    fromLat: previous.latitude,
+                    lon: previous.longitude,
+                    toLat: current.latitude,
+                    lon: current.longitude
+                )
+                let elapsed = currentElapsed - previousElapsed
+                if distance.isFinite, distance >= 0, elapsed.isFinite, elapsed > 0 {
+                    workout.routePoints[index].speedMetersPerSecond = distance / elapsed
+                }
+            }
+
+            if workout.routePoints[index].paceSecondsPerKilometer == nil,
+               let speed = workout.routePoints[index].speedMetersPerSecond,
+               speed.isFinite,
+               speed > 0 {
+                workout.routePoints[index].paceSecondsPerKilometer = 1000.0 / speed
             }
         }
-        return total
     }
 
-    /// Calculate distance between two route points using platform-neutral haversine.
+    private func calculateSummary(_ workout: RunWorkout, timeline: WorkoutTimeline) -> RunSummary {
+        let points = workout.routePoints
+        guard !points.isEmpty else { return RunSummary() }
+
+        let totalDistance = timeline.totalDistanceMeters
+        let activePace = Self.pace(seconds: timeline.totalActiveSeconds, distanceMeters: totalDistance)
+        let elapsedPace = Self.pace(seconds: timeline.totalElapsedSeconds, distanceMeters: totalDistance)
+        let activeSpeed = Self.speed(distanceMeters: totalDistance, seconds: timeline.totalActiveSeconds)
+        let elapsedSpeed = Self.speed(distanceMeters: totalDistance, seconds: timeline.totalElapsedSeconds)
+
+        var elevationGain: Double = 0
+        var elevationLoss: Double = 0
+        var previousAltitude: Double?
+        var previousSegmentIndex: Int?
+
+        for point in points {
+            if let altitude = point.altitudeMeters,
+               let previous = previousAltitude,
+               altitude.isFinite,
+               previous.isFinite,
+               point.routeSegmentIndex == previousSegmentIndex {
+                let difference = altitude - previous
+                if difference > 0 {
+                    elevationGain += difference
+                } else {
+                    elevationLoss += abs(difference)
+                }
+            }
+            previousAltitude = point.altitudeMeters
+            previousSegmentIndex = point.routeSegmentIndex
+        }
+
+        let heartRates = points.compactMap(\.heartRateBPM)
+            .filter { Self.validHeartRateRange.contains($0) && $0.isFinite }
+        let averageHeartRate = heartRates.isEmpty
+            ? nil
+            : heartRates.reduce(0, +) / Double(heartRates.count)
+
+        return RunSummary(
+            totalDistanceMeters: totalDistance,
+            totalElapsedSeconds: timeline.totalElapsedSeconds,
+            totalActiveSeconds: timeline.totalActiveSeconds,
+            totalPausedSeconds: timeline.totalPausedSeconds,
+            averagePaceSecondsPerKilometer: activePace,
+            elapsedPaceSecondsPerKilometer: elapsedPace,
+            averageSpeedMetersPerSecond: activeSpeed,
+            elapsedAverageSpeedMetersPerSecond: elapsedSpeed,
+            elevationGainMeters: elevationGain,
+            elevationLossMeters: elevationLoss,
+            averageHeartRateBPM: averageHeartRate,
+            maxHeartRateBPM: heartRates.max()
+        )
+    }
+
+    private static func pace(seconds: Double, distanceMeters: Double) -> Double {
+        guard seconds.isFinite,
+              seconds > 0,
+              distanceMeters.isFinite,
+              distanceMeters > 0
+        else {
+            return 0
+        }
+        return (seconds / distanceMeters) * 1000
+    }
+
+    private static func speed(distanceMeters: Double, seconds: Double) -> Double {
+        guard seconds.isFinite,
+              seconds > 0,
+              distanceMeters.isFinite,
+              distanceMeters > 0
+        else {
+            return 0
+        }
+        return distanceMeters / seconds
+    }
+
     public func calculateDistance(from: RoutePoint, to: RoutePoint) -> Double {
         GeoDistance.distanceMeters(
-            fromLat: from.latitude, lon: from.longitude,
-            toLat: to.latitude, lon: to.longitude
+            fromLat: from.latitude,
+            lon: from.longitude,
+            toLat: to.latitude,
+            lon: to.longitude
         )
     }
 }
