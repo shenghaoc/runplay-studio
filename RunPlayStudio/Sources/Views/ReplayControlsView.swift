@@ -41,9 +41,9 @@ struct ReplayControlsView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Step backward (←)")
+                .help("Step backward (⌥←)")
                 .accessibilityLabel("Step backward")
-                .keyboardShortcut(.leftArrow, modifiers: [])
+                .keyboardShortcut(.leftArrow, modifiers: .option)
                 .disabled(!controller.isPlaying && controller.state.currentTime == 0)
 
                 // Play/Pause — prominent circular button
@@ -69,9 +69,9 @@ struct ReplayControlsView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Step forward (→)")
+                .help("Step forward (⌥→)")
                 .accessibilityLabel("Step forward")
-                .keyboardShortcut(.rightArrow, modifiers: [])
+                .keyboardShortcut(.rightArrow, modifiers: .option)
                 .disabled(!controller.isPlaying && controller.state.currentTime >= controller.state.totalDuration)
 
                 Spacer()

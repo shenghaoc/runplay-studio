@@ -150,10 +150,18 @@ struct MetricsChartView: View {
                 seekDistanceControl
             }
         }
-        .onAppear(perform: refreshChartData)
+        .onAppear {
+            refreshChartData()
+            seekDistanceKmText = String(format: "%.2f", currentDistance / 1000)
+        }
         .onChange(of: selectedMetric) { _, _ in refreshChartData() }
         .onChange(of: routePoints) { _, _ in refreshChartData() }
         .onChange(of: smoothingWindow) { _, _ in refreshChartData() }
+        .onChange(of: currentDistance) { _, newValue in
+            if !seekFieldFocused {
+                seekDistanceKmText = String(format: "%.2f", newValue / 1000)
+            }
+        }
     }
 
     // MARK: - Seek Distance Control (VoiceOver alternative)

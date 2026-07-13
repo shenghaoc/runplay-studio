@@ -157,7 +157,7 @@ struct WorkoutDetailView: View {
         switch selectedTab {
         case .overview: return "Route replay"
         case .charts: return "Drag the chart to scrub"
-        case .splits: return "Kilometre breakdown"
+        case .splits: return "Kilometer breakdown"
         case .segments: return "Detected highlights"
         }
     }
@@ -244,7 +244,8 @@ struct WorkoutDetailView: View {
     private var currentSplitIndex: Int? {
         let distance = replayController.state.currentDistance
         guard let idx = workout.splits.firstIndex(where: {
-            distance >= $0.startDistanceMeters && distance < $0.endDistanceMeters
+            distance >= $0.startDistanceMeters
+                && (distance < $0.endDistanceMeters || $0.id == workout.splits.last?.id)
         }) else { return nil }
         return idx
     }

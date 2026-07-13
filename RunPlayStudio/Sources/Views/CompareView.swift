@@ -10,40 +10,44 @@ struct CompareView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Workout selector
             comparisonSelector
+            Divider()
 
             if let pair = appState.comparisonPair {
-                // Summary deltas
-                if let summary = appState.comparisonSummary {
-                    ComparisonSummaryView(summary: summary)
-                        .padding(AppDesign.Spacing.xLarge)
-                        .background(AppDesign.panelBackground)
-                }
+                VStack(spacing: AppDesign.Spacing.large) {
+                    if let summary = appState.comparisonSummary {
+                        ComparisonSummaryView(summary: summary)
+                    }
 
-                // One MapKit surface; the in-map control toggles 2D/3D.
-                HStack(spacing: 0) {
-                    ComparisonMapView(
-                        primaryWorkout: pair.primary,
-                        comparisonWorkout: pair.comparison,
-                        warnings: appState.comparisonSummary?.warnings ?? [],
-                        appState: appState
-                    )
+                    HStack(spacing: AppDesign.Spacing.large) {
+                        ComparisonMapView(
+                            primaryWorkout: pair.primary,
+                            comparisonWorkout: pair.comparison,
+                            warnings: [],
+                            appState: appState
+                        )
+                        .layoutPriority(1)
+                        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+
+                        SplitComparisonTableView(splits: appState.splitComparisons)
+                            .padding(AppDesign.Spacing.large)
+                            .frame(minWidth: 380, maxWidth: 480, maxHeight: .infinity)
+                            .background(AppDesign.panelBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+                    }
                     .layoutPriority(1)
 
-                    Divider()
-
-                    SplitComparisonTableView(splits: appState.splitComparisons)
-                        .frame(minWidth: 260)
+                    ComparisonChartView(
+                        metrics: appState.comparisonMetrics,
+                        primaryName: pair.primary.displayName,
+                        comparisonName: pair.comparison.displayName
+                    )
+                    .padding(AppDesign.Spacing.large)
+                    .frame(height: 190)
+                    .background(AppDesign.panelBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
                 }
-
-                ComparisonChartView(
-                    metrics: appState.comparisonMetrics,
-                    primaryName: pair.primary.displayName,
-                    comparisonName: pair.comparison.displayName
-                )
-                .frame(height: 200)
-                .padding(AppDesign.Spacing.xLarge)
+                .padding(AppDesign.Spacing.large)
             } else {
                 ComparisonEmptyView(
                     workoutCount: appState.workouts.count,
@@ -51,12 +55,19 @@ struct CompareView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppDesign.workspaceBackground)
     }
 
     // MARK: - Selector
 
     private var comparisonSelector: some View {
-        HStack(spacing: AppDesign.Spacing.xLarge) {
+        HStack(spacing: AppDesign.Spacing.xxLarge) {
+            Text("COMPARE")
+                .font(.caption2.weight(.semibold))
+                .tracking(1.2)
+                .foregroundStyle(.tertiary)
+
             // Primary workout
             VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
                 Text("Primary Run")
@@ -70,16 +81,14 @@ struct CompareView: View {
             }
             .help("The main run being compared")
 
-            Spacer()
+            Spacer(minLength: AppDesign.Spacing.large)
 
             Image(systemName: "arrow.left.arrow.right")
-                .font(.caption)
-                .foregroundStyle(.quaternary)
-
-            Spacer()
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppDesign.comparisonOrange)
 
             // Comparison workout
-            VStack(alignment: .trailing, spacing: AppDesign.Spacing.xxSmall) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
                 Text("Compare Against")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.tertiary)
@@ -99,7 +108,7 @@ struct CompareView: View {
                             Text(workout.displayName).tag(workout as RunWorkout?)
                         }
                     }
-                    .frame(maxWidth: 200)
+                    .frame(width: 220)
                     .help("Choose a workout to compare against the primary run")
                 }
 
@@ -110,6 +119,8 @@ struct CompareView: View {
                 }
             }
 
+            Spacer()
+
             if appState.isComparing {
                 Button("Clear") {
                     appState.clearComparison()
@@ -118,7 +129,8 @@ struct CompareView: View {
                 .help("Exit comparison mode")
             }
         }
-        .padding(AppDesign.Spacing.xLarge)
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
         .background(AppDesign.panelBackground)
     }
 }
@@ -129,8 +141,8 @@ struct ComparisonSummaryView: View {
     let summary: WorkoutComparisonSummary
 
     var body: some View {
-        VStack(spacing: AppDesign.Spacing.large) {
-            VStack(spacing: AppDesign.Spacing.xxSmall) {
+        HStack(spacing: AppDesign.Spacing.large) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
                 HStack(spacing: AppDesign.Spacing.small) {
                     Image(systemName: winnerIcon)
                         .foregroundStyle(winnerColor)
@@ -139,57 +151,36 @@ struct ComparisonSummaryView: View {
                         .foregroundStyle(winnerColor)
                 }
 
-                Text("\(summary.primaryTitle) vs \(summary.comparisonTitle)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Text("OVERALL RESULT")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1)
+                    .foregroundStyle(.tertiary)
             }
+            .frame(minWidth: 150, alignment: .leading)
 
-            // Metric deltas
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: AppDesign.Spacing.medium)], spacing: AppDesign.Spacing.medium) {
+            HStack(spacing: AppDesign.Spacing.small) {
                 DeltaCard(label: "Distance", value: summary.distanceDeltaFormatted)
                 DeltaCard(label: "Duration", value: summary.durationDeltaFormatted)
-                DeltaCard(label: "Pace (min/km)", value: summary.paceDeltaFormatted)
-                DeltaCard(label: "Elevation Gain", value: summary.elevationGainDeltaFormatted)
+                DeltaCard(label: "Pace", value: summary.paceDeltaFormatted)
+                DeltaCard(label: "Elevation", value: summary.elevationGainDeltaFormatted)
                 if let avgHR = summary.avgHRDeltaFormatted {
                     DeltaCard(label: "Avg HR", value: avgHR)
                 }
-                if let maxHR = summary.maxHRDeltaFormatted {
-                    DeltaCard(label: "Max HR", value: maxHR)
-                }
             }
+            .frame(maxWidth: .infinity)
 
-            // Warnings
             if !summary.warnings.isEmpty {
-                VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
-                    ForEach(summary.warnings, id: \.self) { warning in
-                        HStack(alignment: .top, spacing: AppDesign.Spacing.small) {
-                            Image(systemName: warning.icon)
-                                .foregroundStyle(AppDesign.comparisonOrange)
-                                .frame(width: 16)
-                            Text(warning.rawValue)
-                                .font(.subheadline)
-                                .foregroundStyle(AppDesign.comparisonOrange)
-                        }
-                    }
-
-                    if summary.warnings.contains(.differentDistances) {
-                        HStack(alignment: .top, spacing: AppDesign.Spacing.small) {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 16)
-                            Text("Charts and splits compare the overlapping \(commonDistanceLabel) only.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                HStack(spacing: AppDesign.Spacing.small) {
+                    Image(systemName: "info.circle")
+                    Text("Aligned over \(commonDistanceLabel)")
                 }
-                .padding(AppDesign.Spacing.medium)
-                .background(AppDesign.comparisonOrange.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
+        .padding(AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
     }
 
     private var winnerIcon: String {
@@ -233,7 +224,7 @@ struct DeltaCard: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, AppDesign.Spacing.medium)
         .padding(.vertical, AppDesign.Spacing.small)
-        .background(AppDesign.cardBackground)
+        .background(Color.primary.opacity(0.035))
         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 }
