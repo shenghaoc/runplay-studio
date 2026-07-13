@@ -72,36 +72,29 @@ struct SegmentCard: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: AppDesign.Spacing.small) {
-            // Accent bar
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(segmentColor)
-                .frame(width: 2.5)
-
-            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
-                HStack(spacing: AppDesign.Spacing.xxSmall) {
-                    Image(systemName: segment.type.icon)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(segmentColor)
-                    Text(segment.title)
-                        .font(AppDesign.Typography.compactMetric)
-                        .lineLimit(1)
-                }
-
-                Text(segment.subtitle)
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.tertiary)
-
-                HStack(spacing: AppDesign.Spacing.small) {
-                    Label(segment.formattedDistance, systemImage: "ruler")
-                    Label(segment.formattedDuration, systemImage: "clock")
-                    if !segment.formattedElevation.isEmpty {
-                        Label(segment.formattedElevation, systemImage: "mountain.2")
-                    }
-                }
-                .font(AppDesign.Typography.compactLabel)
-                .foregroundStyle(.quaternary)
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            HStack(spacing: AppDesign.Spacing.xxSmall) {
+                Image(systemName: segment.type.icon)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(segmentColor)
+                Text(segment.title)
+                    .font(AppDesign.Typography.compactMetric)
+                    .lineLimit(1)
             }
+
+            Text(segment.subtitle)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: AppDesign.Spacing.small) {
+                Label(segment.formattedDistance, systemImage: "ruler")
+                Label(segment.formattedDuration, systemImage: "clock")
+                if !segment.formattedElevation.isEmpty {
+                    Label(segment.formattedElevation, systemImage: "mountain.2")
+                }
+            }
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.quaternary)
         }
         .padding(.horizontal, AppDesign.Spacing.medium)
         .padding(.vertical, AppDesign.Spacing.small)

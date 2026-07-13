@@ -35,14 +35,22 @@ struct WorkoutDetailView: View {
                 gpsWarningBanner
             }
 
-            // Tab picker — subtle background instead of standalone
-            tabPickerSection
+            workoutHeader
 
-            // Main content area (map or charts)
-            mainContentArea
+            Divider()
 
-            // Bottom panels: segments, metrics, replay, summary
-            bottomPanels
+            VStack(spacing: AppDesign.Spacing.large) {
+                tabPickerSection
+                mainContentArea
+                    .layoutPriority(1)
+                replayDock
+            }
+            .padding(AppDesign.Spacing.large)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            AppDesign.workspaceBackground
+                .ignoresSafeArea()
         }
         .focused($isFocused)
         .onAppear { isFocused = true }
@@ -56,6 +64,51 @@ struct WorkoutDetailView: View {
             default: return .ignored
             }
         }
+    }
+
+    // MARK: - Workout Header
+
+    private var workoutHeader: some View {
+        HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+                Text("WORKOUT")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(.tertiary)
+                Text(workout.displayName)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: AppDesign.Spacing.xLarge)
+
+            headerMetric("Distance", workout.summary.formattedDistance, AppDesign.MetricColor.distance)
+            headerMetric("Duration", workout.summary.formattedDuration, AppDesign.MetricColor.duration)
+            headerMetric("Avg Pace", workout.summary.formattedPace, AppDesign.MetricColor.pace)
+            headerMetric(
+                "Elevation",
+                DisplayFormatter.formatElevation(workout.summary.elevationGainMeters),
+                AppDesign.MetricColor.elevation
+            )
+            if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
+                headerMetric("Avg HR", DisplayFormatter.formatHeartRate(heartRate), AppDesign.MetricColor.heartRate)
+            }
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
+
+    private func headerMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text(value)
+                .font(.system(.title3, design: .rounded, weight: .semibold).monospacedDigit())
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(minWidth: 72, alignment: .leading)
     }
 
     // MARK: - GPS Warning Banner
@@ -91,13 +144,22 @@ struct WorkoutDetailView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 360)
 
             Spacer()
+
+            Text(tabContext)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, AppDesign.Spacing.xLarge)
-        .padding(.vertical, AppDesign.Spacing.medium)
-        .background(AppDesign.panelBackground)
+    }
+
+    private var tabContext: String {
+        switch selectedTab {
+        case .overview: return "Route replay"
+        case .charts: return "Drag the chart to scrub"
+        case .splits: return "Kilometre breakdown"
+        case .segments: return "Detected highlights"
+        }
     }
 
     // MARK: - Main Content
@@ -111,6 +173,7 @@ struct WorkoutDetailView: View {
                 currentPointIndex: replayController.state.currentPointIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
         case .charts:
             MetricsChartView(
                 routePoints: workout.routePoints,
@@ -120,7 +183,10 @@ struct WorkoutDetailView: View {
                     replayController.seekToDistance(distance)
                 }
             )
+            .padding(.vertical, AppDesign.Spacing.large)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppDesign.panelBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
         case .splits:
             SplitTableView(
                 splits: workout.splits,
@@ -128,6 +194,8 @@ struct WorkoutDetailView: View {
             )
             .padding(AppDesign.Spacing.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(AppDesign.panelBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
         case .segments:
             SegmentHighlightsPanel(
                 segments: appState.detectedSegments,
@@ -139,52 +207,33 @@ struct WorkoutDetailView: View {
             )
             .padding(AppDesign.Spacing.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(AppDesign.panelBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
         }
     }
 
-    // MARK: - Bottom Panels
+    // MARK: - Replay Dock
 
-    private var bottomPanels: some View {
-        VStack(spacing: AppDesign.Spacing.small) {
-            // Segment highlights (if any)
-            if !appState.detectedSegments.isEmpty {
-                SegmentHighlightsPanel(
-                    segments: appState.detectedSegments,
-                    selectedSegment: $appState.selectedSegment,
-                    onSelect: { segment in
-                        seekToSegment(segment)
-                    },
-                    onClear: {}
-                )
-                .padding(.horizontal, AppDesign.Spacing.xLarge)
-                .padding(.vertical, AppDesign.Spacing.small)
-                .background(AppDesign.panelBackground)
-            }
-
-            // Current metrics panel
+    private var replayDock: some View {
+        HStack(spacing: AppDesign.Spacing.xxLarge) {
             CurrentMetricsPanel(
                 metrics: replayController.selectedMetrics,
                 hasHeartRate: workout.hasHeartRateData,
                 hasCadence: workout.hasCadenceData
             )
-            .padding(.horizontal, AppDesign.Spacing.xLarge)
-            .padding(.vertical, AppDesign.Spacing.small)
-            .background(AppDesign.panelBackground)
+            .frame(maxWidth: 460)
 
-            // Replay controls + summary
-            HStack(spacing: AppDesign.Spacing.xLarge) {
-                ReplayControlsView(controller: replayController)
-                    .frame(maxWidth: .infinity)
+            Divider()
+                .frame(height: 48)
 
-                Divider()
-                    .padding(.vertical, AppDesign.Spacing.xSmall)
-
-                RunSummaryView(summary: workout.summary)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(AppDesign.Spacing.xLarge)
-            .background(AppDesign.panelBackground)
+            ReplayControlsView(controller: replayController)
+                .frame(maxWidth: .infinity)
         }
+        .padding(.horizontal, AppDesign.Spacing.xLarge)
+        .padding(.vertical, AppDesign.Spacing.medium)
+        .background(AppDesign.panelBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func seekToSegment(_ segment: SegmentHighlight) {

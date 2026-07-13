@@ -29,12 +29,12 @@ struct CompareView: View {
                         warnings: appState.comparisonSummary?.warnings ?? [],
                         appState: appState
                     )
-                    .frame(minWidth: 500)
+                    .layoutPriority(1)
 
                     Divider()
 
                     SplitComparisonTableView(splits: appState.splitComparisons)
-                        .frame(minWidth: 300)
+                        .frame(minWidth: 260)
                 }
 
                 ComparisonChartView(

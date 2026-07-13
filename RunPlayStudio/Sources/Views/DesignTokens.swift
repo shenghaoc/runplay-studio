@@ -100,10 +100,12 @@ enum AppDesign {
         static let metricLabel = Font.system(.caption2, design: .default, weight: .medium)
 
         /// Compact metric — used for tight spaces like comparison badges.
-        static let compactMetric = Font.system(size: 11, weight: .medium, design: .default)
+        /// Uses `.caption` for Dynamic Type compatibility (~12pt on macOS).
+        static let compactMetric = Font.caption.weight(.medium)
 
         /// Compact label — used for very tight label text.
-        static let compactLabel = Font.system(size: 9, weight: .medium, design: .default)
+        /// Uses `.caption2` for Dynamic Type compatibility (~10pt on macOS).
+        static let compactLabel = Font.caption2.weight(.medium)
 
         /// Compact icon — used for inline icons in tight spaces like sidebar rows.
         static let compactIcon = Font.system(size: 8, weight: .medium)
@@ -111,17 +113,20 @@ enum AppDesign {
 
     // MARK: - Background Treatments
 
-    /// Subtle grouped background for panels — lighter than window background.
-    static let panelBackground = Color.primary.opacity(0.03)
+    /// Opaque grouped surface. Avoids muddy transparency over maps and charts.
+    static let panelBackground = Color(nsColor: .controlBackgroundColor)
 
     /// Card background with subtle warmth.
-    static let cardBackground = Color.primary.opacity(0.04)
+    static let cardBackground = Color(nsColor: .underPageBackgroundColor)
 
     /// Active/selected card background.
     static let activeCardBackground = Color.accentColor.opacity(0.08)
 
     /// Overlay backdrop for map controls.
     static let overlayBackground = Color(nsColor: .controlBackgroundColor).opacity(0.85)
+
+    /// The stable canvas behind every analysis workspace.
+    static let workspaceBackground = Color(nsColor: .windowBackgroundColor)
 }
 
 // MARK: - Color Hex Initializer

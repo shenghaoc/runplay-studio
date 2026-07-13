@@ -18,6 +18,8 @@ struct MetricsChartView: View {
     @State private var isDragging: Bool = false
     @State private var dragDistance: Double? = nil
     @State private var chartData: [ChartDataPoint] = []
+    @State private var seekDistanceKmText: String = ""
+    @FocusState private var seekFieldFocused: Bool
 
     enum MetricType: String, CaseIterable {
         case elevation = "Elevation"
@@ -142,11 +144,59 @@ struct MetricsChartView: View {
                     noDataOverlay
                 }
             }
+
+            // VoiceOver-friendly seek alternative
+            if !chartData.isEmpty {
+                seekDistanceControl
+            }
         }
         .onAppear(perform: refreshChartData)
         .onChange(of: selectedMetric) { _, _ in refreshChartData() }
         .onChange(of: routePoints) { _, _ in refreshChartData() }
         .onChange(of: smoothingWindow) { _, _ in refreshChartData() }
+    }
+
+    // MARK: - Seek Distance Control (VoiceOver alternative)
+
+    private var seekDistanceControl: some View {
+        let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
+        return HStack(spacing: AppDesign.Spacing.small) {
+            Text("Seek")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            TextField("km", text: $seekDistanceKmText)
+                .font(.caption.monospacedDigit())
+                .frame(width: 80)
+                .textFieldStyle(.roundedBorder)
+                .focused($seekFieldFocused)
+                .accessibilityLabel("Seek to distance in kilometers")
+                .onSubmit { commitSeekDistance(totalKm) }
+
+            Stepper(value: Binding(
+                get: { currentDistance / 1000 },
+                set: { newKm in
+                    let distance = max(0, min(newKm * 1000, totalKm * 1000))
+                    onSeek?(distance)
+                    seekDistanceKmText = String(format: "%.2f", newKm)
+                }
+            ), in: 0...max(totalKm, 0.01), step: 0.1) {
+                Text(String(format: "%.2f / %.2f km", currentDistance / 1000, totalKm))
+                    .font(.caption.monospacedDigit())
+            }
+            .accessibilityLabel("Adjust seek distance")
+            .accessibilityValue(String(format: "%.2f km", currentDistance / 1000))
+        }
+        .padding(.horizontal)
+    }
+
+    private func commitSeekDistance(_ totalKm: Double) {
+        guard let km = Double(seekDistanceKmText.replacingOccurrences(of: ",", with: ".")),
+              km >= 0, km <= totalKm else {
+            seekDistanceKmText = String(format: "%.2f", currentDistance / 1000)
+            return
+        }
+        onSeek?(km * 1000)
     }
 
     // MARK: - No Data Overlay

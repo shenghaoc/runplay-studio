@@ -38,6 +38,9 @@ struct SplitTableView: View {
                     RoundedRectangle(cornerRadius: AppDesign.Radius.small)
                         .strokeBorder(AppDesign.comparisonOrange.opacity(0.3), lineWidth: 1)
                 )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Current split \(split.splitIndex)")
+                .accessibilityValue("Pace \(split.formattedPace), time \(split.formattedElapsed)")
             }
 
             Table(splits) {
@@ -51,6 +54,8 @@ struct SplitTableView: View {
                         Text("\(split.splitIndex)")
                             .monospacedDigit()
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Split \(split.splitIndex), distance \(String(format: "%.2f km", split.distanceMeters / 1000)), time \(split.formattedElapsed), pace \(split.formattedPace)")
                 }
                 .width(50)
 

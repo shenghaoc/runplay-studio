@@ -179,6 +179,8 @@ struct SplitComparisonTableView: View {
                                 .font(AppDesign.Typography.compactMetric)
                         }
                         .foregroundStyle(winnerColor(for: split.winner))
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Split \(split.splitIndex) winner: \(split.winner.label)")
                     }
                     .width(140)
                 }
