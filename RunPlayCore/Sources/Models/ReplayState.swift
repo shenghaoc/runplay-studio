@@ -8,7 +8,7 @@ public enum PlaybackState: String, Codable, Sendable {
 }
 
 /// Controls for the route replay timeline.
-public struct ReplayState: Sendable {
+public struct ReplayState: Sendable, Equatable {
     public var playbackState: PlaybackState
     public var currentTime: Double
     public var currentDistance: Double

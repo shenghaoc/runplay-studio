@@ -35,12 +35,12 @@ struct WorkoutDetailView: View {
                 gpsWarningBanner
             }
 
-            workoutHeader
+            WorkoutHeaderView(workout: workout)
 
             Divider()
 
             VStack(spacing: AppDesign.Spacing.large) {
-                tabPickerSection
+                TabBarView(selectedTab: $selectedTab)
                 mainContentArea
                     .layoutPriority(1)
                 replayDock
@@ -67,54 +67,6 @@ struct WorkoutDetailView: View {
         }
     }
 
-    // MARK: - Workout Header
-
-    private var workoutHeader: some View {
-        HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
-            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
-                Text("WORKOUT")
-                    .font(.caption2.weight(.semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(.tertiary)
-                Text(workout.displayName)
-                    .font(AppDesign.Typography.heading2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(maxWidth: 260, alignment: .leading)
-            .help(workout.displayName)
-
-            Spacer(minLength: AppDesign.Spacing.xLarge)
-
-            headerMetric("Distance", workout.summary.formattedDistance, AppDesign.MetricColor.distance)
-            headerMetric("Duration", workout.summary.formattedDuration, AppDesign.MetricColor.duration)
-            headerMetric("Avg Pace", workout.summary.formattedPace, AppDesign.MetricColor.pace)
-            headerMetric(
-                "Elevation",
-                DisplayFormatter.formatElevation(workout.summary.elevationGainMeters),
-                AppDesign.MetricColor.elevation
-            )
-            if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
-                headerMetric("Avg HR", DisplayFormatter.formatHeartRate(heartRate), AppDesign.MetricColor.heartRate)
-            }
-        }
-        .padding(.horizontal, AppDesign.Spacing.xxLarge)
-        .padding(.vertical, AppDesign.Spacing.large)
-        .background(AppDesign.panelBackground)
-    }
-
-    private func headerMetric(_ label: String, _ value: String, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
-            Text(value)
-                .font(AppDesign.Typography.metricLarge.monospacedDigit())
-                .foregroundStyle(color)
-            Text(label)
-                .font(AppDesign.Typography.compactLabel)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(minWidth: 72, alignment: .leading)
-    }
-
     // MARK: - GPS Warning Banner
 
     private var gpsWarningBanner: some View {
@@ -128,42 +80,6 @@ struct WorkoutDetailView: View {
         .padding(.horizontal, AppDesign.Spacing.xLarge)
         .padding(.vertical, AppDesign.Spacing.small)
         .background(AppDesign.warmYellow.opacity(0.08))
-    }
-
-    // MARK: - Tab Picker
-
-    private var tabPickerSection: some View {
-        HStack {
-            Picker("View", selection: $selectedTab) {
-                ForEach(ViewTab.allCases) { tab in
-                    Text(tab.rawValue)
-                        .tag(tab)
-                        .help(tab == .overview
-                              ? "Map and route visualization (⌘1)"
-                              : tab == .charts
-                              ? "Pace, HR, and elevation charts (⌘2)"
-                              : tab == .splits
-                              ? "Kilometer split table (⌘3)"
-                              : "Auto-detected segments (⌘4)")
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Spacer()
-
-            Text(tabContext)
-                .font(AppDesign.Typography.compactMetric)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private var tabContext: String {
-        switch selectedTab {
-        case .overview: return "Route replay"
-        case .charts: return "Drag the chart to navigate"
-        case .splits: return "Kilometer breakdown"
-        case .segments: return "Detected highlights"
-        }
     }
 
     // MARK: - Main Content
@@ -252,5 +168,99 @@ struct WorkoutDetailView: View {
                 && (distance < $0.endDistanceMeters || $0.id == workout.splits.last?.id)
         }) else { return nil }
         return idx
+    }
+}
+
+// MARK: - Extracted Static Subviews
+
+/// Workout metrics header — isolated from replay controller so SwiftUI skips
+/// diffing this sub-tree during 30fps playback ticks.
+private struct WorkoutHeaderView: View {
+    let workout: RunWorkout
+
+    var body: some View {
+        HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+                Text("WORKOUT")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(.tertiary)
+                Text(workout.displayName)
+                    .font(AppDesign.Typography.heading2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: 260, alignment: .leading)
+            .help(workout.displayName)
+
+            Spacer(minLength: AppDesign.Spacing.xLarge)
+
+            headerMetric("Distance", workout.summary.formattedDistance, AppDesign.MetricColor.distance)
+            headerMetric("Duration", workout.summary.formattedDuration, AppDesign.MetricColor.duration)
+            headerMetric("Avg Pace", workout.summary.formattedPace, AppDesign.MetricColor.pace)
+            headerMetric(
+                "Elevation",
+                DisplayFormatter.formatElevation(workout.summary.elevationGainMeters),
+                AppDesign.MetricColor.elevation
+            )
+            if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
+                headerMetric("Avg HR", DisplayFormatter.formatHeartRate(heartRate), AppDesign.MetricColor.heartRate)
+            }
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
+
+    private func headerMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+            Text(value)
+                .font(AppDesign.Typography.metricLarge.monospacedDigit())
+                .foregroundStyle(color)
+            Text(label)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+    }
+}
+
+/// Tab bar with contextual help — isolated from replay controller so SwiftUI
+/// skips diffing this sub-tree during 30fps playback ticks.
+private struct TabBarView: View {
+    @Binding var selectedTab: WorkoutDetailView.ViewTab
+
+    var body: some View {
+        HStack {
+            Picker("View", selection: $selectedTab) {
+                ForEach(WorkoutDetailView.ViewTab.allCases) { tab in
+                    Text(tab.rawValue)
+                        .tag(tab)
+                        .help(tab == .overview
+                              ? "Map and route visualization (⌘1)"
+                              : tab == .charts
+                              ? "Pace, HR, and elevation charts (⌘2)"
+                              : tab == .splits
+                              ? "Kilometer split table (⌘3)"
+                              : "Auto-detected segments (⌘4)")
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Spacer()
+
+            Text(tabContext)
+                .font(AppDesign.Typography.compactMetric)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var tabContext: String {
+        switch selectedTab {
+        case .overview: return "Route replay"
+        case .charts: return "Drag the chart to navigate"
+        case .splits: return "Kilometer breakdown"
+        case .segments: return "Detected highlights"
+        }
     }
 }
