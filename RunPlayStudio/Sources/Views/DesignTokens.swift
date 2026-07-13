@@ -183,7 +183,7 @@ struct MetricDisplay: View {
         VStack(alignment: alignment, spacing: AppDesign.Spacing.xxSmall) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(color.opacity(0.7))
             }
 

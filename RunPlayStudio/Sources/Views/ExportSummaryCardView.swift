@@ -69,13 +69,7 @@ struct ExportSummaryCardView: View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             Text(model.appBranding)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [AppDesign.primaryBlue, AppDesign.MetricColor.pace],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .foregroundStyle(AppDesign.primaryBlue)
 
             Text(model.workoutTitle)
                 .font(.system(size: 34, weight: .bold))

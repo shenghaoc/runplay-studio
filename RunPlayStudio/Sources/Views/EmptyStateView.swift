@@ -25,13 +25,7 @@ struct EmptyStateView: View {
 
                     Image(systemName: "figure.run")
                         .font(.system(size: 48, weight: .light))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [AppDesign.primaryBlue, AppDesign.MetricColor.pace],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .foregroundStyle(AppDesign.primaryBlue)
                 }
                 .scaleEffect(appeared ? 1.0 : 0.8)
                 .opacity(appeared ? 1.0 : 0.0)

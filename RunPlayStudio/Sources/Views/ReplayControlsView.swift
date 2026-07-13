@@ -37,7 +37,7 @@ struct ReplayControlsView: View {
                 // Step backward
                 Button(action: controller.stepBackward) {
                     Image(systemName: "backward.frame.fill")
-                        .font(.system(size: 14))
+                        .font(.body)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -49,7 +49,7 @@ struct ReplayControlsView: View {
                 // Play/Pause — prominent circular button
                 Button(action: controller.togglePlayPause) {
                     Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.title3.weight(.semibold))
                         .frame(width: 40, height: 40)
                         .background(
                             Circle()
@@ -65,7 +65,7 @@ struct ReplayControlsView: View {
                 // Step forward
                 Button(action: controller.stepForward) {
                     Image(systemName: "forward.frame.fill")
-                        .font(.system(size: 14))
+                        .font(.body)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)

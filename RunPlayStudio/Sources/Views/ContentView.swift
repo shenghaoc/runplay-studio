@@ -65,10 +65,16 @@ struct ContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .primaryAction) {
                                 HStack {
-                                    if !appState.availableForComparison.isEmpty {
+                                    if appState.isComparing {
+                                        Button(action: { appState.clearComparison() }) {
+                                            Label("End Compare", systemImage: "arrow.left.arrow.right")
+                                        }
+                                        .help("Exit comparison mode")
+                                    } else if !appState.availableForComparison.isEmpty {
                                         Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
                                             Label("Compare", systemImage: "arrow.left.arrow.right")
                                         }
+                                        .help("Compare with another run")
                                     }
 
                                     ExportView(

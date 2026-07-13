@@ -78,10 +78,10 @@ struct WorkoutRow: View {
 
     var body: some View {
         HStack(spacing: AppDesign.Spacing.medium) {
-            // Left accent bar colored by HR zone
-            RoundedRectangle(cornerRadius: 2)
-                .fill(accentColor)
-                .frame(width: 3)
+            Image(systemName: "figure.run.circle.fill")
+                .font(.title3)
+                .foregroundStyle(accentColor)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
                 Text(workout.displayName)
