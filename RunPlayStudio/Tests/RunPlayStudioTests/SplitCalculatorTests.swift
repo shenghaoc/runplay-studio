@@ -131,6 +131,21 @@ final class SplitCalculatorTests: XCTestCase {
         XCTAssertEqual(split?.averageHeartRateBPM ?? -1, 125, accuracy: 0.001)
     }
 
+    func testFinalSplitIncludesTerminalSameSegmentStationaryTime() {
+        let start = Date()
+        let workout = RunWorkout(routePoints: [
+            routePoint(start: start, time: 0, distance: 0, segment: 0),
+            routePoint(start: start, time: 300, distance: 1_000, segment: 0),
+            routePoint(start: start, time: 400, distance: 1_000, segment: 0)
+        ])
+
+        let split = SplitCalculator.calculateSplits(from: workout).first
+
+        XCTAssertEqual(split?.elapsedSeconds ?? -1, 400, accuracy: 0.001)
+        XCTAssertEqual(split?.activeSeconds ?? -1, 400, accuracy: 0.001)
+        XCTAssertEqual(split?.paceSecondsPerKilometer ?? -1, 400, accuracy: 0.001)
+    }
+
     // MARK: - Helpers
 
     private func createPoints(distance: Double, totalSeconds: Double? = nil) -> [RoutePoint] {

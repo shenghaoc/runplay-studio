@@ -66,6 +66,29 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertEqual(metrics.paceDeltaSecondsPerKm ?? -1, 0, accuracy: 0.001)
     }
 
+    func testSelectedTerminalDistanceIncludesSameSegmentStationaryTime() {
+        let start = Date()
+        let primary = RunWorkout(routePoints: [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 1, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(300), latitude: 1.01, longitude: 1, distanceFromStartMeters: 1_000, elapsedSeconds: 300),
+            RoutePoint(timestamp: start.addingTimeInterval(400), latitude: 1.01, longitude: 1, distanceFromStartMeters: 1_000, elapsedSeconds: 400)
+        ])
+        let comparison = RunWorkout(routePoints: [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 1, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(300), latitude: 1.01, longitude: 1, distanceFromStartMeters: 1_000, elapsedSeconds: 300),
+            RoutePoint(timestamp: start.addingTimeInterval(350), latitude: 1.01, longitude: 1, distanceFromStartMeters: 1_000, elapsedSeconds: 350)
+        ])
+
+        let metrics = service.metricsAtDistance(1_000, primary: primary, comparison: comparison)
+
+        XCTAssertEqual(metrics.primaryElapsedSeconds ?? -1, 400, accuracy: 0.001)
+        XCTAssertEqual(metrics.primaryActiveSeconds ?? -1, 400, accuracy: 0.001)
+        XCTAssertEqual(metrics.comparisonElapsedSeconds ?? -1, 350, accuracy: 0.001)
+        XCTAssertEqual(metrics.comparisonActiveSeconds ?? -1, 350, accuracy: 0.001)
+        XCTAssertEqual(metrics.elapsedTimeDeltaSeconds ?? -1, 50, accuracy: 0.001)
+        XCTAssertEqual(metrics.activeTimeDeltaSeconds ?? -1, 50, accuracy: 0.001)
+    }
+
     func testFasterRunGivesCorrectPaceDelta() {
         let faster = createSampleWorkout(distance: 5000, pace: 270) // 4:30/km
         let slower = createSampleWorkout(distance: 5000, pace: 330) // 5:30/km

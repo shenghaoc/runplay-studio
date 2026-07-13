@@ -402,12 +402,14 @@ public struct WorkoutTimeline: Sendable {
         }
 
         // A same-segment distance plateau is active timer time, not a pause.
-        // Use first arrival for both roles so that consecutive ranges partition
-        // that time exactly once instead of double-counting it. The special
+        // Interior boundaries use first arrival for both roles so consecutive
+        // ranges partition that time exactly once. A terminal range end must
+        // use the final sample so the last split and selected-distance metrics
+        // still include stationary timer time at the end of the workout. The
         // stop/resume rule below applies only when the duplicate run crosses a
         // route-segment boundary.
         if routePoints[first].routeSegmentIndex == routePoints[last].routeSegmentIndex {
-            return first
+            return role == .rangeEnd && last == routePoints.count - 1 ? last : first
         }
 
         switch role {

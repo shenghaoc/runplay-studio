@@ -149,6 +149,23 @@ final class WorkoutTimelineTests: XCTestCase {
         XCTAssertEqual(first.elapsedSeconds + second.elapsedSeconds, timeline.totalElapsedSeconds, accuracy: 0.001)
     }
 
+    func testTerminalSameSegmentDistancePlateauUsesFinalTimerSample() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 300, distance: 1_000),
+            point(time: 400, distance: 1_000)
+        ])
+
+        let sample = try XCTUnwrap(timeline.distanceSample(at: 1_000, boundary: .rangeEnd))
+        let range = try XCTUnwrap(timeline.distanceRange(from: 0, to: 1_000))
+
+        XCTAssertEqual(sample.pointIndex, 2)
+        XCTAssertEqual(sample.elapsedSeconds, timeline.totalElapsedSeconds, accuracy: 0.001)
+        XCTAssertEqual(sample.activeSeconds, timeline.totalActiveSeconds, accuracy: 0.001)
+        XCTAssertEqual(range.elapsedSeconds, 400, accuracy: 0.001)
+        XCTAssertEqual(range.activeSeconds, 400, accuracy: 0.001)
+    }
+
     func testReplayHoldsDuringGapAndJumpsAtExactResumeTime() throws {
         let timeline = WorkoutTimeline(routePoints: pausedRoute())
         let duringPause = try XCTUnwrap(timeline.replaySample(atElapsedTime: 1_500))
