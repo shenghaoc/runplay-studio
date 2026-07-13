@@ -1,246 +1,174 @@
 # AGENTS.md — RunPlay Studio
 
-## Branch & PR Workflow
+RunPlay Studio is a native macOS application for local, post-run GPS workout
+visualization, replay, analysis, comparison, and export. It is not a live
+tracker, cloud service, social network, web app, or AI product.
 
-- **Never commit directly to `main`.**
-- Create a feature/fix branch from `main`.
-- Make small, reviewable commits.
-- Open PR(s) for review.
-- Bug fixes must land via PRs, not direct mainline commits.
-- No handoff-only commits. Never update a handoff file solely because the latest commit hash changed.
-- `git log` is the source of truth for the latest commit.
+This is the canonical operating contract for every coding agent. It supersedes
+historical rapid-prototyping prompts that instructed agents to work directly on
+`main` or leave transient handoff status in committed documentation.
 
-## Repository Structure
+## Instruction Hierarchy
 
-```
-RunPlayCore/          # Platform-neutral library (no UI frameworks)
-  Sources/
-    Models/           # Data types (RunWorkout, RoutePoint, etc.)
-    Importers/        # JSON, GPX, TCX, FIT importers
-    Services/         # Analysis, splits, segments, comparison, export, playback
-    3D/               # Platform-neutral lookup helpers
-  Tests/
-    RunPlayCoreTests/ # Platform-neutral tests (builds on Linux)
+1. Source code, tests, `Package.swift`, and CI workflows are executable truth.
+2. This root `AGENTS.md` defines repository operating policy.
+3. Linked documentation provides detailed reference material.
+4. Tool entrypoints—including Claude, Gemini, Copilot, and Kiro steering—must
+   defer to this file and must not duplicate or override policy.
+5. `.jules/` files are advisory historical learnings. `.kiro/specs/` files are
+   task artifacts. Neither overrides this file or executable truth.
 
-RunPlayPlatform/      # macOS platform layer (no SwiftUI)
-  Sources/
-    Services/         # Route coloring (NSColor), map data types
-    3D/               # SceneKit builders and camera controller
-  Tests/
-    RunPlayPlatformTests/ # macOS platform tests
+When prose conflicts with implementation, inspect the implementation, tests,
+and CI. Correct durable documentation drift in the same change when relevant;
+do not silently follow stale prose.
 
-RunPlayStudio/        # macOS GUI layer (SwiftUI, Charts)
-  Sources/
-    Views/            # SwiftUI views
-    ViewModels/       # AppState, ReplayController (Combine/Timer wrapper)
-    Services/         # GUI-specific services (SwiftUI PNG rendering/export)
-  Tests/
-    RunPlayStudioTests/ # macOS GUI tests
-  Resources/          # Sample data and fixtures
-```
+## Agent Startup
 
-## Build & Test Commands
+Before editing:
 
-### Core-only (platform-neutral, Linux compatible)
+1. Read this file and only the detailed references relevant to the task.
+2. Run `git status --short`; never discard unexplained user or agent changes.
+3. Fetch `origin`, confirm the current branch, merge base, and assigned PR.
+4. Inspect the affected implementation and tests before proposing a change.
+5. Run the narrowest relevant baseline verification command.
+6. Open or update a draft PR with its scope and explicit non-goals before
+   implementation work becomes broad.
 
-```bash
-# Build core library
-swift build --target RunPlayCore
+## Branch, Worktree, And PR Rules
 
-# Run core tests only
-swift test --filter RunPlayCoreTests
-```
+- **Never commit directly to `main` and never rewrite or force-push it.**
+- One task equals one branch, one worktree, and one PR. Do not let agents share
+  a checkout or branch.
+- Start new work from current `origin/main` in a dedicated worktree, for example:
 
-### Platform layer (macOS, no SwiftUI)
+  ```bash
+  git fetch origin
+  git worktree add -b <type>/<short-task> ../runplay-<task> origin/main
+  cd ../runplay-<task>
+  ```
 
-```bash
-# Build platform library
-swift build --target RunPlayPlatform
+- Rebase only the branch you own. Use `--force-with-lease` only when publishing
+  your own rebased branch after checking its live remote head; never force-push
+  `main`.
+- Do not rebase, reset, amend, clean, force-push, merge, or delete another
+  agent's branch or worktree without the owner's explicit direction.
+- Make small logical commits and push useful checkpoints to the feature branch.
+- Open a draft PR early. Record objective, scope, non-goals, validation actually
+  run, remaining manual checks, and dependent or conflicting PRs in the PR body.
+  Use comments for interim coordination.
+- Do not create handoff-only commits or store current commit hashes in committed
+  documentation. `git log`, the live PR, and CI are the current-state sources.
+- Before taking over an existing PR: read its body and comments, inspect the live
+  head, branch diff, review threads, and CI; update the PR handoff before changing
+  scope. After merge, remove only your own worktree and local branch when no
+  longer needed.
 
-# Run platform tests
-swift test --filter RunPlayPlatformTests
-```
+## Parallel-Agent Safety
 
-### Full macOS build and test
+- Each PR must declare its intended files or subsystem. Avoid unrelated nearby
+  cleanup.
+- Serialize changes to shared coordination files: `AGENTS.md`, `Package.swift`,
+  CI workflows, `AppState`, shared architecture documents, and Kiro steering.
+- Do not overwrite unexplained changes or resurrect commits removed by a history
+  cleanup.
+- After rebasing onto updated `main`, rerun the relevant verification suite.
 
-```bash
-# Build everything
-swift build
+## Architecture Boundaries
 
-# Run all tests
-swift test
-```
+Dependency direction is `RunPlayStudio → RunPlayPlatform → RunPlayCore`.
+Reverse dependencies are forbidden.
 
-### Xcode
+- **RunPlayCore** is cross-platform Foundation logic with conditional
+  `FoundationXML`; it must not import UI, map, graphics, Core Location, or
+  Combine frameworks. Use `GeoDistance`, not `CLLocation`, for core distance.
+- **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
+  MapKit, and non-UI Combine. It must not depend on `RunPlayStudio`.
+- **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
+  export.
 
-```bash
-open Package.swift
-```
+See [docs/architecture.md](docs/architecture.md) and
+[Package.swift](Package.swift) for the live architecture and package graph.
 
-## Key Architecture Decisions
+## Project Invariants
 
-### Three-Layer Architecture
+- Do not add a third-party dependency without explicit owner approval and
+  license review.
+- Keep the app local-only. Do not add an app-operated backend, accounts,
+  telemetry, analytics, cloud sync, or AI API without an explicit product
+  decision.
+- Never commit real workout data, screenshots, or exports. Private dogfood
+  files belong only in ignored `local-workouts/` or `private-workouts/` paths;
+  committed fixtures and demo assets must be synthetic or anonymized.
+- Use explicit `git add <path>` for changes that could include local data.
+  Before committing, inspect `git status --short` and
+  `git diff --cached --name-status`.
 
-- **RunPlayCore** — Cross-platform Swift logic using Foundation and conditional FoundationXML only. It builds and tests on macOS and Linux.
-- **RunPlayPlatform** — macOS non-UI adapters using SceneKit, AppKit value types, MapKit, and Combine. It contains no SwiftUI, Charts, views, or presentation code.
-- **RunPlayStudio** — macOS UI and application layer. It owns SwiftUI, Charts, app lifecycle, views, view models, and UI rendering/export.
+See [docs/private-data.md](docs/private-data.md) and
+[docs/privacy.md](docs/privacy.md) for detail.
 
-Dependency flow: `RunPlayStudio → RunPlayPlatform → RunPlayCore`
+## Change Discipline
 
-The reverse dependencies are forbidden: Core must not import Platform or Studio, and Platform must not import Studio. `Package.swift` keeps Core unconditional while declaring Platform and Studio only inside `#if os(macOS)`, so Linux never evaluates or builds the macOS layers.
+- Make the smallest coherent change that satisfies the assigned task.
+- Preserve public APIs unless the task explicitly changes them.
+- Add or update focused tests for behavior changes.
+- Do not claim GUI, format, platform, or workflow support without verification;
+  report the actual command or manual boundary instead.
+- Keep documentation tied to durable behavior, never transient branch status.
 
-### Swift Version Baseline
+## Kiro
 
-- `swift-tools-version:6.3` with Swift 6 language mode.
-- Deployment target: macOS 26.
-- Linux CI: Ubuntu 24.04 with Swift 6.3.3 (pre-installed).
-- macOS CI: macOS 26 with Xcode 26.4 and Swift 6.3.x.
-- CI asserts the Swift 6.3 toolchain and treats compiler warnings as errors.
+Kiro is the primary development environment for this repository. Codex,
+Claude Code, Gemini CLI, GitHub Copilot, and other agents remain supported
+through the same canonical contract.
 
-### RunPlayCore — Platform-Neutral Target
+**Steering** (`.kiro/steering/`) supplies scoped Kiro context under this
+canonical policy. Steering files use `inclusion: always`, `inclusion:
+fileMatch`, or `inclusion: auto` to inject the right context at the right time.
+Keep durable repository facts in source, tests, `Package.swift`, CI, this file,
+or the relevant `docs/` reference; use `#[[file:...]]` references so steering
+does not become a competing copy.
 
-- Allowed imports: Foundation and `FoundationXML` behind `#if canImport(FoundationXML)`
-- Forbidden imports: SwiftUI, AppKit, SceneKit, MapKit, Charts, CoreLocation, Combine
-- Uses `GeoDistance` (haversine) instead of `CLLocation.distance(from:)`
-- Uses `#if canImport(FoundationXML)` for Linux XML parsing
-- All types are `public` for cross-module access
-- Contains pure computation: `RouteColorMetrics`, `PlaybackEngine`
+**Specs** (`.kiro/specs/`) are task artifacts: one spec per branch per PR.
+Keep requirements, design, and tasks scoped to the PR. Checked task boxes do
+not prove completion — tests and CI do. Specs must not contain private data,
+secrets, transient commit hashes, or repository-wide handoff status. Parallel
+spec tasks must not edit the same shared files concurrently.
 
-### RunPlayPlatform — macOS Platform Layer
+**Hooks** may be added to `.kiro/hooks/` when they provide genuine workflow
+value. Keep hooks narrowly scoped and document their trigger and action in the
+hook file; do not use hooks to bypass review or silently mutate shared files.
 
-- SceneKit 3D builders (`RouteSceneBuilder`, `ComparisonSceneBuilder`, `SceneCameraController`)
-- AppKit color mapping (`RouteColoringService`)
-- MapKit data types (`RouteMapData`)
-- May use Combine for observable non-UI controllers
-- **No** SwiftUI, Charts, `View` conformances, app lifecycle, or presentation code
+**Kiro CLI custom agents** live in `.kiro/agents/`. The checked-in
+`runplay-cli.json` is a thin project adapter: it loads this file and workspace
+steering explicitly, exposes only the tools needed for repository work, and
+pre-approves read-only access only. Do not pin a model or duplicate repository
+policy in an agent configuration.
 
-### RunPlayStudio — macOS GUI Layer
+**Durable learnings** live in `.jules/`: `bolt.md` for performance,
+`palette.md` for accessibility, `sentinel.md` for security. Add a concise
+dated entry only for a concrete reusable finding and its preventive action.
+Do not use these files for task status, speculative advice, or copied policy.
 
-- Owns SwiftUI/Charts views, app lifecycle, and `@MainActor` UI state
-- `ReplayController` wraps `PlaybackEngine` with Combine/Timer
-- PNG export with `ImageRenderer` and concrete SwiftUI views (`PNGExportRenderer`, `ExportServicePNGExtension`)
+## Validation
 
-### Concurrency Architecture
-
-All file I/O and manifest coordination is serialized through `WorkoutLibraryStoreActor`, an `actor` in `RunPlayCore`. The underlying `WorkoutLibraryStoring` protocol remains synchronous and platform-neutral; the actor wraps it to provide high-level transactional operations.
-
-**Actor ownership:**
-
-- `WorkoutLibraryStoreActor` (RunPlayCore) — owns all manifest reads/writes, workout file persistence, and selection updates. Provides `loadLibrary()`, `addWorkout(_:select:)`, `deleteWorkout(id:newSelectedID:)`, and `setSelectedWorkoutID(_:)`.
-- `WorkoutImportService` (RunPlayCore) — actor wrapping `WorkoutImporterFactory`. Ensures GPX/TCX/FIT/JSON parsing never executes on `@MainActor`.
-- `AppState` (RunPlayStudio) — `@MainActor` coordinator. Uses `storeActor` and `importService` for all persistence and import operations. Only mutates observable UI state.
-
-**Import pipeline:**
-
-1. ContentView's `.fileImporter` callback starts security-scoped access via `SecurityScopedURL` wrapper.
-2. `AppState.importWorkout(from:)` sets `operationState = .importing(filename:)`.
-3. `WorkoutImportService.importWorkout(from:)` parses the file off the main actor.
-4. `WorkoutLibraryStoreActor.addWorkout(_:select:)` performs transactional persistence.
-5. Only after both succeed does AppState update `workouts`, `selectedWorkout`, and `replayController`.
-6. `SecurityScopedURL` is captured by the `Task` and deallocated after import completes.
-
-**Persistence transaction and rollback policy:**
-
-- **Add:** Save workout file → append to manifest → save manifest. If manifest save fails, delete the workout file (rollback).
-- **Delete:** Remove from manifest → save manifest → delete file. If file delete fails after manifest commits, the workout is logically removed and a warning about the orphaned file is shown.
-- **Manifest corruption:** Never overwritten with a fresh manifest. Errors propagate to the caller.
-- **Selection:** Last-write-wins via monotonic sequence counter. Older pending writes are discarded.
-
-**Operation-state behavior:**
-
-`LibraryOperationState` tracks: `.idle`, `.loadingLibrary`, `.importing(filename:)`, `.deleting(workoutID:)`. UI overlays show progress indicators. Import and delete controls are naturally serialized since `operationState` prevents overlapping UI-triggered operations.
-
-**Cancellation limitations:**
-
-- Import cancellation stops before persistence (the `Task` is cancelled before `addWorkout`).
-- FIT imports propagate `Task.isCancelled` to `FITParser.parse()`. The parser checks every 1,000 decoded messages and throws `CancellationError` when detected.
-- Selection persistence cancellation uses last-write-wins semantics.
-
-**Security-scoped URL handling:**
-
-`SecurityScopedURL` (in ContentView) calls `startAccessingSecurityScopedResource()` on init and `stopAccessingSecurityScopedResource()` on deinit. The object is captured by the import `Task`, keeping access alive for the full async duration. This is macOS-specific and lives in `RunPlayStudio`.
-
-**Testing the pipeline:**
+Use the same warning-clean SwiftPM commands enforced by CI:
 
 ```bash
-# Core tests (Linux-compatible)
-swift test --filter RunPlayCoreTests
-
-# Studio tests (macOS)
-swift test --filter RunPlayStudioTests
-
-# Store actor tests specifically
-swift test --filter WorkoutLibraryStoreActorTests
-
-# Import service tests
-swift test --filter WorkoutImportServiceTests
-
-# AppState async tests
-swift test --filter AppStateAsyncTests
+swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
+swift test -Xswiftc -warnings-as-errors                               # macOS full stack
+git diff --check
 ```
 
-### File Import
+GUI changes additionally require the relevant honest manual check in
+[docs/manual-testing.md](docs/manual-testing.md).
 
-- File picker allows generic file data so `.tcx` and `.fit` remain selectable in the Swift Package app path
-- Extension validation happens in `WorkoutImporterFactory`
+## Detailed References
 
-## Manual Smoke Checklist
-
-### File Import
-- [ ] Select `.tcx` file through import button
-- [ ] Select `.fit` file through import button
-- [ ] Select `.gpx` file through import button
-- [ ] Select `.json` file through import button
-- [ ] Reject unsupported file extension with clear error
-- [ ] Import shows indeterminate progress with filename
-- [ ] App remains responsive during large file import
-- [ ] Imported workout appears only after parsing and persistence finish
-- [ ] Quit and relaunch after import; workout persists
-
-### Map View
-- [ ] 2D/3D toggle switches map pitch correctly
-- [ ] Route displays with correct colors (blue primary, orange comparison)
-- [ ] Start/finish annotations appear on route
-
-### Replay
-- [ ] Playback reaches end with correct final position
-- [ ] Step forward/backward works with one-point workout
-- [ ] Empty workout doesn't crash
-
-### Charts
-- [ ] Chart drag/seek works correctly
-- [ ] HR chart shows "no data" when no HR exists
-
-### Comparison
-- [ ] Two routes overlay correctly on shared map
-- [ ] Distance slider shows interpolated markers
-- [ ] Blue = primary, orange = comparison
-
-### Export
-- [ ] JSON export produces valid JSON
-- [ ] CSV export produces valid CSV
-- [ ] PNG export works (requires GUI context)
-
-### Deletion
-- [ ] Delete shows progress indicator
-- [ ] Delete updates selection correctly
-- [ ] Relaunch after delete; workout remains deleted
-- [ ] Deleting comparison workout clears comparison state
-
-## FIT Limitations
-
-- Header and file CRCs are validated; a `0x0000` header CRC is treated as absent
-- Compressed timestamp headers are supported with 5-bit offset wrap handling (window size 32)
-- Multiple message types are decoded and retained in source order: record (20), session (18), event (21), lap (19), device_info (23), file_id (0), and activity (34)
-- Session selection policy: prefer single GPS-bearing running session; reject multiple or non-running
-- Timer start/stop events create route segments so maps, replay, and analysis do not bridge paused gaps
-- Resource limits: 100 MB file size, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages
-- Garmin FIT SDK Profile 21.205.0 informed field constants; developer metrics and unsupported profile features remain skipped
-- Signed Int32 coordinate decoding uses bit-pattern semantics
-
-## CI
-
-- `core-linux` and `macos` are independent jobs with no `needs:` dependency, so GitHub Actions can run them in parallel.
-- Linux Core gate: Ubuntu 24.04 + Swift 6.3.3, then warning-clean `swift build --target RunPlayCore` and `swift test --filter RunPlayCoreTests`.
-- macOS full-stack gate: Xcode 26.4 + Swift 6.3, then warning-clean `swift build` and `swift test` across Core, Platform, and Studio.
-- Platform-only local gate: `swift build --target RunPlayPlatform` and `swift test --filter RunPlayPlatformTests`.
+- [README.md](README.md) — product overview and local build entrypoint
+- [docs/architecture.md](docs/architecture.md) — data flow and abstractions
+- [docs/import-formats.md](docs/import-formats.md) — supported formats and limits
+- [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
+- [docs/private-data.md](docs/private-data.md) — private-data hygiene
+- [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
+- [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior

@@ -80,7 +80,7 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 |-------|--------|
 | `swift build` | ✅ Pass |
 | `swift test` | ✅ Pass |
-| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (174 tests, platform-neutral) |
+| Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Manual GUI verification | See `docs/manual-testing.md` |
 
@@ -96,7 +96,9 @@ swift build --target RunPlayCore
 swift test --filter RunPlayCoreTests
 ```
 
-See [AGENTS.md](AGENTS.md) for detailed architecture and testing guidance.
+See [AGENTS.md](AGENTS.md) for repository and agent-working rules, and
+[docs/architecture.md](docs/architecture.md) for detailed architecture and
+testing guidance.
 
 ---
 
@@ -273,7 +275,7 @@ Export workout data as local files:
 - **PNG Summary Card** — Polished stats card image (1200×1600)
 
 All exports are local-only. No data is uploaded anywhere.
-PNG export renders a SwiftUI card using NSHostingView (requires GUI context).
+PNG export renders a SwiftUI card with `ImageRenderer` (requires GUI context).
 The README demo image is generated from bundled synthetic data.
 
 ### Route Comparison
@@ -298,7 +300,7 @@ Compare two completed runs side by side:
 - No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)
-- PNG export requires GUI context (NSHostingView)
+- PNG export requires GUI context (`ImageRenderer`)
 
 ## Roadmap
 

@@ -3,10 +3,9 @@
 Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
 committing local workout files or generated exports.
 
-Current stabilization note: the 2026-07-11 persistence final gate passed
-`swift test`, `swift test --filter RunPlayCoreTests` (175 tests), and the
-direct Xcode package scheme test. Specific manual GUI passes are documented per
-checklist below; not all GUI behaviors have been manually verified.
+Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
+automated status. Dated manual GUI evidence is recorded with the relevant
+checklist below; unchecked items have not been manually verified.
 
 ## FIT Import Checklist
 
@@ -36,7 +35,7 @@ after the flow.
 - [x] Capture the empty, imported/restored, and post-delete states for the final
   HIG/UX audit.
 
-Latest persistence notes (2026-07-11):
+Persistence dogfood record (2026-07-11):
 
 - The packaged SwiftPM app launched with the two bundled demos when the user
   manifest was empty.
@@ -142,7 +141,7 @@ Implementation checks:
   same routes.
 - [ ] Confirm backward-end and forward-end buttons still work.
 
-Latest dogfood notes:
+Comparison dogfood record (2026-07-08):
 
 - The bundled demo pair loaded on launch and produced summary deltas, split
   deltas, a pace chart, a 2D route overlay, and a legend.
@@ -163,7 +162,7 @@ Latest dogfood notes:
 - [x] Proper empty states when comparison data is unavailable.
 - [x] Warnings appear for different distances, insufficient overlap, missing data.
 
-Latest comparison chart readability notes (2026-07-08):
+Comparison chart readability record (2026-07-08):
 
 - Manual GUI pass confirmed all chart readability improvements are working.
 - Legend displays actual workout names.
@@ -194,7 +193,7 @@ Use bundled synthetic data for committed artifacts.
 - [x] Charts tab still works when selected
 - [x] Overview and Charts are the only detail tabs; no duplicate Map tab is shown
 
-Latest default view notes:
+Default-view dogfood record:
 
 - On 2026-07-08, a human owner verified the prior map, summary, replay, and
   Charts flow in a normal desktop session.
