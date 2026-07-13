@@ -85,7 +85,27 @@ public struct WorkoutTimeline: Sendable {
         }
 
         let finalTimestampDelta = routePoints.last?.timestamp.timeIntervalSince(first.timestamp) ?? 0
-        let elapsedTotal = Self.nonNegativeFinite(finalTimestampDelta)
+        let timestampElapsedTotal = Self.nonNegativeFinite(finalTimestampDelta)
+
+        // When timestamps do not span (all equal or invalid) but the route
+        // points carry a valid elapsedSeconds series, fall back to that series.
+        // RoutePointSanitizer already normalises this case for imported or
+        // synthetic workouts whose timestamps cannot supply elapsed time.
+        let useTimestampElapsed: Bool
+        let elapsedTotal: Double
+
+        if timestampElapsedTotal > 0 {
+            useTimestampElapsed = true
+            elapsedTotal = timestampElapsedTotal
+        } else if let last = routePoints.last,
+                  last.elapsedSeconds.isFinite,
+                  last.elapsedSeconds > 0 {
+            useTimestampElapsed = false
+            elapsedTotal = last.elapsedSeconds
+        } else {
+            useTimestampElapsed = true
+            elapsedTotal = 0
+        }
 
         var elapsedValues: [Double] = []
         elapsedValues.reserveCapacity(routePoints.count)
@@ -97,13 +117,23 @@ public struct WorkoutTimeline: Sendable {
                 continue
             }
 
-            let timestampElapsed = point.timestamp.timeIntervalSince(first.timestamp)
-            // Invalid or regressing intermediate timestamps hold the previous
-            // elapsed position. They must not turn the separately stored
-            // RoutePoint.elapsedSeconds value into fabricated timer time.
-            let candidate = timestampElapsed.isFinite
-                ? Self.clamp(timestampElapsed, lowerBound: 0, upperBound: elapsedTotal)
-                : previousElapsed
+            let candidate: Double
+            if useTimestampElapsed {
+                let timestampElapsed = point.timestamp.timeIntervalSince(first.timestamp)
+                // Invalid or regressing intermediate timestamps hold the previous
+                // elapsed position. They must not turn the separately stored
+                // RoutePoint.elapsedSeconds value into fabricated timer time.
+                candidate = timestampElapsed.isFinite
+                    ? Self.clamp(timestampElapsed, lowerBound: 0, upperBound: elapsedTotal)
+                    : previousElapsed
+            } else {
+                // Fall back to the per-point elapsed series normalised by
+                // RoutePointSanitizer. Non-finite or regressing values hold the
+                // prior position.
+                candidate = point.elapsedSeconds.isFinite
+                    ? Self.clamp(point.elapsedSeconds, lowerBound: 0, upperBound: elapsedTotal)
+                    : previousElapsed
+            }
             previousElapsed = max(previousElapsed, candidate)
             elapsedValues.append(previousElapsed)
         }
@@ -111,23 +141,32 @@ public struct WorkoutTimeline: Sendable {
         var activeValues = Array(repeating: 0.0, count: routePoints.count)
         var activeTotal: Double = 0
         if routePoints.count >= 2 {
-            for index in 1..<routePoints.count {
-                let previous = routePoints[index - 1]
-                let current = routePoints[index]
-                let delta = current.timestamp.timeIntervalSince(previous.timestamp)
+            if useTimestampElapsed {
+                for index in 1..<routePoints.count {
+                    let previous = routePoints[index - 1]
+                    let current = routePoints[index]
+                    let delta = current.timestamp.timeIntervalSince(previous.timestamp)
 
-                if current.routeSegmentIndex == previous.routeSegmentIndex,
-                   delta.isFinite,
-                   delta > 0 {
-                    activeTotal += delta
+                    if current.routeSegmentIndex == previous.routeSegmentIndex,
+                       delta.isFinite,
+                       delta > 0 {
+                        activeTotal += delta
+                    }
+
+                    activeTotal = min(
+                        Self.nonNegativeFinite(activeTotal),
+                        elapsedValues[index],
+                        elapsedTotal
+                    )
+                    activeValues[index] = activeTotal
                 }
-
-                activeTotal = min(
-                    Self.nonNegativeFinite(activeTotal),
-                    elapsedValues[index],
-                    elapsedTotal
-                )
-                activeValues[index] = activeTotal
+            } else {
+                // When timestamps do not span we cannot distinguish pauses from
+                // recording gaps. Treat all elapsed time as active so workouts
+                // with only supplied elapsed values are not analysed as zero
+                // active duration.
+                activeValues = elapsedValues
+                activeTotal = elapsedTotal
             }
         }
 

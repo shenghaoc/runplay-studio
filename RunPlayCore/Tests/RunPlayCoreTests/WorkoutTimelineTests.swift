@@ -198,6 +198,96 @@ final class WorkoutTimelineTests: XCTestCase {
         XCTAssertEqual(range.activeSeconds, 400, accuracy: 0.001)
     }
 
+    func testFallsBackToSuppliedElapsedWhenTimestampsDoNotSpan() {
+        // Simulate a route whose timestamps are all equal but whose
+        // RoutePoint.elapsedSeconds carries valid values — the scenario
+        // RoutePointSanitizer already handles for imported/legacy data.
+        let commonDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let timeline = WorkoutTimeline(routePoints: [
+            RoutePoint(
+                timestamp: commonDate,
+                latitude: 1,
+                longitude: 1,
+                altitudeMeters: 10,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0,
+                routeSegmentIndex: 0
+            ),
+            RoutePoint(
+                timestamp: commonDate,
+                latitude: 1.01,
+                longitude: 1,
+                altitudeMeters: 15,
+                distanceFromStartMeters: 500,
+                elapsedSeconds: 180,
+                routeSegmentIndex: 0
+            ),
+            RoutePoint(
+                timestamp: commonDate,
+                latitude: 1.02,
+                longitude: 1,
+                altitudeMeters: 20,
+                distanceFromStartMeters: 1_000,
+                elapsedSeconds: 300,
+                routeSegmentIndex: 0
+            )
+        ])
+
+        XCTAssertEqual(timeline.totalElapsedSeconds, 300, accuracy: 0.001)
+        XCTAssertEqual(timeline.totalActiveSeconds, 300, accuracy: 0.001)
+        XCTAssertEqual(timeline.totalPausedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            timeline.elapsedSeconds(atPointIndex: 2) ?? -1,
+            300,
+            accuracy: 0.001
+        )
+
+        let sample = timeline.distanceSample(at: 500, boundary: .rangeEnd)
+        XCTAssertEqual(sample?.elapsedSeconds ?? -1, 180, accuracy: 0.001)
+        XCTAssertEqual(sample?.activeSeconds ?? -1, 180, accuracy: 0.001)
+
+        let range = timeline.distanceRange(from: 0, to: 1_000)
+        XCTAssertEqual(range?.elapsedSeconds ?? -1, 300, accuracy: 0.001)
+        XCTAssertEqual(range?.activeSeconds ?? -1, 300, accuracy: 0.001)
+    }
+
+    func testSuppliedElapsedFallbackRejectsRegressingElapsedValues() {
+        let commonDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let timeline = WorkoutTimeline(routePoints: [
+            RoutePoint(
+                timestamp: commonDate,
+                latitude: 1,
+                longitude: 1,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0
+            ),
+            RoutePoint(
+                timestamp: commonDate,
+                latitude: 1.01,
+                longitude: 1,
+                distanceFromStartMeters: 500,
+                elapsedSeconds: 180
+            ),
+            RoutePoint(
+                timestamp: commonDate,
+                latitude: 1.02,
+                longitude: 1,
+                distanceFromStartMeters: 1_000,
+                elapsedSeconds: 120
+            )
+        ])
+
+        // The last point sets elapsedTotal = 120, so the regressing middle
+        // value (180) is clamped to the total and the final total is 120.
+        XCTAssertEqual(timeline.totalElapsedSeconds, 120, accuracy: 0.001)
+        XCTAssertEqual(timeline.totalActiveSeconds, 120, accuracy: 0.001)
+        XCTAssertEqual(
+            timeline.elapsedSeconds(atPointIndex: 2) ?? -1,
+            120,
+            accuracy: 0.001
+        )
+    }
+
     func testReplayHoldsDuringGapAndJumpsAtExactResumeTime() throws {
         let timeline = WorkoutTimeline(routePoints: pausedRoute())
         let duringPause = try XCTUnwrap(timeline.replaySample(atElapsedTime: 1_500))
