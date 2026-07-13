@@ -167,6 +167,12 @@ struct MetricsChartView: View {
                 seekDistanceKmText = String(format: "%.2f", newValue / 1000)
             }
         }
+        .onChange(of: seekFieldFocused) { _, isFocused in
+            if !isFocused {
+                let totalKm = (routePoints.last?.distanceFromStartMeters ?? 0) / 1000
+                commitSeekDistance(totalKm)
+            }
+        }
     }
 
     // MARK: - Seek Distance Control

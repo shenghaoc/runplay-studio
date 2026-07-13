@@ -59,9 +59,9 @@ struct ReplayControlsView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(controller.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
+                .help(controller.isPlaying ? LocalizedStringKey("Pause (⌥Space)") : LocalizedStringKey("Play (⌥Space)"))
                 .accessibilityLabel(controller.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
-                .keyboardShortcut(.space, modifiers: [])
+                .keyboardShortcut(.space, modifiers: .option)
 
                 // Step forward — 44pt touch target
                 Button(action: controller.stepForward) {
