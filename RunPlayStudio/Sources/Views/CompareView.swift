@@ -173,7 +173,8 @@ struct CompareView: View {
                 }
                 .font(AppDesign.Typography.compactMetric)
                 .controlSize(.regular)
-                .help("Exit comparison mode")
+                .help("Clear Comparison")
+                .accessibilityLabel("Clear Comparison")
             }
         }
     }
