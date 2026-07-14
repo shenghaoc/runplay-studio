@@ -215,6 +215,15 @@ public struct MovementProfile: Sendable {
             i = runEnd + 1
         }
 
+        let usedFallback = reliableCount < policy.minimumReliableSampleCount
+        if usedFallback {
+            // Sparse or irregular timing cannot support a trustworthy stop
+            // estimate, so preserve the conservative active-time clock.
+            for index in merged.indices where merged[index] == .stopped {
+                merged[index] = .uncertain
+            }
+        }
+
         let stopCount = merged.filter { $0 == .stopped }.count
         let uncertainCount = merged.filter { $0 == .uncertain }.count
 
@@ -253,7 +262,6 @@ public struct MovementProfile: Sendable {
         totalMovingSeconds = totalMoving
         totalStoppedSeconds = totalStopped
 
-        let usedFallback = reliableCount < policy.minimumReliableSampleCount
         diagnostics = MovementDiagnostics(
             policyVersion: MovementDetectionPolicy.currentVersion,
             reliableIntervalCount: reliableCount,

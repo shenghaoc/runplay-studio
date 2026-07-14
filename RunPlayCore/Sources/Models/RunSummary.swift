@@ -78,7 +78,10 @@ public struct RunSummary: Codable, Hashable, Sendable {
         self.totalPausedSeconds = Self.nonNegativeFinite(elapsed - active)
         let moving = min(Self.nonNegativeFinite(totalMovingSeconds ?? active), active)
         self.totalMovingSeconds = moving
-        self.totalStoppedSeconds = Self.nonNegativeFinite(totalStoppedSeconds ?? max(0, active - moving))
+        // This derived invariant intentionally wins over inconsistent input.
+        self.totalStoppedSeconds = max(0, active - moving)
+        _ = totalPausedSeconds
+        _ = totalStoppedSeconds
         self.averagePaceSecondsPerKilometer = Self.nonNegativeFinite(averagePaceSecondsPerKilometer)
         self.elapsedPaceSecondsPerKilometer = Self.nonNegativeFinite(
             elapsedPaceSecondsPerKilometer ?? averagePaceSecondsPerKilometer

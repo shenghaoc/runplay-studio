@@ -24,17 +24,17 @@ final class MovementProfileTests: XCTestCase {
 
     func testStationaryPointsProduceStop() throws {
         let policy = MovementDetectionPolicy.runningDefault
-        // Moving for 5 intervals, then stationary for 10 seconds
+        // Use a cadence inside the policy's reliable timing window.
         var points: [RoutePoint] = []
-        // 5 moving points (1s apart, 111m displacement per step = clearly moving)
+        // 5 moving points (5s apart, 111m displacement per step = clearly moving)
         for i in 0..<5 {
-            points.append(point(time: Double(i), distance: Double(i) * 3, lat: 1 + Double(i) * 0.001, lon: 1))
+            points.append(point(time: Double(i) * 5, distance: Double(i) * 3, lat: 1 + Double(i) * 0.001, lon: 1))
         }
-        // 10 stationary points (same location, same distance, 1 second apart)
+        // 10 stationary points (same location, same distance, 5 seconds apart)
         let lastDistance = points.last!.distanceFromStartMeters
         let lastLat = points.last!.latitude
         for i in 0..<10 {
-            points.append(point(time: Double(5 + i), distance: lastDistance, lat: lastLat, lon: 1))
+            points.append(point(time: Double(25 + i * 5), distance: lastDistance, lat: lastLat, lon: 1))
         }
 
         let timeline = WorkoutTimeline(routePoints: points)
@@ -46,10 +46,29 @@ final class MovementProfileTests: XCTestCase {
         XCTAssertTrue(profile.diagnostics.analysedPointPairCount > 0)
     }
 
+    func testSparseTimingUsesConservativeFallback() throws {
+        var points: [RoutePoint] = []
+        for i in 0..<5 {
+            points.append(point(time: Double(i), distance: Double(i) * 3, lat: 1 + Double(i) * 0.001, lon: 1))
+        }
+        let last = points.last!
+        for i in 0..<10 {
+            points.append(point(time: Double(5 + i), distance: last.distanceFromStartMeters, lat: last.latitude, lon: 1))
+        }
+
+        let timeline = WorkoutTimeline(routePoints: points)
+        let profile = try MovementProfile(routePoints: points, timeline: timeline)
+
+        XCTAssertTrue(profile.diagnostics.usedConservativeFallback)
+        XCTAssertEqual(profile.totalMovingSeconds, timeline.totalActiveSeconds, accuracy: 0.001)
+        XCTAssertEqual(profile.totalStoppedSeconds, 0, accuracy: 0.001)
+    }
+
     // MARK: - Stop and resume
 
     func testStopFollowedByResume() throws {
-        let policy = MovementDetectionPolicy.runningDefault
+        var policy = MovementDetectionPolicy.runningDefault
+        policy.minimumReliableIntervalDurationSeconds = 0.5
         var points: [RoutePoint] = []
         // Moving at ~111m displacement per step
         for i in 0..<5 {

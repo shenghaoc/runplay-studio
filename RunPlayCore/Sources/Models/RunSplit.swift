@@ -73,7 +73,9 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         self.activeSeconds = safeActive
         let safeMoving = min(Self.nonNegativeFinite(movingSeconds ?? safeActive), safeActive)
         self.movingSeconds = safeMoving
-        self.stoppedSeconds = Self.nonNegativeFinite(stoppedSeconds ?? max(0, safeActive - safeMoving))
+        // This derived invariant intentionally wins over inconsistent input.
+        self.stoppedSeconds = max(0, safeActive - safeMoving)
+        _ = stoppedSeconds
         self.paceSecondsPerKilometer = Self.nonNegativeFinite(paceSecondsPerKilometer)
         self.elapsedPaceSecondsPerKilometer = Self.nonNegativeFinite(
             elapsedPaceSecondsPerKilometer ?? paceSecondsPerKilometer

@@ -11,7 +11,17 @@ public struct WorkoutAnalysisContext: Sendable {
         policy: RouteQualityPolicy = .runningDefault
     ) {
         let profile = ElevationProfile(routePoints: workout.routePoints, policy: policy)
-        self.init(routePoints: workout.routePoints, elevationProfile: profile, movementProfile: nil)
+        let timeline = WorkoutTimeline(
+            routePoints: workout.routePoints,
+            elevationProfile: profile
+        )
+        let movementProfile = try? MovementProfile(
+            routePoints: workout.routePoints,
+            timeline: timeline
+        )
+        self.timeline = timeline
+        self.elevationProfile = profile
+        self.movementProfile = movementProfile
     }
 
     public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile) {
