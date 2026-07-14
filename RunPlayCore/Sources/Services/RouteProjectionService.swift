@@ -33,28 +33,31 @@ public struct RouteProjectionService: Sendable {
         guard !validIndexedPoints.isEmpty else { return [] }
 
         // Find route center (midpoint of bounding box)
-        let lats = validIndexedPoints.map { $0.point.latitude }
-        let lons = validIndexedPoints.map { $0.point.longitude }
-        guard let minLat = lats.min(), let maxLat = lats.max(),
-              let minLon = lons.min(), let maxLon = lons.max() else { return [] }
+        // ⚡ Bolt: Inline min/max tracking avoids intermediate O(N) array allocations
+        var minLat = Double.infinity, maxLat = -Double.infinity
+        var minLon = Double.infinity, maxLon = -Double.infinity
+        for item in validIndexedPoints {
+            let lat = item.point.latitude
+            let lon = item.point.longitude
+            if lat < minLat { minLat = lat }
+            if lat > maxLat { maxLat = lat }
+            if lon < minLon { minLon = lon }
+            if lon > maxLon { maxLon = lon }
+        }
+        guard minLat.isFinite, maxLat.isFinite, minLon.isFinite, maxLon.isFinite else { return [] }
         let centerLat = (minLat + maxLat) / 2
         let centerLon = (minLon + maxLon) / 2
 
         // Find elevation range for scaling
         // ⚡ Bolt: Replaced chained array transformations with inline loop
         // to avoid intermediate O(N) array allocations.
-        var minAlt: Double = 0
-        var foundAlt = false
+        var minAltOpt: Double?
         for item in validIndexedPoints {
             if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
-                if !foundAlt {
-                    minAlt = alt
-                    foundAlt = true
-                } else {
-                    minAlt = min(minAlt, alt)
-                }
+                minAltOpt = min(minAltOpt ?? .infinity, alt)
             }
         }
+        let minAlt = minAltOpt ?? 0
 
         return validIndexedPoints.map { item in
             let point = item.point
