@@ -38,7 +38,7 @@ public struct WorkoutAnalyzer: Sendable {
         _ workout: inout RunWorkout,
         context: WorkoutAnalysisContext,
         policy: RouteQualityPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @escaping @Sendable () -> Bool
     ) throws {
         try throwIfCancelled(isCancelled)
         try calculateDerivedMetrics(
@@ -48,22 +48,51 @@ public struct WorkoutAnalyzer: Sendable {
             isCancelled: isCancelled
         )
         try throwIfCancelled(isCancelled)
-        workout.summary = calculateSummary(workout, context: context, policy: policy)
+
+        // Build movement profile from the (possibly updated) route points
+        let movementProfile = try? MovementProfile(
+            routePoints: workout.routePoints,
+            timeline: context.timeline,
+            isCancelled: isCancelled
+        )
+        let ctx = WorkoutAnalysisContext(
+            routePoints: workout.routePoints,
+            elevationProfile: context.elevationProfile,
+            movementProfile: movementProfile
+        )
+
+        workout.summary = calculateSummary(workout, context: ctx, policy: policy)
         try throwIfCancelled(isCancelled)
         workout.splits = try SplitCalculator.calculateSplits(
             from: workout,
-            context: context,
+            context: ctx,
             policy: policy,
             isCancelled: isCancelled
         )
         workout.segments = try SegmentDetector.detectSegments(
             from: workout,
-            context: context,
+            context: ctx,
             policy: policy,
             isCancelled: isCancelled
         )
         try throwIfCancelled(isCancelled)
         workout.analysisVersion = RunWorkout.currentAnalysisVersion
+
+        // Attach movement diagnostics as analysis warnings
+        if let profile = movementProfile {
+            var warnings = workout.analysisWarnings
+            if profile.totalStoppedSeconds > 0 {
+                if !warnings.contains(.movementEstimatedStoppedTime) {
+                    warnings.append(.movementEstimatedStoppedTime)
+                }
+            }
+            if profile.diagnostics.usedConservativeFallback {
+                if !warnings.contains(.movementLowReliability) {
+                    warnings.append(.movementLowReliability)
+                }
+            }
+            workout.analysisWarnings = warnings
+        }
     }
 
     /// Apply route normalization before analysis. Importers and normalization
@@ -96,10 +125,21 @@ public struct WorkoutAnalyzer: Sendable {
             routePoints: quality.routePoints,
             elevationProfile: quality.elevationProfile
         )
+        // Build movement profile for normalization path
+        let movementProfile = try? MovementProfile(
+            routePoints: quality.routePoints,
+            timeline: context.timeline,
+            isCancelled: isCancelled
+        )
+        let ctx = WorkoutAnalysisContext(
+            routePoints: quality.routePoints,
+            elevationProfile: quality.elevationProfile,
+            movementProfile: movementProfile
+        )
         try throwIfCancelled(isCancelled)
         try analyzeCancellable(
             &analyzed,
-            context: context,
+            context: ctx,
             policy: policy,
             isCancelled: isCancelled
         )
@@ -221,6 +261,8 @@ public struct WorkoutAnalyzer: Sendable {
             totalElapsedSeconds: timeline.totalElapsedSeconds,
             totalActiveSeconds: timeline.totalActiveSeconds,
             totalPausedSeconds: timeline.totalPausedSeconds,
+            totalMovingSeconds: context.movementProfile?.totalMovingSeconds,
+            totalStoppedSeconds: context.movementProfile?.totalStoppedSeconds,
             averagePaceSecondsPerKilometer: activePace,
             elapsedPaceSecondsPerKilometer: elapsedPace,
             averageSpeedMetersPerSecond: activeSpeed,

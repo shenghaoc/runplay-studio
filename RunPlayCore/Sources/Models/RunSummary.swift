@@ -16,6 +16,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
     public var elapsedAverageSpeedMetersPerSecond: Double
     public var elevationGainMeters: Double
     public var elevationLossMeters: Double
+    public var totalMovingSeconds: Double
+    public var totalStoppedSeconds: Double
     public var averageHeartRateBPM: Double?
     public var maxHeartRateBPM: Double?
     public var caloriesEstimate: Double?
@@ -36,6 +38,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
             totalElapsedSeconds: totalElapsedSeconds,
             totalActiveSeconds: totalElapsedSeconds,
             totalPausedSeconds: 0,
+            totalMovingSeconds: totalElapsedSeconds,
+            totalStoppedSeconds: 0,
             averagePaceSecondsPerKilometer: averagePaceSecondsPerKilometer,
             elapsedPaceSecondsPerKilometer: averagePaceSecondsPerKilometer,
             averageSpeedMetersPerSecond: averageSpeedMetersPerSecond,
@@ -53,6 +57,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         totalElapsedSeconds: Double = 0,
         totalActiveSeconds: Double,
         totalPausedSeconds: Double? = nil,
+        totalMovingSeconds: Double? = nil,
+        totalStoppedSeconds: Double? = nil,
         averagePaceSecondsPerKilometer: Double = 0,
         elapsedPaceSecondsPerKilometer: Double? = nil,
         averageSpeedMetersPerSecond: Double = 0,
@@ -69,9 +75,10 @@ public struct RunSummary: Codable, Hashable, Sendable {
         self.totalDistanceMeters = Self.nonNegativeFinite(totalDistanceMeters)
         self.totalElapsedSeconds = elapsed
         self.totalActiveSeconds = active
-        // This derived invariant intentionally wins over inconsistent input.
         self.totalPausedSeconds = Self.nonNegativeFinite(elapsed - active)
-        _ = totalPausedSeconds
+        let moving = min(Self.nonNegativeFinite(totalMovingSeconds ?? active), active)
+        self.totalMovingSeconds = moving
+        self.totalStoppedSeconds = Self.nonNegativeFinite(totalStoppedSeconds ?? max(0, active - moving))
         self.averagePaceSecondsPerKilometer = Self.nonNegativeFinite(averagePaceSecondsPerKilometer)
         self.elapsedPaceSecondsPerKilometer = Self.nonNegativeFinite(
             elapsedPaceSecondsPerKilometer ?? averagePaceSecondsPerKilometer
@@ -113,6 +120,14 @@ public struct RunSummary: Codable, Hashable, Sendable {
         DisplayFormatter.formatDuration(totalPausedSeconds)
     }
 
+    public var formattedMoving: String {
+        DisplayFormatter.formatDuration(totalMovingSeconds)
+    }
+
+    public var formattedStopped: String {
+        DisplayFormatter.formatDuration(totalStoppedSeconds)
+    }
+
     /// Backward-compatible display alias. Duration means true elapsed time.
     public var formattedDuration: String {
         formattedElapsed
@@ -130,6 +145,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         case totalElapsedSeconds
         case totalActiveSeconds
         case totalPausedSeconds
+        case totalMovingSeconds
+        case totalStoppedSeconds
         case averagePaceSecondsPerKilometer
         case elapsedPaceSecondsPerKilometer
         case averageSpeedMetersPerSecond
@@ -153,6 +170,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
             totalElapsedSeconds: legacyElapsed,
             totalActiveSeconds: active,
             totalPausedSeconds: try container.decodeIfPresent(Double.self, forKey: .totalPausedSeconds),
+            totalMovingSeconds: try container.decodeIfPresent(Double.self, forKey: .totalMovingSeconds),
+            totalStoppedSeconds: try container.decodeIfPresent(Double.self, forKey: .totalStoppedSeconds),
             averagePaceSecondsPerKilometer: activePace,
             elapsedPaceSecondsPerKilometer: try container.decodeIfPresent(Double.self, forKey: .elapsedPaceSecondsPerKilometer) ?? activePace,
             averageSpeedMetersPerSecond: activeSpeed,
@@ -171,6 +190,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         try container.encode(totalElapsedSeconds, forKey: .totalElapsedSeconds)
         try container.encode(totalActiveSeconds, forKey: .totalActiveSeconds)
         try container.encode(totalPausedSeconds, forKey: .totalPausedSeconds)
+        try container.encode(totalMovingSeconds, forKey: .totalMovingSeconds)
+        try container.encode(totalStoppedSeconds, forKey: .totalStoppedSeconds)
         try container.encode(averagePaceSecondsPerKilometer, forKey: .averagePaceSecondsPerKilometer)
         try container.encode(elapsedPaceSecondsPerKilometer, forKey: .elapsedPaceSecondsPerKilometer)
         try container.encode(averageSpeedMetersPerSecond, forKey: .averageSpeedMetersPerSecond)

@@ -4,7 +4,7 @@ import Foundation
 public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Snapshots without a version predate pause-aware analysis.
     public static let legacyAnalysisVersion = 0
-    public static let currentAnalysisVersion = 2
+    public static let currentAnalysisVersion = 3
     /// Snapshots without this version predate route-quality normalization.
     public static let legacyNormalizationVersion = 0
     public static let currentNormalizationVersion = 1

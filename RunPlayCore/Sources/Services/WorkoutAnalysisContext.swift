@@ -4,17 +4,23 @@ import Foundation
 public struct WorkoutAnalysisContext: Sendable {
     public let timeline: WorkoutTimeline
     public let elevationProfile: ElevationProfile
+    public let movementProfile: MovementProfile?
 
     public init(
         workout: RunWorkout,
         policy: RouteQualityPolicy = .runningDefault
     ) {
         let profile = ElevationProfile(routePoints: workout.routePoints, policy: policy)
-        self.init(routePoints: workout.routePoints, elevationProfile: profile)
+        self.init(routePoints: workout.routePoints, elevationProfile: profile, movementProfile: nil)
     }
 
     public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile) {
+        self.init(routePoints: routePoints, elevationProfile: elevationProfile, movementProfile: nil)
+    }
+
+    public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile, movementProfile: MovementProfile?) {
         self.elevationProfile = elevationProfile
+        self.movementProfile = movementProfile
         self.timeline = WorkoutTimeline(
             routePoints: routePoints,
             elevationProfile: elevationProfile
@@ -24,6 +30,7 @@ public struct WorkoutAnalysisContext: Sendable {
     public init(timeline: WorkoutTimeline, elevationProfile: ElevationProfile) {
         self.timeline = timeline
         self.elevationProfile = elevationProfile
+        self.movementProfile = nil
     }
 }
 

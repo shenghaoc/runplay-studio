@@ -77,11 +77,20 @@ public struct SplitCalculator {
             let activePace = pace(seconds: range.activeSeconds, distanceMeters: distance)
             let elapsedPace = pace(seconds: range.elapsedSeconds, distanceMeters: distance)
 
+            let movingSec = context.movementProfile?.movingSeconds(
+                from: splitStart, to: splitEnd, timeline: timeline
+            )
+            let stoppedSec = context.movementProfile?.stoppedSeconds(
+                from: splitStart, to: splitEnd, timeline: timeline
+            )
+
             splits.append(RunSplit(
                 splitIndex: splitIndex,
                 distanceMeters: distance,
                 elapsedSeconds: range.elapsedSeconds,
                 activeSeconds: range.activeSeconds,
+                movingSeconds: movingSec,
+                stoppedSeconds: stoppedSec,
                 paceSecondsPerKilometer: activePace,
                 elapsedPaceSecondsPerKilometer: elapsedPace,
                 averageHeartRateBPM: timeline.averageHeartRate(from: splitStart, to: splitEnd),

@@ -7,6 +7,9 @@ import Foundation
 public struct SelectedMetrics: Sendable {
     public var elapsedSeconds: Double?
     public var activeSeconds: Double?
+    public var movingSeconds: Double?
+    public var stoppedSeconds: Double?
+    public var movementState: MovementState?
     public var isInRecordingGap: Bool
     public var distanceMeters: Double?
     public var paceSecondsPerKilometer: Double?
@@ -29,6 +32,9 @@ public struct SelectedMetrics: Sendable {
         self.init(
             elapsedSeconds: elapsedSeconds,
             activeSeconds: nil,
+            movingSeconds: nil,
+            stoppedSeconds: nil,
+            movementState: nil,
             isInRecordingGap: false,
             distanceMeters: distanceMeters,
             paceSecondsPerKilometer: paceSecondsPerKilometer,
@@ -43,6 +49,9 @@ public struct SelectedMetrics: Sendable {
     public init(
         elapsedSeconds: Double? = nil,
         activeSeconds: Double?,
+        movingSeconds: Double? = nil,
+        stoppedSeconds: Double? = nil,
+        movementState: MovementState? = nil,
         isInRecordingGap: Bool = false,
         distanceMeters: Double? = nil,
         paceSecondsPerKilometer: Double? = nil,
@@ -54,6 +63,9 @@ public struct SelectedMetrics: Sendable {
     ) {
         self.elapsedSeconds = elapsedSeconds
         self.activeSeconds = activeSeconds
+        self.movingSeconds = movingSeconds
+        self.stoppedSeconds = stoppedSeconds
+        self.movementState = movementState
         self.isInRecordingGap = isInRecordingGap
         self.distanceMeters = distanceMeters
         self.paceSecondsPerKilometer = paceSecondsPerKilometer
@@ -70,6 +82,24 @@ public struct SelectedMetrics: Sendable {
 
     public var formattedActive: String {
         DisplayFormatter.formatElapsed(activeSeconds)
+    }
+
+    public var formattedMoving: String {
+        DisplayFormatter.formatElapsed(movingSeconds)
+    }
+
+    public var formattedStopped: String {
+        DisplayFormatter.formatElapsed(stoppedSeconds)
+    }
+
+    public var movementStateLabel: String {
+        switch movementState {
+        case .moving: return "Moving"
+        case .stopped: return "Stopped"
+        case .paused: return "Paused"
+        case .uncertain: return "---"
+        case .none: return "---"
+        }
     }
 
     public var formattedDistance: String {

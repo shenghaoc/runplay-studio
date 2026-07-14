@@ -28,6 +28,12 @@ public struct WorkoutComparisonSummary: Sendable {
     public let primaryPausedSeconds: Double
     public let comparisonPausedSeconds: Double
     public let pausedTimeDeltaSeconds: Double
+    public let primaryMovingSeconds: Double
+    public let comparisonMovingSeconds: Double
+    public let movingTimeDeltaSeconds: Double
+    public let primaryStoppedSeconds: Double
+    public let comparisonStoppedSeconds: Double
+    public let stoppedTimeDeltaSeconds: Double
 
     /// Source-compatible pace fields use active time.
     public let primaryPaceSecondsPerKm: Double
@@ -87,6 +93,22 @@ public struct WorkoutComparisonSummary: Sendable {
             pausedTimeDeltaSeconds,
             positiveLabel: "more paused",
             negativeLabel: "less paused"
+        )
+    }
+
+    public var movingTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            movingTimeDeltaSeconds,
+            positiveLabel: "more moving",
+            negativeLabel: "less moving"
+        )
+    }
+
+    public var stoppedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            stoppedTimeDeltaSeconds,
+            positiveLabel: "more stopped",
+            negativeLabel: "less stopped"
         )
     }
 
@@ -157,6 +179,8 @@ public struct SplitComparison: Identifiable, Sendable {
     public let comparisonSplit: RunSplit?
     public let elapsedDurationDeltaSeconds: Double?
     public let activeDurationDeltaSeconds: Double?
+    public let movingDurationDeltaSeconds: Double?
+    public let stoppedDurationDeltaSeconds: Double?
     public let paceDeltaSecondsPerKm: Double?
     public let winner: ComparisonResult
 
@@ -175,6 +199,22 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedActiveDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeDurationDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
+    }
+
+    public var formattedMovingDurationDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            movingDurationDeltaSeconds,
+            positiveLabel: "longer",
+            negativeLabel: "shorter"
+        )
+    }
+
+    public var formattedStoppedDurationDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            stoppedDurationDeltaSeconds,
             positiveLabel: "longer",
             negativeLabel: "shorter"
         )
@@ -210,6 +250,12 @@ public struct ComparisonDistanceMetrics: Sendable {
     public let primaryActiveSeconds: Double?
     public let comparisonActiveSeconds: Double?
     public let activeTimeDeltaSeconds: Double?
+    public let primaryMovingSeconds: Double?
+    public let comparisonMovingSeconds: Double?
+    public let movingTimeDeltaSeconds: Double?
+    public let primaryStoppedSeconds: Double?
+    public let comparisonStoppedSeconds: Double?
+    public let stoppedTimeDeltaSeconds: Double?
     public let primaryPaceSecondsPerKm: Double?
     public let comparisonPaceSecondsPerKm: Double?
     public let paceDeltaSecondsPerKm: Double?
@@ -240,6 +286,12 @@ public struct ComparisonDistanceMetrics: Sendable {
             primaryActiveSeconds: nil,
             comparisonActiveSeconds: nil,
             activeTimeDeltaSeconds: nil,
+            primaryMovingSeconds: nil,
+            comparisonMovingSeconds: nil,
+            movingTimeDeltaSeconds: nil,
+            primaryStoppedSeconds: nil,
+            comparisonStoppedSeconds: nil,
+            stoppedTimeDeltaSeconds: nil,
             primaryScenePoint: primaryScenePoint,
             comparisonScenePoint: comparisonScenePoint
         )
@@ -256,6 +308,12 @@ public struct ComparisonDistanceMetrics: Sendable {
         primaryActiveSeconds: Double?,
         comparisonActiveSeconds: Double? = nil,
         activeTimeDeltaSeconds: Double? = nil,
+        primaryMovingSeconds: Double? = nil,
+        comparisonMovingSeconds: Double? = nil,
+        movingTimeDeltaSeconds: Double? = nil,
+        primaryStoppedSeconds: Double? = nil,
+        comparisonStoppedSeconds: Double? = nil,
+        stoppedTimeDeltaSeconds: Double? = nil,
         primaryScenePoint: RouteScenePoint?,
         comparisonScenePoint: RouteScenePoint?
     ) {
@@ -266,6 +324,12 @@ public struct ComparisonDistanceMetrics: Sendable {
         self.primaryActiveSeconds = Self.nonNegativeFiniteOptional(primaryActiveSeconds)
         self.comparisonActiveSeconds = Self.nonNegativeFiniteOptional(comparisonActiveSeconds)
         self.activeTimeDeltaSeconds = Self.finiteOptional(activeTimeDeltaSeconds)
+        self.primaryMovingSeconds = Self.nonNegativeFiniteOptional(primaryMovingSeconds)
+        self.comparisonMovingSeconds = Self.nonNegativeFiniteOptional(comparisonMovingSeconds)
+        self.movingTimeDeltaSeconds = Self.finiteOptional(movingTimeDeltaSeconds)
+        self.primaryStoppedSeconds = Self.nonNegativeFiniteOptional(primaryStoppedSeconds)
+        self.comparisonStoppedSeconds = Self.nonNegativeFiniteOptional(comparisonStoppedSeconds)
+        self.stoppedTimeDeltaSeconds = Self.finiteOptional(stoppedTimeDeltaSeconds)
         self.primaryPaceSecondsPerKm = Self.positiveFiniteOptional(primaryPaceSecondsPerKm)
         self.comparisonPaceSecondsPerKm = Self.positiveFiniteOptional(comparisonPaceSecondsPerKm)
         self.paceDeltaSecondsPerKm = Self.finiteOptional(paceDeltaSecondsPerKm)
@@ -326,6 +390,7 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
     case missingHeartRate = "One or both runs lack heart rate data"
     case missingElevation = "One or both runs lack elevation data"
     case tooFewPoints = "One or both runs have very few data points"
+    case movementEstimated = "Stopped time is estimated from GPS; comparisons involving stopped time are approximate"
 
     public var icon: String {
         switch self {
@@ -336,6 +401,7 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
         case .missingHeartRate: return "heart"
         case .missingElevation: return "mountain.2"
         case .tooFewPoints: return "chart.dots.scatterplot"
+        case .movementEstimated: return "figure.walk.motion"
         }
     }
 }

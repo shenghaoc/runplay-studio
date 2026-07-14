@@ -64,6 +64,12 @@ public struct WorkoutComparisonService: Sendable {
             primaryPausedSeconds: primaryTimeline.totalPausedSeconds,
             comparisonPausedSeconds: comparisonTimeline.totalPausedSeconds,
             pausedTimeDeltaSeconds: primaryTimeline.totalPausedSeconds - comparisonTimeline.totalPausedSeconds,
+            primaryMovingSeconds: primary.summary.totalMovingSeconds,
+            comparisonMovingSeconds: comparison.summary.totalMovingSeconds,
+            movingTimeDeltaSeconds: primary.summary.totalMovingSeconds - comparison.summary.totalMovingSeconds,
+            primaryStoppedSeconds: primary.summary.totalStoppedSeconds,
+            comparisonStoppedSeconds: comparison.summary.totalStoppedSeconds,
+            stoppedTimeDeltaSeconds: primary.summary.totalStoppedSeconds - comparison.summary.totalStoppedSeconds,
             primaryPaceSecondsPerKm: primaryActivePace,
             comparisonPaceSecondsPerKm: comparisonActivePace,
             paceDeltaSecondsPerKm: primaryActivePace - comparisonActivePace,
@@ -103,6 +109,8 @@ public struct WorkoutComparisonService: Sendable {
             let comparisonSplit = comparison.splits.indices.contains(index) ? comparison.splits[index] : nil
             let elapsedDelta = optionalDifference(primarySplit?.elapsedSeconds, comparisonSplit?.elapsedSeconds)
             let activeDelta = optionalDifference(primarySplit?.activeSeconds, comparisonSplit?.activeSeconds)
+            let movingDelta = optionalDifference(primarySplit?.movingSeconds, comparisonSplit?.movingSeconds)
+            let stoppedDelta = optionalDifference(primarySplit?.stoppedSeconds, comparisonSplit?.stoppedSeconds)
             let paceDelta = optionalDifference(
                 primarySplit?.paceSecondsPerKilometer,
                 comparisonSplit?.paceSecondsPerKilometer
@@ -120,6 +128,8 @@ public struct WorkoutComparisonService: Sendable {
                 comparisonSplit: comparisonSplit,
                 elapsedDurationDeltaSeconds: elapsedDelta,
                 activeDurationDeltaSeconds: activeDelta,
+                movingDurationDeltaSeconds: movingDelta,
+                stoppedDurationDeltaSeconds: stoppedDelta,
                 paceDeltaSecondsPerKm: paceDelta,
                 winner: winner
             )
@@ -260,6 +270,18 @@ public struct WorkoutComparisonService: Sendable {
         let comparisonElapsed = comparisonSample?.elapsedSeconds
         let primaryActive = primarySample?.activeSeconds
         let comparisonActive = comparisonSample?.activeSeconds
+        let primaryMoving = primaryContext.movementProfile?.movingSeconds(
+            atPointIndex: primarySample?.pointIndex ?? 0
+        )
+        let comparisonMoving = comparisonContext.movementProfile?.movingSeconds(
+            atPointIndex: comparisonSample?.pointIndex ?? 0
+        )
+        let primaryStopped = primaryContext.movementProfile?.stoppedSeconds(
+            atPointIndex: primarySample?.pointIndex ?? 0
+        )
+        let comparisonStopped = comparisonContext.movementProfile?.stoppedSeconds(
+            atPointIndex: comparisonSample?.pointIndex ?? 0
+        )
         let coveredDistance = clampedDistance - max(
             primaryTimeline.startDistanceMeters,
             comparisonTimeline.startDistanceMeters
@@ -278,6 +300,12 @@ public struct WorkoutComparisonService: Sendable {
             primaryActiveSeconds: primaryActive,
             comparisonActiveSeconds: comparisonActive,
             activeTimeDeltaSeconds: optionalDifference(primaryActive, comparisonActive),
+            primaryMovingSeconds: primaryMoving,
+            comparisonMovingSeconds: comparisonMoving,
+            movingTimeDeltaSeconds: optionalDifference(primaryMoving, comparisonMoving),
+            primaryStoppedSeconds: primaryStopped,
+            comparisonStoppedSeconds: comparisonStopped,
+            stoppedTimeDeltaSeconds: optionalDifference(primaryStopped, comparisonStopped),
             primaryScenePoint: RoutePointInterpolator.scenePoint(at: clampedDistance, in: primaryScenePoints),
             comparisonScenePoint: RoutePointInterpolator.scenePoint(at: clampedDistance, in: comparisonScenePoints)
         )
@@ -295,6 +323,12 @@ public struct WorkoutComparisonService: Sendable {
             primaryActiveSeconds: nil,
             comparisonActiveSeconds: nil,
             activeTimeDeltaSeconds: nil,
+            primaryMovingSeconds: nil,
+            comparisonMovingSeconds: nil,
+            movingTimeDeltaSeconds: nil,
+            primaryStoppedSeconds: nil,
+            comparisonStoppedSeconds: nil,
+            stoppedTimeDeltaSeconds: nil,
             primaryScenePoint: nil,
             comparisonScenePoint: nil
         )
@@ -332,6 +366,9 @@ public struct WorkoutComparisonService: Sendable {
         if !primaryElevationProfile.hasMeaningfulElevation
             || !comparisonElevationProfile.hasMeaningfulElevation {
             warnings.append(.missingElevation)
+        }
+        if primary.summary.totalStoppedSeconds > 0 || comparison.summary.totalStoppedSeconds > 0 {
+            warnings.append(.movementEstimated)
         }
         return warnings
     }
