@@ -39,10 +39,18 @@ public struct ComparisonRouteProjectionService: Sendable {
         }
 
         // Compute shared origin from primary route center
-        let primaryLats = validPrimary.map { $0.point.latitude }
-        let primaryLons = validPrimary.map { $0.point.longitude }
-        guard let minLat = primaryLats.min(), let maxLat = primaryLats.max(),
-              let minLon = primaryLons.min(), let maxLon = primaryLons.max() else {
+        // ⚡ Bolt: Inline min/max tracking avoids intermediate O(N) array allocations
+        var minLat = Double.infinity, maxLat = -Double.infinity
+        var minLon = Double.infinity, maxLon = -Double.infinity
+        for item in validPrimary {
+            let lat = item.point.latitude
+            let lon = item.point.longitude
+            if lat < minLat { minLat = lat }
+            if lat > maxLat { maxLat = lat }
+            if lon < minLon { minLon = lon }
+            if lon > maxLon { maxLon = lon }
+        }
+        guard minLat.isFinite, maxLat.isFinite, minLon.isFinite, maxLon.isFinite else {
             return ComparisonRouteScene(
                 primaryRoute: [], comparisonRoute: [],
                 combinedBounds: (min: SIMD3<Double>(0, 0, 0), max: SIMD3<Double>(0, 0, 0)),
@@ -53,10 +61,21 @@ public struct ComparisonRouteProjectionService: Sendable {
         let centerLon = (minLon + maxLon) / 2
 
         // Find elevation baseline from both routes combined
-        let primaryAlts = validPrimary.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }
-        let comparisonAlts = validComparison.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }
-        let allAlts = primaryAlts + comparisonAlts
-        let minAlt = allAlts.min() ?? 0
+        // ⚡ Bolt: Replaced chained array transformations with inline loops
+        // to avoid intermediate O(N) array allocations, including the
+        // [validPrimary, validComparison] array literal.
+        var minAltOpt: Double?
+        for item in validPrimary {
+            if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
+                minAltOpt = min(minAltOpt ?? .infinity, alt)
+            }
+        }
+        for item in validComparison {
+            if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
+                minAltOpt = min(minAltOpt ?? .infinity, alt)
+            }
+        }
+        let minAlt = minAltOpt ?? 0
 
         // Project primary route
         let projectedPrimary = projectRoute(validPrimary, centerLat: centerLat, centerLon: centerLon, minAlt: minAlt)
@@ -69,10 +88,7 @@ public struct ComparisonRouteProjectionService: Sendable {
 
         // Build warnings
         var warnings = existingWarnings
-        if validComparison.isEmpty && !comparison.isEmpty {
-            // Comparison had points but all were invalid
-            warnings.append(.tooFewPoints)
-        } else if validComparison.isEmpty {
+        if validComparison.isEmpty {
             warnings.append(.tooFewPoints)
         }
 
@@ -153,9 +169,8 @@ public struct ComparisonRouteProjectionService: Sendable {
         primary: [RouteScenePoint],
         comparison: [RouteScenePoint]
     ) -> (min: SIMD3<Double>, max: SIMD3<Double>) {
-        let allPoints = primary + comparison
-
-        guard !allPoints.isEmpty else {
+        // ⚡ Bolt: Sequential iteration avoids the `primary + comparison` array allocation
+        guard !primary.isEmpty || !comparison.isEmpty else {
             return (SIMD3<Double>(0, 0, 0), SIMD3<Double>(0, 0, 0))
         }
 
@@ -163,7 +178,16 @@ public struct ComparisonRouteProjectionService: Sendable {
         var minY = Double.infinity, maxY = -Double.infinity
         var minZ = Double.infinity, maxZ = -Double.infinity
 
-        for p in allPoints {
+        for p in primary {
+            guard p.xMeters.isFinite && p.yMeters.isFinite && p.zMeters.isFinite else { continue }
+            minX = min(minX, p.xMeters)
+            maxX = max(maxX, p.xMeters)
+            minY = min(minY, p.yMeters)
+            maxY = max(maxY, p.yMeters)
+            minZ = min(minZ, p.zMeters)
+            maxZ = max(maxZ, p.zMeters)
+        }
+        for p in comparison {
             guard p.xMeters.isFinite && p.yMeters.isFinite && p.zMeters.isFinite else { continue }
             minX = min(minX, p.xMeters)
             maxX = max(maxX, p.xMeters)
