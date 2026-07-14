@@ -168,12 +168,13 @@ struct CompareView: View {
     private var clearButton: some View {
         Group {
             if appState.isComparing {
-                Button("Clear Comparison") {
+                Button("Clear") {
                     appState.clearComparison()
                 }
                 .font(AppDesign.Typography.compactMetric)
                 .controlSize(.regular)
-                .help("Exit comparison mode")
+                .help("Exit comparison mode and return to single-workout view")
+                .accessibilityLabel("Clear Comparison")
             }
         }
     }

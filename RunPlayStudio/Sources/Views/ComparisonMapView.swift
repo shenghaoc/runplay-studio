@@ -90,6 +90,7 @@ struct ComparisonMapView: View {
                         Label("Fit Routes", systemImage: "viewfinder")
                     }
                     .buttonStyle(.bordered)
+                    .help("Zoom and center the map to show both routes")
                 }
 
                 Spacer()

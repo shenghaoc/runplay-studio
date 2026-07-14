@@ -160,5 +160,7 @@ struct ReplayControlsView: View {
                 ? AppDesign.primaryBlue
                 : .secondary
         )
+        .help("Replay at \(speed == 1.0 ? "normal" : String(format: "%.1f", speed)) speed")
+        .accessibilityLabel("Replay at \(speed == 1.0 ? "normal" : String(format: "%.1f", speed)) speed")
     }
 }
