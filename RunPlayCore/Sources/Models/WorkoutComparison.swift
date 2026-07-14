@@ -196,8 +196,8 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedDurationDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
@@ -206,24 +206,24 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedActiveDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeDurationDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
     public var formattedMovingDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             movingDurationDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
     public var formattedStoppedDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             stoppedDurationDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
