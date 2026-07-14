@@ -160,6 +160,7 @@ class AppState: ObservableObject {
             let workout = try await importService.importWorkout(from: url)
             try Task.checkCancellation()
             try await storeActor.addWorkout(workout, select: true)
+            try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
 
             if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
