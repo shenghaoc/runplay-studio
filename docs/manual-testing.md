@@ -36,6 +36,13 @@ Use only synthetic or explicitly private, ignored local workout files.
 - [ ] Confirm GPX, TCX, FIT, JSON, replay, comparison, deletion, and export still
   work, and cancellation leaves no partially persisted import.
 
+Packaged release smoke record (2026-07-14): the synthetic `sample-run` flow was
+selected in the release bundle, the corrected elevation chart and accessible
+metric controls were inspected, the native 2D/3D map toggle was exercised,
+comparison with `realistic_5k_run` was entered and exited, and the JSON/CSV/PNG
+Export menu actions were visible. The anomaly-specific route-quality scenarios
+above remain unchecked.
+
 ## Pause-Aware Time Semantics Checklist
 
 - [ ] Import or generate a workout with a visible pause.
