@@ -33,8 +33,15 @@ struct WorkoutDetailView: View {
             if workout.routePoints.isEmpty {
                 gpsWarningBanner
             }
+            if !workout.analysisWarnings.isEmpty {
+                analysisWarningBanner
+            }
 
-            WorkoutHeaderView(workout: workout)
+            WorkoutHeaderView(
+                workout: workout,
+                elevationAvailable: appState.analysisContext(for: workout)
+                    .elevationProfile.hasMeaningfulElevation
+            )
 
             Divider()
 
@@ -69,6 +76,26 @@ struct WorkoutDetailView: View {
         .background(AppDesign.warmYellow.opacity(0.08))
     }
 
+    private var analysisWarningBanner: some View {
+        HStack(alignment: .top, spacing: AppDesign.Spacing.small) {
+            Image(systemName: "waveform.path.ecg.rectangle")
+                .foregroundStyle(AppDesign.warmYellow)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Analysis notes")
+                    .font(AppDesign.Typography.secondary.weight(.semibold))
+                ForEach(Array(workout.analysisWarnings.enumerated()), id: \.offset) { _, warning in
+                    Text(warning.message)
+                        .font(AppDesign.Typography.secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, AppDesign.Spacing.xLarge)
+        .padding(.vertical, AppDesign.Spacing.small)
+        .background(AppDesign.warmYellow.opacity(0.08))
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: - Main Content
 
     @ViewBuilder
@@ -84,6 +111,7 @@ struct WorkoutDetailView: View {
         case .charts:
             MetricsChartView(
                 routePoints: workout.routePoints,
+                elevationProfile: appState.analysisContext(for: workout).elevationProfile,
                 currentDistance: replayController.state.currentDistance,
                 onSeek: { distance in
                     replayController.pause()
@@ -151,6 +179,7 @@ struct WorkoutDetailView: View {
 /// diffing this sub-tree during 30fps playback ticks.
 private struct WorkoutHeaderView: View {
     let workout: RunWorkout
+    let elevationAvailable: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
@@ -195,9 +224,13 @@ private struct WorkoutHeaderView: View {
             )
             headerMetric(
                 "Elevation",
-                DisplayFormatter.formatElevation(workout.summary.elevationGainMeters),
+                elevationAvailable
+                    ? DisplayFormatter.formatElevation(workout.summary.elevationGainMeters)
+                    : "—",
                 AppDesign.MetricColor.elevation,
-                help: "Recorded elevation gain."
+                help: elevationAvailable
+                    ? "Corrected, threshold-confirmed elevation gain."
+                    : "Elevation analysis is unavailable for this workout."
             )
             if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
                 headerMetric(

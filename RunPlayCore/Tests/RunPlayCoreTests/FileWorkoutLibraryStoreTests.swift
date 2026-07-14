@@ -82,6 +82,46 @@ final class FileWorkoutLibraryStoreTests: XCTestCase {
         XCTAssertEqual(loadedWorkout.routePoints.count, 11)
     }
 
+    func testLegacyWorkoutDefaultsRouteQualityFieldsAndPreservesExistingWarnings() throws {
+        var workout = makeWorkout(name: "Legacy Quality Fields")
+        workout.analysisWarnings = [
+            .sourceElapsedTimeMismatch,
+            .sourceActiveTimeMismatch,
+        ]
+        workout.qualityDiagnostics = RouteQualityDiagnostics(
+            invalidCoordinatePointCount: 2,
+            discardedCoordinatePointCount: 3,
+            inferredRouteGapCount: 4,
+            discardedAltitudeSampleCount: 5,
+            invalidSourceSpeedSampleCount: 6
+        )
+        workout.routeDistanceSource = .deviceSupplied
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try encoder.encode(workout)) as? [String: Any]
+        )
+        json.removeValue(forKey: "normalizationVersion")
+        json.removeValue(forKey: "qualityDiagnostics")
+        json.removeValue(forKey: "routeDistanceSource")
+
+        try store.ensureDirectoriesExist()
+        let workoutURL = tempDir
+            .appendingPathComponent("workouts", isDirectory: true)
+            .appendingPathComponent("\(workout.id.uuidString).json")
+        try JSONSerialization.data(withJSONObject: json).write(to: workoutURL, options: .atomic)
+
+        let decoded = try store.loadWorkout(id: workout.id)
+        XCTAssertEqual(decoded.normalizationVersion, RunWorkout.legacyNormalizationVersion)
+        XCTAssertEqual(decoded.qualityDiagnostics, .empty)
+        XCTAssertEqual(decoded.routeDistanceSource, .legacyUnknown)
+        XCTAssertEqual(
+            decoded.analysisWarnings,
+            [.sourceElapsedTimeMismatch, .sourceActiveTimeMismatch]
+        )
+    }
+
     // MARK: - Save and Reload Multiple Workouts
 
     func testSaveAndReloadMultipleWorkouts() throws {

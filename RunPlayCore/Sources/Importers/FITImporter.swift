@@ -35,7 +35,8 @@ public struct FITImporter: WorkoutImporting {
         let selectedSessionIndex = try FITDecoder.selectedSessionIndex(from: decodedFile)
 
         // Decode records with session selection and segmentation
-        let routePoints = try FITDecoder.decode(decodedFile: decodedFile)
+        let decodedRoute = try FITDecoder.decodeRawResult(decodedFile: decodedFile)
+        let routePoints = decodedRoute.routePoints
 
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
@@ -57,12 +58,19 @@ public struct FITImporter: WorkoutImporting {
 
         // Run analysis
         let analyzer = WorkoutAnalyzer()
-        analyzer.analyze(&workout)
-        workout.analysisWarnings = timingWarnings(
+        try analyzer.normalizeAndAnalyze(
+            &workout,
+            distancePolicy: .useSuppliedDistancesPerSegment,
+            sourceInvalidCoordinatePointCount: decodedRoute.invalidCoordinatePointCount
+        )
+        let timing = timingWarnings(
             decodedFile: decodedFile,
             selectedSessionIndex: selectedSessionIndex,
             summary: workout.summary
         )
+        for warning in timing where !workout.analysisWarnings.contains(warning) {
+            workout.analysisWarnings.append(warning)
+        }
 
         return workout
     }

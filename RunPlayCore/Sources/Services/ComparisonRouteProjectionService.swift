@@ -24,6 +24,28 @@ public struct ComparisonRouteProjectionService: Sendable {
         comparison: [RoutePoint],
         existingWarnings: [ComparisonWarning] = []
     ) -> ComparisonRouteScene {
+        project(
+            primary: primary,
+            comparison: comparison,
+            primaryElevationProfile: ElevationProfile(routePoints: primary),
+            comparisonElevationProfile: ElevationProfile(routePoints: comparison),
+            existingWarnings: existingWarnings
+        )
+    }
+
+    /// Project two routes using corrected elevation profiles aligned one-to-one
+    /// with their corresponding route-point arrays.
+    ///
+    /// Both routes share the minimum meaningful corrected altitude as their
+    /// baseline. A non-meaningful or stale profile leaves only that route flat
+    /// instead of deriving a misleading scale from raw altitude.
+    public func project(
+        primary: [RoutePoint],
+        comparison: [RoutePoint],
+        primaryElevationProfile: ElevationProfile,
+        comparisonElevationProfile: ElevationProfile,
+        existingWarnings: [ComparisonWarning] = []
+    ) -> ComparisonRouteScene {
         // Filter valid points for both routes, preserving original indices
         let validPrimary = filterValidWithIndices(primary)
         let validComparison = filterValidWithIndices(comparison)
@@ -60,28 +82,46 @@ public struct ComparisonRouteProjectionService: Sendable {
         let centerLat = (minLat + maxLat) / 2
         let centerLon = (minLon + maxLon) / 2
 
-        // Find elevation baseline from both routes combined
-        // ⚡ Bolt: Replaced chained array transformations with inline loops
-        // to avoid intermediate O(N) array allocations, including the
-        // [validPrimary, validComparison] array literal.
+        // Find a shared baseline from corrected, aligned elevation only.
+        // ⚡ Bolt: Inline min tracking avoids intermediate O(N) altitude arrays.
         var minAltOpt: Double?
         for item in validPrimary {
-            if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
-                minAltOpt = min(minAltOpt ?? .infinity, alt)
+            if let altitude = correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: primaryElevationProfile
+            ) {
+                minAltOpt = min(minAltOpt ?? .infinity, altitude)
             }
         }
         for item in validComparison {
-            if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
-                minAltOpt = min(minAltOpt ?? .infinity, alt)
+            if let altitude = correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: comparisonElevationProfile
+            ) {
+                minAltOpt = min(minAltOpt ?? .infinity, altitude)
             }
         }
         let minAlt = minAltOpt ?? 0
 
         // Project primary route
-        let projectedPrimary = projectRoute(validPrimary, centerLat: centerLat, centerLon: centerLon, minAlt: minAlt)
+        let projectedPrimary = projectRoute(
+            validPrimary,
+            centerLat: centerLat,
+            centerLon: centerLon,
+            minAlt: minAlt,
+            elevationProfile: primaryElevationProfile
+        )
 
         // Project comparison route using the same origin
-        let projectedComparison = projectRoute(validComparison, centerLat: centerLat, centerLon: centerLon, minAlt: minAlt)
+        let projectedComparison = projectRoute(
+            validComparison,
+            centerLat: centerLat,
+            centerLon: centerLon,
+            minAlt: minAlt,
+            elevationProfile: comparisonElevationProfile
+        )
 
         // Compute combined bounds
         let combinedBounds = computeCombinedBounds(primary: projectedPrimary, comparison: projectedComparison)
@@ -117,7 +157,8 @@ public struct ComparisonRouteProjectionService: Sendable {
         _ indexedPoints: [(index: Int, point: RoutePoint)],
         centerLat: Double,
         centerLon: Double,
-        minAlt: Double
+        minAlt: Double,
+        elevationProfile: ElevationProfile
     ) -> [RouteScenePoint] {
         guard !indexedPoints.isEmpty else { return [] }
 
@@ -130,8 +171,12 @@ public struct ComparisonRouteProjectionService: Sendable {
                 centerLon: centerLon
             )
 
-            let altitude = point.altitudeMeters ?? minAlt
-            let y = (altitude - minAlt) * elevationExaggeration
+            let correctedAltitude = correctedAltitude(
+                for: point,
+                atSourceIndex: item.index,
+                elevationProfile: elevationProfile
+            )
+            let y = correctedAltitude.map { ($0 - minAlt) * elevationExaggeration } ?? 0
 
             // Safety: replace any NaN/infinity with 0
             let safeX = x.isFinite ? x : 0
@@ -139,6 +184,7 @@ public struct ComparisonRouteProjectionService: Sendable {
             let safeZ = z.isFinite ? z : 0
 
             return RouteScenePoint(
+                id: point.id,
                 xMeters: safeX,
                 yMeters: safeY,
                 zMeters: safeZ,
@@ -150,6 +196,42 @@ public struct ComparisonRouteProjectionService: Sendable {
                 routeSegmentIndex: point.routeSegmentIndex
             )
         }
+    }
+
+    private func correctedAltitudes(
+        for indexedPoints: [(index: Int, point: RoutePoint)],
+        elevationProfile: ElevationProfile
+    ) -> [Double] {
+        indexedPoints.compactMap { item in
+            correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: elevationProfile
+            )
+        }
+    }
+
+    private func correctedAltitude(
+        for point: RoutePoint,
+        atSourceIndex index: Int,
+        elevationProfile: ElevationProfile
+    ) -> Double? {
+        guard elevationProfile.hasMeaningfulElevation,
+              elevationProfile.samples.indices.contains(index)
+        else {
+            return nil
+        }
+
+        let sample = elevationProfile.samples[index]
+        guard sample.routePointID == point.id,
+              sample.distanceFromStartMeters == point.distanceFromStartMeters,
+              sample.routeSegmentIndex == point.routeSegmentIndex,
+              let altitude = sample.correctedAltitudeMeters,
+              altitude.isFinite
+        else {
+            return nil
+        }
+        return altitude
     }
 
     /// Convert latitude/longitude to local meter coordinates.

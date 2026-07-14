@@ -25,6 +25,21 @@ public struct FITDecoder {
     /// - Multiple GPS-bearing running sessions: reject as ambiguous
     /// - Non-running only: reject
     public static func decode(decodedFile: FITDecodedFile) throws -> [RoutePoint] {
+        RoutePointSanitizer.normalize(
+            try decodeRaw(decodedFile: decodedFile),
+            distancePolicy: .useSuppliedDistancesPerSegment
+        )
+    }
+
+    /// Decode source fields and explicit timer-event segments without route
+    /// quality normalization. FITImporter uses this so diagnostics are retained.
+    static func decodeRaw(decodedFile: FITDecodedFile) throws -> [RoutePoint] {
+        try decodeRawResult(decodedFile: decodedFile).routePoints
+    }
+
+    static func decodeRawResult(
+        decodedFile: FITDecodedFile
+    ) throws -> (routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
         let selection = try selectSession(from: decodedFile)
         let records: [FITRecordMessage]
         let segments: [RouteSegment]
@@ -347,6 +362,12 @@ public struct FITDecoder {
 
         var segments: [RouteSegment] = []
         var segmentStartIndex: Int?
+        // Timer events and FIT records are chronological. Keep one advancing
+        // record cursor so a file with many pause/resume events is still O(n)
+        // after the O(e log e) event sort above.
+        var recordCursor = records.startIndex
+        var lastClosedBoundaryRecordTimestamp: UInt32?
+        var lastClosedBoundaryRecordIndex: Int?
 
         for event in timerEvents {
             guard let eventType = event.timerEventType,
@@ -356,10 +377,19 @@ public struct FITDecoder {
             case .start:
                 // Consecutive starts do not create empty or overlapping segments.
                 guard segmentStartIndex == nil else { continue }
-                segmentStartIndex = firstRecordIndex(
-                    atOrAfter: timestamp,
-                    in: records
-                )
+                if timestamp == lastClosedBoundaryRecordTimestamp,
+                   let boundaryIndex = lastClosedBoundaryRecordIndex {
+                    // A stop/resume at the same timestamp shares its boundary
+                    // record. Retaining this O(1) anchor also keeps following
+                    // untimestamped samples in the resumed segment.
+                    segmentStartIndex = boundaryIndex
+                } else {
+                    segmentStartIndex = firstRecordIndex(
+                        atOrAfter: timestamp,
+                        in: records,
+                        cursor: &recordCursor
+                    )
+                }
 
             case .stop, .stopAll:
                 // Some devices omit the initial start event. Preserve records up
@@ -369,13 +399,16 @@ public struct FITDecoder {
                    let endIdx = lastRecordIndex(
                         atOrBefore: timestamp,
                         in: records,
-                        startingAt: startIdx
+                        startingAt: startIdx,
+                        cursor: &recordCursor
                    ),
                    startIdx <= endIdx {
                     segments.append(RouteSegment(
                         startIndex: startIdx,
                         endIndex: endIdx
                     ))
+                    lastClosedBoundaryRecordTimestamp = records[endIdx].timestamp
+                    lastClosedBoundaryRecordIndex = endIdx
                 }
                 segmentStartIndex = nil
 
@@ -398,12 +431,16 @@ public struct FITDecoder {
     /// Find the first record at or after an event timestamp.
     private static func firstRecordIndex(
         atOrAfter timestamp: UInt32,
-        in records: [FITRecordMessage]
+        in records: [FITRecordMessage],
+        cursor: inout Int
     ) -> Int? {
-        for i in records.indices {
-            if let recordTs = records[i].timestamp, recordTs >= timestamp {
-                return i
+        while cursor < records.endIndex {
+            guard let recordTimestamp = records[cursor].timestamp else {
+                cursor += 1
+                continue
             }
+            if recordTimestamp >= timestamp { return cursor }
+            cursor += 1
         }
         return nil
     }
@@ -412,13 +449,24 @@ public struct FITDecoder {
     private static func lastRecordIndex(
         atOrBefore timestamp: UInt32,
         in records: [FITRecordMessage],
-        startingAt startIndex: Int
+        startingAt startIndex: Int,
+        cursor: inout Int
     ) -> Int? {
+        cursor = max(cursor, startIndex)
         var result: Int?
-        for i in startIndex..<records.count {
-            guard let recordTimestamp = records[i].timestamp else { continue }
+        if startIndex < cursor,
+           let startTimestamp = records[startIndex].timestamp,
+           startTimestamp <= timestamp {
+            result = startIndex
+        }
+        while cursor < records.endIndex {
+            guard let recordTimestamp = records[cursor].timestamp else {
+                cursor += 1
+                continue
+            }
             if recordTimestamp > timestamp { break }
-            result = i
+            result = cursor
+            cursor += 1
         }
         return result
     }
@@ -430,26 +478,44 @@ public struct FITDecoder {
         records: [FITRecordMessage],
         segments: [RouteSegment],
         usesTimerSegmentation: Bool
-    ) throws -> [RoutePoint] {
-        let validRecords = records.enumerated().compactMap { index, record -> (record: FITRecordMessage, segmentIndex: Int)? in
+    ) throws -> (routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
+        var validRecords: [(record: FITRecordMessage, segmentIndex: Int)] = []
+        validRecords.reserveCapacity(records.count)
+        var invalidCoordinatePointCount = 0
+        var segmentCursor = segments.startIndex
+
+        for (index, record) in records.enumerated() {
             guard let lat = record.positionLat, let lon = record.positionLong else {
-                return nil
+                invalidCoordinatePointCount += 1
+                continue
             }
             guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else {
-                return nil
+                invalidCoordinatePointCount += 1
+                continue
             }
 
-            let segmentIndex = segments.firstIndex {
-                index >= $0.startIndex && index <= $0.endIndex
+            while segmentCursor < segments.endIndex,
+                  index > segments[segmentCursor].endIndex {
+                segmentCursor += 1
+            }
+            let segmentIndex: Int?
+            if segmentCursor < segments.endIndex,
+               index >= segments[segmentCursor].startIndex,
+               index <= segments[segmentCursor].endIndex {
+                segmentIndex = segmentCursor
+            } else {
+                segmentIndex = nil
             }
             if usesTimerSegmentation, segmentIndex == nil {
                 // Records between a stop and subsequent start belong to the pause.
-                return nil
+                continue
             }
-            return (record, segmentIndex ?? 0)
+            validRecords.append((record, segmentIndex ?? 0))
         }
 
-        guard !validRecords.isEmpty else { return [] }
+        guard !validRecords.isEmpty else {
+            return ([], invalidCoordinatePointCount)
+        }
 
         let resolvedTimestamps = RouteTimestampResolver.resolve(
             validRecords.map { entry in
@@ -461,7 +527,7 @@ public struct FITDecoder {
             }
         )
         guard let resolvedTimestamps, let startDate = resolvedTimestamps.first else {
-            return []
+            return ([], invalidCoordinatePointCount)
         }
 
         var routePoints: [RoutePoint] = []
@@ -472,6 +538,7 @@ public struct FITDecoder {
             let lat = FITParser.semicirclesToDegrees(record.positionLat ?? FITParser.invalidCoordinate)
             let lon = FITParser.semicirclesToDegrees(record.positionLong ?? FITParser.invalidCoordinate)
             guard GeoDistance.isValidCoordinate(lat: lat, lon: lon) else {
+                invalidCoordinatePointCount += 1
                 continue
             }
 
@@ -512,10 +579,7 @@ public struct FITDecoder {
             routePoints.append(point)
         }
 
-        return RoutePointSanitizer.normalize(
-            routePoints,
-            distancePolicy: .useSuppliedDistancesPerSegment
-        )
+        return (routePoints, invalidCoordinatePointCount)
     }
 
     // MARK: - Enhanced Metric Decoding

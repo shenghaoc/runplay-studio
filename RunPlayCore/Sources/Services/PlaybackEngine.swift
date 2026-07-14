@@ -8,6 +8,7 @@ public class PlaybackEngine {
 
     private var workout: RunWorkout?
     private var timeline: WorkoutTimeline?
+    private var elevationProfile: ElevationProfile?
 
     public static let speedOptions: [Double] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 
@@ -16,8 +17,10 @@ public class PlaybackEngine {
     public func load(_ workout: RunWorkout) {
         stop()
         self.workout = workout
-        let timeline = WorkoutTimeline(workout: workout)
-        self.timeline = timeline
+        let context = WorkoutAnalysisContext(workout: workout)
+        let timeline = context.timeline
+        self.timeline = context.timeline
+        self.elevationProfile = context.elevationProfile
 
         state = ReplayState(
             playbackState: .stopped,
@@ -133,7 +136,9 @@ public class PlaybackEngine {
             isInRecordingGap: replaySample?.isInRecordingGap ?? false,
             distanceMeters: state.currentDistance,
             paceSecondsPerKilometer: point.paceSecondsPerKilometer,
-            altitudeMeters: point.altitudeMeters,
+            altitudeMeters: elevationProfile?.correctedAltitude(
+                atPointIndex: state.currentPointIndex
+            ),
             heartRateBPM: point.heartRateBPM,
             speedMetersPerSecond: point.speedMetersPerSecond,
             cadence: point.cadence,

@@ -102,12 +102,19 @@ public struct RouteMapCameraPlan {
 
 /// Helpers for building map content from route data.
 public enum RouteMapContent {
+    /// Build a single route line. Multi-segment input deliberately returns an
+    /// empty line so this compatibility API cannot bridge a recording gap;
+    /// callers rendering a workout route should use `segmentedRoutes`.
     public static func route(
         id: String,
         points: [RoutePoint],
         style: RouteMapLineStyle
     ) -> RouteMapLine {
-        RouteMapLine(
+        let segmentIndexes = Set(points.map(\.routeSegmentIndex))
+        guard segmentIndexes.count <= 1 else {
+            return RouteMapLine(id: id, coordinates: [], style: style)
+        }
+        return RouteMapLine(
             id: id,
             coordinates: points.compactMap(RouteMapCoordinate.init),
             style: style

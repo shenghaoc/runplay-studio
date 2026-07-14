@@ -63,10 +63,55 @@ public actor WorkoutLibraryStoreActor {
                     var workout = try store.loadWorkout(id: id)
                     validIDs.append(id)
 
-                    if workout.analysisVersion < RunWorkout.currentAnalysisVersion {
-                        WorkoutAnalyzer().reanalyzePreservingRoutePoints(&workout)
-                        loaded.append(workout)
+                    var upgraded = false
+                    if workout.normalizationVersion < RunWorkout.currentNormalizationVersion {
+                        let distancePolicy: RouteDistancePolicy
+                        switch workout.routeDistanceSource {
+                        case .coordinateDerived:
+                            distancePolicy = .computeFromCoordinates
+                        case .deviceSupplied:
+                            distancePolicy = .useSuppliedDistancesWhenValid
+                        case .mixed:
+                            let suppliedSegments = Set(
+                                workout.routeDistanceProvenance.segmentSources.enumerated().compactMap {
+                                    $0.element == .deviceSupplied ? $0.offset : nil
+                                }
+                            )
+                            distancePolicy = suppliedSegments.isEmpty
+                                ? .useSuppliedDistancesPerSegment
+                                : .useSuppliedDistancesForSegments(suppliedSegments)
+                        case .legacyUnknown:
+                            distancePolicy = RouteQualityProcessor.legacyDistancePolicy(
+                                for: workout.routePoints,
+                                source: workout.source
+                            )
+                        }
 
+                        do {
+                            try WorkoutAnalyzer().normalizeAndAnalyze(
+                                &workout,
+                                distancePolicy: distancePolicy,
+                                // Library loading is synchronous and recovery-oriented.
+                                // Interactive imports use the cancellable default.
+                                isCancelled: { false }
+                            )
+                            upgraded = true
+                        } catch {
+                            // A decoded workout remains usable even if quality
+                            // processing fails. Keep it visible and retry later.
+                            warnings.append(
+                                "Workout \(id.uuidString.prefix(8))… route quality could not be upgraded: "
+                                    + error.localizedDescription
+                            )
+                        }
+                    } else if workout.normalizationVersion <= RunWorkout.currentNormalizationVersion,
+                              workout.analysisVersion < RunWorkout.currentAnalysisVersion {
+                        WorkoutAnalyzer().reanalyzePreservingRoutePoints(&workout)
+                        upgraded = true
+                    }
+                    loaded.append(workout)
+
+                    if upgraded {
                         // FileWorkoutLibraryStore replaces each snapshot
                         // atomically. A failed rewrite leaves the original
                         // legacy file intact and the upgraded workout visible
@@ -75,13 +120,10 @@ public actor WorkoutLibraryStoreActor {
                             try store.saveWorkout(workout)
                         } catch {
                             warnings.append(
-                                "Workout \(id.uuidString.prefix(8))… analysis was upgraded in memory "
+                                "Workout \(id.uuidString.prefix(8))… was upgraded in memory "
                                     + "but could not be saved: \(error.localizedDescription)"
                             )
                         }
-                    } else {
-                        // Never downgrade a snapshot written by a newer app.
-                        loaded.append(workout)
                     }
                 } catch let error as WorkoutLibraryError {
                     switch error {
@@ -144,6 +186,7 @@ public actor WorkoutLibraryStoreActor {
     /// 5. Save the manifest.
     /// 6. Roll back the workout file if the manifest write fails.
     public func addWorkout(_ workout: RunWorkout, select: Bool) throws {
+        try Task.checkCancellation()
         var manifest: WorkoutLibraryManifest
         do {
             manifest = try store.loadManifest()

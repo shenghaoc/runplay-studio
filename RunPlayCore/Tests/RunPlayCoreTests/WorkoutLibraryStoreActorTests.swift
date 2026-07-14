@@ -46,6 +46,60 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         )
     }
 
+    private func makeLegacyCoordinateSpikeWorkout(id: UUID = UUID()) -> RunWorkout {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            RoutePoint(
+                id: UUID(),
+                timestamp: start,
+                latitude: 37,
+                longitude: -122,
+                altitudeMeters: 100,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0
+            ),
+            RoutePoint(
+                id: UUID(),
+                timestamp: start.addingTimeInterval(10),
+                latitude: 37.01,
+                longitude: -121.99,
+                altitudeMeters: 450,
+                distanceFromStartMeters: 1_500,
+                elapsedSeconds: 10
+            ),
+            RoutePoint(
+                id: UUID(),
+                timestamp: start.addingTimeInterval(20),
+                latitude: 37,
+                longitude: -121.9999,
+                altitudeMeters: 101,
+                distanceFromStartMeters: 3_000,
+                elapsedSeconds: 20
+            ),
+        ]
+        return RunWorkout(
+            id: id,
+            metadata: WorkoutMetadata(
+                name: "Legacy Spike",
+                notes: "Retain this metadata",
+                activityType: "running",
+                startDate: start,
+                endDate: start.addingTimeInterval(20),
+                deviceName: "Legacy GPS"
+            ),
+            source: .gpx,
+            routePoints: points,
+            splits: [],
+            summary: RunSummary(totalDistanceMeters: 3_000, totalElapsedSeconds: 20),
+            segments: [],
+            analysisVersion: RunWorkout.currentAnalysisVersion,
+            normalizationVersion: RunWorkout.legacyNormalizationVersion,
+            analysisWarnings: [.sourceElapsedTimeMismatch],
+            qualityDiagnostics: .empty,
+            routeDistanceSource: .legacyUnknown
+        )
+    }
+
     // MARK: - Load Library
 
     func testLoadLibraryFromEmptyReturnsDemos() async {
@@ -83,6 +137,10 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let workout = try decodeLegacyPausedFixture()
 
         XCTAssertEqual(workout.analysisVersion, RunWorkout.legacyAnalysisVersion)
+        XCTAssertEqual(workout.normalizationVersion, RunWorkout.legacyNormalizationVersion)
+        XCTAssertEqual(workout.analysisWarnings, [])
+        XCTAssertEqual(workout.qualityDiagnostics, .empty)
+        XCTAssertEqual(workout.routeDistanceSource, .legacyUnknown)
         XCTAssertEqual(workout.summary.totalElapsedSeconds, 600, accuracy: 0.001)
         XCTAssertEqual(workout.summary.totalActiveSeconds, 600, accuracy: 0.001)
         XCTAssertEqual(workout.summary.totalPausedSeconds, 0, accuracy: 0.001)
@@ -130,12 +188,14 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         XCTAssertEqual(migrated.routePoints.map(\.id), originalPointIDs)
         XCTAssertEqual(migrated.routePoints.map(\.routeSegmentIndex), originalSegments)
         XCTAssertEqual(migrated.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(migrated.normalizationVersion, RunWorkout.currentNormalizationVersion)
         XCTAssertEqual(migrated.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
         XCTAssertEqual(migrated.summary.totalActiveSeconds, 600, accuracy: 0.001)
         XCTAssertEqual(migrated.summary.totalPausedSeconds, 3_300, accuracy: 0.001)
 
         let persisted = try store.loadWorkout(id: legacy.id)
         XCTAssertEqual(persisted.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(persisted.normalizationVersion, RunWorkout.currentNormalizationVersion)
         XCTAssertEqual(persisted.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
         let manifest = try store.loadManifest()
         XCTAssertEqual(manifest.workoutIDs, [legacy.id, second.id])
@@ -157,10 +217,92 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let migrated = try XCTUnwrap(loaded.first)
         XCTAssertEqual(selectedID, legacy.id)
         XCTAssertEqual(migrated.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(migrated.normalizationVersion, RunWorkout.currentNormalizationVersion)
         XCTAssertEqual(migrated.summary.totalElapsedSeconds, 3_900, accuracy: 0.001)
         XCTAssertTrue(warning?.contains("upgraded in memory") == true)
         XCTAssertEqual(failingStore.saveWorkoutCallCount, 1)
         XCTAssertEqual(failingStore.storedWorkout.analysisVersion, RunWorkout.legacyAnalysisVersion)
+        XCTAssertEqual(
+            failingStore.storedWorkout.normalizationVersion,
+            RunWorkout.legacyNormalizationVersion
+        )
+
+        let retryResult = await actor.loadLibrary()
+        guard case .workouts(let retried, _, _) = retryResult else {
+            XCTFail("Expected the original snapshot to remain retryable, got \(retryResult)")
+            return
+        }
+        XCTAssertEqual(retried.first?.normalizationVersion, RunWorkout.currentNormalizationVersion)
+        XCTAssertEqual(failingStore.saveWorkoutCallCount, 2)
+    }
+
+    func testNormalizationMigrationRemovesSpikeAndRecomputesAnalysisWithoutChangingLibraryIdentity() async throws {
+        let legacy = makeLegacyCoordinateSpikeWorkout()
+        let current = makeWorkout(name: "Current")
+        try store.saveWorkout(legacy)
+        try store.saveWorkout(current)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [current.id, legacy.id],
+            selectedWorkoutID: legacy.id
+        ))
+
+        let retainedPointIDs = [legacy.routePoints[0].id, legacy.routePoints[2].id]
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let result = await actor.loadLibrary()
+
+        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+            XCTFail("Expected migrated workouts, got \(result)")
+            return
+        }
+        XCTAssertNil(warning)
+        XCTAssertEqual(loaded.map(\.id), [current.id, legacy.id])
+        XCTAssertEqual(selectedID, legacy.id)
+
+        let migrated = try XCTUnwrap(loaded.last)
+        XCTAssertEqual(migrated.id, legacy.id)
+        XCTAssertEqual(migrated.metadata, legacy.metadata)
+        XCTAssertEqual(migrated.source, legacy.source)
+        XCTAssertEqual(migrated.routePoints.map(\.id), retainedPointIDs)
+        XCTAssertEqual(migrated.normalizationVersion, RunWorkout.currentNormalizationVersion)
+        XCTAssertEqual(migrated.analysisVersion, RunWorkout.currentAnalysisVersion)
+        XCTAssertEqual(migrated.qualityDiagnostics.discardedCoordinatePointCount, 1)
+        XCTAssertEqual(migrated.routeDistanceSource, .coordinateDerived)
+        XCTAssertTrue(migrated.analysisWarnings.contains(.sourceElapsedTimeMismatch))
+        XCTAssertTrue(migrated.analysisWarnings.contains(.coordinateOutliersRemoved))
+        XCTAssertLessThan(migrated.summary.totalDistanceMeters, 100)
+        XCTAssertEqual(
+            migrated.summary.totalDistanceMeters,
+            try XCTUnwrap(migrated.routePoints.last).distanceFromStartMeters,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(migrated.summary.totalElapsedSeconds, 20, accuracy: 0.001)
+
+        let persisted = try store.loadWorkout(id: legacy.id)
+        XCTAssertEqual(persisted.routePoints.map(\.id), retainedPointIDs)
+        XCTAssertEqual(persisted.normalizationVersion, RunWorkout.currentNormalizationVersion)
+        XCTAssertEqual(persisted.qualityDiagnostics.discardedCoordinatePointCount, 1)
+        XCTAssertLessThan(persisted.summary.totalDistanceMeters, 100)
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.workoutIDs, [current.id, legacy.id])
+        XCTAssertEqual(manifest.selectedWorkoutID, legacy.id)
+    }
+
+    func testCurrentSnapshotLoadsWithoutRewrite() async throws {
+        let current = makeWorkout(name: "Already Current")
+        let rewriteFailingStore = UpgradeWriteFailingStore(workout: current)
+        let actor = WorkoutLibraryStoreActor(store: rewriteFailingStore)
+
+        let result = await actor.loadLibrary()
+
+        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+            XCTFail("Expected current workout, got \(result)")
+            return
+        }
+        XCTAssertEqual(loaded, [current])
+        XCTAssertEqual(selectedID, current.id)
+        XCTAssertNil(warning)
+        XCTAssertEqual(rewriteFailingStore.saveWorkoutCallCount, 0)
     }
 
     // MARK: - Concurrent Additions Preserve All IDs
@@ -201,6 +343,34 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let manifest = try store.loadManifest()
         let count = manifest.workoutIDs.filter { $0 == workout.id }.count
         XCTAssertEqual(count, 1, "Duplicate ID should appear exactly once")
+    }
+
+    func testCancellationBeforeAddWorkoutPersistsNothing() async throws {
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let workout = makeWorkout(name: "Cancelled")
+
+        let wasCancelled = await Task { () -> Bool in
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+            do {
+                try await actor.addWorkout(workout, select: true)
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }.value
+
+        XCTAssertTrue(wasCancelled)
+        XCTAssertFalse(store.workoutExists(id: workout.id))
+        XCTAssertThrowsError(try store.loadManifest()) { error in
+            guard case WorkoutLibraryError.manifestMissing = error else {
+                XCTFail("Expected manifestMissing, got \(error)")
+                return
+            }
+        }
     }
 
     // MARK: - Add Rollback On Manifest Failure

@@ -7,6 +7,42 @@ Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
 checklist below; unchecked items have not been manually verified.
 
+## Route Quality Checklist
+
+This checklist is intentionally unchecked. It defines the required GUI pass
+and does not claim that any route-quality scenario has been manually verified.
+Use only synthetic or explicitly private, ignored local workout files.
+
+- [ ] Import a synthetic flat route containing altitude jitter.
+- [ ] Confirm the flat route's elevation gain is small and believable.
+- [ ] Confirm the elevation chart is visibly smoother while distance seeking
+  remains aligned.
+- [ ] Import a real-looking sustained climb and confirm the climb remains
+  visible in the chart and analysis.
+- [ ] Import a route containing one distant isolated coordinate spike.
+- [ ] Confirm the map does not jump to or draw the rejected spike.
+- [ ] Confirm total distance, derived speed, and pace do not include the
+  rejected spike.
+- [ ] Import a route containing a sustained coherent relocated cluster.
+- [ ] Confirm the map shows disconnected route segments instead of a bridging
+  line.
+- [ ] Confirm replay jumps across the inferred gap without interpolating
+  missing movement.
+- [ ] Confirm summary, splits, notable climb/descent, comparison, chart, route
+  colouring, and JSON/CSV/PNG exports agree on corrected elevation.
+- [ ] Quit and relaunch; confirm corrected analysis, diagnostics, warnings, and
+  normalization migration persist without repeatedly rewriting a current
+  workout.
+- [ ] Confirm GPX, TCX, FIT, JSON, replay, comparison, deletion, and export still
+  work, and cancellation leaves no partially persisted import.
+
+Packaged release smoke record (2026-07-14): the synthetic `sample-run` flow was
+selected in the release bundle, the corrected elevation chart and accessible
+metric controls were inspected, the native 2D/3D map toggle was exercised,
+comparison with `realistic_5k_run` was entered and exited, and the JSON/CSV/PNG
+Export menu actions were visible. The anomaly-specific route-quality scenarios
+above remain unchecked.
+
 ## Pause-Aware Time Semantics Checklist
 
 - [ ] Import or generate a workout with a visible pause.

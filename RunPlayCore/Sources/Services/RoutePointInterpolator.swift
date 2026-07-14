@@ -181,55 +181,17 @@ public enum RoutePointInterpolator {
         return sum / Double(count)
     }
 
-    /// Compute cumulative elevation gain for points within a distance range.
-    ///
-    /// Sums only positive altitude deltas (ascending). Returns `nil` if no
-    /// altitude data exists in the range. Uses interpolated start/end points
-    /// for accurate boundary calculations.
+    /// Compute threshold-confirmed elevation gain from the shared corrected
+    /// profile. Kept as a compatibility API for existing callers.
     public static func elevationGain(
         in points: [RoutePoint],
         from startDistance: Double,
         to endDistance: Double
     ) -> Double? {
-        guard var previous = point(at: startDistance, in: points),
-              let end = point(at: endDistance, in: points),
-              startDistance <= endDistance
-        else { return nil }
-
-        var gain: Double = 0
-        var sawAltitude = previous.altitudeMeters != nil
-
-        if let startIndex = firstIndex(atOrAfter: startDistance, in: points),
-           let endIndex = lastIndex(atOrBefore: endDistance, in: points),
-           startIndex <= endIndex {
-
-            for index in startIndex...endIndex {
-                let sample = points[index]
-                if sample.distanceFromStartMeters > startDistance && sample.distanceFromStartMeters < endDistance {
-                    if let currentAltitude = sample.altitudeMeters,
-                       let previousAltitude = previous.altitudeMeters,
-                       currentAltitude.isFinite,
-                       previousAltitude.isFinite,
-                       sample.routeSegmentIndex == previous.routeSegmentIndex {
-                        gain += max(0, currentAltitude - previousAltitude)
-                        sawAltitude = true
-                    }
-                    previous = sample
-                }
-            }
-        }
-
-        // Process the final interpolated end point
-        if let currentAltitude = end.altitudeMeters,
-           let previousAltitude = previous.altitudeMeters,
-           currentAltitude.isFinite,
-           previousAltitude.isFinite,
-           end.routeSegmentIndex == previous.routeSegmentIndex {
-            gain += max(0, currentAltitude - previousAltitude)
-            sawAltitude = true
-        }
-
-        return sawAltitude ? gain : nil
+        ElevationProfile(routePoints: points).ascent(
+            from: startDistance,
+            to: endDistance
+        )
     }
 
     private static func interpolate(from before: RoutePoint, to after: RoutePoint, fraction: Double, distance: Double) -> RoutePoint {

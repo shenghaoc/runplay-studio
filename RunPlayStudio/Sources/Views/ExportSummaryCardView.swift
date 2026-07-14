@@ -104,8 +104,8 @@ struct ExportSummaryCardView: View {
                 MetricTile(label: "Paused", value: model.pausedTimeText, icon: "pause.circle", color: .secondary)
                 MetricTile(label: "Active Pace", value: model.activePaceText, icon: "speedometer", color: AppDesign.MetricColor.pace)
                 MetricTile(label: "Elapsed Pace", value: model.elapsedPaceText, icon: "clock.arrow.circlepath", color: AppDesign.MetricColor.pace)
-                MetricTile(label: "Elevation Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: AppDesign.MetricColor.elevation)
-                MetricTile(label: "Elevation Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: AppDesign.softPurple)
+                MetricTile(label: "Corrected Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: AppDesign.MetricColor.elevation)
+                MetricTile(label: "Corrected Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: AppDesign.softPurple)
 
                 if let hr = model.heartRateText {
                     MetricTile(label: "Avg HR", value: hr, icon: "heart.fill", color: AppDesign.MetricColor.heartRate)

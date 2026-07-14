@@ -163,6 +163,46 @@ final class ChartSelectionMapperTests: XCTestCase {
         XCTAssertNil(index)
     }
 
+    func testElevationChartDataKeepsDistanceAlignmentAndBreaksAtGaps() {
+        let start = Date()
+        let points = [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: 100, distanceFromStartMeters: 0, elapsedSeconds: 0, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: nil, distanceFromStartMeters: 10, elapsedSeconds: 1, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: 102, distanceFromStartMeters: 20, elapsedSeconds: 2, routeSegmentIndex: 0),
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: 200, distanceFromStartMeters: 20, elapsedSeconds: 3, routeSegmentIndex: 1),
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: 201, distanceFromStartMeters: 30, elapsedSeconds: 4, routeSegmentIndex: 1)
+        ]
+        let profile = ElevationProfile(routePoints: points)
+
+        let data = MetricChartDataBuilder.build(
+            routePoints: points,
+            values: MetricChartDataBuilder.elevationValues(
+                routePoints: points,
+                profile: profile
+            )
+        )
+
+        XCTAssertEqual(data.map(\.id), [0, 2, 3, 4])
+        XCTAssertEqual(data.map(\.distanceKm), [0, 0.02, 0.02, 0.03])
+        XCTAssertEqual(data.map(\.seriesID), [1, 2, 3, 3])
+    }
+
+    func testElevationChartRejectsStaleProfileAlignment() {
+        let points = createSamplePoints(count: 3, totalDistance: 100)
+        let stalePoints = createSamplePoints(count: 3, totalDistance: 100)
+        let staleProfile = ElevationProfile(routePoints: stalePoints)
+
+        let values = MetricChartDataBuilder.elevationValues(
+            routePoints: points,
+            profile: staleProfile
+        )
+        let data = MetricChartDataBuilder.build(routePoints: points, values: values)
+
+        XCTAssertEqual(values.count, points.count)
+        XCTAssertTrue(values.allSatisfy { $0 == nil })
+        XCTAssertTrue(data.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func createSamplePoints(count: Int, totalDistance: Double) -> [RoutePoint] {

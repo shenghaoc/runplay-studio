@@ -4,7 +4,7 @@ import Foundation
 public struct SplitCalculator {
 
     public static func calculateSplits(from workout: RunWorkout) -> [RunSplit] {
-        calculateSplits(from: workout, timeline: WorkoutTimeline(workout: workout))
+        calculateSplits(from: workout, context: WorkoutAnalysisContext(workout: workout))
     }
 
     /// Route-segment boundaries do not reset cumulative split distance. A pause
@@ -14,6 +14,34 @@ public struct SplitCalculator {
         from workout: RunWorkout,
         timeline: WorkoutTimeline
     ) -> [RunSplit] {
+        calculateSplits(
+            from: workout,
+            context: WorkoutAnalysisContext(
+                timeline: timeline,
+                elevationProfile: ElevationProfile(routePoints: workout.routePoints)
+            )
+        )
+    }
+
+    public static func calculateSplits(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext
+    ) -> [RunSplit] {
+        (try? calculateSplits(
+            from: workout,
+            context: context,
+            policy: .runningDefault,
+            isCancelled: { false }
+        )) ?? []
+    }
+
+    static func calculateSplits(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [RunSplit] {
+        let timeline = context.timeline
         guard workout.routePoints.count >= 2,
               timeline.totalDistanceMeters > timeline.startDistanceMeters
         else {
@@ -24,8 +52,20 @@ public struct SplitCalculator {
         var splits: [RunSplit] = []
         var splitIndex = 1
         var splitStart = timeline.startDistanceMeters
+        let maximumSplitCount = RouteAnalysisBudget.maximumEvaluations(
+            forRoutePointCount: workout.routePoints.count
+        )
+        let distanceSpan = timeline.totalDistanceMeters - timeline.startDistanceMeters
+        let requiredSplitCount = ceil(distanceSpan / splitDistance)
+        guard requiredSplitCount.isFinite,
+              requiredSplitCount <= Double(maximumSplitCount)
+        else {
+            return []
+        }
 
-        while splitStart < timeline.totalDistanceMeters {
+        while splitStart < timeline.totalDistanceMeters,
+              splits.count < maximumSplitCount {
+            if isCancelled() { throw CancellationError() }
             let splitEnd = min(splitStart + splitDistance, timeline.totalDistanceMeters)
             let distance = splitEnd - splitStart
             guard distance > 0,
@@ -45,12 +85,13 @@ public struct SplitCalculator {
                 paceSecondsPerKilometer: activePace,
                 elapsedPaceSecondsPerKilometer: elapsedPace,
                 averageHeartRateBPM: timeline.averageHeartRate(from: splitStart, to: splitEnd),
-                elevationGainMeters: timeline.elevationGain(from: splitStart, to: splitEnd),
+                elevationGainMeters: context.elevationProfile.ascent(from: splitStart, to: splitEnd),
                 startDistanceMeters: splitStart,
                 endDistanceMeters: splitEnd
             ))
 
             splitIndex += 1
+            guard splitEnd > splitStart else { break }
             splitStart = splitEnd
         }
 

@@ -121,7 +121,7 @@ public struct ExportService: Sendable {
             "Split", "Start_km", "End_km", "Distance_km",
             "Elapsed_Duration_s", "Active_Duration_s",
             "Active_Pace_min_km", "Elapsed_Pace_min_km",
-            "Elevation_Gain_m", "Avg_HR_bpm"
+            "Corrected_Elevation_Gain_m", "Avg_HR_bpm"
         ]))
 
         // Data rows
@@ -150,12 +150,14 @@ public struct ExportService: Sendable {
         lines.append(CSVRow.joined([
             "Type", "Title", "Start_km", "End_km", "Distance_km",
             "Start_Elapsed_s", "End_Elapsed_s", "Active_Duration_s", "Elapsed_Duration_s",
-            "Active_Pace_min_km", "Elevation_Delta_m", "Avg_HR_bpm", "Description"
+            "Active_Pace_min_km", "Elevation_Metric", "Corrected_Elevation_Value_m",
+            "Avg_HR_bpm", "Description"
         ]))
 
         // Data rows
         for seg in segments {
             let paceMin = (seg.paceSecondsPerKilometer ?? 0) / 60.0
+            let semanticExport = SegmentExport(segment: seg)
             lines.append(CSVRow.joined([
                 seg.type.rawValue,
                 seg.title,
@@ -167,7 +169,8 @@ public struct ExportService: Sendable {
                 formatNumber(seg.activeDurationSeconds),
                 formatNumber(seg.elapsedDurationSeconds),
                 seg.paceSecondsPerKilometer != nil ? formatNumber(paceMin) : "",
-                seg.elevationDeltaMeters.map { formatNumber($0) } ?? "",
+                semanticExport.elevationMetric ?? "",
+                semanticExport.correctedElevationValueMeters.map { formatNumber($0) } ?? "",
                 seg.averageHeartRate.map { formatNumber($0) } ?? "",
                 seg.subtitle
             ]))

@@ -37,9 +37,9 @@ public struct WorkoutComparisonSummary: Sendable {
     public let comparisonElapsedPaceSecondsPerKm: Double
     public let elapsedPaceDeltaSecondsPerKm: Double
 
-    public let primaryElevationGainMeters: Double
-    public let comparisonElevationGainMeters: Double
-    public let elevationGainDeltaMeters: Double
+    public let primaryElevationGainMeters: Double?
+    public let comparisonElevationGainMeters: Double?
+    public let elevationGainDeltaMeters: Double?
     public let primaryAvgHR: Double?
     public let comparisonAvgHR: Double?
     public let avgHRDelta: Double?
@@ -101,7 +101,7 @@ public struct WorkoutComparisonSummary: Sendable {
     }
 
     public var elevationGainDeltaFormatted: String {
-        guard elevationGainDeltaMeters.isFinite else { return "N/A" }
+        guard let elevationGainDeltaMeters, elevationGainDeltaMeters.isFinite else { return "N/A" }
         if abs(elevationGainDeltaMeters) < 0.5 { return "0 m even" }
         return String(
             format: "%+.0f m %@",

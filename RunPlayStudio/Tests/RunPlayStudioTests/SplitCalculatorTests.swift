@@ -131,6 +131,25 @@ final class SplitCalculatorTests: XCTestCase {
         XCTAssertEqual(split?.averageHeartRateBPM ?? -1, 125, accuracy: 0.001)
     }
 
+    func testFlatNoisySplitUsesCorrectedElevationGain() {
+        let start = Date()
+        let jitter = [-1.0, 0, 1, 0]
+        let points = (0...100).map { index in
+            routePoint(
+                start: start,
+                time: Double(index) * 3,
+                distance: Double(index) * 10,
+                segment: 0,
+                altitude: 100 + jitter[index % jitter.count]
+            )
+        }
+        let workout = RunWorkout(routePoints: points)
+
+        let split = SplitCalculator.calculateSplits(from: workout).first
+
+        XCTAssertEqual(split?.elevationGainMeters ?? -1, 0, accuracy: 1)
+    }
+
     func testFinalSplitIncludesTerminalSameSegmentStationaryTime() {
         let start = Date()
         let workout = RunWorkout(routePoints: [
@@ -144,6 +163,16 @@ final class SplitCalculatorTests: XCTestCase {
         XCTAssertEqual(split?.elapsedSeconds ?? -1, 400, accuracy: 0.001)
         XCTAssertEqual(split?.activeSeconds ?? -1, 400, accuracy: 0.001)
         XCTAssertEqual(split?.paceSecondsPerKilometer ?? -1, 400, accuracy: 0.001)
+    }
+
+    func testImplausiblyHugeDistanceDoesNotAllocateUnboundedSplits() {
+        let start = Date()
+        let workout = RunWorkout(routePoints: [
+            routePoint(start: start, time: 0, distance: 0, segment: 0),
+            routePoint(start: start, time: 100, distance: 1_000_000_000, segment: 0)
+        ])
+
+        XCTAssertTrue(SplitCalculator.calculateSplits(from: workout).isEmpty)
     }
 
     // MARK: - Helpers

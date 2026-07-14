@@ -20,6 +20,65 @@ final class RouteMapCanvasTests: XCTestCase {
         XCTAssertEqual(route.coordinates.last?.longitude, 103.82)
     }
 
+    func testNormalizedMapGeometryExcludesRejectedTeleport() throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(10), latitude: 1.009, longitude: 103, distanceFromStartMeters: 0, elapsedSeconds: 10),
+            RoutePoint(timestamp: start.addingTimeInterval(20), latitude: 1.000_18, longitude: 103, distanceFromStartMeters: 0, elapsedSeconds: 20)
+        ]
+        let normalized = try RouteQualityProcessor().process(points).routePoints
+
+        let routes = RouteMapContent.segmentedRoutes(
+            idPrefix: "normalized",
+            points: normalized,
+            style: .primary
+        )
+
+        XCTAssertEqual(normalized.count, 2)
+        XCTAssertEqual(routes.count, 1)
+        XCTAssertEqual(routes[0].coordinates.count, 2)
+        XCTAssertLessThan(routes[0].coordinates.map(\.latitude).max() ?? .infinity, 1.001)
+    }
+
+    func testInferredGapProducesDisconnectedMapLines() throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [0.0, 20, 520, 540, 560].enumerated().map { index, metres in
+            RoutePoint(
+                timestamp: start.addingTimeInterval(Double(index) * 10),
+                latitude: 1 + metres / 111_132,
+                longitude: 103,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: Double(index) * 10
+            )
+        }
+        let normalized = try RouteQualityProcessor().process(points).routePoints
+
+        let routes = RouteMapContent.segmentedRoutes(
+            idPrefix: "gap",
+            points: normalized,
+            style: .primary
+        )
+
+        XCTAssertEqual(routes.count, 2)
+        XCTAssertEqual(routes.map { $0.coordinates.count }, [2, 3])
+    }
+
+    func testSingleLineCompatibilityRouteRefusesToBridgeSegments() {
+        var first = makePoint(latitude: 1.30, longitude: 103.80, distance: 0)
+        var resumed = makePoint(latitude: 1.40, longitude: 103.90, distance: 0)
+        first.routeSegmentIndex = 0
+        resumed.routeSegmentIndex = 1
+
+        let route = RouteMapContent.route(
+            id: "unsafe-gap",
+            points: [first, resumed],
+            style: .primary
+        )
+
+        XCTAssertTrue(route.coordinates.isEmpty)
+    }
+
     func testEndpointMarkersUseFirstAndLastValidCoordinates() {
         let points = [
             makePoint(latitude: .nan, longitude: 103.79, distance: 0),

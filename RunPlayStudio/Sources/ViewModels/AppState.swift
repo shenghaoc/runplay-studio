@@ -33,6 +33,18 @@ class AppState: ObservableObject {
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
 
+    private struct CachedAnalysisContext {
+        let normalizationVersion: Int
+        let pointCount: Int
+        let firstPointID: UUID?
+        let lastPointID: UUID?
+        let context: WorkoutAnalysisContext
+    }
+
+    /// Main-actor-owned immutable contexts avoid rebuilding 100k-point
+    /// elevation profiles from multiple SwiftUI computed properties.
+    private var analysisContextCache: [UUID: CachedAnalysisContext] = [:]
+
     /// Backward-compatible computed property for views that check loading state.
     var isLoadingLibrary: Bool {
         operationState == .loadingLibrary
@@ -104,6 +116,7 @@ class AppState: ObservableObject {
                 showingError = true
             }
         case .workouts(let loaded, let selectedWorkoutID, let warning):
+            analysisContextCache.removeAll()
             workouts = loaded
             let selected = selectedWorkoutID.flatMap { id in
                 loaded.first(where: { $0.id == id })
@@ -145,11 +158,10 @@ class AppState: ObservableObject {
 
         do {
             let workout = try await importService.importWorkout(from: url)
-            try await storeActor.addWorkout(workout, select: true)
-
-            // Check cancellation after persistence — if the task was cancelled
-            // while addWorkout was running on the actor, do not mutate UI state.
             try Task.checkCancellation()
+            try await storeActor.addWorkout(workout, select: true)
+            try Task.checkCancellation()
+            analysisContextCache.removeValue(forKey: workout.id)
 
             if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
                 workouts[existingIndex] = workout
@@ -157,11 +169,6 @@ class AppState: ObservableObject {
                 workouts.append(workout)
             }
             selectWorkout(workout, persistSelection: false)
-            if !workout.analysisWarnings.isEmpty {
-                errorMessage = "Imported with timing warnings:\n"
-                    + workout.analysisWarnings.map(\.message).joined(separator: "\n")
-                showingError = true
-            }
         } catch is CancellationError {
             // Cancelled — do not add to UI.
         } catch let error as WorkoutImportError {
@@ -284,6 +291,7 @@ class AppState: ObservableObject {
                 // manifest may disagree if selection persistence was pending
                 // or failed, but the UI state is authoritative for display.
                 workouts.removeAll { $0.id == workout.id }
+                analysisContextCache.removeValue(forKey: workout.id)
                 applyDeletionSelection(
                     deletingSelectedWorkout: deletingSelectedWorkout,
                     deletingComparisonWorkout: deletingComparisonWorkout
@@ -291,6 +299,7 @@ class AppState: ObservableObject {
             } catch let storeError as WorkoutLibraryStoreError {
                 // Manifest committed but file is orphaned. Remove from UI and warn.
                 workouts.removeAll { $0.id == workout.id }
+                analysisContextCache.removeValue(forKey: workout.id)
                 applyDeletionSelection(
                     deletingSelectedWorkout: deletingSelectedWorkout,
                     deletingComparisonWorkout: deletingComparisonWorkout
@@ -305,6 +314,7 @@ class AppState: ObservableObject {
         } else {
             // No store: just update in-memory state (demo-only mode).
             workouts.removeAll { $0.id == workout.id }
+            analysisContextCache.removeValue(forKey: workout.id)
             applyDeletionSelection(
                 deletingSelectedWorkout: deletingSelectedWorkout,
                 deletingComparisonWorkout: deletingComparisonWorkout
@@ -376,7 +386,12 @@ class AppState: ObservableObject {
     /// Get the comparison summary, if available.
     var comparisonSummary: WorkoutComparisonSummary? {
         guard let pair = comparisonPair else { return nil }
-        return comparisonService.compare(primary: pair.primary, comparison: pair.comparison)
+        return comparisonService.compare(
+            primary: pair.primary,
+            comparison: pair.comparison,
+            primaryContext: analysisContext(for: pair.primary),
+            comparisonContext: analysisContext(for: pair.comparison)
+        )
     }
 
     /// Get split comparisons, if available.
@@ -388,13 +403,21 @@ class AppState: ObservableObject {
     /// Get pace comparison metrics over distance.
     var comparisonMetrics: [ComparisonMetricPoint] {
         guard let pair = comparisonPair else { return [] }
-        return comparisonService.compareMetricsOverDistance(primary: pair.primary, comparison: pair.comparison)
+        return comparisonService.compareMetricsOverDistance(
+            primary: pair.primary,
+            comparison: pair.comparison,
+            primaryContext: analysisContext(for: pair.primary),
+            comparisonContext: analysisContext(for: pair.comparison)
+        )
     }
 
     /// Common distance for both routes (clamped).
     var comparisonCommonDistanceMeters: Double {
         guard let pair = comparisonPair else { return 0 }
-        return comparisonService.commonDistance(primary: pair.primary, comparison: pair.comparison)
+        return min(
+            analysisContext(for: pair.primary).timeline.totalDistanceMeters,
+            analysisContext(for: pair.comparison).timeline.totalDistanceMeters
+        )
     }
 
     /// Selected comparison distance constrained to the current route pair.
@@ -417,7 +440,9 @@ class AppState: ObservableObject {
         return comparisonService.metricsAtDistance(
             clampedComparisonDistanceMeters,
             primary: pair.primary,
-            comparison: pair.comparison
+            comparison: pair.comparison,
+            primaryContext: analysisContext(for: pair.primary),
+            comparisonContext: analysisContext(for: pair.comparison)
         )
     }
 
@@ -436,5 +461,24 @@ class AppState: ObservableObject {
     var availableForComparison: [RunWorkout] {
         guard let selected = selectedWorkout else { return workouts }
         return workouts.filter { $0.id != selected.id }
+    }
+
+    func analysisContext(for workout: RunWorkout) -> WorkoutAnalysisContext {
+        if let cached = analysisContextCache[workout.id],
+           cached.normalizationVersion == workout.normalizationVersion,
+           cached.pointCount == workout.routePoints.count,
+           cached.firstPointID == workout.routePoints.first?.id,
+           cached.lastPointID == workout.routePoints.last?.id {
+            return cached.context
+        }
+        let context = WorkoutAnalysisContext(workout: workout)
+        analysisContextCache[workout.id] = CachedAnalysisContext(
+            normalizationVersion: workout.normalizationVersion,
+            pointCount: workout.routePoints.count,
+            firstPointID: workout.routePoints.first?.id,
+            lastPointID: workout.routePoints.last?.id,
+            context: context
+        )
+        return context
     }
 }

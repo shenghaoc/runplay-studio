@@ -112,6 +112,44 @@ final class JSONImporterTests: XCTestCase {
         }
     }
 
+    func testInvalidSegmentMakesCompleteJSONDistanceSeriesFallBackAsAWhole() throws {
+        let json = """
+        {
+            "routePoints": [
+                { "timestamp": "2026-01-01T00:00:00Z", "latitude": 1.0000, "longitude": 103.0, "distanceFromStartMeters": 0, "routeSegmentIndex": 0 },
+                { "timestamp": "2026-01-01T00:00:10Z", "latitude": 1.0002, "longitude": 103.0, "distanceFromStartMeters": 100, "routeSegmentIndex": 0 },
+                { "timestamp": "2026-01-01T00:00:20Z", "latitude": 1.0004, "longitude": 103.0, "distanceFromStartMeters": 100, "routeSegmentIndex": 1 },
+                { "timestamp": "2026-01-01T00:00:30Z", "latitude": 1.0006, "longitude": 103.0, "distanceFromStartMeters": 50, "routeSegmentIndex": 1 }
+            ]
+        }
+        """
+
+        let workout = try JSONWorkoutImporter().importWorkout(from: Data(json.utf8))
+
+        XCTAssertEqual(workout.routeDistanceSource, .coordinateDerived)
+        XCTAssertEqual(
+            workout.routeDistanceProvenance.segmentSources,
+            [.coordinateDerived, .coordinateDerived]
+        )
+    }
+
+    func testInvalidCoordinateIsCountedInPersistedQualityDiagnostics() throws {
+        let json = """
+        {
+            "routePoints": [
+                { "timestamp": "2026-01-01T00:00:00Z", "latitude": 1.0, "longitude": 103.0 },
+                { "timestamp": "2026-01-01T00:00:10Z", "latitude": 91.0, "longitude": 103.0 },
+                { "timestamp": "2026-01-01T00:00:20Z", "latitude": 1.0002, "longitude": 103.0 }
+            ]
+        }
+        """
+
+        let workout = try JSONWorkoutImporter().importWorkout(from: Data(json.utf8))
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.qualityDiagnostics.invalidCoordinatePointCount, 1)
+    }
+
     func testRouteSegmentsPreservePauseAwareClocksAndGlobalDistance() throws {
         let json = """
         {

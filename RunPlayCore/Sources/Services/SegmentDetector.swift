@@ -7,43 +7,86 @@ import Foundation
 public struct SegmentDetector {
 
     public static func detectSegments(from workout: RunWorkout) -> [SegmentHighlight] {
-        detectSegments(from: workout, timeline: WorkoutTimeline(workout: workout))
+        detectSegments(from: workout, context: WorkoutAnalysisContext(workout: workout))
     }
 
     public static func detectSegments(
         from workout: RunWorkout,
         timeline: WorkoutTimeline
     ) -> [SegmentHighlight] {
+        detectSegments(
+            from: workout,
+            context: WorkoutAnalysisContext(
+                timeline: timeline,
+                elevationProfile: ElevationProfile(routePoints: workout.routePoints)
+            )
+        )
+    }
+
+    public static func detectSegments(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext
+    ) -> [SegmentHighlight] {
+        (try? detectSegments(
+            from: workout,
+            context: context,
+            policy: .runningDefault,
+            isCancelled: { false }
+        )) ?? []
+    }
+
+    static func detectSegments(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [SegmentHighlight] {
+        let timeline = context.timeline
         var segments: [SegmentHighlight] = []
 
-        if let segment = findFastestWindow(
+        if let segment = try findFastestWindow(
             workout,
             timeline: timeline,
             distanceMeters: 400,
-            type: .fastest400m
+            type: .fastest400m,
+            isCancelled: isCancelled
         ) {
             segments.append(segment)
         }
-        if let segment = findFastestWindow(
+        if let segment = try findFastestWindow(
             workout,
             timeline: timeline,
             distanceMeters: 1000,
-            type: .fastest1km
+            type: .fastest1km,
+            isCancelled: isCancelled
         ) {
             segments.append(segment)
         }
-        if let segment = findSlowestWindow(
+        if let segment = try findSlowestWindow(
             workout,
             timeline: timeline,
             distanceMeters: 1000,
-            type: .slowest1km
+            type: .slowest1km,
+            isCancelled: isCancelled
         ) {
             segments.append(segment)
         }
-        if let segment = findBiggestElevationSegment(workout, timeline: timeline, ascending: true) {
+        if let segment = try findBiggestElevationSegment(
+            workout,
+            context: context,
+            ascending: true,
+            policy: policy,
+            isCancelled: isCancelled
+        ) {
             segments.append(segment)
         }
-        if let segment = findBiggestElevationSegment(workout, timeline: timeline, ascending: false) {
+        if let segment = try findBiggestElevationSegment(
+            workout,
+            context: context,
+            ascending: false,
+            policy: policy,
+            isCancelled: isCancelled
+        ) {
             segments.append(segment)
         }
 
@@ -56,8 +99,9 @@ public struct SegmentDetector {
         _ workout: RunWorkout,
         timeline: WorkoutTimeline,
         distanceMeters: Double,
-        type: SegmentType
-    ) -> SegmentHighlight? {
+        type: SegmentType,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> SegmentHighlight? {
         guard workout.routePoints.count >= 2,
               timeline.totalDistanceMeters - timeline.startDistanceMeters >= distanceMeters
         else {
@@ -67,10 +111,16 @@ public struct SegmentDetector {
         var bestPace = Double.infinity
         var bestResult: WindowEvaluation?
         var bestStart = timeline.startDistanceMeters
-        let stepSize = min(50.0, distanceMeters / 4)
+        let preferredStep = min(50.0, distanceMeters / 4)
+        let stepSize = RouteAnalysisBudget.boundedStep(
+            preferredStep: preferredStep,
+            distanceSpan: timeline.totalDistanceMeters - timeline.startDistanceMeters,
+            routePointCount: workout.routePoints.count
+        )
         var windowStart = timeline.startDistanceMeters
 
         while windowStart + distanceMeters <= timeline.totalDistanceMeters {
+            if isCancelled() { throw CancellationError() }
             let windowEnd = windowStart + distanceMeters
             if let result = evaluateWindow(
                 timeline: timeline,
@@ -99,8 +149,9 @@ public struct SegmentDetector {
         _ workout: RunWorkout,
         timeline: WorkoutTimeline,
         distanceMeters: Double,
-        type: SegmentType
-    ) -> SegmentHighlight? {
+        type: SegmentType,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> SegmentHighlight? {
         guard workout.routePoints.count >= 2,
               timeline.totalDistanceMeters - timeline.startDistanceMeters >= distanceMeters
         else {
@@ -110,10 +161,16 @@ public struct SegmentDetector {
         var slowestPace: Double = 0
         var slowestResult: WindowEvaluation?
         var slowestStart = timeline.startDistanceMeters
-        let stepSize = min(50.0, distanceMeters / 4)
+        let preferredStep = min(50.0, distanceMeters / 4)
+        let stepSize = RouteAnalysisBudget.boundedStep(
+            preferredStep: preferredStep,
+            distanceSpan: timeline.totalDistanceMeters - timeline.startDistanceMeters,
+            routePointCount: workout.routePoints.count
+        )
         var windowStart = timeline.startDistanceMeters
 
         while windowStart + distanceMeters <= timeline.totalDistanceMeters {
+            if isCancelled() { throw CancellationError() }
             let windowEnd = windowStart + distanceMeters
             if let result = evaluateWindow(
                 timeline: timeline,
@@ -197,53 +254,63 @@ public struct SegmentDetector {
 
     private static func findBiggestElevationSegment(
         _ workout: RunWorkout,
-        timeline: WorkoutTimeline,
-        ascending: Bool
-    ) -> SegmentHighlight? {
+        context: WorkoutAnalysisContext,
+        ascending: Bool,
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> SegmentHighlight? {
         let points = workout.routePoints
+        let timeline = context.timeline
+        let elevationProfile = context.elevationProfile
         guard points.count >= 2,
-              points.contains(where: { $0.altitudeMeters != nil }),
-              timeline.totalDistanceMeters >= 100
+              elevationProfile.hasMeaningfulElevation,
+              timeline.totalDistanceMeters >= policy.elevationHighlightMinimumWindowMeters
         else {
             return nil
         }
 
-        let windowDistance = max(100, min(1000, timeline.totalDistanceMeters * 0.2))
-        let stepSize = max(25, windowDistance / 10)
+        let windowDistance = max(
+            policy.elevationHighlightMinimumWindowMeters,
+            min(
+                policy.elevationHighlightMaximumWindowMeters,
+                timeline.totalDistanceMeters * policy.elevationHighlightWindowRouteFraction
+            )
+        )
+        let preferredStep = max(
+            policy.elevationHighlightMinimumStepMeters,
+            windowDistance / Double(policy.elevationHighlightStepsPerWindow)
+        )
+        let stepSize = RouteAnalysisBudget.boundedStep(
+            preferredStep: preferredStep,
+            distanceSpan: timeline.totalDistanceMeters - timeline.startDistanceMeters,
+            routePointCount: points.count
+        )
         var bestDelta: Double = 0
         var bestStart = timeline.startDistanceMeters
-        var bestStartPoint: RoutePoint?
-        var bestEndPoint: RoutePoint?
         var windowStart = timeline.startDistanceMeters
 
         while windowStart + windowDistance <= timeline.totalDistanceMeters {
+            if isCancelled() { throw CancellationError() }
             let windowEnd = windowStart + windowDistance
             defer { windowStart += stepSize }
 
-            guard let startPoint = RoutePointInterpolator.point(at: windowStart, in: points),
-                  let endPoint = RoutePointInterpolator.point(at: windowEnd, in: points),
-                  startPoint.routeSegmentIndex == endPoint.routeSegmentIndex,
-                  let startAltitude = startPoint.altitudeMeters,
-                  let endAltitude = endPoint.altitudeMeters,
-                  startAltitude.isFinite,
-                  endAltitude.isFinite
+            guard elevationProfile.hasContinuousReliableElevation(
+                from: windowStart,
+                to: windowEnd
+            ), let change = elevationProfile.change(from: windowStart, to: windowEnd)
             else {
                 continue
             }
 
-            let delta = endAltitude - startAltitude
+            let delta = ascending ? change.ascentMeters : -change.descentMeters
             if (ascending && delta > bestDelta) || (!ascending && delta < bestDelta) {
                 bestDelta = delta
                 bestStart = windowStart
-                bestStartPoint = startPoint
-                bestEndPoint = endPoint
             }
         }
 
         let bestEnd = bestStart + windowDistance
         guard bestDelta != 0,
-              bestStartPoint != nil,
-              bestEndPoint != nil,
               let range = timeline.distanceRange(from: bestStart, to: bestEnd)
         else {
             return nil

@@ -17,7 +17,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertFalse(lines.isEmpty)
         XCTAssertEqual(
             lines[0],
-            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Active_Pace_min_km,Elapsed_Pace_min_km,Elevation_Gain_m,Avg_HR_bpm"
+            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Active_Pace_min_km,Elapsed_Pace_min_km,Corrected_Elevation_Gain_m,Avg_HR_bpm"
         )
     }
 
@@ -50,6 +50,8 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(lines[0].contains("Type"))
         XCTAssertTrue(lines[0].contains("Title"))
         XCTAssertTrue(lines[0].contains("Pace"))
+        XCTAssertTrue(lines[0].contains("Elevation_Metric"))
+        XCTAssertTrue(lines[0].contains("Corrected_Elevation_Value_m"))
     }
 
     func testSegmentsCSVIncludesAllTypes() {
@@ -61,6 +63,19 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(csv.contains("slowest1km"))
         XCTAssertTrue(csv.contains("biggestClimb"))
         XCTAssertTrue(csv.contains("biggestDescent"))
+        XCTAssertTrue(csv.contains("corrected_ascent"))
+        XCTAssertTrue(csv.contains("corrected_descent"))
+    }
+
+    func testSegmentsCSVExportsDescentAsPositiveCorrectedMagnitude() throws {
+        let csv = exportService.generateSegmentsCSV(segments: createSampleSegments())
+        let descentRow = try XCTUnwrap(
+            csv.split(separator: "\n").map(String.init).first { $0.hasPrefix("biggestDescent,") }
+        )
+        let fields = descentRow.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+
+        XCTAssertEqual(fields[10], "corrected_descent")
+        XCTAssertEqual(fields[11], "30")
     }
 
     func testSegmentsCSVHasExpectedRowCount() {
@@ -153,12 +168,68 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNotNil(json)
 
         XCTAssertEqual(json?["appName"] as? String, "RunPlay Studio")
-        XCTAssertEqual(json?["exportVersion"] as? String, "2.0")
+        XCTAssertEqual(json?["exportVersion"] as? String, "3.0")
         XCTAssertNotNil(json?["privacyNote"])
         XCTAssertNotNil(json?["workoutTitle"])
+        XCTAssertEqual(
+            json?["normalizationVersion"] as? Int,
+            RunWorkout.currentNormalizationVersion
+        )
+        XCTAssertEqual(json?["elevationAnalysisAvailable"] as? Bool, true)
+        XCTAssertEqual(
+            json?["elevationAnalysis"] as? String,
+            "Distance-smoothed altitude with threshold-confirmed ascent and descent"
+        )
+        XCTAssertNotNil(json?["qualityDiagnostics"])
         XCTAssertNotNil(json?["totalDistanceMeters"])
         XCTAssertNotNil(json?["totalDurationSeconds"])
         XCTAssertNotNil(json?["averagePaceSecondsPerKilometer"])
+    }
+
+    func testExportsUseCorrectedElevationAnalysisValues() throws {
+        var points = createSamplePoints()
+        let jitter = [-1.0, 0, 1, 0]
+        for index in points.indices {
+            points[index].altitudeMeters = 100 + jitter[index % jitter.count]
+        }
+        var workout = RunWorkout(routePoints: points)
+        WorkoutAnalyzer().analyze(&workout)
+
+        let result = try exportService.exportWorkoutSummaryJSON(
+            workout: workout,
+            segments: workout.segments
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        )
+        let csv = exportService.generateSplitsCSV(workout: workout)
+        let card = ExportSummaryCardModel(workout: workout, segments: workout.segments)
+
+        XCTAssertEqual(json["elevationGainMeters"] as? Double, 0)
+        XCTAssertEqual(json["elevationLossMeters"] as? Double, 0)
+        XCTAssertEqual(json["elevationAnalysisAvailable"] as? Bool, true)
+        XCTAssertFalse(csv.lowercased().contains("nan"))
+        XCTAssertTrue(card.elevationGainText.contains("0"))
+        XCTAssertTrue(card.elevationLossText.contains("0"))
+    }
+
+    func testUnavailableElevationIsExplicitInJSONAndPNGModel() throws {
+        var points = createSamplePoints()
+        for index in points.indices {
+            points[index].altitudeMeters = nil
+        }
+        var workout = RunWorkout(routePoints: points)
+        WorkoutAnalyzer().analyze(&workout)
+
+        let result = try exportService.exportWorkoutSummaryJSON(workout: workout, segments: [])
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        )
+        let card = ExportSummaryCardModel(workout: workout, segments: [])
+
+        XCTAssertEqual(json["elevationAnalysisAvailable"] as? Bool, false)
+        XCTAssertEqual(card.elevationGainText, "N/A")
+        XCTAssertEqual(card.elevationLossText, "N/A")
     }
 
     func testPausedWorkoutExportsExplicitSummaryAndSplitClocks() throws {
@@ -215,6 +286,16 @@ final class ExportServiceTests: XCTestCase {
         let segs = json?["segments"] as? [[String: Any]]
         XCTAssertNotNil(segs)
         XCTAssertEqual(segs!.count, segments.count)
+        XCTAssertEqual(segs?.first { $0["type"] as? String == "biggestClimb" }?["elevationMetric"] as? String, "corrected_ascent")
+        XCTAssertEqual(segs?.first { $0["type"] as? String == "biggestDescent" }?["elevationMetric"] as? String, "corrected_descent")
+        XCTAssertEqual(
+            segs?.first { $0["type"] as? String == "biggestDescent" }?["correctedElevationValueMeters"] as? Double,
+            30
+        )
+        XCTAssertEqual(
+            segs?.first { $0["type"] as? String == "biggestDescent" }?["elevationDeltaMeters"] as? Double,
+            -30
+        )
     }
 
     func testJSONSummaryPrivacyNote() throws {
