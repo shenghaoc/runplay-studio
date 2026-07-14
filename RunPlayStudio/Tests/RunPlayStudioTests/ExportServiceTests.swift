@@ -17,7 +17,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertFalse(lines.isEmpty)
         XCTAssertEqual(
             lines[0],
-            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Moving_Duration_s,Stopped_Duration_s,Active_Pace_min_km,Elapsed_Pace_min_km,Corrected_Elevation_Gain_m,Avg_HR_bpm"
+            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Moving_Duration_Estimated_s,Stopped_Duration_Estimated_s,Moving_Pace_Estimated_min_km,Active_Pace_min_km,Elapsed_Pace_min_km,Corrected_Elevation_Gain_m,Avg_HR_bpm"
         )
     }
 
@@ -253,7 +253,7 @@ final class ExportServiceTests: XCTestCase {
         let csv = exportService.generateSplitsCSV(workout: workout)
         let rows = csv.split(separator: "\n").map(String.init)
         XCTAssertEqual(rows.count, 2)
-        XCTAssertTrue(rows[1].contains("3300,300,300,0,5,55"))
+        XCTAssertTrue(rows[1].contains("3300,300,300,0,5,5,55"))
 
         let card = ExportSummaryCardModel(workout: workout, segments: [])
         XCTAssertEqual(card.elapsedTimeText, "55:00")
@@ -429,15 +429,16 @@ final class ExportServiceTests: XCTestCase {
         let rows = csv.split(separator: "\n").map(String.init)
         let fields = rows[1].split(separator: ",", omittingEmptySubsequences: false)
 
-        XCTAssertEqual(fields.count, 12)
-        // NaN/inf fields are at indices 4,5,8,9,10,11
-        // Fields 6,7 (Moving, Stopped) retain their initial values (300, 0)
-        let nanFields: Set<Int> = [4, 5, 8, 9, 10, 11]
+        XCTAssertEqual(fields.count, 13)
+        // NaN/inf fields are at indices 4,5,9,10,11,12.
+        // Fields 6...8 retain their initial moving values.
+        let nanFields: Set<Int> = [4, 5, 9, 10, 11, 12]
         for idx in nanFields where idx < fields.count {
             XCTAssertTrue(fields[idx].isEmpty, "Field \(idx) should be empty but was '\(fields[idx])'")
         }
         XCTAssertEqual(fields[6], "300")
         XCTAssertEqual(fields[7], "0")
+        XCTAssertEqual(fields[8], "5")
         XCTAssertFalse(csv.lowercased().contains("nan"))
         XCTAssertFalse(csv.lowercased().contains("inf"))
     }

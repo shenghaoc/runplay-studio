@@ -94,9 +94,9 @@ public struct SelectedMetrics: Sendable {
 
     public var movementStateLabel: String {
         switch movementState {
-        case .moving: return "Moving"
-        case .stopped: return "Stopped"
-        case .paused: return "Paused"
+        case .moving: return NSLocalizedString("Moving", comment: "Replay movement state")
+        case .stopped: return NSLocalizedString("Stopped", comment: "Replay movement state")
+        case .paused: return NSLocalizedString("Paused", comment: "Replay movement state")
         case .uncertain: return "---"
         case .none: return "---"
         }

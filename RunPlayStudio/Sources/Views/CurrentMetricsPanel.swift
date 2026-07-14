@@ -17,6 +17,10 @@ struct CurrentMetricsPanel: View {
                 .help("Elapsed time follows the replay clock and includes recording gaps.")
             MetricDisplay(label: "Active", value: metrics.formattedActive, icon: "timer", color: AppDesign.MetricColor.duration)
                 .help("Active time remains fixed during recording gaps.")
+            MetricDisplay(label: "Moving (est.)", value: metrics.formattedMoving, icon: "figure.run", color: AppDesign.MetricColor.duration)
+                .help("Moving time is estimated from route movement. Uncertain active time counts as moving.")
+            MetricDisplay(label: "Stopped (est.)", value: metrics.formattedStopped, icon: "figure.stand", color: .secondary)
+                .help("Stopped time is an estimate of stationary active recording time.")
             MetricDisplay(label: "Distance", value: metrics.formattedDistance, icon: "ruler", color: AppDesign.MetricColor.distance)
             MetricDisplay(label: "Pace", value: metrics.formattedPace, icon: "speedometer", color: AppDesign.MetricColor.pace)
                 .help("Pace uses active time.")
@@ -42,6 +46,13 @@ struct CurrentMetricsPanel: View {
                     .help("Elapsed time is advancing while active time and distance remain fixed.")
                     .accessibilityLabel("Recording gap")
                     .accessibilityHint("Elapsed time is advancing while active time and distance remain fixed")
+            }
+
+            if let state = metrics.movementState, !metrics.isInRecordingGap {
+                Label(metrics.movementStateLabel, systemImage: state == .stopped ? "stop.circle.fill" : "figure.run")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(state == .stopped ? AppDesign.comparisonOrange : .secondary)
+                    .accessibilityLabel("Estimated movement state: \(metrics.movementStateLabel)")
             }
         }
     }

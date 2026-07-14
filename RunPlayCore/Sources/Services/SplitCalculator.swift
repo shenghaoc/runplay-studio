@@ -91,6 +91,7 @@ public struct SplitCalculator {
                 activeSeconds: range.activeSeconds,
                 movingSeconds: movingSec,
                 stoppedSeconds: stoppedSec,
+                movingPaceSecondsPerKilometer: movingSec.map { pace(seconds: $0, distanceMeters: distance) },
                 paceSecondsPerKilometer: activePace,
                 elapsedPaceSecondsPerKilometer: elapsedPace,
                 averageHeartRateBPM: timeline.averageHeartRate(from: splitStart, to: splitEnd),

@@ -59,6 +59,20 @@ above remain unchecked.
 - [ ] Relaunch and confirm migrated analysis remains correct.
 - [ ] Confirm GPX, TCX, FIT, map, charts, deletion, and persistence still work.
 
+## Moving/Stopped Estimate Checklist
+
+These are required manual checks for this estimated GPS analysis; they are not
+claims of completed verification.
+
+- [ ] Import a synthetic route with a 30-second stationary traffic-light stop.
+- [ ] Confirm Active exceeds Moving, Stopped equals Active minus Moving, and labels say estimated.
+- [ ] Replay through the stop: elapsed/active advance, moving holds, stopped advances, and state says Stopped.
+- [ ] Replay through an explicit recording pause: only elapsed advances and state says Paused.
+- [ ] Inspect a split containing the stop and verify active and moving pace are separately labelled.
+- [ ] Compare it with an otherwise identical uninterrupted run and inspect moving/stopped deltas and caveats.
+- [ ] Inspect JSON, CSV, and PNG exports for estimated moving/stopped labels and diagnostics.
+- [ ] Quit and relaunch to confirm the reanalysed snapshot persists without repeated migration.
+
 ## FIT Import Checklist
 
 Use synthetic FIT fixtures only. These are manual checks to perform in a GUI

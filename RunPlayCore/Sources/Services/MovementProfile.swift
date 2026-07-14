@@ -116,12 +116,13 @@ public struct MovementProfile: Sendable {
         rawStates.reserveCapacity(count - 1)
         var activeDeltas: [Double] = []
         activeDeltas.reserveCapacity(count - 1)
+        var distanceDeltas: [Double] = []
+        distanceDeltas.reserveCapacity(count - 1)
 
         var reliableCount = 0
-        var pairIndex = 0
 
         for i in 0..<(count - 1) {
-            if pairIndex % policy.cancellationCheckStride == 0, isCancelled() {
+            if i % policy.cancellationCheckStride == 0, isCancelled() {
                 throw CancellationError()
             }
 
@@ -131,6 +132,7 @@ public struct MovementProfile: Sendable {
             guard next.routeSegmentIndex == current.routeSegmentIndex else {
                 rawStates.append(.paused)
                 activeDeltas.append(0)
+                distanceDeltas.append(0)
                 continue
             }
 
@@ -187,7 +189,7 @@ public struct MovementProfile: Sendable {
                 rawStates.append(.uncertain)
             }
             activeDeltas.append(activeDelta)
-            pairIndex += 1
+            distanceDeltas.append(distance)
         }
 
         // Pass 2: apply hysteresis — merge short blips
@@ -205,10 +207,13 @@ public struct MovementProfile: Sendable {
             }
 
             let runDuration = activeDeltas[i...runEnd].reduce(0, +)
+            let runDistance = distanceDeltas[i...runEnd].reduce(0, +)
 
             if merged[i] == .stopped, runDuration < policy.minimumStopDurationSeconds {
                 for j in i...runEnd { merged[j] = .uncertain }
-            } else if merged[i] == .moving, runDuration < policy.minimumResumeDurationSeconds {
+            } else if merged[i] == .moving,
+                      runDuration < policy.minimumResumeDurationSeconds,
+                      runDistance < policy.minimumResumeDistanceMeters {
                 for j in i...runEnd { merged[j] = .uncertain }
             }
 

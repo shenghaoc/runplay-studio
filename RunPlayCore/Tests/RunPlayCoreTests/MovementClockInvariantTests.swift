@@ -28,6 +28,36 @@ final class MovementClockInvariantTests: XCTestCase {
         )
 
         XCTAssertEqual(split.stoppedSeconds, 20)
+        XCTAssertEqual(split.movingPaceSecondsPerKilometer, 60)
+    }
+
+    func testSummaryDerivesMovingPaceAndSpeed() {
+        let summary = RunSummary(
+            totalDistanceMeters: 1_000,
+            totalElapsedSeconds: 100,
+            totalActiveSeconds: 100,
+            totalMovingSeconds: 80,
+            averagePaceSecondsPerKilometer: 100,
+            averageSpeedMetersPerSecond: 10
+        )
+
+        XCTAssertEqual(summary.movingPaceSecondsPerKilometer, 80)
+        XCTAssertEqual(summary.movingAverageSpeedMetersPerSecond, 12.5)
+        XCTAssertEqual(summary.totalActiveSeconds, summary.totalMovingSeconds + summary.totalStoppedSeconds)
+    }
+
+    func testWorkoutCodableRoundTripsMovementDiagnostics() throws {
+        var workout = RunWorkout()
+        workout.movementDiagnostics = MovementDiagnostics(
+            reliableIntervalCount: 12,
+            stoppedIntervalCount: 3,
+            uncertainIntervalCount: 2,
+            usedConservativeFallback: false,
+            analysedPointPairCount: 17
+        )
+
+        let decoded = try JSONDecoder().decode(RunWorkout.self, from: JSONEncoder().encode(workout))
+        XCTAssertEqual(decoded.movementDiagnostics, workout.movementDiagnostics)
     }
 
     func testDefaultDistanceComparisonBuildsMovementProfiles() {

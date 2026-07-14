@@ -18,6 +18,7 @@ public struct WorkoutExportSummary: Codable, Sendable {
     public let elevationAnalysisAvailable: Bool
     public let qualityDiagnostics: RouteQualityDiagnostics
     public let analysisWarnings: [String]
+    public let movementDiagnostics: MovementDiagnostics
 
     public let totalDistanceMeters: Double
     public let totalElapsedSeconds: Double
@@ -25,6 +26,8 @@ public struct WorkoutExportSummary: Codable, Sendable {
     public let totalPausedSeconds: Double
     public let totalMovingSeconds: Double
     public let totalStoppedSeconds: Double
+    public let movingPaceSecondsPerKilometer: Double
+    public let movingAverageSpeedMetersPerSecond: Double
     public let activePaceSecondsPerKilometer: Double
     public let elapsedPaceSecondsPerKilometer: Double
     public let activeAverageSpeedMetersPerSecond: Double
@@ -62,6 +65,7 @@ public struct WorkoutExportSummary: Codable, Sendable {
         ).hasMeaningfulElevation
         qualityDiagnostics = workout.qualityDiagnostics
         analysisWarnings = workout.analysisWarnings.map(\.message)
+        movementDiagnostics = workout.movementDiagnostics
 
         let summary = workout.summary
         totalDistanceMeters = ExportMetricSanitizer.nonNegative(summary.totalDistanceMeters)
@@ -70,6 +74,8 @@ public struct WorkoutExportSummary: Codable, Sendable {
         totalPausedSeconds = ExportMetricSanitizer.nonNegative(summary.totalPausedSeconds)
         totalMovingSeconds = ExportMetricSanitizer.nonNegative(summary.totalMovingSeconds)
         totalStoppedSeconds = ExportMetricSanitizer.nonNegative(summary.totalStoppedSeconds)
+        movingPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(summary.movingPaceSecondsPerKilometer)
+        movingAverageSpeedMetersPerSecond = ExportMetricSanitizer.nonNegative(summary.movingAverageSpeedMetersPerSecond)
         activePaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(summary.averagePaceSecondsPerKilometer)
         elapsedPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(summary.elapsedPaceSecondsPerKilometer)
         activeAverageSpeedMetersPerSecond = ExportMetricSanitizer.nonNegative(summary.averageSpeedMetersPerSecond)
@@ -95,6 +101,7 @@ public struct SplitExport: Codable, Sendable {
     public let activeDurationSeconds: Double
     public let movingDurationSeconds: Double
     public let stoppedDurationSeconds: Double
+    public let movingPaceSecondsPerKilometer: Double
     public let activePaceSecondsPerKilometer: Double
     public let elapsedPaceSecondsPerKilometer: Double
     /// Additive compatibility aliases: duration is elapsed; pace is active.
@@ -112,6 +119,7 @@ public struct SplitExport: Codable, Sendable {
         activeDurationSeconds = ExportMetricSanitizer.nonNegative(split.activeSeconds)
         movingDurationSeconds = ExportMetricSanitizer.nonNegative(split.movingSeconds)
         stoppedDurationSeconds = ExportMetricSanitizer.nonNegative(split.stoppedSeconds)
+        movingPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(split.movingPaceSecondsPerKilometer)
         activePaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(split.paceSecondsPerKilometer)
         elapsedPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(split.elapsedPaceSecondsPerKilometer)
         durationSeconds = elapsedDurationSeconds

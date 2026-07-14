@@ -77,9 +77,12 @@ public struct WorkoutAnalyzer: Sendable {
         )
         try throwIfCancelled(isCancelled)
         workout.analysisVersion = RunWorkout.currentAnalysisVersion
+        workout.movementDiagnostics = movementProfile.diagnostics
 
         // Attach movement diagnostics as analysis warnings
-        var warnings = workout.analysisWarnings
+        var warnings = workout.analysisWarnings.filter {
+            $0 != .movementEstimatedStoppedTime && $0 != .movementLowReliability
+        }
         if movementProfile.totalStoppedSeconds > 0 {
             if !warnings.contains(.movementEstimatedStoppedTime) {
                 warnings.append(.movementEstimatedStoppedTime)
@@ -231,6 +234,12 @@ public struct WorkoutAnalyzer: Sendable {
         )
         let activePace = activeSpeed > 0 ? 1_000 / activeSpeed : 0
         let elapsedPace = elapsedSpeed > 0 ? 1_000 / elapsedSpeed : 0
+        let movingSpeed = Self.speed(
+            distanceMeters: totalDistance,
+            seconds: context.movementProfile?.totalMovingSeconds ?? timeline.totalActiveSeconds,
+            maximumMetersPerSecond: policy.maximumSourceSpeedMetersPerSecond
+        )
+        let movingPace = movingSpeed > 0 ? 1_000 / movingSpeed : 0
 
         let elevationGain = context.elevationProfile.totalAscentMeters ?? 0
         let elevationLoss = context.elevationProfile.totalDescentMeters ?? 0
@@ -261,6 +270,8 @@ public struct WorkoutAnalyzer: Sendable {
             totalPausedSeconds: timeline.totalPausedSeconds,
             totalMovingSeconds: context.movementProfile?.totalMovingSeconds,
             totalStoppedSeconds: context.movementProfile?.totalStoppedSeconds,
+            movingPaceSecondsPerKilometer: movingPace,
+            movingAverageSpeedMetersPerSecond: movingSpeed,
             averagePaceSecondsPerKilometer: activePace,
             elapsedPaceSecondsPerKilometer: elapsedPace,
             averageSpeedMetersPerSecond: activeSpeed,

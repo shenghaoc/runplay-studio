@@ -201,6 +201,18 @@ same immutable profile, with `AppState` retaining context values by workout
 rather than using a global mutable cache. Charts, route colouring/projection,
 comparison, replay metrics, and exports therefore use the same correction.
 
+### MovementProfile
+
+`MovementProfile` is another immutable analysis product created from normalized
+route points and the authoritative `WorkoutTimeline`. It classifies same-segment
+intervals as moving, stopped, paused, or uncertain using geometric speed,
+displacement, cumulative distance, dwell time, and hysteresis. A resumed state
+requires sustained evidence by duration or distance. Paused intervals remain
+owned by `WorkoutTimeline` and never count as moving or stopped. Uncertain
+active time counts as moving. Sparse or irregular timing uses the conservative
+fallback `moving = active`, `stopped = 0`; compact `MovementDiagnostics` are
+persisted while detailed interval state is derived at runtime.
+
 JSON summary export carries normalization version, route-distance provenance,
 quality diagnostics, warnings, and an `elevationAnalysis` description. Segment
 JSON pairs `elevationMetric` with `correctedElevationValueMeters`; corrected
@@ -382,4 +394,3 @@ interpolates selected-distance markers without introducing another renderer.
 
 - AVFoundation for video export
 - HealthKit for direct Apple Health import
-- Moving-time estimation with an explicitly chosen speed threshold

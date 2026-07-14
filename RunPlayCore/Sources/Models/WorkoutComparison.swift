@@ -34,6 +34,9 @@ public struct WorkoutComparisonSummary: Sendable {
     public let primaryStoppedSeconds: Double
     public let comparisonStoppedSeconds: Double
     public let stoppedTimeDeltaSeconds: Double
+    public let primaryMovingPaceSecondsPerKm: Double
+    public let comparisonMovingPaceSecondsPerKm: Double
+    public let movingPaceDeltaSecondsPerKm: Double
 
     /// Source-compatible pace fields use active time.
     public let primaryPaceSecondsPerKm: Double
@@ -75,16 +78,16 @@ public struct WorkoutComparisonSummary: Sendable {
     public var elapsedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedTimeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
     public var activeTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeTimeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
@@ -99,17 +102,21 @@ public struct WorkoutComparisonSummary: Sendable {
     public var movingTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             movingTimeDeltaSeconds,
-            positiveLabel: "more moving",
-            negativeLabel: "less moving"
+            positiveLabel: NSLocalizedString("more moving", comment: "Comparison moving-time delta"),
+            negativeLabel: NSLocalizedString("less moving", comment: "Comparison moving-time delta")
         )
     }
 
     public var stoppedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             stoppedTimeDeltaSeconds,
-            positiveLabel: "more stopped",
-            negativeLabel: "less stopped"
+            positiveLabel: NSLocalizedString("more stopped", comment: "Comparison stopped-time delta"),
+            negativeLabel: NSLocalizedString("less stopped", comment: "Comparison stopped-time delta")
         )
+    }
+
+    public var movingPaceDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: "/km")
     }
 
     public var durationDeltaFormatted: String { elapsedTimeDeltaFormatted }
@@ -391,6 +398,7 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
     case missingElevation = "One or both runs lack elevation data"
     case tooFewPoints = "One or both runs have very few data points"
     case movementEstimated = "Stopped time is estimated from GPS; comparisons involving stopped time are approximate"
+    case movementEstimateReliabilityDiffers = "One run used a conservative moving-time fallback; moving-time comparisons are approximate"
 
     public var icon: String {
         switch self {
@@ -402,6 +410,7 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
         case .missingElevation: return "mountain.2"
         case .tooFewPoints: return "chart.dots.scatterplot"
         case .movementEstimated: return "figure.walk.motion"
+        case .movementEstimateReliabilityDiffers: return "exclamationmark.triangle"
         }
     }
 }

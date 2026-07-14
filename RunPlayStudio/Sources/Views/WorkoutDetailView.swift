@@ -217,6 +217,18 @@ private struct WorkoutHeaderView: View {
                 help: "Active time excludes recording gaps between route segments."
             )
             headerMetric(
+                "Moving (est.)",
+                workout.summary.formattedMoving,
+                AppDesign.MetricColor.duration,
+                help: "Estimated moving time. Uncertain active intervals count as moving."
+            )
+            headerMetric(
+                "Moving Pace (est.)",
+                workout.summary.formattedMovingPace,
+                AppDesign.MetricColor.pace,
+                help: "Estimated pace while moving. The canonical Pace remains active-time based."
+            )
+            headerMetric(
                 "Pace",
                 workout.summary.formattedPace,
                 AppDesign.MetricColor.pace,

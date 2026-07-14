@@ -70,6 +70,9 @@ public struct WorkoutComparisonService: Sendable {
             primaryStoppedSeconds: primary.summary.totalStoppedSeconds,
             comparisonStoppedSeconds: comparison.summary.totalStoppedSeconds,
             stoppedTimeDeltaSeconds: primary.summary.totalStoppedSeconds - comparison.summary.totalStoppedSeconds,
+            primaryMovingPaceSecondsPerKm: primary.summary.movingPaceSecondsPerKilometer,
+            comparisonMovingPaceSecondsPerKm: comparison.summary.movingPaceSecondsPerKilometer,
+            movingPaceDeltaSecondsPerKm: primary.summary.movingPaceSecondsPerKilometer - comparison.summary.movingPaceSecondsPerKilometer,
             primaryPaceSecondsPerKm: primaryActivePace,
             comparisonPaceSecondsPerKm: comparisonActivePace,
             paceDeltaSecondsPerKm: primaryActivePace - comparisonActivePace,
@@ -361,6 +364,10 @@ public struct WorkoutComparisonService: Sendable {
         }
         if primary.summary.totalStoppedSeconds > 0 || comparison.summary.totalStoppedSeconds > 0 {
             warnings.append(.movementEstimated)
+        }
+        if primary.movementDiagnostics.usedConservativeFallback
+            != comparison.movementDiagnostics.usedConservativeFallback {
+            warnings.append(.movementEstimateReliabilityDiffers)
         }
         return warnings
     }
