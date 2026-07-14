@@ -50,7 +50,7 @@ public struct WorkoutAnalyzer: Sendable {
         try throwIfCancelled(isCancelled)
 
         // Build movement profile from the (possibly updated) route points
-        let movementProfile = try? MovementProfile(
+        let movementProfile = try MovementProfile(
             routePoints: workout.routePoints,
             timeline: context.timeline,
             isCancelled: isCancelled
@@ -79,20 +79,18 @@ public struct WorkoutAnalyzer: Sendable {
         workout.analysisVersion = RunWorkout.currentAnalysisVersion
 
         // Attach movement diagnostics as analysis warnings
-        if let profile = movementProfile {
-            var warnings = workout.analysisWarnings
-            if profile.totalStoppedSeconds > 0 {
-                if !warnings.contains(.movementEstimatedStoppedTime) {
-                    warnings.append(.movementEstimatedStoppedTime)
-                }
+        var warnings = workout.analysisWarnings
+        if movementProfile.totalStoppedSeconds > 0 {
+            if !warnings.contains(.movementEstimatedStoppedTime) {
+                warnings.append(.movementEstimatedStoppedTime)
             }
-            if profile.diagnostics.usedConservativeFallback {
-                if !warnings.contains(.movementLowReliability) {
-                    warnings.append(.movementLowReliability)
-                }
-            }
-            workout.analysisWarnings = warnings
         }
+        if movementProfile.diagnostics.usedConservativeFallback {
+            if !warnings.contains(.movementLowReliability) {
+                warnings.append(.movementLowReliability)
+            }
+        }
+        workout.analysisWarnings = warnings
     }
 
     /// Apply route normalization before analysis. Importers and normalization
@@ -126,7 +124,7 @@ public struct WorkoutAnalyzer: Sendable {
             elevationProfile: quality.elevationProfile
         )
         // Build movement profile for normalization path
-        let movementProfile = try? MovementProfile(
+        let movementProfile = try MovementProfile(
             routePoints: quality.routePoints,
             timeline: context.timeline,
             isCancelled: isCancelled

@@ -100,8 +100,8 @@ public struct MovementProfile: Sendable {
 
         guard count >= 2 else {
             states = []
-            movingSecondsByPoint = [0]
-            stoppedSecondsByPoint = [0]
+            movingSecondsByPoint = Array(repeating: 0.0, count: count)
+            stoppedSecondsByPoint = Array(repeating: 0.0, count: count)
             totalMovingSeconds = 0
             totalStoppedSeconds = 0
             diagnostics = MovementDiagnostics(
@@ -192,8 +192,6 @@ public struct MovementProfile: Sendable {
 
         // Pass 2: apply hysteresis — merge short blips
         var merged = rawStates
-        var stopCount = 0
-        var uncertainCount = 0
         var i = 0
 
         while i < merged.count {
@@ -208,22 +206,17 @@ public struct MovementProfile: Sendable {
 
             let runDuration = activeDeltas[i...runEnd].reduce(0, +)
 
-            if merged[i] == .stopped {
-                if runDuration < policy.minimumStopDurationSeconds {
-                    for j in i...runEnd { merged[j] = .uncertain }
-                } else {
-                    stopCount += 1
-                }
-            } else if merged[i] == .moving {
-                if runDuration < policy.minimumResumeDurationSeconds {
-                    for j in i...runEnd { merged[j] = .uncertain }
-                }
-            } else if merged[i] == .uncertain {
-                uncertainCount += 1
+            if merged[i] == .stopped, runDuration < policy.minimumStopDurationSeconds {
+                for j in i...runEnd { merged[j] = .uncertain }
+            } else if merged[i] == .moving, runDuration < policy.minimumResumeDurationSeconds {
+                for j in i...runEnd { merged[j] = .uncertain }
             }
 
             i = runEnd + 1
         }
+
+        let stopCount = merged.filter { $0 == .stopped }.count
+        let uncertainCount = merged.filter { $0 == .uncertain }.count
 
         // Build cumulative arrays: uncertain counts as moving (conservative)
         var movingCum: [Double] = []

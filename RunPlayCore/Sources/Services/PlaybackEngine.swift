@@ -132,7 +132,7 @@ public class PlaybackEngine {
         guard let point = currentRoutePoint else { return SelectedMetrics() }
         let replaySample = timeline?.replaySample(atElapsedTime: state.currentTime)
         let pointActive = timeline?.activeSeconds(atPointIndex: state.currentPointIndex)
-        let movState = movementProfile?.state(atElapsedTime: state.currentTime, timeline: timeline!)
+        let movState = timeline.flatMap { movementProfile?.state(atElapsedTime: state.currentTime, timeline: $0) }
 
         return SelectedMetrics(
             elapsedSeconds: state.currentTime,
