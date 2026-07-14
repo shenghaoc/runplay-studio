@@ -17,3 +17,7 @@
 ## 2025-07-28 - Array Allocation in MetricSmoother
 **Learning:** `MetricSmoother.smoothHeartRate` used `.compactMap { ... }.reduce(0, +)` inside its windowing loop. Because this executes for every point parsed, it resulted in massive intermediate array allocations, causing heavy GC overhead.
 **Action:** Replace `compactMap`/`reduce` inside O(N) loops with inline `for` loops to accumulate state variables without generating throwaway arrays.
+
+## 2025-07-28 - O(N) Array Allocations in Iterative Checking and Aggregation Logic
+**Learning:** Checking for data presence or aggregating values (like heart rate or pace) over arrays using chained higher-order functions like `.compactMap { ... }.filter { ... }.count` and `.compactMap { ... }.filter { ... }.reduce()` causes intermediate `O(N)` array allocations. When these properties are accessed frequently or within large loops across thousands of points, it creates significant GC and ARC overhead.
+**Action:** Replace chained array transformations with single inline `for` loops that use accumulator variables or short-circuit returns (`return true` after finding required elements). This keeps best-case performance at `O(1)` or `O(N)` without `O(N)` intermediate arrays.
