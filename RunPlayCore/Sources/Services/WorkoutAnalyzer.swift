@@ -10,12 +10,101 @@ public struct WorkoutAnalyzer: Sendable {
     /// Analyze a workout in place using `WorkoutTimeline` as the sole time
     /// authority for the summary, splits, and notable pace windows.
     public func analyze(_ workout: inout RunWorkout) {
-        let timeline = WorkoutTimeline(workout: workout)
-        calculateDerivedMetrics(&workout, timeline: timeline)
-        workout.summary = calculateSummary(workout, timeline: timeline)
-        workout.splits = SplitCalculator.calculateSplits(from: workout, timeline: timeline)
-        workout.segments = SegmentDetector.detectSegments(from: workout, timeline: timeline)
+        analyze(
+            &workout,
+            context: WorkoutAnalysisContext(workout: workout),
+            policy: .runningDefault
+        )
+    }
+
+    public func analyze(_ workout: inout RunWorkout, context: WorkoutAnalysisContext) {
+        analyze(&workout, context: context, policy: .runningDefault)
+    }
+
+    private func analyze(
+        _ workout: inout RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy
+    ) {
+        try? analyzeCancellable(
+            &workout,
+            context: context,
+            policy: policy,
+            isCancelled: { false }
+        )
+    }
+
+    private func analyzeCancellable(
+        _ workout: inout RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws {
+        try throwIfCancelled(isCancelled)
+        try calculateDerivedMetrics(
+            &workout,
+            timeline: context.timeline,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+        try throwIfCancelled(isCancelled)
+        workout.summary = calculateSummary(workout, context: context, policy: policy)
+        try throwIfCancelled(isCancelled)
+        workout.splits = try SplitCalculator.calculateSplits(
+            from: workout,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+        workout.segments = try SegmentDetector.detectSegments(
+            from: workout,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+        try throwIfCancelled(isCancelled)
         workout.analysisVersion = RunWorkout.currentAnalysisVersion
+    }
+
+    /// Apply route normalization before analysis. Importers and normalization
+    /// migrations use this path so cancellation propagates before persistence.
+    public func normalizeAndAnalyze(
+        _ workout: inout RunWorkout,
+        distancePolicy: RouteDistancePolicy,
+        policy: RouteQualityPolicy = .runningDefault,
+        sourceInvalidCoordinatePointCount: Int = 0,
+        isCancelled: @escaping @Sendable () -> Bool = {
+            withUnsafeCurrentTask { $0?.isCancelled ?? false }
+        }
+    ) throws {
+        let quality = try RouteQualityProcessor(policy: policy).process(
+            workout.routePoints,
+            distancePolicy: distancePolicy,
+            sourceInvalidCoordinatePointCount: sourceInvalidCoordinatePointCount,
+            isCancelled: isCancelled
+        )
+        try throwIfCancelled(isCancelled)
+        var analyzed = workout
+        analyzed.routePoints = quality.routePoints
+        analyzed.normalizationVersion = RunWorkout.currentNormalizationVersion
+        analyzed.qualityDiagnostics = quality.diagnostics
+        analyzed.routeDistanceSource = quality.distanceSource
+        analyzed.routeDistanceProvenance = quality.distanceProvenance
+        let nonQualityWarnings = analyzed.analysisWarnings.filter { !$0.isRouteQualityWarning }
+        analyzed.analysisWarnings = Self.uniqued(nonQualityWarnings + quality.analysisWarnings)
+        let context = WorkoutAnalysisContext(
+            routePoints: quality.routePoints,
+            elevationProfile: quality.elevationProfile
+        )
+        try throwIfCancelled(isCancelled)
+        try analyzeCancellable(
+            &analyzed,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+        try throwIfCancelled(isCancelled)
+        workout = analyzed
     }
 
     /// Recompute stale persisted analysis while preserving the exact stored
@@ -26,11 +115,19 @@ public struct WorkoutAnalyzer: Sendable {
         workout.routePoints = storedRoutePoints
     }
 
-    private func calculateDerivedMetrics(_ workout: inout RunWorkout, timeline: WorkoutTimeline) {
+    private func calculateDerivedMetrics(
+        _ workout: inout RunWorkout,
+        timeline: WorkoutTimeline,
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws {
         let points = workout.routePoints
         guard points.count >= 2 else { return }
 
         for index in 1..<points.count {
+            if index % policy.cancellationCheckStride == 0 {
+                try throwIfCancelled(isCancelled)
+            }
             let previous = points[index - 1]
             let current = points[index]
             guard current.routeSegmentIndex == previous.routeSegmentIndex,
@@ -41,58 +138,64 @@ public struct WorkoutAnalyzer: Sendable {
             }
 
             if workout.routePoints[index].speedMetersPerSecond == nil {
-                let distance = GeoDistance.distanceMeters(
-                    fromLat: previous.latitude,
-                    lon: previous.longitude,
-                    toLat: current.latitude,
-                    lon: current.longitude
-                )
+                let distance = current.distanceFromStartMeters - previous.distanceFromStartMeters
                 let elapsed = currentElapsed - previousElapsed
                 if distance.isFinite, distance >= 0, elapsed.isFinite, elapsed > 0 {
-                    workout.routePoints[index].speedMetersPerSecond = distance / elapsed
+                    let derivedSpeed = distance / elapsed
+                    if derivedSpeed.isFinite,
+                       derivedSpeed <= policy.maximumSourceSpeedMetersPerSecond {
+                        workout.routePoints[index].speedMetersPerSecond = derivedSpeed
+                    }
                 }
             }
 
-            if workout.routePoints[index].paceSecondsPerKilometer == nil,
-               let speed = workout.routePoints[index].speedMetersPerSecond,
+            if let speed = workout.routePoints[index].speedMetersPerSecond,
                speed.isFinite,
-               speed > 0 {
+               speed > 0,
+               speed <= policy.maximumSourceSpeedMetersPerSecond {
                 workout.routePoints[index].paceSecondsPerKilometer = 1000.0 / speed
+            } else {
+                if let speed = workout.routePoints[index].speedMetersPerSecond,
+                   !speed.isFinite || speed < 0 || speed > policy.maximumSourceSpeedMetersPerSecond {
+                    workout.routePoints[index].speedMetersPerSecond = nil
+                }
+                workout.routePoints[index].paceSecondsPerKilometer = nil
             }
         }
     }
 
-    private func calculateSummary(_ workout: RunWorkout, timeline: WorkoutTimeline) -> RunSummary {
+    private func throwIfCancelled(
+        _ isCancelled: @Sendable () -> Bool
+    ) throws {
+        if isCancelled() { throw CancellationError() }
+    }
+
+    private func calculateSummary(
+        _ workout: RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy
+    ) -> RunSummary {
         let points = workout.routePoints
         guard !points.isEmpty else { return RunSummary() }
 
+        let timeline = context.timeline
+
         let totalDistance = timeline.totalDistanceMeters
-        let activePace = Self.pace(seconds: timeline.totalActiveSeconds, distanceMeters: totalDistance)
-        let elapsedPace = Self.pace(seconds: timeline.totalElapsedSeconds, distanceMeters: totalDistance)
-        let activeSpeed = Self.speed(distanceMeters: totalDistance, seconds: timeline.totalActiveSeconds)
-        let elapsedSpeed = Self.speed(distanceMeters: totalDistance, seconds: timeline.totalElapsedSeconds)
+        let activeSpeed = Self.speed(
+            distanceMeters: totalDistance,
+            seconds: timeline.totalActiveSeconds,
+            maximumMetersPerSecond: policy.maximumSourceSpeedMetersPerSecond
+        )
+        let elapsedSpeed = Self.speed(
+            distanceMeters: totalDistance,
+            seconds: timeline.totalElapsedSeconds,
+            maximumMetersPerSecond: policy.maximumSourceSpeedMetersPerSecond
+        )
+        let activePace = activeSpeed > 0 ? 1_000 / activeSpeed : 0
+        let elapsedPace = elapsedSpeed > 0 ? 1_000 / elapsedSpeed : 0
 
-        var elevationGain: Double = 0
-        var elevationLoss: Double = 0
-        var previousAltitude: Double?
-        var previousSegmentIndex: Int?
-
-        for point in points {
-            if let altitude = point.altitudeMeters,
-               let previous = previousAltitude,
-               altitude.isFinite,
-               previous.isFinite,
-               point.routeSegmentIndex == previousSegmentIndex {
-                let difference = altitude - previous
-                if difference > 0 {
-                    elevationGain += difference
-                } else {
-                    elevationLoss += abs(difference)
-                }
-            }
-            previousAltitude = point.altitudeMeters
-            previousSegmentIndex = point.routeSegmentIndex
-        }
+        let elevationGain = context.elevationProfile.totalAscentMeters ?? 0
+        let elevationLoss = context.elevationProfile.totalDescentMeters ?? 0
 
         // ⚡ Bolt: Replaced .compactMap { ... }.filter { ... }.reduce chain with inline loop.
         // This avoids intermediate O(N) array allocations for heart rate aggregations.
@@ -129,7 +232,11 @@ public struct WorkoutAnalyzer: Sendable {
         )
     }
 
-    private static func pace(seconds: Double, distanceMeters: Double) -> Double {
+    private static func speed(
+        distanceMeters: Double,
+        seconds: Double,
+        maximumMetersPerSecond: Double
+    ) -> Double {
         guard seconds.isFinite,
               seconds > 0,
               distanceMeters.isFinite,
@@ -137,18 +244,9 @@ public struct WorkoutAnalyzer: Sendable {
         else {
             return 0
         }
-        return (seconds / distanceMeters) * 1000
-    }
-
-    private static func speed(distanceMeters: Double, seconds: Double) -> Double {
-        guard seconds.isFinite,
-              seconds > 0,
-              distanceMeters.isFinite,
-              distanceMeters > 0
-        else {
-            return 0
-        }
-        return distanceMeters / seconds
+        let value = distanceMeters / seconds
+        guard value.isFinite, value <= maximumMetersPerSecond else { return 0 }
+        return value
     }
 
     public func calculateDistance(from: RoutePoint, to: RoutePoint) -> Double {
@@ -158,5 +256,10 @@ public struct WorkoutAnalyzer: Sendable {
             toLat: to.latitude,
             lon: to.longitude
         )
+    }
+
+    private static func uniqued(_ warnings: [WorkoutAnalysisWarning]) -> [WorkoutAnalysisWarning] {
+        var seen: Set<WorkoutAnalysisWarning> = []
+        return warnings.filter { seen.insert($0).inserted }
     }
 }

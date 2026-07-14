@@ -150,6 +150,74 @@ final class RouteColoringTests: XCTestCase {
         XCTAssertEqual(colors[1], .systemGreen)
     }
 
+    func testElevationColoringUsesCorrectedProfileInsteadOfSceneY() {
+        let routePoints = createElevationRoute(
+            altitudes: [10, 1_000, 12],
+            routeSegmentIndexes: [0, 0, 0]
+        )
+        let profile = ElevationProfile(routePoints: routePoints)
+        let firstScene = createScenePoints(routePoints: routePoints, yMeters: [0, 1_980, 4])
+        let secondScene = createScenePoints(routePoints: routePoints, yMeters: [500, -200, 7_000])
+
+        XCTAssertTrue(profile.sourceAltitudeWasRejected(atPointIndex: 1))
+
+        let firstColors = coloringService.computeSegmentColors(
+            points: firstScene,
+            mode: .elevation,
+            elevationProfile: profile
+        )
+        let secondColors = coloringService.computeSegmentColors(
+            points: secondScene,
+            mode: .elevation,
+            elevationProfile: profile
+        )
+
+        XCTAssertEqual(firstColors, secondColors)
+        XCTAssertNotEqual(firstColors.first, firstColors.last)
+    }
+
+    func testElevationColoringDoesNotInventScaleForNonMeaningfulProfile() {
+        let routePoints = createElevationRoute(
+            altitudes: [10, 50, 100],
+            routeSegmentIndexes: [0, 0, 0]
+        )
+        let policy = RouteQualityPolicy(minimumReliableAltitudeSampleCount: 4)
+        let profile = ElevationProfile(routePoints: routePoints, policy: policy)
+        let scenePoints = createScenePoints(routePoints: routePoints, yMeters: [0, 80, 180])
+
+        XCTAssertFalse(profile.hasMeaningfulElevation)
+
+        let colors = coloringService.computeSegmentColors(
+            points: scenePoints,
+            mode: .elevation,
+            elevationProfile: profile,
+            defaultColor: .magenta
+        )
+
+        XCTAssertEqual(colors, [.magenta, .magenta])
+    }
+
+    func testElevationColoringUsesDefaultAcrossRouteSegmentBoundary() {
+        let routePoints = createElevationRoute(
+            altitudes: [10, 20, 30, 40],
+            routeSegmentIndexes: [0, 0, 1, 1]
+        )
+        let profile = ElevationProfile(routePoints: routePoints)
+        let scenePoints = createScenePoints(routePoints: routePoints, yMeters: [0, 20, 40, 60])
+
+        let colors = coloringService.computeSegmentColors(
+            points: scenePoints,
+            mode: .elevation,
+            elevationProfile: profile,
+            defaultColor: .magenta
+        )
+
+        XCTAssertEqual(colors.count, 3)
+        XCTAssertNotEqual(colors[0], .magenta)
+        XCTAssertEqual(colors[1], .magenta)
+        XCTAssertNotEqual(colors[2], .magenta)
+    }
+
     // MARK: - Segment Pace Tests
 
     func testComputeSegmentPaceReturnsValidValues() {
@@ -398,5 +466,42 @@ final class RouteColoringTests: XCTestCase {
         }
 
         return points
+    }
+
+    private func createElevationRoute(
+        altitudes: [Double?],
+        routeSegmentIndexes: [Int]
+    ) -> [RoutePoint] {
+        precondition(altitudes.count == routeSegmentIndexes.count)
+        return altitudes.indices.map { index in
+            RoutePoint(
+                timestamp: Date().addingTimeInterval(Double(index) * 15),
+                latitude: 37.7749 + Double(index) * 0.0001,
+                longitude: -122.4194,
+                altitudeMeters: altitudes[index],
+                distanceFromStartMeters: Double(index) * 50,
+                elapsedSeconds: Double(index) * 15,
+                routeSegmentIndex: routeSegmentIndexes[index]
+            )
+        }
+    }
+
+    private func createScenePoints(
+        routePoints: [RoutePoint],
+        yMeters: [Double]
+    ) -> [RouteScenePoint] {
+        precondition(routePoints.count == yMeters.count)
+        return routePoints.indices.map { index in
+            RouteScenePoint(
+                id: routePoints[index].id,
+                xMeters: Double(index) * 50,
+                yMeters: yMeters[index],
+                zMeters: 0,
+                sourceIndex: index,
+                distanceFromStartMeters: routePoints[index].distanceFromStartMeters,
+                elapsedSeconds: routePoints[index].elapsedSeconds,
+                routeSegmentIndex: routePoints[index].routeSegmentIndex
+            )
+        }
     }
 }

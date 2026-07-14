@@ -2,6 +2,79 @@ import SwiftUI
 import RunPlayCore
 import Charts
 
+struct MetricChartDataPoint: Identifiable, Equatable {
+    let id: Int
+    let distanceKm: Double
+    let value: Double
+    let seriesID: Int
+}
+
+enum MetricChartDataBuilder {
+    static func elevationValues(
+        routePoints: [RoutePoint],
+        profile: ElevationProfile
+    ) -> [Double?] {
+        routePoints.indices.map { index in
+            correctedElevation(
+                at: index,
+                routePoints: routePoints,
+                profile: profile
+            )
+        }
+    }
+
+    static func correctedElevation(
+        at index: Int,
+        routePoints: [RoutePoint],
+        profile: ElevationProfile
+    ) -> Double? {
+        guard routePoints.indices.contains(index),
+              profile.samples.indices.contains(index)
+        else {
+            return nil
+        }
+        let point = routePoints[index]
+        let sample = profile.samples[index]
+        guard sample.routePointID == point.id,
+              sample.distanceFromStartMeters == point.distanceFromStartMeters,
+              sample.routeSegmentIndex == point.routeSegmentIndex
+        else {
+            return nil
+        }
+        return sample.correctedAltitudeMeters
+    }
+
+    static func build(
+        routePoints: [RoutePoint],
+        values: [Double?]
+    ) -> [MetricChartDataPoint] {
+        var seriesID = 0
+        var previousSegment: Int?
+        var previousHadValue = false
+        return routePoints.indices.compactMap { index in
+            let point = routePoints[index]
+            guard values.indices.contains(index),
+                  let value = values[index],
+                  value.isFinite
+            else {
+                previousHadValue = false
+                return nil
+            }
+            if !previousHadValue || point.routeSegmentIndex != previousSegment {
+                seriesID += 1
+            }
+            previousHadValue = true
+            previousSegment = point.routeSegmentIndex
+            return MetricChartDataPoint(
+                id: index,
+                distanceKm: point.distanceFromStartMeters / 1_000,
+                value: value,
+                seriesID: seriesID
+            )
+        }
+    }
+}
+
 
 /// Displays running metrics as interactive charts using Swift Charts.
 ///
@@ -10,6 +83,7 @@ import Charts
 /// Uses semantic colors from the design system for each metric type.
 struct MetricsChartView: View {
     let routePoints: [RoutePoint]
+    let elevationProfile: ElevationProfile
     var currentDistance: Double = 0
     var smoothingWindow: Int = 5
     var onSeek: ((Double) -> Void)? = nil
@@ -17,9 +91,23 @@ struct MetricsChartView: View {
     @State private var selectedMetric: MetricType = .elevation
     @State private var isDragging: Bool = false
     @State private var dragDistance: Double? = nil
-    @State private var chartData: [ChartDataPoint] = []
+    @State private var chartData: [MetricChartDataPoint] = []
     @State private var seekDistanceKmText: String = ""
     @FocusState private var seekFieldFocused: Bool
+
+    init(
+        routePoints: [RoutePoint],
+        elevationProfile: ElevationProfile? = nil,
+        currentDistance: Double = 0,
+        smoothingWindow: Int = 5,
+        onSeek: ((Double) -> Void)? = nil
+    ) {
+        self.routePoints = routePoints
+        self.elevationProfile = elevationProfile ?? ElevationProfile(routePoints: routePoints)
+        self.currentDistance = currentDistance
+        self.smoothingWindow = smoothingWindow
+        self.onSeek = onSeek
+    }
 
     enum MetricType: String, CaseIterable {
         case elevation = "Elevation"
@@ -73,7 +161,8 @@ struct MetricsChartView: View {
                     ForEach(chartData) { point in
                         AreaMark(
                             x: .value("Distance (km)", point.distanceKm),
-                            y: .value(selectedMetric.rawValue, point.value)
+                            y: .value(selectedMetric.rawValue, point.value),
+                            series: .value("Continuous route", point.seriesID)
                         )
                         .foregroundStyle(
                             LinearGradient(
@@ -86,7 +175,8 @@ struct MetricsChartView: View {
 
                         LineMark(
                             x: .value("Distance (km)", point.distanceKm),
-                            y: .value(selectedMetric.rawValue, point.value)
+                            y: .value(selectedMetric.rawValue, point.value),
+                            series: .value("Continuous route", point.seriesID)
                         )
                         .foregroundStyle(chartColor)
                         .interpolationMethod(.catmullRom)
@@ -271,18 +361,15 @@ struct MetricsChartView: View {
 
     // MARK: - Chart Data
 
-    private struct ChartDataPoint: Identifiable {
-        let id = UUID()
-        let distanceKm: Double
-        let value: Double
-    }
-
     private func refreshChartData() {
         let smoothedValues: [Double?]
 
         switch selectedMetric {
         case .elevation:
-            smoothedValues = routePoints.map { $0.altitudeMeters }
+            smoothedValues = MetricChartDataBuilder.elevationValues(
+                routePoints: routePoints,
+                profile: elevationProfile
+            )
         case .pace:
             smoothedValues = MetricSmoother.smoothPace(from: routePoints, windowSize: smoothingWindow)
         case .heartRate:
@@ -291,13 +378,10 @@ struct MetricsChartView: View {
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
 
-        chartData = zip(routePoints, smoothedValues).compactMap { point, value in
-            guard let v = value else { return nil }
-            return ChartDataPoint(
-                distanceKm: point.distanceFromStartMeters / 1000,
-                value: v
-            )
-        }
+        chartData = MetricChartDataBuilder.build(
+            routePoints: routePoints,
+            values: smoothedValues
+        )
     }
 
     private var chartColor: Color {
@@ -313,24 +397,33 @@ struct MetricsChartView: View {
         selectedMetric == .heartRate ? "No heart rate data available" : "No chart data available"
     }
 
-    private func valueForDistance(_ distance: Double) -> Double {
-        guard distance > 0, !routePoints.isEmpty else { return 0 }
+    private func valueForDistance(_ distance: Double) -> Double? {
+        guard distance >= 0, !routePoints.isEmpty else { return nil }
         let index = RoutePointInterpolator.firstIndex(atOrAfter: distance, in: routePoints) ?? routePoints.count - 1
-        guard index >= 0 && index < routePoints.count else { return 0 }
+        guard index >= 0 && index < routePoints.count else { return nil }
 
         switch selectedMetric {
-        case .elevation: return routePoints[index].altitudeMeters ?? 0
-        case .pace: return routePoints[index].paceSecondsPerKilometer ?? 0
-        case .heartRate: return routePoints[index].heartRateBPM ?? .nan
-        case .speed: return routePoints[index].speedMetersPerSecond ?? 0
+        case .elevation:
+            return MetricChartDataBuilder.correctedElevation(
+                at: index,
+                routePoints: routePoints,
+                profile: elevationProfile
+            )
+        case .pace: return routePoints[index].paceSecondsPerKilometer
+        case .heartRate: return routePoints[index].heartRateBPM
+        case .speed: return routePoints[index].speedMetersPerSecond
         }
     }
 
-    private var currentValue: Double {
-        valueForDistance(currentDistance)
-    }
-
-    private func formatValue(_ value: Double) -> String {
+    private func formatValue(_ value: Double?) -> String {
+        guard let value, value.isFinite else {
+            switch selectedMetric {
+            case .elevation: return "No elevation data"
+            case .pace: return "No pace data"
+            case .heartRate: return "No HR data"
+            case .speed: return "No speed data"
+            }
+        }
         switch selectedMetric {
         case .elevation: return "\(Int(value))m"
         case .pace:

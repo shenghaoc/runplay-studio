@@ -67,8 +67,15 @@ public struct ExportSummaryCardModel: Sendable {
         pausedTimeText = summary.formattedPaused
         activePaceText = summary.formattedPace
         elapsedPaceText = summary.formattedElapsedPace
-        elevationGainText = DisplayFormatter.formatElevationDelta(summary.elevationGainMeters)
-        elevationLossText = DisplayFormatter.formatElevationDelta(-summary.elevationLossMeters)
+        let elevationAvailable = ElevationProfile(
+            routePoints: workout.routePoints
+        ).hasMeaningfulElevation
+        elevationGainText = elevationAvailable
+            ? DisplayFormatter.formatElevationDelta(summary.elevationGainMeters)
+            : "N/A"
+        elevationLossText = elevationAvailable
+            ? DisplayFormatter.formatElevationDelta(-summary.elevationLossMeters)
+            : "N/A"
         heartRateText = summary.averageHeartRateBPM.flatMap { value in
             value.isFinite ? DisplayFormatter.formatHeartRate(value) : nil
         }

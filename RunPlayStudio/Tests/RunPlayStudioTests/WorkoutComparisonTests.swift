@@ -282,6 +282,25 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertTrue(metrics.isEmpty)
     }
 
+    func testTinyMetricIntervalIsBoundedAndStillCoversCommonEndpoint() throws {
+        let start = Date()
+        let points = [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: 10, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(100), latitude: 1.001, longitude: 103, altitudeMeters: 20, distanceFromStartMeters: 1_000_000_000, elapsedSeconds: 100)
+        ]
+        let primary = RunWorkout(routePoints: points)
+        let comparison = RunWorkout(routePoints: points)
+
+        let metrics = service.compareMetricsOverDistance(
+            primary: primary,
+            comparison: comparison,
+            sampleIntervalMeters: .leastNonzeroMagnitude
+        )
+
+        XCTAssertEqual(metrics.count, 1_000)
+        XCTAssertEqual(try XCTUnwrap(metrics.last).distanceMeters, 1_000_000_000, accuracy: 0.001)
+    }
+
     // MARK: - Warnings
 
     func testDifferentDistancesWarning() {
@@ -306,6 +325,25 @@ final class WorkoutComparisonTests: XCTestCase {
         let summary = service.compare(primary: primary, comparison: comparison)
 
         XCTAssertTrue(summary.warnings.contains(.missingElevation))
+        XCTAssertNil(summary.primaryElevationGainMeters)
+        XCTAssertNotNil(summary.comparisonElevationGainMeters)
+        XCTAssertNil(summary.elevationGainDeltaMeters)
+        XCTAssertEqual(summary.elevationGainDeltaFormatted, "N/A")
+    }
+
+    func testElevationGainComparisonUsesCorrectedProfilesInsteadOfStoredSummaryValues() throws {
+        var noisyFlat = createSampleWorkout(distance: 5_000, pace: 300)
+        for index in noisyFlat.routePoints.indices {
+            noisyFlat.routePoints[index].altitudeMeters = 100 + Double((index % 3) - 1)
+        }
+        noisyFlat.summary.elevationGainMeters = 999
+        let climb = createSampleWorkout(distance: 5_000, pace: 300)
+
+        let summary = service.compare(primary: noisyFlat, comparison: climb)
+
+        XCTAssertEqual(try XCTUnwrap(summary.primaryElevationGainMeters), 0, accuracy: 1)
+        XCTAssertEqual(try XCTUnwrap(summary.comparisonElevationGainMeters), 30, accuracy: 3)
+        XCTAssertEqual(try XCTUnwrap(summary.elevationGainDeltaMeters), -30, accuracy: 3)
     }
 
     func testFewPointsWarning() {

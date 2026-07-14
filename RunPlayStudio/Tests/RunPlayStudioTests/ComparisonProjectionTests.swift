@@ -185,6 +185,66 @@ final class ComparisonProjectionTests: XCTestCase {
         XCTAssertEqual(compDiff, 40, accuracy: 1)
     }
 
+    func testCorrectedProfilesShareBaselineAndPreserveRouteAlignment() {
+        let primary = createProfileRoute(
+            startLat: 37.7749,
+            altitudes: [10, 1_000, 12],
+            routeSegmentIndex: 2
+        )
+        let comparison = createProfileRoute(
+            startLat: 37.7752,
+            altitudes: [20, 21, 22],
+            routeSegmentIndex: 7
+        )
+        let primaryProfile = ElevationProfile(routePoints: primary)
+        let comparisonProfile = ElevationProfile(routePoints: comparison)
+
+        XCTAssertTrue(primaryProfile.sourceAltitudeWasRejected(atPointIndex: 1))
+
+        let result = service.project(
+            primary: primary,
+            comparison: comparison,
+            primaryElevationProfile: primaryProfile,
+            comparisonElevationProfile: comparisonProfile
+        )
+
+        XCTAssertEqual(result.primaryRoute.map(\.sourceIndex), [0, 1, 2])
+        XCTAssertEqual(result.primaryRoute.map(\.distanceFromStartMeters), [0, 50, 100])
+        XCTAssertEqual(result.primaryRoute.map(\.routeSegmentIndex), [2, 2, 2])
+        XCTAssertEqual(result.primaryRoute[0].yMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(result.primaryRoute[1].yMeters, 2, accuracy: 0.001)
+        XCTAssertEqual(result.primaryRoute[2].yMeters, 4, accuracy: 0.001)
+
+        XCTAssertEqual(result.comparisonRoute.map(\.sourceIndex), [0, 1, 2])
+        XCTAssertEqual(result.comparisonRoute.map(\.distanceFromStartMeters), [0, 50, 100])
+        XCTAssertEqual(result.comparisonRoute.map(\.routeSegmentIndex), [7, 7, 7])
+        XCTAssertEqual(result.comparisonRoute[0].yMeters, 20, accuracy: 0.001)
+        XCTAssertEqual(result.comparisonRoute[1].yMeters, 22, accuracy: 0.001)
+        XCTAssertEqual(result.comparisonRoute[2].yMeters, 24, accuracy: 0.001)
+    }
+
+    func testComparisonFlattensOnlyRouteWithoutMeaningfulElevation() {
+        let primary = createProfileRoute(startLat: 37.7749, altitudes: [10, 100])
+        let comparison = createProfileRoute(startLat: 37.7752, altitudes: [20, 40])
+        let strictPolicy = RouteQualityPolicy(minimumReliableAltitudeSampleCount: 3)
+        let primaryProfile = ElevationProfile(routePoints: primary, policy: strictPolicy)
+        let comparisonProfile = ElevationProfile(routePoints: comparison)
+
+        XCTAssertFalse(primaryProfile.hasMeaningfulElevation)
+        XCTAssertTrue(comparisonProfile.hasMeaningfulElevation)
+
+        let result = service.project(
+            primary: primary,
+            comparison: comparison,
+            primaryElevationProfile: primaryProfile,
+            comparisonElevationProfile: comparisonProfile
+        )
+
+        XCTAssertEqual(result.primaryRoute.map(\.yMeters), [0, 0])
+        XCTAssertEqual(result.comparisonRoute[0].yMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(result.comparisonRoute[1].yMeters, 40, accuracy: 0.001)
+    }
+
     // MARK: - Warnings Passthrough
 
     func testExistingWarningsPassthrough() {
@@ -447,6 +507,24 @@ final class ComparisonProjectionTests: XCTestCase {
             distanceFromStartMeters: 0,
             elapsedSeconds: 0
         )
+    }
+
+    private func createProfileRoute(
+        startLat: Double,
+        altitudes: [Double?],
+        routeSegmentIndex: Int = 0
+    ) -> [RoutePoint] {
+        altitudes.enumerated().map { index, altitude in
+            RoutePoint(
+                timestamp: Date().addingTimeInterval(Double(index) * 15),
+                latitude: startLat + Double(index) * 0.0001,
+                longitude: -122.4194,
+                altitudeMeters: altitude,
+                distanceFromStartMeters: Double(index) * 50,
+                elapsedSeconds: Double(index) * 15,
+                routeSegmentIndex: routeSegmentIndex
+            )
+        }
     }
 
     private func loadFixture(_ path: String) throws -> RunWorkout {

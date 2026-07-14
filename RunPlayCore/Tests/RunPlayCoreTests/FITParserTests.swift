@@ -823,13 +823,14 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(decoded.records[0].enhancedAltitude, 100_000)
         XCTAssertEqual(decoded.records[0].enhancedSpeed, 200_000)
 
-        // Verify the decoder uses enhanced values
+        // Verify enhanced altitude is retained as source data while the route
+        // quality pipeline rejects an impossible device speed.
         let points = FITDecoder.decode(records: decoded.records)
         XCTAssertEqual(points.count, 1)
         // enhanced altitude: (100000 / 5.0) - 500 = 19500.0
         XCTAssertEqual(points[0].altitudeMeters ?? 0, 19_500.0, accuracy: 0.01)
-        // enhanced speed: 200000 / 1000.0 = 200.0
-        XCTAssertEqual(points[0].speedMetersPerSecond ?? 0, 200.0, accuracy: 0.01)
+        // enhanced speed decodes to 200m/s, which is not credible run data.
+        XCTAssertNil(points[0].speedMetersPerSecond)
     }
 
     func testInvalidEnhancedMetricFallsBackToLegacyValue() {
@@ -1034,6 +1035,133 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(workout.summary.totalElapsedSeconds, 100, accuracy: 0.001)
         XCTAssertEqual(workout.summary.totalActiveSeconds, 60, accuracy: 0.001)
         XCTAssertEqual(workout.summary.totalPausedSeconds, 40, accuracy: 0.001)
+    }
+
+    func testSameTimestampResumeKeepsFollowingUntimestampedRecord() throws {
+        let baseTimestamp: UInt32 = 1_000_000
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.running.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        decodedFile.sessions = [session]
+        decodedFile.records = [
+            Self.record(timestamp: baseTimestamp, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            Self.record(timestamp: baseTimestamp + 1, latDegrees: 37.7750, lonDegrees: -122.4194, distanceMeters: 10),
+            Self.record(timestamp: nil, latDegrees: 37.7751, lonDegrees: -122.4194, distanceMeters: 20),
+            Self.record(timestamp: baseTimestamp + 2, latDegrees: 37.7752, lonDegrees: -122.4194, distanceMeters: 30)
+        ]
+
+        var start = FITEventMessage()
+        start.timestamp = baseTimestamp
+        start.event = 0
+        start.eventType = FITTimerEventType.start.rawValue
+        var stop = FITEventMessage()
+        stop.timestamp = baseTimestamp + 1
+        stop.event = 0
+        stop.eventType = FITTimerEventType.stop.rawValue
+        var resume = FITEventMessage()
+        resume.timestamp = baseTimestamp + 1
+        resume.event = 0
+        resume.eventType = FITTimerEventType.start.rawValue
+        decodedFile.events = [start, stop, resume]
+
+        let points = try FITDecoder.decodeRaw(decodedFile: decodedFile)
+
+        XCTAssertEqual(points.count, 4)
+        XCTAssertEqual(points.map(\.routeSegmentIndex), [0, 0, 1, 1])
+    }
+
+    func testBetweenSamplesResumeDoesNotClaimAmbiguousUntimestampedRecord() throws {
+        let baseTimestamp: UInt32 = 1_000_000
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.running.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        decodedFile.sessions = [session]
+        decodedFile.records = [
+            Self.record(timestamp: baseTimestamp, latDegrees: 37.7749, lonDegrees: -122.4194, distanceMeters: 0),
+            Self.record(timestamp: baseTimestamp + 5, latDegrees: 37.7750, lonDegrees: -122.4194, distanceMeters: 10),
+            Self.record(timestamp: nil, latDegrees: 37.7751, lonDegrees: -122.4194, distanceMeters: 20),
+            Self.record(timestamp: baseTimestamp + 10, latDegrees: 37.7752, lonDegrees: -122.4194, distanceMeters: 30)
+        ]
+
+        var start = FITEventMessage()
+        start.timestamp = baseTimestamp
+        start.event = 0
+        start.eventType = FITTimerEventType.start.rawValue
+        var stop = FITEventMessage()
+        stop.timestamp = baseTimestamp + 7
+        stop.event = 0
+        stop.eventType = FITTimerEventType.stop.rawValue
+        var resume = FITEventMessage()
+        resume.timestamp = baseTimestamp + 7
+        resume.event = 0
+        resume.eventType = FITTimerEventType.start.rawValue
+        decodedFile.events = [start, stop, resume]
+
+        let points = try FITDecoder.decodeRaw(decodedFile: decodedFile)
+
+        XCTAssertEqual(points.count, 3)
+        XCTAssertEqual(points.map(\.routeSegmentIndex), [0, 0, 1])
+        XCTAssertEqual(points.last?.timestamp, FITParser.timestampToDate(baseTimestamp + 10))
+    }
+
+    func testHundredThousandRecordsWithManyTimerSegmentsStayWithinLinearBudget() throws {
+        let pointCount = 100_000
+        let recordsPerCycle = 10
+        let activeRecordsPerCycle = 5
+        let baseTimestamp: UInt32 = 1_000_000
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.running.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        session.startTime = baseTimestamp
+        session.timestamp = baseTimestamp + UInt32(pointCount - 1)
+        decodedFile.sessions = [session]
+
+        decodedFile.records.reserveCapacity(pointCount)
+        for index in 0..<pointCount {
+            decodedFile.records.append(Self.record(
+                timestamp: baseTimestamp + UInt32(index),
+                latDegrees: 37.7749 + (Double(index) * 0.000_000_1),
+                lonDegrees: -122.4194,
+                distanceMeters: Double(index)
+            ))
+        }
+
+        let cycleCount = pointCount / recordsPerCycle
+        decodedFile.events.reserveCapacity(cycleCount * 2)
+        for cycle in 0..<cycleCount {
+            let cycleStart = cycle * recordsPerCycle
+            var start = FITEventMessage()
+            start.timestamp = baseTimestamp + UInt32(cycleStart)
+            start.event = 0
+            start.eventType = FITTimerEventType.start.rawValue
+            decodedFile.events.append(start)
+
+            var stop = FITEventMessage()
+            stop.timestamp = baseTimestamp + UInt32(cycleStart + activeRecordsPerCycle - 1)
+            stop.event = 0
+            stop.eventType = FITTimerEventType.stop.rawValue
+            decodedFile.events.append(stop)
+        }
+
+        let clock = ContinuousClock()
+        let began = clock.now
+        let points = try FITDecoder.decodeRaw(decodedFile: decodedFile)
+        let duration = began.duration(to: clock.now)
+
+        XCTAssertEqual(points.count, cycleCount * activeRecordsPerCycle)
+        XCTAssertEqual(points.prefix(activeRecordsPerCycle).map(\.routeSegmentIndex), Array(repeating: 0, count: activeRecordsPerCycle))
+        XCTAssertEqual(points[activeRecordsPerCycle].routeSegmentIndex, 1)
+        XCTAssertEqual(points.last?.routeSegmentIndex, cycleCount - 1)
+        XCTAssertLessThan(duration, .seconds(20), "100,000-record FIT segmentation took \(duration)")
     }
 
     // MARK: - Ordered Messages Test

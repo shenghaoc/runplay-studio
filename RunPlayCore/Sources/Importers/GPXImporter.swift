@@ -27,6 +27,11 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         guard !allRawPoints.isEmpty else {
             throw WorkoutImportError.missingData("No GPS route data found in this GPX file")
         }
+        let invalidCoordinatePointCount = allRawPoints.reduce(into: 0) { count, point in
+            if !GeoDistance.isValidCoordinate(lat: point.lat, lon: point.lon) {
+                count += 1
+            }
+        }
 
         // Build RoutePoints with segment indexes, preserving raw timestamps.
         var routePoints: [RoutePoint] = []
@@ -81,12 +86,6 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
             routePoints[i].elapsedSeconds = resolvedTimestamps[i].timeIntervalSince(startDate)
         }
 
-        routePoints = RoutePointSanitizer.normalize(routePoints)
-
-        guard !routePoints.isEmpty else {
-            throw WorkoutImportError.missingData("No valid coordinates found in GPX file")
-        }
-
         let metadata = WorkoutMetadata(
             name: sourceURL.deletingPathExtension().lastPathComponent,
             activityType: "running",
@@ -101,7 +100,11 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         )
 
         let analyzer = WorkoutAnalyzer()
-        analyzer.analyze(&workout)
+        try analyzer.normalizeAndAnalyze(
+            &workout,
+            distancePolicy: .computeFromCoordinates,
+            sourceInvalidCoordinatePointCount: invalidCoordinatePointCount
+        )
 
         return workout
     }

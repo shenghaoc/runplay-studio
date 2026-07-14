@@ -102,6 +102,45 @@ final class SegmentDetectionTests: XCTestCase {
         XCTAssertNil(segments.first { $0.type == .biggestDescent })
     }
 
+    func testFlatAltitudeNoiseDoesNotCreateNotableClimbOrDescent() {
+        let start = Date()
+        let jitter = [-1.0, 0, 1, 0]
+        var points: [RoutePoint] = []
+        for index in 0...200 {
+            let seconds = Double(index) * 3
+            let distance = Double(index) * 10
+            let altitude = 100 + jitter[index % jitter.count]
+            points.append(RoutePoint(
+                timestamp: start.addingTimeInterval(seconds),
+                latitude: 1 + distance / 111_132,
+                longitude: 103,
+                altitudeMeters: altitude,
+                distanceFromStartMeters: distance,
+                elapsedSeconds: seconds
+            ))
+        }
+
+        let segments = SegmentDetector.detectSegments(from: RunWorkout(routePoints: points))
+
+        XCTAssertNil(segments.first { $0.type == .biggestClimb })
+        XCTAssertNil(segments.first { $0.type == .biggestDescent })
+    }
+
+    func testHugeSuppliedDistanceUsesBoundedWindowEvaluation() {
+        let start = Date()
+        let workout = RunWorkout(routePoints: [
+            RoutePoint(timestamp: start, latitude: 1, longitude: 103, altitudeMeters: 10, distanceFromStartMeters: 0, elapsedSeconds: 0),
+            RoutePoint(timestamp: start.addingTimeInterval(100), latitude: 1.001, longitude: 103, altitudeMeters: 20, distanceFromStartMeters: 1_000_000_000, elapsedSeconds: 100)
+        ])
+
+        let clock = ContinuousClock()
+        let started = clock.now
+        let segments = SegmentDetector.detectSegments(from: workout)
+
+        XCTAssertLessThanOrEqual(segments.count, 5)
+        XCTAssertLessThan(started.duration(to: clock.now), .seconds(5))
+    }
+
     func testPaceWindowSpansPauseUsingActiveTime() throws {
         let start = Date()
         let workout = RunWorkout(routePoints: [

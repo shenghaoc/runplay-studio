@@ -39,8 +39,38 @@ final class WorkoutAnalyzerTests: XCTestCase {
         let analyzer = WorkoutAnalyzer()
         analyzer.analyze(&workout)
 
-        XCTAssertGreaterThan(workout.summary.elevationGainMeters, 0)
+        XCTAssertEqual(workout.summary.elevationGainMeters, 98, accuracy: 3)
         XCTAssertEqual(workout.summary.elevationLossMeters, 0, accuracy: 0.1)
+    }
+
+    func testFlatAltitudeJitterDoesNotInflateSummaryGainOrLoss() {
+        var points = createSamplePoints(count: 101, totalDistance: 1_000, totalSeconds: 300)
+        let jitter = [-1.0, 0, 1, 0]
+        for index in points.indices {
+            points[index].altitudeMeters = 100 + jitter[index % jitter.count]
+        }
+        var workout = RunWorkout(routePoints: points)
+
+        WorkoutAnalyzer().analyze(&workout)
+
+        XCTAssertEqual(workout.summary.elevationGainMeters, 0, accuracy: 1)
+        XCTAssertEqual(workout.summary.elevationLossMeters, 0, accuracy: 1)
+    }
+
+    func testNoAltitudeIsRetainedAsUnavailableQualityWarning() throws {
+        var points = createSamplePoints(count: 10, totalDistance: 100, totalSeconds: 30)
+        for index in points.indices {
+            points[index].altitudeMeters = nil
+        }
+        var workout = RunWorkout(routePoints: points)
+
+        try WorkoutAnalyzer().normalizeAndAnalyze(
+            &workout,
+            distancePolicy: .useSuppliedDistancesWhenValid
+        )
+
+        XCTAssertEqual(workout.summary.elevationGainMeters, 0)
+        XCTAssertTrue(workout.analysisWarnings.contains(.insufficientReliableElevation))
     }
 
     func testHeartRateSummary() {

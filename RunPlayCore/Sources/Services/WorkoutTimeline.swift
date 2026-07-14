@@ -57,6 +57,7 @@ public struct WorkoutTimeline: Sendable {
     }
 
     private let routePoints: [RoutePoint]
+    private let elevationProfile: ElevationProfile
     private let elapsedSecondsByPoint: [Double]
     private let activeSecondsByPoint: [Double]
     private let distanceMetersByPoint: [Double]
@@ -72,7 +73,15 @@ public struct WorkoutTimeline: Sendable {
     }
 
     public init(routePoints: [RoutePoint]) {
+        self.init(
+            routePoints: routePoints,
+            elevationProfile: ElevationProfile(routePoints: routePoints)
+        )
+    }
+
+    public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile) {
         self.routePoints = routePoints
+        self.elevationProfile = elevationProfile
 
         guard let first = routePoints.first else {
             elapsedSecondsByPoint = []
@@ -304,12 +313,16 @@ public struct WorkoutTimeline: Sendable {
     /// Cumulative positive elevation change inside a distance range, never
     /// connecting the endpoint of one route segment to the next segment.
     public func elevationGain(from startDistance: Double, to endDistance: Double) -> Double? {
-        elevationChange(from: startDistance, to: endDistance, positiveOnly: true)
+        elevationProfile.ascent(from: startDistance, to: endDistance)
     }
 
     /// Signed elevation change accumulated only across continuous intervals.
     public func signedElevationChange(from startDistance: Double, to endDistance: Double) -> Double? {
-        elevationChange(from: startDistance, to: endDistance, positiveOnly: false)
+        elevationProfile.signedChange(from: startDistance, to: endDistance)
+    }
+
+    public func elevationLoss(from startDistance: Double, to endDistance: Double) -> Double? {
+        elevationProfile.descent(from: startDistance, to: endDistance)
     }
 
     /// Latest source point whose elapsed time is at or before the replay clock.
@@ -472,58 +485,6 @@ public struct WorkoutTimeline: Sendable {
             }
             return selected
         }
-    }
-
-    // MARK: - Elevation
-
-    private func elevationChange(
-        from startDistance: Double,
-        to endDistance: Double,
-        positiveOnly: Bool
-    ) -> Double? {
-        guard startDistance.isFinite,
-              endDistance.isFinite,
-              startDistance <= endDistance,
-              routePoints.count >= 2
-        else {
-            return nil
-        }
-
-        let lowerBound = Self.clamp(startDistance, lowerBound: startDistanceMeters, upperBound: totalDistanceMeters)
-        let upperBound = Self.clamp(endDistance, lowerBound: startDistanceMeters, upperBound: totalDistanceMeters)
-        var total: Double = 0
-        var sawAltitude = false
-
-        for index in 1..<routePoints.count {
-            let previous = routePoints[index - 1]
-            let current = routePoints[index]
-            guard previous.routeSegmentIndex == current.routeSegmentIndex,
-                  let previousAltitude = previous.altitudeMeters,
-                  let currentAltitude = current.altitudeMeters,
-                  previousAltitude.isFinite,
-                  currentAltitude.isFinite
-            else {
-                continue
-            }
-
-            let intervalStart = distanceMetersByPoint[index - 1]
-            let intervalEnd = distanceMetersByPoint[index]
-            guard intervalEnd > intervalStart else { continue }
-
-            let overlapStart = max(lowerBound, intervalStart)
-            let overlapEnd = min(upperBound, intervalEnd)
-            guard overlapEnd > overlapStart else { continue }
-
-            let startFraction = (overlapStart - intervalStart) / (intervalEnd - intervalStart)
-            let endFraction = (overlapEnd - intervalStart) / (intervalEnd - intervalStart)
-            let startAltitude = Self.interpolate(previousAltitude, currentAltitude, startFraction)
-            let endAltitude = Self.interpolate(previousAltitude, currentAltitude, endFraction)
-            let delta = endAltitude - startAltitude
-            total += positiveOnly ? max(0, delta) : delta
-            sawAltitude = true
-        }
-
-        return sawAltitude ? total : nil
     }
 
     // MARK: - Numeric safety

@@ -13,13 +13,31 @@ public struct RouteProjectionService: Sendable {
 
     /// Convert an array of RoutePoints into RouteScenePoints for 3D rendering.
     ///
+    /// This compatibility entrypoint derives the same corrected elevation
+    /// profile used by workout analysis. Call the profile-taking overload when
+    /// a shared analysis context already owns the profile.
+    public func project(_ points: [RoutePoint]) -> [RouteScenePoint] {
+        project(points, elevationProfile: ElevationProfile(routePoints: points))
+    }
+
+    /// Convert route points into local 3D coordinates using an elevation
+    /// profile aligned one-to-one with `points`.
+    ///
     /// Handles edge cases:
     /// - Empty arrays return empty results
     /// - Repeated coordinates are preserved (not collapsed)
-    /// - Missing altitude defaults to minimum altitude
+    /// - Missing or non-meaningful corrected elevation stays on the baseline
     /// - NaN/infinite coordinates are filtered out
     /// - Source indices preserve the original array position after filtering
-    public func project(_ points: [RoutePoint]) -> [RouteScenePoint] {
+    ///
+    /// Profile samples are accepted only when their route-point identity,
+    /// distance, and segment still match the source point. A stale or
+    /// misaligned profile therefore cannot attach elevation to the wrong
+    /// geometry.
+    public func project(
+        _ points: [RoutePoint],
+        elevationProfile: ElevationProfile
+    ) -> [RouteScenePoint] {
         guard !points.isEmpty else { return [] }
 
         // Filter out points with invalid coordinates, preserving original indices
@@ -48,13 +66,18 @@ public struct RouteProjectionService: Sendable {
         let centerLat = (minLat + maxLat) / 2
         let centerLon = (minLon + maxLon) / 2
 
-        // Find elevation range for scaling
-        // ⚡ Bolt: Replaced chained array transformations with inline loop
-        // to avoid intermediate O(N) array allocations.
+        // Find the corrected elevation baseline from renderable points only.
+        // A non-meaningful or misaligned profile yields no values and keeps the
+        // route flat rather than inventing an elevation range from raw data.
+        // ⚡ Bolt: Inline min tracking avoids an intermediate O(N) altitude array.
         var minAltOpt: Double?
         for item in validIndexedPoints {
-            if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
-                minAltOpt = min(minAltOpt ?? .infinity, alt)
+            if let altitude = correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: elevationProfile
+            ) {
+                minAltOpt = min(minAltOpt ?? .infinity, altitude)
             }
         }
         let minAlt = minAltOpt ?? 0
@@ -68,8 +91,12 @@ public struct RouteProjectionService: Sendable {
                 centerLon: centerLon
             )
 
-            let altitude = point.altitudeMeters ?? minAlt
-            let y = (altitude - minAlt) * elevationExaggeration
+            let correctedAltitude = correctedAltitude(
+                for: point,
+                atSourceIndex: item.index,
+                elevationProfile: elevationProfile
+            )
+            let y = correctedAltitude.map { ($0 - minAlt) * elevationExaggeration } ?? 0
 
             // Final safety check - replace any NaN/infinity with 0
             let safeX = x.isFinite ? x : 0
@@ -77,6 +104,7 @@ public struct RouteProjectionService: Sendable {
             let safeZ = z.isFinite ? z : 0
 
             return RouteScenePoint(
+                id: point.id,
                 xMeters: safeX,
                 yMeters: safeY,
                 zMeters: safeZ,
@@ -88,6 +116,29 @@ public struct RouteProjectionService: Sendable {
                 routeSegmentIndex: point.routeSegmentIndex
             )
         }
+    }
+
+    private func correctedAltitude(
+        for point: RoutePoint,
+        atSourceIndex index: Int,
+        elevationProfile: ElevationProfile
+    ) -> Double? {
+        guard elevationProfile.hasMeaningfulElevation,
+              elevationProfile.samples.indices.contains(index)
+        else {
+            return nil
+        }
+
+        let sample = elevationProfile.samples[index]
+        guard sample.routePointID == point.id,
+              sample.distanceFromStartMeters == point.distanceFromStartMeters,
+              sample.routeSegmentIndex == point.routeSegmentIndex,
+              let altitude = sample.correctedAltitudeMeters,
+              altitude.isFinite
+        else {
+            return nil
+        }
+        return altitude
     }
 
     /// Convert latitude/longitude to local meter coordinates relative to a center point.

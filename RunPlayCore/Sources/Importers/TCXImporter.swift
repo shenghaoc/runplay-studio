@@ -50,6 +50,18 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         let activity = gpsActivities[0]
+        let invalidCoordinatePointCount = activity.laps.reduce(into: 0) { count, lap in
+            for track in lap.tracks {
+                count += track.points.reduce(into: 0) { trackCount, point in
+                    if !GeoDistance.isValidCoordinate(
+                        lat: point.latitude,
+                        lon: point.longitude
+                    ) {
+                        trackCount += 1
+                    }
+                }
+            }
+        }
 
         // Flatten all tracks from all laps, preserving segment boundaries.
         // Each (lap, track) pair becomes one segment.
@@ -131,11 +143,6 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
 
         let hasCompleteSuppliedDistanceSeries = hasAnySuppliedDistance && allSuppliedDistancesValid
 
-        routePoints = RoutePointSanitizer.normalize(
-            routePoints,
-            distancePolicy: hasCompleteSuppliedDistanceSeries ? .useSuppliedDistancesWhenValid : .computeFromCoordinates
-        )
-
         // Build metadata
         let metadata = WorkoutMetadata(
             name: sourceURL.deletingPathExtension().lastPathComponent,
@@ -151,7 +158,13 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         )
 
         let analyzer = WorkoutAnalyzer()
-        analyzer.analyze(&workout)
+        try analyzer.normalizeAndAnalyze(
+            &workout,
+            distancePolicy: hasCompleteSuppliedDistanceSeries
+                ? .useSuppliedDistancesWhenValid
+                : .computeFromCoordinates,
+            sourceInvalidCoordinatePointCount: invalidCoordinatePointCount
+        )
 
         return workout
     }

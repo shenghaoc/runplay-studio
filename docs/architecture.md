@@ -3,23 +3,28 @@
 ## Data Flow
 
 ```
-Import File → Importer → RoutePointSanitizer → Normalized Model → WorkoutTimeline → Analyzer → Workout Library
-                                                                        ↘ Replay Controller → Views
-                                                                        ↘ Comparison Service → Compare View
-                                                     ↘ Route Coordinates → MapKit 2D/3D View
+Import File → Importer → RouteQualityProcessor → Normalized Route + Diagnostics
+                                                ↓
+                              WorkoutAnalysisContext
+                              ├── WorkoutTimeline
+                              └── ElevationProfile
+                                        ↓
+              Analyzer → Summary / Splits / Highlights → Workout Library
+                 ├── Replay / Comparison / Exports
+                 └── Charts / Route Projection / Route Colouring
 ```
 
 ### Detailed Flow
 
 1. **Import**: User selects file (JSON, GPX, TCX, FIT)
 2. **Parse**: Format-specific importer parses raw data
-3. **Normalize**: `RoutePointSanitizer` validates coordinates, preserves route-segment boundaries, and ensures cumulative distance does not include a recording gap
-4. **Derive clocks**: `WorkoutTimeline` establishes elapsed, active, and paused time without mutating route timestamps
-5. **Analyze**: `WorkoutAnalyzer` calculates pace, elevation, global-distance splits, and active-pace segments from that timeline
-6. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized workout and versioned analysis snapshot
-7. **Control**: `ReplayController` drives an elapsed-clock `PlaybackEngine`
-8. **Render**: Views display a MapKit 2D/3D route map, charts, and summaries
-9. **Compare**: `WorkoutComparisonService` compares elapsed, active, paused, and active-pace values by summary, split, and selected distance
+3. **Normalize**: `RouteQualityProcessor` validates fields, removes only strong isolated coordinate outliers, infers supported recording gaps, normalizes distance, and records distance provenance and quality diagnostics
+4. **Correct elevation**: `ElevationProfile` preserves source altitude on each `RoutePoint` while deriving an aligned, gap-safe corrected profile and threshold-confirmed ascent/descent
+5. **Build context**: `WorkoutAnalysisContext` owns one immutable profile and a `WorkoutTimeline` built from that same profile
+6. **Analyze**: `WorkoutAnalyzer` passes the context to summary, global-distance splits, and notable-segment detection so every elevation consumer shares one correction
+7. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized route, provenance, diagnostics, warnings, and versioned analysis snapshot
+8. **Control**: `ReplayController` drives an elapsed-clock `PlaybackEngine` whose selected elevation comes from the corrected profile
+9. **Render and export**: Charts, route projection/colouring, comparison, and exports consume corrected analysis while raw imported altitude remains source data
 
 ## Module Structure
 
@@ -81,11 +86,137 @@ cross-format source of truth. A difference greater than five seconds or two
 percent of the route-derived value, whichever is larger, produces an import
 warning without replacing the route result.
 
+### RouteQualityProcessor
+
+`RouteQualityProcessor` is the platform-neutral, local-only normalization
+boundary. Importers choose a distance policy and then hand raw points to the
+same ordered stages:
+
+1. validate coordinates and optional numeric fields, normalize point order and
+   elapsed values, and discard invalid source speed/pace samples;
+2. identify an isolated interior coordinate spike only when both adjacent legs
+   imply excessive speed, the direct neighbour bridge is plausible, and the
+   detour is both materially longer and sufficiently distorted;
+3. introduce an implicit segment boundary only when a large relocation is
+   supported by implausible speed or a long interval and the following points
+   form a coherent cluster;
+4. normalize cumulative distance without adding distance across explicit or
+   inferred segment boundaries and record per-segment provenance;
+5. sanitize altitude for analysis without replacing finite source altitude on
+   `RoutePoint`;
+6. smooth each continuous, non-missing altitude run in the distance domain;
+7. calculate threshold-confirmed ascent and descent independently per run; and
+8. return retained points, an aligned `ElevationProfile`, persisted diagnostics,
+   distance provenance, and non-fatal warnings.
+
+`RoutePointSanitizer` remains a compatibility entry point and delegates to this
+processor. Existing explicit route segments are authoritative. First/last
+points and adjacent spike candidates are retained because they lack the
+neighbourhood evidence required for conservative removal. Invalid or ambiguous
+signals fall back to valid-coordinate behavior rather than deleting a route.
+No map matching, routing, network elevation, telemetry, or source-file rewrite
+is involved.
+
+### RouteQualityPolicy defaults
+
+All tunable route and elevation thresholds live in `RouteQualityPolicy`. The
+running defaults deliberately favour retention:
+
+| Policy value | Default | Role |
+| --- | ---: | --- |
+| Maximum plausible running speed | 12 m/s (43.2 km/h) | Evidence for coordinate discontinuities, never a sole rejection rule |
+| Maximum source speed | 15 m/s (54 km/h) | Rejects impossible device speed so normalized geometry can derive a replacement |
+| Stale zero-speed movement threshold | 1 m/s | Treats a recorded zero as missing when normalized movement clearly continues |
+| Maximum stationary source speed | 1 m/s | Treats a positive device speed as stale when normalized geometry is stationary |
+| Maximum source-speed/geometry disagreement | 4× | Rejects a supplied speed that materially disagrees with its normalized step |
+| Maximum useful horizontal accuracy | 100 m | Poor accuracy can support a spike decision only when neighbours are better |
+| Coordinate-spike minimum excess / distortion | 200 m / 3× | Requires a substantial detour through an isolated candidate; good neighbour accuracy may halve only the excess requirement |
+| Implicit-gap minimum jump / long interval | 200 m / 120 s | A long interval is supporting evidence only when the route also relocates |
+| Long-gap cadence discontinuity | 3× | The suspected gap must be at least three times the resumed sampling cadence, avoiding false gaps in uniformly sparse tracks |
+| Relocated-cluster confirmation | 3 points | Uses time-derived plausible speed when timestamps are valid; falls back to a 200 m maximum step only when timing is unavailable |
+| Legacy distance inference tolerance | max(20 m, 5% of geometry) | Preserves a legacy non-GPX series as device-supplied only when it materially differs from raw geometry |
+| Plausible altitude range | -500...9,000 m | Preserves below-sea-level routes while rejecting impossible values |
+| Altitude-spike evidence | 35 m deviation, neighbours within 12 m, at most 150 m travelled span | Rejects only a locally unsupported interior or one-sided endpoint vertical spike |
+| Short altitude-excursion evidence | At most 2 samples, each at least 100 m from the returned baseline, at most 150 m travelled span | Rejects only an extreme, tightly bounded receiver plateau while retaining sustained terrain changes |
+| Elevation smoothing radius | 15 m (30 m full window) | Makes smoothing stable across sampling rates while preserving run endpoints |
+| Minimum reliable altitude run | 2 samples | A lone sample may remain displayable but cannot produce meaningful gain/loss |
+| Gain/loss deadband | 3 m | Confirms trend reversals before committing ascent or descent |
+| Elevation-highlight window | 20% of total distance, clamped to 100...1,000 m | Defines one comparable continuous window for biggest climb/descent |
+| Elevation-highlight evaluation step | max(25 m, window / 10) | Bounds window evaluations while retaining useful distance resolution |
+| Cancellation stride | 2,048 points | Bounds cooperative cancellation latency in long processing loops |
+
+### Distance-source precedence and provenance
+
+A complete, finite, non-negative, monotonic device-distance series is preferred
+when the importer can establish it. It is rebased at every compact segment
+boundary and is never allowed to decrease. FIT evaluates supplied distance per
+segment; TCX and JSON preserve it only when the complete supplied series is
+valid. GPX derives distance from retained coordinates. Invalid or missing
+series fall back to Haversine geometry after spike removal, and neither path
+adds a jump across a gap.
+
+`RouteDistanceSource` records the normalized workout as coordinate-derived,
+device-supplied, mixed, or legacy-unknown. `RouteDistanceProvenance` records the
+decision for each compact segment. Persisting both prevents a later migration
+from guessing away a valid device series. Legacy snapshots without provenance
+use a conservative source-aware inference: GPX remains coordinate-derived;
+other complete monotonic series are retained only when they materially differ
+from raw geometry.
+
+### ElevationProfile and WorkoutAnalysisContext
+
+`RoutePoint.altitudeMeters` is the finite altitude read from the source. The
+processor does not overwrite it with corrected data. `ElevationProfile` is a
+one-to-one derived view that exposes corrected altitude, source-rejection state,
+cumulative ascent/descent, corrected altitude at cumulative distance, and
+ascent, descent, or signed change over a distance range.
+
+Each continuous non-missing altitude run is processed independently. Broad
+range validation first rejects impossible values. Local checks can then reject
+one unsupported interior or one-sided endpoint sample, or an extreme plateau of
+at most two interior samples, only when the comparison baseline agrees and the
+candidate occupies at most 150 m of travelled normalized distance. This
+travelled span preserves legitimate switchbacks whose endpoint coordinates
+happen to be close. A single rejected interior sample can be filled only from
+its immediate reliable neighbours in the same segment; rejected endpoints and
+adjacent rejected samples remain gaps. A centred rolling average then uses a
+15 m distance radius and keeps reliable run endpoints. Missing spans and route
+boundaries remain gaps. Runs shorter than two samples keep their sanitized
+source values but return no meaningful gain/loss.
+
+Gain and loss use a 3 m trend-reversal deadband. Minor oscillations do not
+commit ascent or descent; a sustained trend is included, and a confirmed
+reversal commits the prior trend exactly once. This is threshold-confirmed
+cumulative ascent/descent, not a sum of every positive or negative adjacent
+sample.
+
+`WorkoutAnalyzer` creates one immutable `WorkoutAnalysisContext` containing the
+profile and its `WorkoutTimeline`, then shares it with summary, split, and
+notable-segment calculation. Biggest climb/descent evaluates a window equal to
+20% of route distance clamped to 100...1,000 m, stepping by the larger of 25 m
+or one tenth of the window. It selects the largest threshold-confirmed
+ascent/descent only when the full window has continuous reliable elevation; it
+never uses raw endpoints or bridges a gap. UI and platform code receive the
+same immutable profile, with `AppState` retaining context values by workout
+rather than using a global mutable cache. Charts, route colouring/projection,
+comparison, replay metrics, and exports therefore use the same correction.
+
+JSON summary export carries normalization version, route-distance provenance,
+quality diagnostics, warnings, and an `elevationAnalysis` description. Segment
+JSON pairs `elevationMetric` with `correctedElevationValueMeters`; corrected
+ascent/descent are positive magnitudes matching the UI subtitle, while the
+legacy `elevationDeltaMeters` field remains a signed compatibility value. Split
+CSV uses `Corrected_Elevation_Gain_m`; segment CSV pairs `Elevation_Metric` with
+`Corrected_Elevation_Value_m`; and PNG summary labels use `Corrected Gain` and
+`Corrected Loss`. Raw route-point altitude remains source data in snapshots.
+
 ### WorkoutTimeline
 
-`WorkoutTimeline` is the single platform-neutral semantic authority consumed by
+`WorkoutTimeline` is the platform-neutral clock and distance authority consumed by
 `WorkoutAnalyzer`, `SplitCalculator`, `SegmentDetector`, `PlaybackEngine`,
-`WorkoutComparisonService`, and export models.
+`WorkoutComparisonService`, and export models. Its elevation APIs delegate to
+the `ElevationProfile` supplied by the shared analysis context rather than
+maintaining a raw-delta implementation.
 
 - elapsed time is the final timestamp minus the first timestamp, falling back
   to normalized per-point elapsed values only when timestamps do not span;
@@ -103,7 +234,8 @@ warning without replacing the route result.
 Global kilometre splits and pace windows may span route segments because their
 distance axis is cumulative. Primitive time, elevation, smoothing, and
 coordinate interpolation remain segment-local, so no synthetic cross-gap
-sample is created.
+sample is created. A split may aggregate corrected ascent from multiple
+continuous runs while interpolation remains confined to each run.
 
 ### Workout library persistence
 
@@ -114,12 +246,46 @@ normalized workout snapshots beneath Application Support using atomic writes.
 results to `AppState`; bundled demos remain SwiftPM resources rather than user
 library entries.
 
-`RunWorkout.analysisVersion` versions derived analysis independently from the
-manifest schema. During actor-isolated library loading, a stale workout is
-reanalysed from its stored route, returned upgraded in memory, and atomically
-rewritten. If the rewrite fails, the workout stays visible with a warning and
-the legacy file remains intact for retry on the next launch. No manifest schema
-bump is required.
+`RunWorkout.normalizationVersion` versions route-point normalization separately
+from `analysisVersion`. Missing fields decode as legacy version `0`. During
+actor-isolated loading, migration first decodes the compatible source model,
+then upgrades normalization when required, builds the shared context,
+recomputes analysis, and atomically replaces the snapshot. An analysis-only
+upgrade may preserve already-current normalized route points. Current snapshots
+are not rewritten on every launch.
+
+Normalization preserves workout identity, metadata, source, retained
+route-point IDs, library order, and selection; deliberately rejected points are
+removed and segment indexes are compacted. A failed upgrade write leaves the
+original disk snapshot intact, keeps the upgraded or decoded workout visible in
+memory, reports a library warning, and retries on the next launch. The manifest
+schema does not change.
+
+### Performance and cancellation
+
+Quality processing uses compact segment ranges, rolling distance windows,
+reserved arrays, binary-search distance sampling, and linear timestamp-run
+resolution. Sorting within source segments bounds normalization at O(n log n).
+With `runningDefault`, coordinate, distance, smoothing, and cumulative-profile
+work is linear; neighbourhood confirmation remains O(n × k), where the policy
+keeps `k` to at most three relocated-cluster points or two altitude-excursion
+samples. No stage scans the full route once per point, and no unsafe global
+cache is introduced.
+
+Distance-stepped split, segment, comparison, and chart work uses a fixed
+`RouteAnalysisBudget`: at most 100,000 evaluations, scaled to eight evaluations
+per route point with a minimum budget of 1,000. Impossible split cardinality is
+returned as unavailable instead of allocating an unbounded result.
+
+Long processor, elevation, and derived-analysis loops check cancellation.
+Interactive import propagates `CancellationError` instead of converting it to a
+parse failure. Analyzer work is assembled in a local copy and assigned only
+after quality, summary, splits, and highlights complete, while persistence
+checks cancellation before beginning the transaction. A cancelled pass
+therefore cannot expose a partially analyzed workout or leave a partial library
+entry. Synchronous library migration uses the same deterministic processor
+without task cancellation because its recovery path must return every decodable
+workout.
 
 ### GeoDistance
 
@@ -147,6 +313,9 @@ public enum RoutePointInterpolator {
     static func elevationGain(in: [RoutePoint], from: Double, to: Double) -> Double?
 }
 ```
+
+The `elevationGain` compatibility entry point delegates to `ElevationProfile`;
+it does not maintain an independent raw-altitude delta algorithm.
 
 ### WorkoutComparisonService
 

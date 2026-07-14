@@ -26,7 +26,7 @@ clock on every route point.
 The top-level container for a running workout.
 
 ```swift
-struct RunWorkout: Identifiable, Codable, Hashable {
+struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var metadata: WorkoutMetadata
     var source: WorkoutSource
@@ -35,14 +35,25 @@ struct RunWorkout: Identifiable, Codable, Hashable {
     var summary: RunSummary
     var segments: [SegmentHighlight]
     var analysisVersion: Int
+    var normalizationVersion: Int
     var analysisWarnings: [WorkoutAnalysisWarning]
+    var qualityDiagnostics: RouteQualityDiagnostics
+    var routeDistanceSource: RouteDistanceSource
+    var routeDistanceProvenance: RouteDistanceProvenance
 }
 ```
 
-Snapshots without `analysisVersion` decode as legacy version `0`. The current
-version is reanalysed from stored route points during library load and then
-atomically rewritten. Identity, metadata, source, route points, library order,
-and selection are preserved.
+`normalizationVersion` versions changes that may alter retained route points,
+segment boundaries, distance, and speed. `analysisVersion` separately versions
+derived summary, splits, and highlights. A snapshot that omits either field
+decodes that field as legacy version `0`.
+
+Library migration upgrades normalization first and analysis second. It
+preserves workout identity, metadata, source, retained route-point IDs, library
+order, and selection; a normalization upgrade may deliberately remove a
+confirmed outlier or introduce a compact segment boundary. The upgraded
+snapshot is atomically rewritten. A failed rewrite leaves the prior disk file
+intact and the decoded or upgraded workout visible in memory for a later retry.
 
 ### RoutePoint
 
@@ -75,6 +86,89 @@ field and decode with index `0` for backward compatibility.
 timestamp. It is never rewritten to remove pauses. Active time is derived by
 `WorkoutTimeline`.
 
+`altitudeMeters` is finite source altitude supplied by the imported workout. It
+is not replaced with a smoothed value. Corrected presentation and analysis
+altitude lives in an aligned, derived `ElevationProfile`. Missing source
+altitude remains missing rather than becoming zero.
+
+`horizontalAccuracy` remains optional. Non-finite or negative values are
+discarded. A poor finite accuracy value can support an isolated-coordinate
+decision only when the neighbouring trajectory has better accuracy; it is
+never sufficient evidence by itself.
+
+### Route quality diagnostics and distance provenance
+
+```swift
+struct RouteQualityDiagnostics: Codable, Hashable, Sendable {
+    var invalidCoordinatePointCount: Int
+    var discardedCoordinatePointCount: Int
+    var inferredRouteGapCount: Int
+    var discardedAltitudeSampleCount: Int
+    var invalidSourceSpeedSampleCount: Int
+}
+
+enum RouteDistanceSource: String, Codable, Hashable, Sendable {
+    case coordinateDerived
+    case deviceSupplied
+    case mixed
+    case legacyUnknown
+}
+
+struct RouteDistanceProvenance: Codable, Hashable, Sendable {
+    var segmentSources: [RouteDistanceSource]
+}
+```
+
+Diagnostics are persisted non-fatal facts about normalization, not a copy of
+the source file. Distance provenance is aligned by compact
+`routeSegmentIndex`; it records whether each normalized segment preserved a
+valid device-distance series or derived distance from retained coordinates.
+Older snapshots decode empty diagnostics and legacy-unknown provenance.
+
+The route-quality `WorkoutAnalysisWarning` cases retain user-facing messages
+only for meaningful recovery events: isolated coordinate outliers removed, an
+implicit route gap introduced, altitude outliers ignored, or insufficient
+reliable altitude. Separate existing warning cases cover FIT elapsed/timer
+mismatches. Altitude cleanup can reject one locally unsupported interior or
+one-sided endpoint sample, or an extreme tightly bounded two-sample interior
+excursion; it does not rewrite source altitude. Ordinary smoothing does not
+create a warning, and recovered quality events are not blocking import errors.
+
+### ElevationProfile
+
+`ElevationProfile` is immutable, derived, and aligned one-to-one with retained
+route points. It is rebuilt from the normalized route rather than persisted as
+a second mutable route.
+
+```swift
+struct ElevationProfileSample: Hashable, Sendable {
+    let routePointID: UUID
+    let distanceFromStartMeters: Double
+    let routeSegmentIndex: Int
+    let correctedAltitudeMeters: Double?
+    let sourceAltitudeWasRejected: Bool
+    let cumulativeAscentMeters: Double
+    let cumulativeDescentMeters: Double
+}
+
+struct ElevationProfile: Sendable {
+    let samples: [ElevationProfileSample]
+    let hasMeaningfulElevation: Bool
+    let totalAscentMeters: Double?
+    let totalDescentMeters: Double?
+}
+```
+
+The profile also provides corrected altitude at cumulative distance and
+threshold-confirmed ascent, descent, or signed elevation change over a distance
+range. Distance lookup respects duplicate-distance boundary roles and returns
+no interpolated elevation across a route segment or missing-altitude run.
+
+`WorkoutAnalysisContext` pairs one profile with a `WorkoutTimeline` built from
+that profile. `WorkoutAnalyzer` shares this immutable value with summary,
+splits, and notable-segment detection so those consumers cannot drift to
+different smoothing or gap rules.
+
 ### RunSplit
 
 A kilometer or mile split with summary metrics.
@@ -100,6 +194,9 @@ the final workout remainder is partial. For an exact duplicate distance at a
 stop/resume boundary, a range start uses the resumed segment's first point and
 a range end uses the prior segment's final point. Time can aggregate across
 segments, but coordinate/elevation interpolation never crosses a gap.
+`elevationGainMeters` is threshold-confirmed ascent from the shared corrected
+profile. A split may aggregate reliable ascent from more than one continuous
+segment; unavailable elevation remains `nil`.
 
 ### RunSummary
 
@@ -127,6 +224,20 @@ All clock, pace, and speed values are finite and non-negative. No-pause routes
 have equal elapsed and active values. The compatibility names
 `averagePaceSecondsPerKilometer` and `averageSpeedMetersPerSecond` retain active
 semantics; explicit elapsed variants are additive.
+
+Elevation gain and loss come from the shared corrected profile. For backward
+compatibility the persisted numeric summary fields retain safe finite defaults;
+`ElevationProfile.hasMeaningfulElevation` and the retained insufficient-data
+warning distinguish unavailable analysis from a genuine flat result.
+
+JSON summary export names its correction in `elevationAnalysis` and carries
+normalization/provenance/diagnostic metadata. `SegmentExport` pairs
+`elevationMetric` with `correctedElevationValueMeters`; ascent and descent use
+positive magnitudes matching the highlight subtitle, while
+`elevationDeltaMeters` remains the signed compatibility field. Split CSV uses
+`Corrected_Elevation_Gain_m`, segment CSV pairs `Elevation_Metric` with
+`Corrected_Elevation_Value_m`, and PNG summary labels use `Corrected Gain` and
+`Corrected Loss`.
 
 ### WorkoutSource
 
@@ -199,6 +310,14 @@ enum SegmentType: String, Codable, Hashable, CaseIterable {
 }
 ```
 
+Biggest climb and biggest descent use the largest threshold-confirmed corrected
+ascent or descent in a continuous reliable elevation window equal to 20% of
+route distance clamped to 100...1,000 m and evaluated every
+`max(25 m, window / 10)`. The
+`elevationDeltaMeters` value and subtitle therefore describe corrected
+cumulative movement, not a raw endpoint-altitude subtraction. A missing or
+gap-crossing elevation window does not produce an elevation highlight.
+
 ## Comparison Types
 
 ### ComparisonPair
@@ -246,9 +365,9 @@ struct WorkoutComparisonSummary {
     let elapsedPaceDeltaSecondsPerKm: Double
 
     // Elevation
-    let primaryElevationGainMeters: Double
-    let comparisonElevationGainMeters: Double
-    let elevationGainDeltaMeters: Double
+    let primaryElevationGainMeters: Double?
+    let comparisonElevationGainMeters: Double?
+    let elevationGainDeltaMeters: Double?
 
     // Heart rate (optional)
     let primaryAvgHR: Double?
@@ -296,6 +415,11 @@ struct ComparisonMetricPoint: Identifiable {
     let comparisonHR: Double?
 }
 ```
+
+Elevation-gain comparison uses the corrected workout summaries, while
+distance-aligned `primaryElevation` and `comparisonElevation` sample each
+workout's corrected profile. Missing or gap-crossing values stay `nil`; they are
+not converted to zero.
 
 ### ComparisonWarning
 
@@ -374,6 +498,11 @@ struct RouteScenePoint: Identifiable {
 }
 ```
 
+When elevation is requested, route projection receives the aligned corrected
+profile. A missing or insufficient profile uses a flat presentation baseline
+rather than inventing an elevation scale, and separate route segments remain
+separate geometry.
+
 ## State Types
 
 ### ReplayState
@@ -411,7 +540,18 @@ or before `currentTime` remains selected until the exact resume timestamp.
 `SelectedMetrics` exposes elapsed time, active time, distance, point metrics,
 and `isInRecordingGap`; active time and distance hold while elapsed advances.
 
-## Migration limitation
+## Migration compatibility and limitation
+
+The migration order is decode, normalize when `normalizationVersion` is stale,
+build `WorkoutAnalysisContext`, recompute derived analysis, and atomically save
+once. A current normalization with stale analysis uses analysis-only reanalysis
+and keeps route points unchanged. Already-current snapshots are not rewritten
+on each launch, and no workout-library manifest schema bump is required.
+
+Legacy routes without distance provenance use source-aware conservative
+inference during their one-time normalization upgrade. Retained route-point IDs
+remain stable; points deliberately identified as strong isolated outliers are
+removed.
 
 Legacy snapshots that already contain `routeSegmentIndex` can recover correct
 pause semantics through reanalysis. Older snapshots that predate that field

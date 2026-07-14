@@ -63,6 +63,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         let validRawPoints = raw.routePoints.filter {
             GeoDistance.isValidCoordinate(lat: $0.latitude, lon: $0.longitude)
         }
+        let invalidCoordinatePointCount = raw.routePoints.count - validRawPoints.count
         let hasCompleteSuppliedDistanceSeries = !validRawPoints.isEmpty
             && validRawPoints.allSatisfy { point in
                 guard let distance = point.distanceFromStartMeters else { return false }
@@ -96,13 +97,6 @@ public struct JSONWorkoutImporter: WorkoutImporting {
             routePoints.append(point)
         }
 
-        routePoints = RoutePointSanitizer.normalize(
-            routePoints,
-            distancePolicy: hasCompleteSuppliedDistanceSeries
-                ? .useSuppliedDistancesPerSegment
-                : .computeFromCoordinates
-        )
-
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid route points found")
         }
@@ -116,7 +110,13 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
         // Run analysis
         let analyzer = WorkoutAnalyzer()
-        analyzer.analyze(&workout)
+        try analyzer.normalizeAndAnalyze(
+            &workout,
+            distancePolicy: hasCompleteSuppliedDistanceSeries
+                ? .useSuppliedDistancesWhenValid
+                : .computeFromCoordinates,
+            sourceInvalidCoordinatePointCount: invalidCoordinatePointCount
+        )
 
         return workout
     }

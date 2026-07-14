@@ -30,6 +30,7 @@ public struct RouteColoringService {
     public func computeSegmentColors(
         points: [RouteScenePoint],
         mode: RouteColorMode,
+        elevationProfile: ElevationProfile? = nil,
         defaultColor: NSColor = .systemBlue
     ) -> [NSColor] {
         guard points.count >= 2 else { return [] }
@@ -40,6 +41,13 @@ public struct RouteColoringService {
         case .pace:
             return computePaceColors(points: points, defaultColor: defaultColor)
         case .elevation:
+            if let elevationProfile {
+                return computeElevationColors(
+                    points: points,
+                    elevationProfile: elevationProfile,
+                    defaultColor: defaultColor
+                )
+            }
             return computeElevationColors(points: points, defaultColor: defaultColor)
         case .heartRate:
             return computeHeartRateColors(points: points, defaultColor: defaultColor)
@@ -111,6 +119,65 @@ extension RouteColoringService {
             colors.append(elevationToColor(fraction: fraction))
         }
         return colors
+    }
+
+    /// Compute elevation colors from corrected profile samples rather than
+    /// projected Y coordinates. `RouteScenePoint.sourceIndex` preserves the
+    /// association after invalid coordinates are filtered by projection.
+    ///
+    /// If the profile is not meaningful, is stale, or lacks either endpoint
+    /// of a segment, that segment uses `defaultColor`; no synthetic elevation
+    /// range is inferred from projected geometry.
+    private func computeElevationColors(
+        points: [RouteScenePoint],
+        elevationProfile: ElevationProfile,
+        defaultColor: NSColor
+    ) -> [NSColor] {
+        guard elevationProfile.hasMeaningfulElevation else {
+            return Array(repeating: defaultColor, count: points.count - 1)
+        }
+
+        let elevations = points.map { point in
+            correctedAltitude(for: point, elevationProfile: elevationProfile)
+        }
+        let finiteElevations = elevations.compactMap { $0 }
+        guard let minElevation = finiteElevations.min(),
+              let maxElevation = finiteElevations.max(),
+              maxElevation > minElevation
+        else {
+            return Array(repeating: defaultColor, count: points.count - 1)
+        }
+
+        return points.indices.dropLast().map { index in
+            guard points[index].routeSegmentIndex == points[index + 1].routeSegmentIndex,
+                  let fromElevation = elevations[index],
+                  let toElevation = elevations[index + 1]
+            else {
+                return defaultColor
+            }
+            let averageElevation = (fromElevation + toElevation) / 2
+            let fraction = (averageElevation - minElevation) / (maxElevation - minElevation)
+            return elevationToColor(fraction: fraction)
+        }
+    }
+
+    private func correctedAltitude(
+        for point: RouteScenePoint,
+        elevationProfile: ElevationProfile
+    ) -> Double? {
+        let index = point.sourceIndex
+        guard elevationProfile.samples.indices.contains(index) else { return nil }
+
+        let sample = elevationProfile.samples[index]
+        guard sample.routePointID == point.id,
+              sample.distanceFromStartMeters == point.distanceFromStartMeters,
+              sample.routeSegmentIndex == point.routeSegmentIndex,
+              let altitude = sample.correctedAltitudeMeters,
+              altitude.isFinite
+        else {
+            return nil
+        }
+        return altitude
     }
 
     /// Map pace to color: fast = blue/cyan, slow = red/yellow

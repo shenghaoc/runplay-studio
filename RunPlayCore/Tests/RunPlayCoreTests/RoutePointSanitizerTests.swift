@@ -92,7 +92,7 @@ final class RoutePointSanitizerTests: XCTestCase {
         XCTAssertNotNil(smoothed[2])
     }
 
-    func testNormalizeDropsNegativeOptionalMetrics() {
+    func testNormalizeDropsInvalidRouteMetricsButPreservesSourceHeartRateAndCadence() {
         let start = Date(timeIntervalSince1970: 1_000)
         let points = [
             RoutePoint(
@@ -116,8 +116,8 @@ final class RoutePointSanitizerTests: XCTestCase {
         XCTAssertEqual(normalized[0].altitudeMeters, -5)
         XCTAssertNil(normalized[0].speedMetersPerSecond)
         XCTAssertNil(normalized[0].paceSecondsPerKilometer)
-        XCTAssertNil(normalized[0].heartRateBPM)
-        XCTAssertNil(normalized[0].cadence)
+        XCTAssertEqual(normalized[0].heartRateBPM, 500)
+        XCTAssertEqual(normalized[0].cadence, -80)
         XCTAssertNil(normalized[0].horizontalAccuracy)
     }
 
@@ -141,6 +141,52 @@ final class RoutePointSanitizerTests: XCTestCase {
         XCTAssertEqual(normalized[0].speedMetersPerSecond, 0)
         XCTAssertEqual(normalized[0].cadence, 0)
         XCTAssertEqual(normalized[0].horizontalAccuracy, 0)
+    }
+
+    func testBiometricAvailabilityIgnoresPreservedInvalidSourceValues() {
+        let invalid = RunWorkout(routePoints: [
+            RoutePoint(
+                timestamp: Date(),
+                latitude: 1,
+                longitude: 103,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0,
+                heartRateBPM: .infinity,
+                cadence: -80
+            )
+        ])
+        let valid = RunWorkout(routePoints: [
+            RoutePoint(
+                timestamp: Date(),
+                latitude: 1,
+                longitude: 103,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0,
+                heartRateBPM: 140,
+                cadence: 170
+            )
+        ])
+
+        XCTAssertFalse(invalid.hasHeartRateData)
+        XCTAssertFalse(invalid.hasCadenceData)
+        XCTAssertTrue(valid.hasHeartRateData)
+        XCTAssertTrue(valid.hasCadenceData)
+    }
+
+    func testTimestampResolutionWithOneKnownValueIsLinearAtHundredThousandPoints() throws {
+        let pointCount = 100_000
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var timestamps = Array<Date?>(repeating: nil, count: pointCount)
+        timestamps[0] = start
+        let clock = ContinuousClock()
+        let began = clock.now
+
+        let resolved = try XCTUnwrap(RouteTimestampResolver.resolve(timestamps))
+
+        XCTAssertEqual(resolved.count, pointCount)
+        XCTAssertEqual(resolved[0], start)
+        XCTAssertEqual(resolved[pointCount - 1], start.addingTimeInterval(Double(pointCount - 1)))
+        XCTAssertLessThan(began.duration(to: clock.now), .seconds(5))
     }
 
     private func point(

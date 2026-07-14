@@ -174,6 +174,63 @@ final class RouteProjectionTests: XCTestCase {
         XCTAssertEqual(diff2 / diff1, 5.0, accuracy: 0.1)
     }
 
+    func testProjectionUsesCorrectedElevationProfileAndPreservesAlignment() {
+        var service = RouteProjectionService()
+        service.elevationExaggeration = 1
+        let points = createProfileRoute(altitudes: [10, 1_000, 12])
+        let profile = ElevationProfile(routePoints: points)
+
+        XCTAssertTrue(profile.hasMeaningfulElevation)
+        XCTAssertTrue(profile.sourceAltitudeWasRejected(atPointIndex: 1))
+
+        let result = service.project(points, elevationProfile: profile)
+
+        XCTAssertEqual(result.map(\.sourceIndex), [0, 1, 2])
+        XCTAssertEqual(result.map(\.distanceFromStartMeters), [0, 50, 100])
+        XCTAssertEqual(result.map(\.routeSegmentIndex), [0, 0, 0])
+        XCTAssertEqual(result[0].yMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(result[1].yMeters, 1, accuracy: 0.001)
+        XCTAssertEqual(result[2].yMeters, 2, accuracy: 0.001)
+    }
+
+    func testProjectionKeepsProfileSourceIndexAfterCoordinateFiltering() {
+        var points = createProfileRoute(altitudes: [10, 15, 20], routeSegmentIndex: 4)
+        points[1].latitude = .nan
+        let profile = ElevationProfile(routePoints: points)
+
+        let result = RouteProjectionService().project(points, elevationProfile: profile)
+
+        XCTAssertEqual(result.map(\.sourceIndex), [0, 2])
+        XCTAssertEqual(result.map(\.distanceFromStartMeters), [0, 100])
+        XCTAssertEqual(result.map(\.routeSegmentIndex), [4, 4])
+        XCTAssertEqual(result[0].yMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(result[1].yMeters, 20, accuracy: 0.001)
+    }
+
+    func testProjectionDoesNotUseRawAltitudeWhenProfileIsNotMeaningful() {
+        let points = createProfileRoute(altitudes: [10, 100])
+        let policy = RouteQualityPolicy(minimumReliableAltitudeSampleCount: 3)
+        let profile = ElevationProfile(routePoints: points, policy: policy)
+
+        XCTAssertFalse(profile.hasMeaningfulElevation)
+
+        let result = RouteProjectionService().project(points, elevationProfile: profile)
+
+        XCTAssertEqual(result.map(\.yMeters), [0, 0])
+    }
+
+    func testProjectionRejectsMisalignedElevationProfile() {
+        let points = createProfileRoute(altitudes: [10, 100])
+        let differentPointsWithNewIDs = createProfileRoute(altitudes: [10, 100])
+        let profile = ElevationProfile(routePoints: differentPointsWithNewIDs)
+
+        XCTAssertTrue(profile.hasMeaningfulElevation)
+
+        let result = RouteProjectionService().project(points, elevationProfile: profile)
+
+        XCTAssertEqual(result.map(\.yMeters), [0, 0])
+    }
+
     func testMaxExtent() {
         let service = RouteProjectionService()
         let points = [
@@ -245,5 +302,22 @@ final class RouteProjectionTests: XCTestCase {
             distanceFromStartMeters: 0,
             elapsedSeconds: 0
         )
+    }
+
+    private func createProfileRoute(
+        altitudes: [Double?],
+        routeSegmentIndex: Int = 0
+    ) -> [RoutePoint] {
+        altitudes.enumerated().map { index, altitude in
+            RoutePoint(
+                timestamp: Date().addingTimeInterval(Double(index) * 15),
+                latitude: 37.7749 + Double(index) * 0.0001,
+                longitude: -122.4194,
+                altitudeMeters: altitude,
+                distanceFromStartMeters: Double(index) * 50,
+                elapsedSeconds: Double(index) * 15,
+                routeSegmentIndex: routeSegmentIndex
+            )
+        }
     }
 }

@@ -8,8 +8,22 @@ public struct WorkoutComparisonService: Sendable {
     public init() {}
 
     public func compare(primary: RunWorkout, comparison: RunWorkout) -> WorkoutComparisonSummary {
-        let primaryTimeline = WorkoutTimeline(workout: primary)
-        let comparisonTimeline = WorkoutTimeline(workout: comparison)
+        compare(
+            primary: primary,
+            comparison: comparison,
+            primaryContext: WorkoutAnalysisContext(workout: primary),
+            comparisonContext: WorkoutAnalysisContext(workout: comparison)
+        )
+    }
+
+    public func compare(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryContext: WorkoutAnalysisContext,
+        comparisonContext: WorkoutAnalysisContext
+    ) -> WorkoutComparisonSummary {
+        let primaryTimeline = primaryContext.timeline
+        let comparisonTimeline = comparisonContext.timeline
         let primaryDistance = primaryTimeline.totalDistanceMeters
         let comparisonDistance = comparisonTimeline.totalDistanceMeters
         let primaryActivePace = pace(
@@ -28,6 +42,12 @@ public struct WorkoutComparisonService: Sendable {
             seconds: comparisonTimeline.totalElapsedSeconds,
             distanceMeters: comparisonDistance
         )
+        let primaryElevationGain = primaryContext.elevationProfile.hasMeaningfulElevation
+            ? primaryContext.elevationProfile.totalAscentMeters.map(finiteNonNegative)
+            : nil
+        let comparisonElevationGain = comparisonContext.elevationProfile.hasMeaningfulElevation
+            ? comparisonContext.elevationProfile.totalAscentMeters.map(finiteNonNegative)
+            : nil
 
         return WorkoutComparisonSummary(
             primaryTitle: primary.displayName,
@@ -50,10 +70,12 @@ public struct WorkoutComparisonService: Sendable {
             primaryElapsedPaceSecondsPerKm: primaryElapsedPace,
             comparisonElapsedPaceSecondsPerKm: comparisonElapsedPace,
             elapsedPaceDeltaSecondsPerKm: primaryElapsedPace - comparisonElapsedPace,
-            primaryElevationGainMeters: finiteNonNegative(primary.summary.elevationGainMeters),
-            comparisonElevationGainMeters: finiteNonNegative(comparison.summary.elevationGainMeters),
-            elevationGainDeltaMeters: finiteNonNegative(primary.summary.elevationGainMeters)
-                - finiteNonNegative(comparison.summary.elevationGainMeters),
+            primaryElevationGainMeters: primaryElevationGain,
+            comparisonElevationGainMeters: comparisonElevationGain,
+            elevationGainDeltaMeters: optionalDifference(
+                primaryElevationGain,
+                comparisonElevationGain
+            ),
             primaryAvgHR: finite(primary.summary.averageHeartRateBPM),
             comparisonAvgHR: finite(comparison.summary.averageHeartRateBPM),
             avgHRDelta: difference(primary.summary.averageHeartRateBPM, comparison.summary.averageHeartRateBPM),
@@ -66,7 +88,10 @@ public struct WorkoutComparisonService: Sendable {
                 primary: primary,
                 comparison: comparison,
                 primaryTimeline: primaryTimeline,
-                comparisonTimeline: comparisonTimeline
+                comparisonTimeline: comparisonTimeline,
+                commonDistanceMeters: min(primaryDistance, comparisonDistance),
+                primaryElevationProfile: primaryContext.elevationProfile,
+                comparisonElevationProfile: comparisonContext.elevationProfile
             )
         )
     }
@@ -106,6 +131,22 @@ public struct WorkoutComparisonService: Sendable {
         comparison: RunWorkout,
         sampleIntervalMeters: Double = 100
     ) -> [ComparisonMetricPoint] {
+        compareMetricsOverDistance(
+            primary: primary,
+            comparison: comparison,
+            primaryContext: WorkoutAnalysisContext(workout: primary),
+            comparisonContext: WorkoutAnalysisContext(workout: comparison),
+            sampleIntervalMeters: sampleIntervalMeters
+        )
+    }
+
+    public func compareMetricsOverDistance(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryContext: WorkoutAnalysisContext,
+        comparisonContext: WorkoutAnalysisContext,
+        sampleIntervalMeters: Double = 100
+    ) -> [ComparisonMetricPoint] {
         guard !primary.routePoints.isEmpty,
               !comparison.routePoints.isEmpty,
               sampleIntervalMeters.isFinite,
@@ -114,28 +155,57 @@ public struct WorkoutComparisonService: Sendable {
             return []
         }
 
-        let maximumDistance = commonDistance(primary: primary, comparison: comparison)
+        let maximumDistance = min(
+            primaryContext.timeline.totalDistanceMeters,
+            comparisonContext.timeline.totalDistanceMeters
+        )
         guard maximumDistance > 0 else { return [] }
 
         var result: [ComparisonMetricPoint] = []
-        var distance: Double = 0
-        while distance <= maximumDistance {
+        let routePointCount = max(primary.routePoints.count, comparison.routePoints.count)
+        let maximumSampleCount = RouteAnalysisBudget.maximumEvaluations(
+            forRoutePointCount: routePointCount
+        )
+        let effectiveInterval = RouteAnalysisBudget.boundedStep(
+            preferredStep: sampleIntervalMeters,
+            distanceSpan: maximumDistance,
+            routePointCount: routePointCount
+        )
+        result.reserveCapacity(maximumSampleCount)
+
+        func metricPoint(at distance: Double) -> ComparisonMetricPoint {
             let primaryPoint = RoutePointInterpolator.point(at: distance, in: primary.routePoints)
             let comparisonPoint = RoutePointInterpolator.point(at: distance, in: comparison.routePoints)
             let primaryPace = positiveFinite(primaryPoint?.paceSecondsPerKilometer)
             let comparisonPace = positiveFinite(comparisonPoint?.paceSecondsPerKilometer)
 
-            result.append(ComparisonMetricPoint(
+            return ComparisonMetricPoint(
                 distanceMeters: distance,
                 primaryPace: primaryPace,
                 comparisonPace: comparisonPace,
                 paceDelta: optionalDifference(primaryPace, comparisonPace),
-                primaryElevation: finite(primaryPoint?.altitudeMeters),
-                comparisonElevation: finite(comparisonPoint?.altitudeMeters),
+                primaryElevation: primaryContext.elevationProfile.correctedAltitude(
+                    atDistance: distance,
+                    boundary: .rangeEnd
+                ),
+                comparisonElevation: comparisonContext.elevationProfile.correctedAltitude(
+                    atDistance: distance,
+                    boundary: .rangeEnd
+                ),
                 primaryHR: finite(primaryPoint?.heartRateBPM),
                 comparisonHR: finite(comparisonPoint?.heartRateBPM)
-            ))
-            distance += sampleIntervalMeters
+            )
+        }
+
+        for sampleIndex in 0..<maximumSampleCount {
+            let distance = Double(sampleIndex) * effectiveInterval
+            guard distance.isFinite, distance <= maximumDistance else { break }
+            result.append(metricPoint(at: distance))
+        }
+        if result.count < maximumSampleCount,
+           let lastDistance = result.last?.distanceMeters,
+           lastDistance < maximumDistance {
+            result.append(metricPoint(at: maximumDistance))
         }
         return result
     }
@@ -154,12 +224,32 @@ public struct WorkoutComparisonService: Sendable {
         primaryScenePoints: [RouteScenePoint] = [],
         comparisonScenePoints: [RouteScenePoint] = []
     ) -> ComparisonDistanceMetrics {
+        metricsAtDistance(
+            selectedDistance,
+            primary: primary,
+            comparison: comparison,
+            primaryContext: WorkoutAnalysisContext(workout: primary),
+            comparisonContext: WorkoutAnalysisContext(workout: comparison),
+            primaryScenePoints: primaryScenePoints,
+            comparisonScenePoints: comparisonScenePoints
+        )
+    }
+
+    public func metricsAtDistance(
+        _ selectedDistance: Double,
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryContext: WorkoutAnalysisContext,
+        comparisonContext: WorkoutAnalysisContext,
+        primaryScenePoints: [RouteScenePoint] = [],
+        comparisonScenePoints: [RouteScenePoint] = []
+    ) -> ComparisonDistanceMetrics {
         guard selectedDistance.isFinite, selectedDistance >= 0 else {
             return emptyDistanceMetrics
         }
 
-        let primaryTimeline = WorkoutTimeline(workout: primary)
-        let comparisonTimeline = WorkoutTimeline(workout: comparison)
+        let primaryTimeline = primaryContext.timeline
+        let comparisonTimeline = comparisonContext.timeline
         let clampedDistance = min(
             selectedDistance,
             min(primaryTimeline.totalDistanceMeters, comparisonTimeline.totalDistanceMeters)
@@ -214,7 +304,10 @@ public struct WorkoutComparisonService: Sendable {
         primary: RunWorkout,
         comparison: RunWorkout,
         primaryTimeline: WorkoutTimeline,
-        comparisonTimeline: WorkoutTimeline
+        comparisonTimeline: WorkoutTimeline,
+        commonDistanceMeters: Double,
+        primaryElevationProfile: ElevationProfile,
+        comparisonElevationProfile: ElevationProfile
     ) -> [ComparisonWarning] {
         var warnings: [ComparisonWarning] = []
         let primaryDistance = primaryTimeline.totalDistanceMeters
@@ -224,18 +317,30 @@ public struct WorkoutComparisonService: Sendable {
         if distanceRatio < 0.7 || distanceRatio > 1.4 { warnings.append(.differentDistances) }
         if min(primaryDistance, comparisonDistance) < 500 { warnings.append(.insufficientOverlap) }
         if primary.routePoints.count < 10 || comparison.routePoints.count < 10 { warnings.append(.tooFewPoints) }
-        if routeEndpointsDiffer(primary: primary, comparison: comparison) { warnings.append(.differentRouteShape) }
+        if routeEndpointsDiffer(
+            primary: primary,
+            comparison: comparison,
+            commonDistanceMeters: commonDistanceMeters
+        ) {
+            warnings.append(.differentRouteShape)
+        }
         if abs(primaryTimeline.totalPausedSeconds - comparisonTimeline.totalPausedSeconds)
             >= Self.pauseDurationWarningThresholdSeconds {
             warnings.append(.differentPauseDurations)
         }
         if !primary.hasHeartRateData || !comparison.hasHeartRateData { warnings.append(.missingHeartRate) }
-        if !primary.hasAltitudeData || !comparison.hasAltitudeData { warnings.append(.missingElevation) }
+        if !primaryElevationProfile.hasMeaningfulElevation
+            || !comparisonElevationProfile.hasMeaningfulElevation {
+            warnings.append(.missingElevation)
+        }
         return warnings
     }
 
-    private func routeEndpointsDiffer(primary: RunWorkout, comparison: RunWorkout) -> Bool {
-        let common = commonDistance(primary: primary, comparison: comparison)
+    private func routeEndpointsDiffer(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        commonDistanceMeters common: Double
+    ) -> Bool {
         guard common > 0 else { return false }
         let threshold = max(200, min(common * 0.1, 1000))
         return [0, common * 0.5, common].contains { distance in
