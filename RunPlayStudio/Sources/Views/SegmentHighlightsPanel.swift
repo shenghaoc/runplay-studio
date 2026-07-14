@@ -26,6 +26,8 @@ struct SegmentHighlightsPanel: View {
                     .font(AppDesign.Typography.compactMetric)
                     .buttonStyle(.plain)
                     .foregroundStyle(.tertiary)
+                    .help("Deselect the currently highlighted segment")
+                    .accessibilityLabel("Clear Segment Selection")
                 }
             }
 

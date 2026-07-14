@@ -168,7 +168,7 @@ struct CompareView: View {
     private var clearButton: some View {
         Group {
             if appState.isComparing {
-                Button("Clear Comparison") {
+                Button("Clear") {
                     appState.clearComparison()
                 }
                 .font(AppDesign.Typography.compactMetric)
