@@ -53,10 +53,22 @@ public struct ComparisonRouteProjectionService: Sendable {
         let centerLon = (minLon + maxLon) / 2
 
         // Find elevation baseline from both routes combined
-        let primaryAlts = validPrimary.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }
-        let comparisonAlts = validComparison.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }
-        let allAlts = primaryAlts + comparisonAlts
-        let minAlt = allAlts.min() ?? 0
+        // ⚡ Bolt: Replaced chained array transformations with inline loop
+        // to avoid intermediate O(N) array allocations.
+        var minAlt: Double = 0
+        var foundAlt = false
+        for route in [validPrimary, validComparison] {
+            for item in route {
+                if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
+                    if !foundAlt {
+                        minAlt = alt
+                        foundAlt = true
+                    } else {
+                        minAlt = min(minAlt, alt)
+                    }
+                }
+            }
+        }
 
         // Project primary route
         let projectedPrimary = projectRoute(validPrimary, centerLat: centerLat, centerLon: centerLon, minAlt: minAlt)

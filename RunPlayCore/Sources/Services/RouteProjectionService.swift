@@ -41,8 +41,20 @@ public struct RouteProjectionService: Sendable {
         let centerLon = (minLon + maxLon) / 2
 
         // Find elevation range for scaling
-        let altitudes = validIndexedPoints.compactMap { $0.point.altitudeMeters }.filter { $0.isFinite && !$0.isNaN }
-        let minAlt = altitudes.min() ?? 0
+        // ⚡ Bolt: Replaced chained array transformations with inline loop
+        // to avoid intermediate O(N) array allocations.
+        var minAlt: Double = 0
+        var foundAlt = false
+        for item in validIndexedPoints {
+            if let alt = item.point.altitudeMeters, alt.isFinite, !alt.isNaN {
+                if !foundAlt {
+                    minAlt = alt
+                    foundAlt = true
+                } else {
+                    minAlt = min(minAlt, alt)
+                }
+            }
+        }
 
         return validIndexedPoints.map { item in
             let point = item.point

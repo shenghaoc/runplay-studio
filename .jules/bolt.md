@@ -21,3 +21,7 @@
 ## 2025-07-28 - O(N) Array Allocations in Iterative Checking and Aggregation Logic
 **Learning:** Checking for data presence or aggregating values (like heart rate or pace) over arrays using chained higher-order functions like `.compactMap { ... }.filter { ... }.count` and `.compactMap { ... }.filter { ... }.reduce()` causes intermediate `O(N)` array allocations. When these properties are accessed frequently or within large loops across thousands of points, it creates significant GC and ARC overhead.
 **Action:** Replace chained array transformations with single inline `for` loops that use accumulator variables or short-circuit returns (`return true` after finding required elements). This keeps best-case performance at `O(1)` or `O(N)` without `O(N)` intermediate arrays.
+
+## 2025-07-28 - O(N) Array Allocations in Min/Max Operations
+**Learning:** Extracting maximum or minimum values from arrays using chained higher-order functions like `.compactMap { ... }.filter { ... }.min()` causes intermediate `O(N)` array allocations. When executed frequently on large arrays (like iterating over route points), it creates significant ARC/GC overhead in Swift.
+**Action:** Replace chained array transformations with single inline `for` loops that use accumulator variables for state tracking (e.g., `minAlt`), keeping best-case performance at `O(1)` or `O(N)` without intermediate array allocations.
