@@ -9,6 +9,11 @@ public struct RouteColorMetrics: Sendable {
 
     public init() {}
 
+    /// Valid heart rate range for route coloring. Uses a tighter lower bound (40 bpm)
+    /// than WorkoutAnalyzer (30 bpm) to be more conservative about what qualifies as
+    /// displayable exercise heart rate data.
+    private static let validHeartRateRange: ClosedRange<Double> = 40...230
+
     // MARK: - Pace
 
     /// Compute pace values for each segment, suitable for color mapping.
@@ -106,14 +111,14 @@ public struct RouteColorMetrics: Sendable {
             if let h1 = hr1, let h2 = hr2 {
                 let avg = (h1 + h2) / 2
                 // Filter unreasonable values
-                if avg >= 40 && avg <= 230 && avg.isFinite && !avg.isNaN {
+                if Self.validHeartRateRange.contains(avg), avg.isFinite, !avg.isNaN {
                     rawHR.append(avg)
                 } else {
                     rawHR.append(.nan)
                 }
             } else if let h = hr1 ?? hr2 {
                 // One point has HR
-                if h >= 40 && h <= 230 && h.isFinite && !h.isNaN {
+                if Self.validHeartRateRange.contains(h), h.isFinite, !h.isNaN {
                     rawHR.append(h)
                 } else {
                     rawHR.append(.nan)
@@ -142,7 +147,7 @@ public struct RouteColorMetrics: Sendable {
         let hrValues = computeSegmentHeartRate(points: points)
         guard !hrValues.isEmpty else { return nil }
 
-        let validValues = hrValues.filter { $0.isFinite && $0 >= 40 && $0 <= 230 }
+        let validValues = hrValues.filter { $0.isFinite && Self.validHeartRateRange.contains($0) }
         guard validValues.count >= 2 else { return nil }
 
         let sorted = validValues.sorted()
@@ -166,7 +171,7 @@ public struct RouteColorMetrics: Sendable {
         // This avoids intermediate O(N) array allocations and short-circuits early for O(1) best-case performance.
         var validCount = 0
         for point in points {
-            if let hr = point.heartRateBPM, hr >= 40, hr <= 230, hr.isFinite {
+            if let hr = point.heartRateBPM, Self.validHeartRateRange.contains(hr), hr.isFinite {
                 validCount += 1
                 if validCount >= 2 { return true }
             }
