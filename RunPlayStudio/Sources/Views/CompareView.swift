@@ -173,7 +173,7 @@ struct CompareView: View {
                 }
                 .font(AppDesign.Typography.compactMetric)
                 .controlSize(.regular)
-                .help("Clear Comparison")
+                .help("Exit comparison mode and return to single-workout view")
                 .accessibilityLabel("Clear Comparison")
             }
         }

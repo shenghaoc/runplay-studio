@@ -8,3 +8,7 @@
 ## 2026-07-12 - Interactive Custom Views Lack Keyboard Focus on macOS
 **Learning:** Using `.onTapGesture` on custom views (like cards or rows) in SwiftUI on macOS handles mouse clicks but fails to make the element keyboard focusable or actionable via Space/Return. This breaks keyboard navigation entirely for those elements.
 **Action:** For interactive custom views on macOS, wrap the view in a `Button` and apply `.buttonStyle(.plain)` instead of using `.onTapGesture`. This preserves the design while providing free Tab focus, keyboard activation, and better VoiceOver integration.
+
+## 2026-07-13 - Button Ambiguity in SwiftUI
+**Learning:** Even text buttons like "Clear" can be ambiguous to screen readers or lack tooltip affordances when they exist far from their controlled context (e.g., in a complex comparison view selector).
+**Action:** Always add `.help()` and `.accessibilityLabel()` to buttons that might be ambiguous, perform destructive/clearing actions, or could benefit from explicit context for VoiceOver and mouse users. Make `.help()` more descriptive and contextual than `.accessibilityLabel()` to avoid redundant screen reader announcements.
