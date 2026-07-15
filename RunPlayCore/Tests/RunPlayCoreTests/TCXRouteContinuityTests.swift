@@ -51,6 +51,42 @@ final class TCXRouteContinuityTests: XCTestCase {
         )
     }
 
+    func testFastMiddleDistanceBoundaryRemainsContinuous() {
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let previous = TCXRouteContinuityResolver.ContinuityPoint(
+            latitude: 1.3000,
+            longitude: 103.8000,
+            timestamp: t0
+        )
+        let next = TCXRouteContinuityResolver.ContinuityPoint(
+            latitude: 1.3008,
+            longitude: 103.8000,
+            timestamp: t0.addingTimeInterval(5)
+        )
+        XCTAssertEqual(
+            TCXRouteContinuityResolver.decide(previous: previous, next: next),
+            .continuous
+        )
+    }
+
+    func testSlowMiddleDistanceBoundaryIsDiscontinuous() {
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let previous = TCXRouteContinuityResolver.ContinuityPoint(
+            latitude: 1.3000,
+            longitude: 103.8000,
+            timestamp: t0
+        )
+        let next = TCXRouteContinuityResolver.ContinuityPoint(
+            latitude: 1.3008,
+            longitude: 103.8000,
+            timestamp: t0.addingTimeInterval(20)
+        )
+        XCTAssertEqual(
+            TCXRouteContinuityResolver.decide(previous: previous, next: next),
+            .discontinuous
+        )
+    }
+
     func testForcedTimeGapIsDiscontinuous() {
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
         let previous = TCXRouteContinuityResolver.ContinuityPoint(

@@ -82,17 +82,20 @@ public enum TCXRouteContinuityResolver: Sendable {
             return .continuous
         }
 
+        // A larger but sub-forced relocation can still be plausible when the
+        // samples are close in time. This preserves the intended middle ground
+        // between the seamless and forced-distance thresholds.
+        if let timeGap,
+           timeGap <= policy.maximumSeamlessTimeGapSeconds,
+           distance.isFinite,
+           distance < policy.forcedGapDistanceMeters {
+            return .continuous
+        }
+
         // Ambiguous middle ground: prefer a new segment so we never invent a
         // continuous map line across a likely pause/resume.
         if distance.isFinite, distance > policy.maximumSeamlessDistanceMeters {
             return .discontinuous
-        }
-
-        // Missing timestamps with a small geographic step stay continuous.
-        if timeGap == nil,
-           distance.isFinite,
-           distance <= policy.maximumSeamlessDistanceMeters {
-            return .continuous
         }
 
         return .discontinuous

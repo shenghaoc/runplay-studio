@@ -277,6 +277,33 @@ final class MovementProfileTests: XCTestCase {
         )
     }
 
+    func testInterpolatedSampleOutsideAdjacentActiveBoundsUsesPointValue() throws {
+        let points = (0..<3).map { index in
+            point(
+                time: Double(index) * 10,
+                distance: Double(index) * 100,
+                lat: 1 + Double(index) * 0.001,
+                lon: 1
+            )
+        }
+        let timeline = WorkoutTimeline(routePoints: points)
+        let profile = try MovementProfile(routePoints: points, timeline: timeline)
+        let sample = WorkoutTimeline.ElapsedSample(
+            elapsedSeconds: 5,
+            activeSeconds: -5,
+            distanceMeters: 50,
+            pointIndex: 1,
+            isInterpolated: true,
+            isInRecordingGap: false
+        )
+
+        XCTAssertEqual(
+            try XCTUnwrap(profile.movingSeconds(atElapsed: sample, timeline: timeline)),
+            profile.movingSecondsByPoint[1],
+            accuracy: 0.001
+        )
+    }
+
     // MARK: - Diagnostics
 
     func testDiagnosticsArePopulated() throws {

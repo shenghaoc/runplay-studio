@@ -255,7 +255,7 @@ private struct RecordedLapsTableView: View {
 
     private var recordedLapHeader: some View {
         HStack(spacing: AppDesign.Spacing.medium) {
-            Color.clear.frame(width: 8)
+            Color.clear.frame(width: 16)
             header("Lap", width: 28, alignment: .leading)
             header("Trigger", width: 90, alignment: .leading)
             header("Distance", width: 72)
@@ -313,6 +313,7 @@ private struct RecordedLapsTableView: View {
                 .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(AppDesign.primaryBlue)
                 .opacity(isCurrent ? 1 : 0)
+                .frame(width: 16)
                 .accessibilityHidden(true)
 
             Text("\(lap.lapIndex)")

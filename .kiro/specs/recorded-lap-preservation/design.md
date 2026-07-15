@@ -34,7 +34,7 @@ before the first retained GPS fix clamps to elapsed zero with a diagnostic.
 ## Import
 
 - **FIT**: filter laps to selected session; map triggers, enhanced speed, and total-calorie fields; never create segments.
-- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; sparse small-distance seams remain continuous below the forced-gap threshold; per-track distances are rebased and offset across continuous tracks; derive a missing final boundary from the lap's reported total time.
+- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; sparse small-distance seams remain continuous below the forced-gap threshold, while fast samples may use the policy's middle distance band; per-track distances are rebased and offset across continuous tracks; derive a missing final boundary from the lap's reported total time.
 - **GPX**: empty recorded laps; current structure version.
 - **JSON**: optional recorded laps round-trip.
 

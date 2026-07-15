@@ -212,7 +212,9 @@ public struct MovementProfile: Sendable {
         } else if index > 0,
                   let previousActive = timeline.activeSeconds(atPointIndex: index - 1),
                   let currentActive = timeline.activeSeconds(atPointIndex: index),
-                  currentActive > previousActive {
+                  currentActive > previousActive,
+                  sample.activeSeconds >= previousActive,
+                  sample.activeSeconds <= currentActive {
             before = index - 1
             after = index
         } else {
