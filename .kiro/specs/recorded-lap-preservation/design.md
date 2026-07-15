@@ -25,19 +25,22 @@ interpolation across recording gaps.
 
 `RecordedLapAnalyzer` maps source timestamps onto elapsed bounds, uses shared
 timeline/movement/elevation context, enforces clock invariants, and aggregates
-mismatch diagnostics. Importers attach provisional source laps; analysis fills
-canonical fields while preserving IDs.
+mismatch diagnostics. Sub-centisecond timestamp rounding is clamped without
+inflating diagnostics. Importers attach provisional source laps; analysis fills
+canonical fields while preserving IDs. Explicit zero active or moving clocks
+remain valid for fully paused or fully stopped laps.
 
 ## Import
 
-- **FIT**: filter laps to selected session; map triggers and enhanced speed fields; never create segments.
-- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; per-track distance rebasing only.
+- **FIT**: filter laps to selected session; map triggers, enhanced speed, and total-calorie fields; never create segments.
+- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; per-track distance rebasing only; derive a missing final boundary from the lap's reported total time.
 - **GPX**: empty recorded laps; current structure version.
 - **JSON**: optional recorded laps round-trip.
 
 ## Presentation
 
-Splits tab gains Distance Splits / Recorded Laps modes. Replay exposes
+Splits tab gains Distance Splits / Recorded Laps modes with labelled columns and
+keyboard-accessible lap rows. Replay exposes
 `SelectedMetrics.recordedLapIndex`. Comparison adds ordinal lap pairing.
 Exports add Recorded Laps CSV, combined section, and JSON lap fields.
 

@@ -17,8 +17,8 @@
 
 ## Manual verification (when GUI available)
 
-- [ ] Seamless TCX laps continuous route + clocks
+- [x] Seamless TCX laps continuous route + clocks
 - [ ] Multi-track pause gap retained
 - [ ] FIT manual/distance triggers
-- [ ] UI mode switch, seek, highlight
+- [x] UI mode switch, seek, highlight
 - [ ] Export + persistence + legacy reimport

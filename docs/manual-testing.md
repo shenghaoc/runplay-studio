@@ -56,11 +56,11 @@ above remain unchecked.
 
 ## Recorded laps (FIT / TCX)
 
-- [ ] Import a TCX with two seamless manual/auto laps; map route stays continuous across the lap boundary.
+- [x] Import a TCX with two seamless manual/auto laps; map route stays continuous across the lap boundary.
 - [ ] Confirm Active time does not lose time at a seamless lap boundary.
-- [ ] Open Splits and switch between Distance Splits and Recorded Laps.
+- [x] Open Splits and switch between Distance Splits and Recorded Laps.
 - [ ] Confirm recorded lap trigger, distance, clocks, and pace; missing values show as unavailable.
-- [ ] Seek to each lap start; replay highlighting changes exactly at the next-lap start.
+- [x] Seek to each lap start; replay highlighting changes exactly at the next-lap start.
 - [ ] Import a TCX with a pause as multiple Tracks; the true pause remains a route gap.
 - [ ] Import a FIT with manual and auto-distance laps; triggers and source totals are retained.
 - [ ] Export Recorded Laps CSV, combined CSV (with `# Recorded Laps`), and JSON; filenames distinguish laps from splits.
@@ -71,6 +71,14 @@ above remain unchecked.
 - [ ] Export JSON, CSV, and PNG and inspect the labels.
 - [ ] Relaunch and confirm migrated analysis remains correct.
 - [ ] Confirm GPX, TCX, FIT, map, charts, deletion, and persistence still work.
+
+Recorded-lap manual record (2026-07-16): the packaged app imported a synthetic
+two-lap TCX through the native open panel. The route remained continuous, the
+Recorded Laps mode showed Manual and Distance triggers with distinct clocks and
+paces, selecting lap 2 sought replay to 0:20 and changed the current-lap banner,
+and comparison exposed ordinal pairing with a clear missing-laps state. Export,
+FIT, multi-track pause, deletion, and legacy-snapshot checks remain unchecked
+here. A packaged-app rebuild and relaunch retained the imported recorded laps.
 
 ## Moving/Stopped Estimate Checklist
 

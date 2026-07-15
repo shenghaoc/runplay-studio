@@ -138,6 +138,30 @@ final class RecordedLapAnalyzerTests: XCTestCase {
         XCTAssertTrue(result.warnings.contains(.recordedLapsMalformedSkipped))
     }
 
+    func testSubCentisecondBoundaryRoundingDoesNotCountAsClamp() throws {
+        let points = makeRoute()
+        let start = points[0].timestamp
+        let provisional = RecordedLap.provisional(
+            lapIndex: 1,
+            source: .fit,
+            trigger: .manual,
+            sourceStartDate: start.addingTimeInterval(-0.001),
+            sourceEndDate: points.last!.timestamp.addingTimeInterval(0.001),
+            reportedMetrics: nil
+        )
+        let context = WorkoutAnalysisContext(workout: RunWorkout(routePoints: points))
+
+        let result = try RecordedLapAnalyzer.analyze(
+            provisionalLaps: [provisional],
+            routePoints: points,
+            context: context,
+            source: .fit
+        )
+
+        XCTAssertEqual(result.laps.count, 1)
+        XCTAssertEqual(result.diagnostics.clampedBoundaryCount, 0)
+    }
+
     func testCancellation() {
         let points = makeRoute(pointCount: 50)
         let start = points[0].timestamp

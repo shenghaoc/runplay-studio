@@ -229,6 +229,7 @@ public struct RecordedLapAnalyzer: Sendable {
         timeline: WorkoutTimeline,
         clampedBoundaryCount: inout Int
     ) -> ResolvedBoundaries? {
+        let clampDiagnosticEpsilon = 0.01
         let total = timeline.totalElapsedSeconds
 
         var startElapsed: Double?
@@ -280,12 +281,16 @@ public struct RecordedLapAnalyzer: Sendable {
             if start < -5 {
                 return nil
             }
+            if start < -clampDiagnosticEpsilon {
+                clampedBoundaryCount += 1
+            }
             start = 0
-            clampedBoundaryCount += 1
         }
         if end > total {
+            if end > total + clampDiagnosticEpsilon {
+                clampedBoundaryCount += 1
+            }
             end = total
-            clampedBoundaryCount += 1
         }
 
         start = max(0, min(start, total))

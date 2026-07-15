@@ -229,23 +229,61 @@ private struct RecordedLapsTableView: View {
                 currentLapBanner(recordedLaps[idx])
             }
 
+            recordedLapHeader
+                .padding(.horizontal, AppDesign.Spacing.medium)
+
             // List avoids SwiftUI Table type-checker limits with many columns + selection.
             List(recordedLaps) { lap in
-                recordedLapRow(lap)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                Button {
+                    onSeekToRecordedLap?(lap)
+                } label: {
+                    recordedLapRow(lap)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Seek to Lap Start") {
                         onSeekToRecordedLap?(lap)
                     }
-                    .contextMenu {
-                        Button("Seek to Lap Start") {
-                            onSeekToRecordedLap?(lap)
-                        }
-                    }
-                    .listRowBackground(rowBackground(for: lap))
+                }
+                .listRowBackground(rowBackground(for: lap))
             }
             .listStyle(.inset)
             .help("Click a recorded lap to seek replay to that lap start. Replay pauses first.")
         }
+    }
+
+    private var recordedLapHeader: some View {
+        HStack(spacing: AppDesign.Spacing.medium) {
+            Color.clear.frame(width: 8)
+            header("Lap", width: 28, alignment: .leading)
+            header("Trigger", width: 90, alignment: .leading)
+            header("Distance", width: 72)
+            header("Elapsed", width: 56)
+            header("Active", width: 56)
+            header("Moving", width: 64)
+            header("Active Pace", width: 72)
+            header("Moving Pace", width: 88)
+            header("HR", width: 40)
+            header("Elev", width: 56)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Recorded lap columns")
+        .accessibilityValue("Lap, trigger, distance, elapsed, active, moving, active pace, moving pace, heart rate, elevation")
+    }
+
+    private func header(
+        _ text: String,
+        width: CGFloat,
+        alignment: Alignment = .trailing
+    ) -> some View {
+        Text(text)
+            .font(AppDesign.Typography.compactLabel)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .frame(width: width, alignment: alignment)
     }
 
     private func currentLapBanner(_ lap: RecordedLap) -> some View {

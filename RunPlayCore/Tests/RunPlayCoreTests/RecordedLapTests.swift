@@ -126,6 +126,26 @@ final class RecordedLapTests: XCTestCase {
         XCTAssertEqual(lap.endDistanceMeters, 100, accuracy: 0.001)
     }
 
+    func testExplicitZeroClocksRemainValid() {
+        let fullyPaused = RecordedLap(
+            lapIndex: 1,
+            elapsedSeconds: 30,
+            activeSeconds: 0,
+            movingSeconds: 0
+        )
+        XCTAssertEqual(fullyPaused.activeSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(fullyPaused.pausedSeconds, 30, accuracy: 0.001)
+
+        let fullyStopped = RecordedLap(
+            lapIndex: 2,
+            elapsedSeconds: 30,
+            activeSeconds: 30,
+            movingSeconds: 0
+        )
+        XCTAssertEqual(fullyStopped.movingSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(fullyStopped.stoppedSeconds, 30, accuracy: 0.001)
+    }
+
     func testNonFiniteValuesSanitised() {
         let lap = RecordedLap(
             lapIndex: 1,
