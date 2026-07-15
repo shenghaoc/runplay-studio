@@ -50,11 +50,16 @@ public struct WorkoutAnalyzer: Sendable {
         try throwIfCancelled(isCancelled)
 
         // Build movement profile from the (possibly updated) route points
-        let movementProfile = try MovementProfile(
-            routePoints: workout.routePoints,
-            timeline: context.timeline,
-            isCancelled: isCancelled
-        )
+        let movementProfile: MovementProfile
+        if let existing = context.movementProfile {
+            movementProfile = existing
+        } else {
+            movementProfile = try MovementProfile(
+                routePoints: workout.routePoints,
+                timeline: context.timeline,
+                isCancelled: isCancelled
+            )
+        }
         let ctx = WorkoutAnalysisContext(
             routePoints: workout.routePoints,
             elevationProfile: context.elevationProfile,
@@ -126,21 +131,10 @@ public struct WorkoutAnalyzer: Sendable {
             routePoints: quality.routePoints,
             elevationProfile: quality.elevationProfile
         )
-        // Build movement profile for normalization path
-        let movementProfile = try MovementProfile(
-            routePoints: quality.routePoints,
-            timeline: context.timeline,
-            isCancelled: isCancelled
-        )
-        let ctx = WorkoutAnalysisContext(
-            routePoints: quality.routePoints,
-            elevationProfile: quality.elevationProfile,
-            movementProfile: movementProfile
-        )
         try throwIfCancelled(isCancelled)
         try analyzeCancellable(
             &analyzed,
-            context: ctx,
+            context: context,
             policy: policy,
             isCancelled: isCancelled
         )

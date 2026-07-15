@@ -52,7 +52,13 @@ struct CurrentMetricsPanel: View {
                 Label(metrics.movementStateLabel, systemImage: state == .stopped ? "stop.circle.fill" : "figure.run")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(state == .stopped ? AppDesign.comparisonOrange : .secondary)
-                    .accessibilityLabel("Estimated movement state: \(metrics.movementStateLabel)")
+                    .accessibilityLabel(String(
+                        format: NSLocalizedString(
+                            "Estimated movement state: %@",
+                            comment: "Accessibility label for movement state"
+                        ),
+                        metrics.movementStateLabel
+                    ))
             }
         }
     }

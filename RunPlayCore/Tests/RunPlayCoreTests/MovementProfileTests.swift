@@ -49,6 +49,24 @@ final class MovementProfileTests: XCTestCase {
     func testSparseTimingUsesConservativeFallback() throws {
         var points: [RoutePoint] = []
         for i in 0..<5 {
+            points.append(point(time: Double(i) * 0.25, distance: Double(i) * 3, lat: 1 + Double(i) * 0.001, lon: 1))
+        }
+        let last = points.last!
+        for i in 0..<10 {
+            points.append(point(time: Double(5 + i) * 0.25, distance: last.distanceFromStartMeters, lat: last.latitude, lon: 1))
+        }
+
+        let timeline = WorkoutTimeline(routePoints: points)
+        let profile = try MovementProfile(routePoints: points, timeline: timeline)
+
+        XCTAssertTrue(profile.diagnostics.usedConservativeFallback)
+        XCTAssertEqual(profile.totalMovingSeconds, timeline.totalActiveSeconds, accuracy: 0.001)
+        XCTAssertEqual(profile.totalStoppedSeconds, 0, accuracy: 0.001)
+    }
+
+    func testOneSecondStationaryDwellUsesReliableTiming() throws {
+        var points: [RoutePoint] = []
+        for i in 0..<5 {
             points.append(point(time: Double(i), distance: Double(i) * 3, lat: 1 + Double(i) * 0.001, lon: 1))
         }
         let last = points.last!
@@ -59,9 +77,8 @@ final class MovementProfileTests: XCTestCase {
         let timeline = WorkoutTimeline(routePoints: points)
         let profile = try MovementProfile(routePoints: points, timeline: timeline)
 
-        XCTAssertTrue(profile.diagnostics.usedConservativeFallback)
-        XCTAssertEqual(profile.totalMovingSeconds, timeline.totalActiveSeconds, accuracy: 0.001)
-        XCTAssertEqual(profile.totalStoppedSeconds, 0, accuracy: 0.001)
+        XCTAssertFalse(profile.diagnostics.usedConservativeFallback)
+        XCTAssertGreaterThanOrEqual(profile.totalStoppedSeconds, 4)
     }
 
     // MARK: - Stop and resume
@@ -244,6 +261,20 @@ final class MovementProfileTests: XCTestCase {
         XCTAssertNotNil(midMoving)
         XCTAssertGreaterThan(midMoving!, 0)
         XCTAssertLessThan(midMoving!, profile.totalMovingSeconds)
+    }
+
+    func testDistanceRangeInterpolatesMovementAtSplitBoundary() throws {
+        let points = (0..<3).map { index in
+            point(time: Double(index) * 10, distance: Double(index) * 600, lat: 1 + Double(index) * 0.01, lon: 1)
+        }
+        let timeline = WorkoutTimeline(routePoints: points)
+        let profile = try MovementProfile(routePoints: points, timeline: timeline)
+
+        XCTAssertEqual(
+            try XCTUnwrap(profile.movingSeconds(from: 0, to: 1_000, timeline: timeline)),
+            1_000.0 / 600.0 * 10,
+            accuracy: 0.001
+        )
     }
 
     // MARK: - Diagnostics

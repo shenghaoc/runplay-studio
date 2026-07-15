@@ -58,7 +58,7 @@ public struct MovementDetectionPolicy: Hashable, Sendable {
         minimumResumeDistanceMeters: Double = 5.0,
         maximumStationaryRadiusMeters: Double = 10.0,
         maximumStationaryDriftMeters: Double = 20.0,
-        minimumReliableIntervalDurationSeconds: Double = 2.0,
+        minimumReliableIntervalDurationSeconds: Double = 0.5,
         maximumDirectSpeedIntervalDurationSeconds: Double = 30.0,
         minimumReliableSampleCount: Int = 10,
         cancellationCheckStride: Int = 2048

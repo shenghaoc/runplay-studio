@@ -42,6 +42,14 @@ public struct WorkoutComparisonService: Sendable {
             seconds: comparisonTimeline.totalElapsedSeconds,
             distanceMeters: comparisonDistance
         )
+        let primaryMoving = primaryContext.movementProfile?.totalMovingSeconds
+            ?? primaryTimeline.totalActiveSeconds
+        let comparisonMoving = comparisonContext.movementProfile?.totalMovingSeconds
+            ?? comparisonTimeline.totalActiveSeconds
+        let primaryStopped = max(0, primaryTimeline.totalActiveSeconds - primaryMoving)
+        let comparisonStopped = max(0, comparisonTimeline.totalActiveSeconds - comparisonMoving)
+        let primaryMovingPace = pace(seconds: primaryMoving, distanceMeters: primaryDistance)
+        let comparisonMovingPace = pace(seconds: comparisonMoving, distanceMeters: comparisonDistance)
         let primaryElevationGain = primaryContext.elevationProfile.hasMeaningfulElevation
             ? primaryContext.elevationProfile.totalAscentMeters.map(finiteNonNegative)
             : nil
@@ -64,15 +72,15 @@ public struct WorkoutComparisonService: Sendable {
             primaryPausedSeconds: primaryTimeline.totalPausedSeconds,
             comparisonPausedSeconds: comparisonTimeline.totalPausedSeconds,
             pausedTimeDeltaSeconds: primaryTimeline.totalPausedSeconds - comparisonTimeline.totalPausedSeconds,
-            primaryMovingSeconds: primary.summary.totalMovingSeconds,
-            comparisonMovingSeconds: comparison.summary.totalMovingSeconds,
-            movingTimeDeltaSeconds: primary.summary.totalMovingSeconds - comparison.summary.totalMovingSeconds,
-            primaryStoppedSeconds: primary.summary.totalStoppedSeconds,
-            comparisonStoppedSeconds: comparison.summary.totalStoppedSeconds,
-            stoppedTimeDeltaSeconds: primary.summary.totalStoppedSeconds - comparison.summary.totalStoppedSeconds,
-            primaryMovingPaceSecondsPerKm: primary.summary.movingPaceSecondsPerKilometer,
-            comparisonMovingPaceSecondsPerKm: comparison.summary.movingPaceSecondsPerKilometer,
-            movingPaceDeltaSecondsPerKm: primary.summary.movingPaceSecondsPerKilometer - comparison.summary.movingPaceSecondsPerKilometer,
+            primaryMovingSeconds: primaryMoving,
+            comparisonMovingSeconds: comparisonMoving,
+            movingTimeDeltaSeconds: primaryMoving - comparisonMoving,
+            primaryStoppedSeconds: primaryStopped,
+            comparisonStoppedSeconds: comparisonStopped,
+            stoppedTimeDeltaSeconds: primaryStopped - comparisonStopped,
+            primaryMovingPaceSecondsPerKm: primaryMovingPace,
+            comparisonMovingPaceSecondsPerKm: comparisonMovingPace,
+            movingPaceDeltaSecondsPerKm: primaryMovingPace - comparisonMovingPace,
             primaryPaceSecondsPerKm: primaryActivePace,
             comparisonPaceSecondsPerKm: comparisonActivePace,
             paceDeltaSecondsPerKm: primaryActivePace - comparisonActivePace,
@@ -237,6 +245,8 @@ public struct WorkoutComparisonService: Sendable {
         primaryScenePoints: [RouteScenePoint] = [],
         comparisonScenePoints: [RouteScenePoint] = []
     ) -> ComparisonDistanceMetrics {
+        // This convenience overload is for one-off callers. High-frequency UI
+        // updates must use the context-taking overload with cached analysis.
         metricsAtDistance(
             selectedDistance,
             primary: primary,
@@ -362,7 +372,7 @@ public struct WorkoutComparisonService: Sendable {
             || !comparisonElevationProfile.hasMeaningfulElevation {
             warnings.append(.missingElevation)
         }
-        if primary.summary.totalStoppedSeconds > 0 || comparison.summary.totalStoppedSeconds > 0 {
+        if primary.movementDiagnostics.stoppedIntervalCount > 0 || comparison.movementDiagnostics.stoppedIntervalCount > 0 {
             warnings.append(.movementEstimated)
         }
         if primary.movementDiagnostics.usedConservativeFallback

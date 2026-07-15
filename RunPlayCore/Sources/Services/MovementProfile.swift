@@ -56,8 +56,8 @@ public struct MovementProfile: Sendable {
                                to endDistance: Double,
                                timeline: WorkoutTimeline) -> Double? {
         guard let range = timeline.distanceRange(from: startDistance, to: endDistance),
-              let startMoving = movingSeconds(atPointIndex: range.start.pointIndex),
-              let endMoving = movingSeconds(atPointIndex: range.end.pointIndex)
+              let startMoving = movingSeconds(at: range.start, boundary: .rangeStart, timeline: timeline),
+              let endMoving = movingSeconds(at: range.end, boundary: .rangeEnd, timeline: timeline)
         else {
             return nil
         }
@@ -69,12 +69,59 @@ public struct MovementProfile: Sendable {
                                 to endDistance: Double,
                                 timeline: WorkoutTimeline) -> Double? {
         guard let range = timeline.distanceRange(from: startDistance, to: endDistance),
-              let startStopped = stoppedSeconds(atPointIndex: range.start.pointIndex),
-              let endStopped = stoppedSeconds(atPointIndex: range.end.pointIndex)
+              let startStopped = stoppedSeconds(at: range.start, boundary: .rangeStart, timeline: timeline),
+              let endStopped = stoppedSeconds(at: range.end, boundary: .rangeEnd, timeline: timeline)
         else {
             return nil
         }
         return max(0, endStopped - startStopped)
+    }
+
+    private func movingSeconds(
+        at sample: WorkoutTimeline.DistanceSample,
+        boundary: WorkoutDistanceBoundaryRole,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        interpolatedCumulative(
+            movingSecondsByPoint,
+            at: sample,
+            boundary: boundary,
+            timeline: timeline
+        )
+    }
+
+    private func stoppedSeconds(
+        at sample: WorkoutTimeline.DistanceSample,
+        boundary: WorkoutDistanceBoundaryRole,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        interpolatedCumulative(
+            stoppedSecondsByPoint,
+            at: sample,
+            boundary: boundary,
+            timeline: timeline
+        )
+    }
+
+    private func interpolatedCumulative(
+        _ cumulative: [Double],
+        at sample: WorkoutTimeline.DistanceSample,
+        boundary: WorkoutDistanceBoundaryRole,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        guard cumulative.indices.contains(sample.pointIndex) else { return nil }
+        guard sample.isInterpolated else { return cumulative[sample.pointIndex] }
+
+        let before = boundary == .rangeStart ? sample.pointIndex - 1 : sample.pointIndex
+        let after = boundary == .rangeStart ? sample.pointIndex : sample.pointIndex + 1
+        guard cumulative.indices.contains(before), cumulative.indices.contains(after),
+              let startActive = timeline.activeSeconds(atPointIndex: before),
+              let endActive = timeline.activeSeconds(atPointIndex: after),
+              endActive > startActive
+        else { return cumulative[sample.pointIndex] }
+
+        let fraction = min(1, max(0, (sample.activeSeconds - startActive) / (endActive - startActive)))
+        return cumulative[before] + (cumulative[after] - cumulative[before]) * fraction
     }
 
     /// Movement state at an elapsed replay time.
