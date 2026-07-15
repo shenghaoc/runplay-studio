@@ -273,30 +273,19 @@ public struct RecordedLapAnalyzer: Sendable {
             return nil
         }
 
-        // Clamp small overhangs; reject nonsensical inverted ranges after clamp.
+        // Clamp overhangs onto the workout clock; reject starts far before the
+        // route begins. Large end overhangs are clamped (with a diagnostic)
+        // rather than inventing time past the route.
         if start < 0 {
-            if start >= -1 {
-                start = 0
-                clampedBoundaryCount += 1
-            } else if start < -5 {
+            if start < -5 {
                 return nil
-            } else {
-                start = 0
-                clampedBoundaryCount += 1
             }
+            start = 0
+            clampedBoundaryCount += 1
         }
         if end > total {
-            if end <= total + 1 {
-                end = total
-                clampedBoundaryCount += 1
-            } else if end > total + 5 {
-                // Large overhang — clamp with diagnostic rather than inventing.
-                end = total
-                clampedBoundaryCount += 1
-            } else {
-                end = total
-                clampedBoundaryCount += 1
-            }
+            end = total
+            clampedBoundaryCount += 1
         }
 
         start = max(0, min(start, total))

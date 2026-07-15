@@ -118,11 +118,12 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         if let version = raw.sourceStructureVersion {
             workout.sourceStructureVersion = max(0, version)
         } else {
-            // Native JSON without the field is treated as current if it supplied
-            // an explicit recordedLaps array; otherwise legacy-compatible.
+            // Without an explicit version: an explicit recordedLaps key means the
+            // file is structure-aware (possibly empty). Omitting the key is the
+            // pre-feature shape and decodes as legacy.
             workout.sourceStructureVersion = raw.recordedLaps != nil
                 ? RunWorkout.currentSourceStructureVersion
-                : RunWorkout.currentSourceStructureVersion
+                : RunWorkout.legacySourceStructureVersion
         }
 
         // Run analysis (rederives canonical lap metrics; does not invent laps)
