@@ -76,6 +76,32 @@ final class MovementClockInvariantTests: XCTestCase {
         XCTAssertNotNil(metrics.comparisonStoppedSeconds)
     }
 
+    func testDistanceComparisonInterpolatesMovementClocksAtSelectedDistance() throws {
+        let route = (0..<3).map { index in
+            RoutePoint(
+                timestamp: start.addingTimeInterval(Double(index) * 10),
+                latitude: 1 + Double(index) * 0.01,
+                longitude: 1,
+                distanceFromStartMeters: Double(index) * 600,
+                elapsedSeconds: Double(index) * 10
+            )
+        }
+        let workout = RunWorkout(routePoints: route)
+
+        let metrics = WorkoutComparisonService().metricsAtDistance(
+            1_000,
+            primary: workout,
+            comparison: workout
+        )
+
+        XCTAssertEqual(
+            try XCTUnwrap(metrics.primaryMovingSeconds),
+            1_000.0 / 600.0 * 10,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(try XCTUnwrap(metrics.primaryStoppedSeconds), 0, accuracy: 0.001)
+    }
+
     private func points(distanceOffset: Double) -> [RoutePoint] {
         (0..<12).map { index in
             RoutePoint(

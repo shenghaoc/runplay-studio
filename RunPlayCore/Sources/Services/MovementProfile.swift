@@ -77,7 +77,10 @@ public struct MovementProfile: Sendable {
         return max(0, endStopped - startStopped)
     }
 
-    private func movingSeconds(
+    /// Cumulative moving time at a timeline distance sample. The boundary role
+    /// preserves the timeline's duplicate-distance policy and proportionally
+    /// includes a partial continuous interval.
+    public func movingSeconds(
         at sample: WorkoutTimeline.DistanceSample,
         boundary: WorkoutDistanceBoundaryRole,
         timeline: WorkoutTimeline
@@ -90,7 +93,10 @@ public struct MovementProfile: Sendable {
         )
     }
 
-    private func stoppedSeconds(
+    /// Cumulative stopped time at a timeline distance sample. The boundary role
+    /// preserves the timeline's duplicate-distance policy and proportionally
+    /// includes a partial continuous interval.
+    public func stoppedSeconds(
         at sample: WorkoutTimeline.DistanceSample,
         boundary: WorkoutDistanceBoundaryRole,
         timeline: WorkoutTimeline

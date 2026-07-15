@@ -283,10 +283,34 @@ public struct WorkoutComparisonService: Sendable {
         let comparisonElapsed = comparisonSample?.elapsedSeconds
         let primaryActive = primarySample?.activeSeconds
         let comparisonActive = comparisonSample?.activeSeconds
-        let primaryMoving = primarySample.flatMap { primaryContext.movementProfile?.movingSeconds(atPointIndex: $0.pointIndex) }
-        let comparisonMoving = comparisonSample.flatMap { comparisonContext.movementProfile?.movingSeconds(atPointIndex: $0.pointIndex) }
-        let primaryStopped = primarySample.flatMap { primaryContext.movementProfile?.stoppedSeconds(atPointIndex: $0.pointIndex) }
-        let comparisonStopped = comparisonSample.flatMap { comparisonContext.movementProfile?.stoppedSeconds(atPointIndex: $0.pointIndex) }
+        let primaryMoving = primarySample.flatMap {
+            primaryContext.movementProfile?.movingSeconds(
+                at: $0,
+                boundary: .rangeEnd,
+                timeline: primaryTimeline
+            )
+        }
+        let comparisonMoving = comparisonSample.flatMap {
+            comparisonContext.movementProfile?.movingSeconds(
+                at: $0,
+                boundary: .rangeEnd,
+                timeline: comparisonTimeline
+            )
+        }
+        let primaryStopped = primarySample.flatMap {
+            primaryContext.movementProfile?.stoppedSeconds(
+                at: $0,
+                boundary: .rangeEnd,
+                timeline: primaryTimeline
+            )
+        }
+        let comparisonStopped = comparisonSample.flatMap {
+            comparisonContext.movementProfile?.stoppedSeconds(
+                at: $0,
+                boundary: .rangeEnd,
+                timeline: comparisonTimeline
+            )
+        }
         let coveredDistance = clampedDistance - max(
             primaryTimeline.startDistanceMeters,
             comparisonTimeline.startDistanceMeters
