@@ -93,11 +93,15 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
             endDate: routePoints.last?.timestamp
         )
 
+        // GPX track import does not define device laps in the supported subset.
+        // recordedLaps remains empty; trkseg boundaries are route segments only.
         var workout = RunWorkout(
             metadata: metadata,
             source: .gpx,
-            routePoints: routePoints
+            routePoints: routePoints,
+            recordedLaps: []
         )
+        workout.sourceStructureVersion = RunWorkout.currentSourceStructureVersion
 
         let analyzer = WorkoutAnalyzer()
         try analyzer.normalizeAndAnalyze(

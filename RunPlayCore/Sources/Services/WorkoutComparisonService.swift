@@ -147,6 +147,104 @@ public struct WorkoutComparisonService: Sendable {
         }
     }
 
+    /// Ordinal recorded-lap comparison only. Does not invent route-aligned laps.
+    public func compareRecordedLaps(
+        primary: RunWorkout,
+        comparison: RunWorkout
+    ) -> [RecordedLapComparison] {
+        let primaryLaps = primary.recordedLaps
+        let comparisonLaps = comparison.recordedLaps
+        guard !primaryLaps.isEmpty || !comparisonLaps.isEmpty else { return [] }
+
+        let count = max(primaryLaps.count, comparisonLaps.count)
+        var rows: [RecordedLapComparison] = []
+        rows.reserveCapacity(count)
+
+        for index in 0..<count {
+            let primaryLap = primaryLaps.indices.contains(index) ? primaryLaps[index] : nil
+            let comparisonLap = comparisonLaps.indices.contains(index) ? comparisonLaps[index] : nil
+            var caveats: [String] = []
+
+            if primaryLaps.isEmpty {
+                caveats.append("Selected run has no recorded laps")
+            } else if comparisonLaps.isEmpty {
+                caveats.append("Compared run has no recorded laps")
+            }
+            if primary.mayRequireReimportForRecordedLaps {
+                caveats.append("Selected run may require reimport to recover source laps")
+            }
+            if comparison.mayRequireReimportForRecordedLaps {
+                caveats.append("Compared run may require reimport to recover source laps")
+            }
+            if primaryLaps.count != comparisonLaps.count {
+                caveats.append("Lap counts differ (\(primaryLaps.count) vs \(comparisonLaps.count))")
+            }
+            if let primaryLap, let comparisonLap {
+                if primaryLap.trigger != comparisonLap.trigger {
+                    caveats.append("Trigger types differ")
+                }
+                let distanceDelta = abs(primaryLap.distanceMeters - comparisonLap.distanceMeters)
+                if distanceDelta > max(50, primaryLap.distanceMeters * 0.05) {
+                    caveats.append("Lap distances differ materially")
+                }
+            }
+
+            let paceDelta = optionalDifference(
+                primaryLap?.activePaceSecondsPerKilometer,
+                comparisonLap?.activePaceSecondsPerKilometer
+            )
+            let winner: ComparisonResult
+            if let paceDelta, paceDelta.isFinite {
+                winner = abs(paceDelta) < 5 ? .tie : (paceDelta > 0 ? .comparison : .primary)
+            } else {
+                winner = .unavailable
+            }
+
+            rows.append(RecordedLapComparison(
+                lapIndex: index + 1,
+                primaryLap: primaryLap,
+                comparisonLap: comparisonLap,
+                distanceDeltaMeters: optionalDifference(
+                    primaryLap?.distanceMeters,
+                    comparisonLap?.distanceMeters
+                ),
+                elapsedDurationDeltaSeconds: optionalDifference(
+                    primaryLap?.elapsedSeconds,
+                    comparisonLap?.elapsedSeconds
+                ),
+                activeDurationDeltaSeconds: optionalDifference(
+                    primaryLap?.activeSeconds,
+                    comparisonLap?.activeSeconds
+                ),
+                movingDurationDeltaSeconds: optionalDifference(
+                    primaryLap?.movingSeconds,
+                    comparisonLap?.movingSeconds
+                ),
+                stoppedDurationDeltaSeconds: optionalDifference(
+                    primaryLap?.stoppedSeconds,
+                    comparisonLap?.stoppedSeconds
+                ),
+                activePaceDeltaSecondsPerKm: paceDelta,
+                movingPaceDeltaSecondsPerKm: optionalDifference(
+                    primaryLap?.movingPaceSecondsPerKilometer,
+                    comparisonLap?.movingPaceSecondsPerKilometer
+                ),
+                averageHRDelta: difference(
+                    primaryLap?.averageHeartRateBPM,
+                    comparisonLap?.averageHeartRateBPM
+                ),
+                elevationGainDeltaMeters: optionalDifference(
+                    primaryLap?.elevationGainMeters,
+                    comparisonLap?.elevationGainMeters
+                ),
+                winner: winner,
+                caveats: Array(Set(caveats)).sorted()
+            ))
+        }
+
+        return rows
+    }
+
     public func compareMetricsOverDistance(
         primary: RunWorkout,
         comparison: RunWorkout,

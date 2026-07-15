@@ -638,6 +638,8 @@ public struct FITParser {
             lap.totalDescent = fieldValues[FITLapField.totalDescent.rawValue]?.uint16Value
             lap.averageSpeed = fieldValues[FITLapField.averageSpeed.rawValue]?.uint16Value
             lap.maximumSpeed = fieldValues[FITLapField.maximumSpeed.rawValue]?.uint16Value
+            lap.enhancedAverageSpeed = fieldValues[FITLapField.enhancedAverageSpeed.rawValue]?.uint32Value
+            lap.enhancedMaximumSpeed = fieldValues[FITLapField.enhancedMaximumSpeed.rawValue]?.uint32Value
             lap.averageHeartRate = fieldValues[FITLapField.averageHeartRate.rawValue]?.uint8Value
             lap.maximumHeartRate = fieldValues[FITLapField.maximumHeartRate.rawValue]?.uint8Value
             lap.averageCadence = fieldValues[FITLapField.averageCadence.rawValue]?.uint8Value

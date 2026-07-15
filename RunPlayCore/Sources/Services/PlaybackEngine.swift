@@ -151,7 +151,8 @@ public class PlaybackEngine {
             heartRateBPM: point.heartRateBPM,
             speedMetersPerSecond: point.speedMetersPerSecond,
             cadence: point.cadence,
-            splitIndex: findCurrentSplitIndex()
+            splitIndex: findCurrentSplitIndex(),
+            recordedLapIndex: findCurrentRecordedLapIndex()
         )
     }
 
@@ -255,6 +256,37 @@ public class PlaybackEngine {
             return workout.splits.count - 1
         }
         return nil
+    }
+
+    /// Current recorded lap using half-open elapsed ownership:
+    /// the lap ending at a boundary owns time up to but excluding the next
+    /// lap start; at the exact next-lap start, the next lap becomes current.
+    private func findCurrentRecordedLapIndex() -> Int? {
+        guard let workout, !workout.recordedLaps.isEmpty else { return nil }
+        let time = state.currentTime
+        guard time.isFinite else { return nil }
+
+        for (index, lap) in workout.recordedLaps.enumerated() {
+            let start = lap.startElapsedSeconds
+            let end = lap.endElapsedSeconds
+            if time >= start && time < end {
+                return index
+            }
+            // Zero-duration or exact terminal boundary.
+            if Self.isSameElapsed(start, end), Self.isSameElapsed(time, start) {
+                return index
+            }
+        }
+
+        if let final = workout.recordedLaps.last,
+           time >= final.endElapsedSeconds {
+            return workout.recordedLaps.count - 1
+        }
+        return nil
+    }
+
+    private static func isSameElapsed(_ first: Double, _ second: Double) -> Bool {
+        abs(first - second) <= 0.000_001
     }
 
     private func selectElapsedStart() {

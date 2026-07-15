@@ -35,6 +35,9 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         var metadata: WorkoutMetadata?
         var source: String?
         var routePoints: [RawRoutePoint]
+        var recordedLaps: [RecordedLap]?
+        var sourceStructureVersion: Int?
+        var splits: [RunSplit]?
     }
 
     private struct RawRoutePoint: Codable {
@@ -101,14 +104,28 @@ public struct JSONWorkoutImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No valid route points found")
         }
 
+        // Optional recorded laps from native JSON. Malformed values are
+        // sanitised by RecordedLap's initializer; calculated splits stay separate.
+        let provisionalLaps = sanitizeRecordedLaps(raw.recordedLaps ?? [])
+
         // Build workout and analyze
         var workout = RunWorkout(
             metadata: metadata,
             source: source,
-            routePoints: routePoints
+            routePoints: routePoints,
+            recordedLaps: provisionalLaps
         )
+        if let version = raw.sourceStructureVersion {
+            workout.sourceStructureVersion = max(0, version)
+        } else {
+            // Native JSON without the field is treated as current if it supplied
+            // an explicit recordedLaps array; otherwise legacy-compatible.
+            workout.sourceStructureVersion = raw.recordedLaps != nil
+                ? RunWorkout.currentSourceStructureVersion
+                : RunWorkout.currentSourceStructureVersion
+        }
 
-        // Run analysis
+        // Run analysis (rederives canonical lap metrics; does not invent laps)
         let analyzer = WorkoutAnalyzer()
         try analyzer.normalizeAndAnalyze(
             &workout,
@@ -119,6 +136,39 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         )
 
         return workout
+    }
+
+    private func sanitizeRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {
+        laps.enumerated().map { index, lap in
+            // Re-run through the initializer for finite/non-negative sanitization.
+            RecordedLap(
+                id: lap.id,
+                lapIndex: lap.lapIndex > 0 ? lap.lapIndex : index + 1,
+                source: lap.source,
+                trigger: lap.trigger,
+                sourceStartDate: lap.sourceStartDate,
+                sourceEndDate: lap.sourceEndDate,
+                startElapsedSeconds: lap.startElapsedSeconds,
+                endElapsedSeconds: lap.endElapsedSeconds,
+                startDistanceMeters: lap.startDistanceMeters,
+                endDistanceMeters: lap.endDistanceMeters,
+                distanceMeters: lap.distanceMeters,
+                elapsedSeconds: lap.elapsedSeconds,
+                activeSeconds: lap.activeSeconds,
+                movingSeconds: lap.movingSeconds,
+                stoppedSeconds: lap.stoppedSeconds,
+                pausedSeconds: lap.pausedSeconds,
+                activePaceSecondsPerKilometer: lap.activePaceSecondsPerKilometer,
+                movingPaceSecondsPerKilometer: lap.movingPaceSecondsPerKilometer,
+                elapsedPaceSecondsPerKilometer: lap.elapsedPaceSecondsPerKilometer,
+                averageHeartRateBPM: lap.averageHeartRateBPM,
+                maximumHeartRateBPM: lap.maximumHeartRateBPM,
+                averageCadence: lap.averageCadence,
+                elevationGainMeters: lap.elevationGainMeters,
+                elevationLossMeters: lap.elevationLossMeters,
+                reportedMetrics: lap.reportedMetrics
+            )
+        }
     }
 
     private func parseSource(_ source: String?) -> WorkoutSource {

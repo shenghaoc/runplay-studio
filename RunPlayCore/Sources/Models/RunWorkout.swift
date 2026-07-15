@@ -4,24 +4,36 @@ import Foundation
 public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Snapshots without a version predate pause-aware analysis.
     public static let legacyAnalysisVersion = 0
-    public static let currentAnalysisVersion = 4
+    /// Version 5 introduces route-derived recorded-lap analysis.
+    public static let currentAnalysisVersion = 5
     /// Snapshots without this version predate route-quality normalization.
     public static let legacyNormalizationVersion = 0
     public static let currentNormalizationVersion = 1
+    /// Snapshots without this version predate recorded-lap source preservation.
+    /// Version 0: source FIT/TCX lap messages may have been discarded.
+    /// Version 1: importers preserve source-recorded laps (possibly empty).
+    public static let legacySourceStructureVersion = 0
+    public static let currentSourceStructureVersion = 1
 
     public let id: UUID
     public var metadata: WorkoutMetadata
     public var source: WorkoutSource
     public var routePoints: [RoutePoint]
+    /// Calculated regular distance intervals (usually 1 km). Independent of recorded laps.
     public var splits: [RunSplit]
+    /// Source-recorded lap boundaries preserved from the import file.
+    public var recordedLaps: [RecordedLap]
     public var summary: RunSummary
     public var segments: [SegmentHighlight]
     public var analysisVersion: Int
     public var normalizationVersion: Int
+    /// Whether source-structure fields such as recorded laps were preserved at import.
+    public var sourceStructureVersion: Int
     public var analysisWarnings: [WorkoutAnalysisWarning]
     /// Persisted detector metadata; detailed interval state is derived at runtime.
     public var movementDiagnostics: MovementDiagnostics
     public var qualityDiagnostics: RouteQualityDiagnostics
+    public var recordedLapDiagnostics: RecordedLapDiagnostics
     public var routeDistanceSource: RouteDistanceSource
     public var routeDistanceProvenance: RouteDistanceProvenance
 
@@ -31,6 +43,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         source: WorkoutSource = .unknown,
         routePoints: [RoutePoint] = [],
         splits: [RunSplit] = [],
+        recordedLaps: [RecordedLap] = [],
         summary: RunSummary = RunSummary(),
         segments: [SegmentHighlight] = []
     ) {
@@ -40,13 +53,16 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             source: source,
             routePoints: routePoints,
             splits: splits,
+            recordedLaps: recordedLaps,
             summary: summary,
             segments: segments,
             analysisVersion: RunWorkout.currentAnalysisVersion,
             normalizationVersion: RunWorkout.currentNormalizationVersion,
+            sourceStructureVersion: RunWorkout.currentSourceStructureVersion,
             analysisWarnings: [],
             movementDiagnostics: .init(),
             qualityDiagnostics: .empty,
+            recordedLapDiagnostics: .empty,
             routeDistanceSource: .coordinateDerived,
             routeDistanceProvenance: .legacyUnknown
         )
@@ -58,13 +74,16 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         source: WorkoutSource = .unknown,
         routePoints: [RoutePoint] = [],
         splits: [RunSplit] = [],
+        recordedLaps: [RecordedLap] = [],
         summary: RunSummary = RunSummary(),
         segments: [SegmentHighlight] = [],
         analysisVersion: Int,
         normalizationVersion: Int = RunWorkout.currentNormalizationVersion,
+        sourceStructureVersion: Int = RunWorkout.currentSourceStructureVersion,
         analysisWarnings: [WorkoutAnalysisWarning] = [],
         movementDiagnostics: MovementDiagnostics = .init(),
         qualityDiagnostics: RouteQualityDiagnostics = .empty,
+        recordedLapDiagnostics: RecordedLapDiagnostics = .empty,
         routeDistanceSource: RouteDistanceSource = .coordinateDerived,
         routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown
     ) {
@@ -73,13 +92,16 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.source = source
         self.routePoints = routePoints
         self.splits = splits
+        self.recordedLaps = recordedLaps
         self.summary = summary
         self.segments = segments
         self.analysisVersion = max(RunWorkout.legacyAnalysisVersion, analysisVersion)
         self.normalizationVersion = max(RunWorkout.legacyNormalizationVersion, normalizationVersion)
+        self.sourceStructureVersion = max(RunWorkout.legacySourceStructureVersion, sourceStructureVersion)
         self.analysisWarnings = analysisWarnings
         self.movementDiagnostics = movementDiagnostics
         self.qualityDiagnostics = qualityDiagnostics
+        self.recordedLapDiagnostics = recordedLapDiagnostics
         self.routeDistanceSource = routeDistanceSource
         self.routeDistanceProvenance = routeDistanceProvenance
     }
@@ -118,12 +140,21 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         }
     }
 
+    /// Whether this snapshot may be missing discarded source laps.
+    public var mayRequireReimportForRecordedLaps: Bool {
+        sourceStructureVersion < RunWorkout.currentSourceStructureVersion
+            && recordedLaps.isEmpty
+            && (source == .fit || source == .tcx)
+    }
+
     // MARK: - Backward-compatible Codable
 
     private enum CodingKeys: String, CodingKey {
-        case id, metadata, source, routePoints, splits, summary, segments
-        case analysisVersion, normalizationVersion, analysisWarnings, movementDiagnostics
-        case qualityDiagnostics, routeDistanceSource, routeDistanceProvenance
+        case id, metadata, source, routePoints, splits, recordedLaps, summary, segments
+        case analysisVersion, normalizationVersion, sourceStructureVersion
+        case analysisWarnings, movementDiagnostics
+        case qualityDiagnostics, recordedLapDiagnostics
+        case routeDistanceSource, routeDistanceProvenance
     }
 
     public init(from decoder: any Decoder) throws {
@@ -133,12 +164,15 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         source = try container.decode(WorkoutSource.self, forKey: .source)
         routePoints = try container.decode([RoutePoint].self, forKey: .routePoints)
         splits = try container.decode([RunSplit].self, forKey: .splits)
+        recordedLaps = try container.decodeIfPresent([RecordedLap].self, forKey: .recordedLaps) ?? []
         summary = try container.decode(RunSummary.self, forKey: .summary)
         segments = try container.decode([SegmentHighlight].self, forKey: .segments)
         analysisVersion = try container.decodeIfPresent(Int.self, forKey: .analysisVersion)
             ?? RunWorkout.legacyAnalysisVersion
         normalizationVersion = try container.decodeIfPresent(Int.self, forKey: .normalizationVersion)
             ?? RunWorkout.legacyNormalizationVersion
+        sourceStructureVersion = try container.decodeIfPresent(Int.self, forKey: .sourceStructureVersion)
+            ?? RunWorkout.legacySourceStructureVersion
         analysisWarnings = try container.decodeIfPresent([WorkoutAnalysisWarning].self, forKey: .analysisWarnings) ?? []
         movementDiagnostics = try container.decodeIfPresent(
             MovementDiagnostics.self, forKey: .movementDiagnostics
@@ -146,6 +180,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         qualityDiagnostics = try container.decodeIfPresent(
             RouteQualityDiagnostics.self,
             forKey: .qualityDiagnostics
+        ) ?? .empty
+        recordedLapDiagnostics = try container.decodeIfPresent(
+            RecordedLapDiagnostics.self,
+            forKey: .recordedLapDiagnostics
         ) ?? .empty
         routeDistanceSource = try container.decodeIfPresent(
             RouteDistanceSource.self,
@@ -164,13 +202,16 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(source, forKey: .source)
         try container.encode(routePoints, forKey: .routePoints)
         try container.encode(splits, forKey: .splits)
+        try container.encode(recordedLaps, forKey: .recordedLaps)
         try container.encode(summary, forKey: .summary)
         try container.encode(segments, forKey: .segments)
         try container.encode(analysisVersion, forKey: .analysisVersion)
         try container.encode(normalizationVersion, forKey: .normalizationVersion)
+        try container.encode(sourceStructureVersion, forKey: .sourceStructureVersion)
         try container.encode(analysisWarnings, forKey: .analysisWarnings)
         try container.encode(movementDiagnostics, forKey: .movementDiagnostics)
         try container.encode(qualityDiagnostics, forKey: .qualityDiagnostics)
+        try container.encode(recordedLapDiagnostics, forKey: .recordedLapDiagnostics)
         try container.encode(routeDistanceSource, forKey: .routeDistanceSource)
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)
     }

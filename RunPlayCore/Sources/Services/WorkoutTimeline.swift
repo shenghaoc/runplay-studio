@@ -12,6 +12,18 @@ public enum WorkoutDistanceBoundaryRole: Sendable {
     case rangeEnd
 }
 
+/// The role an elapsed-time boundary plays in a forward time range.
+///
+/// Duplicate timestamps and recording gaps use the same partition rule as
+/// distance boundaries: a range start owns the resume side; a range end owns
+/// the hold side. Exact-boundary ownership for consecutive ranges is half-open
+/// on the end (`[start, end)`), except the final sample of the workout which a
+/// range end may include.
+public enum WorkoutTimeBoundaryRole: Sendable {
+    case rangeStart
+    case rangeEnd
+}
+
 /// Platform-neutral authority for elapsed, active, pause, distance, and replay
 /// time semantics.
 ///
@@ -51,9 +63,36 @@ public struct WorkoutTimeline: Sendable {
         public let isInRecordingGap: Bool
     }
 
+    /// Time values at an elapsed-clock boundary.
+    public struct ElapsedSample: Sendable {
+        public let elapsedSeconds: Double
+        public let activeSeconds: Double
+        public let distanceMeters: Double
+        /// Deterministic real point selected for range metrics and seeking.
+        public let pointIndex: Int
+        public let isInterpolated: Bool
+        public let isInRecordingGap: Bool
+    }
+
+    /// Aggregated clocks and source points for a forward elapsed-time range.
+    public struct TimeRange: Sendable {
+        public let start: ElapsedSample
+        public let end: ElapsedSample
+        public let elapsedSeconds: Double
+        public let activeSeconds: Double
+        public let pausedSeconds: Double
+        public let sourcePointRange: Range<Int>
+    }
+
     private enum DistanceLocation {
         case point(Int)
         case interval(before: Int, after: Int, fraction: Double)
+    }
+
+    private enum ElapsedLocation {
+        case point(Int)
+        case interval(before: Int, after: Int, fraction: Double)
+        case gap(before: Int, after: Int)
     }
 
     private let routePoints: [RoutePoint]
@@ -395,6 +434,115 @@ public struct WorkoutTimeline: Sendable {
         replaySample(atElapsedTime: time)?.isInRecordingGap ?? false
     }
 
+    // MARK: - Elapsed-time boundary sampling
+
+    /// Sample clocks and cumulative distance at an elapsed-time boundary.
+    ///
+    /// Interpolation occurs only inside one continuous route segment. A
+    /// boundary that falls inside a recording gap selects the hold point for
+    /// `.rangeEnd` and the resume point for `.rangeStart` without inventing
+    /// geographic distance across the gap. Exact duplicate timestamps select
+    /// the first sample for range starts and the last for range ends, except
+    /// when a terminal range end must include the final workout sample.
+    public func elapsedSample(
+        at elapsed: Double,
+        boundary role: WorkoutTimeBoundaryRole
+    ) -> ElapsedSample? {
+        guard !routePoints.isEmpty, elapsed.isFinite else { return nil }
+
+        let clampedElapsed = Self.clamp(elapsed, lowerBound: 0, upperBound: totalElapsedSeconds)
+        let wasClamped = abs(clampedElapsed - elapsed) > 0.000_001
+        _ = wasClamped
+
+        switch elapsedLocation(at: clampedElapsed, boundary: role) {
+        case .point(let index):
+            return ElapsedSample(
+                elapsedSeconds: elapsedSecondsByPoint[index],
+                activeSeconds: activeSecondsByPoint[index],
+                distanceMeters: distanceMetersByPoint[index],
+                pointIndex: index,
+                isInterpolated: false,
+                isInRecordingGap: false
+            )
+
+        case .interval(let before, let after, let fraction):
+            let selectedIndex = role == .rangeStart ? after : before
+            return ElapsedSample(
+                elapsedSeconds: clampedElapsed,
+                activeSeconds: Self.interpolate(
+                    activeSecondsByPoint[before],
+                    activeSecondsByPoint[after],
+                    fraction
+                ),
+                distanceMeters: Self.interpolate(
+                    distanceMetersByPoint[before],
+                    distanceMetersByPoint[after],
+                    fraction
+                ),
+                pointIndex: selectedIndex,
+                isInterpolated: true,
+                isInRecordingGap: false
+            )
+
+        case .gap(let before, let after):
+            let selectedIndex = role == .rangeStart ? after : before
+            // No geographic interpolation across a recording gap.
+            let active: Double
+            if role == .rangeStart {
+                active = activeSecondsByPoint[after]
+            } else {
+                active = activeSecondsByPoint[before]
+            }
+            return ElapsedSample(
+                elapsedSeconds: clampedElapsed,
+                activeSeconds: active,
+                distanceMeters: distanceMetersByPoint[selectedIndex],
+                pointIndex: selectedIndex,
+                isInterpolated: false,
+                isInRecordingGap: true
+            )
+        }
+    }
+
+    /// Build a forward elapsed-time range using half-open boundary ownership.
+    ///
+    /// At an exact shared boundary, the prior range owns time up to but not
+    /// including the next range's start. Distance is cumulative route distance
+    /// at each boundary and never bridges a recording gap.
+    public func timeRange(from startElapsed: Double, to endElapsed: Double) -> TimeRange? {
+        guard startElapsed.isFinite,
+              endElapsed.isFinite,
+              startElapsed <= endElapsed,
+              let start = elapsedSample(at: startElapsed, boundary: .rangeStart),
+              let end = elapsedSample(at: endElapsed, boundary: .rangeEnd)
+        else {
+            return nil
+        }
+
+        let elapsed = Self.safeDifference(end.elapsedSeconds, start.elapsedSeconds)
+        let active = min(Self.safeDifference(end.activeSeconds, start.activeSeconds), elapsed)
+        let paused = Self.safeDifference(elapsed, active)
+        let lower = min(start.pointIndex, end.pointIndex)
+        let upper = max(start.pointIndex, end.pointIndex)
+
+        return TimeRange(
+            start: start,
+            end: end,
+            elapsedSeconds: elapsed,
+            activeSeconds: active,
+            pausedSeconds: paused,
+            sourcePointRange: lower..<(upper + 1)
+        )
+    }
+
+    /// Cumulative route distance at an elapsed-time boundary.
+    public func distance(
+        atElapsedTime elapsed: Double,
+        boundary role: WorkoutTimeBoundaryRole
+    ) -> Double? {
+        elapsedSample(at: elapsed, boundary: role)?.distanceMeters
+    }
+
     // MARK: - Distance lookup
 
     private func distanceLocation(
@@ -463,6 +611,100 @@ public struct WorkoutTimeline: Sendable {
         // still include stationary timer time at the end of the workout. The
         // stop/resume rule below applies only when the duplicate run crosses a
         // route-segment boundary.
+        if routePoints[first].routeSegmentIndex == routePoints[last].routeSegmentIndex {
+            return role == .rangeEnd && last == routePoints.count - 1 ? last : first
+        }
+
+        switch role {
+        case .rangeStart:
+            let resumedSegment = routePoints[last].routeSegmentIndex
+            var selected = last
+            while selected > first,
+                  routePoints[selected - 1].routeSegmentIndex == resumedSegment {
+                selected -= 1
+            }
+            return selected
+
+        case .rangeEnd:
+            let priorSegment = routePoints[first].routeSegmentIndex
+            var selected = first
+            while selected < last,
+                  routePoints[selected + 1].routeSegmentIndex == priorSegment {
+                selected += 1
+            }
+            return selected
+        }
+    }
+
+    // MARK: - Elapsed lookup
+
+    private func elapsedLocation(
+        at elapsed: Double,
+        boundary role: WorkoutTimeBoundaryRole
+    ) -> ElapsedLocation {
+        guard !routePoints.isEmpty else { return .point(0) }
+        guard routePoints.count > 1 else { return .point(0) }
+
+        let target = Self.clamp(elapsed, lowerBound: 0, upperBound: totalElapsedSeconds)
+
+        // Binary search for first index with elapsed > target, then back up.
+        var low = 0
+        var high = elapsedSecondsByPoint.count
+        while low < high {
+            let middle = (low + high) / 2
+            if elapsedSecondsByPoint[middle] <= target {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        let insertion = low
+
+        if insertion > 0, elapsedSecondsByPoint[insertion - 1] == target {
+            return .point(exactElapsedBoundaryIndex(at: insertion - 1, elapsed: target, role: role))
+        }
+
+        if insertion == 0 {
+            return .point(0)
+        }
+        if insertion >= elapsedSecondsByPoint.count {
+            return .point(elapsedSecondsByPoint.count - 1)
+        }
+
+        let before = insertion - 1
+        let after = insertion
+        let sameSegment = routePoints[before].routeSegmentIndex == routePoints[after].routeSegmentIndex
+        let beforeTime = elapsedSecondsByPoint[before]
+        let afterTime = elapsedSecondsByPoint[after]
+
+        if !sameSegment {
+            return .gap(before: before, after: after)
+        }
+
+        let interval = afterTime - beforeTime
+        guard interval.isFinite, interval > 0 else {
+            return .point(role == .rangeStart ? after : before)
+        }
+        let fraction = max(0, min(1, (target - beforeTime) / interval))
+        return .interval(before: before, after: after, fraction: fraction)
+    }
+
+    private func exactElapsedBoundaryIndex(
+        at index: Int,
+        elapsed: Double,
+        role: WorkoutTimeBoundaryRole
+    ) -> Int {
+        var first = index
+        while first > 0, elapsedSecondsByPoint[first - 1] == elapsed {
+            first -= 1
+        }
+
+        var last = index
+        while last + 1 < elapsedSecondsByPoint.count,
+              elapsedSecondsByPoint[last + 1] == elapsed {
+            last += 1
+        }
+
         if routePoints[first].routeSegmentIndex == routePoints[last].routeSegmentIndex {
             return role == .rangeEnd && last == routePoints.count - 1 ? last : first
         }

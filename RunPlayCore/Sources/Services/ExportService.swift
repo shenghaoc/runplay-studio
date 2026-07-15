@@ -4,6 +4,7 @@ import Foundation
 public enum ExportFormat: String, CaseIterable, Sendable {
     case json = "JSON Summary"
     case splitsCSV = "Splits CSV"
+    case recordedLapsCSV = "Recorded Laps CSV"
     case segmentsCSV = "Segments CSV"
     case combinedCSV = "Combined CSV"
     case png = "PNG Summary Card"
@@ -11,7 +12,7 @@ public enum ExportFormat: String, CaseIterable, Sendable {
     public var fileExtension: String {
         switch self {
         case .json: return "json"
-        case .splitsCSV, .segmentsCSV, .combinedCSV: return "csv"
+        case .splitsCSV, .recordedLapsCSV, .segmentsCSV, .combinedCSV: return "csv"
         case .png: return "png"
         }
     }
@@ -19,7 +20,8 @@ public enum ExportFormat: String, CaseIterable, Sendable {
     public var utType: String {
         switch self {
         case .json: return "public.json"
-        case .splitsCSV, .segmentsCSV, .combinedCSV: return "public.comma-separated-values-text"
+        case .splitsCSV, .recordedLapsCSV, .segmentsCSV, .combinedCSV:
+            return "public.comma-separated-values-text"
         case .png: return "public.png"
         }
     }
@@ -81,7 +83,7 @@ public struct ExportService: Sendable {
 
     // MARK: - CSV Export
 
-    /// Export splits as CSV.
+    /// Export calculated distance splits as CSV.
     public func exportSplitsCSV(workout: RunWorkout) throws -> ExportResult {
         let csv = generateSplitsCSV(workout: workout)
         guard let data = csv.data(using: .utf8) else {
@@ -89,6 +91,20 @@ public struct ExportService: Sendable {
         }
         let filename = ExportFilenameBuilder.filename(for: workout, format: .splitsCSV)
         return ExportResult(format: .splitsCSV, filename: filename, data: data)
+    }
+
+    /// Export source-recorded laps as CSV. Distinct from calculated splits.
+    public func exportRecordedLapsCSV(workout: RunWorkout) throws -> ExportResult {
+        let csv = generateRecordedLapsCSV(workout: workout)
+        guard let data = csv.data(using: .utf8) else {
+            throw ExportError.encodingFailed("Could not encode CSV as UTF-8")
+        }
+        let filename = ExportFilenameBuilder.filename(
+            for: workout,
+            format: .recordedLapsCSV,
+            suffix: "recorded-laps"
+        )
+        return ExportResult(format: .recordedLapsCSV, filename: filename, data: data)
     }
 
     /// Export segment highlights as CSV.
@@ -101,7 +117,7 @@ public struct ExportService: Sendable {
         return ExportResult(format: .segmentsCSV, filename: filename, data: data)
     }
 
-    /// Export combined splits and segments as CSV.
+    /// Export combined distance splits, recorded laps (when present), and segments as CSV.
     public func exportCombinedCSV(workout: RunWorkout, segments: [SegmentHighlight]) throws -> ExportResult {
         let csv = generateCombinedCSV(workout: workout, segments: segments)
         guard let data = csv.data(using: .utf8) else {
@@ -184,11 +200,67 @@ public struct ExportService: Sendable {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    public func generateRecordedLapsCSV(workout: RunWorkout) -> String {
+        var lines: [String] = []
+
+        lines.append(CSVRow.joined([
+            "Lap", "Trigger",
+            "Start_Elapsed_s", "End_Elapsed_s",
+            "Start_km", "End_km", "Distance_km",
+            "Elapsed_Duration_s", "Active_Duration_s",
+            "Moving_Duration_Estimated_s", "Stopped_Duration_Estimated_s",
+            "Paused_Duration_s",
+            "Moving_Pace_Estimated_min_km",
+            "Active_Pace_min_km", "Elapsed_Pace_min_km",
+            "Corrected_Elevation_Gain_m", "Corrected_Elevation_Loss_m",
+            "Avg_HR_bpm", "Max_HR_bpm", "Avg_Cadence",
+            "Source_Reported_Distance_km",
+            "Source_Reported_Elapsed_s",
+            "Source_Reported_Timer_s"
+        ]))
+
+        for lap in workout.recordedLaps {
+            let reported = lap.reportedMetrics
+            lines.append(CSVRow.joined([
+                "\(lap.lapIndex)",
+                lap.trigger.exportToken,
+                formatNumber(lap.startElapsedSeconds),
+                formatNumber(lap.endElapsedSeconds),
+                formatNumber(lap.startDistanceMeters / 1000),
+                formatNumber(lap.endDistanceMeters / 1000),
+                formatNumber(lap.distanceMeters / 1000),
+                formatNumber(lap.elapsedSeconds),
+                formatNumber(lap.activeSeconds),
+                formatNumber(lap.movingSeconds),
+                formatNumber(lap.stoppedSeconds),
+                formatNumber(lap.pausedSeconds),
+                formatNumber(lap.movingPaceSecondsPerKilometer / 60),
+                formatNumber(lap.activePaceSecondsPerKilometer / 60),
+                formatNumber(lap.elapsedPaceSecondsPerKilometer / 60),
+                lap.elevationGainMeters.map { formatNumber($0) } ?? "",
+                lap.elevationLossMeters.map { formatNumber($0) } ?? "",
+                lap.averageHeartRateBPM.map { formatNumber($0) } ?? "",
+                lap.maximumHeartRateBPM.map { formatNumber($0) } ?? "",
+                lap.averageCadence.map { formatNumber($0) } ?? "",
+                reported?.distanceMeters.map { formatNumber($0 / 1000) } ?? "",
+                reported?.elapsedSeconds.map { formatNumber($0) } ?? "",
+                reported?.timerSeconds.map { formatNumber($0) } ?? ""
+            ]))
+        }
+
+        return lines.joined(separator: "\n") + "\n"
+    }
+
     public func generateCombinedCSV(workout: RunWorkout, segments: [SegmentHighlight]) -> String {
         var sections: [String] = []
 
-        sections.append("# Splits")
+        sections.append("# Distance Splits")
         sections.append(generateSplitsCSV(workout: workout))
+        if !workout.recordedLaps.isEmpty {
+            sections.append("")
+            sections.append("# Recorded Laps")
+            sections.append(generateRecordedLapsCSV(workout: workout))
+        }
         sections.append("")
         sections.append("# Segment Highlights")
         sections.append(generateSegmentsCSV(segments: segments))
@@ -255,7 +327,11 @@ public enum CSVRow {
 
 /// Builds safe filenames for exports.
 public enum ExportFilenameBuilder {
-    public static func filename(for workout: RunWorkout?, format: ExportFormat) -> String {
+    public static func filename(
+        for workout: RunWorkout?,
+        format: ExportFormat,
+        suffix: String? = nil
+    ) -> String {
         let baseName: String
         if let workout = workout {
             baseName = sanitize(workout.displayName)
@@ -264,6 +340,9 @@ public enum ExportFilenameBuilder {
         }
 
         let timestamp = formatDateForFilename(Date())
+        if let suffix, !suffix.isEmpty {
+            return "\(baseName)-\(sanitize(suffix))-\(timestamp).\(format.fileExtension)"
+        }
         return "\(baseName)-\(timestamp).\(format.fileExtension)"
     }
 

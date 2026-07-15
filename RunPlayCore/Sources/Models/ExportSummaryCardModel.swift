@@ -19,6 +19,8 @@ public struct ExportSummaryCardModel: Sendable {
     public let heartRateText: String?
     public let maxHeartRateText: String?
     public let pointCountText: String
+    /// Compact secondary line such as "Recorded laps: 5" when present.
+    public let recordedLapCountText: String?
     public let segments: [SegmentCardItem]
     public let splits: [SplitCardItem]
     public let privacyNote: String
@@ -61,6 +63,12 @@ public struct ExportSummaryCardModel: Sendable {
         workoutTitle = workout.displayName
         sourceText = workout.source.displayName
         dateText = workout.metadata.startDate.map(Self.dateFormatter.string) ?? "Unknown date"
+
+        if workout.recordedLaps.isEmpty {
+            recordedLapCountText = nil
+        } else {
+            recordedLapCountText = "Recorded laps: \(workout.recordedLaps.count)"
+        }
 
         let summary = workout.summary
         distanceText = DisplayFormatter.formatDistanceKm(summary.totalDistanceMeters)

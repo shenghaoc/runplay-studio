@@ -74,6 +74,17 @@ public struct WorkoutAnalyzer: Sendable {
             policy: policy,
             isCancelled: isCancelled
         )
+        try throwIfCancelled(isCancelled)
+
+        // Recorded laps: rederive canonical metrics while preserving source fields.
+        // Never fabricate laps from splits or route segments.
+        let lapWarnings = try reanalyzeRecordedLaps(
+            &workout,
+            context: ctx,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+
         workout.segments = try SegmentDetector.detectSegments(
             from: workout,
             context: ctx,
@@ -86,7 +97,11 @@ public struct WorkoutAnalyzer: Sendable {
 
         // Attach movement diagnostics as analysis warnings
         var warnings = workout.analysisWarnings.filter {
-            $0 != .movementEstimatedStoppedTime && $0 != .movementLowReliability
+            $0 != .movementEstimatedStoppedTime
+                && $0 != .movementLowReliability
+                && $0 != .recordedLapsMalformedSkipped
+                && $0 != .recordedLapSourceTotalsMismatch
+                && $0 != .recordedLapsRequireReimport
         }
         if movementProfile.totalStoppedSeconds > 0 {
             if !warnings.contains(.movementEstimatedStoppedTime) {
@@ -98,7 +113,49 @@ public struct WorkoutAnalyzer: Sendable {
                 warnings.append(.movementLowReliability)
             }
         }
+        for warning in lapWarnings where !warnings.contains(warning) {
+            warnings.append(warning)
+        }
+        if workout.mayRequireReimportForRecordedLaps,
+           !warnings.contains(.recordedLapsRequireReimport) {
+            warnings.append(.recordedLapsRequireReimport)
+            var diagnostics = workout.recordedLapDiagnostics
+            diagnostics.requiresReimportForSourceLaps = true
+            workout.recordedLapDiagnostics = diagnostics
+        }
         workout.analysisWarnings = warnings
+    }
+
+    /// Rederive recorded-lap metrics from source boundaries. Empty collections
+    /// stay empty; calculated splits are never treated as source laps.
+    private func reanalyzeRecordedLaps(
+        _ workout: inout RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> [WorkoutAnalysisWarning] {
+        guard !workout.recordedLaps.isEmpty else {
+            return []
+        }
+
+        let result = try RecordedLapAnalyzer.analyze(
+            provisionalLaps: workout.recordedLaps,
+            routePoints: workout.routePoints,
+            context: context,
+            source: workout.source,
+            cancellationCheckStride: policy.cancellationCheckStride,
+            isCancelled: isCancelled
+        )
+        workout.recordedLaps = result.laps
+        // Preserve reimport flag if already set on a legacy snapshot that somehow
+        // retained empty-but-flagged diagnostics without inventing laps.
+        var diagnostics = result.diagnostics
+        if workout.recordedLapDiagnostics.requiresReimportForSourceLaps,
+           result.laps.isEmpty {
+            diagnostics.requiresReimportForSourceLaps = true
+        }
+        workout.recordedLapDiagnostics = diagnostics
+        return result.warnings
     }
 
     /// Apply route normalization before analysis. Importers and normalization

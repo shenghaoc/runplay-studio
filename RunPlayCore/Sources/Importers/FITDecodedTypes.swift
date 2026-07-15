@@ -125,6 +125,10 @@ public struct FITLapMessage: Sendable {
     public var totalDescent: UInt16?
     public var averageSpeed: UInt16?        // scaled 1000
     public var maximumSpeed: UInt16?        // scaled 1000
+    /// FIT Profile enhanced_avg_speed (field 110), scaled 1000.
+    public var enhancedAverageSpeed: UInt32?
+    /// FIT Profile enhanced_max_speed (field 111), scaled 1000.
+    public var enhancedMaximumSpeed: UInt32?
     public var averageHeartRate: UInt8?
     public var maximumHeartRate: UInt8?
     public var averageCadence: UInt8?
@@ -321,6 +325,8 @@ public enum FITLapField: UInt8 {
     case lapTrigger = 24
     case sport = 25
     case eventGroup = 26
+    case enhancedAverageSpeed = 110
+    case enhancedMaximumSpeed = 111
 }
 
 /// Known field numbers for file_id messages (global message 0).
