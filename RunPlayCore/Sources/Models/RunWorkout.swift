@@ -92,7 +92,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.source = source
         self.routePoints = routePoints
         self.splits = splits
-        self.recordedLaps = recordedLaps
+        self.recordedLaps = recordedLaps.map { $0.sanitized() }
         self.summary = summary
         self.segments = segments
         self.analysisVersion = max(RunWorkout.legacyAnalysisVersion, analysisVersion)
@@ -136,7 +136,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     }
     public var hasCadenceData: Bool {
         routePoints.contains { point in
-            point.cadence.map { $0.isFinite && $0 >= 0 } ?? false
+            point.cadence.map(MetricValidation.isValidCadence) ?? false
         }
     }
 
@@ -164,7 +164,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         source = try container.decode(WorkoutSource.self, forKey: .source)
         routePoints = try container.decode([RoutePoint].self, forKey: .routePoints)
         splits = try container.decode([RunSplit].self, forKey: .splits)
-        recordedLaps = try container.decodeIfPresent([RecordedLap].self, forKey: .recordedLaps) ?? []
+        recordedLaps = try container.decodeIfPresent([RecordedLap].self, forKey: .recordedLaps)?
+            .map { $0.sanitized() } ?? []
         summary = try container.decode(RunSummary.self, forKey: .summary)
         segments = try container.decode([SegmentHighlight].self, forKey: .segments)
         analysisVersion = try container.decodeIfPresent(Int.self, forKey: .analysisVersion)

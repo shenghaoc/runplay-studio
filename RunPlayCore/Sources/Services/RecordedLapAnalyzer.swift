@@ -24,10 +24,14 @@ public struct RecordedLapAnalyzer: Sendable {
             absoluteDistanceMeters: Double = 25,
             relativeDistance: Double = 0.02
         ) {
-            self.absoluteTimeSeconds = max(0, absoluteTimeSeconds)
-            self.relativeTime = max(0, relativeTime)
-            self.absoluteDistanceMeters = max(0, absoluteDistanceMeters)
-            self.relativeDistance = max(0, relativeDistance)
+            self.absoluteTimeSeconds = Self.nonNegativeFinite(absoluteTimeSeconds)
+            self.relativeTime = Self.nonNegativeFinite(relativeTime)
+            self.absoluteDistanceMeters = Self.nonNegativeFinite(absoluteDistanceMeters)
+            self.relativeDistance = Self.nonNegativeFinite(relativeDistance)
+        }
+
+        private static func nonNegativeFinite(_ value: Double) -> Double {
+            value.isFinite ? max(0, value) : 0
         }
     }
 
@@ -71,6 +75,11 @@ public struct RecordedLapAnalyzer: Sendable {
         var triggersAvailable = false
 
         let workoutStart = routePoints.first?.timestamp
+        let metricIndex = try RecordedLapMetricIndex(
+            routePoints: routePoints,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
+        )
 
         for (offset, provisional) in provisionalLaps.enumerated() {
             if offset % max(1, cancellationCheckStride) == 0, isCancelled() {
@@ -114,14 +123,8 @@ public struct RecordedLapAnalyzer: Sendable {
             let movingPace = pace(seconds: safeMoving, distanceMeters: distance)
             let elapsedPace = pace(seconds: elapsed, distanceMeters: distance)
 
-            let (avgHR, maxHR) = heartRateStats(
-                in: range.sourcePointRange,
-                routePoints: routePoints
-            )
-            let avgCadence = averageCadence(
-                in: range.sourcePointRange,
-                routePoints: routePoints
-            )
+            let (avgHR, maxHR) = metricIndex.heartRateStatistics(in: range.sourcePointRange)
+            let avgCadence = metricIndex.averageCadence(in: range.sourcePointRange)
 
             let elevGain = context.elevationProfile.ascent(
                 from: range.start.distanceMeters,
@@ -301,49 +304,6 @@ public struct RecordedLapAnalyzer: Sendable {
             return 0
         }
         return (seconds / distanceMeters) * 1000
-    }
-
-    private static func heartRateStats(
-        in range: Range<Int>,
-        routePoints: [RoutePoint]
-    ) -> (average: Double?, maximum: Double?) {
-        var sum: Double = 0
-        var count = 0
-        var maximum: Double?
-        for index in range {
-            guard routePoints.indices.contains(index),
-                  let hr = routePoints[index].heartRateBPM,
-                  MetricValidation.isValidHeartRate(hr)
-            else {
-                continue
-            }
-            sum += hr
-            count += 1
-            maximum = maximum.map { max($0, hr) } ?? hr
-        }
-        guard count > 0 else { return (nil, nil) }
-        return (sum / Double(count), maximum)
-    }
-
-    private static func averageCadence(
-        in range: Range<Int>,
-        routePoints: [RoutePoint]
-    ) -> Double? {
-        var sum: Double = 0
-        var count = 0
-        for index in range {
-            guard routePoints.indices.contains(index),
-                  let cadence = routePoints[index].cadence,
-                  cadence.isFinite,
-                  cadence >= 0
-            else {
-                continue
-            }
-            sum += cadence
-            count += 1
-        }
-        guard count > 0 else { return nil }
-        return sum / Double(count)
     }
 
     private static func differsMaterially(

@@ -89,8 +89,9 @@ public struct FITImporter: WorkoutImporting {
 
     /// Build provisional recorded laps from FIT lap messages for the selected session.
     ///
-    /// Preserves original message order. Malformed laps are skipped (diagnostics
-    /// are produced later by `RecordedLapAnalyzer`). Empty collections are valid.
+    /// Preserves original message order. Malformed selected-session laps are
+    /// retained provisionally so `RecordedLapAnalyzer` can diagnose and skip
+    /// them without rejecting the route. Empty collections are valid.
     private func provisionalRecordedLaps(
         from decodedFile: FITDecodedFile,
         selectedSessionIndex: Int?,
@@ -128,9 +129,6 @@ public struct FITImporter: WorkoutImporting {
                 resolvedStart = end.addingTimeInterval(-elapsed)
             }
 
-            // Require at least one usable boundary; skip otherwise.
-            guard resolvedStart != nil || endDate != nil else { continue }
-
             let trigger = RecordedLapTrigger.fromFITLapTrigger(lap.lapTrigger)
             let reported = reportedMetrics(from: lap, trigger: trigger)
 
@@ -161,6 +159,34 @@ public struct FITImporter: WorkoutImporting {
         }
 
         let session = sessions[selectedSessionIndex]
+        if let firstLapIndex = session.firstLapIndex,
+           firstLapIndex != FITParser.invalidUint16,
+           let numberOfLaps = session.numberOfLaps,
+           numberOfLaps != FITParser.invalidUint16 {
+            // FIT `message_index` reserves its upper bits for flags. Session
+            // association uses the lower 12-bit ordinal, not the lap array offset.
+            let lowerBound = Int(firstLapIndex & 0x0FFF)
+            let upperBound = lowerBound + Int(numberOfLaps)
+            let indexedLaps = laps.filter { lap in
+                guard let rawIndex = lap.messageIndex,
+                      rawIndex != FITParser.invalidUint16
+                else {
+                    return false
+                }
+                let index = Int(rawIndex & 0x0FFF)
+                return index >= lowerBound && index < upperBound
+            }
+            if indexedLaps.count == Int(numberOfLaps) {
+                return indexedLaps
+            }
+        }
+
+        // With one session there is no cross-session ambiguity, so retain even
+        // boundaryless messages and let the analyzer diagnose malformed laps.
+        if sessions.count == 1 {
+            return laps
+        }
+
         let sessionStart = session.startTime
             ?? session.timestamp.flatMap { end -> UInt32? in
                 guard let elapsed = session.totalElapsedTime, elapsed != FITParser.invalidUint32 else {

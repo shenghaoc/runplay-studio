@@ -297,6 +297,17 @@ final class FITImporterTests: XCTestCase {
         XCTAssertGreaterThan(workout.routePoints.count, 0)
     }
 
+    func testMalformedSelectedSessionLapIsDiagnosedWithoutRejectingRoute() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithMalformedLap()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertFalse(workout.routePoints.isEmpty)
+        XCTAssertTrue(workout.recordedLaps.isEmpty)
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 1)
+        XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
     // MARK: - Helpers
 
     private func writeTempFIT(data: Data) -> URL {

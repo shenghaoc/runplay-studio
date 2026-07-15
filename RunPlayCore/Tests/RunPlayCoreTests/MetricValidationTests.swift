@@ -45,6 +45,21 @@ final class MetricValidationTests: XCTestCase {
         XCTAssertFalse(MetricValidation.isValidHeartRate(0))
     }
 
+    // MARK: - isValidCadence
+
+    func testCadenceValidationAcceptsSupportedRange() {
+        XCTAssertTrue(MetricValidation.isValidCadence(0))
+        XCTAssertTrue(MetricValidation.isValidCadence(180))
+        XCTAssertTrue(MetricValidation.isValidCadence(300))
+    }
+
+    func testCadenceValidationRejectsMalformedValues() {
+        XCTAssertFalse(MetricValidation.isValidCadence(-1))
+        XCTAssertFalse(MetricValidation.isValidCadence(301))
+        XCTAssertFalse(MetricValidation.isValidCadence(.nan))
+        XCTAssertFalse(MetricValidation.isValidCadence(.infinity))
+    }
+
     // MARK: - DisplayFormatter.formatPaceShort
 
     func testFormatPaceShortNormal() {

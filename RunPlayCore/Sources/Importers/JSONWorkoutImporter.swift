@@ -141,32 +141,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
     private func sanitizeRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {
         laps.enumerated().map { index, lap in
-            // Re-run through the initializer for finite/non-negative sanitization.
-            RecordedLap(
-                id: lap.id,
-                lapIndex: lap.lapIndex > 0 ? lap.lapIndex : index + 1,
-                source: lap.source,
-                trigger: lap.trigger,
-                sourceStartDate: lap.sourceStartDate,
-                sourceEndDate: lap.sourceEndDate,
-                startElapsedSeconds: lap.startElapsedSeconds,
-                endElapsedSeconds: lap.endElapsedSeconds,
-                startDistanceMeters: lap.startDistanceMeters,
-                endDistanceMeters: lap.endDistanceMeters,
-                distanceMeters: lap.distanceMeters,
-                elapsedSeconds: lap.elapsedSeconds,
-                activeSeconds: lap.activeSeconds,
-                movingSeconds: lap.movingSeconds,
-                activePaceSecondsPerKilometer: lap.activePaceSecondsPerKilometer,
-                movingPaceSecondsPerKilometer: lap.movingPaceSecondsPerKilometer,
-                elapsedPaceSecondsPerKilometer: lap.elapsedPaceSecondsPerKilometer,
-                averageHeartRateBPM: lap.averageHeartRateBPM,
-                maximumHeartRateBPM: lap.maximumHeartRateBPM,
-                averageCadence: lap.averageCadence,
-                elevationGainMeters: lap.elevationGainMeters,
-                elevationLossMeters: lap.elevationLossMeters,
-                reportedMetrics: lap.reportedMetrics
-            )
+            lap.sanitized(lapIndex: lap.lapIndex > 0 ? lap.lapIndex : index + 1)
         }
     }
 

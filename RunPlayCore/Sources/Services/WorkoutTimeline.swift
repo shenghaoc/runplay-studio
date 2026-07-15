@@ -442,8 +442,7 @@ public struct WorkoutTimeline: Sendable {
     /// boundary that falls inside a recording gap selects the hold point for
     /// `.rangeEnd` and the resume point for `.rangeStart` without inventing
     /// geographic distance across the gap. Exact duplicate timestamps select
-    /// the first sample for range starts and the last for range ends, except
-    /// when a terminal range end must include the final workout sample.
+    /// the first sample for range starts and the last for range ends.
     public func elapsedSample(
         at elapsed: Double,
         boundary role: WorkoutTimeBoundaryRole
@@ -451,8 +450,6 @@ public struct WorkoutTimeline: Sendable {
         guard !routePoints.isEmpty, elapsed.isFinite else { return nil }
 
         let clampedElapsed = Self.clamp(elapsed, lowerBound: 0, upperBound: totalElapsedSeconds)
-        let wasClamped = abs(clampedElapsed - elapsed) > 0.000_001
-        _ = wasClamped
 
         switch elapsedLocation(at: clampedElapsed, boundary: role) {
         case .point(let index):

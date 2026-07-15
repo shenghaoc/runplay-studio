@@ -246,6 +246,35 @@ final class RecordedLapAnalyzerTests: XCTestCase {
         }
     }
 
+    func testHundredThousandPointRouteWithThousandsOfOverlappingLaps() throws {
+        let points = makeRoute(pointCount: 100_001, stepMeters: 1, stepSeconds: 1)
+        let start = points[0].timestamp
+        let end = points[100_000].timestamp
+        let provisionals = (0..<1_000).map { index in
+            RecordedLap.provisional(
+                lapIndex: index + 1,
+                source: .fit,
+                trigger: .manual,
+                sourceStartDate: start,
+                sourceEndDate: end,
+                reportedMetrics: nil
+            )
+        }
+        let context = WorkoutAnalysisContext(workout: RunWorkout(routePoints: points))
+
+        let result = try RecordedLapAnalyzer.analyze(
+            provisionalLaps: provisionals,
+            routePoints: points,
+            context: context,
+            source: .fit
+        )
+
+        XCTAssertEqual(result.laps.count, 1_000)
+        XCTAssertEqual(result.laps.first?.averageHeartRateBPM ?? 0, 144.5, accuracy: 0.01)
+        XCTAssertEqual(result.laps.last?.maximumHeartRateBPM, 149)
+        XCTAssertEqual(result.laps.last?.averageCadence ?? 0, 82, accuracy: 0.01)
+    }
+
     func testHRAndCadenceAggregation() throws {
         let points = makeRoute()
         let start = points[0].timestamp

@@ -135,6 +135,7 @@ public struct WorkoutAnalyzer: Sendable {
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> [WorkoutAnalysisWarning] {
         guard !workout.recordedLaps.isEmpty else {
+            workout.recordedLapDiagnostics = .empty
             return []
         }
 

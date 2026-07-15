@@ -728,7 +728,8 @@ final class FITParserTests: XCTestCase {
         content.append(0x00)
         content.append(0x00)
         content.append(contentsOf: [0x13, 0x00]) // global msg 19 (lap)
-        content.append(5)
+        content.append(6)
+        Self.writeField(254, size: 2, type: 132, to: &content) // message_index
         Self.writeField(21, size: 2, type: 132, to: &content) // total_ascent
         Self.writeField(22, size: 2, type: 132, to: &content) // total_descent
         Self.writeField(24, size: 1, type: 0, to: &content)   // lap_trigger
@@ -736,8 +737,10 @@ final class FITParserTests: XCTestCase {
         Self.writeField(26, size: 1, type: 2, to: &content)   // event_group
 
         content.append(0x00)
+        let messageIndex: UInt16 = 7
         let ascent: UInt16 = 432
         let descent: UInt16 = 123
+        content.append(contentsOf: withUnsafeBytes(of: messageIndex.littleEndian) { Array($0) })
         content.append(contentsOf: withUnsafeBytes(of: ascent.littleEndian) { Array($0) })
         content.append(contentsOf: withUnsafeBytes(of: descent.littleEndian) { Array($0) })
         content.append(2)
@@ -747,6 +750,7 @@ final class FITParserTests: XCTestCase {
         let decoded = try FITParser.parse(data: Self.fitData(rawContent: content))
 
         XCTAssertEqual(decoded.laps.count, 1)
+        XCTAssertEqual(decoded.laps[0].messageIndex, messageIndex)
         XCTAssertEqual(decoded.laps[0].totalAscent, ascent)
         XCTAssertEqual(decoded.laps[0].totalDescent, descent)
         XCTAssertEqual(decoded.laps[0].lapTrigger, 2)
@@ -760,8 +764,10 @@ final class FITParserTests: XCTestCase {
         content.append(0x00)
         content.append(0x00)
         content.append(contentsOf: [0x12, 0x00]) // global msg 18 (session)
-        content.append(6)
+        content.append(8)
         Self.writeField(23, size: 2, type: 132, to: &content) // total_descent
+        Self.writeField(25, size: 2, type: 132, to: &content) // first_lap_index
+        Self.writeField(26, size: 2, type: 132, to: &content) // num_laps
         Self.writeField(27, size: 1, type: 2, to: &content)   // event_group
         Self.writeField(28, size: 1, type: 0, to: &content)   // trigger
         Self.writeField(29, size: 4, type: 133, to: &content) // nec_lat
@@ -770,7 +776,11 @@ final class FITParserTests: XCTestCase {
 
         content.append(0x00)
         let descent: UInt16 = 321
+        let firstLapIndex: UInt16 = 4
+        let numberOfLaps: UInt16 = 6
         content.append(contentsOf: withUnsafeBytes(of: descent.littleEndian) { Array($0) })
+        content.append(contentsOf: withUnsafeBytes(of: firstLapIndex.littleEndian) { Array($0) })
+        content.append(contentsOf: withUnsafeBytes(of: numberOfLaps.littleEndian) { Array($0) })
         content.append(3)
         content.append(1)
         Self.append(Self.semicircles(40.0), to: &content)
@@ -781,6 +791,8 @@ final class FITParserTests: XCTestCase {
 
         XCTAssertEqual(decoded.sessions.count, 1)
         XCTAssertEqual(decoded.sessions[0].totalDescent, descent)
+        XCTAssertEqual(decoded.sessions[0].firstLapIndex, firstLapIndex)
+        XCTAssertEqual(decoded.sessions[0].numberOfLaps, numberOfLaps)
         XCTAssertEqual(decoded.sessions[0].eventGroup, 3)
         XCTAssertEqual(decoded.sessions[0].trigger, 1)
         XCTAssertEqual(decoded.sessions[0].necLat, Self.semicircles(40.0))

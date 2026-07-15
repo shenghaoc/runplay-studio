@@ -30,11 +30,16 @@ inflating diagnostics. Importers attach provisional source laps; analysis fills
 canonical fields while preserving IDs. Explicit zero active or moving clocks
 remain valid for fully paused or fully stopped laps. A source lap that begins
 before the first retained GPS fix clamps to elapsed zero with a diagnostic.
+One route-wide metric index uses prefix aggregates for HR/cadence averages and
+a segment tree for maximum HR, keeping overlapping lap analysis within
+`O(route points + laps log route points)` and checking cooperative cancellation.
+Decoded laps reapply the same central HR/cadence and non-negative invariants as
+newly imported laps.
 
 ## Import
 
-- **FIT**: filter laps to selected session; map triggers, enhanced speed, and total-calorie fields; never create segments.
-- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; sparse small-distance seams remain continuous below the forced-gap threshold, while fast samples may use the policy's middle distance band; per-track distances are rebased and offset across continuous tracks; derive a missing final boundary from the lap's reported total time.
+- **FIT**: filter laps to the selected session using official `first_lap_index`, `num_laps`, and lap `message_index` fields when available; map triggers, enhanced speed, and total-calorie fields; never create segments. Boundaryless selected-session laps reach analysis so they are counted as malformed instead of disappearing silently.
+- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; sparse small-distance seams remain continuous below the forced-gap threshold, while fast samples may use the policy's middle distance band; per-track distances are rebased and offset across continuous tracks; derive a missing final boundary from the lap's reported total time. Malformed optional laps are diagnosed without rejecting a valid route.
 - **GPX**: empty recorded laps; current structure version.
 - **JSON**: optional recorded laps round-trip.
 

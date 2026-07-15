@@ -157,6 +157,90 @@ final class RecordedLapTests: XCTestCase {
         XCTAssertNil(lap.averageHeartRateBPM)
     }
 
+    func testInvalidOptionalMetricsAreUnavailableInsteadOfNegativeOrImplausible() {
+        let reported = RecordedLapReportedMetrics(
+            elapsedSeconds: -1,
+            timerSeconds: -2,
+            distanceMeters: -3,
+            ascentMeters: -4,
+            descentMeters: -5,
+            averageHeartRateBPM: 500,
+            maximumHeartRateBPM: 0,
+            averageCadence: 301,
+            averageSpeedMetersPerSecond: -6,
+            maximumSpeedMetersPerSecond: -7,
+            calories: -8,
+            rawTriggerValue: "  "
+        )
+        XCTAssertTrue(reported.isEmpty)
+
+        let lap = RecordedLap(
+            lapIndex: 1,
+            averageHeartRateBPM: 500,
+            maximumHeartRateBPM: -1,
+            averageCadence: 301,
+            elevationGainMeters: -2,
+            elevationLossMeters: -3,
+            reportedMetrics: reported
+        )
+        XCTAssertNil(lap.averageHeartRateBPM)
+        XCTAssertNil(lap.maximumHeartRateBPM)
+        XCTAssertNil(lap.averageCadence)
+        XCTAssertNil(lap.elevationGainMeters)
+        XCTAssertNil(lap.elevationLossMeters)
+        XCTAssertNil(lap.reportedMetrics)
+    }
+
+    func testDecodedWorkoutReappliesRecordedLapInvariants() throws {
+        var workout = RunWorkout(
+            recordedLaps: [RecordedLap(
+                lapIndex: 1,
+                startElapsedSeconds: 10,
+                endElapsedSeconds: 20,
+                startDistanceMeters: 100,
+                endDistanceMeters: 200,
+                elapsedSeconds: 10,
+                activeSeconds: 8,
+                movingSeconds: 7,
+                averageHeartRateBPM: 150,
+                averageCadence: 180,
+                elevationGainMeters: 5,
+                reportedMetrics: RecordedLapReportedMetrics(distanceMeters: 1_000)
+            )]
+        )
+        workout.recordedLaps[0].activeSeconds = 30
+        workout.recordedLaps[0].movingSeconds = 40
+        workout.recordedLaps[0].averageHeartRateBPM = -1
+        workout.recordedLaps[0].averageCadence = -1
+        workout.recordedLaps[0].elevationGainMeters = -1
+        workout.recordedLaps[0].reportedMetrics?.distanceMeters = -1_000
+        workout.recordedLaps[0].reportedMetrics?.averageHeartRateBPM = 999
+
+        let encoded = try JSONEncoder().encode(workout)
+        let decoded = try JSONDecoder().decode(RunWorkout.self, from: encoded)
+        let sanitized = try XCTUnwrap(decoded.recordedLaps.first)
+
+        XCTAssertEqual(sanitized.activeSeconds, 10, accuracy: 0.001)
+        XCTAssertEqual(sanitized.movingSeconds, 10, accuracy: 0.001)
+        XCTAssertNil(sanitized.averageHeartRateBPM)
+        XCTAssertNil(sanitized.averageCadence)
+        XCTAssertNil(sanitized.elevationGainMeters)
+        XCTAssertNil(sanitized.reportedMetrics)
+    }
+
+    func testReanalysisClearsStaleDiagnosticsWhenLapsAreAbsent() {
+        var workout = RunWorkout()
+        workout.recordedLapDiagnostics = RecordedLapDiagnostics(
+            sourceLapCount: 2,
+            importedLapCount: 1,
+            malformedLapCount: 1
+        )
+
+        WorkoutAnalyzer().analyze(&workout)
+
+        XCTAssertEqual(workout.recordedLapDiagnostics, .empty)
+    }
+
     func testStableIDsThroughReanalysis() throws {
         let start = Date(timeIntervalSince1970: 1_700_000_000)
         var points: [RoutePoint] = []

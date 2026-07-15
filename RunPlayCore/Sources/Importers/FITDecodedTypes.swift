@@ -112,6 +112,7 @@ public struct FITEventMessage: Sendable {
 // MARK: - Lap (Global Message 19)
 
 public struct FITLapMessage: Sendable {
+    public var messageIndex: UInt16?
     public var timestamp: UInt32?
     public var startTime: UInt32?
     public var startPositionLat: Int32?
@@ -163,6 +164,10 @@ public struct FITSessionMessage: Sendable {
     public var averageCadence: UInt8?
     public var event: UInt8?
     public var eventType: UInt8?
+    /// Index of the first lap message belonging to this session.
+    public var firstLapIndex: UInt16?
+    /// Number of lap messages belonging to this session.
+    public var numberOfLaps: UInt16?
     public var eventGroup: UInt8?
     public var trigger: UInt8?
     public var necLong: Int32?          // field 29
@@ -295,6 +300,8 @@ public enum FITSessionField: UInt8 {
     case averageCadence = 18
     case event = 0
     case eventType = 1
+    case firstLapIndex = 25
+    case numberOfLaps = 26
     case eventGroup = 27
     case trigger = 28
     case necLat = 29
@@ -305,6 +312,7 @@ public enum FITSessionField: UInt8 {
 
 /// Known field numbers for lap messages (global message 19).
 public enum FITLapField: UInt8 {
+    case messageIndex = 254
     case timestamp = 253
     case startTime = 2
     case startPositionLat = 3

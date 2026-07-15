@@ -788,6 +788,41 @@ final class TCXImporterTests: XCTestCase {
         XCTAssertEqual(workout.recordedLaps[0].elapsedSeconds, 20, accuracy: 0.001)
     }
 
+    func testMalformedTCXLapIsDiagnosedWithoutRejectingValidRoute() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap></Lap>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <TotalTimeSeconds>10</TotalTimeSeconds>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let workout = try importer.importWorkout(from: createTempTCX(tcx))
+
+        XCTAssertFalse(workout.routePoints.isEmpty)
+        XCTAssertEqual(workout.recordedLaps.count, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 2)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 1)
+        XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {

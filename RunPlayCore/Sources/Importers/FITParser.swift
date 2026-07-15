@@ -625,6 +625,7 @@ public struct FITParser {
 
         case FITGlobalMessage.lap.rawValue:
             var lap = FITLapMessage()
+            lap.messageIndex = fieldValues[FITLapField.messageIndex.rawValue]?.uint16Value
             lap.timestamp = timestamp
             lap.startTime = fieldValues[FITLapField.startTime.rawValue]?.uint32Value
             lap.startPositionLat = fieldValues[FITLapField.startPositionLat.rawValue]?.int32Value
@@ -672,6 +673,8 @@ public struct FITParser {
             session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
             session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
             session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
+            session.firstLapIndex = fieldValues[FITSessionField.firstLapIndex.rawValue]?.uint16Value
+            session.numberOfLaps = fieldValues[FITSessionField.numberOfLaps.rawValue]?.uint16Value
             session.eventGroup = fieldValues[FITSessionField.eventGroup.rawValue]?.uint8Value
             session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
             session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value

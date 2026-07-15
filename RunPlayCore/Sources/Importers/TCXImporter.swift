@@ -228,13 +228,6 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
                 endDateForLap = nil
             }
 
-            // Empty laps (no trackpoints) may still be retained when the source
-            // clearly records a start and totals.
-            let hasPoints = range.firstGlobalIndex >= 0
-            if !hasPoints, startDateForLap == nil, endDateForLap == nil {
-                continue
-            }
-
             let trigger = RecordedLapTrigger.fromTCXTriggerMethod(lap.triggerMethod)
             let reported = RecordedLapReportedMetrics(
                 elapsedSeconds: lap.totalTimeSeconds,

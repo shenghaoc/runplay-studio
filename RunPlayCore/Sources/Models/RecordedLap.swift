@@ -189,17 +189,23 @@ public struct RecordedLapReportedMetrics: Codable, Hashable, Sendable {
         calories: Double? = nil,
         rawTriggerValue: String? = nil
     ) {
-        self.elapsedSeconds = Self.finiteOptional(elapsedSeconds)
-        self.timerSeconds = Self.finiteOptional(timerSeconds)
-        self.distanceMeters = Self.finiteOptional(distanceMeters)
-        self.ascentMeters = Self.finiteOptional(ascentMeters)
-        self.descentMeters = Self.finiteOptional(descentMeters)
-        self.averageHeartRateBPM = Self.finiteOptional(averageHeartRateBPM)
-        self.maximumHeartRateBPM = Self.finiteOptional(maximumHeartRateBPM)
-        self.averageCadence = Self.finiteOptional(averageCadence)
-        self.averageSpeedMetersPerSecond = Self.finiteOptional(averageSpeedMetersPerSecond)
-        self.maximumSpeedMetersPerSecond = Self.finiteOptional(maximumSpeedMetersPerSecond)
-        self.calories = Self.finiteOptional(calories)
+        self.elapsedSeconds = Self.nonNegativeFiniteOptional(elapsedSeconds)
+        self.timerSeconds = Self.nonNegativeFiniteOptional(timerSeconds)
+        self.distanceMeters = Self.nonNegativeFiniteOptional(distanceMeters)
+        self.ascentMeters = Self.nonNegativeFiniteOptional(ascentMeters)
+        self.descentMeters = Self.nonNegativeFiniteOptional(descentMeters)
+        self.averageHeartRateBPM = averageHeartRateBPM.flatMap {
+            MetricValidation.isValidHeartRate($0) ? $0 : nil
+        }
+        self.maximumHeartRateBPM = maximumHeartRateBPM.flatMap {
+            MetricValidation.isValidHeartRate($0) ? $0 : nil
+        }
+        self.averageCadence = averageCadence.flatMap {
+            MetricValidation.isValidCadence($0) ? $0 : nil
+        }
+        self.averageSpeedMetersPerSecond = Self.nonNegativeFiniteOptional(averageSpeedMetersPerSecond)
+        self.maximumSpeedMetersPerSecond = Self.nonNegativeFiniteOptional(maximumSpeedMetersPerSecond)
+        self.calories = Self.nonNegativeFiniteOptional(calories)
         if let rawTriggerValue {
             let trimmed = rawTriggerValue.trimmingCharacters(in: .whitespacesAndNewlines)
             self.rawTriggerValue = trimmed.isEmpty ? nil : trimmed
@@ -223,8 +229,8 @@ public struct RecordedLapReportedMetrics: Codable, Hashable, Sendable {
             && rawTriggerValue == nil
     }
 
-    private static func finiteOptional(_ value: Double?) -> Double? {
-        guard let value, value.isFinite else { return nil }
+    private static func nonNegativeFiniteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
         return value
     }
 }
@@ -376,12 +382,34 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
             elapsedPaceSecondsPerKilometer > 0 ? elapsedPaceSecondsPerKilometer : derivedElapsedPace
         )
 
-        self.averageHeartRateBPM = Self.finiteOptional(averageHeartRateBPM)
-        self.maximumHeartRateBPM = Self.finiteOptional(maximumHeartRateBPM)
-        self.averageCadence = Self.finiteOptional(averageCadence)
-        self.elevationGainMeters = Self.finiteOptional(elevationGainMeters)
-        self.elevationLossMeters = Self.finiteOptional(elevationLossMeters)
-        self.reportedMetrics = reportedMetrics.flatMap { $0.isEmpty ? nil : $0 }
+        self.averageHeartRateBPM = averageHeartRateBPM.flatMap {
+            MetricValidation.isValidHeartRate($0) ? $0 : nil
+        }
+        self.maximumHeartRateBPM = maximumHeartRateBPM.flatMap {
+            MetricValidation.isValidHeartRate($0) ? $0 : nil
+        }
+        self.averageCadence = averageCadence.flatMap {
+            MetricValidation.isValidCadence($0) ? $0 : nil
+        }
+        self.elevationGainMeters = Self.nonNegativeFiniteOptional(elevationGainMeters)
+        self.elevationLossMeters = Self.nonNegativeFiniteOptional(elevationLossMeters)
+        let sanitizedReportedMetrics = reportedMetrics.map { metrics in
+            RecordedLapReportedMetrics(
+                elapsedSeconds: metrics.elapsedSeconds,
+                timerSeconds: metrics.timerSeconds,
+                distanceMeters: metrics.distanceMeters,
+                ascentMeters: metrics.ascentMeters,
+                descentMeters: metrics.descentMeters,
+                averageHeartRateBPM: metrics.averageHeartRateBPM,
+                maximumHeartRateBPM: metrics.maximumHeartRateBPM,
+                averageCadence: metrics.averageCadence,
+                averageSpeedMetersPerSecond: metrics.averageSpeedMetersPerSecond,
+                maximumSpeedMetersPerSecond: metrics.maximumSpeedMetersPerSecond,
+                calories: metrics.calories,
+                rawTriggerValue: metrics.rawTriggerValue
+            )
+        }
+        self.reportedMetrics = sanitizedReportedMetrics.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Provisional source-only lap used before route-derived analysis.
@@ -401,6 +429,37 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
             trigger: trigger,
             sourceStartDate: sourceStartDate,
             sourceEndDate: sourceEndDate,
+            reportedMetrics: reportedMetrics
+        )
+    }
+
+    /// Reapply all model invariants after decoding mutable persisted data.
+    /// The optional index override lets importers repair missing/zero ordinals
+    /// without duplicating the sanitization contract.
+    func sanitized(lapIndex: Int? = nil) -> RecordedLap {
+        RecordedLap(
+            id: id,
+            lapIndex: lapIndex ?? self.lapIndex,
+            source: source,
+            trigger: trigger,
+            sourceStartDate: sourceStartDate,
+            sourceEndDate: sourceEndDate,
+            startElapsedSeconds: startElapsedSeconds,
+            endElapsedSeconds: endElapsedSeconds,
+            startDistanceMeters: startDistanceMeters,
+            endDistanceMeters: endDistanceMeters,
+            distanceMeters: distanceMeters,
+            elapsedSeconds: elapsedSeconds,
+            activeSeconds: activeSeconds,
+            movingSeconds: movingSeconds,
+            activePaceSecondsPerKilometer: activePaceSecondsPerKilometer,
+            movingPaceSecondsPerKilometer: movingPaceSecondsPerKilometer,
+            elapsedPaceSecondsPerKilometer: elapsedPaceSecondsPerKilometer,
+            averageHeartRateBPM: averageHeartRateBPM,
+            maximumHeartRateBPM: maximumHeartRateBPM,
+            averageCadence: averageCadence,
+            elevationGainMeters: elevationGainMeters,
+            elevationLossMeters: elevationLossMeters,
             reportedMetrics: reportedMetrics
         )
     }
@@ -437,8 +496,8 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
         value.isFinite ? max(0, value) : 0
     }
 
-    private static func finiteOptional(_ value: Double?) -> Double? {
-        guard let value, value.isFinite else { return nil }
+    private static func nonNegativeFiniteOptional(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
         return value
     }
 
