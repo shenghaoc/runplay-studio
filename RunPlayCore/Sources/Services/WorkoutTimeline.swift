@@ -297,17 +297,18 @@ public struct WorkoutTimeline: Sendable {
             return nil
         }
 
-        let values = routePoints[range.sourcePointRange].compactMap { point -> Double? in
-            guard let value = point.heartRateBPM,
-                  MetricValidation.isValidHeartRate(value)
-            else {
-                return nil
+        var sumHR: Double = 0
+        var countHR: Int = 0
+
+        for point in routePoints[range.sourcePointRange] {
+            if let value = point.heartRateBPM, MetricValidation.isValidHeartRate(value) {
+                sumHR += value
+                countHR += 1
             }
-            return value
         }
 
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +) / Double(values.count)
+        guard countHR > 0 else { return nil }
+        return sumHR / Double(countHR)
     }
 
     /// Cumulative positive elevation change inside a distance range, never
