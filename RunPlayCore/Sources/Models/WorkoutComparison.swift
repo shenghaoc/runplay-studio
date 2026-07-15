@@ -351,6 +351,10 @@ public struct ComparisonDistanceMetrics: Sendable {
     public var comparisonElapsedFormatted: String { DisplayFormatter.formatElapsed(comparisonElapsedSeconds) }
     public var primaryActiveFormatted: String { DisplayFormatter.formatElapsed(primaryActiveSeconds) }
     public var comparisonActiveFormatted: String { DisplayFormatter.formatElapsed(comparisonActiveSeconds) }
+    public var primaryMovingFormatted: String { DisplayFormatter.formatElapsed(primaryMovingSeconds) }
+    public var comparisonMovingFormatted: String { DisplayFormatter.formatElapsed(comparisonMovingSeconds) }
+    public var primaryStoppedFormatted: String { DisplayFormatter.formatElapsed(primaryStoppedSeconds) }
+    public var comparisonStoppedFormatted: String { DisplayFormatter.formatElapsed(comparisonStoppedSeconds) }
     public var timeDeltaFormatted: String { elapsedTimeDeltaFormatted }
     public var elapsedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
@@ -364,6 +368,20 @@ public struct ComparisonDistanceMetrics: Sendable {
             activeTimeDeltaSeconds,
             positiveLabel: "longer",
             negativeLabel: "shorter"
+        )
+    }
+    public var movingTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            movingTimeDeltaSeconds,
+            positiveLabel: "more moving",
+            negativeLabel: "less moving"
+        )
+    }
+    public var stoppedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            stoppedTimeDeltaSeconds,
+            positiveLabel: "more stopped",
+            negativeLabel: "less stopped"
         )
     }
     public var primaryPaceFormatted: String { DisplayFormatter.formatPace(primaryPaceSecondsPerKm) }

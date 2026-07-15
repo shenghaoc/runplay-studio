@@ -37,15 +37,15 @@ struct CurrentMetricsPanel: View {
             MetricDisplay(label: "Split", value: metrics.formattedSplit, icon: "flag", color: AppDesign.MetricColor.split)
 
             if metrics.isInRecordingGap {
-                Label("Recording gap", systemImage: "pause.fill")
+                Label("Paused", systemImage: "pause.fill")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(AppDesign.comparisonOrange)
                     .padding(.horizontal, AppDesign.Spacing.small)
                     .padding(.vertical, AppDesign.Spacing.xSmall)
                     .background(AppDesign.comparisonOrange.opacity(0.12), in: Capsule())
-                    .help("Elapsed time is advancing while active time and distance remain fixed.")
-                    .accessibilityLabel("Recording gap")
-                    .accessibilityHint("Elapsed time is advancing while active time and distance remain fixed")
+                    .help("Recording gap: elapsed time is advancing while active time and distance remain fixed.")
+                    .accessibilityLabel("Paused")
+                    .accessibilityHint("Recording gap: elapsed time is advancing while active time and distance remain fixed")
             }
 
             if let state = metrics.movementState, !metrics.isInRecordingGap {

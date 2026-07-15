@@ -28,7 +28,10 @@ duplicate-distance pause/resume points.
 The analysis version advances so stale library entries are reanalysed. JSON,
 CSV, and PNG names explicitly mark estimated movement values. SwiftUI adds
 compact estimated labels, help text, and an accessible stopped/paused state;
-existing Pace remains active-time based.
+existing Pace remains active-time based. Comparison summaries and the
+distance-scrubbing grid expose estimated moving and stopped deltas alongside
+the active-time values; comparison warnings explain that those estimates are
+approximate when a stop or conservative fallback is involved.
 
 ## Non-goals
 

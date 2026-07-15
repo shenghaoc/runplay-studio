@@ -32,6 +32,31 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertTrue(summary.warnings.contains(.differentPauseDurations))
     }
 
+    func testTrafficLightStopComparisonExposesEstimatedMovementDeltas() throws {
+        let stopped = createTrafficLightComparisonWorkout(includesStop: true)
+        let uninterrupted = createTrafficLightComparisonWorkout(includesStop: false)
+
+        let summary = service.compare(primary: stopped, comparison: uninterrupted)
+        let metrics = service.metricsAtDistance(
+            stopped.summary.totalDistanceMeters,
+            primary: stopped,
+            comparison: uninterrupted
+        )
+
+        XCTAssertEqual(summary.primaryMovingSeconds, 40, accuracy: 0.001)
+        XCTAssertEqual(summary.comparisonMovingSeconds, 70, accuracy: 0.001)
+        XCTAssertEqual(summary.movingTimeDeltaSeconds, -30, accuracy: 0.001)
+        XCTAssertEqual(summary.primaryStoppedSeconds, 30, accuracy: 0.001)
+        XCTAssertEqual(summary.comparisonStoppedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(summary.stoppedTimeDeltaSeconds, 30, accuracy: 0.001)
+        XCTAssertEqual(summary.movingPaceDeltaSecondsPerKm, -250, accuracy: 0.001)
+        XCTAssertTrue(summary.warnings.contains(.movementEstimated))
+        XCTAssertEqual(try XCTUnwrap(metrics.primaryMovingSeconds), 40, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(metrics.comparisonMovingSeconds), 70, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(metrics.primaryStoppedSeconds), 30, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(metrics.comparisonStoppedSeconds), 0, accuracy: 0.001)
+    }
+
     func testPauseDurationWarningUsesThirtySecondThreshold() {
         let uninterrupted = createPauseComparisonWorkout(pauseSeconds: 0)
         let belowThreshold = service.compare(
@@ -900,6 +925,28 @@ final class WorkoutComparisonTests: XCTestCase {
                 routeSegmentIndex: 1
             )
         ]
+        var workout = RunWorkout(routePoints: points)
+        WorkoutAnalyzer().analyze(&workout)
+        return workout
+    }
+
+    private func createTrafficLightComparisonWorkout(includesStop: Bool) -> RunWorkout {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let distances: [Double]
+        if includesStop {
+            distances = [0, 15, 30, 45, 60, 75, 75, 75, 75, 75, 75, 75, 90, 105, 120]
+        } else {
+            distances = (0...14).map { Double($0) * 120 / 14 }
+        }
+        let points = distances.enumerated().map { index, distance in
+            RoutePoint(
+                timestamp: start.addingTimeInterval(Double(index) * 5),
+                latitude: 1 + distance / 111_000,
+                longitude: 1,
+                distanceFromStartMeters: distance,
+                elapsedSeconds: Double(index) * 5
+            )
+        }
         var workout = RunWorkout(routePoints: points)
         WorkoutAnalyzer().analyze(&workout)
         return workout

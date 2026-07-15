@@ -64,14 +64,25 @@ above remain unchecked.
 These are required manual checks for this estimated GPS analysis; they are not
 claims of completed verification.
 
-- [ ] Import a synthetic route with a 30-second stationary traffic-light stop.
-- [ ] Confirm Active exceeds Moving, Stopped equals Active minus Moving, and labels say estimated.
-- [ ] Replay through the stop: elapsed/active advance, moving holds, stopped advances, and state says Stopped.
-- [ ] Replay through an explicit recording pause: only elapsed advances and state says Paused.
-- [ ] Inspect a split containing the stop and verify active and moving pace are separately labelled.
-- [ ] Compare it with an otherwise identical uninterrupted run and inspect moving/stopped deltas and caveats.
-- [ ] Inspect JSON, CSV, and PNG exports for estimated moving/stopped labels and diagnostics.
-- [ ] Quit and relaunch to confirm the reanalysed snapshot persists without repeated migration.
+- [x] Import a synthetic route with a 30-second stationary traffic-light stop.
+- [x] Confirm Active exceeds Moving, Stopped equals Active minus Moving, and labels say estimated.
+- [x] Replay through the stop: elapsed/active advance, moving holds, stopped advances, and state says Stopped.
+- [x] Replay through an explicit recording pause: only elapsed advances and state says Paused.
+- [x] Inspect a split containing the stop and verify active and moving pace are separately labelled.
+- [x] Compare it with an otherwise identical uninterrupted run and inspect moving/stopped deltas and caveats.
+- [x] Inspect JSON, CSV, and PNG exports for estimated moving/stopped labels and diagnostics.
+- [x] Quit and relaunch to confirm the reanalysed snapshot persists without repeated migration.
+
+Moving/stopped manual record (2026-07-15): the packaged app imported a synthetic
+30-second traffic-light stop (elapsed/active 1:10, moving 0:40, stopped 0:30)
+and showed the estimated labels. Replay showed `Stopped` while the moving clock
+held; a synthetic explicit pause showed `Paused` while active, moving, and
+stopped held. The split table exposed both active and estimated moving pace.
+Comparison with an otherwise identical uninterrupted run showed `-0:30 less
+moving`, `+0:30 more stopped`, and the estimate caveat. JSON, CSV, and PNG
+exports were saved through the native panels and inspected for the estimated
+fields. The packaged app was quit and relaunched; it loaded the reanalysed
+snapshots without repeating migration.
 
 ## FIT Import Checklist
 

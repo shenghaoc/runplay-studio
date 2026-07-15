@@ -13,6 +13,6 @@
 - [x] Add regression coverage for invariants, one-second sampling, fallback,
   split/comparison interpolation, persistence, and exports.
 - [x] Update durable product and architecture documentation plus this PR spec.
-- [ ] Complete the manual moving/stopped GUI checklist in
-  `docs/manual-testing.md` in a desktop session; it is deliberately not claimed
-  by automated verification.
+- [x] Complete the manual moving/stopped GUI checklist in
+  `docs/manual-testing.md` in a desktop session; it is deliberately separate
+  from automated verification.
