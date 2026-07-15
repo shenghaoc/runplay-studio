@@ -299,7 +299,7 @@ struct DeltaCard: View {
 struct ComparisonEmptyView: View {
     let workoutCount: Int
     let primaryName: String?
-    let onImport: () -> Void
+    let onImport: @MainActor () -> Void
 
     var body: some View {
         VStack(spacing: AppDesign.Spacing.xLarge) {
@@ -325,6 +325,7 @@ struct ComparisonEmptyView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
                 .help("Select a file to import and compare")
+                .accessibilityLabel("Import run")
             } else if primaryName != nil {
                 Text("Use the \"Compare With\" picker above to select a second run.")
                     .font(AppDesign.Typography.compactMetric)
