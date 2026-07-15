@@ -229,26 +229,32 @@ private struct RecordedLapsTableView: View {
                 currentLapBanner(recordedLaps[idx])
             }
 
-            recordedLapHeader
-                .padding(.horizontal, AppDesign.Spacing.medium)
-
             // List avoids SwiftUI Table type-checker limits with many columns + selection.
-            List(recordedLaps) { lap in
-                Button {
-                    onSeekToRecordedLap?(lap)
-                } label: {
-                    recordedLapRow(lap)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Seek to Lap Start") {
+            List {
+                // Keeping the header in the List gives it exactly the same
+                // system-managed horizontal insets as every data row.
+                recordedLapHeader
+                    .listRowBackground(Color.clear)
+                    .accessibilityAddTraits(.isHeader)
+
+                ForEach(recordedLaps) { lap in
+                    Button {
                         onSeekToRecordedLap?(lap)
+                    } label: {
+                        recordedLapRow(lap)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Seek to Lap Start") {
+                            onSeekToRecordedLap?(lap)
+                        }
+                    }
+                    .listRowBackground(rowBackground(for: lap))
                 }
-                .listRowBackground(rowBackground(for: lap))
             }
             .listStyle(.inset)
+            .scrollContentBackground(.hidden)
             .help("Click a recorded lap to seek replay to that lap start. Replay pauses first.")
         }
     }
