@@ -272,6 +272,8 @@ final class FITImporterTests: XCTestCase {
         XCTAssertEqual(workout.recordedLaps[0].trigger, .manual)
         XCTAssertEqual(workout.recordedLaps[1].trigger, .distance)
         XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.distanceMeters ?? -1, 2_500, accuracy: 0.1)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.calories, 180)
+        XCTAssertEqual(workout.recordedLaps[1].reportedMetrics?.calories, 190)
         XCTAssertEqual(workout.sourceStructureVersion, RunWorkout.currentSourceStructureVersion)
 
         // Lap messages must not create route segments by themselves.

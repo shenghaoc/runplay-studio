@@ -634,6 +634,7 @@ public struct FITParser {
             lap.totalElapsedTime = fieldValues[FITLapField.totalElapsedTime.rawValue]?.uint32Value
             lap.totalTimerTime = fieldValues[FITLapField.totalTimerTime.rawValue]?.uint32Value
             lap.totalDistance = fieldValues[FITLapField.totalDistance.rawValue]?.uint32Value
+            lap.totalCalories = fieldValues[FITLapField.totalCalories.rawValue]?.uint16Value
             lap.totalAscent = fieldValues[FITLapField.totalAscent.rawValue]?.uint16Value
             lap.totalDescent = fieldValues[FITLapField.totalDescent.rawValue]?.uint16Value
             lap.averageSpeed = fieldValues[FITLapField.averageSpeed.rawValue]?.uint16Value

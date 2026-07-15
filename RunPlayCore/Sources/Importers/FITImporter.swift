@@ -219,7 +219,7 @@ public struct FITImporter: WorkoutImporting {
             averageCadence: decodedCadence(lap.averageCadence),
             averageSpeedMetersPerSecond: avgSpeed,
             maximumSpeedMetersPerSecond: maxSpeed,
-            calories: nil,
+            calories: decodedCalories(lap.totalCalories),
             rawTriggerValue: lap.lapTrigger.map { String($0) }
         )
         return metrics.isEmpty ? nil : metrics
@@ -247,6 +247,11 @@ public struct FITImporter: WorkoutImporting {
 
     private func decodedCadence(_ value: UInt8?) -> Double? {
         guard let value, value != FITParser.invalidUint8 else { return nil }
+        return Double(value)
+    }
+
+    private func decodedCalories(_ value: UInt16?) -> Double? {
+        guard let value, value != FITParser.invalidUint16 else { return nil }
         return Double(value)
     }
 

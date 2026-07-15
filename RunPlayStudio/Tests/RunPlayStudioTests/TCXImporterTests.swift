@@ -742,6 +742,51 @@ final class TCXImporterTests: XCTestCase {
         XCTAssertLessThan(workout.recordedLaps[0].distanceMeters, 1_000)
     }
 
+    func testTCXLapTotalDefinesBoundaryAfterLastTrackpoint() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <TotalTimeSeconds>20</TotalTimeSeconds>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+              <Lap StartTime="2026-07-05T07:30:20.000Z">
+                <TotalTimeSeconds>10</TotalTimeSeconds>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Position><LatitudeDegrees>1.2974</LatitudeDegrees><LongitudeDegrees>103.7776</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:30.000Z</Time>
+                    <Position><LatitudeDegrees>1.2978</LatitudeDegrees><LongitudeDegrees>103.7782</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let workout = try importer.importWorkout(from: createTempTCX(tcx))
+
+        XCTAssertEqual(workout.recordedLaps.count, 2)
+        XCTAssertEqual(workout.recordedLaps[0].endElapsedSeconds, 20, accuracy: 0.001)
+        XCTAssertEqual(workout.recordedLaps[0].elapsedSeconds, 20, accuracy: 0.001)
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {

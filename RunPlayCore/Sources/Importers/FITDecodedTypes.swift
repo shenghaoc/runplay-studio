@@ -121,6 +121,7 @@ public struct FITLapMessage: Sendable {
     public var totalElapsedTime: UInt32?    // scaled 1000
     public var totalTimerTime: UInt32?      // scaled 1000
     public var totalDistance: UInt32?       // scaled 100
+    public var totalCalories: UInt16?
     public var totalAscent: UInt16?
     public var totalDescent: UInt16?
     public var averageSpeed: UInt16?        // scaled 1000
@@ -313,6 +314,7 @@ public enum FITLapField: UInt8 {
     case totalElapsedTime = 7
     case totalTimerTime = 8
     case totalDistance = 9
+    case totalCalories = 11
     case totalAscent = 21
     case totalDescent = 22
     case averageSpeed = 13

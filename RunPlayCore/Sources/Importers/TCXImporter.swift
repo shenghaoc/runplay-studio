@@ -207,11 +207,19 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
                 startDateForLap = nil
             }
 
+            let nextLapStart = activity.laps.indices.contains(lapIdx + 1)
+                ? activity.laps[lapIdx + 1].startTime
+                : nil
             let endDateForLap: Date?
-            if range.lastGlobalIndex >= 0 {
-                endDateForLap = routePoints[range.lastGlobalIndex].timestamp
-            } else if let start = startDateForLap, let total = lap.totalTimeSeconds, total.isFinite, total > 0 {
+            if let nextLapStart {
+                endDateForLap = nextLapStart
+            } else if let start = startDateForLap,
+                      let total = lap.totalTimeSeconds,
+                      total.isFinite,
+                      total > 0 {
                 endDateForLap = start.addingTimeInterval(total)
+            } else if range.lastGlobalIndex >= 0 {
+                endDateForLap = routePoints[range.lastGlobalIndex].timestamp
             } else {
                 endDateForLap = nil
             }
