@@ -331,6 +331,21 @@ final class WorkoutTimelineTests: XCTestCase {
         XCTAssertEqual(sample.activeSeconds, 15, accuracy: 0.001)
     }
 
+    func testExactDuplicateElapsedRangeEndUsesLastSameSegmentPoint() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 10, distance: 100),
+            point(time: 10, distance: 120),
+            point(time: 20, distance: 200)
+        ])
+
+        let start = try XCTUnwrap(timeline.elapsedSample(at: 10, boundary: .rangeStart))
+        let end = try XCTUnwrap(timeline.elapsedSample(at: 10, boundary: .rangeEnd))
+        XCTAssertEqual(start.pointIndex, 1)
+        XCTAssertEqual(end.pointIndex, 2)
+        XCTAssertEqual(end.distanceMeters, 120, accuracy: 0.001)
+    }
+
     func testElapsedSampleInsideRecordingGap() throws {
         let timeline = WorkoutTimeline(routePoints: pausedRoute())
         let startSide = try XCTUnwrap(timeline.elapsedSample(at: 1_500, boundary: .rangeStart))

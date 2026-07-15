@@ -162,6 +162,30 @@ final class RecordedLapAnalyzerTests: XCTestCase {
         XCTAssertEqual(result.diagnostics.clampedBoundaryCount, 0)
     }
 
+    func testFirstLapStartingBeforeFirstGPSFixIsClamped() throws {
+        let points = makeRoute()
+        let provisional = RecordedLap.provisional(
+            lapIndex: 1,
+            source: .fit,
+            trigger: .manual,
+            sourceStartDate: points[0].timestamp.addingTimeInterval(-20),
+            sourceEndDate: points.last!.timestamp,
+            reportedMetrics: nil
+        )
+        let context = WorkoutAnalysisContext(workout: RunWorkout(routePoints: points))
+
+        let result = try RecordedLapAnalyzer.analyze(
+            provisionalLaps: [provisional],
+            routePoints: points,
+            context: context,
+            source: .fit
+        )
+
+        XCTAssertEqual(result.laps.count, 1)
+        XCTAssertEqual(result.laps[0].startElapsedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(result.diagnostics.clampedBoundaryCount, 1)
+    }
+
     func testCancellation() {
         let points = makeRoute(pointCount: 50)
         let start = points[0].timestamp

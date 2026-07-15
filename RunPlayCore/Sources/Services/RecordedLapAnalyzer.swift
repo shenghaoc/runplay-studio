@@ -274,13 +274,9 @@ public struct RecordedLapAnalyzer: Sendable {
             return nil
         }
 
-        // Clamp overhangs onto the workout clock; reject starts far before the
-        // route begins. Large end overhangs are clamped (with a diagnostic)
-        // rather than inventing time past the route.
+        // Clamp source-clock overhangs onto the retained route. A first GPS
+        // fix may legitimately arrive well after the device opened the lap.
         if start < 0 {
-            if start < -5 {
-                return nil
-            }
             if start < -clampDiagnosticEpsilon {
                 clampedBoundaryCount += 1
             }

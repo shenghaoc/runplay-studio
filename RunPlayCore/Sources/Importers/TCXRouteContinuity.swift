@@ -75,18 +75,15 @@ public enum TCXRouteContinuityResolver: Sendable {
             return .discontinuous
         }
 
-        if let timeGap,
-           timeGap <= policy.maximumSeamlessTimeGapSeconds,
-           distance.isFinite,
+        // A small geographic step below the forced time threshold is ordinary
+        // sparse sampling, including devices that open a new Track per lap.
+        if distance.isFinite,
            distance <= policy.maximumSeamlessDistanceMeters {
             return .continuous
         }
 
         // Ambiguous middle ground: prefer a new segment so we never invent a
         // continuous map line across a likely pause/resume.
-        if let timeGap, timeGap > policy.maximumSeamlessTimeGapSeconds {
-            return .discontinuous
-        }
         if distance.isFinite, distance > policy.maximumSeamlessDistanceMeters {
             return .discontinuous
         }

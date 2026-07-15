@@ -28,12 +28,13 @@ timeline/movement/elevation context, enforces clock invariants, and aggregates
 mismatch diagnostics. Sub-centisecond timestamp rounding is clamped without
 inflating diagnostics. Importers attach provisional source laps; analysis fills
 canonical fields while preserving IDs. Explicit zero active or moving clocks
-remain valid for fully paused or fully stopped laps.
+remain valid for fully paused or fully stopped laps. A source lap that begins
+before the first retained GPS fix clamps to elapsed zero with a diagnostic.
 
 ## Import
 
 - **FIT**: filter laps to selected session; map triggers, enhanced speed, and total-calorie fields; never create segments.
-- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; per-track distance rebasing only; derive a missing final boundary from the lap's reported total time.
+- **TCX**: parse lap metadata; continuity via `TCXRouteContinuityResolver`; sparse small-distance seams remain continuous below the forced-gap threshold; per-track distances are rebased and offset across continuous tracks; derive a missing final boundary from the lap's reported total time.
 - **GPX**: empty recorded laps; current structure version.
 - **JSON**: optional recorded laps round-trip.
 

@@ -706,7 +706,7 @@ public struct WorkoutTimeline: Sendable {
         }
 
         if routePoints[first].routeSegmentIndex == routePoints[last].routeSegmentIndex {
-            return role == .rangeEnd && last == routePoints.count - 1 ? last : first
+            return role == .rangeEnd ? last : first
         }
 
         switch role {

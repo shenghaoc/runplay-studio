@@ -145,7 +145,7 @@ final class TCXImporterTests: XCTestCase {
                     <AltitudeMeters>15.0</AltitudeMeters>
                   </Trackpoint>
                   <Trackpoint>
-                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
                     <Position><LatitudeDegrees>1.2986</LatitudeDegrees><LongitudeDegrees>103.7784</LongitudeDegrees></Position>
                     <AltitudeMeters>18.0</AltitudeMeters>
                   </Trackpoint>
@@ -661,6 +661,7 @@ final class TCXImporterTests: XCTestCase {
         XCTAssertEqual(workout.summary.totalElapsedSeconds, 40, accuracy: 0.5)
         XCTAssertEqual(workout.summary.totalActiveSeconds, 40, accuracy: 0.5)
         XCTAssertEqual(workout.summary.totalPausedSeconds, 0, accuracy: 0.5)
+        XCTAssertEqual(workout.routePoints.last?.distanceFromStartMeters ?? -1, 400, accuracy: 0.5)
         XCTAssertEqual(workout.sourceStructureVersion, RunWorkout.currentSourceStructureVersion)
     }
 

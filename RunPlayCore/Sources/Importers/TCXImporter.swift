@@ -129,6 +129,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
 
         var currentLapFirstIndex: [Int: Int] = [:]
         var currentLapLastIndex: [Int: Int] = [:]
+        var continuousTrackDistanceOffset = 0.0
 
         for (index, item) in flat.enumerated() {
             let timestamp = timestamps[index]
@@ -146,6 +147,9 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
                 )
                 if decision == .discontinuous {
                     segmentIndex += 1
+                    continuousTrackDistanceOffset = 0
+                } else {
+                    continuousTrackDistanceOffset = routePoints.last?.distanceFromStartMeters ?? 0
                 }
             }
 
@@ -159,7 +163,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             }
 
             let elapsed = timestamp.timeIntervalSince(startDate)
-            let dist = trackLocalDistances[index] ?? 0
+            let dist = (trackLocalDistances[index] ?? 0) + continuousTrackDistanceOffset
 
             let point = RoutePoint(
                 timestamp: timestamp,
