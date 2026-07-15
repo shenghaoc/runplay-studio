@@ -8,6 +8,8 @@ public enum WorkoutAnalysisWarning: String, Codable, Hashable, Sendable {
     case implicitRouteGapIntroduced = "A disconnected GPS relocation was treated as a recording gap."
     case altitudeOutliersIgnored = "Unreliable altitude spikes were ignored in elevation analysis."
     case insufficientReliableElevation = "There is not enough reliable altitude data for elevation analysis."
+    case movementEstimatedStoppedTime = "Stopped time is estimated from GPS movement patterns and may differ from user-perceived stops."
+    case movementLowReliability = "Movement detection has low reliability due to sparse or irregular GPS data."
 
     public var message: String { rawValue }
 
@@ -18,6 +20,8 @@ public enum WorkoutAnalysisWarning: String, Codable, Hashable, Sendable {
         case .coordinateOutliersRemoved, .implicitRouteGapIntroduced,
              .altitudeOutliersIgnored, .insufficientReliableElevation:
             return true
+        case .movementEstimatedStoppedTime, .movementLowReliability:
+            return false
         }
     }
 }

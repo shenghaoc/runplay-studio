@@ -9,6 +9,12 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
     public var elapsedSeconds: Double
     /// Recorded timer duration inside continuous route segments.
     public var activeSeconds: Double
+    /// Estimated moving time within this split.
+    public var movingSeconds: Double
+    /// Estimated stopped time within this split.
+    public var stoppedSeconds: Double
+    /// Estimated moving pace; `paceSecondsPerKilometer` remains active pace.
+    public var movingPaceSecondsPerKilometer: Double
     /// Active pace retained under the source-compatible canonical name.
     public var paceSecondsPerKilometer: Double
     public var elapsedPaceSecondsPerKilometer: Double
@@ -34,6 +40,9 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
             distanceMeters: distanceMeters,
             elapsedSeconds: elapsedSeconds,
             activeSeconds: elapsedSeconds,
+            movingSeconds: elapsedSeconds,
+            stoppedSeconds: 0,
+            movingPaceSecondsPerKilometer: paceSecondsPerKilometer,
             paceSecondsPerKilometer: paceSecondsPerKilometer,
             elapsedPaceSecondsPerKilometer: paceSecondsPerKilometer,
             averageHeartRateBPM: averageHeartRateBPM,
@@ -49,6 +58,9 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         distanceMeters: Double = 1000,
         elapsedSeconds: Double,
         activeSeconds: Double,
+        movingSeconds: Double? = nil,
+        stoppedSeconds: Double? = nil,
+        movingPaceSecondsPerKilometer: Double? = nil,
         paceSecondsPerKilometer: Double,
         elapsedPaceSecondsPerKilometer: Double? = nil,
         averageHeartRateBPM: Double? = nil,
@@ -57,11 +69,22 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         endDistanceMeters: Double
     ) {
         let safeElapsed = Self.nonNegativeFinite(elapsedSeconds)
+        let safeActive = min(Self.nonNegativeFinite(activeSeconds), safeElapsed)
         self.id = id
         self.splitIndex = max(0, splitIndex)
         self.distanceMeters = Self.nonNegativeFinite(distanceMeters)
         self.elapsedSeconds = safeElapsed
-        self.activeSeconds = min(Self.nonNegativeFinite(activeSeconds), safeElapsed)
+        self.activeSeconds = safeActive
+        let safeMoving = min(Self.nonNegativeFinite(movingSeconds ?? safeActive), safeActive)
+        self.movingSeconds = safeMoving
+        // This derived invariant intentionally wins over inconsistent input.
+        self.stoppedSeconds = max(0, safeActive - safeMoving)
+        _ = stoppedSeconds
+        let derivedMovingPace = safeMoving > 0 && self.distanceMeters > 0
+            ? safeMoving / self.distanceMeters * 1_000 : 0
+        self.movingPaceSecondsPerKilometer = Self.nonNegativeFinite(
+            movingPaceSecondsPerKilometer ?? derivedMovingPace
+        )
         self.paceSecondsPerKilometer = Self.nonNegativeFinite(paceSecondsPerKilometer)
         self.elapsedPaceSecondsPerKilometer = Self.nonNegativeFinite(
             elapsedPaceSecondsPerKilometer ?? paceSecondsPerKilometer
@@ -89,10 +112,23 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         DisplayFormatter.formatElapsed(activeSeconds)
     }
 
+    public var formattedMoving: String {
+        DisplayFormatter.formatElapsed(movingSeconds)
+    }
+
+    public var formattedStopped: String {
+        DisplayFormatter.formatElapsed(stoppedSeconds)
+    }
+
+    public var formattedMovingPace: String {
+        DisplayFormatter.formatPaceShort(movingPaceSecondsPerKilometer)
+    }
+
     // MARK: - Backward-compatible Codable
 
     private enum CodingKeys: String, CodingKey {
         case id, splitIndex, distanceMeters, elapsedSeconds, activeSeconds
+        case movingSeconds, stoppedSeconds, movingPaceSecondsPerKilometer
         case paceSecondsPerKilometer, elapsedPaceSecondsPerKilometer
         case averageHeartRateBPM, elevationGainMeters
         case startDistanceMeters, endDistanceMeters
@@ -101,13 +137,17 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let elapsed = try container.decode(Double.self, forKey: .elapsedSeconds)
+        let active = try container.decodeIfPresent(Double.self, forKey: .activeSeconds) ?? elapsed
         let activePace = try container.decode(Double.self, forKey: .paceSecondsPerKilometer)
         self.init(
             id: try container.decode(UUID.self, forKey: .id),
             splitIndex: try container.decode(Int.self, forKey: .splitIndex),
             distanceMeters: try container.decode(Double.self, forKey: .distanceMeters),
             elapsedSeconds: elapsed,
-            activeSeconds: try container.decodeIfPresent(Double.self, forKey: .activeSeconds) ?? elapsed,
+            activeSeconds: active,
+            movingSeconds: try container.decodeIfPresent(Double.self, forKey: .movingSeconds),
+            stoppedSeconds: try container.decodeIfPresent(Double.self, forKey: .stoppedSeconds),
+            movingPaceSecondsPerKilometer: try container.decodeIfPresent(Double.self, forKey: .movingPaceSecondsPerKilometer),
             paceSecondsPerKilometer: activePace,
             elapsedPaceSecondsPerKilometer: try container.decodeIfPresent(Double.self, forKey: .elapsedPaceSecondsPerKilometer) ?? activePace,
             averageHeartRateBPM: try container.decodeIfPresent(Double.self, forKey: .averageHeartRateBPM),
@@ -124,6 +164,9 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         try container.encode(distanceMeters, forKey: .distanceMeters)
         try container.encode(elapsedSeconds, forKey: .elapsedSeconds)
         try container.encode(activeSeconds, forKey: .activeSeconds)
+        try container.encode(movingSeconds, forKey: .movingSeconds)
+        try container.encode(stoppedSeconds, forKey: .stoppedSeconds)
+        try container.encode(movingPaceSecondsPerKilometer, forKey: .movingPaceSecondsPerKilometer)
         try container.encode(paceSecondsPerKilometer, forKey: .paceSecondsPerKilometer)
         try container.encode(elapsedPaceSecondsPerKilometer, forKey: .elapsedPaceSecondsPerKilometer)
         try container.encodeIfPresent(averageHeartRateBPM, forKey: .averageHeartRateBPM)

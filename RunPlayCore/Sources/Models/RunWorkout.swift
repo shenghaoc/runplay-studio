@@ -4,7 +4,7 @@ import Foundation
 public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Snapshots without a version predate pause-aware analysis.
     public static let legacyAnalysisVersion = 0
-    public static let currentAnalysisVersion = 2
+    public static let currentAnalysisVersion = 4
     /// Snapshots without this version predate route-quality normalization.
     public static let legacyNormalizationVersion = 0
     public static let currentNormalizationVersion = 1
@@ -19,6 +19,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     public var analysisVersion: Int
     public var normalizationVersion: Int
     public var analysisWarnings: [WorkoutAnalysisWarning]
+    /// Persisted detector metadata; detailed interval state is derived at runtime.
+    public var movementDiagnostics: MovementDiagnostics
     public var qualityDiagnostics: RouteQualityDiagnostics
     public var routeDistanceSource: RouteDistanceSource
     public var routeDistanceProvenance: RouteDistanceProvenance
@@ -43,6 +45,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             analysisVersion: RunWorkout.currentAnalysisVersion,
             normalizationVersion: RunWorkout.currentNormalizationVersion,
             analysisWarnings: [],
+            movementDiagnostics: .init(),
             qualityDiagnostics: .empty,
             routeDistanceSource: .coordinateDerived,
             routeDistanceProvenance: .legacyUnknown
@@ -60,6 +63,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         analysisVersion: Int,
         normalizationVersion: Int = RunWorkout.currentNormalizationVersion,
         analysisWarnings: [WorkoutAnalysisWarning] = [],
+        movementDiagnostics: MovementDiagnostics = .init(),
         qualityDiagnostics: RouteQualityDiagnostics = .empty,
         routeDistanceSource: RouteDistanceSource = .coordinateDerived,
         routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown
@@ -74,6 +78,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.analysisVersion = max(RunWorkout.legacyAnalysisVersion, analysisVersion)
         self.normalizationVersion = max(RunWorkout.legacyNormalizationVersion, normalizationVersion)
         self.analysisWarnings = analysisWarnings
+        self.movementDiagnostics = movementDiagnostics
         self.qualityDiagnostics = qualityDiagnostics
         self.routeDistanceSource = routeDistanceSource
         self.routeDistanceProvenance = routeDistanceProvenance
@@ -117,7 +122,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, metadata, source, routePoints, splits, summary, segments
-        case analysisVersion, normalizationVersion, analysisWarnings
+        case analysisVersion, normalizationVersion, analysisWarnings, movementDiagnostics
         case qualityDiagnostics, routeDistanceSource, routeDistanceProvenance
     }
 
@@ -135,6 +140,9 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         normalizationVersion = try container.decodeIfPresent(Int.self, forKey: .normalizationVersion)
             ?? RunWorkout.legacyNormalizationVersion
         analysisWarnings = try container.decodeIfPresent([WorkoutAnalysisWarning].self, forKey: .analysisWarnings) ?? []
+        movementDiagnostics = try container.decodeIfPresent(
+            MovementDiagnostics.self, forKey: .movementDiagnostics
+        ) ?? .init()
         qualityDiagnostics = try container.decodeIfPresent(
             RouteQualityDiagnostics.self,
             forKey: .qualityDiagnostics
@@ -161,6 +169,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(analysisVersion, forKey: .analysisVersion)
         try container.encode(normalizationVersion, forKey: .normalizationVersion)
         try container.encode(analysisWarnings, forKey: .analysisWarnings)
+        try container.encode(movementDiagnostics, forKey: .movementDiagnostics)
         try container.encode(qualityDiagnostics, forKey: .qualityDiagnostics)
         try container.encode(routeDistanceSource, forKey: .routeDistanceSource)
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)

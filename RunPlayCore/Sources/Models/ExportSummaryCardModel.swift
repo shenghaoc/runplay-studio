@@ -9,8 +9,10 @@ public struct ExportSummaryCardModel: Sendable {
     public let distanceText: String
     public let elapsedTimeText: String
     public let activeTimeText: String
+    public let movingTimeText: String
     public let pausedTimeText: String
     public let activePaceText: String
+    public let movingPaceText: String
     public let elapsedPaceText: String
     public let elevationGainText: String
     public let elevationLossText: String
@@ -64,8 +66,10 @@ public struct ExportSummaryCardModel: Sendable {
         distanceText = DisplayFormatter.formatDistanceKm(summary.totalDistanceMeters)
         elapsedTimeText = summary.formattedElapsed
         activeTimeText = summary.formattedActive
+        movingTimeText = summary.formattedMoving
         pausedTimeText = summary.formattedPaused
         activePaceText = summary.formattedPace
+        movingPaceText = summary.formattedMovingPace
         elapsedPaceText = summary.formattedElapsedPace
         let elevationAvailable = ElevationProfile(
             routePoints: workout.routePoints

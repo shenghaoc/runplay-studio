@@ -11,8 +11,16 @@
   all elapsed time as active because pause boundaries cannot be determined.
 - **Paused time** is elapsed minus active, clamped to a finite non-negative
   value.
-- **Moving time** is not estimated. Active time must not be presented as moving
-  time.
+- **Moving time** is an estimate of active time without confidently stationary
+  intervals. Uncertain active intervals count as moving.
+- **Stopped time** is an estimate of confidently stationary active time. It
+  never includes explicit pauses or recording gaps.
+
+The durable invariants are `elapsed = active + paused` and
+`active = moving + stopped`. Movement estimation uses normalized route data,
+`WorkoutTimeline`, and a central hysteresis policy. Sparse or irregular routes
+use the conservative fallback `moving = active`, `stopped = 0`; diagnostics are
+persisted, while per-interval state is rebuilt at runtime.
 
 `WorkoutTimeline` is the platform-neutral authority for these clocks. It also
 derives active time at each point, clock values at cumulative distance, and the
@@ -37,6 +45,7 @@ struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     var analysisVersion: Int
     var normalizationVersion: Int
     var analysisWarnings: [WorkoutAnalysisWarning]
+    var movementDiagnostics: MovementDiagnostics
     var qualityDiagnostics: RouteQualityDiagnostics
     var routeDistanceSource: RouteDistanceSource
     var routeDistanceProvenance: RouteDistanceProvenance
@@ -180,7 +189,10 @@ struct RunSplit: Identifiable, Codable {
     var distanceMeters: Double   // 1000 for 1km splits
     var elapsedSeconds: Double
     var activeSeconds: Double
+    var movingSeconds: Double
+    var stoppedSeconds: Double
     var paceSecondsPerKilometer: Double        // active pace
+    var movingPaceSecondsPerKilometer: Double  // estimated moving pace
     var elapsedPaceSecondsPerKilometer: Double
     var averageHeartRateBPM: Double?
     var elevationGainMeters: Double?
@@ -208,10 +220,14 @@ struct RunSummary: Codable {
     var totalElapsedSeconds: Double
     var totalActiveSeconds: Double
     var totalPausedSeconds: Double
+    var totalMovingSeconds: Double
+    var totalStoppedSeconds: Double
     var averagePaceSecondsPerKilometer: Double       // active pace
     var elapsedPaceSecondsPerKilometer: Double
     var averageSpeedMetersPerSecond: Double          // active speed
     var elapsedAverageSpeedMetersPerSecond: Double
+    var movingPaceSecondsPerKilometer: Double
+    var movingAverageSpeedMetersPerSecond: Double
     var elevationGainMeters: Double
     var elevationLossMeters: Double
     var averageHeartRateBPM: Double?
@@ -224,6 +240,8 @@ All clock, pace, and speed values are finite and non-negative. No-pause routes
 have equal elapsed and active values. The compatibility names
 `averagePaceSecondsPerKilometer` and `averageSpeedMetersPerSecond` retain active
 semantics; explicit elapsed variants are additive.
+Moving pace and speed are additive estimated fields and never replace canonical
+active pace/speed.
 
 Elevation gain and loss come from the shared corrected profile. For backward
 compatibility the persisted numeric summary fields retain safe finite defaults;

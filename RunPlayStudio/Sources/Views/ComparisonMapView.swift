@@ -241,13 +241,27 @@ struct ComparisonMapView: View {
             }
 
             GridRow {
+                metricLabel("Moving (est.)")
+                metricValue(metrics.primaryMovingFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonMovingFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.movingTimeDeltaFormatted, color: deltaColor(metrics.movingTimeDeltaSeconds))
+            }
+
+            GridRow {
+                metricLabel("Stopped (est.)")
+                metricValue(metrics.primaryStoppedFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonStoppedFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.stoppedTimeDeltaFormatted, color: deltaColor(metrics.stoppedTimeDeltaSeconds))
+            }
+
+            GridRow {
                 metricLabel("Active Pace")
                 metricValue(metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
             }
         }
-        .help("Elapsed includes pauses. Active and pace exclude recording gaps.")
+        .help("Elapsed includes pauses. Active excludes recording gaps. Moving and stopped time are estimates.")
     }
 
     private func metricLabel(_ label: String) -> some View {

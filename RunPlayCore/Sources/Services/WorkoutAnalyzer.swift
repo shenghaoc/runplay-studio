@@ -38,7 +38,7 @@ public struct WorkoutAnalyzer: Sendable {
         _ workout: inout RunWorkout,
         context: WorkoutAnalysisContext,
         policy: RouteQualityPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @escaping @Sendable () -> Bool
     ) throws {
         try throwIfCancelled(isCancelled)
         try calculateDerivedMetrics(
@@ -48,22 +48,57 @@ public struct WorkoutAnalyzer: Sendable {
             isCancelled: isCancelled
         )
         try throwIfCancelled(isCancelled)
-        workout.summary = calculateSummary(workout, context: context, policy: policy)
+
+        // Build movement profile from the (possibly updated) route points
+        let movementProfile: MovementProfile
+        if let existing = context.movementProfile {
+            movementProfile = existing
+        } else {
+            movementProfile = try MovementProfile(
+                routePoints: workout.routePoints,
+                timeline: context.timeline,
+                isCancelled: isCancelled
+            )
+        }
+        let ctx = WorkoutAnalysisContext(
+            routePoints: workout.routePoints,
+            elevationProfile: context.elevationProfile,
+            movementProfile: movementProfile
+        )
+
+        workout.summary = calculateSummary(workout, context: ctx, policy: policy)
         try throwIfCancelled(isCancelled)
         workout.splits = try SplitCalculator.calculateSplits(
             from: workout,
-            context: context,
+            context: ctx,
             policy: policy,
             isCancelled: isCancelled
         )
         workout.segments = try SegmentDetector.detectSegments(
             from: workout,
-            context: context,
+            context: ctx,
             policy: policy,
             isCancelled: isCancelled
         )
         try throwIfCancelled(isCancelled)
         workout.analysisVersion = RunWorkout.currentAnalysisVersion
+        workout.movementDiagnostics = movementProfile.diagnostics
+
+        // Attach movement diagnostics as analysis warnings
+        var warnings = workout.analysisWarnings.filter {
+            $0 != .movementEstimatedStoppedTime && $0 != .movementLowReliability
+        }
+        if movementProfile.totalStoppedSeconds > 0 {
+            if !warnings.contains(.movementEstimatedStoppedTime) {
+                warnings.append(.movementEstimatedStoppedTime)
+            }
+        }
+        if movementProfile.diagnostics.usedConservativeFallback {
+            if !warnings.contains(.movementLowReliability) {
+                warnings.append(.movementLowReliability)
+            }
+        }
+        workout.analysisWarnings = warnings
     }
 
     /// Apply route normalization before analysis. Importers and normalization
@@ -193,6 +228,12 @@ public struct WorkoutAnalyzer: Sendable {
         )
         let activePace = activeSpeed > 0 ? 1_000 / activeSpeed : 0
         let elapsedPace = elapsedSpeed > 0 ? 1_000 / elapsedSpeed : 0
+        let movingSpeed = Self.speed(
+            distanceMeters: totalDistance,
+            seconds: context.movementProfile?.totalMovingSeconds ?? timeline.totalActiveSeconds,
+            maximumMetersPerSecond: policy.maximumSourceSpeedMetersPerSecond
+        )
+        let movingPace = movingSpeed > 0 ? 1_000 / movingSpeed : 0
 
         let elevationGain = context.elevationProfile.totalAscentMeters ?? 0
         let elevationLoss = context.elevationProfile.totalDescentMeters ?? 0
@@ -221,6 +262,10 @@ public struct WorkoutAnalyzer: Sendable {
             totalElapsedSeconds: timeline.totalElapsedSeconds,
             totalActiveSeconds: timeline.totalActiveSeconds,
             totalPausedSeconds: timeline.totalPausedSeconds,
+            totalMovingSeconds: context.movementProfile?.totalMovingSeconds,
+            totalStoppedSeconds: context.movementProfile?.totalStoppedSeconds,
+            movingPaceSecondsPerKilometer: movingPace,
+            movingAverageSpeedMetersPerSecond: movingSpeed,
             averagePaceSecondsPerKilometer: activePace,
             elapsedPaceSecondsPerKilometer: elapsedPace,
             averageSpeedMetersPerSecond: activeSpeed,

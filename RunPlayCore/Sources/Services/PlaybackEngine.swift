@@ -9,6 +9,7 @@ public class PlaybackEngine {
     private var workout: RunWorkout?
     private var timeline: WorkoutTimeline?
     private var elevationProfile: ElevationProfile?
+    private var movementProfile: MovementProfile?
 
     public static let speedOptions: [Double] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 
@@ -21,6 +22,10 @@ public class PlaybackEngine {
         let timeline = context.timeline
         self.timeline = context.timeline
         self.elevationProfile = context.elevationProfile
+        self.movementProfile = try? MovementProfile(
+            routePoints: workout.routePoints,
+            timeline: timeline
+        )
 
         state = ReplayState(
             playbackState: .stopped,
@@ -127,12 +132,16 @@ public class PlaybackEngine {
         guard let point = currentRoutePoint else { return SelectedMetrics() }
         let replaySample = timeline?.replaySample(atElapsedTime: state.currentTime)
         let pointActive = timeline?.activeSeconds(atPointIndex: state.currentPointIndex)
+        let movState = timeline.flatMap { movementProfile?.state(atElapsedTime: state.currentTime, timeline: $0) }
 
         return SelectedMetrics(
             elapsedSeconds: state.currentTime,
             activeSeconds: replaySample?.pointIndex == state.currentPointIndex
                 ? replaySample?.activeSeconds
                 : pointActive,
+            movingSeconds: movementProfile?.movingSeconds(atPointIndex: state.currentPointIndex),
+            stoppedSeconds: movementProfile?.stoppedSeconds(atPointIndex: state.currentPointIndex),
+            movementState: movState,
             isInRecordingGap: replaySample?.isInRecordingGap ?? false,
             distanceMeters: state.currentDistance,
             paceSecondsPerKilometer: point.paceSecondsPerKilometer,

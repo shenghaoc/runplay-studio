@@ -12,7 +12,11 @@ RunPlay Studio is a local-first desktop replay studio for GPS running workouts. 
 
 Time labels are pause-aware: **Elapsed** includes recording gaps, **Active**
 excludes gaps between continuous route segments, and **Pace** uses active time.
-Moving-time threshold estimation is not implemented.
+**Moving** and **Stopped** are conservative GPS-derived estimates within active
+time: `active = moving + stopped`. Uncertain active intervals count as moving;
+explicit pauses remain paused and are never inferred as stops. **Moving Pace
+(est.)** is separate—canonical **Pace** remains active-time based. Sparse or
+irregular timing falls back safely to `moving = active`, `stopped = 0`.
 
 ---
 
@@ -45,9 +49,9 @@ Moving-time threshold estimation is not implemented.
 
 | Format | Description |
 |--------|-------------|
-| JSON   | Explicit elapsed, active, paused, pace, split, and segment fields |
-| CSV    | Splits and segments with explicit clock and pace columns |
-| PNG    | Polished summary card with explicit clock labels (1200×1600) |
+| JSON   | Explicit elapsed, active, paused, moving/stopped estimates, pace, diagnostics, splits, and segments |
+| CSV    | Splits and segments with explicit clock and pace columns; estimated moving/stopped labels |
+| PNG    | Polished summary card with explicit clock labels and moving estimates (1200×1600) |
 
 ---
 

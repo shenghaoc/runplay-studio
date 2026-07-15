@@ -120,6 +120,8 @@ public struct ExportService: Sendable {
         lines.append(CSVRow.joined([
             "Split", "Start_km", "End_km", "Distance_km",
             "Elapsed_Duration_s", "Active_Duration_s",
+            "Moving_Duration_Estimated_s", "Stopped_Duration_Estimated_s",
+            "Moving_Pace_Estimated_min_km",
             "Active_Pace_min_km", "Elapsed_Pace_min_km",
             "Corrected_Elevation_Gain_m", "Avg_HR_bpm"
         ]))
@@ -133,6 +135,9 @@ public struct ExportService: Sendable {
                 formatNumber(split.distanceMeters / 1000),
                 formatNumber(split.elapsedSeconds),
                 formatNumber(split.activeSeconds),
+                formatNumber(split.movingSeconds),
+                formatNumber(split.stoppedSeconds),
+                formatNumber(split.movingPaceSecondsPerKilometer / 60),
                 formatNumber(split.paceSecondsPerKilometer / 60),
                 formatNumber(split.elapsedPaceSecondsPerKilometer / 60),
                 split.elevationGainMeters.map { formatNumber($0) } ?? "",

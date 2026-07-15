@@ -30,6 +30,8 @@ struct SplitTableView: View {
                         .font(AppDesign.Typography.compactMetric.monospacedDigit())
                     Text("Active \(split.formattedActive)")
                         .font(AppDesign.Typography.compactMetric.monospacedDigit())
+                    Text("Moving (est.) \(split.formattedMoving)")
+                        .font(AppDesign.Typography.compactMetric.monospacedDigit())
                     Text("Elapsed \(split.formattedElapsed)")
                         .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 }
@@ -82,6 +84,18 @@ struct SplitTableView: View {
                         .monospacedDigit()
                 }
                 .width(60)
+
+                TableColumn("Moving (est.)") { split in
+                    Text(split.formattedMoving)
+                        .monospacedDigit()
+                }
+                .width(90)
+
+                TableColumn("Moving Pace (est.)") { split in
+                    Text(split.formattedMovingPace)
+                        .monospacedDigit()
+                }
+                .width(115)
 
                 TableColumn("Active Pace") { split in
                     Text(split.formattedPace)

@@ -28,6 +28,15 @@ public struct WorkoutComparisonSummary: Sendable {
     public let primaryPausedSeconds: Double
     public let comparisonPausedSeconds: Double
     public let pausedTimeDeltaSeconds: Double
+    public let primaryMovingSeconds: Double
+    public let comparisonMovingSeconds: Double
+    public let movingTimeDeltaSeconds: Double
+    public let primaryStoppedSeconds: Double
+    public let comparisonStoppedSeconds: Double
+    public let stoppedTimeDeltaSeconds: Double
+    public let primaryMovingPaceSecondsPerKm: Double
+    public let comparisonMovingPaceSecondsPerKm: Double
+    public let movingPaceDeltaSecondsPerKm: Double
 
     /// Source-compatible pace fields use active time.
     public let primaryPaceSecondsPerKm: Double
@@ -69,16 +78,16 @@ public struct WorkoutComparisonSummary: Sendable {
     public var elapsedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedTimeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
     public var activeTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeTimeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
@@ -88,6 +97,26 @@ public struct WorkoutComparisonSummary: Sendable {
             positiveLabel: "more paused",
             negativeLabel: "less paused"
         )
+    }
+
+    public var movingTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            movingTimeDeltaSeconds,
+            positiveLabel: NSLocalizedString("more moving", comment: "Comparison moving-time delta"),
+            negativeLabel: NSLocalizedString("less moving", comment: "Comparison moving-time delta")
+        )
+    }
+
+    public var stoppedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            stoppedTimeDeltaSeconds,
+            positiveLabel: NSLocalizedString("more stopped", comment: "Comparison stopped-time delta"),
+            negativeLabel: NSLocalizedString("less stopped", comment: "Comparison stopped-time delta")
+        )
+    }
+
+    public var movingPaceDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: "/km")
     }
 
     public var durationDeltaFormatted: String { elapsedTimeDeltaFormatted }
@@ -157,6 +186,8 @@ public struct SplitComparison: Identifiable, Sendable {
     public let comparisonSplit: RunSplit?
     public let elapsedDurationDeltaSeconds: Double?
     public let activeDurationDeltaSeconds: Double?
+    public let movingDurationDeltaSeconds: Double?
+    public let stoppedDurationDeltaSeconds: Double?
     public let paceDeltaSecondsPerKm: Double?
     public let winner: ComparisonResult
 
@@ -165,8 +196,8 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedDurationDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
@@ -175,8 +206,24 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedActiveDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeDurationDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+        )
+    }
+
+    public var formattedMovingDurationDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            movingDurationDeltaSeconds,
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+        )
+    }
+
+    public var formattedStoppedDurationDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            stoppedDurationDeltaSeconds,
+            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
+            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
         )
     }
 
@@ -210,6 +257,12 @@ public struct ComparisonDistanceMetrics: Sendable {
     public let primaryActiveSeconds: Double?
     public let comparisonActiveSeconds: Double?
     public let activeTimeDeltaSeconds: Double?
+    public let primaryMovingSeconds: Double?
+    public let comparisonMovingSeconds: Double?
+    public let movingTimeDeltaSeconds: Double?
+    public let primaryStoppedSeconds: Double?
+    public let comparisonStoppedSeconds: Double?
+    public let stoppedTimeDeltaSeconds: Double?
     public let primaryPaceSecondsPerKm: Double?
     public let comparisonPaceSecondsPerKm: Double?
     public let paceDeltaSecondsPerKm: Double?
@@ -240,6 +293,12 @@ public struct ComparisonDistanceMetrics: Sendable {
             primaryActiveSeconds: nil,
             comparisonActiveSeconds: nil,
             activeTimeDeltaSeconds: nil,
+            primaryMovingSeconds: nil,
+            comparisonMovingSeconds: nil,
+            movingTimeDeltaSeconds: nil,
+            primaryStoppedSeconds: nil,
+            comparisonStoppedSeconds: nil,
+            stoppedTimeDeltaSeconds: nil,
             primaryScenePoint: primaryScenePoint,
             comparisonScenePoint: comparisonScenePoint
         )
@@ -256,6 +315,12 @@ public struct ComparisonDistanceMetrics: Sendable {
         primaryActiveSeconds: Double?,
         comparisonActiveSeconds: Double? = nil,
         activeTimeDeltaSeconds: Double? = nil,
+        primaryMovingSeconds: Double? = nil,
+        comparisonMovingSeconds: Double? = nil,
+        movingTimeDeltaSeconds: Double? = nil,
+        primaryStoppedSeconds: Double? = nil,
+        comparisonStoppedSeconds: Double? = nil,
+        stoppedTimeDeltaSeconds: Double? = nil,
         primaryScenePoint: RouteScenePoint?,
         comparisonScenePoint: RouteScenePoint?
     ) {
@@ -266,6 +331,12 @@ public struct ComparisonDistanceMetrics: Sendable {
         self.primaryActiveSeconds = Self.nonNegativeFiniteOptional(primaryActiveSeconds)
         self.comparisonActiveSeconds = Self.nonNegativeFiniteOptional(comparisonActiveSeconds)
         self.activeTimeDeltaSeconds = Self.finiteOptional(activeTimeDeltaSeconds)
+        self.primaryMovingSeconds = Self.nonNegativeFiniteOptional(primaryMovingSeconds)
+        self.comparisonMovingSeconds = Self.nonNegativeFiniteOptional(comparisonMovingSeconds)
+        self.movingTimeDeltaSeconds = Self.finiteOptional(movingTimeDeltaSeconds)
+        self.primaryStoppedSeconds = Self.nonNegativeFiniteOptional(primaryStoppedSeconds)
+        self.comparisonStoppedSeconds = Self.nonNegativeFiniteOptional(comparisonStoppedSeconds)
+        self.stoppedTimeDeltaSeconds = Self.finiteOptional(stoppedTimeDeltaSeconds)
         self.primaryPaceSecondsPerKm = Self.positiveFiniteOptional(primaryPaceSecondsPerKm)
         self.comparisonPaceSecondsPerKm = Self.positiveFiniteOptional(comparisonPaceSecondsPerKm)
         self.paceDeltaSecondsPerKm = Self.finiteOptional(paceDeltaSecondsPerKm)
@@ -280,6 +351,10 @@ public struct ComparisonDistanceMetrics: Sendable {
     public var comparisonElapsedFormatted: String { DisplayFormatter.formatElapsed(comparisonElapsedSeconds) }
     public var primaryActiveFormatted: String { DisplayFormatter.formatElapsed(primaryActiveSeconds) }
     public var comparisonActiveFormatted: String { DisplayFormatter.formatElapsed(comparisonActiveSeconds) }
+    public var primaryMovingFormatted: String { DisplayFormatter.formatElapsed(primaryMovingSeconds) }
+    public var comparisonMovingFormatted: String { DisplayFormatter.formatElapsed(comparisonMovingSeconds) }
+    public var primaryStoppedFormatted: String { DisplayFormatter.formatElapsed(primaryStoppedSeconds) }
+    public var comparisonStoppedFormatted: String { DisplayFormatter.formatElapsed(comparisonStoppedSeconds) }
     public var timeDeltaFormatted: String { elapsedTimeDeltaFormatted }
     public var elapsedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
@@ -293,6 +368,20 @@ public struct ComparisonDistanceMetrics: Sendable {
             activeTimeDeltaSeconds,
             positiveLabel: "longer",
             negativeLabel: "shorter"
+        )
+    }
+    public var movingTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            movingTimeDeltaSeconds,
+            positiveLabel: "more moving",
+            negativeLabel: "less moving"
+        )
+    }
+    public var stoppedTimeDeltaFormatted: String {
+        DisplayFormatter.formatSignedDurationDelta(
+            stoppedTimeDeltaSeconds,
+            positiveLabel: "more stopped",
+            negativeLabel: "less stopped"
         )
     }
     public var primaryPaceFormatted: String { DisplayFormatter.formatPace(primaryPaceSecondsPerKm) }
@@ -326,6 +415,8 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
     case missingHeartRate = "One or both runs lack heart rate data"
     case missingElevation = "One or both runs lack elevation data"
     case tooFewPoints = "One or both runs have very few data points"
+    case movementEstimated = "Stopped time is estimated from GPS; comparisons involving stopped time are approximate"
+    case movementEstimateReliabilityDiffers = "One run used a conservative moving-time fallback; moving-time comparisons are approximate"
 
     public var icon: String {
         switch self {
@@ -336,6 +427,8 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
         case .missingHeartRate: return "heart"
         case .missingElevation: return "mountain.2"
         case .tooFewPoints: return "chart.dots.scatterplot"
+        case .movementEstimated: return "figure.walk.motion"
+        case .movementEstimateReliabilityDiffers: return "exclamationmark.triangle"
         }
     }
 }
