@@ -49,7 +49,8 @@ struct CompareView: View {
             } else {
                 ComparisonEmptyView(
                     workoutCount: appState.workouts.count,
-                    primaryName: appState.selectedWorkout?.displayName
+                    primaryName: appState.selectedWorkout?.displayName,
+                    onImport: { appState.showImporter = true }
                 )
             }
         }
@@ -298,6 +299,7 @@ struct DeltaCard: View {
 struct ComparisonEmptyView: View {
     let workoutCount: Int
     let primaryName: String?
+    let onImport: () -> Void
 
     var body: some View {
         VStack(spacing: AppDesign.Spacing.xLarge) {
@@ -313,7 +315,17 @@ struct ComparisonEmptyView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            if workoutCount >= 2 && primaryName != nil {
+            if workoutCount < 2 {
+                Button(action: onImport) {
+                    Label("Import File", systemImage: "doc.badge.plus")
+                        .font(AppDesign.Typography.bodySemibold)
+                        .padding(.horizontal, AppDesign.Spacing.large)
+                        .padding(.vertical, AppDesign.Spacing.small)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .help("Select a file to import and compare")
+            } else if primaryName != nil {
                 Text("Use the \"Compare With\" picker above to select a second run.")
                     .font(AppDesign.Typography.compactMetric)
                     .foregroundStyle(.tertiary)

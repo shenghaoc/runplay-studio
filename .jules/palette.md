@@ -12,3 +12,7 @@
 ## 2026-07-13 - Button Ambiguity in SwiftUI
 **Learning:** Even text buttons like "Clear" can be ambiguous to screen readers or lack tooltip affordances when they exist far from their controlled context (e.g., in a complex comparison view selector).
 **Action:** Always add `.help()` and `.accessibilityLabel()` to buttons that might be ambiguous, perform destructive/clearing actions, or could benefit from explicit context for VoiceOver and mouse users. Make `.help()` more descriptive and contextual than `.accessibilityLabel()` to avoid redundant screen reader announcements.
+
+## 2026-07-15 - Empty States Require Actionable CTAs
+**Learning:** The comparison empty state informed users they needed another run to compare, but lacked a direct way to resolve this (no import button), forcing them to hunt for the global import action in the sidebar or toolbar.
+**Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states that directly solve the condition causing the empty state.
