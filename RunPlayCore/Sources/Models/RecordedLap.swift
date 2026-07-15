@@ -322,8 +322,6 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
         elapsedSeconds: Double = 0,
         activeSeconds: Double = 0,
         movingSeconds: Double = 0,
-        stoppedSeconds: Double = 0,
-        pausedSeconds: Double = 0,
         activePaceSecondsPerKilometer: Double = 0,
         movingPaceSecondsPerKilometer: Double = 0,
         elapsedPaceSecondsPerKilometer: Double = 0,
@@ -364,8 +362,6 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
         // Derived invariants win over inconsistent input.
         self.stoppedSeconds = max(0, safeActive - safeMoving)
         self.pausedSeconds = max(0, safeElapsed - safeActive)
-        _ = stoppedSeconds
-        _ = pausedSeconds
 
         let derivedActivePace = Self.pace(seconds: safeActive, distanceMeters: self.distanceMeters)
         let derivedMovingPace = Self.pace(seconds: safeMoving, distanceMeters: self.distanceMeters)

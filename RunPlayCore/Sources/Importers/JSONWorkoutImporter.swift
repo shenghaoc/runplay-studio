@@ -157,8 +157,6 @@ public struct JSONWorkoutImporter: WorkoutImporting {
                 elapsedSeconds: lap.elapsedSeconds,
                 activeSeconds: lap.activeSeconds,
                 movingSeconds: lap.movingSeconds,
-                stoppedSeconds: lap.stoppedSeconds,
-                pausedSeconds: lap.pausedSeconds,
                 activePaceSecondsPerKilometer: lap.activePaceSecondsPerKilometer,
                 movingPaceSecondsPerKilometer: lap.movingPaceSecondsPerKilometer,
                 elapsedPaceSecondsPerKilometer: lap.elapsedPaceSecondsPerKilometer,

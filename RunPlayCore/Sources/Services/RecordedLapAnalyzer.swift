@@ -102,7 +102,6 @@ public struct RecordedLapAnalyzer: Sendable {
             let distance = max(0, range.end.distanceMeters - range.start.distanceMeters)
             let elapsed = range.elapsedSeconds
             let active = range.activeSeconds
-            let paused = range.pausedSeconds
 
             let moving = context.movementProfile?.movingSeconds(
                 fromElapsed: startElapsed,
@@ -110,7 +109,6 @@ public struct RecordedLapAnalyzer: Sendable {
                 timeline: timeline
             ) ?? active
             let safeMoving = min(max(0, moving), active)
-            let stopped = max(0, active - safeMoving)
 
             let activePace = pace(seconds: active, distanceMeters: distance)
             let movingPace = pace(seconds: safeMoving, distanceMeters: distance)
@@ -173,8 +171,6 @@ public struct RecordedLapAnalyzer: Sendable {
                 elapsedSeconds: elapsed,
                 activeSeconds: active,
                 movingSeconds: safeMoving,
-                stoppedSeconds: stopped,
-                pausedSeconds: paused,
                 activePaceSecondsPerKilometer: activePace,
                 movingPaceSecondsPerKilometer: movingPace,
                 elapsedPaceSecondsPerKilometer: elapsedPace,

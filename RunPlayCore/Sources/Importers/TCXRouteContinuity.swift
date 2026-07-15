@@ -26,10 +26,12 @@ public struct TCXRouteContinuityPolicy: Hashable, Sendable {
         forcedGapTimeSeconds: Double = 30,
         forcedGapDistanceMeters: Double = 150
     ) {
-        self.maximumSeamlessTimeGapSeconds = max(0, maximumSeamlessTimeGapSeconds)
-        self.maximumSeamlessDistanceMeters = max(0, maximumSeamlessDistanceMeters)
-        self.forcedGapTimeSeconds = max(self.maximumSeamlessTimeGapSeconds, forcedGapTimeSeconds)
-        self.forcedGapDistanceMeters = max(self.maximumSeamlessDistanceMeters, forcedGapDistanceMeters)
+        let clampedTimeGap = max(0, maximumSeamlessTimeGapSeconds)
+        let clampedDistance = max(0, maximumSeamlessDistanceMeters)
+        self.maximumSeamlessTimeGapSeconds = clampedTimeGap
+        self.maximumSeamlessDistanceMeters = clampedDistance
+        self.forcedGapTimeSeconds = max(clampedTimeGap, forcedGapTimeSeconds)
+        self.forcedGapDistanceMeters = max(clampedDistance, forcedGapDistanceMeters)
     }
 }
 

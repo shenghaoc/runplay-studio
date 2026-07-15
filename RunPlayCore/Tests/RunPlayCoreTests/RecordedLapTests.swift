@@ -24,8 +24,6 @@ final class RecordedLapTests: XCTestCase {
             elapsedSeconds: 300,
             activeSeconds: 280,
             movingSeconds: 260,
-            stoppedSeconds: 20,
-            pausedSeconds: 20,
             activePaceSecondsPerKilometer: 280,
             movingPaceSecondsPerKilometer: 260,
             elapsedPaceSecondsPerKilometer: 300,
@@ -115,9 +113,7 @@ final class RecordedLapTests: XCTestCase {
             distanceMeters: 500,
             elapsedSeconds: 100,
             activeSeconds: 150, // exceeds elapsed
-            movingSeconds: 200, // exceeds active
-            stoppedSeconds: 0,
-            pausedSeconds: 0
+            movingSeconds: 200 // exceeds active
         )
         XCTAssertEqual(lap.activeSeconds, 100, accuracy: 0.001)
         XCTAssertEqual(lap.movingSeconds, 100, accuracy: 0.001)
