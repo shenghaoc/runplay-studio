@@ -369,6 +369,14 @@ class AppState: ObservableObject {
         selectedComparisonDistanceMeters = 0
     }
 
+    /// Enter comparison mode without a specific comparison workout,
+    /// showing the empty state so users can import additional runs.
+    func enterEmptyComparisonMode() {
+        comparisonWorkout = nil
+        isComparing = true
+        comparisonSelectionMessage = nil
+    }
+
     /// Whether the supplied workout can be compared with the current primary selection.
     func canCompare(_ workout: RunWorkout) -> Bool {
         guard let selectedWorkout else { return false }
