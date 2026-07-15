@@ -53,6 +53,19 @@ above remain unchecked.
 - [ ] Confirm distance and active time remain fixed while elapsed time advances.
 - [ ] Confirm a kilometre split crossing the pause is still one kilometre split.
 - [ ] Confirm split active pace excludes the pause.
+
+## Recorded laps (FIT / TCX)
+
+- [ ] Import a TCX with two seamless manual/auto laps; map route stays continuous across the lap boundary.
+- [ ] Confirm Active time does not lose time at a seamless lap boundary.
+- [ ] Open Splits and switch between Distance Splits and Recorded Laps.
+- [ ] Confirm recorded lap trigger, distance, clocks, and pace; missing values show as unavailable.
+- [ ] Seek to each lap start; replay highlighting changes exactly at the next-lap start.
+- [ ] Import a TCX with a pause as multiple Tracks; the true pause remains a route gap.
+- [ ] Import a FIT with manual and auto-distance laps; triggers and source totals are retained.
+- [ ] Export Recorded Laps CSV, combined CSV (with `# Recorded Laps`), and JSON; filenames distinguish laps from splits.
+- [ ] Quit and relaunch; recorded laps persist. Open a legacy FIT/TCX snapshot and confirm no fabricated laps; reimport recovers them.
+- [ ] Compare two workouts with recorded laps (ordinal pairing only).
 - [ ] Compare the paused run against an otherwise identical uninterrupted run.
 - [ ] Confirm active and elapsed deltas are distinguished.
 - [ ] Export JSON, CSV, and PNG and inspect the labels.

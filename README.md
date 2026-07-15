@@ -8,7 +8,7 @@ A native macOS post-run 2D/3D route replay and analysis app for runners.
 
 ## What It Is
 
-RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with an Apple Maps 2D/3D route view, synchronized charts, split analysis, and segment highlights.
+RunPlay Studio is a local-first desktop replay studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files and explore them with an Apple Maps 2D/3D route view, synchronized charts, calculated kilometre splits, source-recorded laps, and segment highlights.
 
 Time labels are pause-aware: **Elapsed** includes recording gaps, **Active**
 excludes gaps between continuous route segments, and **Pace** uses active time.
@@ -39,8 +39,8 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 |--------|--------|-------|
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
-| TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, pause/resume boundaries, and enhanced metrics; see limitations below |
+| TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -205,8 +205,8 @@ To build a local `.app` bundle:
 |--------|--------|-------|
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
-| TCX    | ✅ Full support | Training Center XML with laps, HR, cadence, distance; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, pause/resume boundaries, and enhanced metrics; see limitations below |
+| TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -249,11 +249,13 @@ pitched 3D perspective; it does not switch to a custom SceneKit world.
 - Interactive scrubbing synced to replay
 - Heart-rate chart shows an explicit no-data state when usable HR samples are unavailable
 
-### Split Analysis
-- Automatic global kilometer splits that continue through pauses
-- Per-split elapsed time, active time, active pace, elapsed pace, elevation gain, and heart rate
+### Split and Recorded-Lap Analysis
+- Automatic global kilometre **calculated splits** that continue through pauses
+- **Recorded laps** preserved from FIT lap messages and TCX `<Lap>` summaries (triggers, source totals, route-derived clocks)
+- Splits workspace mode selector: Distance Splits vs Recorded Laps when source laps exist
+- Per-split/lap elapsed, active, moving/stopped estimates, pace, elevation, and heart rate
+- Current calculated split and recorded lap highlighted during replay; seek to lap start
 - Fastest/slowest segment highlighting
-- Current split highlighted during replay
 
 ### Synchronized Replay
 All views stay in sync with the replay position:
@@ -284,8 +286,9 @@ segment highlights it in 3D and seeks the replay to its start.
 
 ### Export
 Export workout data as local files:
-- **JSON Summary** — Elapsed, active, paused, active/elapsed pace, splits, and segments
-- **Splits CSV** — Explicit elapsed/active duration and pace columns, elevation, and heart rate
+- **JSON Summary** — Elapsed, active, paused, active/elapsed pace, calculated splits, recorded laps, and segments
+- **Distance Splits CSV** — Explicit elapsed/active duration and pace columns, elevation, and heart rate
+- **Recorded Laps CSV** — Source triggers, route-derived clocks, and source-reported totals (distinct from splits)
 - **Segments CSV** — Active duration/pace with elapsed endpoints and metrics
 - **Combined CSV** — Splits and segments in one file
 - **PNG Summary Card** — Polished stats card image (1200×1600)

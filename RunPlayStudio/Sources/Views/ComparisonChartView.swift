@@ -200,3 +200,70 @@ struct SplitComparisonTableView: View {
     }
 
 }
+
+/// Ordinal recorded-lap comparison. Does not claim route alignment.
+struct RecordedLapComparisonTableView: View {
+    let comparisons: [RecordedLapComparison]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+            Text("Recorded Laps (ordinal)")
+                .font(AppDesign.Typography.sectionHeadline)
+                .foregroundStyle(.secondary)
+                .help("Pairs lap 1 with lap 1 only. This is not a route-aligned comparison.")
+
+            if let caveat = comparisons.flatMap(\.caveats).first {
+                Text(caveat)
+                    .font(AppDesign.Typography.secondary)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if comparisons.isEmpty {
+                Text("No recorded laps to compare")
+                    .font(AppDesign.Typography.secondary)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Table(comparisons) {
+                    TableColumn("Lap") { row in
+                        Text("\(row.lapIndex)")
+                            .monospacedDigit()
+                    }
+                    .width(40)
+
+                    TableColumn("Selected") { row in
+                        if let lap = row.primaryLap {
+                            Text(lap.formattedActivePace)
+                                .monospacedDigit()
+                                .foregroundStyle(AppDesign.primaryBlue)
+                        } else {
+                            Text("—")
+                                .foregroundStyle(.quaternary)
+                        }
+                    }
+                    .width(90)
+
+                    TableColumn("Comparison") { row in
+                        if let lap = row.comparisonLap {
+                            Text(lap.formattedActivePace)
+                                .monospacedDigit()
+                                .foregroundStyle(AppDesign.comparisonOrange)
+                        } else {
+                            Text("—")
+                                .foregroundStyle(.quaternary)
+                        }
+                    }
+                    .width(110)
+
+                    TableColumn("Δ Active") { row in
+                        Text(row.formattedActivePaceDelta)
+                            .monospacedDigit()
+                            .foregroundStyle(AppDesign.deltaColor(row.activePaceDeltaSecondsPerKm, threshold: 5))
+                    }
+                    .width(100)
+                }
+                .frame(minHeight: 120)
+            }
+        }
+    }
+}

@@ -168,7 +168,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNotNil(json)
 
         XCTAssertEqual(json?["appName"] as? String, "RunPlay Studio")
-        XCTAssertEqual(json?["exportVersion"] as? String, "3.0")
+        XCTAssertEqual(json?["exportVersion"] as? String, "4.0")
         XCTAssertNotNil(json?["privacyNote"])
         XCTAssertNotNil(json?["workoutTitle"])
         XCTAssertEqual(
@@ -334,7 +334,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(jsonText.contains("RunPlay Studio"))
         XCTAssertTrue(splitsText.contains("Split"))
         XCTAssertTrue(segmentText.contains("Type"))
-        XCTAssertTrue(combinedText.contains("# Splits"))
+        XCTAssertTrue(combinedText.contains("# Distance Splits"))
         XCTAssertDemoExportContainsNoPrivateMarkers(jsonText)
         XCTAssertDemoExportContainsNoPrivateMarkers(splitsText)
         XCTAssertDemoExportContainsNoPrivateMarkers(segmentText)

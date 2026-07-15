@@ -96,6 +96,53 @@ struct FITFixtureBuilder {
         return data
     }
 
+    /// Build a sample run with one session and two lap messages (manual + distance).
+    static func buildSampleRunWithLaps() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(elapsedSeconds: 290, timerSeconds: 290, to: &content)
+
+        writeLapDefinitionMessage(to: &content)
+        // Lap 1: first half, manual trigger
+        writeLapMessage(
+            startOffset: 0,
+            endOffset: 140,
+            elapsedSeconds: 140,
+            timerSeconds: 140,
+            distanceMeters: 2_500,
+            trigger: 0,
+            to: &content
+        )
+        // Lap 2: second half, distance trigger
+        writeLapMessage(
+            startOffset: 140,
+            endOffset: 290,
+            elapsedSeconds: 150,
+            timerSeconds: 150,
+            distanceMeters: 2_500,
+            trigger: 2,
+            to: &content
+        )
+
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
     // MARK: - Private Helpers
 
     private static func writeHeader(to data: inout Data, dataSize: UInt32) {
@@ -172,6 +219,39 @@ struct FITFixtureBuilder {
         data.append(FITSport.running.rawValue)
         data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
+    }
+
+    private static func writeLapDefinitionMessage(to data: inout Data) {
+        data.append(0x42) // definition, local type 2
+        data.append(0x00) // reserved
+        data.append(0x00) // little-endian
+        data.append(contentsOf: [0x13, 0x00]) // global message 19 (lap)
+        data.append(6)
+        writeFieldDef(field: 253, size: 4, type: 134, to: &data) // timestamp
+        writeFieldDef(field: 2, size: 4, type: 134, to: &data)   // start_time
+        writeFieldDef(field: 7, size: 4, type: 134, to: &data)   // total_elapsed_time
+        writeFieldDef(field: 8, size: 4, type: 134, to: &data)   // total_timer_time
+        writeFieldDef(field: 9, size: 4, type: 134, to: &data)   // total_distance
+        writeFieldDef(field: 24, size: 1, type: 0, to: &data)    // lap_trigger (enum)
+    }
+
+    private static func writeLapMessage(
+        startOffset: UInt32,
+        endOffset: UInt32,
+        elapsedSeconds: UInt32,
+        timerSeconds: UInt32,
+        distanceMeters: UInt32,
+        trigger: UInt8,
+        to data: inout Data
+    ) {
+        let baseTimestamp: UInt32 = 1_000_000_000
+        data.append(0x02) // data message, local type 2
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + endOffset).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + startOffset).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (distanceMeters * 100).littleEndian) { Array($0) })
+        data.append(trigger)
     }
 
     private static func writeFieldDef(field: UInt8, size: UInt8, type: UInt8, to data: inout Data) {

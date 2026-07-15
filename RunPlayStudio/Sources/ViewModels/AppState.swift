@@ -402,10 +402,19 @@ class AppState: ObservableObject {
         )
     }
 
-    /// Get split comparisons, if available.
+    /// Get calculated split comparisons, if available.
     var splitComparisons: [SplitComparison] {
         guard let pair = comparisonPair else { return [] }
         return comparisonService.compareSplits(primary: pair.primary, comparison: pair.comparison)
+    }
+
+    /// Ordinal recorded-lap comparisons when either workout has source laps.
+    var recordedLapComparisons: [RecordedLapComparison] {
+        guard let pair = comparisonPair else { return [] }
+        return comparisonService.compareRecordedLaps(
+            primary: pair.primary,
+            comparison: pair.comparison
+        )
     }
 
     /// Get pace comparison metrics over distance.

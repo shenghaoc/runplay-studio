@@ -21,7 +21,7 @@ Import File → Importer → RouteQualityProcessor → Normalized Route + Diagno
 3. **Normalize**: `RouteQualityProcessor` validates fields, removes only strong isolated coordinate outliers, infers supported recording gaps, normalizes distance, and records distance provenance and quality diagnostics
 4. **Correct elevation**: `ElevationProfile` preserves source altitude on each `RoutePoint` while deriving an aligned, gap-safe corrected profile and threshold-confirmed ascent/descent
 5. **Build context**: `WorkoutAnalysisContext` owns one immutable profile and a `WorkoutTimeline` built from that same profile
-6. **Analyze**: `WorkoutAnalyzer` passes the context to summary, global-distance splits, and notable-segment detection so every elevation consumer shares one correction
+6. **Analyze**: `WorkoutAnalyzer` passes the context to summary, global-distance splits, source-recorded laps (`RecordedLapAnalyzer`), and notable-segment detection so every elevation consumer shares one correction
 7. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized route, provenance, diagnostics, warnings, and versioned analysis snapshot
 8. **Control**: `ReplayController` drives an elapsed-clock `PlaybackEngine` whose selected elevation comes from the corrected profile
 9. **Render and export**: Charts, route projection/colouring, comparison, and exports consume corrected analysis while raw imported altitude remains source data

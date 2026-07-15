@@ -592,6 +592,156 @@ final class TCXImporterTests: XCTestCase {
         }
     }
 
+    // MARK: - Recorded laps
+
+    func testTCXSeamlessLapsRemainOneRouteSegment() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <TotalTimeSeconds>20</TotalTimeSeconds>
+                <DistanceMeters>200</DistanceMeters>
+                <TriggerMethod>Manual</TriggerMethod>
+                <AverageHeartRateBpm><Value>140</Value></AverageHeartRateBpm>
+                <MaximumHeartRateBpm><Value>150</Value></MaximumHeartRateBpm>
+                <Cadence>85</Cadence>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                    <DistanceMeters>0</DistanceMeters>
+                    <HeartRateBpm><Value>140</Value></HeartRateBpm>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                    <DistanceMeters>200</DistanceMeters>
+                    <HeartRateBpm><Value>145</Value></HeartRateBpm>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+              <Lap StartTime="2026-07-05T07:30:20.000Z">
+                <TotalTimeSeconds>20</TotalTimeSeconds>
+                <DistanceMeters>200</DistanceMeters>
+                <TriggerMethod>Distance</TriggerMethod>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                    <DistanceMeters>0</DistanceMeters>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:40.000Z</Time>
+                    <Position><LatitudeDegrees>1.2974</LatitudeDegrees><LongitudeDegrees>103.7776</LongitudeDegrees></Position>
+                    <DistanceMeters>200</DistanceMeters>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let workout = try importer.importWorkout(from: createTempTCX(tcx))
+
+        XCTAssertEqual(workout.recordedLaps.count, 2)
+        XCTAssertEqual(workout.recordedLaps[0].trigger, .manual)
+        XCTAssertEqual(workout.recordedLaps[1].trigger, .distance)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.averageHeartRateBPM, 140)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.distanceMeters, 200)
+
+        // Seamless lap boundary must not create a route gap.
+        let segments = Set(workout.routePoints.map(\.routeSegmentIndex))
+        XCTAssertEqual(segments.count, 1, "Seamless laps should remain one route segment")
+
+        // Active time must not lose time at the lap boundary.
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 40, accuracy: 0.5)
+        XCTAssertEqual(workout.summary.totalActiveSeconds, 40, accuracy: 0.5)
+        XCTAssertEqual(workout.summary.totalPausedSeconds, 0, accuracy: 0.5)
+        XCTAssertEqual(workout.sourceStructureVersion, RunWorkout.currentSourceStructureVersion)
+    }
+
+    func testTCXMultiTrackPauseCreatesRouteGap() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <TotalTimeSeconds>620</TotalTimeSeconds>
+                <TriggerMethod>Manual</TriggerMethod>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:40:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2972</LatitudeDegrees><LongitudeDegrees>103.7772</LongitudeDegrees></Position>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:40:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2976</LatitudeDegrees><LongitudeDegrees>103.7778</LongitudeDegrees></Position>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let workout = try importer.importWorkout(from: createTempTCX(tcx))
+        let segments = Set(workout.routePoints.map(\.routeSegmentIndex))
+        XCTAssertGreaterThan(segments.count, 1, "Long multi-track pause should create a route gap")
+        XCTAssertEqual(workout.recordedLaps.count, 1)
+        XCTAssertGreaterThan(workout.summary.totalPausedSeconds, 0)
+    }
+
+    func testTCXLapSummaryDoesNotReplaceCanonicalMetrics() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <TotalTimeSeconds>20</TotalTimeSeconds>
+                <DistanceMeters>99999</DistanceMeters>
+                <TriggerMethod>Manual</TriggerMethod>
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                    <DistanceMeters>0</DistanceMeters>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7770</LongitudeDegrees></Position>
+                    <DistanceMeters>200</DistanceMeters>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let workout = try importer.importWorkout(from: createTempTCX(tcx))
+        XCTAssertEqual(workout.recordedLaps.count, 1)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.distanceMeters, 99_999)
+        XCTAssertLessThan(workout.recordedLaps[0].distanceMeters, 1_000)
+    }
+
     // MARK: - Helpers
 
     private func fixtureURL(_ name: String) throws -> URL {
