@@ -96,10 +96,6 @@ public enum TCXRouteContinuityResolver: Sendable {
 
         // Ambiguous middle ground: prefer a new segment so we never invent a
         // continuous map line across a likely pause/resume.
-        if distance.isFinite, distance > policy.maximumSeamlessDistanceMeters {
-            return .discontinuous
-        }
-
         return .discontinuous
     }
 

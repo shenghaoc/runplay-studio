@@ -31,13 +31,12 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
     // MARK: - Private
 
-    private struct RawWorkout: Codable {
+    private struct RawWorkout: Decodable {
         var metadata: WorkoutMetadata?
         var source: String?
         var routePoints: [RawRoutePoint]
-        var recordedLaps: [RecordedLap]?
+        var recordedLaps: LossyRecordedLapCollection?
         var sourceStructureVersion: Int?
-        var splits: [RunSplit]?
     }
 
     private struct RawRoutePoint: Codable {
@@ -104,9 +103,11 @@ public struct JSONWorkoutImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No valid route points found")
         }
 
-        // Optional recorded laps from native JSON. Malformed values are
-        // sanitised by RecordedLap's initializer; calculated splits stay separate.
-        let provisionalLaps = sanitizeRecordedLaps(raw.recordedLaps ?? [])
+        // Optional recorded laps from native JSON. Structurally malformed
+        // elements are counted and skipped; decoded values are sanitised by
+        // RunWorkout before analysis. Calculated splits stay separate.
+        let provisionalLaps = raw.recordedLaps?.values ?? []
+        let structurallyMalformedLapCount = raw.recordedLaps?.malformedElementCount ?? 0
 
         // Build workout and analyze
         var workout = RunWorkout(
@@ -135,14 +136,18 @@ public struct JSONWorkoutImporter: WorkoutImporting {
                 : .computeFromCoordinates,
             sourceInvalidCoordinatePointCount: invalidCoordinatePointCount
         )
+        if structurallyMalformedLapCount > 0 {
+            workout.recordedLapDiagnostics = workout.recordedLapDiagnostics
+                .includingStructurallyMalformedLaps(
+                    structurallyMalformedLapCount,
+                    validLapCount: workout.recordedLaps.count
+                )
+            if !workout.analysisWarnings.contains(.recordedLapsMalformedSkipped) {
+                workout.analysisWarnings.append(.recordedLapsMalformedSkipped)
+            }
+        }
 
         return workout
-    }
-
-    private func sanitizeRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {
-        laps.enumerated().map { index, lap in
-            lap.sanitized(lapIndex: lap.lapIndex > 0 ? lap.lapIndex : index + 1)
-        }
     }
 
     private func parseSource(_ source: String?) -> WorkoutSource {

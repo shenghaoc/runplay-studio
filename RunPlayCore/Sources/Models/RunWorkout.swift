@@ -92,7 +92,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.source = source
         self.routePoints = routePoints
         self.splits = splits
-        self.recordedLaps = recordedLaps.map { $0.sanitized() }
+        self.recordedLaps = Self.sanitizedRecordedLaps(recordedLaps)
         self.summary = summary
         self.segments = segments
         self.analysisVersion = max(RunWorkout.legacyAnalysisVersion, analysisVersion)
@@ -101,7 +101,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.analysisWarnings = analysisWarnings
         self.movementDiagnostics = movementDiagnostics
         self.qualityDiagnostics = qualityDiagnostics
-        self.recordedLapDiagnostics = recordedLapDiagnostics
+        self.recordedLapDiagnostics = Self.sanitizedRecordedLapDiagnostics(recordedLapDiagnostics)
         self.routeDistanceSource = routeDistanceSource
         self.routeDistanceProvenance = routeDistanceProvenance
     }
@@ -164,8 +164,12 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         source = try container.decode(WorkoutSource.self, forKey: .source)
         routePoints = try container.decode([RoutePoint].self, forKey: .routePoints)
         splits = try container.decode([RunSplit].self, forKey: .splits)
-        recordedLaps = try container.decodeIfPresent([RecordedLap].self, forKey: .recordedLaps)?
-            .map { $0.sanitized() } ?? []
+        let decodedLapCollection = try container.decodeIfPresent(
+            LossyRecordedLapCollection.self,
+            forKey: .recordedLaps
+        )
+        recordedLaps = Self.sanitizedRecordedLaps(decodedLapCollection?.values ?? [])
+        let structurallyMalformedLapCount = decodedLapCollection?.malformedElementCount ?? 0
         summary = try container.decode(RunSummary.self, forKey: .summary)
         segments = try container.decode([SegmentHighlight].self, forKey: .segments)
         analysisVersion = try container.decodeIfPresent(Int.self, forKey: .analysisVersion)
@@ -182,10 +186,21 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             RouteQualityDiagnostics.self,
             forKey: .qualityDiagnostics
         ) ?? .empty
-        recordedLapDiagnostics = try container.decodeIfPresent(
-            RecordedLapDiagnostics.self,
-            forKey: .recordedLapDiagnostics
-        ) ?? .empty
+        recordedLapDiagnostics = Self.sanitizedRecordedLapDiagnostics(
+            try container.decodeIfPresent(
+                RecordedLapDiagnostics.self,
+                forKey: .recordedLapDiagnostics
+            ) ?? .empty
+        )
+        if structurallyMalformedLapCount > 0 {
+            recordedLapDiagnostics = recordedLapDiagnostics.includingStructurallyMalformedLaps(
+                structurallyMalformedLapCount,
+                validLapCount: recordedLaps.count
+            )
+            if !analysisWarnings.contains(.recordedLapsMalformedSkipped) {
+                analysisWarnings.append(.recordedLapsMalformedSkipped)
+            }
+        }
         routeDistanceSource = try container.decodeIfPresent(
             RouteDistanceSource.self,
             forKey: .routeDistanceSource
@@ -216,4 +231,26 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(routeDistanceSource, forKey: .routeDistanceSource)
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)
     }
+
+    private static func sanitizedRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {
+        laps.enumerated().map { index, lap in
+            lap.sanitized(lapIndex: index + 1)
+        }
+    }
+
+    private static func sanitizedRecordedLapDiagnostics(
+        _ diagnostics: RecordedLapDiagnostics
+    ) -> RecordedLapDiagnostics {
+        RecordedLapDiagnostics(
+            sourceLapCount: diagnostics.sourceLapCount,
+            importedLapCount: diagnostics.importedLapCount,
+            malformedLapCount: diagnostics.malformedLapCount,
+            clampedBoundaryCount: diagnostics.clampedBoundaryCount,
+            timeMismatchCount: diagnostics.timeMismatchCount,
+            distanceMismatchCount: diagnostics.distanceMismatchCount,
+            triggersAvailable: diagnostics.triggersAvailable,
+            requiresReimportForSourceLaps: diagnostics.requiresReimportForSourceLaps
+        )
+    }
+
 }

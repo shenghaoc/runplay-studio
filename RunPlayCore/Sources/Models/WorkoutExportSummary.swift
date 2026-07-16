@@ -122,27 +122,34 @@ public struct RecordedLapExport: Codable, Sendable {
     public let reportedMetrics: RecordedLapReportedMetrics?
 
     public init(lap: RecordedLap) {
-        lapIndex = lap.lapIndex
-        trigger = lap.trigger.exportToken
-        startElapsedSeconds = ExportMetricSanitizer.nonNegative(lap.startElapsedSeconds)
-        endElapsedSeconds = ExportMetricSanitizer.nonNegative(lap.endElapsedSeconds)
-        startDistanceKm = ExportMetricSanitizer.nonNegative(lap.startDistanceMeters) / 1000
-        endDistanceKm = ExportMetricSanitizer.nonNegative(lap.endDistanceMeters) / 1000
-        distanceKm = ExportMetricSanitizer.nonNegative(lap.distanceMeters) / 1000
-        elapsedDurationSeconds = ExportMetricSanitizer.nonNegative(lap.elapsedSeconds)
-        activeDurationSeconds = ExportMetricSanitizer.nonNegative(lap.activeSeconds)
-        movingDurationSeconds = ExportMetricSanitizer.nonNegative(lap.movingSeconds)
-        stoppedDurationSeconds = ExportMetricSanitizer.nonNegative(lap.stoppedSeconds)
-        pausedDurationSeconds = ExportMetricSanitizer.nonNegative(lap.pausedSeconds)
-        movingPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(lap.movingPaceSecondsPerKilometer)
-        activePaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(lap.activePaceSecondsPerKilometer)
-        elapsedPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(lap.elapsedPaceSecondsPerKilometer)
-        elevationGainMeters = ExportMetricSanitizer.optional(lap.elevationGainMeters)
-        elevationLossMeters = ExportMetricSanitizer.optional(lap.elevationLossMeters)
-        averageHeartRateBPM = ExportMetricSanitizer.optional(lap.averageHeartRateBPM)
-        maximumHeartRateBPM = ExportMetricSanitizer.optional(lap.maximumHeartRateBPM)
-        averageCadence = ExportMetricSanitizer.optional(lap.averageCadence)
-        reportedMetrics = lap.reportedMetrics
+        let sanitized = lap.sanitized()
+        lapIndex = sanitized.lapIndex
+        trigger = sanitized.trigger.exportToken
+        startElapsedSeconds = ExportMetricSanitizer.nonNegative(sanitized.startElapsedSeconds)
+        endElapsedSeconds = ExportMetricSanitizer.nonNegative(sanitized.endElapsedSeconds)
+        startDistanceKm = ExportMetricSanitizer.nonNegative(sanitized.startDistanceMeters) / 1000
+        endDistanceKm = ExportMetricSanitizer.nonNegative(sanitized.endDistanceMeters) / 1000
+        distanceKm = ExportMetricSanitizer.nonNegative(sanitized.distanceMeters) / 1000
+        elapsedDurationSeconds = ExportMetricSanitizer.nonNegative(sanitized.elapsedSeconds)
+        activeDurationSeconds = ExportMetricSanitizer.nonNegative(sanitized.activeSeconds)
+        movingDurationSeconds = ExportMetricSanitizer.nonNegative(sanitized.movingSeconds)
+        stoppedDurationSeconds = ExportMetricSanitizer.nonNegative(sanitized.stoppedSeconds)
+        pausedDurationSeconds = ExportMetricSanitizer.nonNegative(sanitized.pausedSeconds)
+        movingPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(
+            sanitized.movingPaceSecondsPerKilometer
+        )
+        activePaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(
+            sanitized.activePaceSecondsPerKilometer
+        )
+        elapsedPaceSecondsPerKilometer = ExportMetricSanitizer.nonNegative(
+            sanitized.elapsedPaceSecondsPerKilometer
+        )
+        elevationGainMeters = ExportMetricSanitizer.optional(sanitized.elevationGainMeters)
+        elevationLossMeters = ExportMetricSanitizer.optional(sanitized.elevationLossMeters)
+        averageHeartRateBPM = ExportMetricSanitizer.optional(sanitized.averageHeartRateBPM)
+        maximumHeartRateBPM = ExportMetricSanitizer.optional(sanitized.maximumHeartRateBPM)
+        averageCadence = ExportMetricSanitizer.optional(sanitized.averageCadence)
+        reportedMetrics = sanitized.reportedMetrics
     }
 }
 

@@ -170,7 +170,6 @@ public struct RecordedLapAnalyzer: Sendable {
                 endElapsedSeconds: range.end.elapsedSeconds,
                 startDistanceMeters: range.start.distanceMeters,
                 endDistanceMeters: range.end.distanceMeters,
-                distanceMeters: distance,
                 elapsedSeconds: elapsed,
                 activeSeconds: active,
                 movingSeconds: safeMoving,
@@ -207,8 +206,8 @@ public struct RecordedLapAnalyzer: Sendable {
             warnings.append(.recordedLapsMalformedSkipped)
         }
         if timeMismatches + distanceMismatches > 0,
-           Double(timeMismatches + distanceMismatches) >= max(1, Double(laps.count) * 0.25)
-            || timeMismatches + distanceMismatches >= 3 {
+           (Double(timeMismatches + distanceMismatches) >= max(1, Double(laps.count) * 0.25)
+            || timeMismatches + distanceMismatches >= 3) {
             warnings.append(.recordedLapSourceTotalsMismatch)
         }
 
@@ -243,8 +242,9 @@ public struct RecordedLapAnalyzer: Sendable {
 
         // Prefer already-analyzed elapsed bounds when source dates are missing
         // (reanalysis of persisted laps).
-        if startElapsed == nil, provisional.endElapsedSeconds > provisional.startElapsedSeconds
-            || provisional.startElapsedSeconds > 0 {
+        if startElapsed == nil,
+           (provisional.endElapsedSeconds > provisional.startElapsedSeconds
+            || provisional.startElapsedSeconds > 0) {
             startElapsed = provisional.startElapsedSeconds
         }
         if endElapsed == nil, provisional.endElapsedSeconds > 0 {

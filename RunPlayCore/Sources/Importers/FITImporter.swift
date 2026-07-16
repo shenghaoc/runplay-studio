@@ -130,7 +130,7 @@ public struct FITImporter: WorkoutImporting {
             }
 
             let trigger = RecordedLapTrigger.fromFITLapTrigger(lap.lapTrigger)
-            let reported = reportedMetrics(from: lap, trigger: trigger)
+            let reported = reportedMetrics(from: lap)
 
             result.append(.provisional(
                 lapIndex: result.count + 1,
@@ -167,6 +167,7 @@ public struct FITImporter: WorkoutImporting {
             // association uses the lower 12-bit ordinal, not the lap array offset.
             let lowerBound = Int(firstLapIndex & 0x0FFF)
             let upperBound = lowerBound + Int(numberOfLaps)
+            var matchedOrdinals = Set<Int>()
             let indexedLaps = laps.filter { lap in
                 guard let rawIndex = lap.messageIndex,
                       rawIndex != FITParser.invalidUint16
@@ -174,9 +175,12 @@ public struct FITImporter: WorkoutImporting {
                     return false
                 }
                 let index = Int(rawIndex & 0x0FFF)
-                return index >= lowerBound && index < upperBound
+                guard index >= lowerBound, index < upperBound else { return false }
+                matchedOrdinals.insert(index)
+                return true
             }
-            if indexedLaps.count == Int(numberOfLaps) {
+            if indexedLaps.count == Int(numberOfLaps),
+               matchedOrdinals.count == Int(numberOfLaps) {
                 return indexedLaps
             }
         }
@@ -214,10 +218,7 @@ public struct FITImporter: WorkoutImporting {
         }
     }
 
-    private func reportedMetrics(
-        from lap: FITLapMessage,
-        trigger: RecordedLapTrigger
-    ) -> RecordedLapReportedMetrics? {
+    private func reportedMetrics(from lap: FITLapMessage) -> RecordedLapReportedMetrics? {
         let avgSpeed: Double?
         if let enhanced = lap.enhancedAverageSpeed, enhanced != FITParser.invalidUint32 {
             avgSpeed = FITParser.enhancedSpeedToMPS(enhanced)

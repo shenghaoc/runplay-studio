@@ -137,8 +137,4 @@ public struct SelectedMetrics: Sendable {
         return "Split \(idx + 1)"
     }
 
-    public var formattedRecordedLap: String {
-        guard let idx = recordedLapIndex else { return "---" }
-        return "Lap \(idx + 1)"
-    }
 }

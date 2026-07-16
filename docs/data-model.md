@@ -78,7 +78,8 @@ Recording pauses and movement stops are also independent of lap ownership.
 Canonical lap clocks, distance, pace, HR, cadence, and elevation are
 **route-derived**. Source-reported totals live in
 `RecordedLapReportedMetrics` for provenance and validation only — they never
-silently replace canonical metrics.
+silently replace canonical metrics. Optional raw TCX intensity and trigger text
+are retained there as provenance rather than promoted to canonical metrics.
 
 Legacy FIT/TCX snapshots imported before source-structure version 1 cannot
 recover discarded lap messages. They remain usable with empty `recordedLaps`;

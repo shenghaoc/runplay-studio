@@ -190,8 +190,8 @@ public struct WorkoutComparisonService: Sendable {
             }
 
             let paceDelta = optionalDifference(
-                primaryLap?.activePaceSecondsPerKilometer,
-                comparisonLap?.activePaceSecondsPerKilometer
+                positiveFinite(primaryLap?.activePaceSecondsPerKilometer),
+                positiveFinite(comparisonLap?.activePaceSecondsPerKilometer)
             )
             let winner: ComparisonResult
             if let paceDelta, paceDelta.isFinite {
@@ -226,8 +226,8 @@ public struct WorkoutComparisonService: Sendable {
                 ),
                 activePaceDeltaSecondsPerKm: paceDelta,
                 movingPaceDeltaSecondsPerKm: optionalDifference(
-                    primaryLap?.movingPaceSecondsPerKilometer,
-                    comparisonLap?.movingPaceSecondsPerKilometer
+                    positiveFinite(primaryLap?.movingPaceSecondsPerKilometer),
+                    positiveFinite(comparisonLap?.movingPaceSecondsPerKilometer)
                 ),
                 averageHRDelta: difference(
                     primaryLap?.averageHeartRateBPM,

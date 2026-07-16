@@ -658,7 +658,11 @@ public struct WorkoutTimeline: Sendable {
         let insertion = low
 
         if insertion > 0, elapsedSecondsByPoint[insertion - 1] == target {
-            return .point(exactElapsedBoundaryIndex(at: insertion - 1, elapsed: target, role: role))
+            return .point(exactElapsedBoundaryIndex(
+                atLastMatchingIndex: insertion - 1,
+                elapsed: target,
+                role: role
+            ))
         }
 
         if insertion == 0 {
@@ -687,20 +691,24 @@ public struct WorkoutTimeline: Sendable {
     }
 
     private func exactElapsedBoundaryIndex(
-        at index: Int,
+        atLastMatchingIndex last: Int,
         elapsed: Double,
         role: WorkoutTimeBoundaryRole
     ) -> Int {
-        var first = index
-        while first > 0, elapsedSecondsByPoint[first - 1] == elapsed {
-            first -= 1
+        // The caller already found the last equal value with an upper-bound
+        // search. Find the first equal value in O(log n) as well so many laps
+        // sharing a large duplicate-timestamp run cannot become quadratic.
+        var low = 0
+        var high = last
+        while low < high {
+            let middle = (low + high) / 2
+            if elapsedSecondsByPoint[middle] < elapsed {
+                low = middle + 1
+            } else {
+                high = middle
+            }
         }
-
-        var last = index
-        while last + 1 < elapsedSecondsByPoint.count,
-              elapsedSecondsByPoint[last + 1] == elapsed {
-            last += 1
-        }
+        let first = low
 
         if routePoints[first].routeSegmentIndex == routePoints[last].routeSegmentIndex {
             return role == .rangeEnd ? last : first

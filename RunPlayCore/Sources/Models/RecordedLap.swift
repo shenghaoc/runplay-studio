@@ -173,6 +173,7 @@ public struct RecordedLapReportedMetrics: Codable, Hashable, Sendable {
     public var averageSpeedMetersPerSecond: Double?
     public var maximumSpeedMetersPerSecond: Double?
     public var calories: Double?
+    public var rawIntensityValue: String?
     public var rawTriggerValue: String?
 
     public init(
@@ -187,6 +188,7 @@ public struct RecordedLapReportedMetrics: Codable, Hashable, Sendable {
         averageSpeedMetersPerSecond: Double? = nil,
         maximumSpeedMetersPerSecond: Double? = nil,
         calories: Double? = nil,
+        rawIntensityValue: String? = nil,
         rawTriggerValue: String? = nil
     ) {
         self.elapsedSeconds = Self.nonNegativeFiniteOptional(elapsedSeconds)
@@ -206,12 +208,8 @@ public struct RecordedLapReportedMetrics: Codable, Hashable, Sendable {
         self.averageSpeedMetersPerSecond = Self.nonNegativeFiniteOptional(averageSpeedMetersPerSecond)
         self.maximumSpeedMetersPerSecond = Self.nonNegativeFiniteOptional(maximumSpeedMetersPerSecond)
         self.calories = Self.nonNegativeFiniteOptional(calories)
-        if let rawTriggerValue {
-            let trimmed = rawTriggerValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            self.rawTriggerValue = trimmed.isEmpty ? nil : trimmed
-        } else {
-            self.rawTriggerValue = nil
-        }
+        self.rawIntensityValue = Self.trimmedNonEmpty(rawIntensityValue)
+        self.rawTriggerValue = Self.trimmedNonEmpty(rawTriggerValue)
     }
 
     public var isEmpty: Bool {
@@ -226,12 +224,59 @@ public struct RecordedLapReportedMetrics: Codable, Hashable, Sendable {
             && averageSpeedMetersPerSecond == nil
             && maximumSpeedMetersPerSecond == nil
             && calories == nil
+            && rawIntensityValue == nil
             && rawTriggerValue == nil
     }
 
     private static func nonNegativeFiniteOptional(_ value: Double?) -> Double? {
         guard let value, value.isFinite, value >= 0 else { return nil }
         return value
+    }
+
+    private static func trimmedNonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Allows containers to retain valid recorded laps when another optional lap
+/// element is structurally malformed. The container remains responsible for
+/// surfacing `nil` entries through diagnostics.
+struct LossyRecordedLap: Decodable {
+    let value: RecordedLap?
+
+    init(from decoder: any Decoder) throws {
+        value = try? RecordedLap(from: decoder)
+    }
+}
+
+/// Decodes an optional recorded-lap array without allowing corruption in that
+/// auxiliary field to discard an otherwise usable workout route.
+struct LossyRecordedLapCollection: Decodable {
+    let values: [RecordedLap]
+    let malformedElementCount: Int
+
+    init(from decoder: any Decoder) throws {
+        guard var container = try? decoder.unkeyedContainer() else {
+            values = []
+            malformedElementCount = 1
+            return
+        }
+
+        var decodedValues: [RecordedLap] = []
+        var malformedCount = 0
+        while !container.isAtEnd {
+            let entry = try container.decode(LossyRecordedLap.self)
+            if let value = entry.value {
+                decodedValues.append(value)
+            } else if malformedCount < Int.max {
+                malformedCount += 1
+            }
+        }
+
+        values = decodedValues
+        malformedElementCount = malformedCount
     }
 }
 
@@ -270,6 +315,34 @@ public struct RecordedLapDiagnostics: Codable, Hashable, Sendable {
         self.distanceMismatchCount = max(0, distanceMismatchCount)
         self.triggersAvailable = triggersAvailable
         self.requiresReimportForSourceLaps = requiresReimportForSourceLaps
+    }
+
+    /// Returns diagnostics reconciled with a lossy decode of the persisted lap
+    /// array. Existing source counts may already include the corrupted entry,
+    /// while the imported count must describe only the entries retained now.
+    func includingStructurallyMalformedLaps(
+        _ malformedElementCount: Int,
+        validLapCount: Int
+    ) -> RecordedLapDiagnostics {
+        let malformedElementCount = max(0, malformedElementCount)
+        let validLapCount = max(0, validLapCount)
+        let decodedElementCount = Self.saturatedSum(validLapCount, malformedElementCount)
+
+        return RecordedLapDiagnostics(
+            sourceLapCount: max(sourceLapCount, decodedElementCount),
+            importedLapCount: validLapCount,
+            malformedLapCount: Self.saturatedSum(malformedLapCount, malformedElementCount),
+            clampedBoundaryCount: clampedBoundaryCount,
+            timeMismatchCount: timeMismatchCount,
+            distanceMismatchCount: distanceMismatchCount,
+            triggersAvailable: triggersAvailable,
+            requiresReimportForSourceLaps: requiresReimportForSourceLaps
+        )
+    }
+
+    private static func saturatedSum(_ first: Int, _ second: Int) -> Int {
+        let (sum, overflow) = first.addingReportingOverflow(second)
+        return overflow ? Int.max : max(0, sum)
     }
 }
 
@@ -324,7 +397,6 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
         endElapsedSeconds: Double = 0,
         startDistanceMeters: Double = 0,
         endDistanceMeters: Double = 0,
-        distanceMeters: Double = 0,
         elapsedSeconds: Double = 0,
         activeSeconds: Double = 0,
         movingSeconds: Double = 0,
@@ -356,8 +428,7 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
         self.endDistanceMeters = safeEndDistance
 
         let derivedDistance = max(0, safeEndDistance - safeStartDistance)
-        let safeDistance = Self.nonNegativeFinite(distanceMeters)
-        self.distanceMeters = safeDistance > 0 ? safeDistance : derivedDistance
+        self.distanceMeters = derivedDistance
 
         let safeElapsed = Self.nonNegativeFinite(elapsedSeconds > 0 ? elapsedSeconds : safeEndElapsed - safeStartElapsed)
         let safeActive = min(Self.nonNegativeFinite(activeSeconds), safeElapsed)
@@ -406,6 +477,7 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
                 averageSpeedMetersPerSecond: metrics.averageSpeedMetersPerSecond,
                 maximumSpeedMetersPerSecond: metrics.maximumSpeedMetersPerSecond,
                 calories: metrics.calories,
+                rawIntensityValue: metrics.rawIntensityValue,
                 rawTriggerValue: metrics.rawTriggerValue
             )
         }
@@ -448,7 +520,6 @@ public struct RecordedLap: Identifiable, Codable, Hashable, Sendable {
             endElapsedSeconds: endElapsedSeconds,
             startDistanceMeters: startDistanceMeters,
             endDistanceMeters: endDistanceMeters,
-            distanceMeters: distanceMeters,
             elapsedSeconds: elapsedSeconds,
             activeSeconds: activeSeconds,
             movingSeconds: movingSeconds,

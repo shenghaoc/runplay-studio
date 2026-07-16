@@ -117,6 +117,58 @@ final class PlaybackEngineTests: XCTestCase {
         XCTAssertEqual(engine.selectedMetrics.splitIndex, 1)
     }
 
+    func testRecordedLapOwnershipAdvancesAtSharedBoundaryAndHoldsAtFinish() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let laps = [
+            recordedLap(index: 1, startTime: 0, endTime: 10, startDistance: 0, endDistance: 100),
+            recordedLap(index: 2, startTime: 10, endTime: 20, startDistance: 100, endDistance: 200)
+        ]
+        let workout = RunWorkout(
+            routePoints: [
+                point(start: start, time: 0, distance: 0, segment: 0),
+                point(start: start, time: 10, distance: 100, segment: 0),
+                point(start: start, time: 20, distance: 200, segment: 0)
+            ],
+            recordedLaps: laps
+        )
+        let engine = PlaybackEngine()
+        engine.load(workout)
+
+        engine.seekToTime(9.999)
+        XCTAssertEqual(engine.selectedMetrics.recordedLapIndex, 0)
+
+        engine.seekToTime(10)
+        XCTAssertEqual(engine.selectedMetrics.recordedLapIndex, 1)
+
+        engine.seekToTime(20)
+        XCTAssertEqual(engine.selectedMetrics.recordedLapIndex, 1)
+    }
+
+    func testZeroDurationRecordedLapOwnsOnlyItsExactBoundary() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let laps = [
+            recordedLap(index: 1, startTime: 0, endTime: 10, startDistance: 0, endDistance: 100),
+            recordedLap(index: 2, startTime: 10, endTime: 10, startDistance: 100, endDistance: 100),
+            recordedLap(index: 3, startTime: 10, endTime: 20, startDistance: 100, endDistance: 200)
+        ]
+        let workout = RunWorkout(
+            routePoints: [
+                point(start: start, time: 0, distance: 0, segment: 0),
+                point(start: start, time: 10, distance: 100, segment: 0),
+                point(start: start, time: 20, distance: 200, segment: 0)
+            ],
+            recordedLaps: laps
+        )
+        let engine = PlaybackEngine()
+        engine.load(workout)
+
+        engine.seekToTime(10)
+        XCTAssertEqual(engine.selectedMetrics.recordedLapIndex, 1)
+
+        engine.seekToTime(10.001)
+        XCTAssertEqual(engine.selectedMetrics.recordedLapIndex, 2)
+    }
+
     func testEmptyAndOnePointWorkoutsRemainSafe() {
         let engine = PlaybackEngine()
         engine.load(RunWorkout(routePoints: []))
@@ -158,6 +210,27 @@ final class PlaybackEngineTests: XCTestCase {
             elapsedSeconds: time,
             paceSecondsPerKilometer: 300,
             routeSegmentIndex: segment
+        )
+    }
+
+    private func recordedLap(
+        index: Int,
+        startTime: Double,
+        endTime: Double,
+        startDistance: Double,
+        endDistance: Double
+    ) -> RecordedLap {
+        RecordedLap(
+            lapIndex: index,
+            source: .fit,
+            trigger: .manual,
+            startElapsedSeconds: startTime,
+            endElapsedSeconds: endTime,
+            startDistanceMeters: startDistance,
+            endDistanceMeters: endDistance,
+            elapsedSeconds: endTime - startTime,
+            activeSeconds: endTime - startTime,
+            movingSeconds: endTime - startTime
         )
     }
 }

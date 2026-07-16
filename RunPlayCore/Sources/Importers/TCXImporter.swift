@@ -241,6 +241,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
                 averageSpeedMetersPerSecond: nil,
                 maximumSpeedMetersPerSecond: lap.maximumSpeed,
                 calories: lap.calories.map { Double($0) },
+                rawIntensityValue: lap.intensity,
                 rawTriggerValue: lap.triggerMethod
             )
 

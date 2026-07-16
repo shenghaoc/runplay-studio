@@ -174,6 +174,58 @@ final class JSONImporterTests: XCTestCase {
         XCTAssertEqual(workout.splits.count, 1)
     }
 
+    func testNativeJSONRecordedLapRoundTripsAndReanalyzes() throws {
+        let workout = try JSONWorkoutImporter().importWorkout(from: nativeWorkoutJSON())
+
+        XCTAssertEqual(workout.recordedLaps.count, 1)
+        XCTAssertEqual(workout.recordedLaps[0].trigger, .manual)
+        XCTAssertEqual(workout.recordedLaps[0].distanceMeters, 1_000, accuracy: 0.001)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.rawIntensityValue, "Active")
+        XCTAssertEqual(
+            workout.sourceStructureVersion,
+            RunWorkout.currentSourceStructureVersion
+        )
+    }
+
+    func testMalformedOptionalJSONLapDoesNotRejectValidRoute() throws {
+        let validData = try nativeWorkoutJSON()
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: validData) as? [String: Any]
+        )
+        var laps = try XCTUnwrap(object["recordedLaps"] as? [[String: Any]])
+        laps.append(["lapIndex": "not-an-integer"])
+        object["recordedLaps"] = laps
+
+        let workout = try JSONWorkoutImporter().importWorkout(
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertEqual(workout.recordedLaps.count, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 2)
+        XCTAssertEqual(workout.recordedLapDiagnostics.importedLapCount, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 1)
+        XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
+    func testMalformedRecordedLapContainerDoesNotRejectValidRoute() throws {
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: nativeWorkoutJSON()) as? [String: Any]
+        )
+        object["recordedLaps"] = ["unexpected": true]
+
+        let workout = try JSONWorkoutImporter().importWorkout(
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertEqual(workout.routePoints.count, 2)
+        XCTAssertTrue(workout.recordedLaps.isEmpty)
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.importedLapCount, 0)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 1)
+        XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
     // MARK: - Helpers
 
     private func resourceURL(_ path: String) -> URL {
@@ -184,6 +236,54 @@ final class JSONImporterTests: XCTestCase {
             .deletingLastPathComponent()  // Tests
             .appendingPathComponent("Resources")
             .appendingPathComponent(path)
+    }
+
+    private func nativeWorkoutJSON() throws -> Data {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let routePoints = [
+            RoutePoint(
+                timestamp: start,
+                latitude: 1,
+                longitude: 103,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0
+            ),
+            RoutePoint(
+                timestamp: start.addingTimeInterval(300),
+                latitude: 1.001,
+                longitude: 103,
+                distanceFromStartMeters: 1_000,
+                elapsedSeconds: 300
+            )
+        ]
+        let lap = RecordedLap(
+            lapIndex: 1,
+            source: .json,
+            trigger: .manual,
+            sourceStartDate: start,
+            sourceEndDate: start.addingTimeInterval(300),
+            startElapsedSeconds: 0,
+            endElapsedSeconds: 300,
+            startDistanceMeters: 0,
+            endDistanceMeters: 1_000,
+            elapsedSeconds: 300,
+            activeSeconds: 300,
+            movingSeconds: 300,
+            reportedMetrics: RecordedLapReportedMetrics(
+                elapsedSeconds: 300,
+                distanceMeters: 1_000,
+                rawIntensityValue: "Active",
+                rawTriggerValue: "Manual"
+            )
+        )
+        let workout = RunWorkout(
+            source: .json,
+            routePoints: routePoints,
+            recordedLaps: [lap]
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(workout)
     }
 
     private func validateWorkout(_ workout: RunWorkout) {

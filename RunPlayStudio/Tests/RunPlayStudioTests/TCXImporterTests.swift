@@ -604,6 +604,7 @@ final class TCXImporterTests: XCTestCase {
               <Lap StartTime="2026-07-05T07:30:00.000Z">
                 <TotalTimeSeconds>20</TotalTimeSeconds>
                 <DistanceMeters>200</DistanceMeters>
+                <Intensity>Active</Intensity>
                 <TriggerMethod>Manual</TriggerMethod>
                 <AverageHeartRateBpm><Value>140</Value></AverageHeartRateBpm>
                 <MaximumHeartRateBpm><Value>150</Value></MaximumHeartRateBpm>
@@ -652,6 +653,7 @@ final class TCXImporterTests: XCTestCase {
         XCTAssertEqual(workout.recordedLaps[1].trigger, .distance)
         XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.averageHeartRateBPM, 140)
         XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.distanceMeters, 200)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.rawIntensityValue, "Active")
 
         // Seamless lap boundary must not create a route gap.
         let segments = Set(workout.routePoints.map(\.routeSegmentIndex))

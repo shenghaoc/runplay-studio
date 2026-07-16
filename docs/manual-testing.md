@@ -65,7 +65,7 @@ above remain unchecked.
 - [ ] Import a FIT with manual and auto-distance laps; triggers and source totals are retained.
 - [ ] Export Recorded Laps CSV, combined CSV (with `# Recorded Laps`), and JSON; filenames distinguish laps from splits.
 - [ ] Quit and relaunch; recorded laps persist. Open a legacy FIT/TCX snapshot and confirm no fabricated laps; reimport recovers them.
-- [ ] Compare two workouts with recorded laps (ordinal pairing only).
+- [x] Compare two workouts with recorded laps (ordinal pairing only).
 - [ ] Compare the paused run against an otherwise identical uninterrupted run.
 - [ ] Confirm active and elapsed deltas are distinguished.
 - [ ] Export JSON, CSV, and PNG and inspect the labels.

@@ -20,7 +20,6 @@ final class RecordedLapTests: XCTestCase {
             endElapsedSeconds: 300,
             startDistanceMeters: 0,
             endDistanceMeters: 1_000,
-            distanceMeters: 1_000,
             elapsedSeconds: 300,
             activeSeconds: 280,
             movingSeconds: 260,
@@ -36,6 +35,7 @@ final class RecordedLapTests: XCTestCase {
                 elapsedSeconds: 301,
                 timerSeconds: 279,
                 distanceMeters: 1_005,
+                rawIntensityValue: "Active",
                 rawTriggerValue: "0"
             )
         )
@@ -57,6 +57,7 @@ final class RecordedLapTests: XCTestCase {
         XCTAssertEqual(d.stoppedSeconds, 20, accuracy: 0.001)
         XCTAssertEqual(d.pausedSeconds, 20, accuracy: 0.001)
         XCTAssertEqual(d.reportedMetrics?.distanceMeters ?? -1, 1_005, accuracy: 0.001)
+        XCTAssertEqual(d.reportedMetrics?.rawIntensityValue, "Active")
         XCTAssertEqual(d.reportedMetrics?.rawTriggerValue, "0")
     }
 
@@ -117,7 +118,6 @@ final class RecordedLapTests: XCTestCase {
             lapIndex: 1,
             startDistanceMeters: 100,
             endDistanceMeters: 50, // less than start
-            distanceMeters: 500,
             elapsedSeconds: 100,
             activeSeconds: 150, // exceeds elapsed
             movingSeconds: 200 // exceeds active
@@ -127,6 +127,7 @@ final class RecordedLapTests: XCTestCase {
         XCTAssertEqual(lap.stoppedSeconds, 0, accuracy: 0.001)
         XCTAssertEqual(lap.pausedSeconds, 0, accuracy: 0.001)
         XCTAssertEqual(lap.endDistanceMeters, 100, accuracy: 0.001)
+        XCTAssertEqual(lap.distanceMeters, 0, accuracy: 0.001)
     }
 
     func testExplicitZeroClocksRemainValid() {
@@ -154,7 +155,7 @@ final class RecordedLapTests: XCTestCase {
             lapIndex: 1,
             startElapsedSeconds: .nan,
             endElapsedSeconds: .infinity,
-            distanceMeters: .nan,
+            endDistanceMeters: .nan,
             elapsedSeconds: -.infinity,
             averageHeartRateBPM: .nan
         )
@@ -177,6 +178,7 @@ final class RecordedLapTests: XCTestCase {
             averageSpeedMetersPerSecond: -6,
             maximumSpeedMetersPerSecond: -7,
             calories: -8,
+            rawIntensityValue: "  ",
             rawTriggerValue: "  "
         )
         XCTAssertTrue(reported.isEmpty)
@@ -217,6 +219,7 @@ final class RecordedLapTests: XCTestCase {
         )
         workout.recordedLaps[0].activeSeconds = 30
         workout.recordedLaps[0].movingSeconds = 40
+        workout.recordedLaps[0].lapIndex = 0
         workout.recordedLaps[0].averageHeartRateBPM = -1
         workout.recordedLaps[0].averageCadence = -1
         workout.recordedLaps[0].elevationGainMeters = -1
@@ -229,6 +232,7 @@ final class RecordedLapTests: XCTestCase {
 
         XCTAssertEqual(sanitized.activeSeconds, 10, accuracy: 0.001)
         XCTAssertEqual(sanitized.movingSeconds, 10, accuracy: 0.001)
+        XCTAssertEqual(sanitized.lapIndex, 1)
         XCTAssertNil(sanitized.averageHeartRateBPM)
         XCTAssertNil(sanitized.averageCadence)
         XCTAssertNil(sanitized.elevationGainMeters)
@@ -318,7 +322,6 @@ final class RecordedLapTests: XCTestCase {
             lapIndex: 1,
             startDistanceMeters: 0,
             endDistanceMeters: 800,
-            distanceMeters: 800,
             elapsedSeconds: 250
         )
         let workout = RunWorkout(splits: [split], recordedLaps: [lap])

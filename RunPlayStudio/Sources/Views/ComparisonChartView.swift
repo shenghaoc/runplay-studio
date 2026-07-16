@@ -212,8 +212,8 @@ struct RecordedLapComparisonTableView: View {
                 .foregroundStyle(.secondary)
                 .help("Pairs lap 1 with lap 1 only. This is not a route-aligned comparison.")
 
-            if let caveat = comparisons.flatMap(\.caveats).first {
-                Text(caveat)
+            if let caveatText {
+                Text(caveatText)
                     .font(AppDesign.Typography.secondary)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -265,5 +265,10 @@ struct RecordedLapComparisonTableView: View {
                 .frame(minHeight: 120)
             }
         }
+    }
+
+    private var caveatText: String? {
+        let caveats = Array(Set(comparisons.flatMap(\.caveats))).sorted()
+        return caveats.isEmpty ? nil : caveats.joined(separator: " • ")
     }
 }

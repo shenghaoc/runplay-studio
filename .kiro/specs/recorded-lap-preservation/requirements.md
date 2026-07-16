@@ -16,7 +16,7 @@ replay.
 5. Parse TCX lap summaries; a lap boundary alone never creates a route gap.
 6. Use `TCXRouteContinuityResolver` for multi-track continuity decisions.
 7. Extend `WorkoutTimeline` with elapsed-time boundary sampling.
-8. Analyse laps in O(route + laps) via `RecordedLapAnalyzer` with cooperative cancellation.
+8. Analyse laps in `O(route points + laps log route points)` via `RecordedLapAnalyzer` with cooperative cancellation.
 9. Persist laps with backward-compatible decoding; legacy snapshots stay empty without fabricating data.
 10. Bump analysis version; rederive lap metrics while preserving IDs and source fields.
 11. Splits workspace offers Distance Splits vs Recorded Laps when laps exist.

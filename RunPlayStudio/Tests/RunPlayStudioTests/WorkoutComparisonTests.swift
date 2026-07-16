@@ -237,6 +237,68 @@ final class WorkoutComparisonTests: XCTestCase {
         XCTAssertEqual(split.formattedPaceDelta, "-1:00 /km faster")
     }
 
+    // MARK: - Recorded Lap Comparison
+
+    func testRecordedLapComparisonPairsOrdinallyAndReportsCaveats() throws {
+        let primary = RunWorkout(recordedLaps: [
+            recordedLap(index: 1, distance: 1_000, activeSeconds: 300, trigger: .manual),
+            recordedLap(index: 2, distance: 1_000, activeSeconds: 310, trigger: .distance)
+        ])
+        let comparison = RunWorkout(recordedLaps: [
+            recordedLap(index: 1, distance: 800, activeSeconds: 280, trigger: .time)
+        ])
+
+        let rows = service.compareRecordedLaps(primary: primary, comparison: comparison)
+
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(try XCTUnwrap(rows.first).lapIndex, 1)
+        XCTAssertNotNil(rows[0].activePaceDeltaSecondsPerKm)
+        XCTAssertTrue(rows[0].caveats.contains("Trigger types differ"))
+        XCTAssertTrue(rows[0].caveats.contains("Lap distances differ materially"))
+        XCTAssertTrue(rows[0].caveats.contains("Lap counts differ (2 vs 1)"))
+        XCTAssertNil(rows[1].comparisonLap)
+        XCTAssertEqual(rows[1].winner, .unavailable)
+    }
+
+    func testRecordedLapComparisonWithOneMissingCollectionStaysUnavailable() throws {
+        let primary = RunWorkout(recordedLaps: [
+            recordedLap(index: 1, distance: 1_000, activeSeconds: 300, trigger: .manual)
+        ])
+
+        let row = try XCTUnwrap(
+            service.compareRecordedLaps(primary: primary, comparison: RunWorkout()).first
+        )
+
+        XCTAssertNil(row.comparisonLap)
+        XCTAssertNil(row.activePaceDeltaSecondsPerKm)
+        XCTAssertEqual(row.winner, .unavailable)
+        XCTAssertTrue(row.caveats.contains("Compared run has no recorded laps"))
+    }
+
+    func testRecordedLapComparisonDoesNotTreatUnavailablePaceAsWinner() throws {
+        let zeroDistance = recordedLap(
+            index: 1,
+            distance: 0,
+            activeSeconds: 60,
+            trigger: .manual
+        )
+        let regular = recordedLap(
+            index: 1,
+            distance: 1_000,
+            activeSeconds: 300,
+            trigger: .manual
+        )
+
+        let row = try XCTUnwrap(service.compareRecordedLaps(
+            primary: RunWorkout(recordedLaps: [zeroDistance]),
+            comparison: RunWorkout(recordedLaps: [regular])
+        ).first)
+
+        XCTAssertNil(row.activePaceDeltaSecondsPerKm)
+        XCTAssertNil(row.movingPaceDeltaSecondsPerKm)
+        XCTAssertEqual(row.winner, .unavailable)
+    }
+
     // MARK: - Metric Series
 
     func testMetricSeriesClampsToCommonDistance() {
@@ -887,6 +949,26 @@ final class WorkoutComparisonTests: XCTestCase {
             )
         }
         return RunWorkout(routePoints: points)
+    }
+
+    private func recordedLap(
+        index: Int,
+        distance: Double,
+        activeSeconds: Double,
+        trigger: RecordedLapTrigger
+    ) -> RecordedLap {
+        RecordedLap(
+            lapIndex: index,
+            source: .fit,
+            trigger: trigger,
+            startElapsedSeconds: 0,
+            endElapsedSeconds: activeSeconds,
+            startDistanceMeters: 0,
+            endDistanceMeters: distance,
+            elapsedSeconds: activeSeconds,
+            activeSeconds: activeSeconds,
+            movingSeconds: activeSeconds
+        )
     }
 
     private func createPauseComparisonWorkout(pauseSeconds: Double) -> RunWorkout {

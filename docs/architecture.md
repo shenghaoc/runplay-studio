@@ -338,6 +338,7 @@ dynamic time warping or complex route matching.
 public struct WorkoutComparisonService {
     public func compare(primary: RunWorkout, comparison: RunWorkout) -> WorkoutComparisonSummary
     public func compareSplits(primary: RunWorkout, comparison: RunWorkout) -> [SplitComparison]
+    public func compareRecordedLaps(primary: RunWorkout, comparison: RunWorkout) -> [RecordedLapComparison]
     public func compareMetricsOverDistance(primary: RunWorkout, comparison: RunWorkout, sampleIntervalMeters: Double = 100) -> [ComparisonMetricPoint]
     public func commonDistance(primary: RunWorkout, comparison: RunWorkout) -> Double
     public func metricsAtDistance(_ distance: Double, primary: RunWorkout, comparison: RunWorkout, primaryScenePoints: [RouteScenePoint], comparisonScenePoints: [RouteScenePoint]) -> ComparisonDistanceMetrics
@@ -351,6 +352,9 @@ elapsed, active, paused, active-pace, and elapsed-pace deltas. At selected
 distance, `WorkoutTimeline` supplies elapsed and active time plus cumulative
 active pace; route coordinates still use segment-local interpolation. Runs with
 materially different pause durations receive an informative warning.
+Recorded laps are paired by ordinal only, with unavailable results and caveats
+for missing laps, legacy snapshots, count/trigger differences, or materially
+different lap distances; they are never presented as route-aligned intervals.
 
 Replay remains on elapsed time, so its total duration equals summary elapsed
 time. Inside a route gap the clock advances while the marker, distance, point
