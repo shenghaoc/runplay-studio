@@ -82,6 +82,90 @@ final class FileWorkoutLibraryStoreTests: XCTestCase {
         XCTAssertEqual(loadedWorkout.routePoints.count, 11)
     }
 
+    func testRecordedLapsAndDiagnosticsSurviveReload() throws {
+        var workout = makeWorkout(name: "Recorded Lap Persistence")
+        workout.source = .fit
+        let lapID = UUID()
+        workout.recordedLaps = [RecordedLap(
+            id: lapID,
+            lapIndex: 1,
+            source: .fit,
+            trigger: .manual,
+            startElapsedSeconds: 0,
+            endElapsedSeconds: 360,
+            startDistanceMeters: 0,
+            endDistanceMeters: 1_000,
+            elapsedSeconds: 360,
+            activeSeconds: 350,
+            movingSeconds: 340,
+            reportedMetrics: RecordedLapReportedMetrics(
+                elapsedSeconds: 361,
+                distanceMeters: 1_005,
+                rawTriggerValue: "0"
+            )
+        )]
+        workout.recordedLapDiagnostics = RecordedLapDiagnostics(
+            sourceLapCount: 1,
+            importedLapCount: 1,
+            triggersAvailable: true
+        )
+
+        try store.saveWorkout(workout)
+        let loaded = try store.loadWorkout(id: workout.id)
+
+        XCTAssertEqual(loaded.recordedLaps.count, 1)
+        XCTAssertEqual(loaded.recordedLaps[0].id, lapID)
+        XCTAssertEqual(loaded.recordedLaps[0].trigger, .manual)
+        XCTAssertEqual(loaded.recordedLaps[0].reportedMetrics?.distanceMeters, 1_005)
+        XCTAssertEqual(loaded.recordedLapDiagnostics, workout.recordedLapDiagnostics)
+        XCTAssertEqual(
+            loaded.sourceStructureVersion,
+            RunWorkout.currentSourceStructureVersion
+        )
+    }
+
+    func testMalformedStoredLapIsSkippedWithoutLosingValidWorkout() throws {
+        var workout = makeWorkout(name: "Partially Corrupt Laps")
+        workout.recordedLaps = [RecordedLap(
+            lapIndex: 1,
+            source: .fit,
+            trigger: .manual,
+            startElapsedSeconds: 0,
+            endElapsedSeconds: 360,
+            startDistanceMeters: 0,
+            endDistanceMeters: 1_000,
+            elapsedSeconds: 360,
+            activeSeconds: 360,
+            movingSeconds: 360
+        )]
+        workout.recordedLapDiagnostics = RecordedLapDiagnostics(
+            sourceLapCount: 1,
+            importedLapCount: 1,
+            triggersAvailable: true
+        )
+        try store.saveWorkout(workout)
+
+        let workoutURL = tempDir
+            .appendingPathComponent("workouts", isDirectory: true)
+            .appendingPathComponent("\(workout.id.uuidString).json")
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: workoutURL)) as? [String: Any]
+        )
+        var laps = try XCTUnwrap(json["recordedLaps"] as? [[String: Any]])
+        laps.append(["lapIndex": "not-an-integer"])
+        json["recordedLaps"] = laps
+        try JSONSerialization.data(withJSONObject: json).write(to: workoutURL, options: .atomic)
+
+        let loaded = try store.loadWorkout(id: workout.id)
+
+        XCTAssertEqual(loaded.routePoints.count, workout.routePoints.count)
+        XCTAssertEqual(loaded.recordedLaps.count, 1)
+        XCTAssertEqual(loaded.recordedLapDiagnostics.sourceLapCount, 2)
+        XCTAssertEqual(loaded.recordedLapDiagnostics.importedLapCount, 1)
+        XCTAssertEqual(loaded.recordedLapDiagnostics.malformedLapCount, 1)
+        XCTAssertTrue(loaded.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
     func testLegacyWorkoutDefaultsRouteQualityFieldsAndPreservesExistingWarnings() throws {
         var workout = makeWorkout(name: "Legacy Quality Fields")
         workout.analysisWarnings = [

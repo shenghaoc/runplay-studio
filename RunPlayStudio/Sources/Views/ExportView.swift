@@ -23,9 +23,16 @@ struct ExportView: View {
             .accessibilityLabel("Export workout summary as JSON")
 
             Button(action: { exportSplitsCSV() }) {
-                Label("Export Splits (CSV)", systemImage: "tablecells")
+                Label("Export Distance Splits (CSV)", systemImage: "tablecells")
             }
-            .accessibilityLabel("Export kilometer splits as CSV")
+            .accessibilityLabel("Export calculated kilometer splits as CSV")
+
+            if !workout.recordedLaps.isEmpty {
+                Button(action: { exportRecordedLapsCSV() }) {
+                    Label("Export Recorded Laps (CSV)", systemImage: "flag.checkered")
+                }
+                .accessibilityLabel("Export source-recorded laps as CSV")
+            }
 
             Button(action: { exportSegmentsCSV() }) {
                 Label("Export Segments (CSV)", systemImage: "chart.xyaxis.line")
@@ -44,7 +51,7 @@ struct ExportView: View {
             Button(action: { exportCombinedCSV() }) {
                 Label("Export All (CSV)", systemImage: "doc.plaintext")
             }
-            .accessibilityLabel("Export all splits and segments as combined CSV")
+            .accessibilityLabel("Export distance splits, recorded laps, and segments as combined CSV")
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")
         }
@@ -72,6 +79,15 @@ struct ExportView: View {
     private func exportSplitsCSV() {
         do {
             let result = try exportService.exportSplitsCSV(workout: workout)
+            saveFile(result)
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    private func exportRecordedLapsCSV() {
+        do {
+            let result = try exportService.exportRecordedLapsCSV(workout: workout)
             saveFile(result)
         } catch {
             showError(error.localizedDescription)

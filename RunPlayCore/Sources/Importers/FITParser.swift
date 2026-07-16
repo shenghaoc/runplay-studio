@@ -625,6 +625,7 @@ public struct FITParser {
 
         case FITGlobalMessage.lap.rawValue:
             var lap = FITLapMessage()
+            lap.messageIndex = fieldValues[FITLapField.messageIndex.rawValue]?.uint16Value
             lap.timestamp = timestamp
             lap.startTime = fieldValues[FITLapField.startTime.rawValue]?.uint32Value
             lap.startPositionLat = fieldValues[FITLapField.startPositionLat.rawValue]?.int32Value
@@ -634,10 +635,13 @@ public struct FITParser {
             lap.totalElapsedTime = fieldValues[FITLapField.totalElapsedTime.rawValue]?.uint32Value
             lap.totalTimerTime = fieldValues[FITLapField.totalTimerTime.rawValue]?.uint32Value
             lap.totalDistance = fieldValues[FITLapField.totalDistance.rawValue]?.uint32Value
+            lap.totalCalories = fieldValues[FITLapField.totalCalories.rawValue]?.uint16Value
             lap.totalAscent = fieldValues[FITLapField.totalAscent.rawValue]?.uint16Value
             lap.totalDescent = fieldValues[FITLapField.totalDescent.rawValue]?.uint16Value
             lap.averageSpeed = fieldValues[FITLapField.averageSpeed.rawValue]?.uint16Value
             lap.maximumSpeed = fieldValues[FITLapField.maximumSpeed.rawValue]?.uint16Value
+            lap.enhancedAverageSpeed = fieldValues[FITLapField.enhancedAverageSpeed.rawValue]?.uint32Value
+            lap.enhancedMaximumSpeed = fieldValues[FITLapField.enhancedMaximumSpeed.rawValue]?.uint32Value
             lap.averageHeartRate = fieldValues[FITLapField.averageHeartRate.rawValue]?.uint8Value
             lap.maximumHeartRate = fieldValues[FITLapField.maximumHeartRate.rawValue]?.uint8Value
             lap.averageCadence = fieldValues[FITLapField.averageCadence.rawValue]?.uint8Value
@@ -669,6 +673,8 @@ public struct FITParser {
             session.averageCadence = fieldValues[FITSessionField.averageCadence.rawValue]?.uint8Value
             session.event = fieldValues[FITSessionField.event.rawValue]?.uint8Value
             session.eventType = fieldValues[FITSessionField.eventType.rawValue]?.uint8Value
+            session.firstLapIndex = fieldValues[FITSessionField.firstLapIndex.rawValue]?.uint16Value
+            session.numberOfLaps = fieldValues[FITSessionField.numberOfLaps.rawValue]?.uint16Value
             session.eventGroup = fieldValues[FITSessionField.eventGroup.rawValue]?.uint8Value
             session.trigger = fieldValues[FITSessionField.trigger.rawValue]?.uint8Value
             session.necLong = fieldValues[FITSessionField.necLong.rawValue]?.int32Value
@@ -777,6 +783,14 @@ public struct FITParser {
 // MARK: - FIT Scaling and Conversion
 
 extension FITParser {
+
+    /// Return a FIT timestamp only when it is not the profile's invalid-value
+    /// sentinel. Keeping this conversion central prevents raw optional values
+    /// from being mistaken for real dates during session association.
+    static func timestampIfValid(_ timestamp: UInt32?) -> UInt32? {
+        guard let timestamp, timestamp != invalidUint32 else { return nil }
+        return timestamp
+    }
 
     /// Convert semicircle coordinates to degrees.
     public static func semicirclesToDegrees(_ semicircles: Int32) -> Double {

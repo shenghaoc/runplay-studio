@@ -31,10 +31,12 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
     // MARK: - Private
 
-    private struct RawWorkout: Codable {
+    private struct RawWorkout: Decodable {
         var metadata: WorkoutMetadata?
         var source: String?
         var routePoints: [RawRoutePoint]
+        var recordedLaps: LossyRecordedLapCollection?
+        var sourceStructureVersion: Int?
     }
 
     private struct RawRoutePoint: Codable {
@@ -101,14 +103,31 @@ public struct JSONWorkoutImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No valid route points found")
         }
 
+        // Optional recorded laps from native JSON. Structurally malformed
+        // elements are counted and skipped; decoded values are sanitised by
+        // RunWorkout before analysis. Calculated splits stay separate.
+        let provisionalLaps = raw.recordedLaps?.values ?? []
+        let structurallyMalformedLapCount = raw.recordedLaps?.malformedElementCount ?? 0
+
         // Build workout and analyze
         var workout = RunWorkout(
             metadata: metadata,
             source: source,
-            routePoints: routePoints
+            routePoints: routePoints,
+            recordedLaps: provisionalLaps
         )
+        if let version = raw.sourceStructureVersion {
+            workout.sourceStructureVersion = max(0, version)
+        } else {
+            // Without an explicit version: an explicit recordedLaps key means the
+            // file is structure-aware (possibly empty). Omitting the key is the
+            // pre-feature shape and decodes as legacy.
+            workout.sourceStructureVersion = raw.recordedLaps != nil
+                ? RunWorkout.currentSourceStructureVersion
+                : RunWorkout.legacySourceStructureVersion
+        }
 
-        // Run analysis
+        // Run analysis (rederives canonical lap metrics; does not invent laps)
         let analyzer = WorkoutAnalyzer()
         try analyzer.normalizeAndAnalyze(
             &workout,
@@ -117,6 +136,16 @@ public struct JSONWorkoutImporter: WorkoutImporting {
                 : .computeFromCoordinates,
             sourceInvalidCoordinatePointCount: invalidCoordinatePointCount
         )
+        if structurallyMalformedLapCount > 0 {
+            workout.recordedLapDiagnostics = workout.recordedLapDiagnostics
+                .includingStructurallyMalformedLaps(
+                    structurallyMalformedLapCount,
+                    validLapCount: workout.recordedLaps.count
+                )
+            if !workout.analysisWarnings.contains(.recordedLapsMalformedSkipped) {
+                workout.analysisWarnings.append(.recordedLapsMalformedSkipped)
+            }
+        }
 
         return workout
     }

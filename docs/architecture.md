@@ -21,7 +21,7 @@ Import File → Importer → RouteQualityProcessor → Normalized Route + Diagno
 3. **Normalize**: `RouteQualityProcessor` validates fields, removes only strong isolated coordinate outliers, infers supported recording gaps, normalizes distance, and records distance provenance and quality diagnostics
 4. **Correct elevation**: `ElevationProfile` preserves source altitude on each `RoutePoint` while deriving an aligned, gap-safe corrected profile and threshold-confirmed ascent/descent
 5. **Build context**: `WorkoutAnalysisContext` owns one immutable profile and a `WorkoutTimeline` built from that same profile
-6. **Analyze**: `WorkoutAnalyzer` passes the context to summary, global-distance splits, and notable-segment detection so every elevation consumer shares one correction
+6. **Analyze**: `WorkoutAnalyzer` passes the context to summary, global-distance splits, source-recorded laps (`RecordedLapAnalyzer`), and notable-segment detection so every elevation consumer shares one correction
 7. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized route, provenance, diagnostics, warnings, and versioned analysis snapshot
 8. **Control**: `ReplayController` drives an elapsed-clock `PlaybackEngine` whose selected elevation comes from the corrected profile
 9. **Render and export**: Charts, route projection/colouring, comparison, and exports consume corrected analysis while raw imported altitude remains source data
@@ -338,6 +338,7 @@ dynamic time warping or complex route matching.
 public struct WorkoutComparisonService {
     public func compare(primary: RunWorkout, comparison: RunWorkout) -> WorkoutComparisonSummary
     public func compareSplits(primary: RunWorkout, comparison: RunWorkout) -> [SplitComparison]
+    public func compareRecordedLaps(primary: RunWorkout, comparison: RunWorkout) -> [RecordedLapComparison]
     public func compareMetricsOverDistance(primary: RunWorkout, comparison: RunWorkout, sampleIntervalMeters: Double = 100) -> [ComparisonMetricPoint]
     public func commonDistance(primary: RunWorkout, comparison: RunWorkout) -> Double
     public func metricsAtDistance(_ distance: Double, primary: RunWorkout, comparison: RunWorkout, primaryScenePoints: [RouteScenePoint], comparisonScenePoints: [RouteScenePoint]) -> ComparisonDistanceMetrics
@@ -351,6 +352,9 @@ elapsed, active, paused, active-pace, and elapsed-pace deltas. At selected
 distance, `WorkoutTimeline` supplies elapsed and active time plus cumulative
 active pace; route coordinates still use segment-local interpolation. Runs with
 materially different pause durations receive an informative warning.
+Recorded laps are paired by ordinal only, with unavailable results and caveats
+for missing laps, legacy snapshots, count/trigger differences, or materially
+different lap distances; they are never presented as route-aligned intervals.
 
 Replay remains on elapsed time, so its total duration equals summary elapsed
 time. Inside a route gap the clock advances while the marker, distance, point

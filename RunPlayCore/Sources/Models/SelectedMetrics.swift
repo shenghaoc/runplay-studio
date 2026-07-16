@@ -18,6 +18,8 @@ public struct SelectedMetrics: Sendable {
     public var speedMetersPerSecond: Double?
     public var cadence: Double?
     public var splitIndex: Int?
+    /// Zero-based index into `workout.recordedLaps`, if any.
+    public var recordedLapIndex: Int?
 
     public init(
         elapsedSeconds: Double? = nil,
@@ -27,7 +29,8 @@ public struct SelectedMetrics: Sendable {
         heartRateBPM: Double? = nil,
         speedMetersPerSecond: Double? = nil,
         cadence: Double? = nil,
-        splitIndex: Int? = nil
+        splitIndex: Int? = nil,
+        recordedLapIndex: Int? = nil
     ) {
         self.init(
             elapsedSeconds: elapsedSeconds,
@@ -42,7 +45,8 @@ public struct SelectedMetrics: Sendable {
             heartRateBPM: heartRateBPM,
             speedMetersPerSecond: speedMetersPerSecond,
             cadence: cadence,
-            splitIndex: splitIndex
+            splitIndex: splitIndex,
+            recordedLapIndex: recordedLapIndex
         )
     }
 
@@ -59,7 +63,8 @@ public struct SelectedMetrics: Sendable {
         heartRateBPM: Double? = nil,
         speedMetersPerSecond: Double? = nil,
         cadence: Double? = nil,
-        splitIndex: Int? = nil
+        splitIndex: Int? = nil,
+        recordedLapIndex: Int? = nil
     ) {
         self.elapsedSeconds = elapsedSeconds
         self.activeSeconds = activeSeconds
@@ -74,6 +79,7 @@ public struct SelectedMetrics: Sendable {
         self.speedMetersPerSecond = speedMetersPerSecond
         self.cadence = cadence
         self.splitIndex = splitIndex
+        self.recordedLapIndex = recordedLapIndex
     }
 
     public var formattedElapsed: String {
@@ -130,4 +136,5 @@ public struct SelectedMetrics: Sendable {
         guard let idx = splitIndex else { return "---" }
         return "Split \(idx + 1)"
     }
+
 }

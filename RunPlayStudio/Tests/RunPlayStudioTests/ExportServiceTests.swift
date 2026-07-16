@@ -39,6 +39,86 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(csv.contains("km")) // Distance unit in header
     }
 
+    // MARK: - Recorded Laps Export
+
+    func testRecordedLapsCSVHasDedicatedSchemaAndSafeTrigger() throws {
+        let workout = createRecordedLapWorkout()
+        let csv = exportService.generateRecordedLapsCSV(workout: workout)
+        let rows = csv.split(separator: "\n").map(String.init)
+        let fields = try XCTUnwrap(rows.last).split(
+            separator: ",",
+            omittingEmptySubsequences: false
+        )
+
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertTrue(rows[0].hasPrefix("Lap,Trigger,Start_Elapsed_s"))
+        XCTAssertEqual(fields.count, 23)
+        XCTAssertTrue(rows[1].contains("unknown_tcx_=SUM(A1:A2)"))
+        XCTAssertFalse(rows[1].hasPrefix("="))
+
+        let result = try exportService.exportRecordedLapsCSV(workout: workout)
+        XCTAssertEqual(result.format, .recordedLapsCSV)
+        XCTAssertTrue(result.filename.contains("recorded-laps"))
+        XCTAssertTrue(result.filename.hasSuffix(".csv"))
+    }
+
+    func testCombinedCSVIncludesRecordedLapsOnlyWhenPresent() {
+        let withLaps = exportService.generateCombinedCSV(
+            workout: createRecordedLapWorkout(),
+            segments: []
+        )
+        let withoutLaps = exportService.generateCombinedCSV(
+            workout: createSampleWorkout(),
+            segments: []
+        )
+
+        XCTAssertTrue(withLaps.contains("# Distance Splits"))
+        XCTAssertTrue(withLaps.contains("# Recorded Laps"))
+        XCTAssertTrue(withLaps.contains("# Segment Highlights"))
+        XCTAssertFalse(withoutLaps.contains("# Recorded Laps"))
+    }
+
+    func testJSONAndPNGModelsIncludeRecordedLapProvenance() throws {
+        let workout = createRecordedLapWorkout()
+        let result = try exportService.exportWorkoutSummaryJSON(workout: workout, segments: [])
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        )
+        let laps = try XCTUnwrap(json["recordedLaps"] as? [[String: Any]])
+        let lap = try XCTUnwrap(laps.first)
+        let reported = try XCTUnwrap(lap["reportedMetrics"] as? [String: Any])
+        let diagnostics = try XCTUnwrap(json["recordedLapDiagnostics"] as? [String: Any])
+
+        XCTAssertEqual(lap["trigger"] as? String, "unknown_tcx_=SUM(A1:A2)")
+        XCTAssertEqual(reported["rawIntensityValue"] as? String, "Active")
+        XCTAssertEqual(diagnostics["sourceLapCount"] as? Int, 1)
+        XCTAssertEqual(
+            json["sourceStructureVersion"] as? Int,
+            RunWorkout.currentSourceStructureVersion
+        )
+        XCTAssertEqual(
+            ExportSummaryCardModel(workout: workout, segments: []).recordedLapCountText,
+            "Recorded laps: 1"
+        )
+    }
+
+    func testJSONRecordedLapExportSanitizesMutatedNonFiniteSourceMetrics() throws {
+        var workout = createRecordedLapWorkout()
+        workout.recordedLaps[0].activeSeconds = .infinity
+        workout.recordedLaps[0].reportedMetrics?.distanceMeters = .nan
+
+        let result = try exportService.exportWorkoutSummaryJSON(workout: workout, segments: [])
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: result.data) as? [String: Any]
+        )
+        let laps = try XCTUnwrap(json["recordedLaps"] as? [[String: Any]])
+        let lap = try XCTUnwrap(laps.first)
+        let reported = try XCTUnwrap(lap["reportedMetrics"] as? [String: Any])
+
+        XCTAssertEqual(lap["activeDurationSeconds"] as? Double, 0)
+        XCTAssertNil(reported["distanceMeters"])
+    }
+
     // MARK: - Segments CSV
 
     func testSegmentsCSVHasHeader() {
@@ -168,7 +248,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNotNil(json)
 
         XCTAssertEqual(json?["appName"] as? String, "RunPlay Studio")
-        XCTAssertEqual(json?["exportVersion"] as? String, "3.0")
+        XCTAssertEqual(json?["exportVersion"] as? String, "4.0")
         XCTAssertNotNil(json?["privacyNote"])
         XCTAssertNotNil(json?["workoutTitle"])
         XCTAssertEqual(
@@ -334,7 +414,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(jsonText.contains("RunPlay Studio"))
         XCTAssertTrue(splitsText.contains("Split"))
         XCTAssertTrue(segmentText.contains("Type"))
-        XCTAssertTrue(combinedText.contains("# Splits"))
+        XCTAssertTrue(combinedText.contains("# Distance Splits"))
         XCTAssertDemoExportContainsNoPrivateMarkers(jsonText)
         XCTAssertDemoExportContainsNoPrivateMarkers(splitsText)
         XCTAssertDemoExportContainsNoPrivateMarkers(segmentText)
@@ -619,6 +699,40 @@ final class ExportServiceTests: XCTestCase {
                 elapsedSeconds: Double(i) * 30
             )
         }
+    }
+
+    private func createRecordedLapWorkout() -> RunWorkout {
+        var workout = createSampleWorkout()
+        workout.recordedLaps = [RecordedLap(
+            lapIndex: 1,
+            source: .tcx,
+            trigger: .unknownTCX("=SUM(A1:A2)"),
+            startElapsedSeconds: 0,
+            endElapsedSeconds: 300,
+            startDistanceMeters: 0,
+            endDistanceMeters: 1_000,
+            elapsedSeconds: 300,
+            activeSeconds: 280,
+            movingSeconds: 260,
+            averageHeartRateBPM: 145,
+            maximumHeartRateBPM: 160,
+            averageCadence: 180,
+            elevationGainMeters: 12,
+            elevationLossMeters: 4,
+            reportedMetrics: RecordedLapReportedMetrics(
+                elapsedSeconds: 301,
+                timerSeconds: 280,
+                distanceMeters: 1_005,
+                rawIntensityValue: "Active",
+                rawTriggerValue: "=SUM(A1:A2)"
+            )
+        )]
+        workout.recordedLapDiagnostics = RecordedLapDiagnostics(
+            sourceLapCount: 1,
+            importedLapCount: 1,
+            triggersAvailable: true
+        )
+        return workout
     }
 
     private func createPausedWorkout() -> RunWorkout {

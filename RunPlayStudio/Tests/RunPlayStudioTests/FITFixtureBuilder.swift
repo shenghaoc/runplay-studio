@@ -60,6 +60,7 @@ struct FITFixtureBuilder {
         writeSessionMessage(
             elapsedSeconds: elapsedSeconds,
             timerSeconds: timerSeconds,
+            numberOfLaps: 0,
             to: &content
         )
 
@@ -93,6 +94,153 @@ struct FITFixtureBuilder {
         data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // data size
         data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // Invalid data type
         data.append(contentsOf: [0x00, 0x00]) // CRC
+        return data
+    }
+
+    /// Build a sample run with one session and two lap messages (manual + distance).
+    static func buildSampleRunWithLaps() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            numberOfLaps: 2,
+            to: &content
+        )
+
+        writeLapDefinitionMessage(to: &content)
+        // Lap 1: first half, manual trigger
+        writeLapMessage(
+            messageIndex: 0,
+            startOffset: 0,
+            endOffset: 140,
+            elapsedSeconds: 140,
+            timerSeconds: 140,
+            distanceMeters: 2_500,
+            calories: 180,
+            trigger: 0,
+            to: &content
+        )
+        // Lap 2: second half, distance trigger
+        writeLapMessage(
+            messageIndex: 1,
+            startOffset: 140,
+            endOffset: 290,
+            elapsedSeconds: 150,
+            timerSeconds: 150,
+            distanceMeters: 2_500,
+            calories: 190,
+            trigger: 2,
+            to: &content
+        )
+
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
+    /// Build a multi-session file whose selected running session encodes its
+    /// start time with the FIT invalid-value sentinel. Its end time and elapsed
+    /// total still establish the session range, so the valid lap must survive
+    /// the timestamp-based association fallback.
+    static func buildMultiSessionRunWithInvalidSelectedStartAndLap() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            numberOfLaps: .max,
+            startOffset: nil,
+            firstLapIndex: .max,
+            to: &content
+        )
+        writeSessionMessage(
+            elapsedSeconds: 100,
+            timerSeconds: 100,
+            numberOfLaps: 0,
+            startOffset: 1_000,
+            endOffset: 1_100,
+            sport: .cycling,
+            to: &content
+        )
+
+        writeLapDefinitionMessage(to: &content)
+        writeLapMessage(
+            messageIndex: 0,
+            startOffset: nil,
+            endOffset: 290,
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            distanceMeters: 5_000,
+            calories: 370,
+            trigger: 0,
+            to: &content
+        )
+
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
+    /// Build a valid route with one selected-session lap whose start and totals
+    /// cannot establish a safe boundary. Import should keep the route and report
+    /// the skipped malformed lap.
+    static func buildSampleRunWithMalformedLap() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            numberOfLaps: 1,
+            to: &content
+        )
+        writeLapDefinitionMessage(to: &content)
+        writeMalformedLapMessage(to: &content)
+
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
         return data
     }
 
@@ -152,26 +300,92 @@ struct FITFixtureBuilder {
         data.append(0x00) // reserved
         data.append(0x00) // little-endian
         data.append(contentsOf: [0x12, 0x00]) // global message 18 (session)
-        data.append(5)
+        data.append(7)
         writeFieldDef(field: 253, size: 4, type: 134, to: &data) // timestamp
         writeFieldDef(field: 2, size: 4, type: 134, to: &data)   // start_time
         writeFieldDef(field: 5, size: 1, type: 2, to: &data)     // sport
         writeFieldDef(field: 7, size: 4, type: 134, to: &data)   // total_elapsed_time
         writeFieldDef(field: 8, size: 4, type: 134, to: &data)   // total_timer_time
+        writeFieldDef(field: 25, size: 2, type: 132, to: &data)  // first_lap_index
+        writeFieldDef(field: 26, size: 2, type: 132, to: &data)  // num_laps
     }
 
     private static func writeSessionMessage(
         elapsedSeconds: UInt32,
         timerSeconds: UInt32,
+        numberOfLaps: UInt16,
+        startOffset: UInt32? = 0,
+        endOffset: UInt32 = 290,
+        sport: FITSport = .running,
+        firstLapIndex: UInt16 = 0,
         to data: inout Data
     ) {
         let baseTimestamp: UInt32 = 1_000_000_000
         data.append(0x01) // data message, local type 1
-        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + 290).littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: baseTimestamp.littleEndian) { Array($0) })
-        data.append(FITSport.running.rawValue)
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + endOffset).littleEndian) { Array($0) })
+        let startTimestamp = startOffset.map { baseTimestamp + $0 } ?? UInt32.max
+        data.append(contentsOf: withUnsafeBytes(of: startTimestamp.littleEndian) { Array($0) })
+        data.append(sport.rawValue)
         data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: firstLapIndex.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: numberOfLaps.littleEndian) { Array($0) })
+    }
+
+    private static func writeLapDefinitionMessage(to data: inout Data) {
+        data.append(0x42) // definition, local type 2
+        data.append(0x00) // reserved
+        data.append(0x00) // little-endian
+        data.append(contentsOf: [0x13, 0x00]) // global message 19 (lap)
+        data.append(8)
+        writeFieldDef(field: 254, size: 2, type: 132, to: &data) // message_index
+        writeFieldDef(field: 253, size: 4, type: 134, to: &data) // timestamp
+        writeFieldDef(field: 2, size: 4, type: 134, to: &data)   // start_time
+        writeFieldDef(field: 7, size: 4, type: 134, to: &data)   // total_elapsed_time
+        writeFieldDef(field: 8, size: 4, type: 134, to: &data)   // total_timer_time
+        writeFieldDef(field: 9, size: 4, type: 134, to: &data)   // total_distance
+        writeFieldDef(field: 11, size: 2, type: 132, to: &data)  // total_calories
+        writeFieldDef(field: 24, size: 1, type: 0, to: &data)    // lap_trigger (enum)
+    }
+
+    private static func writeLapMessage(
+        messageIndex: UInt16,
+        startOffset: UInt32?,
+        endOffset: UInt32,
+        elapsedSeconds: UInt32,
+        timerSeconds: UInt32,
+        distanceMeters: UInt32,
+        calories: UInt16,
+        trigger: UInt8,
+        to data: inout Data
+    ) {
+        let baseTimestamp: UInt32 = 1_000_000_000
+        data.append(0x02) // data message, local type 2
+        data.append(contentsOf: withUnsafeBytes(of: messageIndex.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + endOffset).littleEndian) { Array($0) })
+        let startTimestamp = startOffset.map { baseTimestamp + $0 } ?? UInt32.max
+        data.append(contentsOf: withUnsafeBytes(of: startTimestamp.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: (distanceMeters * 100).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: calories.littleEndian) { Array($0) })
+        data.append(trigger)
+    }
+
+    private static func writeMalformedLapMessage(to data: inout Data) {
+        data.append(0x02) // data message, local type 2
+        let messageIndex: UInt16 = 0
+        let invalidTimestamp = UInt32.max
+        let zero: UInt32 = 0
+        let zeroCalories: UInt16 = 0
+        data.append(contentsOf: withUnsafeBytes(of: messageIndex.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: invalidTimestamp.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: invalidTimestamp.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: zero.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: zero.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: zero.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: zeroCalories.littleEndian) { Array($0) })
+        data.append(0) // manual trigger
     }
 
     private static func writeFieldDef(field: UInt8, size: UInt8, type: UInt8, to data: inout Data) {

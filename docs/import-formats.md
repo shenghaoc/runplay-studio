@@ -7,10 +7,10 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 
 | Format | Status | Notes |
 | --- | --- | --- |
-| JSON | Full support | Native fixture format with route points, metadata, biometrics, versioned route normalization, and versioned derived analysis. Legacy snapshots are normalized before they are reanalysed. |
-| GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
-| TCX | Track support | Parses one GPS-bearing activity's laps, tracks, trackpoints, distance, elevation, heart rate, and cadence. Each track remains disconnected and is rebased independently; files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
-| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. One unambiguous GPS-bearing running session is imported when session metadata exists; valid GPS records fall back to one legacy activity when it does not. |
+| JSON | Full support | Native fixture format with route points, metadata, biometrics, optional recorded laps, versioned route normalization, and versioned derived analysis. Legacy snapshots are normalized before they are reanalysed. |
+| GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. Standard GPX does **not** define device laps — `recordedLaps` stays empty and `<trkseg>` is never treated as a lap. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
+| TCX | Track support | Parses one GPS-bearing activity's laps (including summary fields and `TriggerMethod`), tracks, trackpoints, distance, elevation, heart rate, and cadence. A `<Lap>` boundary alone does **not** create a route gap; multi-`<Track>` continuity is resolved deterministically. Files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
+| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
 ## Current Limitations
@@ -56,6 +56,11 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
   a fake zero-elevation route.
 - FIT timer start/stop events separate route segments without adding geographic distance across a pause. Supplied FIT distance is rebased per complete segment; segments with missing or invalid distance use their coordinates instead. Route-point elapsed timestamps remain elapsed time.
 - FIT selected-session elapsed/timer totals validate the route-derived clocks but never blindly replace them. Material mismatches (more than five seconds or two percent) produce import warnings.
+- FIT and TCX **recorded laps** are preserved separately from calculated kilometre splits. Canonical lap metrics are always route-derived; source-reported lap totals are retained for validation. Material aggregated mismatches produce diagnostics or a non-fatal warning rather than one banner per minor difference.
+- Malformed optional FIT/TCX lap messages or JSON recorded-lap elements do not invalidate an otherwise usable route. They are skipped with aggregated diagnostics; decoded lap metrics are revalidated as finite, non-negative, and within the shared HR/cadence ranges.
+- TCX seamless manual/auto laps remain in one route segment. Multiple tracks use `TCXRouteContinuityResolver` (time/distance thresholds) so genuine pauses stay gaps while continuous tracks do not invent a pause.
+- TCX `TriggerMethod` values map to documented triggers (`Manual`, `Distance`, `Time`, `Location`); unknown text is retained as unknown rather than guessed. FIT `lap_trigger` maps official profile codes; unknown codes keep the raw value.
+- Old persisted FIT/TCX library snapshots that discarded source laps stay empty until the original file is reimported. GPX never invents laps.
 - FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages.
 - FIT signed coordinate decoding uses bit-pattern semantics for western and
   southern hemisphere coordinates.

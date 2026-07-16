@@ -29,10 +29,17 @@ struct CompareView: View {
                         .layoutPriority(1)
                         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
 
-                        SplitComparisonTableView(splits: appState.splitComparisons)
-                            .padding(AppDesign.Spacing.large)
-                            .frame(minWidth: 380, maxWidth: 480, maxHeight: .infinity)
-                            .panelBackground()
+                        VStack(spacing: AppDesign.Spacing.large) {
+                            SplitComparisonTableView(splits: appState.splitComparisons)
+                            if !appState.recordedLapComparisons.isEmpty {
+                                RecordedLapComparisonTableView(
+                                    comparisons: appState.recordedLapComparisons
+                                )
+                            }
+                        }
+                        .padding(AppDesign.Spacing.large)
+                        .frame(minWidth: 380, maxWidth: 480, maxHeight: .infinity)
+                        .panelBackground()
                     }
                     .layoutPriority(1)
 

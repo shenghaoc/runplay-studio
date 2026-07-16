@@ -112,6 +112,7 @@ public struct FITEventMessage: Sendable {
 // MARK: - Lap (Global Message 19)
 
 public struct FITLapMessage: Sendable {
+    public var messageIndex: UInt16?
     public var timestamp: UInt32?
     public var startTime: UInt32?
     public var startPositionLat: Int32?
@@ -121,10 +122,15 @@ public struct FITLapMessage: Sendable {
     public var totalElapsedTime: UInt32?    // scaled 1000
     public var totalTimerTime: UInt32?      // scaled 1000
     public var totalDistance: UInt32?       // scaled 100
+    public var totalCalories: UInt16?
     public var totalAscent: UInt16?
     public var totalDescent: UInt16?
     public var averageSpeed: UInt16?        // scaled 1000
     public var maximumSpeed: UInt16?        // scaled 1000
+    /// FIT Profile enhanced_avg_speed (field 110), scaled 1000.
+    public var enhancedAverageSpeed: UInt32?
+    /// FIT Profile enhanced_max_speed (field 111), scaled 1000.
+    public var enhancedMaximumSpeed: UInt32?
     public var averageHeartRate: UInt8?
     public var maximumHeartRate: UInt8?
     public var averageCadence: UInt8?
@@ -158,6 +164,10 @@ public struct FITSessionMessage: Sendable {
     public var averageCadence: UInt8?
     public var event: UInt8?
     public var eventType: UInt8?
+    /// Index of the first lap message belonging to this session.
+    public var firstLapIndex: UInt16?
+    /// Number of lap messages belonging to this session.
+    public var numberOfLaps: UInt16?
     public var eventGroup: UInt8?
     public var trigger: UInt8?
     public var necLong: Int32?          // field 29
@@ -290,6 +300,8 @@ public enum FITSessionField: UInt8 {
     case averageCadence = 18
     case event = 0
     case eventType = 1
+    case firstLapIndex = 25
+    case numberOfLaps = 26
     case eventGroup = 27
     case trigger = 28
     case necLat = 29
@@ -300,6 +312,7 @@ public enum FITSessionField: UInt8 {
 
 /// Known field numbers for lap messages (global message 19).
 public enum FITLapField: UInt8 {
+    case messageIndex = 254
     case timestamp = 253
     case startTime = 2
     case startPositionLat = 3
@@ -309,6 +322,7 @@ public enum FITLapField: UInt8 {
     case totalElapsedTime = 7
     case totalTimerTime = 8
     case totalDistance = 9
+    case totalCalories = 11
     case totalAscent = 21
     case totalDescent = 22
     case averageSpeed = 13
@@ -321,6 +335,8 @@ public enum FITLapField: UInt8 {
     case lapTrigger = 24
     case sport = 25
     case eventGroup = 26
+    case enhancedAverageSpeed = 110
+    case enhancedMaximumSpeed = 111
 }
 
 /// Known field numbers for file_id messages (global message 0).

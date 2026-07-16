@@ -124,7 +124,12 @@ struct WorkoutDetailView: View {
         case .splits:
             SplitTableView(
                 splits: workout.splits,
-                currentSplitIndex: replayController.selectedMetrics.splitIndex
+                recordedLaps: workout.recordedLaps,
+                currentSplitIndex: replayController.selectedMetrics.splitIndex,
+                currentRecordedLapIndex: replayController.selectedMetrics.recordedLapIndex,
+                onSeekToRecordedLap: { lap in
+                    seekToRecordedLap(lap)
+                }
             )
             .padding(AppDesign.Spacing.xLarge)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -169,6 +174,11 @@ struct WorkoutDetailView: View {
 
     private func seekToSegment(_ segment: SegmentHighlight) {
         replayController.seekToDistance(segment.startDistanceMeters)
+    }
+
+    private func seekToRecordedLap(_ lap: RecordedLap) {
+        replayController.pause()
+        replayController.seekToTime(lap.startElapsedSeconds)
     }
 
 }

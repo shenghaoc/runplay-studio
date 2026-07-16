@@ -141,6 +141,96 @@ public struct MovementProfile: Sendable {
         return states[idx]
     }
 
+    /// Moving time within an elapsed-time range.
+    public func movingSeconds(
+        fromElapsed startElapsed: Double,
+        toElapsed endElapsed: Double,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        guard let range = timeline.timeRange(from: startElapsed, to: endElapsed),
+              let startMoving = movingSeconds(atElapsed: range.start, timeline: timeline),
+              let endMoving = movingSeconds(atElapsed: range.end, timeline: timeline)
+        else {
+            return nil
+        }
+        return max(0, endMoving - startMoving)
+    }
+
+    /// Stopped time within an elapsed-time range.
+    public func stoppedSeconds(
+        fromElapsed startElapsed: Double,
+        toElapsed endElapsed: Double,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        guard let range = timeline.timeRange(from: startElapsed, to: endElapsed),
+              let startStopped = stoppedSeconds(atElapsed: range.start, timeline: timeline),
+              let endStopped = stoppedSeconds(atElapsed: range.end, timeline: timeline)
+        else {
+            return nil
+        }
+        return max(0, endStopped - startStopped)
+    }
+
+    /// Cumulative moving time at an elapsed-time sample.
+    public func movingSeconds(
+        atElapsed sample: WorkoutTimeline.ElapsedSample,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        interpolatedCumulative(movingSecondsByPoint, atElapsed: sample, timeline: timeline)
+    }
+
+    /// Cumulative stopped time at an elapsed-time sample.
+    public func stoppedSeconds(
+        atElapsed sample: WorkoutTimeline.ElapsedSample,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        interpolatedCumulative(stoppedSecondsByPoint, atElapsed: sample, timeline: timeline)
+    }
+
+    private func interpolatedCumulative(
+        _ cumulative: [Double],
+        atElapsed sample: WorkoutTimeline.ElapsedSample,
+        timeline: WorkoutTimeline
+    ) -> Double? {
+        guard cumulative.indices.contains(sample.pointIndex) else { return nil }
+        if sample.isInRecordingGap || !sample.isInterpolated {
+            return cumulative[sample.pointIndex]
+        }
+
+        // Interpolate within the continuous interval surrounding the sample.
+        let index = sample.pointIndex
+        let before: Int
+        let after: Int
+        if index + 1 < cumulative.count,
+           let nextActive = timeline.activeSeconds(atPointIndex: index + 1),
+           let currentActive = timeline.activeSeconds(atPointIndex: index),
+           nextActive > currentActive,
+           sample.activeSeconds >= currentActive,
+           sample.activeSeconds <= nextActive {
+            before = index
+            after = index + 1
+        } else if index > 0,
+                  let previousActive = timeline.activeSeconds(atPointIndex: index - 1),
+                  let currentActive = timeline.activeSeconds(atPointIndex: index),
+                  currentActive > previousActive,
+                  sample.activeSeconds >= previousActive,
+                  sample.activeSeconds <= currentActive {
+            before = index - 1
+            after = index
+        } else {
+            return cumulative[sample.pointIndex]
+        }
+
+        guard let startActive = timeline.activeSeconds(atPointIndex: before),
+              let endActive = timeline.activeSeconds(atPointIndex: after),
+              endActive > startActive
+        else {
+            return cumulative[sample.pointIndex]
+        }
+        let fraction = min(1, max(0, (sample.activeSeconds - startActive) / (endActive - startActive)))
+        return cumulative[before] + (cumulative[after] - cumulative[before]) * fraction
+    }
+
     // MARK: - Construction
 
     public init(

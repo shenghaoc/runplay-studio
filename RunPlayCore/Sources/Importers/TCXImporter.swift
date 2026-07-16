@@ -7,11 +7,14 @@ import FoundationXML
 ///
 /// Supports TCX structure:
 /// - TrainingCenterDatabase > Activities > Activity > Lap > Track > Trackpoint
-/// - Each `<Track>` starts a new `routeSegmentIndex`.
-/// - Each `<Lap>` also starts a new segment index.
-/// - Distance is rebased per-track to prevent cross-segment phantom distance.
-/// - Multi-activity files: if exactly one activity has GPS data, it is imported;
-///   if multiple activities have GPS data, an error is thrown.
+///
+/// Recorded-lap policy:
+/// - Each `<Lap>` becomes a `RecordedLap` with source summary fields.
+/// - A lap boundary alone never creates a route discontinuity.
+/// - Multiple `<Track>` elements use `TCXRouteContinuityResolver` to decide
+///   whether recording paused or remained continuous.
+/// - Route distance stays monotonic; per-lap distance resets are retained only
+///   in source-reported metrics.
 public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     public init() {}
     public var supportedExtensions: [String] { ["tcx"] }
@@ -63,82 +66,193 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             }
         }
 
-        // Flatten all tracks from all laps, preserving segment boundaries.
-        // Each (lap, track) pair becomes one segment.
-        struct SegmentData {
-            var points: [RawTCXTrackpoint]
+        // Flatten tracks with deliberate continuity, not one segment per lap.
+        let continuity = TCXRouteContinuityPolicy.runningDefault
+        var routePoints: [RoutePoint] = []
+        var globalIndex = 0
+        var segmentIndex = 0
+        var previousContinuityPoint: TCXRouteContinuityResolver.ContinuityPoint?
+        var hasAnySuppliedDistance = false
+        var allSuppliedDistancesValid = true
+
+        // Collect provisional recorded-lap definitions while walking tracks.
+        var provisionalLaps: [RecordedLap] = []
+        // Track first/last timestamps per lap for boundary fallback.
+        var lapPointRanges: [(firstGlobalIndex: Int, lastGlobalIndex: Int)] = []
+
+        // Flatten all valid points first for timestamp resolution.
+        struct FlatPoint {
+            var raw: RawTCXTrackpoint
+            var lapIndex: Int
+            var isTrackStart: Bool
         }
-        var segments: [SegmentData] = []
-        for lap in activity.laps {
+        var flat: [FlatPoint] = []
+        for (lapIdx, lap) in activity.laps.enumerated() {
             for track in lap.tracks {
-                let validPoints = track.points.filter { tp in
-                    GeoDistance.isValidCoordinate(lat: tp.latitude, lon: tp.longitude)
-                }
-                if !validPoints.isEmpty {
-                    segments.append(SegmentData(points: validPoints))
+                var isFirstInTrack = true
+                for tp in track.points {
+                    guard GeoDistance.isValidCoordinate(lat: tp.latitude, lon: tp.longitude) else {
+                        continue
+                    }
+                    flat.append(FlatPoint(raw: tp, lapIndex: lapIdx, isTrackStart: isFirstInTrack))
+                    isFirstInTrack = false
                 }
             }
         }
 
-        guard !segments.isEmpty else {
+        guard !flat.isEmpty else {
             throw WorkoutImportError.missingData("No GPS route data with valid coordinates found")
         }
 
-        // Flatten for timestamp resolution.
-        let allValidPoints = segments.flatMap(\.points)
-
-        // Resolve timestamps
-        guard let timestamps = RouteTimestampResolver.resolve(allValidPoints.map(\.time)),
+        guard let timestamps = RouteTimestampResolver.resolve(flat.map(\.raw.time)),
               let startDate = timestamps.first else {
             throw WorkoutImportError.missingData("TCX file has no timestamps; cannot compute pace or duration")
         }
 
-        // Build route points with segment indexes.
-        var routePoints: [RoutePoint] = []
-        var globalIndex = 0
-        var hasAnySuppliedDistance = false
-        var allSuppliedDistancesValid = true
+        // Per-track distance rebasing only — never mix per-lap resets into a
+        // decreasing global series. Normalization later makes distance monotonic.
+        var trackLocalDistances: [Double?] = Array(repeating: nil, count: flat.count)
+        var trackStart = 0
+        while trackStart < flat.count {
+            var trackEnd = trackStart + 1
+            while trackEnd < flat.count, !flat[trackEnd].isTrackStart {
+                trackEnd += 1
+            }
+            let rebased = rebaseDistance(
+                (trackStart..<trackEnd).map { flat[$0].raw.distanceMeters }
+            )
+            for (offset, value) in rebased.enumerated() {
+                trackLocalDistances[trackStart + offset] = value
+            }
+            trackStart = trackEnd
+        }
 
-        for (segmentIdx, segment) in segments.enumerated() {
-            // Rebase distance within this segment so it starts from 0.
-            let rebasedDistance = rebaseDistance(segment.points.map(\.distanceMeters))
+        var currentLapFirstIndex: [Int: Int] = [:]
+        var currentLapLastIndex: [Int: Int] = [:]
+        var continuousTrackDistanceOffset = 0.0
 
-            // Check raw distance completeness before rebasing.
-            for raw in segment.points {
-                if let d = raw.distanceMeters {
-                    hasAnySuppliedDistance = true
-                    if !d.isFinite || d < 0 {
-                        allSuppliedDistancesValid = false
-                    }
+        for (index, item) in flat.enumerated() {
+            let timestamp = timestamps[index]
+            let continuityPoint = TCXRouteContinuityResolver.ContinuityPoint(
+                latitude: item.raw.latitude,
+                longitude: item.raw.longitude,
+                timestamp: timestamp
+            )
+
+            if item.isTrackStart, index > 0 {
+                let decision = TCXRouteContinuityResolver.decide(
+                    previous: previousContinuityPoint,
+                    next: continuityPoint,
+                    policy: continuity
+                )
+                if decision == .discontinuous {
+                    segmentIndex += 1
+                    continuousTrackDistanceOffset = 0
                 } else {
-                    allSuppliedDistancesValid = false
+                    continuousTrackDistanceOffset = routePoints.last?.distanceFromStartMeters ?? 0
                 }
             }
 
-            for (localIdx, raw) in segment.points.enumerated() {
-                let timestamp = timestamps[globalIndex]
-                globalIndex += 1
+            if let d = item.raw.distanceMeters {
+                hasAnySuppliedDistance = true
+                if !d.isFinite || d < 0 {
+                    allSuppliedDistancesValid = false
+                }
+            } else {
+                allSuppliedDistancesValid = false
+            }
 
-                let elapsed = timestamp.timeIntervalSince(startDate)
-                let dist = localIdx < rebasedDistance.count ? (rebasedDistance[localIdx] ?? 0) : 0
+            let elapsed = timestamp.timeIntervalSince(startDate)
+            let dist = (trackLocalDistances[index] ?? 0) + continuousTrackDistanceOffset
 
-                let point = RoutePoint(
-                    timestamp: timestamp,
-                    latitude: raw.latitude,
-                    longitude: raw.longitude,
-                    altitudeMeters: raw.altitudeMeters,
-                    distanceFromStartMeters: dist,
-                    elapsedSeconds: elapsed,
-                    heartRateBPM: raw.heartRateBPM.map { Double($0) },
-                    cadence: raw.cadence.map { Double($0) },
-                    routeSegmentIndex: segmentIdx
-                )
-                routePoints.append(point)
+            let point = RoutePoint(
+                timestamp: timestamp,
+                latitude: item.raw.latitude,
+                longitude: item.raw.longitude,
+                altitudeMeters: item.raw.altitudeMeters,
+                distanceFromStartMeters: dist,
+                elapsedSeconds: elapsed,
+                heartRateBPM: item.raw.heartRateBPM.map { Double($0) },
+                cadence: item.raw.cadence.map { Double($0) },
+                routeSegmentIndex: segmentIndex
+            )
+            routePoints.append(point)
+            previousContinuityPoint = continuityPoint
+
+            if currentLapFirstIndex[item.lapIndex] == nil {
+                currentLapFirstIndex[item.lapIndex] = globalIndex
+            }
+            currentLapLastIndex[item.lapIndex] = globalIndex
+            globalIndex += 1
+        }
+
+        for lapIdx in activity.laps.indices {
+            if let first = currentLapFirstIndex[lapIdx],
+               let last = currentLapLastIndex[lapIdx] {
+                lapPointRanges.append((first, last))
+            } else {
+                lapPointRanges.append((-1, -1))
             }
         }
 
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid coordinates found in TCX file")
+        }
+
+        // Build provisional recorded laps from TCX Lap metadata.
+        for (lapIdx, lap) in activity.laps.enumerated() {
+            let range = lapPointRanges[lapIdx]
+            let startDateForLap: Date?
+            if let start = lap.startTime {
+                startDateForLap = start
+            } else if range.firstGlobalIndex >= 0 {
+                startDateForLap = routePoints[range.firstGlobalIndex].timestamp
+            } else {
+                startDateForLap = nil
+            }
+
+            let nextLapStart = activity.laps.indices.contains(lapIdx + 1)
+                ? activity.laps[lapIdx + 1].startTime
+                : nil
+            let endDateForLap: Date?
+            if let nextLapStart {
+                endDateForLap = nextLapStart
+            } else if let start = startDateForLap,
+                      let total = lap.totalTimeSeconds,
+                      total.isFinite,
+                      total > 0 {
+                endDateForLap = start.addingTimeInterval(total)
+            } else if range.lastGlobalIndex >= 0 {
+                endDateForLap = routePoints[range.lastGlobalIndex].timestamp
+            } else {
+                endDateForLap = nil
+            }
+
+            let trigger = RecordedLapTrigger.fromTCXTriggerMethod(lap.triggerMethod)
+            let reported = RecordedLapReportedMetrics(
+                elapsedSeconds: lap.totalTimeSeconds,
+                timerSeconds: lap.totalTimeSeconds,
+                distanceMeters: lap.distanceMeters,
+                ascentMeters: nil,
+                descentMeters: nil,
+                averageHeartRateBPM: lap.averageHeartRateBPM.map { Double($0) },
+                maximumHeartRateBPM: lap.maximumHeartRateBPM.map { Double($0) },
+                averageCadence: lap.cadence.map { Double($0) },
+                averageSpeedMetersPerSecond: nil,
+                maximumSpeedMetersPerSecond: lap.maximumSpeed,
+                calories: lap.calories.map { Double($0) },
+                rawIntensityValue: lap.intensity,
+                rawTriggerValue: lap.triggerMethod
+            )
+
+            provisionalLaps.append(.provisional(
+                lapIndex: provisionalLaps.count + 1,
+                source: .tcx,
+                trigger: trigger,
+                sourceStartDate: startDateForLap,
+                sourceEndDate: endDateForLap,
+                reportedMetrics: reported.isEmpty ? nil : reported
+            ))
         }
 
         let hasCompleteSuppliedDistanceSeries = hasAnySuppliedDistance && allSuppliedDistancesValid
@@ -154,8 +268,10 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         var workout = RunWorkout(
             metadata: metadata,
             source: .tcx,
-            routePoints: routePoints
+            routePoints: routePoints,
+            recordedLaps: provisionalLaps
         )
+        workout.sourceStructureVersion = RunWorkout.currentSourceStructureVersion
 
         let analyzer = WorkoutAnalyzer()
         try analyzer.normalizeAndAnalyze(
@@ -193,8 +309,18 @@ private struct RawTCXActivity {
     var laps: [RawTCXLap]
 }
 
-/// A lap containing one or more tracks.
+/// A lap containing summary fields and one or more tracks.
 private struct RawTCXLap {
+    var startTime: Date?
+    var totalTimeSeconds: Double?
+    var distanceMeters: Double?
+    var maximumSpeed: Double?
+    var calories: Int?
+    var averageHeartRateBPM: Int?
+    var maximumHeartRateBPM: Int?
+    var cadence: Int?
+    var intensity: String?
+    var triggerMethod: String?
     var tracks: [RawTCXTrack]
 }
 
@@ -213,7 +339,7 @@ private struct RawTCXTrackpoint {
     var cadence: Int?
 }
 
-/// TCX XML parser that preserves activity/lap/track hierarchy.
+/// TCX XML parser that preserves activity/lap/track hierarchy and lap summaries.
 private class TCXXMLParser: NSObject, XMLParserDelegate {
     private let data: Data
     private var activities: [RawTCXActivity] = []
@@ -225,14 +351,26 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     private var inTrackpoint = false
     private var inPosition = false
     private var inHeartRate = false
+    private var inAverageHeartRate = false
+    private var inMaximumHeartRate = false
 
     // Current activity state
     private var currentSport: String?
     private var currentActivityId: Date?
 
-    // Current lap tracks accumulator
+    // Current lap state
     private var currentLapTracks: [RawTCXTrack] = []
     private var currentActivityLaps: [RawTCXLap] = []
+    private var currentLapStartTime: Date?
+    private var currentLapTotalTime: Double?
+    private var currentLapDistance: Double?
+    private var currentLapMaxSpeed: Double?
+    private var currentLapCalories: Int?
+    private var currentLapAvgHR: Int?
+    private var currentLapMaxHR: Int?
+    private var currentLapCadence: Int?
+    private var currentLapIntensity: String?
+    private var currentLapTrigger: String?
 
     // Current track points accumulator
     private var currentTrackPoints: [RawTCXTrackpoint] = []
@@ -277,8 +415,9 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         attributes: [String: String]
     ) {
         currentText = ""
+        let name = localName(elementName)
 
-        switch elementName {
+        switch name {
         case "Activity":
             inActivity = true
             currentSport = attributes["Sport"]?.lowercased()
@@ -287,6 +426,16 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         case "Lap":
             inLap = true
             currentLapTracks = []
+            currentLapStartTime = attributes["StartTime"].flatMap(parseISO8601)
+            currentLapTotalTime = nil
+            currentLapDistance = nil
+            currentLapMaxSpeed = nil
+            currentLapCalories = nil
+            currentLapAvgHR = nil
+            currentLapMaxHR = nil
+            currentLapCadence = nil
+            currentLapIntensity = nil
+            currentLapTrigger = nil
         case "Track":
             inTrack = true
             currentTrackPoints = []
@@ -302,6 +451,12 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         case "Position":
             inPosition = true
         case "HeartRateBpm":
+            inHeartRate = true
+        case "AverageHeartRateBpm":
+            inAverageHeartRate = true
+            inHeartRate = true
+        case "MaximumHeartRateBpm":
+            inMaximumHeartRate = true
             inHeartRate = true
         default:
             break
@@ -319,10 +474,11 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         qualifiedName: String?
     ) {
         let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = localName(elementName)
 
-        switch elementName {
+        switch name {
         case "Id":
-            if inActivity {
+            if inActivity, !inLap, !inTrackpoint {
                 currentActivityId = parseISO8601(text)
             }
         case "Time":
@@ -344,16 +500,52 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         case "DistanceMeters":
             if inTrackpoint {
                 currentDist = Double(text)
+            } else if inLap, !inTrack, !inTrackpoint {
+                currentLapDistance = Double(text)
+            }
+        case "TotalTimeSeconds":
+            if inLap, !inTrack, !inTrackpoint {
+                currentLapTotalTime = Double(text)
+            }
+        case "MaximumSpeed":
+            if inLap, !inTrack, !inTrackpoint {
+                currentLapMaxSpeed = Double(text)
+            }
+        case "Calories":
+            if inLap, !inTrack, !inTrackpoint {
+                currentLapCalories = Int(text)
             }
         case "Value":
             if inHeartRate {
-                currentHR = Int(text)
+                if inTrackpoint {
+                    currentHR = Int(text)
+                } else if inAverageHeartRate {
+                    currentLapAvgHR = Int(text)
+                } else if inMaximumHeartRate {
+                    currentLapMaxHR = Int(text)
+                }
             }
         case "Cadence":
             if inTrackpoint {
                 currentCadence = Int(text)
+            } else if inLap, !inTrack {
+                currentLapCadence = Int(text)
+            }
+        case "Intensity":
+            if inLap, !inTrack, !inTrackpoint {
+                currentLapIntensity = text
+            }
+        case "TriggerMethod":
+            if inLap, !inTrack, !inTrackpoint {
+                currentLapTrigger = text
             }
         case "HeartRateBpm":
+            inHeartRate = false
+        case "AverageHeartRateBpm":
+            inAverageHeartRate = false
+            inHeartRate = false
+        case "MaximumHeartRateBpm":
+            inMaximumHeartRate = false
             inHeartRate = false
         case "Position":
             inPosition = false
@@ -378,7 +570,19 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             }
         case "Lap":
             if inLap {
-                currentActivityLaps.append(RawTCXLap(tracks: currentLapTracks))
+                currentActivityLaps.append(RawTCXLap(
+                    startTime: currentLapStartTime,
+                    totalTimeSeconds: currentLapTotalTime,
+                    distanceMeters: currentLapDistance,
+                    maximumSpeed: currentLapMaxSpeed,
+                    calories: currentLapCalories,
+                    averageHeartRateBPM: currentLapAvgHR,
+                    maximumHeartRateBPM: currentLapMaxHR,
+                    cadence: currentLapCadence,
+                    intensity: currentLapIntensity,
+                    triggerMethod: currentLapTrigger,
+                    tracks: currentLapTracks
+                ))
                 currentLapTracks = []
                 inLap = false
             }
@@ -395,6 +599,14 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         default:
             break
         }
+    }
+
+    /// Strip optional namespace prefixes (`ns:Lap` → `Lap`).
+    private func localName(_ elementName: String) -> String {
+        if let colon = elementName.firstIndex(of: ":") {
+            return String(elementName[elementName.index(after: colon)...])
+        }
+        return elementName
     }
 
     // MARK: - Date Parsing

@@ -64,7 +64,8 @@ public struct FITDecoder {
                 records: records
             )
             usesTimerSegmentation = sessionEvents.contains {
-                $0.timerEventType != nil && $0.timestamp != nil
+                $0.timerEventType != nil
+                    && FITParser.timestampIfValid($0.timestamp) != nil
             }
         case .legacyFallback:
             records = decodedFile.records
@@ -109,7 +110,7 @@ public struct FITDecoder {
 
         let resolvedTimestamps = RouteTimestampResolver.resolve(
             validRecords.map { record in
-                guard let timestamp = record.timestamp, timestamp != FITParser.invalidUint32 else {
+                guard let timestamp = FITParser.timestampIfValid(record.timestamp) else {
                     return nil
                 }
                 return FITParser.timestampToDate(timestamp)
@@ -185,14 +186,14 @@ public struct FITDecoder {
         for record in decodedFile.records {
             guard let lat = record.positionLat, let lon = record.positionLong else { continue }
             guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else { continue }
-            guard let timestamp = record.timestamp else { continue }
+            guard let timestamp = FITParser.timestampIfValid(record.timestamp) else { continue }
 
             // Find which session(s) this record belongs to
             for (sessionIndex, session) in decodedFile.sessions.enumerated() {
-            guard let sessionStart = sessionStartTime(for: session) else { continue }
+                guard let sessionStart = sessionStartTime(for: session) else { continue }
 
                 // Check if record is within the session timeframe
-                if let sessionEnd = session.timestamp {
+                if let sessionEnd = FITParser.timestampIfValid(session.timestamp) {
                     guard timestamp >= sessionStart && timestamp <= sessionEnd else { continue }
                 } else {
                     guard timestamp >= sessionStart else { continue }
@@ -286,9 +287,12 @@ public struct FITDecoder {
         // A timestamp is required to associate a record with a selected session.
         // Unattributed records must not contaminate a multi-session import.
         return records.filter { record in
-            guard let recordTimestamp = record.timestamp else { return false }
+            guard let recordTimestamp = FITParser.timestampIfValid(record.timestamp) else { return false }
             if recordTimestamp < sessionStart { return false }
-            if let sessionEnd = session.timestamp, recordTimestamp > sessionEnd { return false }
+            if let sessionEnd = FITParser.timestampIfValid(session.timestamp),
+               recordTimestamp > sessionEnd {
+                return false
+            }
             return true
         }
     }
@@ -309,9 +313,12 @@ public struct FITDecoder {
         }
 
         return events.filter { event in
-            guard let timestamp = event.timestamp else { return false }
+            guard let timestamp = FITParser.timestampIfValid(event.timestamp) else { return false }
             if timestamp < sessionStart { return false }
-            if let sessionEnd = session.timestamp, timestamp > sessionEnd { return false }
+            if let sessionEnd = FITParser.timestampIfValid(session.timestamp),
+               timestamp > sessionEnd {
+                return false
+            }
             return true
         }
     }
@@ -321,11 +328,12 @@ public struct FITDecoder {
     /// Returning nil keeps multi-session imports fail-safe rather than merging
     /// records that cannot be attributed to one session.
     private static func sessionStartTime(for session: FITSessionMessage) -> UInt32? {
-        if let startTime = session.startTime {
+        if let startTime = FITParser.timestampIfValid(session.startTime) {
             return startTime
         }
-        guard let endTime = session.timestamp,
-              let totalElapsedMilliseconds = session.totalElapsedTime
+        guard let endTime = FITParser.timestampIfValid(session.timestamp),
+              let totalElapsedMilliseconds = session.totalElapsedTime,
+              totalElapsedMilliseconds != FITParser.invalidUint32
         else {
             return nil
         }
@@ -353,8 +361,15 @@ public struct FITDecoder {
         records: [FITRecordMessage]
     ) -> [RouteSegment] {
         // Sort events by timestamp
-        let timerEvents = events.filter { $0.timerEventType != nil }
-            .sorted { ($0.timestamp ?? 0) < ($1.timestamp ?? 0) }
+        let timerEvents = events.compactMap { event
+            -> (eventType: FITTimerEventType, timestamp: UInt32)? in
+            guard let eventType = event.timerEventType,
+                  let timestamp = FITParser.timestampIfValid(event.timestamp)
+            else {
+                return nil
+            }
+            return (eventType, timestamp)
+        }.sorted { $0.timestamp < $1.timestamp }
 
         guard !timerEvents.isEmpty else { return [] }
 
@@ -370,14 +385,11 @@ public struct FITDecoder {
         var lastClosedBoundaryRecordIndex: Int?
 
         for event in timerEvents {
-            guard let eventType = event.timerEventType,
-                  let timestamp = event.timestamp else { continue }
-
-            switch eventType {
+            switch event.eventType {
             case .start:
                 // Consecutive starts do not create empty or overlapping segments.
                 guard segmentStartIndex == nil else { continue }
-                if timestamp == lastClosedBoundaryRecordTimestamp,
+                if event.timestamp == lastClosedBoundaryRecordTimestamp,
                    let boundaryIndex = lastClosedBoundaryRecordIndex {
                     // A stop/resume at the same timestamp shares its boundary
                     // record. Retaining this O(1) anchor also keeps following
@@ -385,7 +397,7 @@ public struct FITDecoder {
                     segmentStartIndex = boundaryIndex
                 } else {
                     segmentStartIndex = firstRecordIndex(
-                        atOrAfter: timestamp,
+                        atOrAfter: event.timestamp,
                         in: records,
                         cursor: &recordCursor
                     )
@@ -397,7 +409,7 @@ public struct FITDecoder {
                 let startIdx = segmentStartIndex ?? (segments.isEmpty ? 0 : nil)
                 if let startIdx,
                    let endIdx = lastRecordIndex(
-                        atOrBefore: timestamp,
+                        atOrBefore: event.timestamp,
                         in: records,
                         startingAt: startIdx,
                         cursor: &recordCursor
@@ -407,7 +419,9 @@ public struct FITDecoder {
                         startIndex: startIdx,
                         endIndex: endIdx
                     ))
-                    lastClosedBoundaryRecordTimestamp = records[endIdx].timestamp
+                    lastClosedBoundaryRecordTimestamp = FITParser.timestampIfValid(
+                        records[endIdx].timestamp
+                    )
                     lastClosedBoundaryRecordIndex = endIdx
                 }
                 segmentStartIndex = nil
@@ -435,7 +449,7 @@ public struct FITDecoder {
         cursor: inout Int
     ) -> Int? {
         while cursor < records.endIndex {
-            guard let recordTimestamp = records[cursor].timestamp else {
+            guard let recordTimestamp = FITParser.timestampIfValid(records[cursor].timestamp) else {
                 cursor += 1
                 continue
             }
@@ -455,12 +469,12 @@ public struct FITDecoder {
         cursor = max(cursor, startIndex)
         var result: Int?
         if startIndex < cursor,
-           let startTimestamp = records[startIndex].timestamp,
+           let startTimestamp = FITParser.timestampIfValid(records[startIndex].timestamp),
            startTimestamp <= timestamp {
             result = startIndex
         }
         while cursor < records.endIndex {
-            guard let recordTimestamp = records[cursor].timestamp else {
+            guard let recordTimestamp = FITParser.timestampIfValid(records[cursor].timestamp) else {
                 cursor += 1
                 continue
             }
@@ -520,7 +534,7 @@ public struct FITDecoder {
         let resolvedTimestamps = RouteTimestampResolver.resolve(
             validRecords.map { entry in
                 let record = entry.record
-                guard let timestamp = record.timestamp, timestamp != FITParser.invalidUint32 else {
+                guard let timestamp = FITParser.timestampIfValid(record.timestamp) else {
                     return nil
                 }
                 return FITParser.timestampToDate(timestamp)

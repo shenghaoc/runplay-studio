@@ -232,6 +232,40 @@ public struct SplitComparison: Identifiable, Sendable {
     }
 }
 
+/// Ordinal recorded-lap comparison. Does not claim route alignment.
+public struct RecordedLapComparison: Identifiable, Sendable {
+    public let id = UUID()
+    public let lapIndex: Int
+    public let primaryLap: RecordedLap?
+    public let comparisonLap: RecordedLap?
+    public let distanceDeltaMeters: Double?
+    public let elapsedDurationDeltaSeconds: Double?
+    public let activeDurationDeltaSeconds: Double?
+    public let movingDurationDeltaSeconds: Double?
+    public let stoppedDurationDeltaSeconds: Double?
+    public let activePaceDeltaSecondsPerKm: Double?
+    public let movingPaceDeltaSecondsPerKm: Double?
+    public let averageHRDelta: Double?
+    public let elevationGainDeltaMeters: Double?
+    public let winner: ComparisonResult
+    public let caveats: [String]
+
+    public var formattedDistanceDelta: String {
+        guard let distanceDeltaMeters, distanceDeltaMeters.isFinite else { return "N/A" }
+        let kilometers = distanceDeltaMeters / 1000
+        if abs(kilometers) < 0.005 { return "0.00 km even" }
+        return String(format: "%+.2f km", kilometers)
+    }
+
+    public var formattedActivePaceDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(activePaceDeltaSecondsPerKm, suffix: "/km")
+    }
+
+    public var formattedMovingPaceDelta: String {
+        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: "/km")
+    }
+}
+
 public struct ComparisonMetricPoint: Identifiable, Sendable {
     public let id = UUID()
     public let distanceMeters: Double

@@ -9,9 +9,19 @@ public enum MetricValidation {
     /// Valid heart rate range for filtering outliers (30-230 bpm).
     public static let validHeartRateRange: ClosedRange<Double> = 30...230
 
+    /// Valid running cadence range in steps per minute. FIT and TCX cadence
+    /// fields are byte-sized; the small margin keeps validation format-neutral.
+    public static let validCadenceRange: ClosedRange<Double> = 0...300
+
     /// Check whether a heart rate value is within the valid range.
     public static func isValidHeartRate(_ bpm: Double) -> Bool {
         bpm.isFinite && validHeartRateRange.contains(bpm)
+    }
+
+    /// Check whether a cadence value is finite and physically representable by
+    /// the supported source formats.
+    public static func isValidCadence(_ stepsPerMinute: Double) -> Bool {
+        stepsPerMinute.isFinite && validCadenceRange.contains(stepsPerMinute)
     }
 }
 

@@ -53,11 +53,32 @@ above remain unchecked.
 - [ ] Confirm distance and active time remain fixed while elapsed time advances.
 - [ ] Confirm a kilometre split crossing the pause is still one kilometre split.
 - [ ] Confirm split active pace excludes the pause.
+
+## Recorded laps (FIT / TCX)
+
+- [x] Import a TCX with two seamless manual/auto laps; map route stays continuous across the lap boundary.
+- [ ] Confirm Active time does not lose time at a seamless lap boundary.
+- [x] Open Splits and switch between Distance Splits and Recorded Laps.
+- [ ] Confirm recorded lap trigger, distance, clocks, and pace; missing values show as unavailable.
+- [x] Seek to each lap start; replay highlighting changes exactly at the next-lap start.
+- [ ] Import a TCX with a pause as multiple Tracks; the true pause remains a route gap.
+- [ ] Import a FIT with manual and auto-distance laps; triggers and source totals are retained.
+- [ ] Export Recorded Laps CSV, combined CSV (with `# Recorded Laps`), and JSON; filenames distinguish laps from splits.
+- [ ] Quit and relaunch; recorded laps persist. Open a legacy FIT/TCX snapshot and confirm no fabricated laps; reimport recovers them.
+- [x] Compare two workouts with recorded laps (ordinal pairing only).
 - [ ] Compare the paused run against an otherwise identical uninterrupted run.
 - [ ] Confirm active and elapsed deltas are distinguished.
 - [ ] Export JSON, CSV, and PNG and inspect the labels.
 - [ ] Relaunch and confirm migrated analysis remains correct.
 - [ ] Confirm GPX, TCX, FIT, map, charts, deletion, and persistence still work.
+
+Recorded-lap manual record (2026-07-16): the packaged app imported a synthetic
+two-lap TCX through the native open panel. The route remained continuous, the
+Recorded Laps mode showed Manual and Distance triggers with distinct clocks and
+paces, selecting lap 2 sought replay to 0:20 and changed the current-lap banner,
+and comparison exposed ordinal pairing with a clear missing-laps state. Export,
+FIT, multi-track pause, deletion, and legacy-snapshot checks remain unchecked
+here. A packaged-app rebuild and relaunch retained the imported recorded laps.
 
 ## Moving/Stopped Estimate Checklist
 

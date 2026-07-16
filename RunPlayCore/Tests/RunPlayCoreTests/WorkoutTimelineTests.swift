@@ -304,6 +304,100 @@ final class WorkoutTimelineTests: XCTestCase {
         XCTAssertFalse(resume.isInRecordingGap)
     }
 
+    // MARK: - Elapsed-time boundary sampling
+
+    func testElapsedSampleExactlyOnPoint() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 10, distance: 100),
+            point(time: 20, distance: 200)
+        ])
+        let sample = try XCTUnwrap(timeline.elapsedSample(at: 10, boundary: .rangeStart))
+        XCTAssertEqual(sample.elapsedSeconds, 10, accuracy: 0.001)
+        XCTAssertEqual(sample.distanceMeters, 100, accuracy: 0.001)
+        XCTAssertFalse(sample.isInterpolated)
+    }
+
+    func testElapsedSampleBetweenPointsInterpolates() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 10, distance: 100),
+            point(time: 20, distance: 200)
+        ])
+        let sample = try XCTUnwrap(timeline.elapsedSample(at: 15, boundary: .rangeEnd))
+        XCTAssertEqual(sample.elapsedSeconds, 15, accuracy: 0.001)
+        XCTAssertEqual(sample.distanceMeters, 150, accuracy: 0.001)
+        XCTAssertTrue(sample.isInterpolated)
+        XCTAssertEqual(sample.activeSeconds, 15, accuracy: 0.001)
+    }
+
+    func testExactDuplicateElapsedRangeEndUsesLastSameSegmentPoint() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 10, distance: 100),
+            point(time: 10, distance: 120),
+            point(time: 20, distance: 200)
+        ])
+
+        let start = try XCTUnwrap(timeline.elapsedSample(at: 10, boundary: .rangeStart))
+        let end = try XCTUnwrap(timeline.elapsedSample(at: 10, boundary: .rangeEnd))
+        XCTAssertEqual(start.pointIndex, 1)
+        XCTAssertEqual(end.pointIndex, 2)
+        XCTAssertEqual(end.distanceMeters, 120, accuracy: 0.001)
+    }
+
+    func testElapsedSampleInsideRecordingGap() throws {
+        let timeline = WorkoutTimeline(routePoints: pausedRoute())
+        let startSide = try XCTUnwrap(timeline.elapsedSample(at: 1_500, boundary: .rangeStart))
+        let endSide = try XCTUnwrap(timeline.elapsedSample(at: 1_500, boundary: .rangeEnd))
+        XCTAssertTrue(startSide.isInRecordingGap)
+        XCTAssertTrue(endSide.isInRecordingGap)
+        // Range end holds pre-pause distance; range start resumes after gap.
+        XCTAssertEqual(endSide.distanceMeters, 600, accuracy: 0.001)
+        XCTAssertEqual(startSide.distanceMeters, 600, accuracy: 0.001)
+        XCTAssertEqual(endSide.pointIndex, 1)
+        XCTAssertEqual(startSide.pointIndex, 2)
+    }
+
+    func testElapsedSampleBeforeStartAndAfterEndClamps() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 20, distance: 200)
+        ])
+        let before = try XCTUnwrap(timeline.elapsedSample(at: -5, boundary: .rangeStart))
+        let after = try XCTUnwrap(timeline.elapsedSample(at: 100, boundary: .rangeEnd))
+        XCTAssertEqual(before.elapsedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(after.elapsedSeconds, 20, accuracy: 0.001)
+    }
+
+    func testTimeRangeAcrossPause() throws {
+        let timeline = WorkoutTimeline(routePoints: pausedRoute())
+        let range = try XCTUnwrap(timeline.timeRange(from: 0, to: 3_300))
+        XCTAssertEqual(range.elapsedSeconds, 3_300, accuracy: 0.001)
+        XCTAssertEqual(range.activeSeconds, 300, accuracy: 0.001)
+        XCTAssertEqual(range.pausedSeconds, 3_000, accuracy: 0.001)
+    }
+
+    func testDistanceAtElapsedTime() {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 10, distance: 100),
+            point(time: 20, distance: 200)
+        ])
+        XCTAssertEqual(timeline.distance(atElapsedTime: 10, boundary: .rangeEnd) ?? -1, 100, accuracy: 0.001)
+        XCTAssertEqual(timeline.distance(atElapsedTime: 15, boundary: .rangeStart) ?? -1, 150, accuracy: 0.001)
+    }
+
+    func testZeroDurationTimeRange() throws {
+        let timeline = WorkoutTimeline(routePoints: [
+            point(time: 0, distance: 0),
+            point(time: 10, distance: 100)
+        ])
+        let range = try XCTUnwrap(timeline.timeRange(from: 5, to: 5))
+        XCTAssertEqual(range.elapsedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(range.activeSeconds, 0, accuracy: 0.001)
+    }
+
     private func pausedRoute() -> [RoutePoint] {
         [
             point(time: 0, distance: 0, segment: 0),

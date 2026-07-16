@@ -78,6 +78,9 @@ struct ExportSummaryCardView: View {
             HStack(spacing: AppDesign.Spacing.xLarge) {
                 Label(model.dateText, systemImage: "calendar")
                 Label(model.sourceText, systemImage: "square.and.arrow.down")
+                if let recordedLapCountText = model.recordedLapCountText {
+                    Label(recordedLapCountText, systemImage: "flag.checkered")
+                }
             }
             .font(.system(size: 17))
             .foregroundStyle(.secondary)

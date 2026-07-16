@@ -262,6 +262,63 @@ final class FITImporterTests: XCTestCase {
         }
     }
 
+    // MARK: - Recorded laps
+
+    func testFITLapsPreservedFromSelectedSession() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithLaps()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertEqual(workout.recordedLaps.count, 2)
+        XCTAssertEqual(workout.recordedLaps[0].trigger, .manual)
+        XCTAssertEqual(workout.recordedLaps[1].trigger, .distance)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.distanceMeters ?? -1, 2_500, accuracy: 0.1)
+        XCTAssertEqual(workout.recordedLaps[0].reportedMetrics?.calories, 180)
+        XCTAssertEqual(workout.recordedLaps[1].reportedMetrics?.calories, 190)
+        XCTAssertEqual(workout.sourceStructureVersion, RunWorkout.currentSourceStructureVersion)
+
+        // Lap messages must not create route segments by themselves.
+        // Without timer events, the sample remains a single continuous segment.
+        let segments = Set(workout.routePoints.map(\.routeSegmentIndex))
+        XCTAssertEqual(segments.count, 1)
+
+        // Canonical metrics are finite and satisfy clock invariants.
+        for lap in workout.recordedLaps {
+            XCTAssertEqual(lap.elapsedSeconds, lap.activeSeconds + lap.pausedSeconds, accuracy: 0.001)
+            XCTAssertEqual(lap.activeSeconds, lap.movingSeconds + lap.stoppedSeconds, accuracy: 0.001)
+            XCTAssertGreaterThanOrEqual(lap.distanceMeters, 0)
+        }
+    }
+
+    func testFITWithoutLapsRemainsValid() throws {
+        let data = FITFixtureBuilder.buildSampleRun()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+        XCTAssertTrue(workout.recordedLaps.isEmpty)
+        XCTAssertEqual(workout.sourceStructureVersion, RunWorkout.currentSourceStructureVersion)
+        XCTAssertGreaterThan(workout.routePoints.count, 0)
+    }
+
+    func testInvalidSelectedSessionStartFallsBackWithoutDiscardingLap() throws {
+        let data = FITFixtureBuilder.buildMultiSessionRunWithInvalidSelectedStartAndLap()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertFalse(workout.routePoints.isEmpty)
+        XCTAssertEqual(workout.recordedLaps.count, 1)
+        XCTAssertEqual(workout.recordedLaps[0].trigger, .manual)
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 0)
+    }
+
+    func testMalformedSelectedSessionLapIsDiagnosedWithoutRejectingRoute() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithMalformedLap()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertFalse(workout.routePoints.isEmpty)
+        XCTAssertTrue(workout.recordedLaps.isEmpty)
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 1)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 1)
+        XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
     // MARK: - Helpers
 
     private func writeTempFIT(data: Data) -> URL {
