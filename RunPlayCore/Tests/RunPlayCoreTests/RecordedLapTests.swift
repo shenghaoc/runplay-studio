@@ -74,6 +74,13 @@ final class RecordedLapTests: XCTestCase {
         XCTAssertEqual(try decoder.decode(RecordedLapTrigger.self, from: tcxData), tcxUnknown)
     }
 
+    func testUnknownFITTriggerDisplayNamePromotesByteCodeForFormatting() {
+        XCTAssertEqual(
+            RecordedLapTrigger.unknownFIT(.max).displayName,
+            "Unknown (FIT 255)"
+        )
+    }
+
     func testLegacySnapshotWithoutLapsDecodesEmpty() throws {
         // Minimal legacy-shaped payload without recordedLaps / sourceStructureVersion.
         let json = """

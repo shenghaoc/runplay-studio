@@ -187,8 +187,9 @@ public struct FITImporter: WorkoutImporting {
             return laps
         }
 
-        let sessionStart = session.startTime
-            ?? session.timestamp.flatMap { end -> UInt32? in
+        let sessionEnd = FITParser.timestampIfValid(session.timestamp)
+        let sessionStart = FITParser.timestampIfValid(session.startTime)
+            ?? sessionEnd.flatMap { end -> UInt32? in
                 guard let elapsed = session.totalElapsedTime, elapsed != FITParser.invalidUint32 else {
                     return nil
                 }
@@ -196,16 +197,17 @@ public struct FITImporter: WorkoutImporting {
                 guard seconds <= end else { return nil }
                 return end - seconds
             }
-        let sessionEnd = session.timestamp
 
         return laps.filter { lap in
             // Prefer start_time; fall back to end timestamp for membership.
-            let anchor = lap.startTime ?? lap.timestamp
+            let lapStart = FITParser.timestampIfValid(lap.startTime)
+            let lapEnd = FITParser.timestampIfValid(lap.timestamp)
+            let anchor = lapStart ?? lapEnd
             guard let anchor else { return false }
             if let sessionStart, anchor < sessionStart { return false }
             if let sessionEnd, anchor > sessionEnd { return false }
             // Also reject laps that clearly end before the session starts.
-            if let lapEnd = lap.timestamp, let sessionStart, lapEnd < sessionStart {
+            if let lapEnd, let sessionStart, lapEnd < sessionStart {
                 return false
             }
             return true
@@ -252,7 +254,7 @@ public struct FITImporter: WorkoutImporting {
     }
 
     private func fitDate(_ fitTimestamp: UInt32?) -> Date? {
-        guard let fitTimestamp, fitTimestamp != FITParser.invalidUint32 else { return nil }
+        guard let fitTimestamp = FITParser.timestampIfValid(fitTimestamp) else { return nil }
         return FITParser.timestampToDate(fitTimestamp)
     }
 

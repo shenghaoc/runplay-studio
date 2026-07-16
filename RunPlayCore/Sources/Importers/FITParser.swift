@@ -784,6 +784,14 @@ public struct FITParser {
 
 extension FITParser {
 
+    /// Return a FIT timestamp only when it is not the profile's invalid-value
+    /// sentinel. Keeping this conversion central prevents raw optional values
+    /// from being mistaken for real dates during session association.
+    static func timestampIfValid(_ timestamp: UInt32?) -> UInt32? {
+        guard let timestamp, timestamp != invalidUint32 else { return nil }
+        return timestamp
+    }
+
     /// Convert semicircle coordinates to degrees.
     public static func semicirclesToDegrees(_ semicircles: Int32) -> Double {
         Double(semicircles) * (180.0 / pow(2.0, 31))

@@ -34,7 +34,7 @@ public enum RecordedLapTrigger: Hashable, Sendable, Codable {
         case .unknownFIT(let code):
             return String(
                 format: NSLocalizedString("Unknown (FIT %d)", comment: "Unknown FIT lap trigger"),
-                code
+                Int(code)
             )
         case .unknownTCX(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -153,6 +153,63 @@ struct FITFixtureBuilder {
         return data
     }
 
+    /// Build a multi-session file whose selected running session encodes its
+    /// start time with the FIT invalid-value sentinel. Its end time and elapsed
+    /// total still establish the session range, so the valid lap must survive
+    /// the timestamp-based association fallback.
+    static func buildMultiSessionRunWithInvalidSelectedStartAndLap() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            numberOfLaps: .max,
+            startOffset: nil,
+            firstLapIndex: .max,
+            to: &content
+        )
+        writeSessionMessage(
+            elapsedSeconds: 100,
+            timerSeconds: 100,
+            numberOfLaps: 0,
+            startOffset: 1_000,
+            endOffset: 1_100,
+            sport: .cycling,
+            to: &content
+        )
+
+        writeLapDefinitionMessage(to: &content)
+        writeLapMessage(
+            messageIndex: 0,
+            startOffset: nil,
+            endOffset: 290,
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            distanceMeters: 5_000,
+            calories: 370,
+            trigger: 0,
+            to: &content
+        )
+
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
     /// Build a valid route with one selected-session lap whose start and totals
     /// cannot establish a safe boundary. Import should keep the route and report
     /// the skipped malformed lap.
@@ -257,16 +314,20 @@ struct FITFixtureBuilder {
         elapsedSeconds: UInt32,
         timerSeconds: UInt32,
         numberOfLaps: UInt16,
+        startOffset: UInt32? = 0,
+        endOffset: UInt32 = 290,
+        sport: FITSport = .running,
+        firstLapIndex: UInt16 = 0,
         to data: inout Data
     ) {
         let baseTimestamp: UInt32 = 1_000_000_000
         data.append(0x01) // data message, local type 1
-        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + 290).littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: baseTimestamp.littleEndian) { Array($0) })
-        data.append(FITSport.running.rawValue)
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + endOffset).littleEndian) { Array($0) })
+        let startTimestamp = startOffset.map { baseTimestamp + $0 } ?? UInt32.max
+        data.append(contentsOf: withUnsafeBytes(of: startTimestamp.littleEndian) { Array($0) })
+        data.append(sport.rawValue)
         data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
-        let firstLapIndex: UInt16 = 0
         data.append(contentsOf: withUnsafeBytes(of: firstLapIndex.littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: numberOfLaps.littleEndian) { Array($0) })
     }
@@ -289,7 +350,7 @@ struct FITFixtureBuilder {
 
     private static func writeLapMessage(
         messageIndex: UInt16,
-        startOffset: UInt32,
+        startOffset: UInt32?,
         endOffset: UInt32,
         elapsedSeconds: UInt32,
         timerSeconds: UInt32,
@@ -302,7 +363,8 @@ struct FITFixtureBuilder {
         data.append(0x02) // data message, local type 2
         data.append(contentsOf: withUnsafeBytes(of: messageIndex.littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + endOffset).littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + startOffset).littleEndian) { Array($0) })
+        let startTimestamp = startOffset.map { baseTimestamp + $0 } ?? UInt32.max
+        data.append(contentsOf: withUnsafeBytes(of: startTimestamp.littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (elapsedSeconds * 1_000).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (timerSeconds * 1_000).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: (distanceMeters * 100).littleEndian) { Array($0) })
