@@ -372,8 +372,17 @@ public struct MovementProfile: Sendable {
             }
         }
 
-        let stopCount = merged.filter { $0 == .stopped }.count
-        let uncertainCount = merged.filter { $0 == .uncertain }.count
+        // ⚡ Bolt: Replaced .filter { ... }.count with single-pass reduce(into:).
+        let (stopCount, uncertainCount) = merged.reduce(into: (0, 0)) { counts, state in
+            switch state {
+            case .stopped:
+                counts.0 += 1
+            case .uncertain:
+                counts.1 += 1
+            default:
+                break
+            }
+        }
 
         // Build cumulative arrays: uncertain counts as moving (conservative)
         var movingCum: [Double] = []
