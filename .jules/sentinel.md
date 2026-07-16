@@ -14,6 +14,17 @@
 **Prevention:** In CSV-exporting mechanisms such as `CSVRow.escape`, check if the non-numeric field string starts with `=, +, -, @` and prepend a single quote (`'`) to ensure the field is interpreted as text rather than a potentially malicious formula.
 
 ## 2024-07-09 - CSV Formula Injection Mitigation Bypass Prevention
+
 **Vulnerability:** Found an incomplete CSV Formula Injection mitigation in `ExportService.swift` where tab (`\t`) and carriage return (`\r`) prefixes were not considered dangerous. Attackers can bypass standard `=` prefix checks by starting a payload with a tab or carriage return, which some spreadsheet applications (like Excel) will still interpret as a formula.
-**Learning:** Checking only for `=`, `+`, `-`, and `@` is insufficient because certain spreadsheet applications will trim specific leading whitespace characters or interpret them such that the remaining text is executed as a formula. The set of dangerous characters must include standard formula prefixes as well as whitespace characters commonly used for bypasses, specifically `\t` and `\r`.
-**Prevention:** When mitigating CSV Formula Injection, ensure the list of dangerous characters checked at the beginning of fields includes both standard formula prefixes (`=`, `+`, `-`, `@`) and bypass characters (`\t`, `\r`). Always add these to the `dangerousPrefixes` list in escaping functions.
+
+**Learning:** Checking only for `=`, `+`, `-`, and `@` is insufficient because certain spreadsheet applications will trim specific leading whitespace characters or interpret them such that the remaining text is executed as a formula.
+
+**Prevention:** Use the whitespace-trimming slow path in `CSVRow.escape` to handle fields starting with whitespace characters like `\t` and `\r`. The slow path trims leading whitespace, checks the first non-whitespace character against `dangerousPrefixes`, and prepends `'` only when a formula prefix is found after trimming. Do NOT add whitespace characters to `dangerousPrefixes` — doing so causes the fast path to incorrectly prepend `'` to legitimate non-formula fields starting with whitespace (e.g., `\tHello` would become `'\tHello`).
+
+## 2026-07-16 - Corrected CSV Formula Injection Bypass Fix
+
+**Issue:** The original fix (2024-07-09) added `\t` and `\r` directly to `dangerousPrefixes`, which caused a regression: legitimate non-formula fields starting with tabs or carriage returns were incorrectly escaped with a `'` prefix.
+
+**Fix:** Removed `\t` and `\r` from `dangerousPrefixes`. The whitespace-trimming slow path already handles these characters correctly — it trims the whitespace, inspects the first non-whitespace character for dangerous prefixes, and only prepends `'` when a formula is detected. Added regression tests verifying that `\tHello` and `\rHello` are NOT incorrectly escaped.
+
+**Verification:** All 39 ExportServiceTests pass, including the new regression tests for non-formula whitespace-prefixed fields.
