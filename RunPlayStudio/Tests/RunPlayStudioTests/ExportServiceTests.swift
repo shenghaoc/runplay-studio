@@ -233,6 +233,9 @@ final class ExportServiceTests: XCTestCase {
         // Vertical tab-initiated formula (OWASP A1.4)
         XCTAssertEqual(CSVRow.escape("\u{0B}=CMD('/c calc')"), "'\u{0B}=CMD('/c calc')")
 
+        // Carriage return initiated formula
+        XCTAssertEqual(CSVRow.escape("\r=CMD('/c calc')"), "\"'\r=CMD('/c calc')\"")
+
         // Special case: Formula with comma that would also trigger normal CSV quoting
         XCTAssertEqual(CSVRow.escape("=cmd, /c calc"), "\"'=cmd, /c calc\"")
     }
