@@ -107,14 +107,27 @@ extension RouteColoringService {
     }
 
     private func computeElevationColors(points: [RouteScenePoint], defaultColor: NSColor) -> [NSColor] {
-        let elevations = points.map { $0.yMeters }
-        guard let minElev = elevations.min(), let maxElev = elevations.max(), maxElev > minElev else {
+        // ⚡ Bolt: Replaced .map, .min(), and .max() with an inline loop
+        // to avoid O(N) intermediate array allocations during rendering.
+        var minElev = Double.infinity
+        var maxElev = -Double.infinity
+        var hasValidElevation = false
+
+        for point in points {
+            let y = point.yMeters
+            hasValidElevation = true
+            if y < minElev { minElev = y }
+            if y > maxElev { maxElev = y }
+        }
+
+        guard hasValidElevation, maxElev > minElev else {
             return Array(repeating: defaultColor, count: points.count - 1)
         }
 
         var colors: [NSColor] = []
+        colors.reserveCapacity(points.count - 1)
         for i in 0..<(points.count - 1) {
-            let avgElev = (elevations[i] + elevations[i + 1]) / 2
+            let avgElev = (points[i].yMeters + points[i + 1].yMeters) / 2
             let fraction = (avgElev - minElev) / (maxElev - minElev)
             colors.append(elevationToColor(fraction: fraction))
         }
@@ -137,14 +150,27 @@ extension RouteColoringService {
             return Array(repeating: defaultColor, count: points.count - 1)
         }
 
-        let elevations = points.map { point in
-            correctedAltitude(for: point, elevationProfile: elevationProfile)
+        // ⚡ Bolt: Replaced chained .map, .compactMap, .min(), and .max() with a single
+        // inline loop to avoid significant O(N) ARC/GC overhead during rendering.
+        var elevations: [Double?] = []
+        elevations.reserveCapacity(points.count)
+
+        var minElevation = Double.infinity
+        var maxElevation = -Double.infinity
+        var hasValidElevation = false
+
+        for point in points {
+            let alt = correctedAltitude(for: point, elevationProfile: elevationProfile)
+            elevations.append(alt)
+
+            if let validAlt = alt {
+                hasValidElevation = true
+                if validAlt < minElevation { minElevation = validAlt }
+                if validAlt > maxElevation { maxElevation = validAlt }
+            }
         }
-        let finiteElevations = elevations.compactMap { $0 }
-        guard let minElevation = finiteElevations.min(),
-              let maxElevation = finiteElevations.max(),
-              maxElevation > minElevation
-        else {
+
+        guard hasValidElevation, maxElevation > minElevation else {
             return Array(repeating: defaultColor, count: points.count - 1)
         }
 
