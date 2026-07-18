@@ -7,6 +7,32 @@ Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
 checklist below; unchecked items have not been manually verified.
 
+## Personal Heatmap Checklist
+
+Use only synthetic or explicitly private, ignored local workout files. Do not
+commit screenshots of real home locations or personal heatmap exports.
+
+- [ ] Launch with several GPS workouts in the library.
+- [ ] Open **Personal Heatmap** from the Library sidebar section (or Workout → Personal Heatmap / ⌘⇧H).
+- [ ] Confirm the map fits rendered heat cells on first appearance.
+- [ ] Confirm repeated corridors look stronger than one-off paths.
+- [ ] Confirm one dense-sampling workout does not overpower a sparse recording of the same path.
+- [ ] Confirm route gaps do not draw a connecting hot corridor.
+- [ ] Switch Fine (25 m) / Standard (50 m) / Broad (100 m); effective cell size label updates.
+- [ ] Change minimum repeat count (1 / 2 / 3 / 5).
+- [ ] Change All Time, Last 30 Days, Last 90 Days, This Year, and a custom range.
+- [ ] Confirm an excluding date range shows the filter-empty state with All Time / Reset.
+- [ ] Import a workout; library updates and heatmap recomputes when reopened or after filters refresh.
+- [ ] Delete a workout while heatmap is visible; counts update and workspace stays on heatmap.
+- [ ] Select a workout; normal workout workspace returns.
+- [ ] Enter and leave comparison; heatmap and comparison never share the same workspace state.
+- [ ] Verify keyboard shortcut and sidebar accessibility selection state.
+- [ ] Inspect VoiceOver labels on legend, filters, and Fit Heatmap.
+- [ ] Toggle light/dark appearance; heat fills remain legible.
+- [ ] Resize the window; pan and zoom the map; use Fit Heatmap.
+- [ ] Confirm single-route and comparison maps still render correctly.
+- [ ] Relaunch: workout library persists; heatmap is recomputed (not stored as a second route DB).
+
 ## Route Quality Checklist
 
 This checklist is intentionally unchecked. It defines the required GUI pass

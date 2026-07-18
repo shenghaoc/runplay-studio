@@ -12,6 +12,19 @@ public enum LibraryOperationState: Equatable {
     case deleting(workoutID: UUID)
 }
 
+/// Top-level workspace mode. Mutually exclusive destinations.
+enum AppWorkspaceMode: Hashable, Sendable {
+    case workout
+    case comparison
+    case personalHeatmap
+}
+
+/// Menu-level command routed through the same workspace transition methods as
+/// sidebar selection. Kept separate from the visible workspace state.
+enum AppWorkspaceCommand {
+    case showPersonalHeatmap
+}
+
 /// Main application state manager.
 @MainActor
 class AppState: ObservableObject {
@@ -24,14 +37,56 @@ class AppState: ObservableObject {
     @Published var selectedSegment: SegmentHighlight?
     @Published private(set) var operationState: LibraryOperationState = .idle
 
+    /// Single source of truth for which workspace is visible.
+    @Published private(set) var workspaceMode: AppWorkspaceMode = .workout
+
     // Comparison state
     @Published var comparisonWorkout: RunWorkout?
-    @Published var isComparing: Bool = false
     @Published var comparisonSelectionMessage: String?
     @Published var selectedComparisonDistanceMeters: Double = 0
 
+    /// Compatibility view of comparison mode. Prefer `workspaceMode`.
+    var isComparing: Bool {
+        get { workspaceMode == .comparison }
+        set {
+            if newValue {
+                enterComparisonWorkspace()
+            } else if workspaceMode == .comparison {
+                clearComparison()
+            }
+        }
+    }
+
+    /// Native sidebar selection derived from workspace mode and selected workout.
+    var sidebarSelection: SidebarSelection? {
+        switch workspaceMode {
+        case .personalHeatmap:
+            return .personalHeatmap
+        case .workout, .comparison:
+            if let id = selectedWorkout?.id {
+                return .workout(id)
+            }
+            return nil
+        }
+    }
+
+    /// Apply a sidebar selection change (keyboard, click, or VoiceOver).
+    func applySidebarSelection(_ selection: SidebarSelection?) {
+        switch selection {
+        case .personalHeatmap:
+            showPersonalHeatmap()
+        case .workout(let id):
+            if let workout = workouts.first(where: { $0.id == id }) {
+                selectWorkout(workout)
+            }
+        case .none:
+            break
+        }
+    }
+
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
+    let personalHeatmap = PersonalHeatmapViewModel()
 
     private struct CachedAnalysisContext {
         let normalizationVersion: Int
@@ -168,6 +223,7 @@ class AppState: ObservableObject {
             } else {
                 workouts.append(workout)
             }
+            // Selecting a workout exits heatmap by design.
             selectWorkout(workout, persistSelection: false)
         } catch is CancellationError {
             // Cancelled — do not add to UI.
@@ -225,12 +281,21 @@ class AppState: ObservableObject {
 
     /// Select a workout for viewing.
     ///
+    /// Selecting a workout exits heatmap and, when the selected workout is the
+    /// comparison peer, clears comparison. Selection persistence is unchanged.
+    ///
     /// UI state updates immediately. If `persistSelection` is true, the
     /// manifest write is asynchronous with last-write-wins semantics.
     func selectWorkout(_ workout: RunWorkout?, persistSelection: Bool = true) {
         selectedWorkout = workout
         selectedSegment = nil
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+            workspaceMode = .workout
+        }
         if let workout, comparisonWorkout?.id == workout.id {
+            clearComparison()
+        } else if workspaceMode == .comparison, workout == nil {
             clearComparison()
         }
         if let workout = workout {
@@ -326,12 +391,74 @@ class AppState: ObservableObject {
         deletingSelectedWorkout: Bool,
         deletingComparisonWorkout: Bool
     ) {
+        let wasHeatmap = workspaceMode == .personalHeatmap
         if deletingSelectedWorkout {
             clearComparison()
-            selectWorkout(workouts.first, persistSelection: false)
+            // Preserve heatmap workspace when deleting while viewing heatmap.
+            if wasHeatmap {
+                selectedWorkout = workouts.first
+                selectedSegment = nil
+                if let selectedWorkout {
+                    replayController.load(selectedWorkout)
+                    detectedSegments = selectedWorkout.segments
+                } else {
+                    detectedSegments = []
+                }
+                workspaceMode = .personalHeatmap
+                personalHeatmap.refresh(workouts: workouts)
+            } else {
+                selectWorkout(workouts.first, persistSelection: false)
+            }
         } else if deletingComparisonWorkout {
             clearComparison()
+            if wasHeatmap {
+                workspaceMode = .personalHeatmap
+                personalHeatmap.refresh(workouts: workouts)
+            }
+        } else if wasHeatmap {
+            personalHeatmap.refresh(workouts: workouts)
         }
+    }
+
+    // MARK: - Workspace navigation
+
+    /// Handle a window-wide command that may arrive without a focused scene.
+    func handleWorkspaceCommand(_ command: AppWorkspaceCommand) {
+        switch command {
+        case .showPersonalHeatmap:
+            showPersonalHeatmap()
+        }
+    }
+
+    /// Open the Personal Heatmap workspace. Does not change selected workout.
+    func showPersonalHeatmap() {
+        personalHeatmap.cancel()
+        // Leave comparison cleanly; heatmap and comparison are mutually exclusive.
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        workspaceMode = .personalHeatmap
+        personalHeatmap.refresh(workouts: workouts)
+    }
+
+    /// Return to the selected workout workspace (if any).
+    func showWorkoutWorkspace() {
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
+        if workspaceMode == .comparison {
+            comparisonWorkout = nil
+            comparisonSelectionMessage = nil
+            selectedComparisonDistanceMeters = 0
+        }
+        workspaceMode = .workout
+    }
+
+    private func enterComparisonWorkspace() {
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
+        workspaceMode = .comparison
     }
 
     // MARK: - Comparison
@@ -345,36 +472,44 @@ class AppState: ObservableObject {
         }
         guard selectedWorkout != nil else {
             comparisonWorkout = nil
-            isComparing = false
+            workspaceMode = .workout
             comparisonSelectionMessage = "Select a primary run first."
             return
         }
         guard canCompare(workout) else {
             comparisonWorkout = nil
-            isComparing = false
+            workspaceMode = .workout
             comparisonSelectionMessage = "Choose a different run to compare."
             return
         }
 
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
         comparisonWorkout = workout
-        isComparing = true
+        workspaceMode = .comparison
         clampComparisonDistance()
     }
 
-    /// Clear comparison mode.
+    /// Clear comparison mode and return to the selected workout.
     func clearComparison() {
         comparisonWorkout = nil
-        isComparing = false
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
+        if workspaceMode == .comparison {
+            workspaceMode = .workout
+        }
     }
 
     /// Enter comparison mode without a specific comparison workout,
     /// showing the empty state so users can import additional runs.
     func enterEmptyComparisonMode() {
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
         comparisonWorkout = nil
-        isComparing = true
         comparisonSelectionMessage = nil
+        workspaceMode = .comparison
     }
 
     /// Whether the supplied workout can be compared with the current primary selection.

@@ -1,21 +1,41 @@
 import SwiftUI
 import RunPlayCore
 
-/// Sidebar showing list of loaded workouts with import button.
+/// Unified sidebar selection so Library destinations and workouts share one
+/// native `List` selection binding (keyboard navigation, focus ring, VoiceOver).
+enum SidebarSelection: Hashable {
+    case personalHeatmap
+    case workout(UUID)
+}
+
+/// Sidebar showing library destinations and the workout list.
 struct SidebarView: View {
     let workouts: [RunWorkout]
-    @Binding var selectedWorkout: RunWorkout?
+    @Binding var selection: SidebarSelection?
     var onImport: () -> Void
     var onDelete: ((RunWorkout) -> Void)?
 
     @State private var workoutToDelete: RunWorkout?
 
     var body: some View {
-        List(selection: $selectedWorkout) {
+        List(selection: $selection) {
+            Section {
+                Label("Personal Heatmap", systemImage: "square.grid.3x3.fill")
+                    .tag(SidebarSelection.personalHeatmap)
+                    .help("Show where you run most often across your local library (⌘⇧H)")
+                    .accessibilityLabel("Personal Heatmap")
+                    .accessibilityHint("Shows a density map of places you have run across your workout library")
+            } header: {
+                Text("Library")
+                    .font(AppDesign.Typography.compactLabel)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.tertiary)
+            }
+
             Section {
                 ForEach(workouts) { workout in
                     WorkoutRow(workout: workout)
-                        .tag(workout)
+                        .tag(SidebarSelection.workout(workout.id))
                         .contextMenu {
                             Button(role: .destructive) {
                                 workoutToDelete = workout
@@ -39,8 +59,9 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
         .onDeleteCommand {
-            if let selectedWorkout {
-                workoutToDelete = selectedWorkout
+            if case .workout(let id) = selection,
+               let workout = workouts.first(where: { $0.id == id }) {
+                workoutToDelete = workout
             }
         }
         .navigationTitle("RunPlay Studio")

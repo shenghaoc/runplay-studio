@@ -11,6 +11,7 @@ Import File → Importer → RouteQualityProcessor → Normalized Route + Diagno
                                         ↓
               Analyzer → Summary / Splits / Highlights → Workout Library
                  ├── Replay / Comparison / Exports
+                 ├── Personal Heatmap (derived library-level aggregation)
                  └── Charts / Route Projection / Route Colouring
 ```
 
@@ -52,7 +53,44 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
 
-## Key Abstractions
+## Personal Heatmap
+
+The Personal Heatmap is a **derived, library-level** visualization. It is not
+stored on each `RunWorkout` and does not bump analysis, normalization, or
+library manifest versions.
+
+| Layer | Responsibility |
+| --- | --- |
+| **RunPlayCore** | `PersonalHeatmap*` models, Web Mercator metric grid, Amanatides–Woo-style line rasterization, `PersonalHeatmapBuilder` aggregation |
+| **RunPlayPlatform** | `RouteMapArea` polygons and map-rect fitting for areas |
+| **RunPlayStudio** | `PersonalHeatmapViewModel`, workspace mode, sidebar/menu entry, SwiftUI map fills |
+
+### Intensity semantics
+
+Primary heat is the number of **distinct included workouts** whose route
+traverses a cell. Within one workout, loops and dense GPS samples contribute at
+most once per cell. Intensity is log1p-normalized against the maximum aggregated
+count so low-frequency cells remain visible.
+
+### Gap safety
+
+Rasterization only walks adjacent valid points in the same effective route
+segment. Pause/resume, track boundaries, inferred gaps, and discarded invalid
+coordinates never draw a corridor between segments.
+
+### Adaptive performance
+
+Default rendered-cell budget is **5,000** polygons. When the filtered cell count
+exceeds the budget, the builder doubles cell size until the result fits. All
+included workouts are preserved; cells are not randomly dropped. Effective cell
+size is exposed in the snapshot and UI.
+
+### Workspace navigation
+
+`AppWorkspaceMode` is `.workout`, `.comparison`, or `.personalHeatmap` — mutually
+exclusive. Selecting a workout leaves heatmap; entering comparison leaves
+heatmap; heatmap calculation runs off the main actor and does not block normal
+library interaction beyond heatmap-local loading indicators.
 
 ### WorkoutImporting Protocol
 

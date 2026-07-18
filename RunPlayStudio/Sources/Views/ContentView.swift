@@ -47,9 +47,9 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 workouts: appState.workouts,
-                selectedWorkout: Binding(
-                    get: { appState.selectedWorkout },
-                    set: { appState.selectWorkout($0) }
+                selection: Binding(
+                    get: { appState.sidebarSelection },
+                    set: { appState.applySidebarSelection($0) }
                 ),
                 onImport: { appState.showImporter = true },
                 onDelete: { workout in
@@ -57,10 +57,17 @@ struct ContentView: View {
                 }
             )
         } detail: {
-            if let workout = appState.selectedWorkout {
-                if appState.isComparing {
+            switch appState.workspaceMode {
+            case .personalHeatmap:
+                PersonalHeatmapView(appState: appState, viewModel: appState.personalHeatmap)
+            case .comparison:
+                if appState.selectedWorkout != nil {
                     CompareView(appState: appState)
                 } else {
+                    EmptyStateView(onImport: { appState.showImporter = true })
+                }
+            case .workout:
+                if let workout = appState.selectedWorkout {
                     WorkoutDetailView(workout: workout, appState: appState)
                         .toolbar {
                             ToolbarItem(placement: .primaryAction) {
@@ -89,9 +96,9 @@ struct ContentView: View {
                                 }
                             }
                         }
+                } else {
+                    EmptyStateView(onImport: { appState.showImporter = true })
                 }
-            } else {
-                EmptyStateView(onImport: { appState.showImporter = true })
             }
         }
         .fileImporter(
@@ -124,6 +131,13 @@ struct ContentView: View {
         .disabled(appState.operationState != .idle)
         .overlay {
             operationStateOverlay
+        }
+        .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
+            showPersonalHeatmap: { appState.showPersonalHeatmap() }
+        ))
+        .onReceive(NotificationCenter.default.publisher(for: .runPlayWorkspaceCommand)) { notification in
+            guard let command = notification.object as? AppWorkspaceCommand else { return }
+            appState.handleWorkspaceCommand(command)
         }
     }
 
