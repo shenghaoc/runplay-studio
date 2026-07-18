@@ -29,5 +29,9 @@ transactional persistence — without Strava login or network access.
 
 - Path traversal, absolute paths, symlinks, encrypted entries rejected/skipped.
 - Finite resource limits for size, entry count, compression ratio, concurrency.
+- Reject duplicate normalized ZIP paths and declared ZIP64 sizes that cannot be
+  represented safely; revalidate entry-count and cumulative selected-size limits
+  when reopening the archive for import.
+- Verify each extracted ZIP entry's CRC before parsing it.
 - GZIP: validate header/CRC/size; one layer; no recursive decompress.
 - No shell-out to `unzip`/`ditto`/Python.

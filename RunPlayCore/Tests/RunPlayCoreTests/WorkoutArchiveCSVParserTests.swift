@@ -120,6 +120,47 @@ final class WorkoutArchiveCSVParserTests: XCTestCase {
         }
     }
 
+    func testPathMatchRejectsDuplicateExactEntries() {
+        switch WorkoutArchivePathValidator.matchPath(
+            "activities/1.gpx",
+            in: ["activities/1.gpx", "activities/1.gpx"]
+        ) {
+        case .ambiguous:
+            break
+        default:
+            XCTFail("duplicate exact paths must not select an arbitrary archive entry")
+        }
+    }
+
+    func testCandidateIDsRemainDistinctForDuplicateProviderIDs() {
+        let rows = [
+            StravaActivityMetadataRow(
+                activityID: "42",
+                activityName: "First",
+                activityType: "Run",
+                filename: "activities/first.gpx",
+                rowIndex: 0
+            ),
+            StravaActivityMetadataRow(
+                activityID: "42",
+                activityName: "Second",
+                activityType: "Run",
+                filename: "activities/second.gpx",
+                rowIndex: 1
+            )
+        ]
+        let built = WorkoutArchiveCandidateBuilder.buildCandidates(
+            metadataRows: rows,
+            entryPaths: ["activities/first.gpx", "activities/second.gpx"],
+            entrySizes: [:],
+            existingWorkouts: [],
+            hasFilenameColumn: true
+        )
+
+        XCTAssertEqual(Set(built.candidates.map(\.id)).count, 2)
+        XCTAssertEqual(built.candidates[1].status, .duplicate)
+    }
+
     func testPathTraversalRejected() {
         if case .rejected = WorkoutArchivePathValidator.validate("../etc/passwd") {
             // ok

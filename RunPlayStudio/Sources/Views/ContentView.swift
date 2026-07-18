@@ -138,7 +138,14 @@ struct ContentView: View {
         }
         .sheet(isPresented: Binding(
             get: { appState.archiveSession != nil },
-            set: { if !$0 { appState.dismissArchiveSession() } }
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.archiveSession?.phase == .importing {
+                    appState.cancelArchiveImport()
+                } else {
+                    appState.dismissArchiveSession()
+                }
+            }
         )) {
             if let session = appState.archiveSession {
                 StravaArchiveImportView(
@@ -149,6 +156,7 @@ struct ContentView: View {
                     onViewImported: { appState.viewMostRecentImportedRun() },
                     onOpenHeatmap: { appState.openHeatmapAfterArchiveImport() }
                 )
+                .interactiveDismissDisabled(session.phase == .importing)
             }
         }
         .alert("RunPlay Studio", isPresented: $appState.showingError) {

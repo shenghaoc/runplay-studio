@@ -178,8 +178,10 @@ public enum WorkoutArchiveCandidateBuilder {
                 let selected = status.isImportableByDefault
                     && StravaActivityTypePolicy.isSelectedByDefault(row.activityType)
 
-                let id = row.activityID.map { "strava:\($0)" }
-                    ?? "row:\(row.rowIndex):\(archivePath)"
+                // A provider ID is metadata, not a row identity: exports can
+                // contain duplicate provider IDs and SwiftUI still needs stable,
+                // distinct rows for each candidate.
+                let id = "row:\(row.rowIndex):\(archivePath)"
 
                 candidates.append(WorkoutArchiveCandidate(
                     id: id,

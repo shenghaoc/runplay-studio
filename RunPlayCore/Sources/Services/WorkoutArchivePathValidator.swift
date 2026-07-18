@@ -120,6 +120,9 @@ public enum WorkoutArchivePathValidator {
             return .none
         }
 
+        if index.ambiguousExact.contains(normalizedTarget) {
+            return .ambiguous
+        }
         if index.exact.contains(normalizedTarget) {
             return .exact(normalizedTarget)
         }
@@ -167,6 +170,9 @@ public enum WorkoutArchivePathValidator {
     /// Precomputed lookup tables for O(1) path matching across many metadata rows.
     public struct PathIndex: Sendable {
         public let exact: Set<String>
+        /// Exact normalized paths with multiple entries. These must never resolve
+        /// to an arbitrary archive member.
+        public let ambiguousExact: Set<String>
         public let byLowercased: [String: [String]]
         public let byLastComponent: [String: [String]]
         public let byLowercasedLastComponent: [String: [String]]
@@ -175,6 +181,7 @@ public enum WorkoutArchivePathValidator {
 
         public init(entries: [String]) {
             var exact = Set<String>()
+            var ambiguousExact = Set<String>()
             var byLowercased: [String: [String]] = [:]
             var byLastComponent: [String: [String]] = [:]
             var byLowercasedLastComponent: [String: [String]] = [:]
@@ -182,7 +189,9 @@ public enum WorkoutArchivePathValidator {
 
             exact.reserveCapacity(entries.count)
             for path in entries {
-                exact.insert(path)
+                if !exact.insert(path).inserted {
+                    ambiguousExact.insert(path)
+                }
                 byLowercased[path.lowercased(), default: []].append(path)
                 let last = (path as NSString).lastPathComponent
                 byLastComponent[last, default: []].append(path)
@@ -199,6 +208,7 @@ public enum WorkoutArchivePathValidator {
             }
 
             self.exact = exact
+            self.ambiguousExact = ambiguousExact
             self.byLowercased = byLowercased
             self.byLastComponent = byLastComponent
             self.byLowercasedLastComponent = byLowercasedLastComponent

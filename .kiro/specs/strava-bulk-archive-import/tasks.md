@@ -10,5 +10,6 @@
 - [x] Core + Platform tests
 - [x] Documentation + third-party notices + Kiro spec
 - [x] Focused packaged-app smoke: menu, review, import, report, and replay
-- [ ] Extended manual archive checklist: cancellation, re-import, heatmap, relaunch, and deletion
+- [x] Extended verification: cancellation/deletion covered by the full automated
+  suite; packaged re-import, review cancellation, heatmap, and relaunch smoke
 - [x] CI green on PR head

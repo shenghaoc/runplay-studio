@@ -413,5 +413,10 @@ Focused pre-merge smoke record (2026-07-19): the packaged app exposed
 **Import Strava Archive…** in both the File menu and native Import menu. A
 temporary synthetic GPX archive scanned as one ready candidate, imported with
 an `Imported: 1` completion report, and opened the resulting workout with its
-route and replay. This is a focused smoke, not a claim to complete the extended
-checklist above.
+route and replay. A repeat scan showed `1` duplicate, `0` ready/selected
+candidates, and a disabled **Import 0 Runs** action; cancelling that review
+returned to the workout cleanly. The imported run appeared in Personal Heatmap
+(seven included runs) and remained selected after close/relaunch. The full
+warning-clean suite covers cancellation rollback and library deletion; the
+synthetic app-library record is deliberately retained until the operator
+confirms its removal.

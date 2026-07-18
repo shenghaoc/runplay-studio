@@ -12,7 +12,10 @@
 
 1. **Scan** — open ZIP, validate paths, read `activities.csv`, build candidates + duplicate status.
 2. **Review** — user selects importable rows.
-3. **Import** — for each selected candidate: read entry → optional GZIP → SHA-256 → parse via `WorkoutImportInput` → apply metadata → stage snapshot.
+3. **Import** — reopen and revalidate the ZIP inventory, then for each selected
+   candidate: bounded CRC-verified read → optional GZIP → SHA-256 → parse via
+   `WorkoutImportInput` → apply metadata → stage snapshot. Ambiguous duplicate
+   paths are never resolved to an arbitrary ZIP member.
 4. **Commit** — promote staged files, one manifest write, select newest, one heatmap refresh.
 
 ## Provenance

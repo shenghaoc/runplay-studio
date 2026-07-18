@@ -97,6 +97,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         var ignored = 0
         var unsafe = 0
         var entryCount = 0
+        var seenNormalizedPaths = Set<String>()
         var activitiesCSVPath: String?
         var activitiesCSVData: Data?
 
@@ -140,8 +141,14 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 continue
             }
 
-            let compressed = Int64(entry.compressedSize)
-            let uncompressed = Int64(entry.uncompressedSize)
+            if !seenNormalizedPaths.insert(normalized).inserted {
+                // Keep both paths in the inventory so candidate matching marks
+                // the entry ambiguous rather than importing an arbitrary one.
+                unsafe += 1
+            }
+
+            let compressed = try checkedEntrySize(entry.compressedSize, label: "compressed")
+            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: "uncompressed")
             entryPaths.append(normalized)
             entrySizes[normalized] = (compressed, uncompressed)
 
@@ -161,7 +168,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
 
         var metadataTable = StravaActivityMetadataTable()
         var metadataFound = false
-        let entryIndex = makeEntryIndex(for: archive)
+        let entryIndex = try makeEntryIndex(for: archive)
 
         if let csvPath = activitiesCSVPath {
             let sizes = entrySizes[csvPath]
@@ -207,6 +214,11 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             && !metadataTable.rows.isEmpty
             && (hasMappedRows || !activityFiles.isEmpty)
 
+        let estimatedTotalSourceBytes = activityFiles.reduce(Int64.zero) { partial, path in
+            let size = entrySizes[path]?.uncompressed ?? entrySizes[path]?.compressed ?? 0
+            let (sum, overflow) = partial.addingReportingOverflow(size)
+            return overflow ? .max : sum
+        }
         var diagnostics = WorkoutArchiveScanDiagnostics(
             archiveName: url.lastPathComponent,
             entryCount: entryCount,
@@ -214,9 +226,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             unsafeEntryCount: unsafe,
             metadataCSVFound: metadataFound,
             metadataFilenameColumnPresent: metadataTable.hasFilenameColumn,
-            estimatedTotalSourceBytes: activityFiles.reduce(Int64(0)) { partial, path in
-                partial + (entrySizes[path]?.uncompressed ?? entrySizes[path]?.compressed ?? 0)
-            }
+            estimatedTotalSourceBytes: estimatedTotalSourceBytes
         )
 
         if !recognized {
@@ -228,7 +238,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             )
         }
 
-        let built = WorkoutArchiveCandidateBuilder.buildCandidates(
+        var built = WorkoutArchiveCandidateBuilder.buildCandidates(
             metadataRows: metadataTable.rows,
             entryPaths: entryPaths,
             entrySizes: entrySizes,
@@ -236,7 +246,13 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             hasFilenameColumn: metadataTable.hasFilenameColumn,
             policy: policy
         )
+        let totalLimitRejected = enforceTotalCandidateLimit(on: &built.candidates)
         diagnostics.warnings.append(contentsOf: built.diagnosticsExtras)
+        if totalLimitRejected > 0 {
+            diagnostics.warnings.append(
+                "\(totalLimitRejected) candidate(s) exceed the total archive import size limit."
+            )
+        }
         if !metadataTable.hasFilenameColumn {
             diagnostics.warnings.append(
                 "Filename column missing; metadata matching and deduplication are less complete."
@@ -277,7 +293,11 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         } catch {
             throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
         }
-        let entryIndex = makeEntryIndex(for: archive)
+        let entryIndex = try makeEntryIndex(for: archive)
+        try validateSelectedCandidateLimit(
+            selection.selectedCandidates,
+            entryIndex: entryIndex
+        )
 
         let batch: WorkoutLibraryBatchToken
         do {
@@ -310,7 +330,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 ))
 
                 // Skip non-ready statuses that may have been force-selected.
-                if candidate.status == .duplicate || candidate.status == .providerConflict {
+                if candidate.status == .providerConflict
+                    || (candidate.status == .duplicate
+                        && candidate.statusDetail == "Duplicate provider activity ID within archive")
+                {
                     skipped += 1
                     items.append(WorkoutBatchImportItemResult(
                         candidateID: candidate.id,
@@ -595,30 +618,48 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
     /// One-pass index of archive entries for O(1) path lookups during import.
     private struct ArchiveEntryIndex {
         let byNormalizedPath: [String: Entry]
+        let ambiguousNormalizedPaths: Set<String>
         let byLowercasedPath: [String: [Entry]]
 
-        init(archive: Archive, maxPathLength: Int) {
+        init(archive: Archive, policy: WorkoutArchiveSecurityPolicy) throws {
             var byNormalized: [String: Entry] = [:]
+            var ambiguousNormalized = Set<String>()
             var byLower: [String: [Entry]] = [:]
+            var entryCount = 0
             for entry in archive {
+                entryCount += 1
+                if entryCount > policy.maxEntryCount {
+                    throw WorkoutArchiveError.tooManyEntries
+                }
+                if entryCount % policy.cancellationCheckStride == 0 {
+                    try Task.checkCancellation()
+                }
                 guard entry.type == .file else { continue }
                 guard case .valid(let normalized) = WorkoutArchivePathValidator.validate(
                     entry.path,
-                    maxLength: maxPathLength
+                    maxLength: policy.maxPathLength
                 ) else {
                     continue
                 }
-                // First exact path wins; duplicates stay available via lowercased map.
-                if byNormalized[normalized] == nil {
+                // A duplicate exact path is ambiguous; never let a later import
+                // resolve it to whichever member happened to be indexed first.
+                if byNormalized[normalized] != nil {
+                    ambiguousNormalized.insert(normalized)
+                    byNormalized.removeValue(forKey: normalized)
+                } else if !ambiguousNormalized.contains(normalized) {
                     byNormalized[normalized] = entry
                 }
                 byLower[normalized.lowercased(), default: []].append(entry)
             }
             self.byNormalizedPath = byNormalized
+            self.ambiguousNormalizedPaths = ambiguousNormalized
             self.byLowercasedPath = byLower
         }
 
         func entry(for path: String) -> Entry? {
+            if ambiguousNormalizedPaths.contains(path) {
+                return nil
+            }
             if let exact = byNormalizedPath[path] {
                 return exact
             }
@@ -627,8 +668,67 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         }
     }
 
-    private func makeEntryIndex(for archive: Archive) -> ArchiveEntryIndex {
-        ArchiveEntryIndex(archive: archive, maxPathLength: policy.maxPathLength)
+    private func makeEntryIndex(for archive: Archive) throws -> ArchiveEntryIndex {
+        try ArchiveEntryIndex(archive: archive, policy: policy)
+    }
+
+    private func checkedEntrySize(_ size: UInt64, label: String) throws -> Int64 {
+        guard size <= UInt64(Int64.max) else {
+            throw WorkoutArchiveError.cannotOpenArchive(
+                "Entry \(label) size exceeds the supported limit"
+            )
+        }
+        return Int64(size)
+    }
+
+    /// Mark default-importable scan candidates that would exceed the cumulative
+    /// extraction budget. The same budget is revalidated on the reopened archive
+    /// immediately before import.
+    private func enforceTotalCandidateLimit(on candidates: inout [WorkoutArchiveCandidate]) -> Int {
+        var total = Int64.zero
+        var rejected = 0
+        for index in candidates.indices where candidates[index].status.isImportableByDefault {
+            let candidateSize = candidates[index].declaredUncompressedBytes
+                ?? candidates[index].compressedBytes
+                ?? 0
+            guard candidateSize >= 0,
+                  policy.maxTotalCandidateUncompressedBytes >= total,
+                  candidateSize <= policy.maxTotalCandidateUncompressedBytes - total
+            else {
+                candidates[index].status = .exceedsResourceLimit
+                candidates[index].statusDetail = "Total selected candidate size exceeds limit"
+                candidates[index].isSelectedByDefault = false
+                rejected += 1
+                continue
+            }
+            total += candidateSize
+        }
+        return rejected
+    }
+
+    private func validateSelectedCandidateLimit(
+        _ candidates: [WorkoutArchiveCandidate],
+        entryIndex: ArchiveEntryIndex
+    ) throws {
+        var total = Int64.zero
+        for candidate in candidates {
+            guard candidate.format != .unsupported,
+                  !candidate.archiveRelativePath.isEmpty,
+                  let entry = entryIndex.entry(for: candidate.archiveRelativePath)
+            else {
+                continue
+            }
+            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: "uncompressed")
+            guard uncompressed <= policy.maxUncompressedEntryBytes,
+                  policy.maxTotalCandidateUncompressedBytes >= total,
+                  uncompressed <= policy.maxTotalCandidateUncompressedBytes - total
+            else {
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    "Selected archive entries exceed the total size limit"
+                )
+            }
+            total += uncompressed
+        }
     }
 
     private func readEntry(
@@ -645,8 +745,8 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             throw WorkoutArchiveError.cannotOpenArchive("Unsupported entry type")
         }
 
-        let compressed = Int64(entry.compressedSize)
-        let uncompressed = Int64(entry.uncompressedSize)
+        let compressed = try checkedEntrySize(entry.compressedSize, label: "compressed")
+        let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: "uncompressed")
         if compressed > policy.maxCompressedEntryBytes {
             throw WorkoutArchiveError.cannotOpenArchive("Entry exceeds compressed size limit")
         }
@@ -666,21 +766,26 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             data.reserveCapacity(reserve)
         }
         // Bound growth even if declared uncompressed size is understated.
-        // The extract callback cannot throw; flag oversize and reject after.
-        var exceededLimit = false
         do {
-            _ = try archive.extract(entry, bufferSize: 65_536, skipCRC32: false) { chunk in
-                if exceededLimit { return }
-                if data.count + chunk.count > maxUncompressed {
-                    exceededLimit = true
-                    return
+            let checksum = try archive.extract(entry, bufferSize: 65_536, skipCRC32: false) { chunk in
+                guard data.count <= maxUncompressed,
+                      chunk.count <= maxUncompressed - data.count
+                else {
+                    throw WorkoutArchiveError.cannotOpenArchive(
+                        "Entry exceeds uncompressed size limit"
+                    )
                 }
                 data.append(chunk)
             }
+            guard checksum == entry.checksum else {
+                throw WorkoutArchiveError.cannotOpenArchive("Entry checksum does not match")
+            }
+        } catch let error as WorkoutArchiveError {
+            throw error
         } catch {
             throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
         }
-        if exceededLimit || data.count > maxUncompressed {
+        if data.count > maxUncompressed {
             throw WorkoutArchiveError.cannotOpenArchive("Entry exceeds uncompressed size limit")
         }
         return data

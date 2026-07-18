@@ -151,6 +151,58 @@ final class StravaArchiveImportTests: XCTestCase {
         XCTAssertGreaterThan(result.diagnostics.ignoredEntryCount, 0)
     }
 
+    func testDuplicateExactArchivePathIsSurfacedAsUnsafe() async throws {
+        let csv = activitiesCSV(rows: [
+            (id: "1", name: "Run", type: "Run", file: "activities/1.gpx")
+        ])
+        let zip = try writeZip(named: "duplicate-path.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/1.gpx", makeGPX(name: "First")),
+            ("activities/1.gpx", makeGPX(name: "Second", lat: 38))
+        ])
+
+        let result = try await StravaArchiveService().scanArchive(at: zip, existingWorkouts: [])
+        XCTAssertTrue(result.isRecognizedStravaExport)
+        XCTAssertEqual(result.candidates.first?.status, .unsafeArchiveEntry)
+        XCTAssertGreaterThan(result.diagnostics.unsafeEntryCount, 0)
+    }
+
+    func testScanAndImportEnforceTotalCandidateSizeLimit() async throws {
+        let gpx = makeGPX(name: "Limited")
+        let csv = activitiesCSV(rows: [
+            (id: "1", name: "Limited", type: "Run", file: "activities/1.gpx")
+        ])
+        let zip = try writeZip(named: "size-limit.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/1.gpx", gpx)
+        ])
+        let policy = WorkoutArchiveSecurityPolicy(
+            maxUncompressedEntryBytes: Int64(gpx.count * 2),
+            maxTotalCandidateUncompressedBytes: Int64(gpx.count - 1)
+        )
+        let service = StravaArchiveService(policy: policy)
+        let scan = try await service.scanArchive(at: zip, existingWorkouts: [])
+        XCTAssertEqual(scan.candidates.first?.status, .exceedsResourceLimit)
+        XCTAssertFalse(scan.candidates.first?.isSelectedByDefault ?? true)
+
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("size-limit-lib"))
+        let selection = WorkoutBatchImportSelection(
+            selectedCandidateIDs: scan.candidates.map(\.id),
+            candidates: scan.candidates
+        )
+        do {
+            _ = try await service.importCandidates(
+                selection,
+                from: zip,
+                existingWorkouts: [],
+                storeActor: WorkoutLibraryStoreActor(store: store)
+            )
+            XCTFail("a force-selected oversized candidate must be rejected before staging")
+        } catch let error as WorkoutArchiveError {
+            XCTAssertTrue(error.localizedDescription.contains("total size limit"))
+        }
+    }
+
     // MARK: - Import end-to-end
 
     func testImportValidActivitiesAndSecondImportDuplicates() async throws {
@@ -216,6 +268,90 @@ final class StravaArchiveImportTests: XCTestCase {
             return XCTFail("expected workouts")
         }
         XCTAssertEqual(workouts2.count, 2)
+    }
+
+    func testProviderIDWithDifferentContentIsReportedAsConflict() async throws {
+        let csv = activitiesCSV(rows: [
+            (id: "301", name: "Original", type: "Run", file: "activities/301.gpx")
+        ])
+        let zip = try writeZip(named: "provider-conflict.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/301.gpx", makeGPX(name: "Original", lat: 37.1))
+        ])
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("provider-conflict-lib"))
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let service = StravaArchiveService()
+
+        let initialScan = try await service.scanArchive(at: zip, existingWorkouts: [])
+        let initialSelection = WorkoutBatchImportSelection(
+            selectedCandidateIDs: initialScan.candidates.map(\.id),
+            candidates: initialScan.candidates
+        )
+        _ = try await service.importCandidates(
+            initialSelection,
+            from: zip,
+            existingWorkouts: [],
+            storeActor: storeActor
+        )
+        guard case .workouts(let existing, _, _) = await storeActor.loadLibrary() else {
+            return XCTFail("expected imported workout")
+        }
+
+        _ = try writeZip(named: "provider-conflict.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/301.gpx", makeGPX(name: "Changed", lat: 38.1))
+        ])
+        let conflictScan = try await service.scanArchive(at: zip, existingWorkouts: existing)
+        XCTAssertEqual(conflictScan.candidates.first?.status, .duplicate)
+
+        let conflictSelection = WorkoutBatchImportSelection(
+            selectedCandidateIDs: conflictScan.candidates.map(\.id),
+            candidates: conflictScan.candidates
+        )
+        let report = try await service.importCandidates(
+            conflictSelection,
+            from: zip,
+            existingWorkouts: existing,
+            storeActor: storeActor
+        )
+        XCTAssertEqual(report.importedCount, 0)
+        XCTAssertEqual(report.count(for: .providerConflict), 1)
+    }
+
+    func testImportRevalidatesEntryCountAfterArchiveChanges() async throws {
+        let csv = activitiesCSV(rows: [
+            (id: "401", name: "Count", type: "Run", file: "activities/401.gpx")
+        ])
+        let zip = try writeZip(named: "entry-count.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/401.gpx", makeGPX(name: "Count"))
+        ])
+        let service = StravaArchiveService(
+            policy: WorkoutArchiveSecurityPolicy(maxEntryCount: 2)
+        )
+        let scan = try await service.scanArchive(at: zip, existingWorkouts: [])
+        let selection = WorkoutBatchImportSelection(
+            selectedCandidateIDs: scan.candidates.map(\.id),
+            candidates: scan.candidates
+        )
+
+        _ = try writeZip(named: "entry-count.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/401.gpx", makeGPX(name: "Count")),
+            ("later-added.txt", Data("changed after scan".utf8))
+        ])
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("entry-count-lib"))
+        do {
+            _ = try await service.importCandidates(
+                selection,
+                from: zip,
+                existingWorkouts: [],
+                storeActor: WorkoutLibraryStoreActor(store: store)
+            )
+            XCTFail("the reopened archive must enforce the entry count")
+        } catch let error as WorkoutArchiveError {
+            XCTAssertEqual(error, .tooManyEntries)
+        }
     }
 
     func testCorruptSiblingDoesNotBlockValid() async throws {
