@@ -95,6 +95,6 @@
 - [ ] iPhone companion exporter (future)
 
 ### Phase: Analysis Enhancements
-- [ ] Personal heatmap across multiple runs
+- [x] Personal heatmap across multiple runs
 - [ ] Route coloring by pace or HR on map polyline
 - [ ] Dynamic time warping for comparison (post-MVP)

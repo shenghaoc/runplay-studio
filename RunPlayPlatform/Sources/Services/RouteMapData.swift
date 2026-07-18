@@ -17,7 +17,7 @@ public enum RouteMapDisplayMode: String, CaseIterable, Hashable {
 }
 
 /// A validated coordinate for map display.
-public struct RouteMapCoordinate: Hashable {
+public struct RouteMapCoordinate: Hashable, Sendable {
     public let latitude: Double
     public let longitude: Double
 
@@ -86,6 +86,32 @@ public struct RouteMapMarker: Identifiable, Hashable {
         self.title = title
         self.coordinate = coordinate
         self.style = style
+    }
+}
+
+/// A filled map area (heatmap cell polygon) for MapKit presentation.
+///
+/// Core owns cell aggregation; Platform converts Core cells into ordered
+/// polygon coordinates without importing SwiftUI.
+public struct RouteMapArea: Identifiable, Hashable, Sendable {
+    public let id: String
+    /// Closed polygon ring in counter-clockwise order (SW → SE → NE → NW → SW).
+    public let coordinates: [RouteMapCoordinate]
+    /// Visual intensity in `0...1` from distinct-workout log normalization.
+    public let normalizedIntensity: Double
+    /// Distinct included workouts whose route traversed this cell.
+    public let workoutCount: Int
+
+    public init(
+        id: String,
+        coordinates: [RouteMapCoordinate],
+        normalizedIntensity: Double,
+        workoutCount: Int
+    ) {
+        self.id = id
+        self.coordinates = coordinates
+        self.normalizedIntensity = normalizedIntensity
+        self.workoutCount = workoutCount
     }
 }
 
@@ -221,7 +247,19 @@ public enum RouteMapContent {
     }
 
     public static func mapRect(for routes: [RouteMapLine]) -> MKMapRect? {
-        let coordinates = routes.flatMap(\.coordinates)
+        mapRect(routes: routes, areas: [])
+    }
+
+    /// Map rect from routes and/or filled areas. Empty content returns `nil`.
+    ///
+    /// Preserves the existing minimum span and world clamping used by route-only
+    /// fitting. Antimeridian-spanning content is handled conservatively by MapKit
+    /// point union (may expand near the dateline rather than wrapping).
+    public static func mapRect(
+        routes: [RouteMapLine] = [],
+        areas: [RouteMapArea] = []
+    ) -> MKMapRect? {
+        let coordinates = routes.flatMap(\.coordinates) + areas.flatMap(\.coordinates)
         guard let first = coordinates.first else { return nil }
 
         let firstPoint = MKMapPoint(first.mapKitCoordinate)
@@ -247,12 +285,35 @@ public enum RouteMapContent {
     }
 
     public static func cameraPlan(for routes: [RouteMapLine]) -> RouteMapCameraPlan? {
-        guard let rect = mapRect(for: routes) else { return nil }
+        cameraPlan(routes: routes, areas: [])
+    }
+
+    public static func cameraPlan(
+        routes: [RouteMapLine] = [],
+        areas: [RouteMapArea] = []
+    ) -> RouteMapCameraPlan? {
+        guard let rect = mapRect(routes: routes, areas: areas) else { return nil }
         let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
         let metersPerMapPoint = max(MKMetersPerMapPointAtLatitude(center.latitude), 0.000_001)
         let widthMeters = rect.width * metersPerMapPoint
         let heightMeters = rect.height * metersPerMapPoint
         let distance = max(max(widthMeters, heightMeters) * 2.25, 900)
         return RouteMapCameraPlan(center: center, distance: distance)
+    }
+
+    /// Convert Core heatmap cells into stable Platform map areas.
+    public static func areas(from snapshot: PersonalHeatmapSnapshot) -> [RouteMapArea] {
+        snapshot.cells.compactMap { cell in
+            let coords = cell.bounds.polygonCoordinates.compactMap {
+                RouteMapCoordinate(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            guard coords.count >= 4 else { return nil }
+            return RouteMapArea(
+                id: "heatmap-\(cell.id.x)-\(cell.id.y)",
+                coordinates: coords,
+                normalizedIntensity: cell.normalizedIntensity,
+                workoutCount: cell.workoutCount
+            )
+        }
     }
 }

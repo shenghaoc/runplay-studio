@@ -51,16 +51,27 @@ struct ContentView: View {
                     get: { appState.selectedWorkout },
                     set: { appState.selectWorkout($0) }
                 ),
+                workspaceMode: appState.workspaceMode,
                 onImport: { appState.showImporter = true },
                 onDelete: { workout in
                     Task { await appState.deleteWorkout(workout) }
+                },
+                onShowPersonalHeatmap: {
+                    appState.showPersonalHeatmap()
                 }
             )
         } detail: {
-            if let workout = appState.selectedWorkout {
-                if appState.isComparing {
+            switch appState.workspaceMode {
+            case .personalHeatmap:
+                PersonalHeatmapView(appState: appState, viewModel: appState.personalHeatmap)
+            case .comparison:
+                if appState.selectedWorkout != nil {
                     CompareView(appState: appState)
                 } else {
+                    EmptyStateView(onImport: { appState.showImporter = true })
+                }
+            case .workout:
+                if let workout = appState.selectedWorkout {
                     WorkoutDetailView(workout: workout, appState: appState)
                         .toolbar {
                             ToolbarItem(placement: .primaryAction) {
@@ -89,9 +100,9 @@ struct ContentView: View {
                                 }
                             }
                         }
+                } else {
+                    EmptyStateView(onImport: { appState.showImporter = true })
                 }
-            } else {
-                EmptyStateView(onImport: { appState.showImporter = true })
             }
         }
         .fileImporter(
@@ -125,6 +136,9 @@ struct ContentView: View {
         .overlay {
             operationStateOverlay
         }
+        .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
+            showPersonalHeatmap: { appState.showPersonalHeatmap() }
+        ))
     }
 
     @ViewBuilder

@@ -1,21 +1,57 @@
 import SwiftUI
 import RunPlayCore
 
-/// Sidebar showing list of loaded workouts with import button.
+/// Sidebar showing library destinations and the workout list.
 struct SidebarView: View {
     let workouts: [RunWorkout]
     @Binding var selectedWorkout: RunWorkout?
+    var workspaceMode: AppWorkspaceMode = .workout
     var onImport: () -> Void
     var onDelete: ((RunWorkout) -> Void)?
+    var onShowPersonalHeatmap: (() -> Void)?
 
     @State private var workoutToDelete: RunWorkout?
 
     var body: some View {
-        List(selection: $selectedWorkout) {
+        List {
+            Section {
+                Button {
+                    onShowPersonalHeatmap?()
+                } label: {
+                    Label("Personal Heatmap", systemImage: "square.grid.3x3.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(
+                    workspaceMode == .personalHeatmap
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.clear
+                )
+                .help("Show where you run most often across your local library (⌘⇧H)")
+                .accessibilityLabel("Personal Heatmap")
+                .accessibilityHint("Shows a density map of places you have run across your workout library")
+                .accessibilityAddTraits(workspaceMode == .personalHeatmap ? .isSelected : [])
+            } header: {
+                Text("Library")
+                    .font(AppDesign.Typography.compactLabel)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.tertiary)
+            }
+
             Section {
                 ForEach(workouts) { workout in
                     WorkoutRow(workout: workout)
-                        .tag(workout)
+                        .tag(workout as RunWorkout?)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedWorkout = workout
+                        }
+                        .listRowBackground(
+                            workspaceMode == .workout && selectedWorkout?.id == workout.id
+                                ? Color.accentColor.opacity(0.12)
+                                : Color.clear
+                        )
                         .contextMenu {
                             Button(role: .destructive) {
                                 workoutToDelete = workout

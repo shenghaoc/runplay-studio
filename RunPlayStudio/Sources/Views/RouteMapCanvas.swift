@@ -30,15 +30,45 @@ struct RouteMapCanvas: View {
     @Binding var displayMode: RouteMapDisplayMode
     let routes: [RouteMapLine]
     let markers: [RouteMapMarker]
+    let areas: [RouteMapArea]
     let fitRequest: Int
     let controlBottomInset: CGFloat
+    /// When set, applied on appear if the binding still has the default value.
+    let defaultDisplayMode: RouteMapDisplayMode?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var currentCamera: MapCamera?
     @Namespace private var mapScope
 
+    init(
+        displayMode: Binding<RouteMapDisplayMode>,
+        routes: [RouteMapLine],
+        markers: [RouteMapMarker],
+        areas: [RouteMapArea] = [],
+        fitRequest: Int,
+        controlBottomInset: CGFloat,
+        defaultDisplayMode: RouteMapDisplayMode? = nil
+    ) {
+        self._displayMode = displayMode
+        self.routes = routes
+        self.markers = markers
+        self.areas = areas
+        self.fitRequest = fitRequest
+        self.controlBottomInset = controlBottomInset
+        self.defaultDisplayMode = defaultDisplayMode
+    }
+
     var body: some View {
         Map(position: $position, scope: mapScope) {
+            // Render order: areas (heatmap) → routes → markers.
+            ForEach(areas) { area in
+                if area.coordinates.count >= 3 {
+                    MapPolygon(coordinates: area.coordinates.map(\.mapKitCoordinate))
+                        .foregroundStyle(heatmapFill(intensity: area.normalizedIntensity))
+                        .stroke(Color.clear, lineWidth: 0)
+                }
+            }
+
             ForEach(routes) { route in
                 if route.coordinates.count >= 2 {
                     MapPolyline(coordinates: route.coordinates.map(\.mapKitCoordinate))
@@ -90,25 +120,31 @@ struct RouteMapCanvas: View {
             }
         }
         .onAppear {
-            fitRoutes(animated: false)
+            if let defaultDisplayMode {
+                displayMode = defaultDisplayMode
+            }
+            fitContent(animated: false)
         }
         .onChange(of: routes) { _, _ in
-            fitRoutes(animated: false)
+            fitContent(animated: false)
+        }
+        .onChange(of: areas) { _, _ in
+            fitContent(animated: false)
         }
         .onChange(of: fitRequest) { _, _ in
-            fitRoutes(animated: true)
+            fitContent(animated: true)
         }
     }
 
-    private func fitRoutes(animated: Bool) {
-        guard let rect = RouteMapContent.mapRect(for: routes) else {
+    private func fitContent(animated: Bool) {
+        guard let rect = RouteMapContent.mapRect(routes: routes, areas: areas) else {
             position = .automatic
             return
         }
 
         let newPosition: MapCameraPosition
         if displayMode == .threeD,
-           let plan = RouteMapContent.cameraPlan(for: routes) {
+           let plan = RouteMapContent.cameraPlan(routes: routes, areas: areas) {
             newPosition = .camera(MapCamera(
                 centerCoordinate: plan.center,
                 distance: plan.distance,
@@ -128,7 +164,7 @@ struct RouteMapCanvas: View {
 
     private func updatePitch(_ mode: RouteMapDisplayMode, animated: Bool) {
         guard let camera = currentCamera else {
-            fitRoutes(animated: animated)
+            fitContent(animated: animated)
             return
         }
         guard abs(camera.pitch - mode.cameraPitch) >= 1 else { return }
