@@ -115,9 +115,11 @@ extension RouteColoringService {
 
         for point in points {
             let y = point.yMeters
-            hasValidElevation = true
-            if y < minElev { minElev = y }
-            if y > maxElev { maxElev = y }
+            if y.isFinite {
+                hasValidElevation = true
+                if y < minElev { minElev = y }
+                if y > maxElev { maxElev = y }
+            }
         }
 
         guard hasValidElevation, maxElev > minElev else {
