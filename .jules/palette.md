@@ -15,7 +15,4 @@
 
 ## 2026-07-15 - Empty States Require Actionable CTAs
 **Learning:** The comparison empty state informed users they needed another run to compare, but lacked a direct way to resolve this (no import button), forcing them to hunt for the global import action in the sidebar or toolbar.
-**Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states that directly solve the condition causing the empty state.
-## 2024-05-14 - Inline CTAs in Empty States
-**Learning:** Empty states in comparison workflows (like waiting for a second workout to be selected) can be dead-ends if they only provide instructional text ("Import another run") when the requisite data isn't available. Users are forced to find the global import action to proceed.
-**Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states (e.g., an 'Import File' button when no data is available) that directly solve the condition causing the empty state, rather than forcing users to find global actions. Ensure the button uses `.help()` and `.accessibilityLabel()` modifiers for VoiceOver support.
+**Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states that directly solve the condition causing the empty state. This includes the comparison picker's empty slot and the main empty-state view. Ensure buttons use `.help()` and `.accessibilityLabel()` modifiers for VoiceOver support.
