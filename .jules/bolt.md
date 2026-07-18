@@ -25,3 +25,7 @@
 ## 2025-07-28 - O(N) Array Allocations in Min/Max Operations
 **Learning:** Extracting maximum or minimum values from arrays using chained higher-order functions like `.compactMap { ... }.filter { ... }.min()` causes intermediate `O(N)` array allocations. When executed frequently on large arrays (like iterating over route points), it creates significant ARC/GC overhead in Swift.
 **Action:** Replace chained array transformations with single inline `for` loops that use accumulator variables for state tracking (e.g., `minAlt`), keeping best-case performance at `O(1)` or `O(N)` without intermediate array allocations.
+
+## 2025-07-29 - O(N) Array Allocations in Map Rendering Min/Max Operations
+**Learning:** Checking for minimum and maximum values via `.map { ... }.min()` and `.map { ... }.max()` inside map rendering services (like `RouteColoringService`) created unnecessary intermediate O(N) array allocations causing GC pauses during frame rendering.
+**Action:** Replaced chained array transformations with single inline `for` loops that simultaneously map values and track local min/max using accumulator variables to optimize memory use during map rendering.
