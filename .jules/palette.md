@@ -15,4 +15,4 @@
 
 ## 2026-07-15 - Empty States Require Actionable CTAs
 **Learning:** The comparison empty state informed users they needed another run to compare, but lacked a direct way to resolve this (no import button), forcing them to hunt for the global import action in the sidebar or toolbar.
-**Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states that directly solve the condition causing the empty state.
+**Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states that directly solve the condition causing the empty state. This includes the comparison picker's empty slot and the main empty-state view. Ensure buttons use `.help()` and `.accessibilityLabel()` modifiers for VoiceOver support.
