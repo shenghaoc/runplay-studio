@@ -132,10 +132,7 @@ public enum WorkoutArchivePathValidator {
         if let paths = index.byLastComponent[targetLast], paths.count == 1, let only = paths.first {
             return .exact(only)
         }
-        if let paths = index.byLastComponent[targetLast], paths.count > 1 {
-            // Ambiguous exact basename before case-insensitive fallbacks.
-            // Fall through to case-insensitive checks which may still resolve uniquely.
-        }
+        // Ambiguous exact basenames fall through to case-insensitive resolution.
 
         let lowerTarget = normalizedTarget.lowercased()
         if let paths = index.byLowercased[lowerTarget] {

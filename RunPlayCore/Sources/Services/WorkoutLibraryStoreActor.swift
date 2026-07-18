@@ -311,7 +311,10 @@ public actor WorkoutLibraryStoreActor {
 
     private struct ActiveBatch {
         let token: WorkoutLibraryBatchToken
+        /// Deterministic stage order for commit.
         var stagedIDs: [UUID]
+        /// O(1) membership for within-batch duplicate detection.
+        var stagedIDSet: Set<UUID>
         /// Snapshot of library IDs at batch start; commit re-validates against the live manifest.
         let knownLibraryIDs: Set<UUID>
     }
@@ -351,7 +354,12 @@ public actor WorkoutLibraryStoreActor {
             }
         }
         let token = WorkoutLibraryBatchToken()
-        activeBatch = ActiveBatch(token: token, stagedIDs: [], knownLibraryIDs: knownLibraryIDs)
+        activeBatch = ActiveBatch(
+            token: token,
+            stagedIDs: [],
+            stagedIDSet: [],
+            knownLibraryIDs: knownLibraryIDs
+        )
         return token
     }
 
@@ -364,12 +372,13 @@ public actor WorkoutLibraryStoreActor {
         // Reject duplicate IDs within the batch and against the library snapshot
         // captured at beginBatchImport. commitBatchImport re-validates against
         // the live manifest before promote.
-        if active.stagedIDs.contains(workout.id) || active.knownLibraryIDs.contains(workout.id) {
+        if active.stagedIDSet.contains(workout.id) || active.knownLibraryIDs.contains(workout.id) {
             throw WorkoutLibraryStoreError.duplicateWorkoutID(workout.id)
         }
 
         try store.stageWorkout(workout, batchID: batch.id)
         active.stagedIDs.append(workout.id)
+        active.stagedIDSet.insert(workout.id)
         activeBatch = active
     }
 

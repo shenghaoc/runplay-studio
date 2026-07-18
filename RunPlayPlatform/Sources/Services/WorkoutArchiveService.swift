@@ -287,7 +287,8 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         }
 
         var items: [WorkoutBatchImportItemResult] = []
-        var stagedWorkouts: [(candidateID: String, workout: RunWorkout)] = []
+        /// Lightweight staged metadata only — full workouts are released after stage.
+        var stagedSummaries: [(id: UUID, startDate: Date?)] = []
         var seenHashes = Set(existingWorkouts.compactMap { $0.importProvenance?.contentSHA256?.lowercased() })
         var batchHashes = Set<String>()
         var completed = 0
@@ -303,7 +304,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     completedCount: completed,
                     totalCount: selection.selectedCandidates.count,
                     currentFilename: candidate.displayName,
-                    stagedCount: stagedWorkouts.count,
+                    stagedCount: stagedSummaries.count,
                     skippedCount: skipped,
                     failedCount: failed
                 ))
@@ -480,22 +481,26 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     completedCount: completed,
                     totalCount: selection.selectedCandidates.count,
                     currentFilename: candidate.displayName,
-                    stagedCount: stagedWorkouts.count,
+                    stagedCount: stagedSummaries.count,
                     skippedCount: skipped,
                     failedCount: failed
                 ))
 
                 do {
+                    let startDate = workout.metadata.startDate
+                    let workoutID = workout.id
+                    let displayName = workout.displayName
                     try await storeActor.stageWorkout(workout, in: batch)
-                    stagedWorkouts.append((candidate.id, workout))
+                    // Release the full workout; retain only selection metadata.
+                    stagedSummaries.append((id: workoutID, startDate: startDate))
                     seenHashes.insert(hash)
                     items.append(WorkoutBatchImportItemResult(
                         candidateID: candidate.id,
                         archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: workout.displayName,
+                        activityName: displayName,
                         status: .ready,
                         detail: nil,
-                        importedWorkoutID: workout.id
+                        importedWorkoutID: workoutID
                     ))
                 } catch is CancellationError {
                     throw CancellationError()
@@ -512,19 +517,19 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 // Release activity bytes by leaving scope (rawBytes/activityBytes end).
             }
 
-            // Determine selection: newest by start date, then archive order.
-            let selectedID = Self.selectNewest(stagedWorkouts.map(\.workout))
+            // Determine selection: newest by start date, then stage order.
+            let selectedID = Self.selectNewest(stagedSummaries)
 
             await progress(WorkoutBatchImportProgress(
                 phase: .committing,
                 completedCount: completed,
                 totalCount: selection.selectedCandidates.count,
-                stagedCount: stagedWorkouts.count,
+                stagedCount: stagedSummaries.count,
                 skippedCount: skipped,
                 failedCount: failed
             ))
 
-            if stagedWorkouts.isEmpty {
+            if stagedSummaries.isEmpty {
                 await storeActor.rollbackBatchImport(batch)
                 await progress(WorkoutBatchImportProgress(phase: .completed))
                 return WorkoutBatchImportReport(
@@ -681,11 +686,13 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         return data
     }
 
-    private static func selectNewest(_ workouts: [RunWorkout]) -> UUID? {
-        guard !workouts.isEmpty else { return nil }
-        let sorted = workouts.sorted { a, b in
-            let da = a.metadata.startDate ?? .distantPast
-            let db = b.metadata.startDate ?? .distantPast
+    private static func selectNewest(
+        _ staged: [(id: UUID, startDate: Date?)]
+    ) -> UUID? {
+        guard !staged.isEmpty else { return nil }
+        let sorted = staged.sorted { a, b in
+            let da = a.startDate ?? .distantPast
+            let db = b.startDate ?? .distantPast
             if da != db { return da > db }
             return a.id.uuidString > b.id.uuidString
         }
