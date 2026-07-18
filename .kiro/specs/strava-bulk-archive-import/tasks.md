@@ -9,5 +9,6 @@
 - [x] Studio UI: review / progress / report + menus
 - [x] Core + Platform tests
 - [x] Documentation + third-party notices + Kiro spec
-- [ ] Manual GUI verification with synthetic archive (owner)
+- [x] Focused packaged-app smoke: menu, review, import, report, and replay
+- [ ] Extended manual archive checklist: cancellation, re-import, heatmap, relaunch, and deletion
 - [ ] CI green on PR head

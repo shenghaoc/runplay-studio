@@ -408,3 +408,10 @@ Use a **synthetic** ZIP only — never commit real exports.
 12. Delete one imported workout → heatmap updates.
 13. Single-file import and comparison still work.
 14. Light/dark, keyboard, VoiceOver labels on the archive sheet.
+
+Focused pre-merge smoke record (2026-07-19): the packaged app exposed
+**Import Strava Archive…** in both the File menu and native Import menu. A
+temporary synthetic GPX archive scanned as one ready candidate, imported with
+an `Imported: 1` completion report, and opened the resulting workout with its
+route and replay. This is a focused smoke, not a claim to complete the extended
+checklist above.
