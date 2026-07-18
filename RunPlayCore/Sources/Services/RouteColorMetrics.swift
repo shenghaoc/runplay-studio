@@ -25,6 +25,7 @@ public struct RouteColorMetrics: Sendable {
         guard points.count >= 2 else { return [] }
 
         var rawPace: [Double] = []
+        rawPace.reserveCapacity(points.count - 1)
 
         for i in 0..<(points.count - 1) {
             let from = points[i]
@@ -60,6 +61,7 @@ public struct RouteColorMetrics: Sendable {
         // Replace remaining NaN with median
         // ⚡ Bolt: Use an inline loop to gather valid values without intermediate .filter arrays.
         var validPace: [Double] = []
+        validPace.reserveCapacity(smoothed.count)
         for value in smoothed {
             if !value.isNaN && value.isFinite {
                 validPace.append(value)
@@ -67,7 +69,7 @@ public struct RouteColorMetrics: Sendable {
         }
         let median = validPace.isEmpty ? 300.0 : medianOf(validPace) // Default 5:00/km
 
-        // ⚡ Bolt: Replace map with a simple array rebuild to maintain O(N) but avoid closures if we want, or map is fine here. But let's keep map or inline loop. I'll use an inline loop for consistency.
+        // Replace NaN/Non-finite with median.
         var result: [Double] = []
         result.reserveCapacity(smoothed.count)
         for value in smoothed {
@@ -106,6 +108,7 @@ public struct RouteColorMetrics: Sendable {
         guard points.count >= 2 else { return [] }
 
         var rawHR: [Double] = []
+        rawHR.reserveCapacity(points.count - 1)
 
         for i in 0..<(points.count - 1) {
             let from = points[i]
@@ -148,6 +151,7 @@ public struct RouteColorMetrics: Sendable {
         // Replace remaining NaN with median (only if we have valid HR data)
         // ⚡ Bolt: Use an inline loop to gather valid values without intermediate .filter arrays.
         var validHR: [Double] = []
+        validHR.reserveCapacity(smoothed.count)
         for value in smoothed {
             if !value.isNaN && value.isFinite {
                 validHR.append(value)
@@ -175,6 +179,7 @@ public struct RouteColorMetrics: Sendable {
 
         // ⚡ Bolt: Use an inline loop to gather valid values without intermediate .filter arrays.
         var validValues: [Double] = []
+        validValues.reserveCapacity(hrValues.count)
         for value in hrValues {
             if value.isFinite && Self.validHeartRateRange.contains(value) {
                 validValues.append(value)
@@ -217,6 +222,7 @@ public struct RouteColorMetrics: Sendable {
     /// Respects segment boundaries: only values from the same segment participate in the window.
     private func smoothValues(_ values: [Double], windowSize: Int, points: [RouteScenePoint]) -> [Double] {
         guard values.count > 1 else { return values }
+        precondition(points.count >= values.count, "points array must have at least as many elements as values")
         let halfWindow = windowSize / 2
         var result: [Double] = []
         result.reserveCapacity(values.count)
@@ -230,7 +236,7 @@ public struct RouteColorMetrics: Sendable {
             var count: Int = 0
             for j in start..<end {
                 if points[j].routeSegmentIndex == currentSegment,
-                   values[j].isFinite && !values[j].isNaN {
+                   values[j].isFinite {
                     sum += values[j]
                     count += 1
                 }

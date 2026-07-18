@@ -8,6 +8,7 @@ public struct MetricSmoother {
         guard values.count > 1 else { return values }
         let window = max(1, windowSize)
         var smoothed: [Double] = []
+        smoothed.reserveCapacity(values.count)
 
         for i in 0..<values.count {
             let start = max(0, i - window / 2)
@@ -25,7 +26,9 @@ public struct MetricSmoother {
     public static func smoothPace(from points: [RoutePoint], windowSize: Int = 5) -> [Double?] {
         // Separate valid values for smoothing
         var validIndices: [Int] = []
+        validIndices.reserveCapacity(points.count)
         var validValues: [Double] = []
+        validValues.reserveCapacity(points.count)
 
         // ⚡ Bolt: Inline extraction instead of .map to avoid an intermediate O(N) array allocation.
         for (i, point) in points.enumerated() {
@@ -107,6 +110,7 @@ public struct MetricSmoother {
     ) -> [Double] {
         let window = max(1, windowSize)
         var smoothed: [Double] = []
+        smoothed.reserveCapacity(values.count)
 
         for (valueIdx, pointIdx) in indices.enumerated() {
             let segmentIndex = points[pointIdx].routeSegmentIndex
