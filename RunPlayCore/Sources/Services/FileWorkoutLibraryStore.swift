@@ -163,3 +163,146 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         }
     }
 }
+
+// MARK: - Batch Staging
+
+extension FileWorkoutLibraryStore {
+    public var libraryRootURL: URL { rootURL }
+
+    private var stagingRoot: URL {
+        rootURL.appendingPathComponent(".staging", isDirectory: true)
+    }
+
+    private func stagingDirectory(batchID: UUID) -> URL {
+        stagingRoot.appendingPathComponent(batchID.uuidString, isDirectory: true)
+    }
+
+    private func stagedWorkoutURL(id: UUID, batchID: UUID) -> URL {
+        stagingDirectory(batchID: batchID).appendingPathComponent("\(id.uuidString).json")
+    }
+
+    public func stageWorkout(_ workout: RunWorkout, batchID: UUID) throws {
+        let dir = stagingDirectory(batchID: batchID)
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let data: Data
+        do {
+            data = try encoder.encode(workout)
+        } catch {
+            throw WorkoutLibraryError.writeFailed(
+                "Cannot encode staged workout \(workout.id): \(error.localizedDescription)"
+            )
+        }
+        try atomicWrite(data, to: stagedWorkoutURL(id: workout.id, batchID: batchID))
+    }
+
+    public func loadStagedWorkout(id: UUID, batchID: UUID) throws -> RunWorkout {
+        let url = stagedWorkoutURL(id: id, batchID: batchID)
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw WorkoutLibraryError.workoutFileMissing(id)
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw WorkoutLibraryError.workoutCorrupted(id, "Cannot read staged file: \(error.localizedDescription)")
+        }
+        do {
+            return try decoder.decode(RunWorkout.self, from: data)
+        } catch {
+            throw WorkoutLibraryError.workoutCorrupted(id, "Cannot decode staged file: \(error.localizedDescription)")
+        }
+    }
+
+    public func promoteStagedWorkouts(ids: [UUID], batchID: UUID) throws {
+        try ensureDirectoriesExist()
+        var moved: [UUID] = []
+        do {
+            for id in ids {
+                let source = stagedWorkoutURL(id: id, batchID: batchID)
+                let dest = workoutURL(for: id)
+                guard fileManager.fileExists(atPath: source.path) else {
+                    throw WorkoutLibraryError.workoutFileMissing(id)
+                }
+                if fileManager.fileExists(atPath: dest.path) {
+                    try fileManager.removeItem(at: dest)
+                }
+                try fileManager.moveItem(at: source, to: dest)
+                moved.append(id)
+            }
+        } catch {
+            // Best-effort rollback of moved files for this promote call.
+            for id in moved {
+                let dest = workoutURL(for: id)
+                let source = stagedWorkoutURL(id: id, batchID: batchID)
+                if fileManager.fileExists(atPath: dest.path) {
+                    try? fileManager.moveItem(at: dest, to: source)
+                }
+            }
+            if let libraryError = error as? WorkoutLibraryError {
+                throw libraryError
+            }
+            throw WorkoutLibraryError.writeFailed("Promote failed: \(error.localizedDescription)")
+        }
+    }
+
+    public func removeStaging(batchID: UUID) throws {
+        let dir = stagingDirectory(batchID: batchID)
+        guard fileManager.fileExists(atPath: dir.path) else { return }
+        do {
+            try fileManager.removeItem(at: dir)
+        } catch {
+            throw WorkoutLibraryError.writeFailed(
+                "Cannot remove staging \(batchID): \(error.localizedDescription)"
+            )
+        }
+        // Remove empty .staging root when possible.
+        if let contents = try? fileManager.contentsOfDirectory(atPath: stagingRoot.path),
+           contents.isEmpty {
+            try? fileManager.removeItem(at: stagingRoot)
+        }
+    }
+
+    public func cleanupStaleStaging() throws {
+        guard fileManager.fileExists(atPath: stagingRoot.path) else { return }
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: stagingRoot,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            throw WorkoutLibraryError.writeFailed(
+                "Cannot list staging root: \(error.localizedDescription)"
+            )
+        }
+        for url in contents {
+            try? fileManager.removeItem(at: url)
+        }
+        try? fileManager.removeItem(at: stagingRoot)
+    }
+
+    public func cleanupUnreferencedWorkoutFiles(referencedIDs: Set<UUID>) throws {
+        guard fileManager.fileExists(atPath: workoutsDirectory.path) else { return }
+        let files: [URL]
+        do {
+            files = try fileManager.contentsOfDirectory(
+                at: workoutsDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            throw WorkoutLibraryError.writeFailed(
+                "Cannot list workouts directory: \(error.localizedDescription)"
+            )
+        }
+        for file in files where file.pathExtension.lowercased() == "json" {
+            let name = file.deletingPathExtension().lastPathComponent
+            guard let id = UUID(uuidString: name) else { continue }
+            if !referencedIDs.contains(id) {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+}

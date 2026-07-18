@@ -7,6 +7,18 @@ public protocol WorkoutImporting: Sendable {
 
     /// Import a workout from a file URL.
     func importWorkout(from url: URL) throws -> RunWorkout
+
+    /// Import a workout from in-memory activity bytes.
+    ///
+    /// Default implementation loads nothing from disk. Concrete importers
+    /// should parse `input.data` with the same logic as the URL path.
+    func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout
+}
+
+extension WorkoutImporting {
+    public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        throw WorkoutImportError.unsupportedFormat(input.fileExtension)
+    }
 }
 
 extension WorkoutImporting {

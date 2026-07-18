@@ -436,3 +436,16 @@ interpolates selected-distance markers without introducing another renderer.
 
 - AVFoundation for video export
 - HealthKit for direct Apple Health import
+
+
+## Strava bulk-export archive import
+
+- **RunPlayCore** owns archive-independent candidate models, RFC 4180 CSV parsing,
+  GZIP envelope decoding, path validation, sport policy, `WorkoutImportInput`
+  data importers, `WorkoutImportProvenance`, and staged batch library APIs.
+- **RunPlayPlatform** owns ZIP access via vendored ZIPFoundation 0.9.20,
+  SHA-256 content hashing (CryptoKit), and `StravaArchiveService` (actor).
+- **RunPlayStudio** owns the file picker, review/progress/report sheet, and
+  AppState orchestration. Archive parsing never runs on `@MainActor`.
+- Persistence uses a private `.staging/<batch-id>/` directory, then a single
+  atomic manifest commit. The personal heatmap refreshes once after commit.

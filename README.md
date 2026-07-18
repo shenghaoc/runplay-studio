@@ -29,6 +29,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Segment detection** — Auto-identify active-pace fastest/slowest windows and biggest climb/descent
 - **Chart click/drag to seek** — Click or drag on charts to navigate the run
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
+- **Strava bulk archive import** — Import running activities from a local Strava export ZIP (no login or network)
 
 ---
 

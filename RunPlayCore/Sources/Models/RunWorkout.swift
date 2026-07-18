@@ -36,6 +36,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     public var recordedLapDiagnostics: RecordedLapDiagnostics
     public var routeDistanceSource: RouteDistanceSource
     public var routeDistanceProvenance: RouteDistanceProvenance
+    /// Optional import provenance (provider, content hash). Nil for legacy snapshots.
+    public var importProvenance: WorkoutImportProvenance?
 
     public init(
         id: UUID = UUID(),
@@ -85,7 +87,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         qualityDiagnostics: RouteQualityDiagnostics = .empty,
         recordedLapDiagnostics: RecordedLapDiagnostics = .empty,
         routeDistanceSource: RouteDistanceSource = .coordinateDerived,
-        routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown
+        routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown,
+        importProvenance: WorkoutImportProvenance? = nil
     ) {
         self.id = id
         self.metadata = metadata
@@ -104,6 +107,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.recordedLapDiagnostics = Self.sanitizedRecordedLapDiagnostics(recordedLapDiagnostics)
         self.routeDistanceSource = routeDistanceSource
         self.routeDistanceProvenance = routeDistanceProvenance
+        self.importProvenance = importProvenance
     }
 
     // ⚡ Bolt: Cache date formatter to avoid expensive initialization on property access
@@ -154,7 +158,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         case analysisVersion, normalizationVersion, sourceStructureVersion
         case analysisWarnings, movementDiagnostics
         case qualityDiagnostics, recordedLapDiagnostics
-        case routeDistanceSource, routeDistanceProvenance
+        case routeDistanceSource, routeDistanceProvenance, importProvenance
     }
 
     public init(from decoder: any Decoder) throws {
@@ -209,6 +213,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             RouteDistanceProvenance.self,
             forKey: .routeDistanceProvenance
         ) ?? .legacyUnknown
+        importProvenance = try container.decodeIfPresent(
+            WorkoutImportProvenance.self,
+            forKey: .importProvenance
+        )
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -230,6 +238,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(recordedLapDiagnostics, forKey: .recordedLapDiagnostics)
         try container.encode(routeDistanceSource, forKey: .routeDistanceSource)
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)
+        try container.encodeIfPresent(importProvenance, forKey: .importProvenance)
     }
 
     private static func sanitizedRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {

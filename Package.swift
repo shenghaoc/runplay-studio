@@ -27,11 +27,30 @@ var products: [Product] = [
 // macOS-only layers are absent from the Linux package graph.
 #if os(macOS)
 targets.append(contentsOf: [
+    // Vendored ZIPFoundation 0.9.20 (MIT). Kept as a first-party target so
+    // `swift test -Xswiftc -warnings-as-errors` does not conflict with SPM's
+    // automatic `-suppress-warnings` for external package products.
+    // Sources are unmodified; see THIRD_PARTY_NOTICES.md.
+    .target(
+        name: "ZIPFoundation",
+        path: "ThirdParty/ZIPFoundation",
+        exclude: ["LICENSE"],
+        resources: [
+            .process("Resources")
+        ],
+        swiftSettings: [
+            .swiftLanguageMode(.v5)
+        ]
+    ),
     // macOS non-UI platform layer: SceneKit, AppKit value types, MapKit,
     // and Combine are allowed; SwiftUI, Charts, and presentation code are not.
+    // ZIP access is confined here — never imported by RunPlayCore.
     .target(
         name: "RunPlayPlatform",
-        dependencies: ["RunPlayCore"],
+        dependencies: [
+            "RunPlayCore",
+            "ZIPFoundation",
+        ],
         path: "RunPlayPlatform/Sources"
     ),
     .testTarget(
@@ -64,6 +83,7 @@ let package = Package(
         .macOS(.v26),
     ],
     products: products,
+    dependencies: [],
     targets: targets,
     swiftLanguageModes: [.v6]
 )

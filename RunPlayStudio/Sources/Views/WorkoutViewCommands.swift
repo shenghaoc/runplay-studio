@@ -18,6 +18,8 @@ extension FocusedValues {
 /// Actions for top-level workspace navigation from the menu bar.
 struct AppWorkspaceActions {
     var showPersonalHeatmap: () -> Void
+    var importFile: () -> Void = {}
+    var importStravaArchive: () -> Void = {}
 }
 
 private struct AppWorkspaceActionsKey: FocusedValueKey {
@@ -37,6 +39,19 @@ struct WorkoutViewCommands: Commands {
     @FocusedValue(\.appWorkspaceActions) private var workspaceActions
 
     var body: some Commands {
+        CommandGroup(after: .importExport) {
+            Button("Import File…") {
+                workspaceActions?.importFile()
+            }
+            .keyboardShortcut("i", modifiers: .command)
+
+            Button("Import Strava Archive…") {
+                workspaceActions?.importStravaArchive()
+            }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+            .help("Import running activities from a local Strava bulk-export ZIP")
+        }
+
         CommandMenu("Workout") {
             Button("Overview") {
                 selectedTab = .overview

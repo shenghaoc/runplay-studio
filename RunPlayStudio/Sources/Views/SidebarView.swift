@@ -13,6 +13,7 @@ struct SidebarView: View {
     let workouts: [RunWorkout]
     @Binding var selection: SidebarSelection?
     var onImport: () -> Void
+    var onArchiveImport: (() -> Void)? = nil
     var onDelete: ((RunWorkout) -> Void)?
 
     @State private var workoutToDelete: RunWorkout?
@@ -67,11 +68,21 @@ struct SidebarView: View {
         .navigationTitle("RunPlay Studio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(action: onImport) {
+                Menu {
+                    Button(action: onImport) {
+                        Label("Import File…", systemImage: "doc.badge.plus")
+                    }
+                    .keyboardShortcut("i", modifiers: .command)
+                    if let onArchiveImport {
+                        Button(action: onArchiveImport) {
+                            Label("Import Strava Archive…", systemImage: "archivebox")
+                        }
+                        .keyboardShortcut("i", modifiers: [.command, .shift])
+                    }
+                } label: {
                     Label("Import", systemImage: "plus")
                 }
-                .keyboardShortcut("i", modifiers: .command)
-                .help("Import a workout file (⌘I)")
+                .help("Import a workout file or Strava archive")
             }
         }
         .alert("Delete Run", isPresented: Binding(

@@ -388,3 +388,23 @@ Latest export notes:
 - The committed demo PNG is generated from bundled synthetic data only.
 - Manual GUI pass on 2026-07-08 confirmed save-panel export works for JSON,
   CSV, and PNG in a normal desktop session.
+
+
+## Strava bulk archive import (synthetic)
+
+Use a **synthetic** ZIP only — never commit real exports.
+
+1. **Import Strava Archive…** → select synthetic ZIP.
+2. Confirm review counts and candidate statuses.
+3. Filter/search; Select All Importable / Select None; keyboard navigation.
+4. Import mixed FIT/GPX/TCX/GZIP running activities.
+5. Cancel a second large import; confirm no partial library additions.
+6. Archive with one corrupt activity → valid siblings still import.
+7. Import the same archive again → zero new workouts.
+8. Completion report counts match expectations.
+9. Open most recent imported workout; check laps/replay/charts.
+10. Open Personal Heatmap → one recomputation with new history.
+11. Quit and relaunch → workouts persist.
+12. Delete one imported workout → heatmap updates.
+13. Single-file import and comparison still work.
+14. Light/dark, keyboard, VoiceOver labels on the archive sheet.

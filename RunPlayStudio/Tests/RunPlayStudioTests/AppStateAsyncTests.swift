@@ -411,6 +411,12 @@ private actor SlowImportService: WorkoutImportServicing {
         try Task.checkCancellation()
         return try WorkoutImporterFactory.importWorkout(from: url)
     }
+
+    func importWorkout(from input: WorkoutImportInput) async throws -> RunWorkout {
+        try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+        try Task.checkCancellation()
+        return try WorkoutImporterFactory.importWorkout(from: input)
+    }
 }
 
 private actor FixedWorkoutImportService: WorkoutImportServicing {
@@ -421,6 +427,10 @@ private actor FixedWorkoutImportService: WorkoutImportServicing {
     }
 
     func importWorkout(from url: URL) async throws -> RunWorkout {
+        workout
+    }
+
+    func importWorkout(from input: WorkoutImportInput) async throws -> RunWorkout {
         workout
     }
 }

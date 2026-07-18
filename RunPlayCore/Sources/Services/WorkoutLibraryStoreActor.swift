@@ -39,6 +39,7 @@ public actor WorkoutLibraryStoreActor {
     ///
     /// This replaces the synchronous `WorkoutLibraryLoader` with actor-isolated logic.
     public func loadLibrary() -> WorkoutLibraryLoadResult {
+        recoverStaleState()
         do {
             let manifest = try store.loadManifest()
             guard !manifest.workoutIDs.isEmpty else {
@@ -304,5 +305,162 @@ public actor WorkoutLibraryStoreActor {
         }
         manifest.selectedWorkoutID = id
         try store.saveManifest(manifest)
+    }
+
+    // MARK: - Batch Import
+
+    private struct ActiveBatch {
+        let token: WorkoutLibraryBatchToken
+        var stagedIDs: [UUID]
+    }
+
+    private var activeBatch: ActiveBatch?
+
+    /// Remove stale staging left by crashed imports. Safe to call at startup.
+    public func recoverStaleState() {
+        do {
+            try store.cleanupStaleStaging()
+        } catch {
+            // Best-effort startup recovery.
+        }
+        // Orphan final files not in manifest.
+        do {
+            let manifest = try store.loadManifest()
+            try store.cleanupUnreferencedWorkoutFiles(referencedIDs: Set(manifest.workoutIDs))
+        } catch {
+            // Missing manifest is fine.
+        }
+    }
+
+    /// Begin a staged batch import transaction.
+    public func beginBatchImport() throws -> WorkoutLibraryBatchToken {
+        try Task.checkCancellation()
+        if activeBatch != nil {
+            throw WorkoutLibraryError.writeFailed("A batch import is already in progress")
+        }
+        let token = WorkoutLibraryBatchToken()
+        activeBatch = ActiveBatch(token: token, stagedIDs: [])
+        return token
+    }
+
+    /// Stage a normalized workout snapshot. Does not modify the manifest.
+    public func stageWorkout(_ workout: RunWorkout, in batch: WorkoutLibraryBatchToken) throws {
+        try Task.checkCancellation()
+        guard var active = activeBatch, active.token == batch else {
+            throw WorkoutLibraryError.writeFailed("Invalid or inactive batch token")
+        }
+        // Reject duplicate IDs within the batch and against the live library.
+        if active.stagedIDs.contains(workout.id) {
+            throw WorkoutLibraryStoreError.duplicateWorkoutID(workout.id)
+        }
+        var manifestIDs: [UUID] = []
+        do {
+            manifestIDs = try store.loadManifest().workoutIDs
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                manifestIDs = []
+            } else {
+                throw error
+            }
+        }
+        if manifestIDs.contains(workout.id) {
+            throw WorkoutLibraryStoreError.duplicateWorkoutID(workout.id)
+        }
+
+        try store.stageWorkout(workout, batchID: batch.id)
+        active.stagedIDs.append(workout.id)
+        activeBatch = active
+    }
+
+    /// Atomically commit all staged workouts in this batch.
+    ///
+    /// - Parameters:
+    ///   - batch: Token from `beginBatchImport`.
+    ///   - selectedWorkoutID: Preferred selection after commit (must be staged or existing).
+    /// - Returns: Ordered staged IDs that were committed.
+    @discardableResult
+    public func commitBatchImport(
+        _ batch: WorkoutLibraryBatchToken,
+        selectedWorkoutID: UUID?
+    ) throws -> [UUID] {
+        try Task.checkCancellation()
+        guard let active = activeBatch, active.token == batch else {
+            throw WorkoutLibraryError.writeFailed("Invalid or inactive batch token")
+        }
+        let stagedIDs = active.stagedIDs
+        if stagedIDs.isEmpty {
+            try store.removeStaging(batchID: batch.id)
+            activeBatch = nil
+            return []
+        }
+
+        var manifest: WorkoutLibraryManifest
+        do {
+            manifest = try store.loadManifest()
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                manifest = WorkoutLibraryManifest()
+            } else {
+                throw error
+            }
+        }
+
+        // Validate no staged ID is already in the library.
+        for id in stagedIDs {
+            if manifest.workoutIDs.contains(id) {
+                try? store.removeStaging(batchID: batch.id)
+                activeBatch = nil
+                throw WorkoutLibraryStoreError.duplicateWorkoutID(id)
+            }
+        }
+
+        // Promote staged files to final paths.
+        do {
+            try store.promoteStagedWorkouts(ids: stagedIDs, batchID: batch.id)
+        } catch {
+            try? store.removeStaging(batchID: batch.id)
+            activeBatch = nil
+            throw error
+        }
+
+        var updated = manifest
+        updated.workoutIDs.append(contentsOf: stagedIDs)
+        if let selectedWorkoutID {
+            if updated.workoutIDs.contains(selectedWorkoutID) {
+                updated.selectedWorkoutID = selectedWorkoutID
+            }
+        }
+
+        do {
+            try store.saveManifest(updated)
+        } catch {
+            // Rollback: delete every newly moved snapshot; preserve original manifest.
+            for id in stagedIDs {
+                try? store.deleteWorkout(id: id)
+            }
+            try? store.removeStaging(batchID: batch.id)
+            activeBatch = nil
+            throw error
+        }
+
+        try? store.removeStaging(batchID: batch.id)
+        activeBatch = nil
+        return stagedIDs
+    }
+
+    /// Discard staging for a batch without modifying the library.
+    public func rollbackBatchImport(_ batch: WorkoutLibraryBatchToken) {
+        guard let active = activeBatch, active.token == batch else {
+            // Still try to remove staging dir if present.
+            try? store.removeStaging(batchID: batch.id)
+            return
+        }
+        try? store.removeStaging(batchID: batch.id)
+        activeBatch = nil
+    }
+
+    /// Whether a batch import is currently active.
+    public var hasActiveBatch: Bool {
+        activeBatch != nil
     }
 }

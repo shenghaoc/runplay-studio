@@ -621,3 +621,15 @@ Legacy snapshots that already contain `routeSegmentIndex` can recover correct
 pause semantics through reanalysis. Older snapshots that predate that field
 decode every point into segment `0`; a pause boundary absent from the stored
 route cannot be reconstructed and the original activity must be reimported.
+
+
+## Import provenance
+
+Optional `WorkoutImportProvenance` on `RunWorkout` (backward-compatible decode):
+
+- `provider`: `singleFile` | `stravaBulkExport` | `unknown`
+- `providerActivityID`: Strava activity ID when known
+- `contentSHA256`: lowercase hex digest of original activity-file bytes
+- `originalFilename`: archive-relative activity filename (not an absolute path)
+
+No analysis-version, normalization-version, or manifest-schema bump is required.

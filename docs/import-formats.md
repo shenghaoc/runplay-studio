@@ -96,3 +96,47 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 
 Synthetic fixtures must not include private real workout data or personally
 identifying routes.
+
+
+## Strava Bulk Export Archives
+
+RunPlay Studio can import **running activities** from a **local** Strava bulk-export
+ZIP. There is **no** Strava login, OAuth, API call, or network access.
+
+### How to get a Strava export
+
+1. In Strava (web): **Settings → My Account → Download or Delete Your Account**.
+2. Request a download of your archive and wait for Strava’s email.
+3. Save the `.zip` on your Mac.
+4. In RunPlay Studio: **Import Strava Archive…** and select the ZIP.
+
+### What is imported
+
+| Item | Support |
+| --- | --- |
+| `.fit`, `.gpx`, `.tcx` activity files | Yes |
+| `.fit.gz`, `.gpx.gz`, `.tcx.gz` (one GZIP layer) | Yes |
+| Running / trail / virtual run (GPS required) | Yes (default selected) |
+| Walk / hike with GPS | Yes when the route importer accepts them |
+| Cycling, swim, ski, and other sports | Skipped (reported) |
+| Photos, media, social, profile data | Ignored |
+| Nested ZIP / password-protected entries | Rejected / skipped |
+| Indoor treadmill without GPS | Not imported |
+
+### Duplicate and conflict policy
+
+- **Exact duplicate:** same provider activity ID **or** same content SHA-256 → skipped, not selected by default.
+- **Provider conflict:** same activity ID, different content hash → not imported; delete the existing workout first to replace.
+- Re-importing the same archive adds **zero** new workouts when sources are unchanged.
+
+### Security and limits
+
+- The archive is **not** fully extracted to a temporary folder.
+- Paths are validated (no traversal, absolute paths, or special file types).
+- Finite limits apply to archive size, entry count, compression ratio, and concurrency.
+- Processing is local-only; staged snapshots live under the library `.staging/` directory and are cleaned up on cancel, failure, or startup recovery.
+
+### Completion report
+
+After import, counts cover imported, duplicates, unsupported sports/formats,
+no-GPS, parse failures, unsafe entries, and provider conflicts.

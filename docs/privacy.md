@@ -83,3 +83,12 @@ personal activity files. See `docs/private-data.md` for the full policy.
 If HealthKit integration is added in a future phase, it will require explicit
 entitlements and a separate privacy review. Any such change will be opt-in and
 clearly documented before shipping.
+
+
+## Strava bulk-export import
+
+Archive import reads a user-selected ZIP entirely on-device. The app does not
+contact Strava, does not require an account, and does not upload the archive.
+Import provenance stores provider activity IDs and content hashes only — never
+absolute archive paths, email addresses, or profile identifiers. Photos and
+social data inside the export are ignored.

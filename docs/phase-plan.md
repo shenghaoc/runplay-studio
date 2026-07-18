@@ -98,3 +98,9 @@
 - [x] Personal heatmap across multiple runs
 - [ ] Route coloring by pace or HR on map polyline
 - [ ] Dynamic time warping for comparison (post-MVP)
+
+
+## Strava bulk-export import (implemented)
+
+Local-only ZIP import of running activities with review UI, secure path handling,
+GZIP support, provenance/dedup, and staged batch commits. Not a Strava API client.

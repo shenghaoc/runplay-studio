@@ -7,6 +7,7 @@ import RunPlayCore
 /// the next action clear without competing with the workout experience.
 struct EmptyStateView: View {
     var onImport: () -> Void
+    var onArchiveImport: (() -> Void)? = nil
 
     @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
