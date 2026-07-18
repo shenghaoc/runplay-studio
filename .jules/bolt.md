@@ -29,3 +29,7 @@
 ## 2025-07-29 - O(N) Array Allocations in Map Rendering Min/Max Operations
 **Learning:** Checking for minimum and maximum values via `.map { ... }.min()` and `.map { ... }.max()` inside map rendering services (like `RouteColoringService`) created unnecessary intermediate O(N) array allocations causing GC pauses during frame rendering.
 **Action:** Replaced chained array transformations with single inline `for` loops that simultaneously map values and track local min/max using accumulator variables to optimize memory use during map rendering.
+
+## 2026-07-15 - Redundant O(N) Array Creations for Parameter Passing
+**Learning:** Functions like `smoothValues` were being passed mapped arrays like `points.dropLast().map(\.routeSegmentIndex)` as arguments. This creates a full `O(N)` array of integers simply to supply data that already exists sequentially within the original `RouteScenePoint` array, causing unnecessary ARC overhead.
+**Action:** Pass the original array (`points`) directly into helper methods instead of creating mapped projection arrays beforehand, and perform inline property access (`points[i].routeSegmentIndex`) inside the helper loop.
