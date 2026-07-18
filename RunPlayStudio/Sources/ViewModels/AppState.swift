@@ -823,13 +823,9 @@ class AppState: ObservableObject {
                     }
                 }
 
-                guard !Task.isCancelled else {
-                    self.operationState = .idle
-                    self.archiveSession = nil
-                    return
-                }
-
-                if report.wasCancelled {
+                // Cancellation after a successful commit must still surface the report
+                // (library already changed; do not pretend the import rolled back).
+                if report.wasCancelled && report.importedCount == 0 && !report.commitFailed {
                     self.operationState = .idle
                     self.archiveSession = nil
                     return
@@ -844,27 +840,26 @@ class AppState: ObservableObject {
                     return
                 }
 
-                // Reload library from store for authoritative post-commit state.
-                let loadResult = await storeActor.loadLibrary()
-                switch loadResult {
-                case .workouts(let loaded, let selectedID, let warning):
-                    self.analysisContextCache.removeAll()
-                    self.workouts = loaded
-                    let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
-                        ?? loaded.first
-                    self.selectWorkout(selected, persistSelection: false)
-                    // One heatmap refresh after commit.
-                    if self.workspaceMode == .personalHeatmap {
-                        self.personalHeatmap.refresh(workouts: loaded)
-                    }
-                    if let warning {
-                        // Prefer report UI over alert for archive path.
-                        _ = warning
-                    }
-                case .demos(let message):
-                    // Unexpected after successful commit; fall back.
-                    if let message {
-                        session.errorMessage = message
+                if report.importedCount > 0 {
+                    // Reload library from store for authoritative post-commit state.
+                    let loadResult = await storeActor.loadLibrary()
+                    switch loadResult {
+                    case .workouts(let loaded, let selectedID, _):
+                        self.analysisContextCache.removeAll()
+                        self.workouts = loaded
+                        let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
+                            ?? loaded.first
+                        self.selectWorkout(selected, persistSelection: false)
+                        // Keep heatmap invalidation coherent: refresh when visible,
+                        // otherwise the next open path reloads from `workouts`.
+                        if self.workspaceMode == .personalHeatmap {
+                            self.personalHeatmap.refresh(workouts: loaded)
+                        }
+                    case .demos(let message):
+                        // Unexpected after successful commit; fall back.
+                        if let message {
+                            session.errorMessage = message
+                        }
                     }
                 }
 

@@ -107,45 +107,54 @@ public enum WorkoutArchivePathValidator {
         _ target: String,
         in entries: [String]
     ) -> PathMatchResult {
+        matchPath(target, index: PathIndex(entries: entries))
+    }
+
+    /// Match using a precomputed index (O(1) lookups for bulk candidate building).
+    public static func matchPath(
+        _ target: String,
+        index: PathIndex
+    ) -> PathMatchResult {
         let validation = validate(target)
         guard case .valid(let normalizedTarget) = validation else {
             return .none
         }
 
-        if entries.contains(normalizedTarget) {
+        if index.exact.contains(normalizedTarget) {
             return .exact(normalizedTarget)
         }
 
-        // Also try matching by suffix (activities/foo.gpx vs export/activities/foo.gpx)
+        // Suffix: activities/foo.gpx vs export/activities/foo.gpx
         let targetLast = (normalizedTarget as NSString).lastPathComponent
-        let exactSuffixMatches = entries.filter {
-            $0 == normalizedTarget
-                || $0.hasSuffix("/" + normalizedTarget)
-                || ($0 as NSString).lastPathComponent == targetLast
-                    && entries.filter { ($0 as NSString).lastPathComponent == targetLast }.count == 1
-        }
-        if exactSuffixMatches.count == 1, let only = exactSuffixMatches.first {
+        if let paths = index.bySuffix[normalizedTarget], paths.count == 1, let only = paths.first {
             return .exact(only)
+        }
+        if let paths = index.byLastComponent[targetLast], paths.count == 1, let only = paths.first {
+            return .exact(only)
+        }
+        if let paths = index.byLastComponent[targetLast], paths.count > 1 {
+            // Ambiguous exact basename before case-insensitive fallbacks.
+            // Fall through to case-insensitive checks which may still resolve uniquely.
         }
 
         let lowerTarget = normalizedTarget.lowercased()
-        let caseMatches = entries.filter { $0.lowercased() == lowerTarget }
-        if caseMatches.count == 1, let only = caseMatches.first {
-            return .caseInsensitive(only)
-        }
-        if caseMatches.count > 1 {
-            return .ambiguous
+        if let paths = index.byLowercased[lowerTarget] {
+            if paths.count == 1, let only = paths.first {
+                return .caseInsensitive(only)
+            }
+            if paths.count > 1 {
+                return .ambiguous
+            }
         }
 
         let lowerLast = targetLast.lowercased()
-        let caseLastMatches = entries.filter {
-            ($0 as NSString).lastPathComponent.lowercased() == lowerLast
-        }
-        if caseLastMatches.count == 1, let only = caseLastMatches.first {
-            return .caseInsensitive(only)
-        }
-        if caseLastMatches.count > 1 {
-            return .ambiguous
+        if let paths = index.byLowercasedLastComponent[lowerLast] {
+            if paths.count == 1, let only = paths.first {
+                return .caseInsensitive(only)
+            }
+            if paths.count > 1 {
+                return .ambiguous
+            }
         }
 
         return .none
@@ -156,5 +165,47 @@ public enum WorkoutArchivePathValidator {
         case caseInsensitive(String)
         case ambiguous
         case none
+    }
+
+    /// Precomputed lookup tables for O(1) path matching across many metadata rows.
+    public struct PathIndex: Sendable {
+        public let exact: Set<String>
+        public let byLowercased: [String: [String]]
+        public let byLastComponent: [String: [String]]
+        public let byLowercasedLastComponent: [String: [String]]
+        /// Paths keyed by every suffix path component chain (`a/b/c`, `b/c`, `c`).
+        public let bySuffix: [String: [String]]
+
+        public init(entries: [String]) {
+            var exact = Set<String>()
+            var byLowercased: [String: [String]] = [:]
+            var byLastComponent: [String: [String]] = [:]
+            var byLowercasedLastComponent: [String: [String]] = [:]
+            var bySuffix: [String: [String]] = [:]
+
+            exact.reserveCapacity(entries.count)
+            for path in entries {
+                exact.insert(path)
+                byLowercased[path.lowercased(), default: []].append(path)
+                let last = (path as NSString).lastPathComponent
+                byLastComponent[last, default: []].append(path)
+                byLowercasedLastComponent[last.lowercased(), default: []].append(path)
+
+                // Register all suffix forms so `activities/1.gpx` matches `export/activities/1.gpx`.
+                let parts = path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+                if !parts.isEmpty {
+                    for start in parts.indices {
+                        let suffix = parts[start...].joined(separator: "/")
+                        bySuffix[suffix, default: []].append(path)
+                    }
+                }
+            }
+
+            self.exact = exact
+            self.byLowercased = byLowercased
+            self.byLastComponent = byLastComponent
+            self.byLowercasedLastComponent = byLowercasedLastComponent
+            self.bySuffix = bySuffix
+        }
     }
 }

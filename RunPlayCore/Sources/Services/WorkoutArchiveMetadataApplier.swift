@@ -38,19 +38,11 @@ public enum WorkoutArchiveMetadataApplier {
             }
         }
 
-        // Date: only fill missing start date from CSV; never overwrite trustworthy route time.
+        // Date: only fill missing start date from CSV; never overwrite a trustworthy route time.
         if workout.metadata.startDate == nil, let csvDate = metadata?.activityDate {
             workout.metadata.startDate = csvDate
-        } else if let routeDate = workout.metadata.startDate,
-                  let csvDate = metadata?.activityDate {
-            let delta = abs(routeDate.timeIntervalSince(csvDate))
-            // Record a non-fatal warning when dates conflict substantially (> 1 day).
-            if delta > 86_400, !workout.analysisWarnings.contains(.sourceElapsedTimeMismatch) {
-                // Reuse a generic analysis warning only if we have a dedicated one later.
-                // For now leave route date authoritative without overwriting.
-                _ = delta
-            }
         }
+        // Route timestamps remain canonical when present; CSV date conflicts are not overwritten.
     }
 
     private static func looksLikeFilename(_ name: String) -> Bool {
@@ -76,7 +68,7 @@ public enum WorkoutArchiveCandidateBuilder {
     ) -> (candidates: [WorkoutArchiveCandidate], diagnosticsExtras: [String]) {
         var warnings: [String] = []
         let existingByProviderID = indexProviderIDs(existingWorkouts)
-        let existingHashes = Set(existingWorkouts.compactMap { $0.importProvenance?.contentSHA256?.lowercased() })
+        let pathIndex = WorkoutArchivePathValidator.PathIndex(entries: entryPaths)
 
         var usedPaths = Set<String>()
         var seenProviderIDs = Set<String>()
@@ -92,7 +84,7 @@ public enum WorkoutArchiveCandidateBuilder {
 
                 let pathMatch: WorkoutArchivePathValidator.PathMatchResult
                 if let filename = row.filename, !filename.isEmpty {
-                    pathMatch = WorkoutArchivePathValidator.matchPath(filename, in: entryPaths)
+                    pathMatch = WorkoutArchivePathValidator.matchPath(filename, index: pathIndex)
                 } else {
                     pathMatch = .none
                 }
@@ -156,19 +148,11 @@ public enum WorkoutArchiveCandidateBuilder {
                     if !seenProviderIDs.insert(pid).inserted {
                         status = .duplicate
                         detail = "Duplicate provider activity ID within archive"
-                    } else if let existing = existingByProviderID[pid] {
-                        // Provider conflict vs exact duplicate distinguished by hash when available.
-                        // During scan we usually lack content hash; treat as duplicate by ID.
-                        // Import-time recheck uses content hash for providerConflict.
-                        if let existingHash = existing.importProvenance?.contentSHA256,
-                           let rowHash = existingHashes.first(where: { $0 == existingHash }) {
-                            _ = rowHash
-                            status = .duplicate
-                            detail = "Already imported (provider activity ID)"
-                        } else {
-                            status = .duplicate
-                            detail = "Already imported (provider activity ID)"
-                        }
+                    } else if existingByProviderID[pid] != nil {
+                        // Scan-time: treat matching provider IDs as duplicates.
+                        // Import-time refineStatus distinguishes providerConflict via content hash.
+                        status = .duplicate
+                        detail = "Already imported (provider activity ID)"
                     }
                 }
 

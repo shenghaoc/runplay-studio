@@ -161,6 +161,8 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
 
         var metadataTable = StravaActivityMetadataTable()
         var metadataFound = false
+        let entryIndex = makeEntryIndex(for: archive)
+
         if let csvPath = activitiesCSVPath {
             let sizes = entrySizes[csvPath]
             if let uncompressed = sizes?.uncompressed, uncompressed > policy.maxMetadataCSVBytes {
@@ -173,6 +175,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 activitiesCSVData = try readEntry(
                     path: csvPath,
                     archive: archive,
+                    entryIndex: entryIndex,
                     maxUncompressed: Int(policy.maxMetadataCSVBytes)
                 )
                 if let data = activitiesCSVData {
@@ -191,9 +194,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         let activityFiles = entryPaths.filter {
             WorkoutArchiveActivityFormat.detect(fromPath: $0) != .unsupported
         }
+        let pathIndex = WorkoutArchivePathValidator.PathIndex(entries: entryPaths)
         let hasMappedRows = metadataTable.rows.contains { row in
             guard let filename = row.filename, !filename.isEmpty else { return false }
-            switch WorkoutArchivePathValidator.matchPath(filename, in: entryPaths) {
+            switch WorkoutArchivePathValidator.matchPath(filename, index: pathIndex) {
             case .exact, .caseInsensitive: return true
             default: return false
             }
@@ -273,6 +277,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         } catch {
             throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
         }
+        let entryIndex = makeEntryIndex(for: archive)
 
         let batch: WorkoutLibraryBatchToken
         do {
@@ -284,16 +289,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         var items: [WorkoutBatchImportItemResult] = []
         var stagedWorkouts: [(candidateID: String, workout: RunWorkout)] = []
         var seenHashes = Set(existingWorkouts.compactMap { $0.importProvenance?.contentSHA256?.lowercased() })
-        // Reset seenHashes for within-batch only tracking in refineStatus
         var batchHashes = Set<String>()
         var completed = 0
         var failed = 0
         var skipped = 0
-
-        defer {
-            // If we exit without commit, rollback is caller's responsibility;
-            // but cancellation/error paths below call rollback explicitly.
-        }
 
         do {
             for candidate in selection.selectedCandidates {
@@ -340,6 +339,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     rawBytes = try readEntry(
                         path: candidate.archiveRelativePath,
                         archive: archive,
+                        entryIndex: entryIndex,
                         maxUncompressed: Int(policy.maxUncompressedEntryBytes)
                     )
                 } catch is CancellationError {
@@ -587,31 +587,53 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
 
     // MARK: - Helpers
 
+    /// One-pass index of archive entries for O(1) path lookups during import.
+    private struct ArchiveEntryIndex {
+        let byNormalizedPath: [String: Entry]
+        let byLowercasedPath: [String: [Entry]]
+
+        init(archive: Archive, maxPathLength: Int) {
+            var byNormalized: [String: Entry] = [:]
+            var byLower: [String: [Entry]] = [:]
+            for entry in archive {
+                guard entry.type == .file else { continue }
+                guard case .valid(let normalized) = WorkoutArchivePathValidator.validate(
+                    entry.path,
+                    maxLength: maxPathLength
+                ) else {
+                    continue
+                }
+                // First exact path wins; duplicates stay available via lowercased map.
+                if byNormalized[normalized] == nil {
+                    byNormalized[normalized] = entry
+                }
+                byLower[normalized.lowercased(), default: []].append(entry)
+            }
+            self.byNormalizedPath = byNormalized
+            self.byLowercasedPath = byLower
+        }
+
+        func entry(for path: String) -> Entry? {
+            if let exact = byNormalizedPath[path] {
+                return exact
+            }
+            let matches = byLowercasedPath[path.lowercased()] ?? []
+            return matches.count == 1 ? matches[0] : nil
+        }
+    }
+
+    private func makeEntryIndex(for archive: Archive) -> ArchiveEntryIndex {
+        ArchiveEntryIndex(archive: archive, maxPathLength: policy.maxPathLength)
+    }
+
     private func readEntry(
         path: String,
         archive: Archive,
+        entryIndex: ArchiveEntryIndex,
         maxUncompressed: Int
     ) throws -> Data {
-        let entry: Entry
-        if let exact = archive[path] {
-            entry = exact
-        } else {
-            let lower = path.lowercased()
-            var match: Entry?
-            var matchCount = 0
-            for e in archive {
-                guard case .valid(let n) = WorkoutArchivePathValidator.validate(e.path) else {
-                    continue
-                }
-                if n.lowercased() == lower {
-                    match = e
-                    matchCount += 1
-                }
-            }
-            guard matchCount == 1, let only = match else {
-                throw WorkoutArchiveError.cannotOpenArchive("Entry not found: \(path)")
-            }
-            entry = only
+        guard let entry = entryIndex.entry(for: path) else {
+            throw WorkoutArchiveError.cannotOpenArchive("Entry not found: \(path)")
         }
 
         guard entry.type == .file else {
@@ -638,14 +660,22 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         if reserve > 0 {
             data.reserveCapacity(reserve)
         }
+        // Bound growth even if declared uncompressed size is understated.
+        // The extract callback cannot throw; flag oversize and reject after.
+        var exceededLimit = false
         do {
             _ = try archive.extract(entry, bufferSize: 65_536, skipCRC32: false) { chunk in
+                if exceededLimit { return }
+                if data.count + chunk.count > maxUncompressed {
+                    exceededLimit = true
+                    return
+                }
                 data.append(chunk)
             }
         } catch {
             throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
         }
-        if data.count > maxUncompressed {
+        if exceededLimit || data.count > maxUncompressed {
             throw WorkoutArchiveError.cannotOpenArchive("Entry exceeds uncompressed size limit")
         }
         return data

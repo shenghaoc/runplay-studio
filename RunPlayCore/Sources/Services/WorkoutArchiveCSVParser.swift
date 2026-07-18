@@ -163,7 +163,7 @@ public struct WorkoutArchiveCSVParser: Sendable {
                     }
                 } else {
                     currentField.unicodeScalars.append(scalar)
-                    rowByteEstimate += UTF8.width(scalar)
+                    rowByteEstimate += Self.utf8ByteCount(scalar)
                     if currentField.utf8.count > policy.maxCSVFieldBytes {
                         throw WorkoutArchiveCSVError.oversizedField
                     }
@@ -204,7 +204,7 @@ public struct WorkoutArchiveCSVParser: Sendable {
                 i += 1
             default:
                 currentField.unicodeScalars.append(scalar)
-                rowByteEstimate += UTF8.width(scalar)
+                rowByteEstimate += Self.utf8ByteCount(scalar)
                 if currentField.utf8.count > policy.maxCSVFieldBytes {
                     throw WorkoutArchiveCSVError.oversizedField
                 }
@@ -308,6 +308,16 @@ public struct WorkoutArchiveCSVParser: Sendable {
             .lowercased()
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
+    }
+
+    /// Portable UTF-8 byte length for one Unicode scalar (1…4).
+    private static func utf8ByteCount(_ scalar: Unicode.Scalar) -> Int {
+        switch scalar.value {
+        case 0..<0x80: return 1
+        case 0x80..<0x800: return 2
+        case 0x800..<0x1_0000: return 3
+        default: return 4
+        }
     }
 
     private static let dateFormats = [

@@ -312,6 +312,8 @@ public actor WorkoutLibraryStoreActor {
     private struct ActiveBatch {
         let token: WorkoutLibraryBatchToken
         var stagedIDs: [UUID]
+        /// Snapshot of library IDs at batch start; commit re-validates against the live manifest.
+        let knownLibraryIDs: Set<UUID>
     }
 
     private var activeBatch: ActiveBatch?
@@ -338,8 +340,18 @@ public actor WorkoutLibraryStoreActor {
         if activeBatch != nil {
             throw WorkoutLibraryError.writeFailed("A batch import is already in progress")
         }
+        var knownLibraryIDs = Set<UUID>()
+        do {
+            knownLibraryIDs = Set(try store.loadManifest().workoutIDs)
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                knownLibraryIDs = []
+            } else {
+                throw error
+            }
+        }
         let token = WorkoutLibraryBatchToken()
-        activeBatch = ActiveBatch(token: token, stagedIDs: [])
+        activeBatch = ActiveBatch(token: token, stagedIDs: [], knownLibraryIDs: knownLibraryIDs)
         return token
     }
 
@@ -349,21 +361,10 @@ public actor WorkoutLibraryStoreActor {
         guard var active = activeBatch, active.token == batch else {
             throw WorkoutLibraryError.writeFailed("Invalid or inactive batch token")
         }
-        // Reject duplicate IDs within the batch and against the live library.
-        if active.stagedIDs.contains(workout.id) {
-            throw WorkoutLibraryStoreError.duplicateWorkoutID(workout.id)
-        }
-        var manifestIDs: [UUID] = []
-        do {
-            manifestIDs = try store.loadManifest().workoutIDs
-        } catch let error as WorkoutLibraryError {
-            if case .manifestMissing = error {
-                manifestIDs = []
-            } else {
-                throw error
-            }
-        }
-        if manifestIDs.contains(workout.id) {
+        // Reject duplicate IDs within the batch and against the library snapshot
+        // captured at beginBatchImport. commitBatchImport re-validates against
+        // the live manifest before promote.
+        if active.stagedIDs.contains(workout.id) || active.knownLibraryIDs.contains(workout.id) {
             throw WorkoutLibraryStoreError.duplicateWorkoutID(workout.id)
         }
 
