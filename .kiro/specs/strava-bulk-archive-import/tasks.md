@@ -11,4 +11,4 @@
 - [x] Documentation + third-party notices + Kiro spec
 - [x] Focused packaged-app smoke: menu, review, import, report, and replay
 - [ ] Extended manual archive checklist: cancellation, re-import, heatmap, relaunch, and deletion
-- [ ] CI green on PR head
+- [x] CI green on PR head
