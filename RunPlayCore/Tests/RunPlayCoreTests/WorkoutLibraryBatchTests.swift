@@ -99,7 +99,7 @@ final class WorkoutLibraryBatchTests: XCTestCase {
         let w = makeWorkout()
         let token = try await actor.beginBatchImport()
         try await actor.stageWorkout(w, in: token)
-        // Simulate crash: abandon batch without rollback (leave active batch? 
+        // Simulate crash: abandon batch without rollback (leave active batch?
         // recoverStaleState cleans .staging regardless)
         // Force cleanup via new actor load
         let actor2 = WorkoutLibraryStoreActor(store: store)

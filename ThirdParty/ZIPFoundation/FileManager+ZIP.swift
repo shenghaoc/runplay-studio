@@ -355,7 +355,7 @@ public extension URL {
         let parentDirectoryURL = URL(fileURLWithPath: parentDirectoryURL.path, isDirectory: true).standardized
         // Maliciously crafted ZIP files can contain entries using a prepended path delimiter `/` in combination
         // with the parent directory shorthand `..` to bypass our containment check.
-        // When a malicious entry path like e.g. `/../secret.txt` gets appended to the destination 
+        // When a malicious entry path like e.g. `/../secret.txt` gets appended to the destination
         // directory URL (e.g. `file:///tmp/`), the resulting URL `file:///tmp//../secret.txt` gets expanded
         // to `file:///tmp/secret` when using `URL.standardized`. This URL would pass the check performed
         // in `isContained(in:)`.

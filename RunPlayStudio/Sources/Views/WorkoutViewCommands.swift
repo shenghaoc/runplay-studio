@@ -39,7 +39,9 @@ struct WorkoutViewCommands: Commands {
     @FocusedValue(\.appWorkspaceActions) private var workspaceActions
 
     var body: some Commands {
-        CommandGroup(after: .importExport) {
+        // `importExport` is absent from a non-document SwiftUI app's File menu,
+        // so place these actions after the always-present New item instead.
+        CommandGroup(after: .newItem) {
             Button("Import File…") {
                 workspaceActions?.importFile()
             }
