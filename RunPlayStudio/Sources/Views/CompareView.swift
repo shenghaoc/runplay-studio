@@ -148,9 +148,22 @@ struct CompareView: View {
                 .textCase(.uppercase)
 
             if appState.availableForComparison.isEmpty {
-                Text(appState.workouts.count < 2 ? "Import another run" : "No other workouts")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
+                if appState.workouts.count < 2 {
+                    Button(action: { appState.showImporter = true }) {
+                        Label("Import another run", systemImage: "doc.badge.plus")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, AppDesign.Spacing.medium)
+                            .padding(.vertical, AppDesign.Spacing.xSmall)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .help("Import another run to compare")
+                    .accessibilityLabel("Import another run")
+                } else {
+                    Text("No other workouts")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
             } else {
                 Picker("Compare With", selection: Binding(
                     get: { appState.comparisonWorkout },
