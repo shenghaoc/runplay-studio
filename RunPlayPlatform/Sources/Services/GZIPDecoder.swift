@@ -1,5 +1,6 @@
 import Foundation
 import zlib
+import RunPlayCore
 
 /// Errors from the narrowly scoped GZIP envelope decoder.
 public enum GZIPDecoderError: Error, LocalizedError, Equatable, Sendable {

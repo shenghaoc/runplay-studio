@@ -1,6 +1,7 @@
 import XCTest
 import zlib
-@testable import RunPlayCore
+@testable import RunPlayPlatform
+import RunPlayCore
 
 final class GZIPDecoderTests: XCTestCase {
 
