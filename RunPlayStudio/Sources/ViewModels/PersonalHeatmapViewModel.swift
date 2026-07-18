@@ -60,6 +60,7 @@ struct PersonalHeatmapRequestKey: Hashable, Sendable {
     let resolution: PersonalHeatmapResolution
     let minimumWorkoutCount: Int
     /// Resolved "now" used for relative date filters (injected for testability).
+    /// Floored to the hour so relative-filter cache keys stay stable within a session hour.
     let now: Date
 
     init(
@@ -101,6 +102,27 @@ protocol PersonalHeatmapBuilding: Sendable {
 
 extension PersonalHeatmapBuilder: PersonalHeatmapBuilding {}
 
+/// Thread-safe cancel flag shared with off-main builder work.
+///
+/// `Task.detached` is not a child of the requesting `Task`, so parent
+/// cancellation alone does not stop detached work. The flag bridges both.
+private final class HeatmapCancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+}
+
 /// Dedicated view model for the Personal Heatmap workspace.
 ///
 /// Owns filter selections, background aggregation, stale-request suppression,
@@ -113,8 +135,8 @@ final class PersonalHeatmapViewModel: ObservableObject {
     @Published private(set) var isComputing = false
 
     @Published var datePreset: PersonalHeatmapDatePreset = .allTime
-    @Published var customStartDate: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-    @Published var customEndDate: Date = Date()
+    @Published var customStartDate: Date
+    @Published var customEndDate: Date
     @Published var resolution: PersonalHeatmapResolution = .standard
     @Published var minimumWorkoutCount: Int = 1
 
@@ -124,8 +146,11 @@ final class PersonalHeatmapViewModel: ObservableObject {
     private let builder: any PersonalHeatmapBuilding
     private let calendar: Calendar
     private var computeTask: Task<Void, Never>?
+    private var cancelFlag: HeatmapCancelFlag?
     private var cache: [PersonalHeatmapRequestKey: PersonalHeatmapSnapshot] = [:]
     private var lastKey: PersonalHeatmapRequestKey?
+    /// Tracks whether the published snapshot has already been fitted for this key.
+    private var fittedKey: PersonalHeatmapRequestKey?
     /// Injectable clock for relative date filters.
     var nowProvider: () -> Date = { Date() }
 
@@ -133,21 +158,29 @@ final class PersonalHeatmapViewModel: ObservableObject {
 
     init(
         builder: any PersonalHeatmapBuilding = PersonalHeatmapBuilder(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        now: Date = Date()
     ) {
         self.builder = builder
         self.calendar = calendar
+        self.customStartDate = calendar.date(byAdding: .day, value: -30, to: now) ?? now
+        self.customEndDate = now
     }
 
     deinit {
+        cancelFlag?.cancel()
         computeTask?.cancel()
     }
 
     /// Cancel in-flight work when leaving the heatmap workspace.
     func cancel() {
+        cancelFlag?.cancel()
+        cancelFlag = nil
         computeTask?.cancel()
         computeTask = nil
         isComputing = false
+        // Force a fresh fit when the map surface is recreated on re-entry.
+        fittedKey = nil
         if loadState == .loading {
             loadState = snapshot == nil ? .idle : .ready
         }
@@ -163,23 +196,23 @@ final class PersonalHeatmapViewModel: ObservableObject {
             customEnd: datePreset == .custom ? endOfDay(customEndDate) : nil,
             resolution: resolution,
             minimumWorkoutCount: minimumWorkoutCount,
-            now: floorToSecond(now)
+            now: cacheNow(for: datePreset, now: now)
         )
 
         if let cached = cache[key] {
-            apply(snapshot: cached, key: key)
+            apply(snapshot: cached, key: key, requestFit: fittedKey != key)
             return
         }
 
         // Retain previous snapshot while recomputing when filters change.
         lastKey = key
+        cancelFlag?.cancel()
         computeTask?.cancel()
+
+        let flag = HeatmapCancelFlag()
+        cancelFlag = flag
         isComputing = true
-        if snapshot == nil {
-            loadState = .loading
-        } else {
-            loadState = .loading
-        }
+        loadState = .loading
 
         let configuration = makeConfiguration(now: now)
         let builder = self.builder
@@ -191,7 +224,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
                     let snapshot = try builder.build(
                         workouts: library,
                         configuration: configuration,
-                        isCancelled: { Task.isCancelled }
+                        isCancelled: { flag.isCancelled || Task.isCancelled }
                     )
                     return .success(snapshot)
                 } catch {
@@ -199,24 +232,27 @@ final class PersonalHeatmapViewModel: ObservableObject {
                 }
             }.value
 
-            guard let self, !Task.isCancelled else { return }
-            // Ignore superseded requests.
-            guard self.lastKey == key else { return }
+            guard let self else { return }
+            // Ignore superseded or cancelled requests — do not publish stale work.
+            guard self.lastKey == key, !flag.isCancelled, !Task.isCancelled else { return }
 
             switch result {
             case .success(let snapshot):
                 self.cache[key] = snapshot
                 // Bound cache size.
                 if self.cache.count > 12 {
+                    let keep = snapshot
                     self.cache.removeAll(keepingCapacity: true)
-                    self.cache[key] = snapshot
+                    self.cache[key] = keep
                 }
-                self.apply(snapshot: snapshot, key: key)
+                self.apply(snapshot: snapshot, key: key, requestFit: true)
             case .failure(let error):
                 if error is CancellationError {
                     self.isComputing = false
                     if self.snapshot != nil {
                         self.loadState = .ready
+                    } else if self.loadState == .loading {
+                        self.loadState = .idle
                     }
                     return
                 }
@@ -246,7 +282,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private func apply(snapshot: PersonalHeatmapSnapshot, key: PersonalHeatmapRequestKey) {
+    private func apply(snapshot: PersonalHeatmapSnapshot, key: PersonalHeatmapRequestKey, requestFit: Bool) {
         self.snapshot = snapshot
         self.mapAreas = RouteMapContent.areas(from: snapshot)
         self.isComputing = false
@@ -260,10 +296,13 @@ final class PersonalHeatmapViewModel: ObservableObject {
             } else {
                 loadState = .empty(.noCells)
             }
+            fittedKey = key
         } else {
             loadState = .ready
-            // Fit on first successful content.
-            fitRequest += 1
+            if requestFit {
+                fitRequest += 1
+                fittedKey = key
+            }
         }
     }
 
@@ -301,7 +340,15 @@ final class PersonalHeatmapViewModel: ObservableObject {
         return calendar.date(byAdding: DateComponents(day: 1, second: -1), to: start) ?? date
     }
 
-    private func floorToSecond(_ date: Date) -> Date {
-        Date(timeIntervalSince1970: floor(date.timeIntervalSince1970))
+    /// Cache-key clock: relative presets stabilize within the hour; absolute
+    /// modes only need second-level uniqueness for injected test clocks.
+    private func cacheNow(for preset: PersonalHeatmapDatePreset, now: Date) -> Date {
+        switch preset {
+        case .allTime, .custom:
+            return Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))
+        case .last30Days, .last90Days, .currentYear:
+            let components = calendar.dateComponents([.year, .month, .day, .hour], from: now)
+            return calendar.date(from: components) ?? Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))
+        }
     }
 }

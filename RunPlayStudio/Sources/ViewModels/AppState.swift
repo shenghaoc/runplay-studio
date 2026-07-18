@@ -51,6 +51,33 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Native sidebar selection derived from workspace mode and selected workout.
+    var sidebarSelection: SidebarSelection? {
+        switch workspaceMode {
+        case .personalHeatmap:
+            return .personalHeatmap
+        case .workout, .comparison:
+            if let id = selectedWorkout?.id {
+                return .workout(id)
+            }
+            return nil
+        }
+    }
+
+    /// Apply a sidebar selection change (keyboard, click, or VoiceOver).
+    func applySidebarSelection(_ selection: SidebarSelection?) {
+        switch selection {
+        case .personalHeatmap:
+            showPersonalHeatmap()
+        case .workout(let id):
+            if let workout = workouts.first(where: { $0.id == id }) {
+                selectWorkout(workout)
+            }
+        case .none:
+            break
+        }
+    }
+
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
     let personalHeatmap = PersonalHeatmapViewModel()

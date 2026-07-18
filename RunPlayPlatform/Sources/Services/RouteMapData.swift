@@ -259,17 +259,32 @@ public enum RouteMapContent {
         routes: [RouteMapLine] = [],
         areas: [RouteMapArea] = []
     ) -> MKMapRect? {
-        let coordinates = routes.flatMap(\.coordinates) + areas.flatMap(\.coordinates)
-        guard let first = coordinates.first else { return nil }
+        // Pre-size once; avoid flatMap + array concatenation intermediates on
+        // large heatmap area lists (up to the rendered-cell budget × ring size).
+        var coordinateCount = 0
+        for route in routes { coordinateCount += route.coordinates.count }
+        for area in areas { coordinateCount += area.coordinates.count }
+        guard coordinateCount > 0 else { return nil }
 
-        let firstPoint = MKMapPoint(first.mapKitCoordinate)
-        var rect = MKMapRect(x: firstPoint.x, y: firstPoint.y, width: 1, height: 1)
-        for coordinate in coordinates.dropFirst() {
-            let point = MKMapPoint(coordinate.mapKitCoordinate)
-            rect = rect.union(MKMapRect(x: point.x, y: point.y, width: 1, height: 1))
+        var rect = MKMapRect.null
+        var latitudeSum = 0.0
+        var latitudeCount = 0
+
+        func accumulate(_ coordinates: [RouteMapCoordinate]) {
+            for coordinate in coordinates {
+                let point = MKMapPoint(coordinate.mapKitCoordinate)
+                let pointRect = MKMapRect(x: point.x, y: point.y, width: 1, height: 1)
+                rect = rect.isNull ? pointRect : rect.union(pointRect)
+                latitudeSum += coordinate.latitude
+                latitudeCount += 1
+            }
         }
 
-        let latitude = coordinates.map(\.latitude).reduce(0, +) / Double(coordinates.count)
+        for route in routes { accumulate(route.coordinates) }
+        for area in areas { accumulate(area.coordinates) }
+        guard latitudeCount > 0, !rect.isNull else { return nil }
+
+        let latitude = latitudeSum / Double(latitudeCount)
         let metersPerMapPoint = max(MKMetersPerMapPointAtLatitude(latitude), 0.000_001)
         let minimumSpan = 400 / metersPerMapPoint
         let width = min(max(rect.width, minimumSpan), MKMapSize.world.width)

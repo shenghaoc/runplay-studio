@@ -28,7 +28,7 @@ struct PersonalHeatmapView: View {
         .onAppear {
             viewModel.refresh(workouts: appState.workouts)
         }
-        .onChange(of: appState.workouts.map(\.id)) { _, _ in
+        .onChange(of: libraryRevision) { _, _ in
             viewModel.refresh(workouts: appState.workouts)
         }
         .onChange(of: viewModel.datePreset) { _, _ in
@@ -52,6 +52,13 @@ struct PersonalHeatmapView: View {
         }
         .onDisappear {
             viewModel.cancel()
+        }
+    }
+
+    /// Invalidates heatmap work when library membership or route content changes.
+    private var libraryRevision: [String] {
+        appState.workouts.map { workout in
+            "\(workout.id.uuidString):\(workout.normalizationVersion):\(workout.routePoints.count):\(workout.routePoints.first?.id.uuidString ?? "-"):\(workout.routePoints.last?.id.uuidString ?? "-")"
         }
     }
 
@@ -367,10 +374,15 @@ private func blend(_ a: Color, _ b: Color, t: Double) -> Color {
     #if canImport(AppKit)
     let nsA = NSColor(a)
     let nsB = NSColor(b)
+    guard let srgbA = nsA.usingColorSpace(.sRGB),
+          let srgbB = nsB.usingColorSpace(.sRGB) else {
+        // Conversion failure must not silently blend toward black (0,0,0).
+        return t < 0.5 ? a : b
+    }
     var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
     var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
-    nsA.usingColorSpace(.sRGB)?.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
-    nsB.usingColorSpace(.sRGB)?.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+    srgbA.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+    srgbB.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
     let tt = CGFloat(t)
     return Color(
         red: Double(r1 + (r2 - r1) * tt),

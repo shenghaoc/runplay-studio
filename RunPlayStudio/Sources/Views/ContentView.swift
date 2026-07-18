@@ -47,17 +47,13 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 workouts: appState.workouts,
-                selectedWorkout: Binding(
-                    get: { appState.selectedWorkout },
-                    set: { appState.selectWorkout($0) }
+                selection: Binding(
+                    get: { appState.sidebarSelection },
+                    set: { appState.applySidebarSelection($0) }
                 ),
-                workspaceMode: appState.workspaceMode,
                 onImport: { appState.showImporter = true },
                 onDelete: { workout in
                     Task { await appState.deleteWorkout(workout) }
-                },
-                onShowPersonalHeatmap: {
-                    appState.showPersonalHeatmap()
                 }
             )
         } detail: {

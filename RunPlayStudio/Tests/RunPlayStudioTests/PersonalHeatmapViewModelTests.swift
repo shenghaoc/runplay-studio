@@ -167,7 +167,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
 
     func testSuccessfulResult() async {
         let builder = ControllableHeatmapBuilder()
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
 
         let workouts = [makeWorkout(name: "A"), makeWorkout(name: "B")]
@@ -181,7 +181,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
 
     func testEmptyLibraryShowsNoGPS() async {
         let builder = ControllableHeatmapBuilder()
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
 
         vm.refresh(workouts: [])
@@ -194,7 +194,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
     func testErrorState() async {
         let builder = ControllableHeatmapBuilder()
         builder.setError(PersonalHeatmapError.invalidConfiguration)
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
 
         vm.refresh(workouts: [makeWorkout(name: "A")])
@@ -207,7 +207,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
     func testStaleRequestDoesNotOverwriteNewerResult() async {
         let builder = ControllableHeatmapBuilder()
         builder.setShouldWait(true)
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
 
         let first = [makeWorkout(name: "A")]
@@ -228,7 +228,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
 
     func testCacheHitDoesNotRebuild() async {
         let builder = ControllableHeatmapBuilder()
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
         let workouts = [makeWorkout(name: "A")]
 
@@ -244,7 +244,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
 
     func testLibraryChangeInvalidatesCache() async {
         let builder = ControllableHeatmapBuilder()
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
 
         let a = makeWorkout(name: "A")
@@ -261,7 +261,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
     func testCancelStopsLoadingWithoutPublishingFailure() async {
         let builder = ControllableHeatmapBuilder()
         builder.setShouldWait(true)
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
 
         vm.refresh(workouts: [makeWorkout(name: "A")])
@@ -276,7 +276,7 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
 
     func testResetFilters() async {
         let builder = ControllableHeatmapBuilder()
-        let vm = PersonalHeatmapViewModel(builder: builder)
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
         vm.nowProvider = { self.fixedNow }
         vm.datePreset = .last30Days
         vm.resolution = .fine
