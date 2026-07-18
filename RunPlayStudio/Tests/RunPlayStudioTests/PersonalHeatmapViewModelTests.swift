@@ -12,10 +12,16 @@ private final class ControllableHeatmapBuilder: PersonalHeatmapBuilding, @unchec
     private var _error: Error?
     private var _snapshot: PersonalHeatmapSnapshot?
     private var _buildCount = 0
+    private var _cancellationCount = 0
 
     var buildCount: Int {
         lock.lock(); defer { lock.unlock() }
         return _buildCount
+    }
+
+    var cancellationCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _cancellationCount
     }
 
     func setShouldWait(_ value: Bool) {
@@ -60,18 +66,27 @@ private final class ControllableHeatmapBuilder: PersonalHeatmapBuilding, @unchec
             lock.unlock()
             // Cooperative wait: poll cancellation and a flag.
             while true {
-                if isCancelled() { throw CancellationError() }
+                if isCancelled() {
+                    recordCancellation()
+                    throw CancellationError()
+                }
                 lock.lock()
                 let stillWait = _shouldWait
                 lock.unlock()
                 if !stillWait { break }
                 Thread.sleep(forTimeInterval: 0.01)
             }
-            if isCancelled() { throw CancellationError() }
+            if isCancelled() {
+                recordCancellation()
+                throw CancellationError()
+            }
             _ = semaphore
         }
 
-        if isCancelled() { throw CancellationError() }
+        if isCancelled() {
+            recordCancellation()
+            throw CancellationError()
+        }
         if let error { throw error }
 
         if let snapshot { return snapshot }
@@ -114,6 +129,12 @@ private final class ControllableHeatmapBuilder: PersonalHeatmapBuilding, @unchec
                 maxLongitude: bounds.maxLongitude
             )
         )
+    }
+
+    private func recordCancellation() {
+        lock.lock()
+        _cancellationCount += 1
+        lock.unlock()
     }
 }
 
@@ -240,6 +261,60 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
         // Cache hit is synchronous.
         XCTAssertEqual(builder.buildCount, countAfterFirst)
         XCTAssertEqual(vm.loadState, .ready)
+    }
+
+    func testAbsoluteDatePresetsIgnoreWallClockForCacheKeys() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        var currentNow = fixedNow
+        vm.nowProvider = { currentNow }
+        let workouts = [makeWorkout(name: "A")]
+
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready }
+        let allTimeBuildCount = builder.buildCount
+
+        currentNow = currentNow.addingTimeInterval(3_600)
+        vm.refresh(workouts: workouts)
+        XCTAssertEqual(builder.buildCount, allTimeBuildCount)
+
+        vm.datePreset = .custom
+        vm.customStartDate = fixedNow.addingTimeInterval(-86_400)
+        vm.customEndDate = fixedNow
+        vm.refresh(workouts: workouts)
+        await waitUntil { builder.buildCount == allTimeBuildCount + 1 && !vm.isComputing }
+        let customBuildCount = builder.buildCount
+
+        currentNow = currentNow.addingTimeInterval(3_600)
+        vm.refresh(workouts: workouts)
+        XCTAssertEqual(builder.buildCount, customBuildCount)
+    }
+
+    func testCacheHitCancelsSupersededBuild() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+
+        // Populate the All Time cache first.
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready }
+        let cachedBuildCount = builder.buildCount
+
+        // Start an uncached relative-filter build, then switch back to the
+        // cached result before the first build can complete.
+        builder.setShouldWait(true)
+        vm.datePreset = .last30Days
+        vm.refresh(workouts: workouts)
+        await waitUntil { builder.buildCount == cachedBuildCount + 1 && vm.isComputing }
+
+        vm.datePreset = .allTime
+        vm.refresh(workouts: workouts)
+
+        await waitUntil { builder.cancellationCount == 1 }
+        XCTAssertEqual(vm.loadState, .ready)
+        XCTAssertFalse(vm.isComputing)
+        builder.setShouldWait(false)
     }
 
     func testLibraryChangeInvalidatesCache() async {

@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let runPlayWorkspaceCommand = Notification.Name("runplay.workspace-command")
+}
+
 private struct WorkoutTabSelectionKey: FocusedValueKey {
     typealias Value = Binding<WorkoutDetailView.ViewTab>
 }
@@ -61,11 +65,17 @@ struct WorkoutViewCommands: Commands {
             Divider()
 
             Button("Personal Heatmap") {
-                workspaceActions?.showPersonalHeatmap()
+                if let workspaceActions {
+                    workspaceActions.showPersonalHeatmap()
+                } else {
+                    NotificationCenter.default.post(
+                        name: .runPlayWorkspaceCommand,
+                        object: AppWorkspaceCommand.showPersonalHeatmap
+                    )
+                }
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             .help("Show personal route heatmap across the local library")
-            .disabled(workspaceActions == nil)
         }
     }
 }

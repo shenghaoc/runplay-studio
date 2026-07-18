@@ -74,9 +74,9 @@ count so low-frequency cells remain visible.
 
 ### Gap safety
 
-Rasterization only walks adjacent points with the same `routeSegmentIndex`.
-Pause/resume, track boundaries, and inferred gaps never draw a corridor between
-segments.
+Rasterization only walks adjacent valid points in the same effective route
+segment. Pause/resume, track boundaries, inferred gaps, and discarded invalid
+coordinates never draw a corridor between segments.
 
 ### Adaptive performance
 

@@ -199,15 +199,21 @@ final class PersonalHeatmapViewModel: ObservableObject {
             now: cacheNow(for: datePreset, now: now)
         )
 
+        // A cached result can supersede an expensive detached build just as a
+        // cache miss can. Always stop the old request before publishing the
+        // cached snapshot, otherwise its cooperative work continues needlessly.
+        lastKey = key
+        cancelFlag?.cancel()
+        computeTask?.cancel()
+        cancelFlag = nil
+        computeTask = nil
+
         if let cached = cache[key] {
             apply(snapshot: cached, key: key, requestFit: fittedKey != key)
             return
         }
 
         // Retain previous snapshot while recomputing when filters change.
-        lastKey = key
-        cancelFlag?.cancel()
-        computeTask?.cancel()
 
         let flag = HeatmapCancelFlag()
         cancelFlag = flag
@@ -340,12 +346,12 @@ final class PersonalHeatmapViewModel: ObservableObject {
         return calendar.date(byAdding: DateComponents(day: 1, second: -1), to: start) ?? date
     }
 
-    /// Cache-key clock: relative presets stabilize within the hour; absolute
-    /// modes only need second-level uniqueness for injected test clocks.
+    /// Cache-key clock: relative presets stabilize within the hour. Absolute
+    /// modes do not depend on the clock, so they use one stable sentinel.
     private func cacheNow(for preset: PersonalHeatmapDatePreset, now: Date) -> Date {
         switch preset {
         case .allTime, .custom:
-            return Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))
+            return .distantPast
         case .last30Days, .last90Days, .currentYear:
             let components = calendar.dateComponents([.year, .month, .day, .hour], from: now)
             return calendar.date(from: components) ?? Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))

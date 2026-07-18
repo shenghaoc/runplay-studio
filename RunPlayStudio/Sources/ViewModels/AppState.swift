@@ -19,6 +19,12 @@ enum AppWorkspaceMode: Hashable, Sendable {
     case personalHeatmap
 }
 
+/// Menu-level command routed through the same workspace transition methods as
+/// sidebar selection. Kept separate from the visible workspace state.
+enum AppWorkspaceCommand {
+    case showPersonalHeatmap
+}
+
 /// Main application state manager.
 @MainActor
 class AppState: ObservableObject {
@@ -415,6 +421,14 @@ class AppState: ObservableObject {
     }
 
     // MARK: - Workspace navigation
+
+    /// Handle a window-wide command that may arrive without a focused scene.
+    func handleWorkspaceCommand(_ command: AppWorkspaceCommand) {
+        switch command {
+        case .showPersonalHeatmap:
+            showPersonalHeatmap()
+        }
+    }
 
     /// Open the Personal Heatmap workspace. Does not change selected workout.
     func showPersonalHeatmap() {

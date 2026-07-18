@@ -178,6 +178,27 @@ final class PersonalHeatmapBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot.statistics.includedWorkoutCount, 1)
     }
 
+    func testInvalidIntermediateCoordinateDoesNotBridgeRoute() throws {
+        let points = [
+            point(lat: 1.3, lon: 103.80, distance: 0, elapsed: 0),
+            point(lat: .nan, lon: 103.805, distance: 500, elapsed: 150),
+            point(lat: 1.3, lon: 103.81, distance: 1_000, elapsed: 300)
+        ]
+        let w = workout(points: points, startDate: origin, distanceMeters: 1_000)
+        let snapshot = try builder.build(
+            workouts: [w],
+            configuration: PersonalHeatmapConfiguration(cellSizeMeters: 50)
+        )
+
+        let midpoint = PersonalHeatmapProjection.cellID(
+            latitude: 1.3,
+            longitude: 103.805,
+            cellSizeMeters: 50
+        )!
+        XCTAssertFalse(snapshot.cells.contains { $0.id == midpoint })
+        XCTAssertEqual(snapshot.cells.count, 2)
+    }
+
     func testEmptyLibrary() throws {
         let snapshot = try builder.build(
             workouts: [],
@@ -423,13 +444,19 @@ final class PersonalHeatmapBuilderTests: XCTestCase {
                 maximumIntervalMeters: 5_000
             )
         )
-        // No corridor of cells between continents; may have 0 rendered if only
-        // the jump exists and is skipped — single-point cells not added without
-        // zero-length handling on each endpoint... actually zero endpoints alone
-        // aren't visited unless traversal or single-point path. With 2 points
-        // and invalid jump, visited stays empty.
+        // No corridor of cells between continents; endpoint cells remain visible
+        // without inventing travel across the invalid interval.
         XCTAssertGreaterThanOrEqual(snapshot.diagnostics.invalidRouteIntervalsSkipped, 1)
-        XCTAssertTrue(snapshot.cells.isEmpty || snapshot.cells.count < 100)
+        XCTAssertEqual(snapshot.cells.count, 2)
+    }
+
+    func testMutableConfigurationRejectsInvalidMaximumInterval() {
+        var configuration = PersonalHeatmapConfiguration()
+        configuration.maximumIntervalMeters = .nan
+
+        XCTAssertThrowsError(try builder.build(workouts: [], configuration: configuration)) { error in
+            XCTAssertEqual(error as? PersonalHeatmapError, .invalidConfiguration)
+        }
     }
 
     // MARK: - Large library (algorithmic, no wall-clock)

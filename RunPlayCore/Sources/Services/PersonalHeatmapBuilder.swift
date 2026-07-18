@@ -47,7 +47,9 @@ public struct PersonalHeatmapBuilder: Sendable {
         guard configuration.cellSizeMeters.isFinite,
               configuration.cellSizeMeters > 0,
               configuration.minimumWorkoutCount >= 1,
-              configuration.maximumRenderedCellCount >= 1 else {
+              configuration.maximumRenderedCellCount >= 1,
+              configuration.maximumIntervalMeters.isFinite,
+              configuration.maximumIntervalMeters > 0 else {
             throw PersonalHeatmapError.invalidConfiguration
         }
 
@@ -136,18 +138,31 @@ public struct PersonalHeatmapBuilder: Sendable {
                 }
             }
 
-            // Project valid route points; keep segment indexes for gap safety.
+            // Project valid route points. The effective segment increments for
+            // either a source route boundary or a discarded invalid sample, so
+            // filtering malformed coordinates cannot bridge the points around
+            // them with a synthetic heat corridor.
             var projected: [(x: Double, y: Double, segment: Int)] = []
             projected.reserveCapacity(workout.routePoints.count)
+            var effectiveSegment = 0
+            var previousSourceSegment: Int?
+            var requiresNewSegment = true
             for point in workout.routePoints {
                 guard GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude),
                       let xy = PersonalHeatmapProjection.project(
                         latitude: point.latitude,
                         longitude: point.longitude
-                      ) else {
+                      )
+                else {
+                    requiresNewSegment = true
                     continue
                 }
-                projected.append((xy.x, xy.y, point.routeSegmentIndex))
+                if requiresNewSegment || previousSourceSegment != point.routeSegmentIndex {
+                    effectiveSegment += 1
+                }
+                projected.append((xy.x, xy.y, effectiveSegment))
+                previousSourceSegment = point.routeSegmentIndex
+                requiresNewSegment = false
             }
 
             guard !projected.isEmpty else {
@@ -211,13 +226,17 @@ public struct PersonalHeatmapBuilder: Sendable {
             visited.reserveCapacity(min(workout.projectedPoints.count * 2, 4_096))
 
             let points = workout.projectedPoints
-            if points.count == 1 {
-                // One-point workout: single cell, no traversal.
-                if let x = PersonalHeatmapProjection.cellIndex(projected: points[0].x, cellSizeMeters: cellSizeMeters),
-                   let y = PersonalHeatmapProjection.cellIndex(projected: points[0].y, cellSizeMeters: cellSizeMeters) {
+            // A valid recorded point is coverage in its own cell. This keeps
+            // isolated samples and endpoints separated by route gaps visible
+            // without connecting those gaps.
+            for point in points {
+                if let x = PersonalHeatmapProjection.cellIndex(projected: point.x, cellSizeMeters: cellSizeMeters),
+                   let y = PersonalHeatmapProjection.cellIndex(projected: point.y, cellSizeMeters: cellSizeMeters) {
                     visited.insert(PersonalHeatmapCellID(x: x, y: y))
                 }
-            } else {
+            }
+
+            if points.count > 1 {
                 for i in 0..<(points.count - 1) {
                     if i % 512 == 0, isCancelled() { throw CancellationError() }
 

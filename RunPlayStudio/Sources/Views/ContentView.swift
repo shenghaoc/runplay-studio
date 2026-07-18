@@ -135,6 +135,10 @@ struct ContentView: View {
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
             showPersonalHeatmap: { appState.showPersonalHeatmap() }
         ))
+        .onReceive(NotificationCenter.default.publisher(for: .runPlayWorkspaceCommand)) { notification in
+            guard let command = notification.object as? AppWorkspaceCommand else { return }
+            appState.handleWorkspaceCommand(command)
+        }
     }
 
     @ViewBuilder

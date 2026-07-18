@@ -598,10 +598,11 @@ Heatmap aggregation is library-level and **not** part of the persisted
 - `PersonalHeatmapSnapshot` (cells, statistics, diagnostics, effective configuration)
 
 Primary intensity is **distinct workouts per cell**. Route intervals are
-rasterized only within the same `routeSegmentIndex`. Studio holds an in-memory
-cache keyed by workout IDs, normalization version, point counts, date filter,
-resolution, and minimum-repeat count. No heatmap database or manifest schema
-bump is introduced for this feature.
+rasterized only within the same effective route segment; source segment
+boundaries and discarded invalid coordinates both break continuity. Studio
+holds an in-memory cache keyed by workout IDs, normalization version, point
+counts, date filter, resolution, and minimum-repeat count. No heatmap database
+or manifest schema bump is introduced for this feature.
 
 ## Migration compatibility and limitation
 

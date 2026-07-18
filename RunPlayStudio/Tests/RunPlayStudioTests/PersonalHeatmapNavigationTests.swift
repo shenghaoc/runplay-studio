@@ -181,4 +181,16 @@ final class PersonalHeatmapNavigationTests: XCTestCase {
         XCTAssertEqual(appState.selectedWorkout?.id, a.id)
         XCTAssertEqual(appState.sidebarSelection, .personalHeatmap)
     }
+
+    func testWorkspaceMenuCommandOpensHeatmapWithoutClearingSelectedWorkout() {
+        let appState = AppState(storeActor: nil, importService: nil)
+        let a = makeWorkout(name: "A")
+        appState.workouts = [a]
+        appState.selectWorkout(a)
+
+        appState.handleWorkspaceCommand(.showPersonalHeatmap)
+
+        XCTAssertEqual(appState.workspaceMode, .personalHeatmap)
+        XCTAssertEqual(appState.selectedWorkout?.id, a.id)
+    }
 }
