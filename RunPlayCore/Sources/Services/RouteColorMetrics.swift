@@ -54,13 +54,26 @@ public struct RouteColorMetrics: Sendable {
         }
 
         // Smooth pace to reduce noise (moving average with window of 3-5)
-        let smoothed = smoothValues(rawPace, windowSize: 5, segmentIndexes: points.dropLast().map(\.routeSegmentIndex))
+        // ⚡ Bolt: Pass points directly instead of creating an O(N) array of segment indexes.
+        let smoothed = smoothValues(rawPace, windowSize: 5, points: points)
 
         // Replace remaining NaN with median
-        let validPace = smoothed.filter { !$0.isNaN && $0.isFinite }
+        // ⚡ Bolt: Use an inline loop to gather valid values without intermediate .filter arrays.
+        var validPace: [Double] = []
+        for value in smoothed {
+            if !value.isNaN && value.isFinite {
+                validPace.append(value)
+            }
+        }
         let median = validPace.isEmpty ? 300.0 : medianOf(validPace) // Default 5:00/km
 
-        return smoothed.map { $0.isNaN || !$0.isFinite ? median : $0 }
+        // ⚡ Bolt: Replace map with a simple array rebuild to maintain O(N) but avoid closures if we want, or map is fine here. But let's keep map or inline loop. I'll use an inline loop for consistency.
+        var result: [Double] = []
+        result.reserveCapacity(smoothed.count)
+        for value in smoothed {
+            result.append(value.isNaN || !value.isFinite ? median : value)
+        }
+        return result
     }
 
     /// Compute the pace color scale (min, median, max) for legend display.
@@ -129,17 +142,30 @@ public struct RouteColorMetrics: Sendable {
         }
 
         // Smooth HR to reduce noise
-        let smoothed = smoothValues(rawHR, windowSize: 5, segmentIndexes: points.dropLast().map(\.routeSegmentIndex))
+        // ⚡ Bolt: Pass points directly instead of creating an O(N) array of segment indexes.
+        let smoothed = smoothValues(rawHR, windowSize: 5, points: points)
 
         // Replace remaining NaN with median (only if we have valid HR data)
-        let validHR = smoothed.filter { !$0.isNaN && $0.isFinite }
+        // ⚡ Bolt: Use an inline loop to gather valid values without intermediate .filter arrays.
+        var validHR: [Double] = []
+        for value in smoothed {
+            if !value.isNaN && value.isFinite {
+                validHR.append(value)
+            }
+        }
+
         guard !validHR.isEmpty else {
             // No valid HR data at all - return NaN array (no coloring should happen)
             return smoothed
         }
         let median = medianOf(validHR)
 
-        return smoothed.map { $0.isNaN || !$0.isFinite ? median : $0 }
+        var result: [Double] = []
+        result.reserveCapacity(smoothed.count)
+        for value in smoothed {
+            result.append(value.isNaN || !value.isFinite ? median : value)
+        }
+        return result
     }
 
     /// Compute the heart rate color scale for legend display.
@@ -147,7 +173,13 @@ public struct RouteColorMetrics: Sendable {
         let hrValues = computeSegmentHeartRate(points: points)
         guard !hrValues.isEmpty else { return nil }
 
-        let validValues = hrValues.filter { $0.isFinite && Self.validHeartRateRange.contains($0) }
+        // ⚡ Bolt: Use an inline loop to gather valid values without intermediate .filter arrays.
+        var validValues: [Double] = []
+        for value in hrValues {
+            if value.isFinite && Self.validHeartRateRange.contains(value) {
+                validValues.append(value)
+            }
+        }
         guard validValues.count >= 2 else { return nil }
 
         let sorted = validValues.sorted()
@@ -183,20 +215,21 @@ public struct RouteColorMetrics: Sendable {
 
     /// Smooth an array of values using a moving average, skipping NaN.
     /// Respects segment boundaries: only values from the same segment participate in the window.
-    private func smoothValues(_ values: [Double], windowSize: Int, segmentIndexes: [Int]) -> [Double] {
+    private func smoothValues(_ values: [Double], windowSize: Int, points: [RouteScenePoint]) -> [Double] {
         guard values.count > 1 else { return values }
         let halfWindow = windowSize / 2
         var result: [Double] = []
+        result.reserveCapacity(values.count)
 
         for i in 0..<values.count {
             let start = max(0, i - halfWindow)
             let end = min(values.count, i + halfWindow + 1)
-            let currentSegment = segmentIndexes[i]
+            let currentSegment = points[i].routeSegmentIndex
 
             var sum: Double = 0
             var count: Int = 0
             for j in start..<end {
-                if segmentIndexes[j] == currentSegment,
+                if points[j].routeSegmentIndex == currentSegment,
                    values[j].isFinite && !values[j].isNaN {
                     sum += values[j]
                     count += 1

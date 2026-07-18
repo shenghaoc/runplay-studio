@@ -23,14 +23,13 @@ public struct MetricSmoother {
     /// Smooth pace values from route points, handling nil values.
     /// Does not smooth across route segment boundaries.
     public static func smoothPace(from points: [RoutePoint], windowSize: Int = 5) -> [Double?] {
-        let rawPace = points.map { $0.paceSecondsPerKilometer }
-
         // Separate valid values for smoothing
         var validIndices: [Int] = []
         var validValues: [Double] = []
 
-        for (i, pace) in rawPace.enumerated() {
-            if let p = pace, p > 0, p < 3600 { // Filter unreasonable values
+        // ⚡ Bolt: Inline extraction instead of .map to avoid an intermediate O(N) array allocation.
+        for (i, point) in points.enumerated() {
+            if let p = point.paceSecondsPerKilometer, p > 0, p < 3600 { // Filter unreasonable values
                 validIndices.append(i)
                 validValues.append(p)
             }
