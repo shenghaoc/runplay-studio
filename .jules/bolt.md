@@ -34,6 +34,10 @@
 **Learning:** Functions like `smoothValues` were being passed mapped arrays like `points.dropLast().map(\.routeSegmentIndex)` as arguments. This creates a full `O(N)` array of integers simply to supply data that already exists sequentially within the original `RouteScenePoint` array, causing unnecessary ARC overhead.
 **Action:** Pass the original array (`points`) directly into helper methods instead of creating mapped projection arrays beforehand, and perform inline property access (`points[i].routeSegmentIndex`) inside the helper loop.
 
+## 2026-07-19 - DateFormatter Initialization Overhead in Parsing Loops
+**Learning:** Instantiating `ISO8601DateFormatter` as instance properties for parsers created inside the importer class means they are still instantiating every time an importer or parser is created. Given parsers read entire XML structures containing thousands of nodes, and importers may be created dynamically, caching them as instance properties rather than `static let` leads to unnecessary overhead and object churn.
+**Action:** Always cache `ISO8601DateFormatter` instances as `static let` properties so they are initialized once per app lifecycle, ensuring no repeated configuration overhead occurs across multiple file parsing events.
+
 ## 2026-07-20 - DateFormatter Allocation in CSV Parser Loops
 **Learning:** `WorkoutArchiveCSVParser.parseDate` was instantiating `ISO8601DateFormatter` and multiple `DateFormatter` fallback objects on every single CSV cell representing a date. Since CSV files can contain tens of thousands of rows, this created extreme object churn and ARC overhead.
 **Action:** Replace inline `DateFormatter` instantiations inside CSV cell parsers with cached `private static let` configurations to guarantee single-time initialization and ensure parsing remains fast across large datasets.

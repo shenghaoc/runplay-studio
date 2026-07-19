@@ -630,13 +630,13 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
 
     // MARK: - Date Parsing
 
-    private let iso8601FractionalFormatter: ISO8601DateFormatter = {
+    private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private let iso8601StandardFormatter: ISO8601DateFormatter = {
+    private static let iso8601StandardFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
@@ -644,9 +644,9 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
 
     private func parseISO8601(_ string: String) -> Date? {
         if string.contains(".") {
-            return iso8601FractionalFormatter.date(from: string) ?? iso8601StandardFormatter.date(from: string)
+            return Self.iso8601FractionalFormatter.date(from: string) ?? Self.iso8601StandardFormatter.date(from: string)
         }
-        return iso8601StandardFormatter.date(from: string)
+        return Self.iso8601StandardFormatter.date(from: string)
     }
 }
 
