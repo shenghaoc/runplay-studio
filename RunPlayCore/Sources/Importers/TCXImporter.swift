@@ -22,11 +22,30 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
         let data = try Data(contentsOf: url)
-        return try importWorkout(data: data, sourceURL: url)
+        return try importWorkout(
+            data: data,
+            suggestedName: url.deletingPathExtension().lastPathComponent
+        )
     }
 
-    /// Internal entry point for testability with raw Data.
+    public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        return try importWorkout(
+            data: input.data,
+            suggestedName: input.suggestedName.isEmpty
+                ? "Imported Run"
+                : (input.suggestedName as NSString).deletingPathExtension
+        )
+    }
+
+    /// Entry point for raw Data (URL and in-memory paths share this).
     func importWorkout(data: Data, sourceURL: URL) throws -> RunWorkout {
+        try importWorkout(
+            data: data,
+            suggestedName: sourceURL.deletingPathExtension().lastPathComponent
+        )
+    }
+
+    func importWorkout(data: Data, suggestedName: String) throws -> RunWorkout {
         let rawActivities = try parseTCXData(data)
 
         guard !rawActivities.isEmpty else {
@@ -259,7 +278,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
 
         // Build metadata
         let metadata = WorkoutMetadata(
-            name: sourceURL.deletingPathExtension().lastPathComponent,
+            name: suggestedName,
             activityType: activity.sport ?? "running",
             startDate: activity.activityId ?? routePoints.first?.timestamp,
             endDate: routePoints.last?.timestamp

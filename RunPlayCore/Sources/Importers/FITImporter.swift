@@ -12,12 +12,27 @@ public struct FITImporter: WorkoutImporting {
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
+        let data = try Data(contentsOf: url)
+        return try importWorkout(
+            data: data,
+            suggestedName: url.deletingPathExtension().lastPathComponent
+        )
+    }
 
+    public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        return try importWorkout(
+            data: input.data,
+            suggestedName: input.suggestedName.isEmpty
+                ? "Imported Run"
+                : (input.suggestedName as NSString).deletingPathExtension
+        )
+    }
+
+    func importWorkout(data: Data, suggestedName: String) throws -> RunWorkout {
         // Wrap all I/O and parsing errors into WorkoutImportError
         // so upstream code only needs to handle that type.
         let decodedFile: FITDecodedFile
         do {
-            let data = try Data(contentsOf: url)
             decodedFile = try FITParser.parse(data: data, isCancelled: { Task.isCancelled })
         } catch let error as FITError {
             throw WorkoutImportError.parsingError(error.localizedDescription)
@@ -46,7 +61,7 @@ public struct FITImporter: WorkoutImporting {
         let metadata = buildMetadata(
             decodedFile: decodedFile,
             selectedSessionIndex: selectedSessionIndex,
-            fileName: url.deletingPathExtension().lastPathComponent,
+            fileName: suggestedName,
             routePoints: routePoints
         )
 

@@ -388,3 +388,35 @@ Latest export notes:
 - The committed demo PNG is generated from bundled synthetic data only.
 - Manual GUI pass on 2026-07-08 confirmed save-panel export works for JSON,
   CSV, and PNG in a normal desktop session.
+
+
+## Strava bulk archive import (synthetic)
+
+Use a **synthetic** ZIP only — never commit real exports.
+
+1. **Import Strava Archive…** → select synthetic ZIP.
+2. Confirm review counts and candidate statuses.
+3. Filter/search; Select All Importable / Select None; keyboard navigation.
+4. Import mixed FIT/GPX/TCX/GZIP running activities.
+5. Cancel a second large import; confirm no partial library additions.
+6. Archive with one corrupt activity → valid siblings still import.
+7. Import the same archive again → zero new workouts.
+8. Completion report counts match expectations.
+9. Open most recent imported workout; check laps/replay/charts.
+10. Open Personal Heatmap → one recomputation with new history.
+11. Quit and relaunch → workouts persist.
+12. Delete one imported workout → heatmap updates.
+13. Single-file import and comparison still work.
+14. Light/dark, keyboard, VoiceOver labels on the archive sheet.
+
+Focused pre-merge smoke record (2026-07-19): the packaged app exposed
+**Import Strava Archive…** in both the File menu and native Import menu. A
+temporary synthetic GPX archive scanned as one ready candidate, imported with
+an `Imported: 1` completion report, and opened the resulting workout with its
+route and replay. A repeat scan showed `1` duplicate, `0` ready/selected
+candidates, and a disabled **Import 0 Runs** action; cancelling that review
+returned to the workout cleanly. The imported run appeared in Personal Heatmap
+(seven included runs) and remained selected after close/relaunch. The full
+warning-clean suite covers cancellation rollback and library deletion. The
+synthetic app-library record was then removed through the native delete
+confirmation; the original ZIP remained untouched.

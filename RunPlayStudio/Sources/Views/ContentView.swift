@@ -29,6 +29,7 @@ private final class SecurityScopedURL: Sendable {
 /// still rejects unsupported extensions with a clear error.
 extension UTType {
     static let supportedImportTypes: [UTType] = [.data]
+    static let stravaArchiveTypes: [UTType] = [.zip]
 }
 
 /// Main content view with sidebar, 3D route view, and detail panels.
@@ -52,6 +53,7 @@ struct ContentView: View {
                     set: { appState.applySidebarSelection($0) }
                 ),
                 onImport: { appState.showImporter = true },
+                onArchiveImport: { appState.showArchiveImporter = true },
                 onDelete: { workout in
                     Task { await appState.deleteWorkout(workout) }
                 }
@@ -120,6 +122,43 @@ struct ContentView: View {
                 appState.showingError = true
             }
         }
+        .fileImporter(
+            isPresented: $appState.showArchiveImporter,
+            allowedContentTypes: UTType.stravaArchiveTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                appState.beginArchiveImport(from: url)
+            case .failure(let error):
+                appState.errorMessage = error.localizedDescription
+                appState.showingError = true
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.archiveSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.archiveSession?.phase == .importing {
+                    appState.cancelArchiveImport()
+                } else {
+                    appState.dismissArchiveSession()
+                }
+            }
+        )) {
+            if let session = appState.archiveSession {
+                StravaArchiveImportView(
+                    session: session,
+                    onImport: { appState.confirmArchiveImport() },
+                    onCancel: { appState.cancelArchiveImport() },
+                    onDone: { appState.dismissArchiveSession() },
+                    onViewImported: { appState.viewMostRecentImportedRun() },
+                    onOpenHeatmap: { appState.openHeatmapAfterArchiveImport() }
+                )
+                .interactiveDismissDisabled(session.phase == .importing)
+            }
+        }
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("Got it") { appState.errorMessage = nil }
         } message: {
@@ -128,12 +167,22 @@ struct ContentView: View {
         .task {
             await appState.start()
         }
-        .disabled(appState.operationState != .idle)
+        .disabled({
+            switch appState.operationState {
+            case .idle, .importingArchive:
+                // Archive progress UI lives in the sheet; keep the window usable.
+                return false
+            case .loadingLibrary, .importing, .deleting, .scanningArchive:
+                return true
+            }
+        }())
         .overlay {
             operationStateOverlay
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
-            showPersonalHeatmap: { appState.showPersonalHeatmap() }
+            showPersonalHeatmap: { appState.showPersonalHeatmap() },
+            importFile: { appState.showImporter = true },
+            importStravaArchive: { appState.showArchiveImporter = true }
         ))
         .onReceive(NotificationCenter.default.publisher(for: .runPlayWorkspaceCommand)) { notification in
             guard let command = notification.object as? AppWorkspaceCommand else { return }
@@ -153,6 +202,12 @@ struct ContentView: View {
         case .deleting:
             ProgressView("Deleting…")
                 .padding()
+        case .scanningArchive(let filename):
+            ProgressView("Scanning \(filename)…")
+                .padding()
+        case .importingArchive:
+            // Progress lives in the archive sheet.
+            EmptyView()
         case .idle:
             EmptyView()
         }

@@ -22,11 +22,24 @@ public struct JSONWorkoutImporter: WorkoutImporting {
     }
 
     public func importWorkout(from data: Data) throws -> RunWorkout {
+        try importWorkout(from: WorkoutImportInput(
+            data: data,
+            fileExtension: "json",
+            suggestedName: "Imported Run"
+        ))
+    }
+
+    public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        let raw = try decoder.decode(RawWorkout.self, from: data)
-        return try convertToWorkout(raw)
+        let raw = try decoder.decode(RawWorkout.self, from: input.data)
+        var workout = try convertToWorkout(raw)
+        if (workout.metadata.name == nil || workout.metadata.name?.isEmpty == true),
+           !input.suggestedName.isEmpty {
+            workout.metadata.name = (input.suggestedName as NSString).deletingPathExtension
+        }
+        return workout
     }
 
     // MARK: - Private
