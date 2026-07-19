@@ -287,13 +287,13 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
 
     // MARK: - Date Parsing
 
-    private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private static let iso8601StandardFormatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let iso8601StandardFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
