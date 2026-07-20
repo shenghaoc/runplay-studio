@@ -41,3 +41,7 @@
 ## 2025-07-29 - Concurrency Safety for DateFormatters in Swift 6
 **Learning:** `DateFormatter` and `ISO8601DateFormatter` do not conform to the `Sendable` protocol in Swift. When caching them as `static let` properties to optimize parsing loops (like in `WorkoutArchiveCSVParser`), Swift 6 strict concurrency checks will emit a `[#MutableGlobalVariable]` error because non-Sendable static properties are assumed to have shared mutable state and are not concurrency-safe.
 **Action:** Since Apple's `DateFormatter` is thread-safe for reading/parsing (once initialized), use the `nonisolated(unsafe)` modifier on the `static let` declarations to suppress the compiler warning and safely share the instances across concurrency domains in Swift 6 codebases.
+
+## 2025-07-29 - Concurrency Safety for DateFormatters Arrays in Swift 6
+**Learning:** `DateFormatter` does not conform to `Sendable`. However, when you create an array of them (`[DateFormatter]`), Swift 6 (in some toolchains) infers the array container itself as `Sendable` in certain static let contexts, resulting in an error if you apply `nonisolated(unsafe)` to the array (`'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type '[DateFormatter]'`).
+**Action:** When caching `DateFormatter` in an array as a static constant, do not apply `nonisolated(unsafe)` to the array if the compiler emits an unnecessary modifier error. Apply it only to the individual non-array formatters.

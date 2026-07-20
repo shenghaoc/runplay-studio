@@ -343,7 +343,7 @@ public struct WorkoutArchiveCSVParser: Sendable {
         "M/d/yyyy h:mm:ss a",
     ]
 
-    nonisolated(unsafe) private static let fallbackFormatters: [DateFormatter] = {
+    private static let fallbackFormatters: [DateFormatter] = {
         dateFormats.map { format in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
