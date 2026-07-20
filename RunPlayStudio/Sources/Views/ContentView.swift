@@ -66,7 +66,7 @@ struct ContentView: View {
                 if appState.selectedWorkout != nil {
                     CompareView(appState: appState)
                 } else {
-                    EmptyStateView(onImport: { appState.showImporter = true })
+                    EmptyStateView(onImport: { appState.showImporter = true }, onArchiveImport: { appState.showArchiveImporter = true })
                 }
             case .workout:
                 if let workout = appState.selectedWorkout {
@@ -99,7 +99,7 @@ struct ContentView: View {
                             }
                         }
                 } else {
-                    EmptyStateView(onImport: { appState.showImporter = true })
+                    EmptyStateView(onImport: { appState.showImporter = true }, onArchiveImport: { appState.showArchiveImporter = true })
                 }
             }
         }

@@ -45,15 +45,32 @@ struct EmptyStateView: View {
                 .opacity(appeared ? 1.0 : 0.0)
                 .offset(y: appeared ? 0 : 12)
 
-                // CTA button
-                Button(action: onImport) {
-                    Label("Import File", systemImage: "doc.badge.plus")
-                        .font(AppDesign.Typography.bodySemibold)
-                        .padding(.horizontal, AppDesign.Spacing.xxLarge)
-                        .padding(.vertical, AppDesign.Spacing.medium)
+                // CTA buttons
+                VStack(spacing: AppDesign.Spacing.medium) {
+                    Button(action: onImport) {
+                        Label("Import File", systemImage: "doc.badge.plus")
+                            .font(AppDesign.Typography.bodySemibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, AppDesign.Spacing.medium)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .help("Import a GPX, TCX, FIT, or JSON workout file")
+                    .accessibilityLabel("Import File")
+
+                    if let onArchiveImport = onArchiveImport {
+                        Button(action: onArchiveImport) {
+                            Label("Import Strava Archive", systemImage: "archivebox")
+                                .font(AppDesign.Typography.bodySemibold)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, AppDesign.Spacing.medium)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .help("Import workouts from a Strava bulk-export archive")
+                        .accessibilityLabel("Import Strava Archive")
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
                 .opacity(appeared ? 1.0 : 0.0)
                 .offset(y: appeared ? 0 : 16)
 
