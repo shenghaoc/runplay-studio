@@ -320,6 +320,18 @@ public struct WorkoutArchiveCSVParser: Sendable {
         }
     }
 
+    private static let isoFractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let isoBasicFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     private static let dateFormats = [
         "MMM d, yyyy, h:mm:ss a",
         "MMM dd, yyyy, h:mm:ss a",
@@ -331,22 +343,23 @@ public struct WorkoutArchiveCSVParser: Sendable {
         "M/d/yyyy h:mm:ss a",
     ]
 
-    public static func parseDate(_ raw: String?) -> Date? {
-        guard let raw, !raw.isEmpty else { return nil }
-
-        let isoFractional = ISO8601DateFormatter()
-        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = isoFractional.date(from: raw) { return d }
-
-        let isoBasic = ISO8601DateFormatter()
-        isoBasic.formatOptions = [.withInternetDateTime]
-        if let d = isoBasic.date(from: raw) { return d }
-
-        for format in dateFormats {
+    private static let fallbackFormatters: [DateFormatter] = {
+        dateFormats.map { format in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
             f.timeZone = TimeZone(secondsFromGMT: 0)
             f.dateFormat = format
+            return f
+        }
+    }()
+
+    public static func parseDate(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+
+        if let d = isoFractionalFormatter.date(from: raw) { return d }
+        if let d = isoBasicFormatter.date(from: raw) { return d }
+
+        for f in fallbackFormatters {
             if let d = f.date(from: raw) { return d }
         }
         return nil

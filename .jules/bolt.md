@@ -33,3 +33,7 @@
 ## 2026-07-15 - Redundant O(N) Array Creations for Parameter Passing
 **Learning:** Functions like `smoothValues` were being passed mapped arrays like `points.dropLast().map(\.routeSegmentIndex)` as arguments. This creates a full `O(N)` array of integers simply to supply data that already exists sequentially within the original `RouteScenePoint` array, causing unnecessary ARC overhead.
 **Action:** Pass the original array (`points`) directly into helper methods instead of creating mapped projection arrays beforehand, and perform inline property access (`points[i].routeSegmentIndex`) inside the helper loop.
+
+## 2025-07-29 - DateFormatter Allocation in CSV Parser Loops
+**Learning:** `WorkoutArchiveCSVParser.parseDate` was instantiating `ISO8601DateFormatter` and multiple `DateFormatter` fallback objects on every single CSV cell representing a date. Since CSV files can contain tens of thousands of rows, this created extreme object churn and ARC overhead.
+**Action:** Replace inline `DateFormatter` instantiations inside CSV cell parsers with cached `private static let` configurations to guarantee single-time initialization and ensure parsing remains fast across large datasets.
