@@ -37,3 +37,7 @@
 ## 2025-07-29 - DateFormatter Allocation in CSV Parser Loops
 **Learning:** `WorkoutArchiveCSVParser.parseDate` was instantiating `ISO8601DateFormatter` and multiple `DateFormatter` fallback objects on every single CSV cell representing a date. Since CSV files can contain tens of thousands of rows, this created extreme object churn and ARC overhead.
 **Action:** Replace inline `DateFormatter` instantiations inside CSV cell parsers with cached `private static let` configurations to guarantee single-time initialization and ensure parsing remains fast across large datasets.
+
+## 2025-07-29 - Concurrency Safety for DateFormatters in Swift 6
+**Learning:** `DateFormatter` and `ISO8601DateFormatter` do not conform to the `Sendable` protocol in Swift. When caching them as `static let` properties to optimize parsing loops (like in `WorkoutArchiveCSVParser`), Swift 6 strict concurrency checks will emit a `[#MutableGlobalVariable]` error because non-Sendable static properties are assumed to have shared mutable state and are not concurrency-safe.
+**Action:** Since Apple's `DateFormatter` is thread-safe for reading/parsing (once initialized), use the `nonisolated(unsafe)` modifier on the `static let` declarations to suppress the compiler warning and safely share the instances across concurrency domains in Swift 6 codebases.

@@ -320,13 +320,13 @@ public struct WorkoutArchiveCSVParser: Sendable {
         }
     }
 
-    private static let isoFractionalFormatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let isoFractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private static let isoBasicFormatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let isoBasicFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
@@ -343,7 +343,7 @@ public struct WorkoutArchiveCSVParser: Sendable {
         "M/d/yyyy h:mm:ss a",
     ]
 
-    private static let fallbackFormatters: [DateFormatter] = {
+    nonisolated(unsafe) private static let fallbackFormatters: [DateFormatter] = {
         dateFormats.map { format in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
