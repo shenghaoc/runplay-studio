@@ -33,3 +33,15 @@
 ## 2026-07-15 - Redundant O(N) Array Creations for Parameter Passing
 **Learning:** Functions like `smoothValues` were being passed mapped arrays like `points.dropLast().map(\.routeSegmentIndex)` as arguments. This creates a full `O(N)` array of integers simply to supply data that already exists sequentially within the original `RouteScenePoint` array, causing unnecessary ARC overhead.
 **Action:** Pass the original array (`points`) directly into helper methods instead of creating mapped projection arrays beforehand, and perform inline property access (`points[i].routeSegmentIndex`) inside the helper loop.
+
+## 2026-07-20 - DateFormatter Allocation in CSV Parser Loops
+**Learning:** `WorkoutArchiveCSVParser.parseDate` was instantiating `ISO8601DateFormatter` and multiple `DateFormatter` fallback objects on every single CSV cell representing a date. Since CSV files can contain tens of thousands of rows, this created extreme object churn and ARC overhead.
+**Action:** Replace inline `DateFormatter` instantiations inside CSV cell parsers with cached `private static let` configurations to guarantee single-time initialization and ensure parsing remains fast across large datasets.
+
+## 2026-07-20 - Concurrency Safety for DateFormatters in Swift 6
+**Learning:** `DateFormatter` and `ISO8601DateFormatter` do not conform to the `Sendable` protocol in Swift. When caching them as `static let` properties to optimize parsing loops (like in `WorkoutArchiveCSVParser`), Swift 6 strict concurrency checks will emit a `[#MutableGlobalVariable]` error because non-Sendable static properties are assumed to have shared mutable state and are not concurrency-safe.
+**Action:** Since Apple's `DateFormatter` is thread-safe for reading/parsing (once initialized), use the `nonisolated(unsafe)` modifier on the `static let` declarations to suppress the compiler warning and safely share the instances across concurrency domains in Swift 6 codebases.
+
+## 2026-07-20 - Concurrency Safety for DateFormatters Arrays in Swift 6
+**Learning:** `DateFormatter` does not conform to `Sendable`. However, when you create an array of them (`[DateFormatter]`), Swift 6 (in some toolchains) infers the array container itself as `Sendable` in certain static let contexts, resulting in an error if you apply `nonisolated(unsafe)` to the array (`'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type '[DateFormatter]'`).
+**Action:** When caching `DateFormatter` in an array as a static constant, do not apply `nonisolated(unsafe)` to the array if the compiler emits an unnecessary modifier error. Apply it only to the individual non-array formatters.
