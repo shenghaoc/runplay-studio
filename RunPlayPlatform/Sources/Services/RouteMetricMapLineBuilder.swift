@@ -68,7 +68,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
                     naturalLineCount: lines.count,
                     effectiveMinimumRunDistanceMeters: 0,
                     usedAdaptiveChunking: false,
-                    retainedSegmentCount: Set(routePoints.map(\.routeSegmentIndex)).count,
+                    retainedSegmentCount: retainedRouteSegmentCount(routePoints),
                     policyVersion: policy.policyVersion
                 )
             )
@@ -89,7 +89,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
                     naturalLineCount: lines.count,
                     effectiveMinimumRunDistanceMeters: 0,
                     usedAdaptiveChunking: false,
-                    retainedSegmentCount: Set(routePoints.map(\.routeSegmentIndex)).count,
+                    retainedSegmentCount: retainedRouteSegmentCount(routePoints),
                     policyVersion: policy.policyVersion
                 )
             )
@@ -101,6 +101,12 @@ public struct RouteMetricMapLineBuilder: Sendable {
             enabled: policy.enableBucketHysteresis,
             isCancelled: isCancelled
         )
+        let isolatedSegmentLines = isolatedSegmentPlaceholders(
+            routePoints: routePoints,
+            intervals: profile.intervals,
+            mode: profile.mode,
+            idPrefix: idPrefix
+        )
 
         let naturalRuns = try coalesceRuns(
             routePoints: routePoints,
@@ -109,7 +115,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
             mode: profile.mode,
             idPrefix: idPrefix,
             isCancelled: isCancelled
-        )
+        ) + isolatedSegmentLines
         let naturalCount = naturalRuns.count
 
         var minRun = policy.preferredMinimumColorRunDistanceMeters
@@ -137,7 +143,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
                 mode: profile.mode,
                 idPrefix: idPrefix,
                 isCancelled: isCancelled
-            )
+            ) + isolatedSegmentLines
         }
 
         // Last-resort: if still over budget, force large chunks per segment.
@@ -158,7 +164,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
                 mode: profile.mode,
                 idPrefix: idPrefix,
                 isCancelled: isCancelled
-            )
+            ) + isolatedSegmentLines
         }
 
         // Alternating valid/no-data intervals cannot be reduced by ordinary
@@ -182,10 +188,10 @@ public struct RouteMetricMapLineBuilder: Sendable {
                 mode: profile.mode,
                 idPrefix: idPrefix,
                 isCancelled: isCancelled
-            )
+            ) + isolatedSegmentLines
         }
 
-        let segmentCount = Set(profile.intervals.map(\.routeSegmentIndex)).count
+        let segmentCount = retainedRouteSegmentCount(routePoints)
         return RouteMetricMapLineBuildResult(
             lines: lines,
             diagnostics: RouteMetricMapLineDiagnostics(
@@ -318,6 +324,74 @@ public struct RouteMetricMapLineBuilder: Sendable {
     }
 
     // MARK: - Coalesce
+
+    /// Preserve route-segment coordinates that cannot form an interval (most
+    /// commonly a trailing one-point segment). SwiftUI does not draw the
+    /// one-coordinate placeholder, but map fitting still includes it.
+    private func isolatedSegmentPlaceholders(
+        routePoints: [RoutePoint],
+        intervals: [RouteMetricInterval],
+        mode: WorkoutRouteColorMode,
+        idPrefix: String
+    ) -> [RouteMapLine] {
+        guard !routePoints.isEmpty else { return [] }
+        let coveredStartIndexes = Set(intervals.map(\.startPointIndex))
+        var lines: [RouteMapLine] = []
+        var runStart = 0
+
+        while runStart < routePoints.count {
+            let segment = routePoints[runStart].routeSegmentIndex
+            var runEnd = runStart + 1
+            while runEnd < routePoints.count,
+                  routePoints[runEnd].routeSegmentIndex == segment {
+                runEnd += 1
+            }
+
+            var hasInterval = false
+            var coordinates: [RouteMapCoordinate] = []
+            coordinates.reserveCapacity(runEnd - runStart)
+            for pointIndex in runStart..<runEnd {
+                hasInterval = hasInterval || coveredStartIndexes.contains(pointIndex)
+                if let coordinate = RouteMapCoordinate(routePoints[pointIndex]) {
+                    coordinates.append(coordinate)
+                }
+            }
+
+            // A run with fewer than two valid coordinates cannot survive
+            // `makeLine`, even when stored points produced metric intervals.
+            // Keep its one valid coordinate available to map fitting.
+            if (!hasInterval || coordinates.count < 2), !coordinates.isEmpty {
+                lines.append(RouteMapLine(
+                    id: "\(idPrefix)-m-isolated-\(segment)-\(runStart)",
+                    coordinates: coordinates,
+                    style: .metric(mode: mode, bucket: .noData)
+                ))
+            }
+            runStart = runEnd
+        }
+
+        return lines
+    }
+
+    private func retainedRouteSegmentCount(_ routePoints: [RoutePoint]) -> Int {
+        guard !routePoints.isEmpty else { return 0 }
+        var count = 0
+        var currentSegment = routePoints[0].routeSegmentIndex
+        var currentHasCoordinate = false
+
+        for point in routePoints {
+            if point.routeSegmentIndex != currentSegment {
+                if currentHasCoordinate { count += 1 }
+                currentSegment = point.routeSegmentIndex
+                currentHasCoordinate = false
+            }
+            if RouteMapCoordinate(point) != nil {
+                currentHasCoordinate = true
+            }
+        }
+        if currentHasCoordinate { count += 1 }
+        return count
+    }
 
     private func collapseContinuousSegmentBuckets(
         intervals: [RouteMetricInterval],

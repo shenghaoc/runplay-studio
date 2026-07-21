@@ -28,6 +28,7 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 | `OverviewView` | Default landing tab. Embeds `MapReferenceView` / `RouteMapCanvas` and passes the current point index from `ReplayController`. |
 | `WorkoutRouteMapViewModel` | Single-workout metric route lines: off-main builds, cache, cancellation; does not rebuild on replay ticks. |
 | `RouteMapCanvas` | Shared SwiftUI `Map` surface for single-run, comparison, and heatmap maps. Owns `MapCameraPosition`, optional `RouteMapArea` fills, and the 2D/3D pitch toggle. |
+| `RouteMetricLegendView` | Focused numeric/no-data/accessibility legend for workout-relative route coloring. |
 | `MetricsChartView` | Pace, elevation, HR, speed charts. Drag-to-seek pauses playback and updates `ReplayController`. |
 | `CompareView` | Comparison host. Owns primary/comparison selection and delegates to `WorkoutComparisonService`. |
 

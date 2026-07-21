@@ -68,6 +68,21 @@ public struct RouteMetricProfileBuilder: Sendable {
         policy: RouteMetricColorPolicy = .runningDefault,
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> RouteMetricModeAvailability {
+        try probe(
+            routePoints: routePoints,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        ).availability
+    }
+
+    /// Build availability and all three metric profiles in one reusable probe.
+    public func probe(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        policy: RouteMetricColorPolicy = .runningDefault,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> RouteMetricProfileProbe {
         if isCancelled() { throw CancellationError() }
 
         let pace = try build(
@@ -94,7 +109,7 @@ public struct RouteMetricProfileBuilder: Sendable {
             isCancelled: isCancelled
         )
 
-        return RouteMetricModeAvailability(
+        let availability = RouteMetricModeAvailability(
             solid: true,
             pace: isModeEnabled(profile: pace, policy: policy, coverageFloor: policy.minimumValidCoverageFraction),
             heartRate: isModeEnabled(
@@ -110,6 +125,12 @@ public struct RouteMetricProfileBuilder: Sendable {
             heartRateCoverageFraction: hr.validCoverageFraction,
             elevationCoverageFraction: elev.validCoverageFraction,
             paceCoverageFraction: pace.validCoverageFraction
+        )
+        return RouteMetricProfileProbe(
+            availability: availability,
+            paceProfile: pace,
+            heartRateProfile: hr,
+            correctedElevationProfile: elev
         )
     }
 
@@ -249,6 +270,25 @@ public struct RouteMetricProfileBuilder: Sendable {
         isCancelled: @Sendable () -> Bool
     ) throws -> RouteMetricProfile {
         let elevation = context.elevationProfile
+        guard elevation.hasMeaningfulElevation else {
+            let raw = try rawIntervals(
+                routePoints: routePoints,
+                isCancelled: isCancelled
+            ) { _, _, _, _ in nil }
+            return try finalizeProfile(
+                mode: .correctedElevation,
+                routePoints: routePoints,
+                rawIntervals: raw,
+                smoothedValues: Array(repeating: nil, count: raw.count),
+                direction: .higherIsMore,
+                policy: policy,
+                minimumScaleSpan: policy.minimumElevationSpanMeters,
+                formatLower: { DisplayFormatter.formatElevation($0) },
+                formatMedian: { DisplayFormatter.formatElevation($0) },
+                formatUpper: { DisplayFormatter.formatElevation($0) },
+                isCancelled: isCancelled
+            )
+        }
         var elevationSamplesByPointID: [UUID: ElevationProfileSample] = [:]
         elevationSamplesByPointID.reserveCapacity(elevation.samples.count)
         for sample in elevation.samples {

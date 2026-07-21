@@ -104,18 +104,25 @@ struct MapReferenceView: View {
             Menu {
                 ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
                     let available = mapViewModel?.availability.isAvailable(mode) ?? (mode == .solid)
+                    let modeHelp = routeColorModeHelp(mode, available: available)
                     Button {
                         storedColorModeRaw = mode.rawValue
                         mapViewModel?.preferredMode = mode
                     } label: {
                         HStack {
-                            Text(mode.displayName)
+                            if !available, mode != .solid {
+                                Text("\(mode.displayName) — \(String(localized: "Unavailable"))")
+                            } else {
+                                Text(mode.displayName)
+                            }
                             if preferredMode == mode {
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
                     .disabled(!available && mode != .solid)
+                    .help(modeHelp)
+                    .accessibilityHint(modeHelp)
                 }
             } label: {
                 Label(String(localized: "Route Color"), systemImage: "paintpalette")
@@ -174,129 +181,20 @@ struct MapReferenceView: View {
             mapViewModel?.preferredMode = mode
         }
     }
-}
 
-// MARK: - Legend
-
-struct RouteMetricLegendView: View {
-    let mode: WorkoutRouteColorMode
-    let scale: RouteMetricScale
-    var showsNoData: Bool = false
-    var coverageFraction: Double = 1
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
-            Text("\(mode.displayName) — \(mode.relativeScaleCaption)")
-                .font(AppDesign.Typography.compactLabel.weight(.semibold))
-                .foregroundStyle(.primary)
-
-            // Gradient swatches
-            HStack(spacing: 2) {
-                ForEach(0..<RouteMetricPalette.policyBucketCount, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(AppDesign.RouteMetric.color(mode: mode, bucket: .level(index)))
-                        .frame(height: 8)
-                }
-            }
-            .frame(maxWidth: 220)
-            .accessibilityHidden(true)
-
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(scale.lowerLabel)
-                        .font(AppDesign.Typography.monoCaption)
-                    Text(lowerEndLabel)
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: AppDesign.Spacing.small)
-                VStack(alignment: .center, spacing: 1) {
-                    Text(scale.medianLabel)
-                        .font(AppDesign.Typography.monoCaption)
-                    Text(String(localized: "Median"))
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: AppDesign.Spacing.small)
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(scale.upperLabel)
-                        .font(AppDesign.Typography.monoCaption)
-                    Text(upperEndLabel)
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: 220)
-
-            if showsNoData {
-                HStack(spacing: AppDesign.Spacing.xSmall) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(AppDesign.RouteMetric.noData)
-                        .frame(width: 14, height: 8)
-                    Text(String(localized: "No data"))
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if coverageFraction < 0.92, coverageFraction > 0 {
-                Text(coverageText)
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.tertiary)
-            }
+    private func routeColorModeHelp(_ mode: WorkoutRouteColorMode, available: Bool) -> String {
+        if !available, let reason = mode.unavailableReason {
+            return reason
         }
-        .padding(AppDesign.Spacing.medium)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilitySummary)
-    }
-
-    private var lowerEndLabel: String {
         switch mode {
-        case .pace: return String(localized: "Faster")
-        case .heartRate: return String(localized: "Lower")
-        case .correctedElevation: return String(localized: "Lower")
-        case .solid: return ""
-        }
-    }
-
-    private var upperEndLabel: String {
-        switch mode {
-        case .pace: return String(localized: "Slower")
-        case .heartRate: return String(localized: "Higher")
-        case .correctedElevation: return String(localized: "Higher")
-        case .solid: return ""
-        }
-    }
-
-    private var coverageText: String {
-        let percent = Int((coverageFraction * 100).rounded())
-        switch mode {
-        case .heartRate:
-            return String(localized: "Heart-rate data covers \(percent)% of route distance.")
-        case .correctedElevation:
-            return String(localized: "Corrected elevation covers \(percent)% of route distance.")
-        case .pace:
-            return String(localized: "Valid pace covers \(percent)% of route distance.")
         case .solid:
-            return ""
+            return String(localized: "Show the route in the primary color.")
+        case .pace:
+            return String(localized: "Color the route by relative pace within this workout.")
+        case .heartRate:
+            return String(localized: "Color the route by relative heart rate within this workout.")
+        case .correctedElevation:
+            return String(localized: "Color the route by corrected elevation within this workout.")
         }
-    }
-
-    private var accessibilitySummary: String {
-        var parts = [
-            "\(mode.displayName) legend. \(mode.relativeScaleCaption).",
-            "\(lowerEndLabel) \(scale.lowerLabel).",
-            "\(String(localized: "Median")) \(scale.medianLabel).",
-            "\(upperEndLabel) \(scale.upperLabel)."
-        ]
-        if showsNoData {
-            parts.append(String(localized: "Some sections have no metric data."))
-        }
-        if coverageFraction < 0.92, coverageFraction > 0 {
-            parts.append(coverageText)
-        }
-        return parts.joined(separator: " ")
     }
 }

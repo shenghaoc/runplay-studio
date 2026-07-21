@@ -388,6 +388,44 @@ final class RouteMetricProfileTests: XCTestCase {
         XCTAssertTrue(profile.intervals.allSatisfy { $0.bucket == .noData })
     }
 
+    func testNonMeaningfulCorrectedElevationProfileProducesNoData() throws {
+        var points = makePoints(pointCount: 3, paceSecondsPerKm: 300)
+        for index in points.indices {
+            points[index] = RoutePoint(
+                id: points[index].id,
+                timestamp: points[index].timestamp,
+                latitude: points[index].latitude,
+                longitude: points[index].longitude,
+                altitudeMeters: 100 + Double(index) * 10,
+                distanceFromStartMeters: points[index].distanceFromStartMeters,
+                elapsedSeconds: points[index].elapsedSeconds,
+                routeSegmentIndex: points[index].routeSegmentIndex
+            )
+        }
+        let elevation = ElevationProfile(
+            routePoints: points,
+            policy: RouteQualityPolicy(minimumReliableAltitudeSampleCount: 4)
+        )
+        XCTAssertFalse(elevation.hasMeaningfulElevation)
+        XCTAssertEqual(elevation.samples.compactMap(\.correctedAltitudeMeters).count, points.count)
+
+        let context = WorkoutAnalysisContext(routePoints: points, elevationProfile: elevation)
+        let profile = try builder.build(
+            routePoints: points,
+            context: context,
+            mode: .correctedElevation
+        )
+        let availability = try builder.availability(
+            routePoints: points,
+            context: context
+        )
+
+        XCTAssertNil(profile.scale)
+        XCTAssertEqual(profile.validCoverageDistanceMeters, 0)
+        XCTAssertTrue(profile.intervals.allSatisfy { $0.bucket == .noData })
+        XCTAssertFalse(availability.correctedElevation)
+    }
+
     // MARK: - Statistics & buckets
 
     func testWeightedQuantilesIgnoreZeroDistance() {

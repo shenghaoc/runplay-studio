@@ -5,7 +5,8 @@
 ```
 RunPlayCore
   RouteMetricColorPolicy
-  RouteMetricProfileBuilder  → RouteMetricProfile (intervals, scale, buckets)
+  RouteMetricProfileBuilder  → RouteMetricProfile / RouteMetricProfileProbe
+                               (intervals, scale, buckets, availability)
   DistanceWeightedStatistics
   RouteColorMetrics (thin adapter for legacy SceneKit callers)
 
@@ -44,10 +45,18 @@ Scales use distance-weighted 10th / median / 90th quantiles.
    segment conservatively: any positive-distance gap makes that segment no-data;
    otherwise use its distance-weighted median bucket. The number of continuous
    route segments is the unavoidable lower bound because gaps are never bridged.
+5. A segment with coordinates but no interval (for example a trailing one-point
+   segment) contributes a no-data placeholder to map fitting. It is not sent to
+   `MapPolyline`, which requires at least two coordinates.
 
 ## UI
 
 - `@AppStorage("routeColorMode")` preference only.
-- Unavailable preferred mode renders Solid with concise help; preference retained.
+- Unavailable modes are disabled and explicitly labelled in the native menu;
+  a persisted unavailable preference renders Solid with concise help.
 - Legend shows numeric ends + median + relative caption; coverage when < ~92%.
-- Builds run in `Task.detached` with serial suppression; prior route stays visible.
+- Builds run in `Task.detached` with serial suppression. A same-workout refresh
+  retains its prior route; selecting a different workout clears stale lines.
+- A new revision's availability probe returns all metric profiles so the initial
+  selected metric is reused. Only lightweight availability remains cached;
+  later mode switches build one newly selected profile.

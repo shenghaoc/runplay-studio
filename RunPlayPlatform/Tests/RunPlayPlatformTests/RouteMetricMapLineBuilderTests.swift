@@ -1,4 +1,5 @@
 import XCTest
+import MapKit
 import RunPlayCore
 @testable import RunPlayPlatform
 
@@ -101,6 +102,85 @@ final class RouteMetricMapLineBuilderTests: XCTestCase {
         for line in result.lines {
             XCTAssertGreaterThanOrEqual(line.coordinates.count, 2)
         }
+    }
+
+    func testMetricRoutePreservesTrailingSinglePointSegmentForMapFitting() throws {
+        var points = makePoints(count: 4, segments: [0, 0, 0, 1])
+        let trailing = points[3]
+        points[3] = RoutePoint(
+            id: trailing.id,
+            timestamp: trailing.timestamp,
+            latitude: 40,
+            longitude: -75,
+            altitudeMeters: trailing.altitudeMeters,
+            distanceFromStartMeters: trailing.distanceFromStartMeters,
+            elapsedSeconds: trailing.elapsedSeconds,
+            speedMetersPerSecond: trailing.speedMetersPerSecond,
+            paceSecondsPerKilometer: trailing.paceSecondsPerKilometer,
+            heartRateBPM: trailing.heartRateBPM,
+            cadence: trailing.cadence,
+            horizontalAccuracy: trailing.horizontalAccuracy,
+            routeSegmentIndex: trailing.routeSegmentIndex
+        )
+        let workout = RunWorkout(routePoints: points)
+        let profile = try profileBuilder.build(
+            workout: workout,
+            context: WorkoutAnalysisContext(workout: workout),
+            mode: .pace
+        )
+
+        let result = try lineBuilder.build(
+            routePoints: points,
+            profile: profile,
+            idPrefix: "route"
+        )
+
+        let placeholder = try XCTUnwrap(result.lines.first { $0.id.contains("-m-isolated-1-") })
+        let trailingCoordinate = try XCTUnwrap(RouteMapCoordinate(points[3]))
+        XCTAssertEqual(placeholder.coordinates, [trailingCoordinate])
+        XCTAssertEqual(placeholder.style, .metric(mode: .pace, bucket: .noData))
+        XCTAssertEqual(result.diagnostics.retainedSegmentCount, 2)
+        let mapRect = try XCTUnwrap(RouteMapContent.mapRect(for: result.lines))
+        XCTAssertTrue(mapRect.contains(MKMapPoint(trailingCoordinate.mapKitCoordinate)))
+    }
+
+    func testMetricRoutePreservesOnlyValidCoordinateWhenIntervalsExist() throws {
+        var points = makePoints(count: 3, segments: [0, 0, 0])
+        for index in 1..<points.count {
+            let point = points[index]
+            points[index] = RoutePoint(
+                id: point.id,
+                timestamp: point.timestamp,
+                latitude: 200,
+                longitude: point.longitude,
+                altitudeMeters: point.altitudeMeters,
+                distanceFromStartMeters: point.distanceFromStartMeters,
+                elapsedSeconds: point.elapsedSeconds,
+                speedMetersPerSecond: point.speedMetersPerSecond,
+                paceSecondsPerKilometer: point.paceSecondsPerKilometer,
+                heartRateBPM: point.heartRateBPM,
+                cadence: point.cadence,
+                horizontalAccuracy: point.horizontalAccuracy,
+                routeSegmentIndex: point.routeSegmentIndex
+            )
+        }
+        let workout = RunWorkout(routePoints: points)
+        let profile = try profileBuilder.build(
+            workout: workout,
+            context: WorkoutAnalysisContext(workout: workout),
+            mode: .pace
+        )
+        XCTAssertFalse(profile.intervals.isEmpty)
+
+        let result = try lineBuilder.build(
+            routePoints: points,
+            profile: profile,
+            idPrefix: "route"
+        )
+
+        let placeholder = try XCTUnwrap(result.lines.first { $0.id.contains("-m-isolated-0-") })
+        XCTAssertEqual(placeholder.coordinates, [try XCTUnwrap(RouteMapCoordinate(points[0]))])
+        XCTAssertEqual(result.diagnostics.retainedSegmentCount, 1)
     }
 
     func testNoDataLineVisible() throws {

@@ -42,6 +42,20 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
         case .correctedElevation: return routeMetricLocalized("Corrected elevation within this workout")
         }
     }
+
+    /// Concise explanation used when this metric cannot produce a reliable scale.
+    public var unavailableReason: String? {
+        switch self {
+        case .solid:
+            return nil
+        case .pace:
+            return routeMetricLocalized("Pace coloring needs more valid active distance and time in this workout.")
+        case .heartRate:
+            return routeMetricLocalized("Heart-rate coloring needs meaningful HR coverage in this workout.")
+        case .correctedElevation:
+            return routeMetricLocalized("Elevation coloring needs meaningful corrected elevation in this workout.")
+        }
+    }
 }
 
 // MARK: - Bucket tokens (palette-independent)
@@ -234,6 +248,38 @@ public struct RouteMetricModeAvailability: Hashable, Sendable {
         case .pace: return pace
         case .heartRate: return heartRate
         case .correctedElevation: return correctedElevation
+        }
+    }
+}
+
+/// Availability plus the metric profiles computed by the same probe.
+///
+/// Keeping the profiles lets presentation code reuse the selected metric instead
+/// of immediately rebuilding work the availability pass already completed.
+public struct RouteMetricProfileProbe: Hashable, Sendable {
+    public let availability: RouteMetricModeAvailability
+    public let paceProfile: RouteMetricProfile
+    public let heartRateProfile: RouteMetricProfile
+    public let correctedElevationProfile: RouteMetricProfile
+
+    public init(
+        availability: RouteMetricModeAvailability,
+        paceProfile: RouteMetricProfile,
+        heartRateProfile: RouteMetricProfile,
+        correctedElevationProfile: RouteMetricProfile
+    ) {
+        self.availability = availability
+        self.paceProfile = paceProfile
+        self.heartRateProfile = heartRateProfile
+        self.correctedElevationProfile = correctedElevationProfile
+    }
+
+    public func profile(for mode: WorkoutRouteColorMode) -> RouteMetricProfile? {
+        switch mode {
+        case .solid: return nil
+        case .pace: return paceProfile
+        case .heartRate: return heartRateProfile
+        case .correctedElevation: return correctedElevationProfile
         }
     }
 }

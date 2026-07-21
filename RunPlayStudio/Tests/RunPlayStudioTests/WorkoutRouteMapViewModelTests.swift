@@ -90,6 +90,29 @@ final class WorkoutRouteMapViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isBuilding)
     }
 
+    func testAvailabilityProbeReusesInitialSelectedProfileWithoutRetainingAllProfiles() async throws {
+        let workout = makeWorkout(pointCount: 40, withHR: true, withAltitude: true)
+        let recorder = ProfileBuilderRecorder()
+        let vm = WorkoutRouteMapViewModel(
+            profileBuilder: RecordingProfileBuilder(recorder: recorder)
+        )
+        vm.preferredMode = .pace
+        vm.update(workout: workout, analysisContext: WorkoutAnalysisContext(workout: workout))
+
+        _ = try await waitForPresentation(vm, mode: .pace)
+        XCTAssertEqual(recorder.probeCount, 1)
+        XCTAssertTrue(recorder.buildModes.isEmpty, "Selected pace profile should come from the probe")
+
+        vm.preferredMode = .heartRate
+        _ = try await waitForPresentation(vm, mode: .heartRate)
+        XCTAssertEqual(recorder.probeCount, 1, "Mode switches should reuse cached availability")
+        XCTAssertEqual(
+            recorder.buildModes,
+            [.heartRate],
+            "Later selections should build one profile instead of retaining all probe profiles"
+        )
+    }
+
     func testReplayIndexChangeDoesNotRequireUpdate() async throws {
         // Documented contract: ViewModel is not driven by replay index.
         let workout = makeWorkout(pointCount: 20, withHR: true, withAltitude: false)
@@ -159,18 +182,77 @@ final class WorkoutRouteMapViewModelTests: XCTestCase {
             )
         }
 
-        func availability(
+        func probe(
             routePoints: [RoutePoint],
             context: WorkoutAnalysisContext,
             policy: RouteMetricColorPolicy,
             isCancelled: @Sendable () -> Bool
-        ) throws -> RouteMetricModeAvailability {
+        ) throws -> RouteMetricProfileProbe {
             Thread.sleep(forTimeInterval: delay)
-            return try builder.availability(
+            return try builder.probe(
                 routePoints: routePoints,
                 context: context,
                 policy: policy,
                 isCancelled: { false }
+            )
+        }
+    }
+
+    private final class ProfileBuilderRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _probeCount = 0
+        private var _buildModes: [WorkoutRouteColorMode] = []
+
+        var probeCount: Int {
+            lock.withLock { _probeCount }
+        }
+
+        var buildModes: [WorkoutRouteColorMode] {
+            lock.withLock { _buildModes }
+        }
+
+        func recordProbe() {
+            lock.withLock { _probeCount += 1 }
+        }
+
+        func recordBuild(_ mode: WorkoutRouteColorMode) {
+            lock.withLock { _buildModes.append(mode) }
+        }
+    }
+
+    private struct RecordingProfileBuilder: RouteMetricProfileBuilding {
+        let recorder: ProfileBuilderRecorder
+        private let builder = RouteMetricProfileBuilder()
+
+        func build(
+            routePoints: [RoutePoint],
+            context: WorkoutAnalysisContext,
+            mode: WorkoutRouteColorMode,
+            policy: RouteMetricColorPolicy,
+            isCancelled: @Sendable () -> Bool
+        ) throws -> RouteMetricProfile {
+            recorder.recordBuild(mode)
+            return try builder.build(
+                routePoints: routePoints,
+                context: context,
+                mode: mode,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
+
+        func probe(
+            routePoints: [RoutePoint],
+            context: WorkoutAnalysisContext,
+            policy: RouteMetricColorPolicy,
+            isCancelled: @Sendable () -> Bool
+        ) throws -> RouteMetricProfileProbe {
+            recorder.recordProbe()
+            return try builder.probe(
+                routePoints: routePoints,
+                context: context,
+                policy: policy,
+                isCancelled: isCancelled
             )
         }
     }

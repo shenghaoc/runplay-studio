@@ -93,8 +93,8 @@ final class WorkoutRouteMapViewModel {
     private var buildTask: Task<Void, Never>?
     private var requestSerial = 0
     private var cache: [WorkoutRouteMapCacheKey: WorkoutRouteMapPresentation] = [:]
-    /// Availability is independent of preferred mode — cache per workout revision
-    /// so mode switches do not rebuild three metric profiles every time.
+    /// Availability is independent of preferred mode. Full probe profiles are
+    /// reused for the initial selected mode, then released to bound cache memory.
     private var availabilityCache: [WorkoutRouteMapWorkoutRevision: RouteMetricModeAvailability] = [:]
     private let policy = RouteMetricColorPolicy.runningDefault
     private let maxCacheEntries = 12
@@ -245,47 +245,48 @@ final class WorkoutRouteMapViewModel {
     ) throws -> WorkoutRouteMapPresentation {
         if isCancelled() { throw CancellationError() }
 
-        // Reuse cached availability when only the preferred mode changed so we
-        // do not rebuild pace + HR + elevation profiles on every menu selection.
+        // On a new workout revision, reuse the selected profile from the probe.
+        // Later mode switches keep only lightweight availability and build that
+        // one newly selected profile, avoiding a long-lived three-profile cache.
+        let probe: RouteMetricProfileProbe?
         let availability: RouteMetricModeAvailability
         if let knownAvailability {
+            probe = nil
             availability = knownAvailability
         } else {
-            availability = try profileBuilder.availability(
+            let builtProbe = try profileBuilder.probe(
                 routePoints: workout.routePoints,
                 context: context,
                 policy: policy,
                 isCancelled: isCancelled
             )
+            probe = builtProbe
+            availability = builtProbe.availability
         }
 
         var effective = preferredMode
         var fallbackReason: String?
 
         if !availability.isAvailable(effective) {
-            switch effective {
-            case .solid:
-                break
-            case .pace:
-                fallbackReason = String(localized: "Pace coloring needs more valid active distance and time in this workout.")
-            case .heartRate:
-                fallbackReason = String(localized: "Heart-rate coloring needs meaningful HR coverage in this workout.")
-            case .correctedElevation:
-                fallbackReason = String(localized: "Elevation coloring needs meaningful corrected elevation in this workout.")
-            }
+            fallbackReason = effective.unavailableReason
             effective = .solid
         }
 
         let key = WorkoutRouteMapCacheKey(workout: workout, mode: preferredMode, policy: policy)
         // Cache key retains preferred mode so availability fallback still reuses
         // the solid lines when the user reselects the same unavailable mode.
-        let profile = try profileBuilder.build(
-            routePoints: workout.routePoints,
-            context: context,
-            mode: effective,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+        let profile: RouteMetricProfile
+        if let probedProfile = probe?.profile(for: effective) {
+            profile = probedProfile
+        } else {
+            profile = try profileBuilder.build(
+                routePoints: workout.routePoints,
+                context: context,
+                mode: effective,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
 
         let lineResult = try lineBuilder.build(
             routePoints: workout.routePoints,
@@ -331,12 +332,12 @@ protocol RouteMetricProfileBuilding: Sendable {
         isCancelled: @Sendable () -> Bool
     ) throws -> RouteMetricProfile
 
-    func availability(
+    func probe(
         routePoints: [RoutePoint],
         context: WorkoutAnalysisContext,
         policy: RouteMetricColorPolicy,
         isCancelled: @Sendable () -> Bool
-    ) throws -> RouteMetricModeAvailability
+    ) throws -> RouteMetricProfileProbe
 }
 
 struct DefaultRouteMetricProfileBuilder: RouteMetricProfileBuilding {
@@ -358,13 +359,13 @@ struct DefaultRouteMetricProfileBuilder: RouteMetricProfileBuilding {
         )
     }
 
-    func availability(
+    func probe(
         routePoints: [RoutePoint],
         context: WorkoutAnalysisContext,
         policy: RouteMetricColorPolicy,
         isCancelled: @Sendable () -> Bool
-    ) throws -> RouteMetricModeAvailability {
-        try builder.availability(
+    ) throws -> RouteMetricProfileProbe {
+        try builder.probe(
             routePoints: routePoints,
             context: context,
             policy: policy,

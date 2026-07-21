@@ -99,11 +99,15 @@ Corrected Elevation. `RouteMetricProfileBuilder` (Core) is the only source of
 interval metrics, distance-weighted relative scales, and palette-independent
 buckets. `RouteMetricMapLineBuilder` (Platform) coalesces buckets into a bounded
 set of `RouteMapLine`s. Studio’s `WorkoutRouteMapViewModel` caches results off
-the main actor and does not rebuild on replay ticks.
+the main actor and does not rebuild on replay ticks. Its initial availability
+probe returns reusable metric profiles, so the selected metric is not built
+twice; only lightweight availability remains cached for later mode switches.
 
 Comparison maps keep primary blue / comparison orange identity. The personal
 heatmap retains its own density palette. Missing HR is neutral no-data, not a
-median fill. Elevation uses `WorkoutAnalysisContext.elevationProfile` only.
+median fill. Elevation uses `WorkoutAnalysisContext.elevationProfile` only and
+requires that profile to be meaningful. Single-point route segments remain as
+no-data map-fitting placeholders without being passed to `MapPolyline`.
 Preference storage is UI-only (`@AppStorage`); no workout migration.
 
 ### WorkoutImporting Protocol

@@ -595,10 +595,11 @@ workout snapshot. Core types include:
 - `WorkoutRouteColorMode` — `solid` | `pace` | `heartRate` | `correctedElevation`
 - `RouteMetricColorPolicy` — validity ranges, quantiles, bucket count, line budget
 - `RouteMetricInterval` / `RouteMetricScale` / `RouteMetricProfile`
+- `RouteMetricProfileProbe` — availability plus reusable initial metric profiles
 - `RouteMetricColorBucket` — `.noData` or `.level(Int)` (no RGB in Core)
 
 Scales are **relative to the selected workout** (distance-weighted quantiles).
-Pace uses active time. Elevation uses corrected profile samples. Missing HR is
+Pace uses active time. Elevation uses a meaningful corrected profile. Missing HR is
 nil/no-data, never median-filled. Platform maps buckets to `RouteMapLineStyle.metric`
 and coalesces into a bounded line set. UI preference may use `@AppStorage`; no
 analysis, normalization, or manifest version bump.

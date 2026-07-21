@@ -23,13 +23,19 @@ surface without a second renderer.
 4. Heart rate SHALL use shared `MetricValidation` ranges, preserve missing
    sections as no-data, and report distance coverage. No personalized zones.
 5. Elevation SHALL use `WorkoutAnalysisContext.elevationProfile` corrected
-   altitudes only — never raw `RoutePoint.altitudeMeters` or SceneKit Y.
+   altitudes only — never raw `RoutePoint.altitudeMeters` or SceneKit Y — and
+   SHALL remain unavailable when that profile is not meaningful.
 6. Platform SHALL coalesce metric intervals into bounded `RouteMapLine`s with
    shared boundary coordinates, short-run hysteresis, and adaptive chunking
-   under a central maximum line budget (default 1,000).
+   under a central maximum line budget (default 1,000). Single-coordinate
+   route segments SHALL remain in map-fitting content even though they cannot
+   render a polyline; the continuous-segment count is the unavoidable budget
+   lower bound because recording gaps MUST NOT be bridged.
 7. Studio SHALL provide a Route Color control, accessible legend with numeric
    labels, no-data indicator, coverage help, `@AppStorage` preference, and
-   off-main-actor cancellable builds that do not rebuild on replay ticks.
+   off-main-actor cancellable builds that do not rebuild on replay ticks. The
+   initial selected profile SHALL reuse the availability probe result; later
+   mode switches cache only lightweight availability.
 8. Legacy `RouteColorMetrics` / `RouteColoringService` SHALL delegate metric
    semantics to the new builder so SceneKit and MapKit share one source of truth.
 9. The feature is local-only presentation state: no workout migration, analysis
