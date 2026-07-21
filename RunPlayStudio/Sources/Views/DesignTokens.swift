@@ -1,3 +1,4 @@
+import RunPlayCore
 import RunPlayPlatform
 import SwiftUI
 
@@ -40,6 +41,32 @@ enum AppDesign {
         static let heartRate = alertRed
         static let cadence = softPurple
         static let split = comparisonOrange
+    }
+
+    // MARK: - Route metric sequential palettes (native map)
+
+    /// Sequential palettes for single-workout route metric coloring.
+    ///
+    /// Hex stops match `RouteMetricPalette` in RunPlayPlatform. Heatmap density
+    /// colors remain separate and must not be reused here.
+    enum RouteMetric {
+        static let noData = Color(hex: RouteMetricPalette.noDataHex, opacity: RouteMetricPalette.noDataOpacity)
+
+        static func color(mode: WorkoutRouteColorMode, bucket: RouteMetricColorBucket) -> Color {
+            switch bucket {
+            case .noData:
+                return noData
+            case .level(let index):
+                let stops = RouteMetricPalette.hexStops(for: mode)
+                guard !stops.isEmpty else { return primaryBlue }
+                let clamped = min(max(0, index), stops.count - 1)
+                return Color(hex: stops[clamped])
+            }
+        }
+
+        static func stops(for mode: WorkoutRouteColorMode) -> [Color] {
+            RouteMetricPalette.hexStops(for: mode).map { Color(hex: $0) }
+        }
     }
 
     // MARK: - Semantic Helpers

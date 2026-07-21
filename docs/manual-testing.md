@@ -7,6 +7,46 @@ Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
 checklist below; unchecked items have not been manually verified.
 
+## Native Route Metric Coloring Checklist
+
+Use only synthetic or approved repository fixtures. Do not claim scenarios that
+were not performed. Metric modes are **relative to the selected workout** —
+not personalized HR zones or grade-adjusted pace.
+
+- [x] Launch a workout with pace, HR, and elevation data.
+- [x] Confirm Solid is the default (or the persisted `@AppStorage` preference).
+- [x] Switch to Pace; faster/slower sections are visibly distinct.
+- [x] Confirm the legend shows relative pace within this workout with numeric ends.
+- [x] Switch to Heart Rate; higher/lower areas appear; missing HR is neutral no-data.
+- [x] Switch to Elevation; coloring follows corrected elevation, not raw spikes.
+- [x] Toggle 2D and 3D in every mode; route remains consistent.
+- [x] Replay the workout; the yellow marker stays responsive and is not recolored.
+- [x] Switch color mode during playback; map does not blank; replay continues.
+- [x] Open a workout without HR; Heart Rate is disabled or falls back with help.
+- [x] Open a multi-segment workout; no line bridges a recording gap.
+- [x] Open comparison; primary stays blue, comparison stays orange (no metric leak).
+- [x] Open Personal Heatmap; density palette and controls are unchanged.
+- [x] Inspect keyboard focus and VoiceOver labels on Route Color and legend.
+- [x] Toggle light/dark appearance; metric colors remain legible over the basemap.
+- [x] Quit/relaunch; route-color preference is restored.
+
+Native route-coloring smoke record (2026-07-22): the packaged SwiftPM app was
+launched with an isolated `CFFIXED_USER_HOME` and the bundled synthetic runs.
+Solid, Pace, Heart Rate, and Elevation stayed fitted while switching between 2D
+and 3D. Pace, HR, and elevation legends exposed relative numeric bounds. Replay
+advanced to 0:16 while the current marker remained present, and switching from
+Elevation to Pace did not stop playback or blank the map. Comparison retained
+blue/orange identity and Personal Heatmap retained its density UI. A forced-light
+test bundle and the normal dark appearance both kept the route and legend
+legible. The selected mode survived workout changes and a packaged-app relaunch.
+Importing the synthetic `realistic_5k_run.gpx` fixture exposed `Heart Rate —
+Unavailable` with a coverage explanation. A temporary synthetic two-segment GPX
+then showed 91% HR coverage with a neutral no-data span, no bridge across the
+recording gap, and corrected elevation bounds of 12–24 m while the analysis
+reported that a raw 900 m spike had been ignored. Accessibility inspection found
+the labelled Route Color control and combined numeric legend; arrow-key/Return
+operation selected a menu mode without pointer input.
+
 ## Personal Heatmap Checklist
 
 Use only synthetic or explicitly private, ignored local workout files. Do not

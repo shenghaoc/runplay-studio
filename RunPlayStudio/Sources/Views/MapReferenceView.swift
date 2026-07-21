@@ -2,20 +2,32 @@ import RunPlayCore
 import RunPlayPlatform
 import SwiftUI
 
-/// Displays a route on one Apple Maps surface with an in-map 2D/3D control.
+/// Displays a route on one Apple Maps surface with an in-map 2D/3D control
+/// and optional metric route coloring for the single-workout map.
 ///
-/// Uses pill-shaped overlays and subtle material backgrounds
-/// for map controls that don't compete with the route visualization.
+/// Comparison and heatmap maps use other views and must not pass a metric
+/// view model here.
 struct MapReferenceView: View {
     let routePoints: [RoutePoint]
     var currentPointIndex: Int = 0
     var showAnnotations: Bool = true
+    /// When non-nil, drives metric route coloring. Solid primary color otherwise.
+    var mapViewModel: WorkoutRouteMapViewModel?
 
+    @AppStorage("routeColorMode") private var storedColorModeRaw: String = WorkoutRouteColorMode.solid.rawValue
     @State private var displayMode: RouteMapDisplayMode = .twoD
     @State private var fitRequest = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var preferredMode: WorkoutRouteColorMode {
+        WorkoutRouteColorMode(rawValue: storedColorModeRaw) ?? .solid
+    }
 
     private var routes: [RouteMapLine] {
-        RouteMapContent.segmentedRoutes(idPrefix: "route", points: routePoints, style: .primary)
+        if let presentation = mapViewModel?.presentation, !presentation.lines.isEmpty {
+            return presentation.lines
+        }
+        return RouteMapContent.segmentedRoutes(idPrefix: "route", points: routePoints, style: .primary)
     }
 
     private var markers: [RouteMapMarker] {
@@ -33,10 +45,16 @@ struct MapReferenceView: View {
             routes: routes,
             markers: markers,
             fitRequest: fitRequest,
-            controlBottomInset: 0
+            controlBottomInset: legendBottomInset
         )
         .overlay(alignment: .topLeading) {
-            mapModeBadge
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+                mapModeBadge
+                if mapViewModel != nil {
+                    routeColorControl
+                }
+            }
+            .padding()
         }
         .overlay(alignment: .topTrailing) {
             Button {
@@ -50,14 +68,133 @@ struct MapReferenceView: View {
             .help("Zoom and center the map to show the full route")
             .padding()
         }
+        .overlay(alignment: .bottomLeading) {
+            if mapViewModel != nil {
+                metricLegendOverlay
+                    .padding()
+                    .padding(.bottom, 4)
+            }
+        }
+        .onAppear {
+            syncPreferredMode()
+        }
+        .onChange(of: storedColorModeRaw) { _, _ in
+            syncPreferredMode()
+        }
+    }
+
+    private var legendBottomInset: CGFloat {
+        guard mapViewModel != nil else { return 0 }
+        if mapViewModel?.presentation?.effectiveMode == .solid || mapViewModel?.presentation?.effectiveMode == nil {
+            return mapViewModel?.isBuilding == true ? 36 : 8
+        }
+        return 96
     }
 
     private var mapModeBadge: some View {
         MapModeBadge(displayMode: displayMode)
-        .padding(.horizontal, AppDesign.Spacing.medium)
-        .padding(.vertical, AppDesign.Spacing.small)
-        .background(.regularMaterial)
-        .clipShape(Capsule())
-        .padding()
+            .padding(.horizontal, AppDesign.Spacing.medium)
+            .padding(.vertical, AppDesign.Spacing.small)
+            .background(.regularMaterial)
+            .clipShape(Capsule())
+    }
+
+    private var routeColorControl: some View {
+        HStack(spacing: AppDesign.Spacing.small) {
+            Menu {
+                ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
+                    let available = mapViewModel?.availability.isAvailable(mode) ?? (mode == .solid)
+                    let modeHelp = routeColorModeHelp(mode, available: available)
+                    Button {
+                        storedColorModeRaw = mode.rawValue
+                        mapViewModel?.preferredMode = mode
+                    } label: {
+                        HStack {
+                            if !available, mode != .solid {
+                                Text("\(mode.displayName) — \(String(localized: "Unavailable"))")
+                            } else {
+                                Text(mode.displayName)
+                            }
+                            if preferredMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(!available && mode != .solid)
+                    .help(modeHelp)
+                    .accessibilityHint(modeHelp)
+                }
+            } label: {
+                Label(String(localized: "Route Color"), systemImage: "paintpalette")
+                    .font(AppDesign.Typography.compactMetric)
+            }
+            .menuStyle(.borderlessButton)
+            .padding(.horizontal, AppDesign.Spacing.medium)
+            .padding(.vertical, AppDesign.Spacing.small)
+            .background(.regularMaterial)
+            .clipShape(Capsule())
+            .help(String(localized: "Color the route by solid, relative pace, heart rate, or corrected elevation"))
+            .accessibilityLabel(String(localized: "Route Color"))
+            .accessibilityValue(preferredMode.displayName)
+            .accessibilityHint(String(localized: "Choose how the workout route is colored on the map"))
+
+            if mapViewModel?.isBuilding == true {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Updating route colors"))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var metricLegendOverlay: some View {
+        if let presentation = mapViewModel?.presentation {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+                if let reason = presentation.fallbackReason, presentation.effectiveMode == .solid {
+                    Text(reason)
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.secondary)
+                        .padding(AppDesign.Spacing.small)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.small))
+                        .accessibilityLabel(reason)
+                }
+
+                if presentation.effectiveMode != .solid,
+                   let profile = presentation.profile,
+                   let scale = profile.scale {
+                    RouteMetricLegendView(
+                        mode: presentation.effectiveMode,
+                        scale: scale,
+                        showsNoData: profile.diagnostics.noDataIntervalCount > 0,
+                        coverageFraction: profile.validCoverageFraction
+                    )
+                }
+            }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: presentation.effectiveMode)
+        }
+    }
+
+    private func syncPreferredMode() {
+        let mode = preferredMode
+        if mapViewModel?.preferredMode != mode {
+            mapViewModel?.preferredMode = mode
+        }
+    }
+
+    private func routeColorModeHelp(_ mode: WorkoutRouteColorMode, available: Bool) -> String {
+        if !available, let reason = mode.unavailableReason {
+            return reason
+        }
+        switch mode {
+        case .solid:
+            return String(localized: "Show the route in the primary color.")
+        case .pace:
+            return String(localized: "Color the route by relative pace within this workout.")
+        case .heartRate:
+            return String(localized: "Color the route by relative heart rate within this workout.")
+        case .correctedElevation:
+            return String(localized: "Color the route by corrected elevation within this workout.")
+        }
     }
 }

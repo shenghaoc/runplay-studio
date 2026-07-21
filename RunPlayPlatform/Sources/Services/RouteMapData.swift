@@ -37,13 +37,17 @@ public struct RouteMapCoordinate: Hashable, Sendable {
 }
 
 /// Line style for route display.
-public enum RouteMapLineStyle: Hashable {
+///
+/// Metric styles are palette-independent tokens. Comparison routes must never
+/// use `.metric` — primary/comparison identity takes precedence.
+public enum RouteMapLineStyle: Hashable, Sendable {
     case primary
     case comparison
+    case metric(mode: WorkoutRouteColorMode, bucket: RouteMetricColorBucket)
 }
 
 /// A route line for map display.
-public struct RouteMapLine: Identifiable, Hashable {
+public struct RouteMapLine: Identifiable, Hashable, Sendable {
     public let id: String
     public let coordinates: [RouteMapCoordinate]
     public let style: RouteMapLineStyle

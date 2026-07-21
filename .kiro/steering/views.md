@@ -25,8 +25,10 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 | `ReplayController` | `@MainActor ObservableObject` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
 | `ContentView` | Root view. Hosts the sidebar and detail split. Owns the `.fileImporter` modifier and delegates import to `AppState`. |
 | `WorkoutDetailView` | Detail host. Provides shared replay controls, metrics panel, and tab picker (Overview / Charts). |
-| `OverviewView` | Default landing tab. Embeds `RouteMapCanvas` and passes the current point index from `ReplayController`. |
+| `OverviewView` | Default landing tab. Embeds `MapReferenceView` / `RouteMapCanvas` and passes the current point index from `ReplayController`. |
+| `WorkoutRouteMapViewModel` | Single-workout metric route lines: off-main builds, cache, cancellation; does not rebuild on replay ticks. |
 | `RouteMapCanvas` | Shared SwiftUI `Map` surface for single-run, comparison, and heatmap maps. Owns `MapCameraPosition`, optional `RouteMapArea` fills, and the 2D/3D pitch toggle. |
+| `RouteMetricLegendView` | Focused numeric/no-data/accessibility legend for workout-relative route coloring. |
 | `MetricsChartView` | Pace, elevation, HR, speed charts. Drag-to-seek pauses playback and updates `ReplayController`. |
 | `CompareView` | Comparison host. Owns primary/comparison selection and delegates to `WorkoutComparisonService`. |
 
@@ -41,7 +43,8 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 - `RouteMapCanvas` is reused for single-run, comparison, and personal-heatmap
   maps; do not create a second map type. Heatmap uses filled `MapPolygon`
   areas under routes; heat intensity must not reuse primary-blue vs
-  comparison-orange semantics.
+  comparison-orange semantics. Route metric coloring applies only to the
+  single-workout map; comparison stays blue/orange.
 - Heatmap aggregation runs off the main actor via `PersonalHeatmapViewModel`
   and must not set global `LibraryOperationState` busy for the whole app.
 - PNG export uses `ImageRenderer` on a concrete SwiftUI view

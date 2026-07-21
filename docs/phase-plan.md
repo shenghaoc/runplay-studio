@@ -96,7 +96,7 @@
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs
-- [ ] Route coloring by pace or HR on map polyline
+- [x] Route coloring by pace or HR on map polyline (native MapKit; relative workout scale; corrected elevation)
 - [ ] Dynamic time warping for comparison (post-MVP)
 
 

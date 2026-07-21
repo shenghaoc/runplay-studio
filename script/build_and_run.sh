@@ -50,7 +50,16 @@ cat >"$INFO_PLIST" <<PLIST
 PLIST
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  if [[ -n "${RUNPLAY_STUDIO_TEST_HOME:-}" ]]; then
+    if [[ "$RUNPLAY_STUDIO_TEST_HOME" != /* || "$RUNPLAY_STUDIO_TEST_HOME" == "/" ]]; then
+      echo "RUNPLAY_STUDIO_TEST_HOME must be a non-root absolute path" >&2
+      exit 2
+    fi
+    mkdir -p "$RUNPLAY_STUDIO_TEST_HOME"
+    /usr/bin/open -n -F --env "CFFIXED_USER_HOME=$RUNPLAY_STUDIO_TEST_HOME" "$APP_BUNDLE"
+  else
+    /usr/bin/open -n "$APP_BUNDLE"
+  fi
 }
 
 case "$MODE" in

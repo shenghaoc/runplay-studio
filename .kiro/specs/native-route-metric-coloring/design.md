@@ -1,0 +1,62 @@
+# Design: Native Route Metric Coloring
+
+## Architecture
+
+```
+RunPlayCore
+  RouteMetricColorPolicy
+  RouteMetricProfileBuilder  → RouteMetricProfile / RouteMetricProfileProbe
+                               (intervals, scale, buckets, availability)
+  DistanceWeightedStatistics
+  RouteColorMetrics (thin adapter for legacy SceneKit callers)
+
+RunPlayPlatform
+  RouteMapLineStyle.metric(mode, bucket)
+  RouteMetricMapLineBuilder  → bounded [RouteMapLine]
+  RouteMetricPalette (NSColor / hex stops)
+  RouteColoringService (palette adapter over profile)
+
+RunPlayStudio
+  WorkoutRouteMapViewModel (cache, cancellation, preference mode)
+  MapReferenceView + RouteMetricLegendView
+  RouteMapCanvas stroke for metric styles
+```
+
+Dependency direction remains `Studio → Platform → Core`.
+
+## Metric semantics
+
+| Mode | Value | Scale direction | Missing |
+|------|-------|-----------------|---------|
+| Solid | n/a | n/a | primary blue |
+| Pace | active s/km | lowerIsBetter (fast→0) | no-data gray |
+| HR | bpm | higherIsMore | no-data gray |
+| Elevation | corrected m | higherIsMore | no-data gray |
+
+Scales use distance-weighted 10th / median / 90th quantiles.
+
+## Line budget
+
+1. Coalesce adjacent same-segment same-bucket intervals.
+2. Hysteresis merges isolated one-interval flicker.
+3. If line count > policy maximum, grow minimum chunk distance and assign
+   distance-weighted median buckets per chunk (never drop segments or bridge gaps).
+4. If alternating no-data still exceeds the budget, collapse each continuous
+   segment conservatively: any positive-distance gap makes that segment no-data;
+   otherwise use its distance-weighted median bucket. The number of continuous
+   route segments is the unavoidable lower bound because gaps are never bridged.
+5. A segment with coordinates but no interval (for example a trailing one-point
+   segment) contributes a no-data placeholder to map fitting. It is not sent to
+   `MapPolyline`, which requires at least two coordinates.
+
+## UI
+
+- `@AppStorage("routeColorMode")` preference only.
+- Unavailable modes are disabled and explicitly labelled in the native menu;
+  a persisted unavailable preference renders Solid with concise help.
+- Legend shows numeric ends + median + relative caption; coverage when < ~92%.
+- Builds run in `Task.detached` with serial suppression. A same-workout refresh
+  retains its prior route; selecting a different workout clears stale lines.
+- A new revision's availability probe returns all metric profiles so the initial
+  selected metric is reused. Only lightweight availability remains cached;
+  later mode switches build one newly selected profile.

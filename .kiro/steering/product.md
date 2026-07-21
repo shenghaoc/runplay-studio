@@ -5,7 +5,8 @@ inclusion: always
 # RunPlay Studio product context
 
 RunPlay Studio is a native macOS application for local, post-run GPS workout
-visualization, replay, analysis, comparison, personal route heatmap, and export.
+visualization, replay, analysis, comparison, personal route heatmap, native
+route metric coloring (relative pace / HR / corrected elevation), and export.
 
 Core product invariants:
 
