@@ -48,6 +48,7 @@ struct MapReferenceView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help("Zoom and center the map to show the full route")
+            .accessibilityLabel("Fit Route")
             .padding()
         }
     }
