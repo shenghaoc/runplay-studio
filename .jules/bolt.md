@@ -49,3 +49,7 @@
 ## 2026-07-20 - Concurrency Safety for DateFormatters Arrays in Swift 6
 **Learning:** `DateFormatter` does not conform to `Sendable`. However, when you create an array of them (`[DateFormatter]`), Swift 6 (in some toolchains) infers the array container itself as `Sendable` in certain static let contexts, resulting in an error if you apply `nonisolated(unsafe)` to the array (`'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type '[DateFormatter]'`).
 **Action:** When caching `DateFormatter` in an array as a static constant, do not apply `nonisolated(unsafe)` to the array if the compiler emits an unnecessary modifier error. Apply it only to the individual non-array formatters.
+
+## 2026-07-22 - Prefer formatted() Over Cached DateFormatter in SwiftUI Views
+**Learning:** Caching a `DateFormatter` as a `static let` to avoid O(N) instantiation overhead in SwiftUI render logic works but introduces Swift 6 concurrency complications (`nonisolated(unsafe)` vs `Sendable` inference varies by SDK). For simple date-only or time-only formatting, the modern `formatted(date:time:)` API is inherently `Sendable`, requires no cached instance, and eliminates concurrency concerns entirely.
+**Action:** In SwiftUI views targeting macOS 12+, prefer `date.formatted(date: .abbreviated, time: .omitted)` over cached `DateFormatter` instances. Reserve `DateFormatter` caching for complex custom format strings where `formatted()` cannot express the desired output.

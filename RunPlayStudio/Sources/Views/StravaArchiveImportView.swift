@@ -323,10 +323,7 @@ struct StravaArchiveImportView: View {
 
     private func dateText(_ date: Date?) -> String {
         guard let date else { return "—" }
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f.string(from: date)
+        return date.formatted(date: .abbreviated, time: .omitted)
     }
 
     private func byteCount(_ bytes: Int64) -> String {
