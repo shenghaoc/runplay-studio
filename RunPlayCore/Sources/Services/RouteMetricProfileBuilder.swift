@@ -546,15 +546,11 @@ public struct RouteMetricProfileBuilder: Sendable {
         let span = upper - lower
         guard span.isFinite, abs(span) > 1e-12 else { return 0.5 }
 
+        // Both directions store lowerBound as the palette-start (normalized 0)
+        // quantile: fast pace / low HR / low elevation. Direction is retained for
+        // legend wording only.
         let clamped = min(max(value, min(lower, upper)), max(lower, upper))
-        let t: Double
-        switch scale.direction {
-        case .lowerIsBetter:
-            // lowerBound is the fast (small) pace quantile; map it to 0.
-            t = (clamped - lower) / span
-        case .higherIsMore:
-            t = (clamped - lower) / span
-        }
+        let t = (clamped - lower) / span
         return min(1, max(0, t))
     }
 

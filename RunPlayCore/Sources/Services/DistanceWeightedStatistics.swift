@@ -22,7 +22,9 @@ public enum DistanceWeightedStatistics: Sendable {
         _ samples: [WeightedSample],
         quantile: Double
     ) -> Double? {
-        let q = min(1, max(0, quantile))
+        // NaN/inf must not propagate through min/max clamping into the CDF target.
+        guard quantile.isFinite else { return nil }
+        let q = min(1.0, max(0.0, quantile))
         var finite: [WeightedSample] = []
         finite.reserveCapacity(samples.count)
         var totalWeight = 0.0

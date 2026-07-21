@@ -118,7 +118,7 @@ struct MapReferenceView: View {
                     .disabled(!available && mode != .solid)
                 }
             } label: {
-                Label("Route Color", systemImage: "paintpalette")
+                Label(String(localized: "Route Color"), systemImage: "paintpalette")
                     .font(AppDesign.Typography.compactMetric)
             }
             .menuStyle(.borderlessButton)
@@ -126,15 +126,15 @@ struct MapReferenceView: View {
             .padding(.vertical, AppDesign.Spacing.small)
             .background(.regularMaterial)
             .clipShape(Capsule())
-            .help("Color the route by solid, relative pace, heart rate, or corrected elevation")
-            .accessibilityLabel("Route Color")
+            .help(String(localized: "Color the route by solid, relative pace, heart rate, or corrected elevation"))
+            .accessibilityLabel(String(localized: "Route Color"))
             .accessibilityValue(preferredMode.displayName)
-            .accessibilityHint("Choose how the workout route is colored on the map")
+            .accessibilityHint(String(localized: "Choose how the workout route is colored on the map"))
 
             if mapViewModel?.isBuilding == true {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel("Updating route colors")
+                    .accessibilityLabel(String(localized: "Updating route colors"))
             }
         }
     }
@@ -213,7 +213,7 @@ struct RouteMetricLegendView: View {
                 VStack(alignment: .center, spacing: 1) {
                     Text(scale.medianLabel)
                         .font(AppDesign.Typography.monoCaption)
-                    Text("Median")
+                    Text(String(localized: "Median"))
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.secondary)
                 }
@@ -233,7 +233,7 @@ struct RouteMetricLegendView: View {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppDesign.RouteMetric.noData)
                         .frame(width: 14, height: 8)
-                    Text("No data")
+                    Text(String(localized: "No data"))
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.secondary)
                 }
@@ -254,18 +254,18 @@ struct RouteMetricLegendView: View {
 
     private var lowerEndLabel: String {
         switch mode {
-        case .pace: return "Faster"
-        case .heartRate: return "Lower"
-        case .correctedElevation: return "Lower"
+        case .pace: return String(localized: "Faster")
+        case .heartRate: return String(localized: "Lower")
+        case .correctedElevation: return String(localized: "Lower")
         case .solid: return ""
         }
     }
 
     private var upperEndLabel: String {
         switch mode {
-        case .pace: return "Slower"
-        case .heartRate: return "Higher"
-        case .correctedElevation: return "Higher"
+        case .pace: return String(localized: "Slower")
+        case .heartRate: return String(localized: "Higher")
+        case .correctedElevation: return String(localized: "Higher")
         case .solid: return ""
         }
     }
@@ -274,11 +274,11 @@ struct RouteMetricLegendView: View {
         let percent = Int((coverageFraction * 100).rounded())
         switch mode {
         case .heartRate:
-            return "Heart-rate data covers \(percent)% of route distance."
+            return String(localized: "Heart-rate data covers \(percent)% of route distance.")
         case .correctedElevation:
-            return "Corrected elevation covers \(percent)% of route distance."
+            return String(localized: "Corrected elevation covers \(percent)% of route distance.")
         case .pace:
-            return "Valid pace covers \(percent)% of route distance."
+            return String(localized: "Valid pace covers \(percent)% of route distance.")
         case .solid:
             return ""
         }
@@ -288,11 +288,11 @@ struct RouteMetricLegendView: View {
         var parts = [
             "\(mode.displayName) legend. \(mode.relativeScaleCaption).",
             "\(lowerEndLabel) \(scale.lowerLabel).",
-            "Median \(scale.medianLabel).",
+            "\(String(localized: "Median")) \(scale.medianLabel).",
             "\(upperEndLabel) \(scale.upperLabel)."
         ]
         if showsNoData {
-            parts.append("Some sections have no metric data.")
+            parts.append(String(localized: "Some sections have no metric data."))
         }
         if coverageFraction < 0.92, coverageFraction > 0 {
             parts.append(coverageText)

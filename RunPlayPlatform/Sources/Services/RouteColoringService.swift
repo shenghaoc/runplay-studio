@@ -159,25 +159,24 @@ public struct RouteColoringService {
         let base = Date(timeIntervalSince1970: 0)
         return scenePoints.enumerated().map { offset, point in
             let altitude: Double?
-            if let elevationProfile,
-               elevationProfile.samples.indices.contains(point.sourceIndex) {
-                altitude = elevationProfile.samples[point.sourceIndex].correctedAltitudeMeters
-                    ?? point.yMeters
-            } else if elevationProfile != nil,
-                      elevationProfile!.samples.indices.contains(offset) {
-                altitude = elevationProfile!.samples[offset].correctedAltitudeMeters
-                    ?? point.yMeters
+            let id: UUID
+            if let elevationProfile {
+                // Prefer sourceIndex alignment when the profile was built from
+                // the original route; fall back to the scene array index.
+                if elevationProfile.samples.indices.contains(point.sourceIndex) {
+                    let sample = elevationProfile.samples[point.sourceIndex]
+                    altitude = sample.correctedAltitudeMeters ?? point.yMeters
+                    id = sample.routePointID
+                } else if elevationProfile.samples.indices.contains(offset) {
+                    let sample = elevationProfile.samples[offset]
+                    altitude = sample.correctedAltitudeMeters ?? point.yMeters
+                    id = sample.routePointID
+                } else {
+                    altitude = point.yMeters
+                    id = point.id
+                }
             } else {
                 altitude = point.yMeters
-            }
-
-            // Prefer sourceIndex alignment when the profile was built from the
-            // original route; fall back to the scene array index.
-            let id: UUID
-            if let elevationProfile,
-               elevationProfile.samples.indices.contains(point.sourceIndex) {
-                id = elevationProfile.samples[point.sourceIndex].routePointID
-            } else {
                 id = point.id
             }
 

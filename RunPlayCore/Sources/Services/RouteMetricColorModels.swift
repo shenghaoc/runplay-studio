@@ -14,10 +14,10 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
 
     public var displayName: String {
         switch self {
-        case .solid: return "Solid"
-        case .pace: return "Pace"
-        case .heartRate: return "Heart Rate"
-        case .correctedElevation: return "Elevation"
+        case .solid: return String(localized: "Solid")
+        case .pace: return String(localized: "Pace")
+        case .heartRate: return String(localized: "Heart Rate")
+        case .correctedElevation: return String(localized: "Elevation")
         }
     }
 
@@ -25,9 +25,9 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
     public var relativeScaleCaption: String {
         switch self {
         case .solid: return ""
-        case .pace: return "Relative pace within this workout"
-        case .heartRate: return "Relative heart rate within this workout"
-        case .correctedElevation: return "Corrected elevation within this workout"
+        case .pace: return String(localized: "Relative pace within this workout")
+        case .heartRate: return String(localized: "Relative heart rate within this workout")
+        case .correctedElevation: return String(localized: "Corrected elevation within this workout")
         }
     }
 }

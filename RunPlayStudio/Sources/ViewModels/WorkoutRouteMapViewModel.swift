@@ -28,6 +28,32 @@ struct WorkoutRouteMapCacheKey: Hashable, Sendable {
         self.policyVersion = policy.policyVersion
         self.profileVersion = Self.profileVersion
     }
+
+    /// Workout revision without color mode — used to cache availability.
+    var workoutRevision: WorkoutRouteMapWorkoutRevision {
+        WorkoutRouteMapWorkoutRevision(
+            workoutID: workoutID,
+            normalizationVersion: normalizationVersion,
+            analysisVersion: analysisVersion,
+            pointCount: pointCount,
+            firstPointID: firstPointID,
+            lastPointID: lastPointID,
+            policyVersion: policyVersion,
+            profileVersion: profileVersion
+        )
+    }
+}
+
+/// Identifies a workout analysis revision for availability caching.
+struct WorkoutRouteMapWorkoutRevision: Hashable, Sendable {
+    let workoutID: UUID
+    let normalizationVersion: Int
+    let analysisVersion: Int
+    let pointCount: Int
+    let firstPointID: UUID?
+    let lastPointID: UUID?
+    let policyVersion: Int
+    let profileVersion: Int
 }
 
 /// Snapshot of map lines + legend ready for presentation.
@@ -67,6 +93,9 @@ final class WorkoutRouteMapViewModel {
     private var buildTask: Task<Void, Never>?
     private var requestSerial = 0
     private var cache: [WorkoutRouteMapCacheKey: WorkoutRouteMapPresentation] = [:]
+    /// Availability is independent of preferred mode — cache per workout revision
+    /// so mode switches do not rebuild three metric profiles every time.
+    private var availabilityCache: [WorkoutRouteMapWorkoutRevision: RouteMetricModeAvailability] = [:]
     private let policy = RouteMetricColorPolicy.runningDefault
     private let maxCacheEntries = 12
 
@@ -95,6 +124,7 @@ final class WorkoutRouteMapViewModel {
             if workout == nil {
                 presentation = nil
                 availability = .init(pace: false, heartRate: false, correctedElevation: false)
+                availabilityCache.removeAll()
             }
         }
         scheduleRebuild()
@@ -121,6 +151,7 @@ final class WorkoutRouteMapViewModel {
         if let cached = cache[key] {
             presentation = cached
             availability = cached.availability
+            availabilityCache[key.workoutRevision] = cached.availability
             isBuilding = false
             return
         }
@@ -135,6 +166,7 @@ final class WorkoutRouteMapViewModel {
         let policySnapshot = policy
         let profileBuilder = self.profileBuilder
         let lineBuilder = self.lineBuilder
+        let cachedAvailability = availabilityCache[key.workoutRevision]
 
         buildTask = Task.detached(priority: .userInitiated) { [weak self] in
             let result: Result<WorkoutRouteMapPresentation, Error>
@@ -146,6 +178,7 @@ final class WorkoutRouteMapViewModel {
                     policy: policySnapshot,
                     profileBuilder: profileBuilder,
                     lineBuilder: lineBuilder,
+                    knownAvailability: cachedAvailability,
                     isCancelled: { Task.isCancelled }
                 )
                 result = .success(built)
@@ -160,6 +193,7 @@ final class WorkoutRouteMapViewModel {
                 switch result {
                 case .success(let presentation):
                     self.cache[presentation.key] = presentation
+                    self.availabilityCache[presentation.key.workoutRevision] = presentation.availability
                     self.trimCache()
                     self.presentation = presentation
                     self.availability = presentation.availability
@@ -183,7 +217,7 @@ final class WorkoutRouteMapViewModel {
                             profile: nil,
                             availability: .init(pace: false, heartRate: false, correctedElevation: false),
                             effectiveMode: .solid,
-                            fallbackReason: "Unable to build metric route colors.",
+                            fallbackReason: String(localized: "Unable to build metric route colors."),
                             lineDiagnostics: nil
                         )
                         self.presentation = solid
@@ -201,16 +235,24 @@ final class WorkoutRouteMapViewModel {
         policy: RouteMetricColorPolicy,
         profileBuilder: RouteMetricProfileBuilding,
         lineBuilder: RouteMetricMapLineBuilding,
+        knownAvailability: RouteMetricModeAvailability?,
         isCancelled: @Sendable () -> Bool
     ) throws -> WorkoutRouteMapPresentation {
         if isCancelled() { throw CancellationError() }
 
-        let availability = try profileBuilder.availability(
-            routePoints: workout.routePoints,
-            context: context,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+        // Reuse cached availability when only the preferred mode changed so we
+        // do not rebuild pace + HR + elevation profiles on every menu selection.
+        let availability: RouteMetricModeAvailability
+        if let knownAvailability {
+            availability = knownAvailability
+        } else {
+            availability = try profileBuilder.availability(
+                routePoints: workout.routePoints,
+                context: context,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
 
         var effective = preferredMode
         var fallbackReason: String?
@@ -220,11 +262,11 @@ final class WorkoutRouteMapViewModel {
             case .solid:
                 break
             case .pace:
-                fallbackReason = "Pace coloring needs more valid active distance and time in this workout."
+                fallbackReason = String(localized: "Pace coloring needs more valid active distance and time in this workout.")
             case .heartRate:
-                fallbackReason = "Heart-rate coloring needs meaningful HR coverage in this workout."
+                fallbackReason = String(localized: "Heart-rate coloring needs meaningful HR coverage in this workout.")
             case .correctedElevation:
-                fallbackReason = "Elevation coloring needs meaningful corrected elevation in this workout."
+                fallbackReason = String(localized: "Elevation coloring needs meaningful corrected elevation in this workout.")
             }
             effective = .solid
         }
@@ -248,8 +290,6 @@ final class WorkoutRouteMapViewModel {
             isCancelled: isCancelled
         )
 
-        // Presentation key for the effective build uses preferred for cache
-        // identity (user preference), matching `key` above.
         return WorkoutRouteMapPresentation(
             key: key,
             lines: lineResult.lines,
@@ -269,6 +309,9 @@ final class WorkoutRouteMapViewModel {
                 break
             }
         }
+        // Keep availability cache aligned with remaining line cache revisions.
+        let liveRevisions = Set(cache.keys.map(\.workoutRevision))
+        availabilityCache = availabilityCache.filter { liveRevisions.contains($0.key) }
     }
 }
 

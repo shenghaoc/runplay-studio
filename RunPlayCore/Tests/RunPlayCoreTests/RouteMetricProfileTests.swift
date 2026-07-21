@@ -373,6 +373,16 @@ final class RouteMetricProfileTests: XCTestCase {
         XCTAssertEqual(onlyValid!, 400, accuracy: 0.01)
     }
 
+    func testWeightedQuantileRejectsNonFiniteQuantile() {
+        let samples: [DistanceWeightedStatistics.WeightedSample] = [
+            .init(value: 100, weight: 5),
+            .init(value: 200, weight: 5),
+        ]
+        XCTAssertNil(DistanceWeightedStatistics.weightedQuantile(samples, quantile: .nan))
+        XCTAssertNil(DistanceWeightedStatistics.weightedQuantile(samples, quantile: .infinity))
+        XCTAssertNil(DistanceWeightedStatistics.weightedQuantile(samples, quantile: -.infinity))
+    }
+
     func testOneValidIntervalScale() throws {
         // Only two points → one interval
         let start = Date(timeIntervalSince1970: 1_700_000_000)

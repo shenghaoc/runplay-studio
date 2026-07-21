@@ -68,7 +68,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
                     naturalLineCount: lines.count,
                     effectiveMinimumRunDistanceMeters: 0,
                     usedAdaptiveChunking: false,
-                    retainedSegmentCount: Set(lines.map { extractSegmentID($0.id) }).count,
+                    retainedSegmentCount: Set(routePoints.map(\.routeSegmentIndex)).count,
                     policyVersion: policy.policyVersion
                 )
             )
@@ -95,7 +95,8 @@ public struct RouteMetricMapLineBuilder: Sendable {
             )
         }
 
-        var buckets = try applyHysteresis(
+        // Apply hysteresis once; adaptive retries only re-chunk the same buckets.
+        let buckets = try applyHysteresis(
             intervals: profile.intervals,
             enabled: policy.enableBucketHysteresis,
             isCancelled: isCancelled
@@ -107,7 +108,6 @@ public struct RouteMetricMapLineBuilder: Sendable {
             buckets: buckets,
             mode: profile.mode,
             idPrefix: idPrefix,
-            minimumRunDistance: 0,
             isCancelled: isCancelled
         )
         let naturalCount = naturalRuns.count
@@ -123,12 +123,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
             usedAdaptive = true
             attempt += 1
             // Grow minimum run distance geometrically until under budget.
-            minRun = max(minRun * 1.6, minRun + 5, policy.preferredMinimumColorRunDistanceMeters)
-            buckets = try applyHysteresis(
-                intervals: profile.intervals,
-                enabled: policy.enableBucketHysteresis,
-                isCancelled: isCancelled
-            )
+            minRun = max(minRun * 1.6, max(minRun + 5, policy.preferredMinimumColorRunDistanceMeters))
             let chunkedBuckets = try chunkBuckets(
                 intervals: profile.intervals,
                 buckets: buckets,
@@ -141,7 +136,6 @@ public struct RouteMetricMapLineBuilder: Sendable {
                 buckets: chunkedBuckets,
                 mode: profile.mode,
                 idPrefix: idPrefix,
-                minimumRunDistance: 0,
                 isCancelled: isCancelled
             )
         }
@@ -163,7 +157,6 @@ public struct RouteMetricMapLineBuilder: Sendable {
                 buckets: chunkedBuckets,
                 mode: profile.mode,
                 idPrefix: idPrefix,
-                minimumRunDistance: 0,
                 isCancelled: isCancelled
             )
         }
@@ -308,7 +301,6 @@ public struct RouteMetricMapLineBuilder: Sendable {
         buckets: [RouteMetricColorBucket],
         mode: WorkoutRouteColorMode,
         idPrefix: String,
-        minimumRunDistance: Double,
         isCancelled: @Sendable () -> Bool
     ) throws -> [RouteMapLine] {
         guard !intervals.isEmpty else { return [] }
@@ -322,7 +314,6 @@ public struct RouteMetricMapLineBuilder: Sendable {
             let bucket = buckets[runStart]
             let segment = intervals[runStart].routeSegmentIndex
             var runEnd = runStart + 1
-            var runDistance = max(0, intervals[runStart].distanceMeters)
 
             while runEnd < intervals.count {
                 let next = intervals[runEnd]
@@ -330,11 +321,6 @@ public struct RouteMetricMapLineBuilder: Sendable {
                       buckets[runEnd] == bucket,
                       next.startPointIndex == intervals[runEnd - 1].endPointIndex
                 else { break }
-
-                // Optional minimum-distance merge of micro-runs with same bucket
-                // is already handled by equal-bucket adjacency.
-                runDistance += max(0, next.distanceMeters)
-                _ = minimumRunDistance
                 runEnd += 1
             }
 
@@ -392,9 +378,5 @@ public struct RouteMetricMapLineBuilder: Sendable {
 
     private func totalDistance(_ points: [RoutePoint]) -> Double {
         max(0, points.last?.distanceFromStartMeters ?? 0)
-    }
-
-    private func extractSegmentID(_ id: String) -> String {
-        id
     }
 }
