@@ -40,6 +40,10 @@ Scales use distance-weighted 10th / median / 90th quantiles.
 2. Hysteresis merges isolated one-interval flicker.
 3. If line count > policy maximum, grow minimum chunk distance and assign
    distance-weighted median buckets per chunk (never drop segments or bridge gaps).
+4. If alternating no-data still exceeds the budget, collapse each continuous
+   segment conservatively: any positive-distance gap makes that segment no-data;
+   otherwise use its distance-weighted median bucket. The number of continuous
+   route segments is the unavoidable lower bound because gaps are never bridged.
 
 ## UI
 

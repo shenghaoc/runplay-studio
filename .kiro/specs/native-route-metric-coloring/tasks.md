@@ -6,6 +6,6 @@
 - [x] Studio view model, map control, legend, Overview wiring
 - [x] Core / Platform / Studio tests
 - [x] Kiro spec + documentation
-- [ ] Full package validation and draft PR
+- [x] Full package validation and draft PR
 
 Checked boxes are task tracking only — tests and CI prove completion.
