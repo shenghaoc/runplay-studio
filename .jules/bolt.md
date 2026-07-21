@@ -49,3 +49,7 @@
 ## 2026-07-20 - Concurrency Safety for DateFormatters Arrays in Swift 6
 **Learning:** `DateFormatter` does not conform to `Sendable`. However, when you create an array of them (`[DateFormatter]`), Swift 6 (in some toolchains) infers the array container itself as `Sendable` in certain static let contexts, resulting in an error if you apply `nonisolated(unsafe)` to the array (`'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type '[DateFormatter]'`).
 **Action:** When caching `DateFormatter` in an array as a static constant, do not apply `nonisolated(unsafe)` to the array if the compiler emits an unnecessary modifier error. Apply it only to the individual non-array formatters.
+
+## 2026-07-20 - DateFormatter Initialization Overhead in SwiftUI Render Logic
+**Learning:** `DateFormatter` was being instantiated inside `dateText(_ date: Date?)` in `StravaArchiveImportView`, which is used heavily in `candidateTable` rendering (calling `dateText` per candidate row). Given that the table could display many hundreds of candidates in large archives, these inline instantiations created severe memory allocation and deallocation overhead per row rendering pass.
+**Action:** Always replace inline `DateFormatter` instantiations in frequently accessed view helper logic with `nonisolated(unsafe) private static let` cached instances to guarantee a single-time configuration while adhering to Swift 6 strict concurrency checks.
