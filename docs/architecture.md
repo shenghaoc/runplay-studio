@@ -92,6 +92,20 @@ exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
 
+### Native route metric coloring
+
+Single-workout Apple Maps routes can be colored by Solid, Pace, Heart Rate, or
+Corrected Elevation. `RouteMetricProfileBuilder` (Core) is the only source of
+interval metrics, distance-weighted relative scales, and palette-independent
+buckets. `RouteMetricMapLineBuilder` (Platform) coalesces buckets into a bounded
+set of `RouteMapLine`s. Studio’s `WorkoutRouteMapViewModel` caches results off
+the main actor and does not rebuild on replay ticks.
+
+Comparison maps keep primary blue / comparison orange identity. The personal
+heatmap retains its own density palette. Missing HR is neutral no-data, not a
+median fill. Elevation uses `WorkoutAnalysisContext.elevationProfile` only.
+Preference storage is UI-only (`@AppStorage`); no workout migration.
+
 ### WorkoutImporting Protocol
 
 All importers conform to `WorkoutImporting`:

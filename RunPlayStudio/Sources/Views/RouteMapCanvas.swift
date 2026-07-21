@@ -6,8 +6,23 @@ import SwiftUI
 private extension RouteMapLineStyle {
     var swiftUIColor: Color {
         switch self {
-        case .primary: return .blue
-        case .comparison: return .orange
+        case .primary:
+            return AppDesign.primaryBlue
+        case .comparison:
+            return AppDesign.comparisonOrange
+        case .metric(let mode, let bucket):
+            return AppDesign.RouteMetric.color(mode: mode, bucket: bucket)
+        }
+    }
+
+    var lineWidth: CGFloat {
+        switch self {
+        case .primary, .comparison:
+            return 4
+        case .metric(_, .noData):
+            return 3.5
+        case .metric:
+            return 4
         }
     }
 }
@@ -72,7 +87,7 @@ struct RouteMapCanvas: View {
             ForEach(routes) { route in
                 if route.coordinates.count >= 2 {
                     MapPolyline(coordinates: route.coordinates.map(\.mapKitCoordinate))
-                        .stroke(route.style.swiftUIColor, lineWidth: 4)
+                        .stroke(route.style.swiftUIColor, lineWidth: route.style.lineWidth)
                 }
             }
 
@@ -125,14 +140,37 @@ struct RouteMapCanvas: View {
             }
             fitContent(animated: false)
         }
-        .onChange(of: routes) { _, _ in
-            fitContent(animated: false)
+        .onChange(of: routes) { oldRoutes, newRoutes in
+            // Metric color swaps change line count/styles but not overall bounds.
+            // Only re-fit when the geographic envelope changes (new workout / gap layout).
+            let oldRect = RouteMapContent.mapRect(routes: oldRoutes, areas: areas)
+            let newRect = RouteMapContent.mapRect(routes: newRoutes, areas: areas)
+            if shouldRefit(from: oldRect, to: newRect) {
+                fitContent(animated: false)
+            }
         }
         .onChange(of: areas) { _, _ in
             fitContent(animated: false)
         }
         .onChange(of: fitRequest) { _, _ in
             fitContent(animated: true)
+        }
+    }
+
+    private func shouldRefit(from oldRect: MKMapRect?, to newRect: MKMapRect?) -> Bool {
+        switch (oldRect, newRect) {
+        case (nil, nil):
+            return false
+        case (nil, _), (_, nil):
+            return true
+        case let (old?, new?):
+            if old.isNull || new.isNull { return true }
+            // Relative change in center or size beyond a small tolerance.
+            let cx = abs(old.midX - new.midX) / max(old.width, 1)
+            let cy = abs(old.midY - new.midY) / max(old.height, 1)
+            let dw = abs(old.width - new.width) / max(old.width, 1)
+            let dh = abs(old.height - new.height) / max(old.height, 1)
+            return cx > 0.02 || cy > 0.02 || dw > 0.02 || dh > 0.02
         }
     }
 

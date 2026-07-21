@@ -172,6 +172,7 @@ Native workspace background, hero icon in a material circle, and a reduced-motio
 - **Do** use Run Blue (#0A84FF) exclusively for the primary route and primary actions — its rarity on screen makes it meaningful.
 - **Do** use monospaced digits on all metric values so numbers align for scannable comparison.
 - **Do** use semantic metric colors consistently: distance=blue, pace=sky, speed=orange, elevation=green, heart rate=red, cadence=purple.
+- **Do** keep single-workout route metric palettes sequential and relative to the workout; never imply personalised HR zones. Comparison remains blue/orange; heatmap density colors stay separate.
 - **Do** use native adaptive surfaces and restrained semantic tints for separation — never decorative shadows.
 - **Do** keep the map as the dominant visual element. Metrics support the map, not the reverse.
 - **Do** prefer native SwiftUI components and SF Symbols over custom-drawn equivalents.

@@ -7,6 +7,29 @@ Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
 checklist below; unchecked items have not been manually verified.
 
+## Native Route Metric Coloring Checklist
+
+Use only synthetic or approved repository fixtures. Do not claim scenarios that
+were not performed. Metric modes are **relative to the selected workout** —
+not personalized HR zones or grade-adjusted pace.
+
+- [ ] Launch a workout with pace, HR, and elevation data.
+- [ ] Confirm Solid is the default (or the persisted `@AppStorage` preference).
+- [ ] Switch to Pace; faster/slower sections are visibly distinct.
+- [ ] Confirm the legend shows relative pace within this workout with numeric ends.
+- [ ] Switch to Heart Rate; higher/lower areas appear; missing HR is neutral no-data.
+- [ ] Switch to Elevation; coloring follows corrected elevation, not raw spikes.
+- [ ] Toggle 2D and 3D in every mode; route remains consistent.
+- [ ] Replay the workout; the yellow marker stays responsive and is not recolored.
+- [ ] Switch color mode during playback; map does not blank; replay continues.
+- [ ] Open a workout without HR; Heart Rate is disabled or falls back with help.
+- [ ] Open a multi-segment workout; no line bridges a recording gap.
+- [ ] Open comparison; primary stays blue, comparison stays orange (no metric leak).
+- [ ] Open Personal Heatmap; density palette and controls are unchanged.
+- [ ] Inspect keyboard focus and VoiceOver labels on Route Color and legend.
+- [ ] Toggle light/dark appearance; metric colors remain legible over the basemap.
+- [ ] Quit/relaunch; route-color preference is restored.
+
 ## Personal Heatmap Checklist
 
 Use only synthetic or explicitly private, ignored local workout files. Do not

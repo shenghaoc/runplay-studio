@@ -23,6 +23,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 ## Highlights
 
 - **Apple Maps 2D/3D replay** — One route map with a native pitch toggle and synchronized timeline controls
+- **Route metric coloring** — Color the single-workout map by solid, relative pace, relative heart rate, or corrected elevation (not HR zones; comparison and heatmap palettes stay separate)
 - **Personal heatmap** — Local density map of places you run most often across the workout library (distinct workouts per cell, not GPS sample density)
 - **Synchronized views** — Map and charts stay in sync with the timeline
 - **Route comparison** — Elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay

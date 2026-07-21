@@ -587,6 +587,22 @@ or before `currentTime` remains selected until the exact resume timestamp.
 `SelectedMetrics` exposes elapsed time, active time, distance, point metrics,
 and `isInRecordingGap`; active time and distance hold while elapsed advances.
 
+## Route metric coloring (derived presentation)
+
+Native map metric coloring is presentation state, not part of the persisted
+workout snapshot. Core types include:
+
+- `WorkoutRouteColorMode` — `solid` | `pace` | `heartRate` | `correctedElevation`
+- `RouteMetricColorPolicy` — validity ranges, quantiles, bucket count, line budget
+- `RouteMetricInterval` / `RouteMetricScale` / `RouteMetricProfile`
+- `RouteMetricColorBucket` — `.noData` or `.level(Int)` (no RGB in Core)
+
+Scales are **relative to the selected workout** (distance-weighted quantiles).
+Pace uses active time. Elevation uses corrected profile samples. Missing HR is
+nil/no-data, never median-filled. Platform maps buckets to `RouteMapLineStyle.metric`
+and coalesces into a bounded line set. UI preference may use `@AppStorage`; no
+analysis, normalization, or manifest version bump.
+
 ## Personal heatmap (derived, not persisted)
 
 Heatmap aggregation is library-level and **not** part of the persisted

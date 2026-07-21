@@ -11,6 +11,8 @@ struct WorkoutDetailView: View {
     @ObservedObject private var replayController: ReplayController
 
     @State private var selectedTab: ViewTab = .overview
+    /// Owns metric route map lines; must not rebuild on replay ticks.
+    @State private var routeMapViewModel = WorkoutRouteMapViewModel()
 
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
@@ -59,6 +61,28 @@ struct WorkoutDetailView: View {
                 .ignoresSafeArea()
         }
         .focusedSceneValue(\.workoutTabSelection, $selectedTab)
+        .onAppear {
+            refreshRouteMapModel()
+        }
+        .onChange(of: workout.id) { _, _ in
+            refreshRouteMapModel()
+        }
+        .onChange(of: workout.routePoints.count) { _, _ in
+            refreshRouteMapModel()
+        }
+        .onChange(of: workout.normalizationVersion) { _, _ in
+            refreshRouteMapModel()
+        }
+        .onDisappear {
+            routeMapViewModel.cancel()
+        }
+    }
+
+    private func refreshRouteMapModel() {
+        routeMapViewModel.update(
+            workout: workout,
+            analysisContext: appState.analysisContext(for: workout)
+        )
     }
 
     // MARK: - GPS Warning Banner
@@ -104,7 +128,8 @@ struct WorkoutDetailView: View {
         case .overview:
             OverviewView(
                 workout: workout,
-                currentPointIndex: replayController.state.currentPointIndex
+                currentPointIndex: replayController.state.currentPointIndex,
+                mapViewModel: routeMapViewModel
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
