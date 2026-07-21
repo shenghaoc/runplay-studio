@@ -160,6 +160,66 @@ final class RouteMetricMapLineBuilderTests: XCTestCase {
         XCTAssertLessThanOrEqual(result.lines.count, policy.maximumStyledLineCount)
     }
 
+    func testAlternatingNoDataStillRespectsLineBudget() throws {
+        let points = makeConstantPacePoints(count: 240)
+        let intervals = points.indices.dropLast().map { index in
+            let bucket: RouteMetricColorBucket = index.isMultiple(of: 2)
+                ? .noData
+                : .level(index % 7)
+            return RouteMetricInterval(
+                startPointIndex: index,
+                endPointIndex: index + 1,
+                routeSegmentIndex: 0,
+                startDistanceMeters: points[index].distanceFromStartMeters,
+                endDistanceMeters: points[index + 1].distanceFromStartMeters,
+                metricValue: bucket == .noData ? nil : 150,
+                normalizedValue: bucket == .noData ? nil : 0.5,
+                bucket: bucket
+            )
+        }
+        let profile = RouteMetricProfile(
+            mode: .heartRate,
+            intervals: intervals,
+            scale: RouteMetricScale(
+                lowerBound: 120,
+                median: 150,
+                upperBound: 180,
+                lowerLabel: "120 bpm",
+                medianLabel: "150 bpm",
+                upperLabel: "180 bpm",
+                direction: .higherIsMore
+            ),
+            validCoverageDistanceMeters: points.last?.distanceFromStartMeters ?? 0,
+            totalRouteDistanceMeters: points.last?.distanceFromStartMeters ?? 0,
+            diagnostics: RouteMetricDiagnostics(
+                intervalCount: intervals.count,
+                validIntervalCount: intervals.count / 2,
+                noDataIntervalCount: intervals.count - intervals.count / 2,
+                validCoverageFraction: 0.5,
+                bucketCount: 7,
+                policyVersion: 1
+            )
+        )
+        let policy = RouteMetricColorPolicy(
+            maximumStyledLineCount: 8,
+            preferredMinimumColorRunDistanceMeters: 1
+        )
+
+        let result = try lineBuilder.build(
+            routePoints: points,
+            profile: profile,
+            idPrefix: "r",
+            policy: policy
+        )
+
+        XCTAssertLessThanOrEqual(result.lines.count, policy.maximumStyledLineCount)
+        XCTAssertTrue(result.diagnostics.usedAdaptiveChunking)
+        XCTAssertTrue(result.lines.allSatisfy {
+            if case .metric(.heartRate, .noData) = $0.style { return true }
+            return false
+        })
+    }
+
     func testAdaptiveChunkingRetainsSegments() throws {
         // Highly alternating pace to force many natural runs.
         var points: [RoutePoint] = []

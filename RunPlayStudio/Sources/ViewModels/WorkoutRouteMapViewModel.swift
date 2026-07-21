@@ -120,10 +120,11 @@ final class WorkoutRouteMapViewModel {
         self.analysisContext = analysisContext
 
         if workout?.id != previousID {
-            // Keep prior presentation only while the same workout is refreshing.
+            // Never show one workout's route with another workout's markers.
+            // Prior presentation is retained only for same-workout refreshes.
+            presentation = nil
+            availability = .init(pace: false, heartRate: false, correctedElevation: false)
             if workout == nil {
-                presentation = nil
-                availability = .init(pace: false, heartRate: false, correctedElevation: false)
                 availabilityCache.removeAll()
             }
         }
@@ -133,6 +134,7 @@ final class WorkoutRouteMapViewModel {
     func cancel() {
         buildTask?.cancel()
         buildTask = nil
+        requestSerial &+= 1
         isBuilding = false
     }
 
@@ -140,6 +142,10 @@ final class WorkoutRouteMapViewModel {
 
     private func scheduleRebuild() {
         buildTask?.cancel()
+        buildTask = nil
+        // Invalidate a completed detached result that may already be queued to
+        // publish on the main actor, including nil updates and cache hits.
+        requestSerial &+= 1
         guard let workout, let analysisContext else {
             presentation = nil
             isBuilding = false
@@ -156,7 +162,6 @@ final class WorkoutRouteMapViewModel {
             return
         }
 
-        requestSerial += 1
         let serial = requestSerial
         isBuilding = true
 

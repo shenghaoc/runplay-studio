@@ -161,6 +161,30 @@ public struct RouteMetricMapLineBuilder: Sendable {
             )
         }
 
+        // Alternating valid/no-data intervals cannot be reduced by ordinary
+        // chunking without either fabricating metric data or exceeding the
+        // budget. As a conservative final fallback, collapse each continuous
+        // segment run to one bucket and choose no-data when any positive-
+        // distance gap is present. This may show less colour, but never paints
+        // missing data as valid and retains every segment without bridging.
+        if lines.count > policy.maximumStyledLineCount {
+            usedAdaptive = true
+            let collapsedBuckets = try collapseContinuousSegmentBuckets(
+                intervals: profile.intervals,
+                buckets: buckets,
+                isCancelled: isCancelled
+            )
+            minRun = max(minRun, totalDistance(routePoints))
+            lines = try coalesceRuns(
+                routePoints: routePoints,
+                intervals: profile.intervals,
+                buckets: collapsedBuckets,
+                mode: profile.mode,
+                idPrefix: idPrefix,
+                isCancelled: isCancelled
+            )
+        }
+
         let segmentCount = Set(profile.intervals.map(\.routeSegmentIndex)).count
         return RouteMetricMapLineBuildResult(
             lines: lines,
@@ -294,6 +318,56 @@ public struct RouteMetricMapLineBuilder: Sendable {
     }
 
     // MARK: - Coalesce
+
+    private func collapseContinuousSegmentBuckets(
+        intervals: [RouteMetricInterval],
+        buckets: [RouteMetricColorBucket],
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [RouteMetricColorBucket] {
+        var result = buckets
+        var runStart = 0
+
+        while runStart < intervals.count {
+            if runStart % 256 == 0, isCancelled() { throw CancellationError() }
+
+            let segment = intervals[runStart].routeSegmentIndex
+            var runEnd = runStart + 1
+            while runEnd < intervals.count,
+                  intervals[runEnd].routeSegmentIndex == segment,
+                  intervals[runEnd].startPointIndex == intervals[runEnd - 1].endPointIndex {
+                runEnd += 1
+            }
+
+            var hasPositiveDistanceNoData = false
+            var weightedLevels: [(bucket: Int, weight: Double)] = []
+            weightedLevels.reserveCapacity(runEnd - runStart)
+            for index in runStart..<runEnd {
+                let weight = max(0, intervals[index].distanceMeters)
+                switch buckets[index] {
+                case .noData:
+                    if weight > 0 { hasPositiveDistanceNoData = true }
+                case .level(let level):
+                    weightedLevels.append((bucket: level, weight: weight))
+                }
+            }
+
+            let representative: RouteMetricColorBucket
+            if hasPositiveDistanceNoData || weightedLevels.isEmpty {
+                representative = .noData
+            } else if let median = DistanceWeightedStatistics.weightedMedianBucket(values: weightedLevels) {
+                representative = .level(median)
+            } else {
+                representative = buckets[runStart]
+            }
+
+            for index in runStart..<runEnd {
+                result[index] = representative
+            }
+            runStart = runEnd
+        }
+
+        return result
+    }
 
     private func coalesceRuns(
         routePoints: [RoutePoint],

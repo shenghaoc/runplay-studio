@@ -73,6 +73,9 @@ struct WorkoutDetailView: View {
         .onChange(of: workout.normalizationVersion) { _, _ in
             refreshRouteMapModel()
         }
+        .onChange(of: workout.analysisVersion) { _, _ in
+            refreshRouteMapModel()
+        }
         .onDisappear {
             routeMapViewModel.cancel()
         }

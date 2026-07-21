@@ -353,6 +353,41 @@ final class RouteMetricProfileTests: XCTestCase {
         }
     }
 
+    func testElevationBelowMinimumScaleSpanIsUnavailable() throws {
+        var points = makePoints(pointCount: 20, paceSecondsPerKm: 300)
+        for index in points.indices {
+            points[index] = RoutePoint(
+                id: points[index].id,
+                timestamp: points[index].timestamp,
+                latitude: points[index].latitude,
+                longitude: points[index].longitude,
+                altitudeMeters: 50 + Double(index) * 0.01,
+                distanceFromStartMeters: points[index].distanceFromStartMeters,
+                elapsedSeconds: points[index].elapsedSeconds,
+                routeSegmentIndex: points[index].routeSegmentIndex
+            )
+        }
+        let workout = RunWorkout(routePoints: points)
+        let context = WorkoutAnalysisContext(workout: workout)
+        let strictPolicy = RouteMetricColorPolicy(minimumElevationSpanMeters: 5)
+
+        let profile = try builder.build(
+            workout: workout,
+            context: context,
+            mode: .correctedElevation,
+            policy: strictPolicy
+        )
+        let availability = try builder.availability(
+            routePoints: points,
+            context: context,
+            policy: strictPolicy
+        )
+
+        XCTAssertNil(profile.scale)
+        XCTAssertFalse(availability.correctedElevation)
+        XCTAssertTrue(profile.intervals.allSatisfy { $0.bucket == .noData })
+    }
+
     // MARK: - Statistics & buckets
 
     func testWeightedQuantilesIgnoreZeroDistance() {
@@ -381,6 +416,22 @@ final class RouteMetricProfileTests: XCTestCase {
         XCTAssertNil(DistanceWeightedStatistics.weightedQuantile(samples, quantile: .nan))
         XCTAssertNil(DistanceWeightedStatistics.weightedQuantile(samples, quantile: .infinity))
         XCTAssertNil(DistanceWeightedStatistics.weightedQuantile(samples, quantile: -.infinity))
+    }
+
+    func testWeightedQuantileAvoidsFiniteWeightOverflow() {
+        let samples: [DistanceWeightedStatistics.WeightedSample] = [
+            .init(value: 100, weight: .greatestFiniteMagnitude),
+            .init(value: 200, weight: .greatestFiniteMagnitude),
+        ]
+
+        XCTAssertEqual(
+            DistanceWeightedStatistics.weightedQuantile(samples, quantile: 0.5),
+            100
+        )
+        XCTAssertEqual(
+            DistanceWeightedStatistics.weightedQuantile(samples, quantile: 0.9),
+            200
+        )
     }
 
     func testOneValidIntervalScale() throws {

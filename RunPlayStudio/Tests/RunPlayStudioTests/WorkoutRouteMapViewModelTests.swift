@@ -112,11 +112,90 @@ final class WorkoutRouteMapViewModelTests: XCTestCase {
         _ = try await waitForPresentation(vm, mode: .pace)
 
         vm.update(workout: b, analysisContext: WorkoutAnalysisContext(workout: b))
+        XCTAssertNil(vm.presentation, "A new workout must not retain the previous route while building")
         let second = try await waitForPresentation(vm, mode: .pace)
         XCTAssertEqual(second.key.workoutID, b.id)
     }
 
+    func testCancelledBuildCannotPublishQueuedResult() async throws {
+        let workout = makeWorkout(pointCount: 40, withHR: true, withAltitude: true)
+        let vm = WorkoutRouteMapViewModel(
+            profileBuilder: CancellationIgnoringProfileBuilder(delay: 0.08),
+            lineBuilder: CancellationIgnoringLineBuilder(delay: 0.08)
+        )
+        vm.preferredMode = .pace
+        vm.update(workout: workout, analysisContext: WorkoutAnalysisContext(workout: workout))
+
+        // Let the detached task enter the injected synchronous builder before
+        // cancellation so this exercises serial suppression, not just Task state.
+        try await Task.sleep(nanoseconds: 20_000_000)
+        vm.cancel()
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertNil(vm.presentation)
+        XCTAssertFalse(vm.isBuilding)
+    }
+
     // MARK: - Helpers
+
+    private struct CancellationIgnoringProfileBuilder: RouteMetricProfileBuilding {
+        let delay: TimeInterval
+        private let builder = RouteMetricProfileBuilder()
+
+        func build(
+            routePoints: [RoutePoint],
+            context: WorkoutAnalysisContext,
+            mode: WorkoutRouteColorMode,
+            policy: RouteMetricColorPolicy,
+            isCancelled: @Sendable () -> Bool
+        ) throws -> RouteMetricProfile {
+            Thread.sleep(forTimeInterval: delay)
+            return try builder.build(
+                routePoints: routePoints,
+                context: context,
+                mode: mode,
+                policy: policy,
+                isCancelled: { false }
+            )
+        }
+
+        func availability(
+            routePoints: [RoutePoint],
+            context: WorkoutAnalysisContext,
+            policy: RouteMetricColorPolicy,
+            isCancelled: @Sendable () -> Bool
+        ) throws -> RouteMetricModeAvailability {
+            Thread.sleep(forTimeInterval: delay)
+            return try builder.availability(
+                routePoints: routePoints,
+                context: context,
+                policy: policy,
+                isCancelled: { false }
+            )
+        }
+    }
+
+    private struct CancellationIgnoringLineBuilder: RouteMetricMapLineBuilding {
+        let delay: TimeInterval
+        private let builder = RouteMetricMapLineBuilder()
+
+        func build(
+            routePoints: [RoutePoint],
+            profile: RouteMetricProfile,
+            idPrefix: String,
+            policy: RouteMetricColorPolicy,
+            isCancelled: @Sendable () -> Bool
+        ) throws -> RouteMetricMapLineBuildResult {
+            Thread.sleep(forTimeInterval: delay)
+            return try builder.build(
+                routePoints: routePoints,
+                profile: profile,
+                idPrefix: idPrefix,
+                policy: policy,
+                isCancelled: { false }
+            )
+        }
+    }
 
     private func waitForPresentation(
         _ vm: WorkoutRouteMapViewModel,

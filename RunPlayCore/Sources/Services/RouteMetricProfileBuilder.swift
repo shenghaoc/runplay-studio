@@ -249,6 +249,11 @@ public struct RouteMetricProfileBuilder: Sendable {
         isCancelled: @Sendable () -> Bool
     ) throws -> RouteMetricProfile {
         let elevation = context.elevationProfile
+        var elevationSamplesByPointID: [UUID: ElevationProfileSample] = [:]
+        elevationSamplesByPointID.reserveCapacity(elevation.samples.count)
+        for sample in elevation.samples {
+            elevationSamplesByPointID[sample.routePointID] = sample
+        }
         let raw = try rawIntervals(
             routePoints: routePoints,
             isCancelled: isCancelled
@@ -256,12 +261,14 @@ public struct RouteMetricProfileBuilder: Sendable {
             guard let e1 = correctedAltitude(
                 at: startIndex,
                 point: start,
-                profile: elevation
+                profile: elevation,
+                samplesByPointID: elevationSamplesByPointID
             ),
             let e2 = correctedAltitude(
                 at: endIndex,
                 point: end,
-                profile: elevation
+                profile: elevation,
+                samplesByPointID: elevationSamplesByPointID
             ) else {
                 return nil
             }
@@ -279,6 +286,7 @@ public struct RouteMetricProfileBuilder: Sendable {
             smoothedValues: values,
             direction: .higherIsMore,
             policy: policy,
+            minimumScaleSpan: policy.minimumElevationSpanMeters,
             formatLower: { DisplayFormatter.formatElevation($0) },
             formatMedian: { DisplayFormatter.formatElevation($0) },
             formatUpper: { DisplayFormatter.formatElevation($0) },
@@ -380,44 +388,75 @@ public struct RouteMetricProfileBuilder: Sendable {
                     validEnd += 1
                 }
 
-                // Sliding two-pointer window over [validStart, validEnd).
-                var left = validStart
-                var right = validStart
-                for i in validStart..<validEnd {
-                    if i % 1024 == 0, isCancelled() { throw CancellationError() }
+                // Prefix sums make each triangular-window evaluation O(1)
+                // after the two pointers advance. This remains linear even
+                // when thousands of samples share nearly the same distance.
+                let count = validEnd - validStart
+                let distanceOrigin = midpoint(of: intervals[validStart])
+                var distances = Array(repeating: 0.0, count: count)
+                var values = Array(repeating: 0.0, count: count)
+                var prefixDistance = Array(repeating: 0.0, count: count + 1)
+                var prefixValue = Array(repeating: 0.0, count: count + 1)
+                var prefixValueDistance = Array(repeating: 0.0, count: count + 1)
 
-                    guard let centerValue = rawValues[i] else {
-                        output[i] = nil
-                        continue
-                    }
-                    let centerDistance = midpoint(of: intervals[i])
+                for offset in 0..<count {
+                    let sourceIndex = validStart + offset
+                    let distance = midpoint(of: intervals[sourceIndex]) - distanceOrigin
+                    let value = rawValues[sourceIndex] ?? 0
+                    distances[offset] = distance
+                    values[offset] = value
+                    prefixDistance[offset + 1] = prefixDistance[offset] + distance
+                    prefixValue[offset + 1] = prefixValue[offset] + value
+                    prefixValueDistance[offset + 1] = prefixValueDistance[offset] + value * distance
+                }
+
+                var left = 0
+                var right = 0
+                for offset in 0..<count {
+                    let outputIndex = validStart + offset
+                    if outputIndex % 1024 == 0, isCancelled() { throw CancellationError() }
+
+                    let centerValue = values[offset]
+                    let centerDistance = distances[offset]
                     let windowLow = centerDistance - halfWindowMeters
                     let windowHigh = centerDistance + halfWindowMeters
 
-                    while left < i, midpoint(of: intervals[left]) < windowLow {
+                    while left < offset, distances[left] < windowLow {
                         left += 1
                     }
-                    if right < i { right = i }
-                    while right + 1 < validEnd, midpoint(of: intervals[right + 1]) <= windowHigh {
+                    if right < offset { right = offset }
+                    while right + 1 < count, distances[right + 1] <= windowHigh {
                         right += 1
                     }
 
-                    var sum = 0.0
-                    var weight = 0.0
-                    for j in left...right {
-                        guard let value = rawValues[j] else { continue }
-                        let d = midpoint(of: intervals[j])
-                        let delta = abs(d - centerDistance)
-                        guard delta <= halfWindowMeters else { continue }
-                        let w = 1.0 - (delta / max(halfWindowMeters, Double.leastNonzeroMagnitude))
-                        sum += value * w
-                        weight += w
+                    let inverseWindow = 1.0 / max(halfWindowMeters, Double.leastNonzeroMagnitude)
+                    let leftEnd = offset + 1
+                    let leftCount = Double(leftEnd - left)
+                    let leftDistance = prefixDistance[leftEnd] - prefixDistance[left]
+                    let leftValue = prefixValue[leftEnd] - prefixValue[left]
+                    let leftValueDistance = prefixValueDistance[leftEnd] - prefixValueDistance[left]
+                    var sum = (1 - centerDistance * inverseWindow) * leftValue
+                        + inverseWindow * leftValueDistance
+                    var weight = (1 - centerDistance * inverseWindow) * leftCount
+                        + inverseWindow * leftDistance
+
+                    if right > offset {
+                        let rightStart = offset + 1
+                        let rightEnd = right + 1
+                        let rightCount = Double(rightEnd - rightStart)
+                        let rightDistance = prefixDistance[rightEnd] - prefixDistance[rightStart]
+                        let rightValue = prefixValue[rightEnd] - prefixValue[rightStart]
+                        let rightValueDistance = prefixValueDistance[rightEnd] - prefixValueDistance[rightStart]
+                        sum += (1 + centerDistance * inverseWindow) * rightValue
+                            - inverseWindow * rightValueDistance
+                        weight += (1 + centerDistance * inverseWindow) * rightCount
+                            - inverseWindow * rightDistance
                     }
 
-                    if weight > 0 {
-                        output[i] = sum / weight
+                    if weight > 1e-12, sum.isFinite {
+                        output[outputIndex] = sum / weight
                     } else {
-                        output[i] = centerValue
+                        output[outputIndex] = centerValue
                     }
                 }
 
@@ -441,6 +480,7 @@ public struct RouteMetricProfileBuilder: Sendable {
         smoothedValues: [Double?],
         direction: RouteMetricScaleDirection,
         policy: RouteMetricColorPolicy,
+        minimumScaleSpan: Double = 0,
         formatLower: (Double) -> String,
         formatMedian: (Double) -> String,
         formatUpper: (Double) -> String,
@@ -466,7 +506,8 @@ public struct RouteMetricProfileBuilder: Sendable {
         if validCount >= policy.minimumValidIntervalCount,
            let lower = DistanceWeightedStatistics.weightedQuantile(samples, quantile: policy.lowerQuantile),
            let median = DistanceWeightedStatistics.weightedMedian(samples),
-           let upper = DistanceWeightedStatistics.weightedQuantile(samples, quantile: policy.upperQuantile) {
+           let upper = DistanceWeightedStatistics.weightedQuantile(samples, quantile: policy.upperQuantile),
+           abs(upper - lower) + 1e-12 >= max(0, minimumScaleSpan) {
             // Equal bounds remain safe; normalization maps everything to 0.5.
             scale = RouteMetricScale(
                 lowerBound: lower,
@@ -575,10 +616,28 @@ public struct RouteMetricProfileBuilder: Sendable {
     private func correctedAltitude(
         at index: Int,
         point: RoutePoint,
-        profile: ElevationProfile
+        profile: ElevationProfile,
+        samplesByPointID: [UUID: ElevationProfileSample]
     ) -> Double? {
-        guard profile.samples.indices.contains(index) else { return nil }
-        let sample = profile.samples[index]
+        if profile.samples.indices.contains(index),
+           let altitude = alignedCorrectedAltitude(
+               sample: profile.samples[index],
+               point: point
+           ) {
+            return altitude
+        }
+
+        // Legacy SceneKit projection can filter invalid coordinates, leaving
+        // compact scene points whose source indices no longer match the
+        // elevation profile array. Fall back to identity-based alignment.
+        guard let sample = samplesByPointID[point.id] else { return nil }
+        return alignedCorrectedAltitude(sample: sample, point: point)
+    }
+
+    private func alignedCorrectedAltitude(
+        sample: ElevationProfileSample,
+        point: RoutePoint
+    ) -> Double? {
         guard sample.routePointID == point.id,
               sample.distanceFromStartMeters == point.distanceFromStartMeters,
               sample.routeSegmentIndex == point.routeSegmentIndex,

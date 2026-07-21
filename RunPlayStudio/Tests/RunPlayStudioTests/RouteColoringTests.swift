@@ -178,6 +178,35 @@ final class RouteColoringTests: XCTestCase {
         XCTAssertNotEqual(firstColors.first, firstColors.last)
     }
 
+    func testElevationColoringAlignsFilteredScenePointSourceIndexes() {
+        let routePoints = createElevationRoute(
+            altitudes: [10, 20, 30, 40],
+            routeSegmentIndexes: [0, 0, 0, 0]
+        )
+        let profile = ElevationProfile(routePoints: routePoints)
+        let allScenePoints = createScenePoints(
+            routePoints: routePoints,
+            yMeters: [0, 20, 40, 60]
+        )
+        // RouteProjectionService can remove an invalid coordinate while
+        // preserving the remaining points' original source indexes.
+        let filteredScenePoints = [
+            allScenePoints[0],
+            allScenePoints[2],
+            allScenePoints[3],
+        ]
+
+        let colors = coloringService.computeSegmentColors(
+            points: filteredScenePoints,
+            mode: .elevation,
+            elevationProfile: profile,
+            defaultColor: .magenta
+        )
+
+        XCTAssertEqual(colors.count, filteredScenePoints.count - 1)
+        XCTAssertTrue(colors.allSatisfy { $0 != .magenta })
+    }
+
     func testElevationColoringDoesNotInventScaleForNonMeaningfulProfile() {
         let routePoints = createElevationRoute(
             altitudes: [10, 50, 100],

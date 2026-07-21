@@ -27,7 +27,7 @@ public enum DistanceWeightedStatistics: Sendable {
         let q = min(1.0, max(0.0, quantile))
         var finite: [WeightedSample] = []
         finite.reserveCapacity(samples.count)
-        var totalWeight = 0.0
+        var maximumWeight = 0.0
 
         for sample in samples {
             guard sample.value.isFinite,
@@ -35,10 +35,10 @@ public enum DistanceWeightedStatistics: Sendable {
                   sample.weight > 0
             else { continue }
             finite.append(sample)
-            totalWeight += sample.weight
+            maximumWeight = max(maximumWeight, sample.weight)
         }
 
-        guard !finite.isEmpty, totalWeight > 0 else { return nil }
+        guard !finite.isEmpty, maximumWeight > 0 else { return nil }
         if finite.count == 1 { return finite[0].value }
 
         finite.sort { lhs, rhs in
@@ -46,10 +46,15 @@ public enum DistanceWeightedStatistics: Sendable {
             return lhs.weight < rhs.weight
         }
 
+        // Scale by the largest finite weight so summing several very large
+        // weights cannot overflow to infinity and skew the CDF boundary.
+        let totalWeight = finite.reduce(0.0) { partial, sample in
+            partial + sample.weight / maximumWeight
+        }
         let target = q * totalWeight
         var cumulative = 0.0
         for sample in finite {
-            cumulative += sample.weight
+            cumulative += sample.weight / maximumWeight
             if cumulative + 1e-12 >= target {
                 return sample.value
             }
