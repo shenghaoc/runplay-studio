@@ -332,9 +332,9 @@ struct ExportSummaryCardView: View {
         switch name {
         case "blue": return palette.brand
         case "red": return palette.heartRate
-        case "orange": return Color(hex: 0xFF9F0A)
+        case "orange": return AppDesign.comparisonOrange
         case "purple": return palette.elevationLoss
-        case "yellow": return Color(hex: 0xFFD60A)
+        case "yellow": return AppDesign.warmYellow
         default: return palette.secondaryText
         }
     }

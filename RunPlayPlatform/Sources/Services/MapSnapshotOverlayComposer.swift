@@ -113,21 +113,19 @@ public enum MapSnapshotOverlayComposer: Sendable {
             context.setLineWidth(markerBorderWidth)
             context.strokeEllipse(in: rect)
 
-            // Glyph
-            let glyph = marker.style.glyph as NSString
+            // Glyph: flip the text matrix so letters stay upright in bottom-left CG space.
             let font = NSFont.systemFont(ofSize: 11, weight: .bold)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: NSColor.white
             ]
-            let size = glyph.size(withAttributes: attrs)
-            let textOrigin = CGPoint(
-                x: point.x - size.width / 2,
-                y: point.y - size.height / 2
+            let line = CTLineCreateWithAttributedString(
+                NSAttributedString(string: marker.style.glyph, attributes: attrs)
             )
-            // NSString drawing expects flipped AppKit context; use Core Text path.
-            let line = CTLineCreateWithAttributedString(NSAttributedString(string: marker.style.glyph, attributes: attrs))
-            context.textPosition = textOrigin
+            let bounds = CTLineGetBoundsWithOptions(line, [])
+            context.translateBy(x: point.x, y: point.y)
+            context.scaleBy(x: 1, y: -1)
+            context.textPosition = CGPoint(x: -bounds.width / 2, y: -bounds.midY)
             CTLineDraw(line, context)
             context.restoreGState()
         }

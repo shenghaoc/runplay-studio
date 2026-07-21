@@ -70,14 +70,12 @@ public enum MapSnapshotRegionPlanner: Sendable {
         if mapAspect < imageAspect {
             // Too tall/narrow — expand width.
             let targetWidth = rect.size.height * imageAspect
-            let delta = targetWidth - rect.size.width
             rect = MKMapRect(
                 x: rect.midX - targetWidth / 2,
                 y: rect.origin.y,
                 width: targetWidth,
                 height: rect.size.height
             )
-            _ = delta
         } else if mapAspect > imageAspect {
             // Too wide — expand height.
             let targetHeight = rect.size.width / imageAspect
@@ -88,6 +86,9 @@ public enum MapSnapshotRegionPlanner: Sendable {
                 height: targetHeight
             )
         }
+
+        // Clamp before using center latitude so meter-per-map-point is well-defined.
+        rect = clampToWorld(rect)
 
         // Ensure minimum span in meters at the center latitude.
         let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
@@ -111,9 +112,10 @@ public enum MapSnapshotRegionPlanner: Sendable {
                 width: w,
                 height: h
             )
+            rect = clampToWorld(rect)
         }
 
-        return clampToWorld(rect)
+        return rect
     }
 
     /// Clamp a map rect so it stays inside the MapKit world.

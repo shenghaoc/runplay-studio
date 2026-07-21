@@ -154,8 +154,11 @@ private struct ImmediateCoordinateConverter: MapCoordinateConverting, @unchecked
 }
 
 /// In-memory snapshot cache keyed by full request identity.
+///
+/// Eviction is FIFO by insertion order (not dictionary key order).
 public actor WorkoutMapSnapshotCache {
     private var storage: [WorkoutMapSnapshotCacheKey: WorkoutMapSnapshotResult] = [:]
+    private var insertionOrder: [WorkoutMapSnapshotCacheKey] = []
     private let maxEntries: Int
 
     public init(maxEntries: Int = 8) {
@@ -167,14 +170,22 @@ public actor WorkoutMapSnapshotCache {
     }
 
     public func store(_ result: WorkoutMapSnapshotResult, for key: WorkoutMapSnapshotCacheKey) {
+        if storage[key] != nil {
+            // Refresh value in place; keep original insertion order.
+            storage[key] = result
+            return
+        }
         storage[key] = result
-        while storage.count > maxEntries, let first = storage.keys.first {
-            storage.removeValue(forKey: first)
+        insertionOrder.append(key)
+        while storage.count > maxEntries, let oldest = insertionOrder.first {
+            insertionOrder.removeFirst()
+            storage.removeValue(forKey: oldest)
         }
     }
 
     public func removeAll() {
         storage.removeAll()
+        insertionOrder.removeAll()
     }
 }
 

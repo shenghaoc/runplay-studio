@@ -211,13 +211,17 @@ final class PNGSummaryExportTests: XCTestCase {
     }
 
     private func workoutWithManySplits() -> RunWorkout {
-        let splits = (1...12).map { index in
-            RunSplit(
-                splitIndex: index,
-                elapsedSeconds: 300,
-                paceSecondsPerKilometer: 300,
-                startDistanceMeters: Double(index - 1) * 1_000,
-                endDistanceMeters: Double(index) * 1_000
+        var splits: [RunSplit] = []
+        splits.reserveCapacity(12)
+        for index in 1...12 {
+            splits.append(
+                RunSplit(
+                    splitIndex: index,
+                    elapsedSeconds: 300,
+                    paceSecondsPerKilometer: 300,
+                    startDistanceMeters: Double(index - 1) * 1_000,
+                    endDistanceMeters: Double(index) * 1_000
+                )
             )
         }
         return RunWorkout(
@@ -230,21 +234,29 @@ final class PNGSummaryExportTests: XCTestCase {
     }
 
     private func manySegments(count: Int) -> [SegmentHighlight] {
-        (0..<count).map { i in
-            SegmentHighlight(
+        var segments: [SegmentHighlight] = []
+        segments.reserveCapacity(count)
+        for i in 0..<count {
+            let startDistance = Double(i) * 100
+            let endDistance = Double(i + 1) * 100
+            let startElapsed = Double(i) * 30
+            let endElapsed = Double(i + 1) * 30
+            let segment = SegmentHighlight(
                 type: .fastest1km,
                 title: "Segment \(i + 1)",
                 subtitle: "value",
-                startDistanceMeters: Double(i) * 100,
-                endDistanceMeters: Double(i + 1) * 100,
-                startElapsedSeconds: Double(i) * 30,
-                endElapsedSeconds: Double(i + 1) * 30,
+                startDistanceMeters: startDistance,
+                endDistanceMeters: endDistance,
+                startElapsedSeconds: startElapsed,
+                endElapsedSeconds: endElapsed,
                 durationSeconds: 30,
                 distanceMeters: 100,
                 paceSecondsPerKilometer: 300,
                 sourcePointRange: 0..<2
             )
+            segments.append(segment)
         }
+        return segments
     }
 }
 

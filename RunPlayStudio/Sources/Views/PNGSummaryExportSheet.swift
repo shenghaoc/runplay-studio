@@ -10,8 +10,6 @@ struct PNGSummaryExportSheet: View {
     var onDismiss: () -> Void
     var onSaved: (String) -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         VStack(spacing: 0) {
             header
