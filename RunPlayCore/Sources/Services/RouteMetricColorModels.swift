@@ -1,5 +1,17 @@
 import Foundation
 
+#if canImport(Darwin)
+private func routeMetricLocalized(_ key: String.LocalizationValue) -> String {
+    String(localized: key)
+}
+#else
+/// Swift Foundation on Linux does not currently expose `String(localized:)`.
+/// Keep Core buildable there while Darwin presentation uses the localized key.
+private func routeMetricLocalized(_ key: String) -> String {
+    key
+}
+#endif
+
 // MARK: - Mode
 
 /// Native route-color presentation mode for a single workout map.
@@ -14,10 +26,10 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
 
     public var displayName: String {
         switch self {
-        case .solid: return String(localized: "Solid")
-        case .pace: return String(localized: "Pace")
-        case .heartRate: return String(localized: "Heart Rate")
-        case .correctedElevation: return String(localized: "Elevation")
+        case .solid: return routeMetricLocalized("Solid")
+        case .pace: return routeMetricLocalized("Pace")
+        case .heartRate: return routeMetricLocalized("Heart Rate")
+        case .correctedElevation: return routeMetricLocalized("Elevation")
         }
     }
 
@@ -25,9 +37,9 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
     public var relativeScaleCaption: String {
         switch self {
         case .solid: return ""
-        case .pace: return String(localized: "Relative pace within this workout")
-        case .heartRate: return String(localized: "Relative heart rate within this workout")
-        case .correctedElevation: return String(localized: "Corrected elevation within this workout")
+        case .pace: return routeMetricLocalized("Relative pace within this workout")
+        case .heartRate: return routeMetricLocalized("Relative heart rate within this workout")
+        case .correctedElevation: return routeMetricLocalized("Corrected elevation within this workout")
         }
     }
 }
