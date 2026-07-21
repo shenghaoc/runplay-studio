@@ -322,7 +322,7 @@ struct StravaArchiveImportView: View {
     // MARK: - Helpers
 
     // ⚡ Bolt: Cache date formatter to avoid O(N) instantiations during table rendering
-    nonisolated(unsafe) private static let dateFormatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .none

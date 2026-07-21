@@ -53,3 +53,7 @@
 ## 2026-07-20 - DateFormatter Initialization Overhead in SwiftUI Render Logic
 **Learning:** `DateFormatter` was being instantiated inside `dateText(_ date: Date?)` in `StravaArchiveImportView`, which is used heavily in `candidateTable` rendering (calling `dateText` per candidate row). Given that the table could display many hundreds of candidates in large archives, these inline instantiations created severe memory allocation and deallocation overhead per row rendering pass.
 **Action:** Always replace inline `DateFormatter` instantiations in frequently accessed view helper logic with `nonisolated(unsafe) private static let` cached instances to guarantee a single-time configuration while adhering to Swift 6 strict concurrency checks.
+
+## 2026-07-21 - Sendable Inference for DateFormatter in Swift SDK
+**Learning:** `DateFormatter` is inferred as `Sendable` in the Swift SDK version used by the CI, meaning applying `nonisolated(unsafe)` to a constant `DateFormatter` triggers a compiler error (`'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'DateFormatter'`).
+**Action:** When caching `DateFormatter` as a static constant, do not apply `nonisolated(unsafe)` if the compiler treats it as `Sendable`. Apply it only when strictly necessary.
