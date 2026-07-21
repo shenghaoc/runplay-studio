@@ -91,7 +91,6 @@ struct ComparisonMapView: View {
                     }
                     .buttonStyle(.bordered)
                     .help("Zoom and center the map to show both routes")
-                    .accessibilityLabel("Fit Routes")
                 }
 
                 Spacer()

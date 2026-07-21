@@ -20,3 +20,7 @@
 ## 2026-07-20 - Contextual Empty State CTAs
 **Learning:** Empty states without clear next steps cause friction. Relying on global menus or sidebars for primary actions (like importing data) forces users to hunt for functionality.
 **Action:** Always provide inline, contextual Calls to Action (CTAs) within empty states (e.g., an "Import File" button when no data is available) that directly solve the condition causing the empty state.
+
+## 2026-07-21 - SwiftUI Label Provides Built-in Accessibility
+**Learning:** SwiftUI `Label("Title", systemImage:)` automatically exposes its title text as the accessibility label for VoiceOver, even when used with icon-only label styles. Adding an explicit `.accessibilityLabel()` with the same text is redundant. Only pure `Image(systemName:)` views used directly as button content (without a `Label` wrapper) require an explicit `.accessibilityLabel()`.
+**Action:** Do not add `.accessibilityLabel()` to `Label`-based buttons when the label title already conveys the intended meaning. Reserve explicit accessibility labels for buttons that use bare `Image(systemName:)` or other non-text content.
