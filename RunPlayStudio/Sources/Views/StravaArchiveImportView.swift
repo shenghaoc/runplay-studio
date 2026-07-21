@@ -321,17 +321,9 @@ struct StravaArchiveImportView: View {
 
     // MARK: - Helpers
 
-    // ⚡ Bolt: Cache date formatter to avoid O(N) instantiations during table rendering
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-
     private func dateText(_ date: Date?) -> String {
         guard let date else { return "—" }
-        return Self.dateFormatter.string(from: date)
+        return date.formatted(date: .abbreviated, time: .omitted)
     }
 
     private func byteCount(_ bytes: Int64) -> String {
