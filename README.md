@@ -54,7 +54,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 |--------|-------------|
 | JSON   | Explicit elapsed, active, paused, moving/stopped estimates, pace, diagnostics, splits, and segments |
 | CSV    | Splits and segments with explicit clock and pace columns; estimated moving/stopped labels |
-| PNG    | Polished summary card with explicit clock labels and moving estimates (1200×1600) |
+| PNG    | Configurable summary card (exact 1200×1600 px): optional map, Light/Dark, route colors |
 
 ---
 
@@ -294,10 +294,13 @@ Export workout data as local files:
 - **Recorded Laps CSV** — Source triggers, route-derived clocks, and source-reported totals (distinct from splits)
 - **Segments CSV** — Active duration/pace with elapsed endpoints and metrics
 - **Combined CSV** — Splits and segments in one file
-- **PNG Summary Card** — Polished stats card image (1200×1600)
+- **PNG Summary Card** — Exact 1200×1600 pixel summary image with optional static Apple Maps region, Light/Dark appearance, and Solid/Pace/HR/Elevation route coloring (reuses live-map builders)
 
-All exports are local-only. No data is uploaded anywhere.
-PNG export renders a SwiftUI card with `ImageRenderer` (requires GUI context).
+All exports are local-only. No data is uploaded to a RunPlay Studio service.
+PNG export opens a configuration sheet, generates a deterministic card with
+`ImageRenderer` at scale 1.0 (GUI context required), and optionally composites
+MapKit basemap imagery with custom route overlays. Map failure offers Retry or
+Export Without Map. No Screen Recording permission is required.
 The README demo image is generated from bundled synthetic data.
 
 ### Route Comparison
@@ -323,7 +326,8 @@ Compare two completed runs side by side:
 - No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)
-- PNG export requires GUI context (`ImageRenderer`)
+- PNG export requires GUI context (`ImageRenderer`); map-inclusive export needs MapKit network access for basemap tiles
+- Video export is not implemented
 
 ## Roadmap
 

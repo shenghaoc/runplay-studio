@@ -9,6 +9,9 @@ import RunPlayCore
 public enum RouteMetricPalette: Sendable {
     public static let policyBucketCount = RouteMetricColorPolicy.runningDefault.bucketCount
 
+    /// Bump when palette hex stops or no-data style change so map caches invalidate.
+    public static let version = 1
+
     /// Neutral no-data style — visible but unobtrusive on light/dark basemaps.
     public static let noDataHex: UInt = 0x8E8E93
     public static let noDataOpacity: Double = 0.72

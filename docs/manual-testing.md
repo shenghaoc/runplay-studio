@@ -430,6 +430,27 @@ Latest export notes:
   CSV, and PNG in a normal desktop session.
 
 
+## Map-aware PNG summary export (synthetic)
+
+Use **synthetic or bundled demo workouts only**. Do not commit private PNGs.
+
+1. Open Export → **Export Summary Card (PNG)** and confirm the configuration sheet.
+2. Generate Light and Dark **map-inclusive Solid** cards; reopen the PNG and confirm
+   exact **1200×1600** pixels and start/finish markers (no replay marker).
+3. Generate Pace, Heart Rate, and Elevation cards when available; compare legends
+   with the live single-workout map.
+4. Disable Include Map; confirm metrics-only export still works.
+5. Use a no-GPS synthetic workout; Include Map should be unavailable/off.
+6. Simulate offline/map failure if practical; use **Retry** and **Export Without Map**.
+7. Change options rapidly; confirm the preview updates without stale content.
+8. Cancel generation; confirm no error alert for cancellation.
+9. Keyboard-navigate the sheet; inspect VoiceOver labels on controls and preview.
+10. Confirm JSON/CSV export, comparison, and personal heatmap remain unchanged.
+
+Automated coverage: `PNGExportRendererTests`, `PNGSummaryExportTests`,
+`PNGSummaryExportViewModelTests`, `MapSnapshotRegionPlannerTests`,
+`MapSnapshotOverlayComposerTests`.
+
 ## Strava bulk archive import (synthetic)
 
 Use a **synthetic** ZIP only — never commit real exports.
