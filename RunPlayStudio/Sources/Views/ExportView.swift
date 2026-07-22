@@ -16,7 +16,6 @@ struct ExportView: View {
     @State private var showingError = false
     @State private var exportSuccess: String?
     @State private var showingSuccess = false
-    @State private var showingPNGSheet = false
     @State private var pngViewModel: PNGSummaryExportViewModel?
 
     private let exportService = ExportService()
@@ -71,19 +70,16 @@ struct ExportView: View {
         } message: {
             Text(exportSuccess ?? "")
         }
-        .sheet(isPresented: $showingPNGSheet) {
-            if let pngViewModel {
-                PNGSummaryExportSheet(
-                    viewModel: pngViewModel,
-                    onDismiss: {
-                        showingPNGSheet = false
-                        self.pngViewModel = nil
-                    },
-                    onSaved: { filename in
-                        showSuccess("Saved to \(filename)")
-                    }
-                )
-            }
+        .sheet(item: $pngViewModel) { viewModel in
+            PNGSummaryExportSheet(
+                viewModel: viewModel,
+                onDismiss: {
+                    pngViewModel = nil
+                },
+                onSaved: { filename in
+                    showSuccess("Saved to \(filename)")
+                }
+            )
         }
     }
 
@@ -101,7 +97,6 @@ struct ExportView: View {
             segments: segments,
             initialConfiguration: configuration
         )
-        showingPNGSheet = true
     }
 
     private func exportJSON() {

@@ -8,7 +8,9 @@ import UniformTypeIdentifiers
 /// Owns PNG summary export configuration, preview generation, and save.
 @MainActor
 @Observable
-final class PNGSummaryExportViewModel {
+final class PNGSummaryExportViewModel: Identifiable {
+    let id = UUID()
+
     var configuration: PNGSummaryExportConfiguration {
         didSet {
             if configuration != oldValue {
@@ -41,6 +43,15 @@ final class PNGSummaryExportViewModel {
     private var generateTask: Task<Void, Never>?
     private var requestSerial = 0
     private var readyConfiguration: PNGSummaryExportConfiguration?
+    private var profileProbe: RouteMetricProfileProbe?
+
+    /// True only when the displayed preview is ready for the current options.
+    var canExportCurrentPreview: Bool {
+        previewData != nil
+            && readyConfiguration == configuration
+            && phase == .ready
+            && !isGenerating
+    }
 
     init(
         workout: RunWorkout,
@@ -94,7 +105,7 @@ final class PNGSummaryExportViewModel {
 
     func reportSaveFailure(_ message: String) {
         errorMessage = message
-        phase = .failed
+        phase = previewData != nil && readyConfiguration == configuration ? .ready : .failed
     }
 
     /// Save using the last ready preview when configuration is unchanged.
@@ -194,6 +205,7 @@ final class PNGSummaryExportViewModel {
             configuration: config,
             mapSnapshotter: mapSnapshotter,
             analysisContext: analysisContext,
+            profileProbe: profileProbe,
             profileBuilder: profileBuilder,
             lineBuilder: lineBuilder,
             onPhase: { [weak self] phase in
@@ -225,10 +237,12 @@ final class PNGSummaryExportViewModel {
                 probeTask.cancel()
             }
             try Task.checkCancellation()
+            profileProbe = probe
             availability = probe.availability
         } catch is CancellationError {
             return
         } catch {
+            profileProbe = nil
             availability = .init(pace: false, heartRate: false, correctedElevation: false)
         }
     }

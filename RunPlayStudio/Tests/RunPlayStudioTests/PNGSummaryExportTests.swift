@@ -64,6 +64,25 @@ final class PNGSummaryExportTests: XCTestCase {
         XCTAssertTrue(result.filename.hasSuffix(".png"))
     }
 
+    func testSolidMapExportSkipsMetricAvailabilityProbe() async throws {
+        let recorder = ExportProfileBuilderRecorder()
+
+        _ = try await PNGExportService.exportSummaryPNG(
+            workout: sampleWorkout(),
+            segments: [],
+            configuration: PNGSummaryExportConfiguration(
+                includeMap: true,
+                appearance: .light,
+                routeColorMode: .solid
+            ),
+            mapSnapshotter: BlankSnapshotter(),
+            profileBuilder: RecordingExportProfileBuilder(recorder: recorder)
+        )
+
+        XCTAssertEqual(recorder.probeCount, 0)
+        XCTAssertEqual(recorder.buildModes, [.solid])
+    }
+
     func testMapFailurePropagatesAndMetricsPathRemains() async throws {
         do {
             _ = try await PNGExportService.exportSummaryPNG(
@@ -291,5 +310,64 @@ private struct BlankSnapshotter: WorkoutMapSnapshotting {
 private struct AlwaysFailSnapshotter: WorkoutMapSnapshotting {
     func makeSnapshot(request: WorkoutMapSnapshotRequest) async throws -> WorkoutMapSnapshotResult {
         throw WorkoutMapSnapshotError.snapshotFailed("offline")
+    }
+}
+
+private final class ExportProfileBuilderRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _probeCount = 0
+    private var _buildModes: [WorkoutRouteColorMode] = []
+
+    var probeCount: Int {
+        lock.withLock { _probeCount }
+    }
+
+    var buildModes: [WorkoutRouteColorMode] {
+        lock.withLock { _buildModes }
+    }
+
+    func recordProbe() {
+        lock.withLock { _probeCount += 1 }
+    }
+
+    func recordBuild(_ mode: WorkoutRouteColorMode) {
+        lock.withLock { _buildModes.append(mode) }
+    }
+}
+
+private struct RecordingExportProfileBuilder: RouteMetricProfileBuilding {
+    let recorder: ExportProfileBuilderRecorder
+    private let base = RouteMetricProfileBuilder()
+
+    func build(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        mode: WorkoutRouteColorMode,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfile {
+        recorder.recordBuild(mode)
+        return try base.build(
+            routePoints: routePoints,
+            context: context,
+            mode: mode,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+    }
+
+    func probe(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfileProbe {
+        recorder.recordProbe()
+        return try base.probe(
+            routePoints: routePoints,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        )
     }
 }

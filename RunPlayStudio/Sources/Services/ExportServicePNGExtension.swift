@@ -29,6 +29,7 @@ struct PNGExportService {
         configuration: PNGSummaryExportConfiguration,
         mapSnapshotter: (any WorkoutMapSnapshotting)? = nil,
         analysisContext: WorkoutAnalysisContext? = nil,
+        profileProbe: RouteMetricProfileProbe? = nil,
         profileBuilder: RouteMetricProfileBuilding = DefaultRouteMetricProfileBuilder(),
         lineBuilder: RouteMetricMapLineBuilding = DefaultRouteMetricMapLineBuilder(),
         onPhase: (@Sendable (PNGSummaryExportPhase) -> Void)? = nil
@@ -72,6 +73,7 @@ struct PNGExportService {
                 context: context,
                 preferredMode: configuration.routeColorMode,
                 policy: policy,
+                profileProbe: profileProbe,
                 profileBuilder: profileBuilder,
                 lineBuilder: lineBuilder,
                 isCancelled: { Task.isCancelled }
@@ -196,36 +198,51 @@ struct PNGExportService {
         context: WorkoutAnalysisContext,
         preferredMode: WorkoutRouteColorMode,
         policy: RouteMetricColorPolicy,
+        profileProbe: RouteMetricProfileProbe?,
         profileBuilder: RouteMetricProfileBuilding,
         lineBuilder: RouteMetricMapLineBuilding,
         isCancelled: @Sendable () -> Bool
     ) throws -> PreparedRouteExport {
         if isCancelled() { throw CancellationError() }
 
-        let probe = try profileBuilder.probe(
-            routePoints: workout.routePoints,
-            context: context,
-            policy: policy,
-            isCancelled: isCancelled
-        )
-        let availability = probe.availability
-
-        var effective = preferredMode
-        if !availability.isAvailable(effective) {
-            effective = .solid
-        }
-
+        let effective: WorkoutRouteColorMode
         let profile: RouteMetricProfile
-        if let probed = probe.profile(for: effective) {
-            profile = probed
-        } else {
+        if preferredMode == .solid {
+            // Solid rendering does not need metric availability or metric
+            // profiles, so avoid calculating pace, heart rate, and elevation.
+            effective = .solid
             profile = try profileBuilder.build(
                 routePoints: workout.routePoints,
                 context: context,
-                mode: effective,
+                mode: .solid,
                 policy: policy,
                 isCancelled: isCancelled
             )
+        } else {
+            let probe: RouteMetricProfileProbe
+            if let profileProbe {
+                probe = profileProbe
+            } else {
+                probe = try profileBuilder.probe(
+                    routePoints: workout.routePoints,
+                    context: context,
+                    policy: policy,
+                    isCancelled: isCancelled
+                )
+            }
+            effective = probe.availability.isAvailable(preferredMode) ? preferredMode : .solid
+
+            if let probed = probe.profile(for: effective) {
+                profile = probed
+            } else {
+                profile = try profileBuilder.build(
+                    routePoints: workout.routePoints,
+                    context: context,
+                    mode: effective,
+                    policy: policy,
+                    isCancelled: isCancelled
+                )
+            }
         }
 
         let lineResult = try lineBuilder.build(
@@ -245,8 +262,7 @@ struct PNGExportService {
             lines: lineResult.lines,
             markers: markers,
             profile: effective == .solid ? nil : profile,
-            effectiveMode: effective,
-            availability: availability
+            effectiveMode: effective
         )
     }
 }
@@ -256,5 +272,4 @@ private struct PreparedRouteExport: Sendable {
     let markers: [RouteMapMarker]
     let profile: RouteMetricProfile?
     let effectiveMode: WorkoutRouteColorMode
-    let availability: RouteMetricModeAvailability
 }

@@ -451,6 +451,25 @@ Automated coverage: `PNGExportRendererTests`, `PNGSummaryExportTests`,
 `PNGSummaryExportViewModelTests`, `MapSnapshotRegionPlannerTests`,
 `MapSnapshotOverlayComposerTests`.
 
+Focused pre-merge smoke record (2026-07-22): the packaged app was launched with
+an isolated temporary home and only bundled or generated synthetic workouts.
+Light and Dark map-inclusive Solid cards, Pace, Heart Rate, Elevation,
+metrics-only, and no-GPS cards were saved under `/private/tmp`, reopened, and
+confirmed as distinct 1200×1600 PNGs. Start/finish markers appeared without a
+replay marker, and Pace, Heart Rate, and Elevation legend values matched the
+live map accessibility labels exactly. The no-GPS sheet disabled Include Map,
+explained the metrics-only fallback, and exported successfully. Rapid option
+changes settled on the latest configuration; Escape cancelled active preview
+work without an alert; Return invoked the default Export PNG action; and the
+accessibility tree exposed concise labels, help, status, and preview text.
+
+A host-wide network disconnect was not used because there is no safe per-app
+MapKit network fault switch. The same offline/map-failure state is exercised
+deterministically by `PNGSummaryExportViewModelTests`, including Retry, Export
+Without Map, stale-preview rejection, and save retry. Save-panel JSON and
+combined CSV exports were reopened and inspected, and comparison and Personal
+Heatmap were entered successfully after the PNG flow.
+
 ## Strava bulk archive import (synthetic)
 
 Use a **synthetic** ZIP only — never commit real exports.

@@ -48,6 +48,9 @@ public struct MapKitWorkoutMapSnapshotter: WorkoutMapSnapshotting, Sendable {
         mapRect: MKMapRect
     ) -> MKMapSnapshotter.Options {
         let options = MKMapSnapshotter.Options()
+        // Unlike the iOS API, macOS exposes no snapshot scale option. Request
+        // the fixed canvas here, then normalize the returned NSImage to these
+        // exact pixel dimensions before compositing overlays.
         options.size = NSSize(width: request.size.width, height: request.size.height)
         options.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .flat)
         options.appearance = NSAppearance(

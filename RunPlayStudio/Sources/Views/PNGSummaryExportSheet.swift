@@ -45,11 +45,6 @@ struct PNGSummaryExportSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Cancel") {
-                viewModel.cancel()
-                onDismiss()
-            }
-            .keyboardShortcut(.cancelAction)
         }
         .padding(20)
     }
@@ -198,12 +193,13 @@ struct PNGSummaryExportSheet: View {
                 viewModel.cancel()
                 onDismiss()
             }
+            .keyboardShortcut(.cancelAction)
             Spacer()
             Button("Export PNG") {
                 presentSavePanel()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(viewModel.previewData == nil || viewModel.isGenerating)
+            .disabled(!viewModel.canExportCurrentPreview)
             .accessibilityLabel("Export PNG")
             .accessibilityHint("Saves the generated summary card image")
         }

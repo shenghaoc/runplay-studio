@@ -106,6 +106,14 @@ final class MapSnapshotRegionPlannerTests: XCTestCase {
     func testZeroImageSizeReturnsNil() {
         let routes = [line(id: "a", coords: [(37.77, -122.42), (37.78, -122.41)])]
         XCTAssertNil(MapSnapshotRegionPlanner.planMapRect(routes: routes, imageSize: .zero))
+        XCTAssertNil(MapSnapshotRegionPlanner.planMapRect(
+            routes: routes,
+            imageSize: CGSize(width: CGFloat.infinity, height: 560)
+        ))
+        XCTAssertNil(MapSnapshotRegionPlanner.planMapRect(
+            routes: routes,
+            imageSize: CGSize(width: 1_120, height: CGFloat.nan)
+        ))
     }
 
     func testDeterministicResult() {

@@ -7,4 +7,4 @@
 - [x] PNGSummaryExportViewModel + configuration sheet UI
 - [x] Focused tests (planner, composer, renderer, VM, export)
 - [x] Docs / phase-plan roadmap checkboxes
-- [ ] Manual verification checklist (synthetic fixtures)
+- [x] Manual verification checklist (synthetic fixtures)

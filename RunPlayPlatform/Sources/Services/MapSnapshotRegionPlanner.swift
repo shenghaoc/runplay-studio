@@ -28,7 +28,10 @@ public enum MapSnapshotRegionPlanner: Sendable {
         markers: [RouteMapMarker] = [],
         imageSize: CGSize
     ) -> MKMapRect? {
-        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+        guard imageSize.width.isFinite, imageSize.height.isFinite,
+              imageSize.width > 0, imageSize.height > 0 else {
+            return nil
+        }
 
         var lines = routes
         // Include marker coordinates so start/finish are never cropped when

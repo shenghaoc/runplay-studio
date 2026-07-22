@@ -28,6 +28,8 @@ final class WorkoutMapSnapshotterTests: XCTestCase {
             mapRect: mapRect
         )
 
+        XCTAssertEqual(options.size.width, request.size.width, accuracy: 0.001)
+        XCTAssertEqual(options.size.height, request.size.height, accuracy: 0.001)
         XCTAssertEqual(options.mapRect.origin.x, mapRect.origin.x, accuracy: 0.001)
         XCTAssertEqual(options.mapRect.origin.y, mapRect.origin.y, accuracy: 0.001)
         XCTAssertEqual(options.mapRect.size.width, mapRect.size.width, accuracy: 0.001)

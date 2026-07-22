@@ -38,6 +38,7 @@ final class PNGSummaryExportViewModelTests: XCTestCase {
         await waitForReady(vm)
         XCTAssertEqual(vm.phase, .ready)
         XCTAssertNotNil(vm.previewData)
+        XCTAssertTrue(vm.canExportCurrentPreview)
         let size = try XCTUnwrap(PNGExportRenderer.pngPixelSize(of: try XCTUnwrap(vm.previewData)))
         XCTAssertEqual(size.width, 1_200)
         XCTAssertEqual(size.height, 1_600)
@@ -85,6 +86,73 @@ final class PNGSummaryExportViewModelTests: XCTestCase {
         XCTAssertFalse(vm.configuration.includeMap)
         XCTAssertEqual(vm.phase, .ready)
         XCTAssertNotNil(vm.previewData)
+    }
+
+    func testFailedRefreshCannotExportStaleReadyPreview() async {
+        let vm = PNGSummaryExportViewModel(
+            workout: sampleRouteWorkout(),
+            segments: [],
+            initialConfiguration: PNGSummaryExportConfiguration(
+                includeMap: false,
+                appearance: .light,
+                routeColorMode: .solid
+            ),
+            mapSnapshotter: FailingMapSnapshotter()
+        )
+
+        vm.onAppear()
+        await waitForReady(vm)
+        XCTAssertTrue(vm.canExportCurrentPreview)
+
+        vm.configuration.includeMap = true
+        await waitForPhase(vm) { $0.phase == .failed }
+
+        XCTAssertNotNil(vm.previewData, "The prior preview remains visible while the error is explained")
+        XCTAssertFalse(vm.canExportCurrentPreview)
+    }
+
+    func testSaveFailureKeepsCurrentPreviewAvailableForRetry() async {
+        let vm = PNGSummaryExportViewModel(
+            workout: sampleRouteWorkout(),
+            segments: [],
+            initialConfiguration: PNGSummaryExportConfiguration(
+                includeMap: false,
+                appearance: .light,
+                routeColorMode: .solid
+            ),
+            mapSnapshotter: FailingMapSnapshotter()
+        )
+
+        vm.onAppear()
+        await waitForReady(vm)
+        vm.reportSaveFailure("Disk is full")
+
+        XCTAssertEqual(vm.phase, .ready)
+        XCTAssertEqual(vm.errorMessage, "Disk is full")
+        XCTAssertTrue(vm.canExportCurrentPreview)
+    }
+
+    func testMetricPreviewReusesAvailabilityProbe() async {
+        let recorder = ProfileProbeRecorder()
+        let vm = PNGSummaryExportViewModel(
+            workout: sampleRouteWorkout(),
+            segments: [],
+            initialConfiguration: PNGSummaryExportConfiguration(
+                includeMap: true,
+                appearance: .light,
+                routeColorMode: .pace
+            ),
+            mapSnapshotter: BlankMapSnapshotter(),
+            profileBuilder: ProbeRecordingProfileBuilder(recorder: recorder)
+        )
+
+        await vm.updateAvailabilityProbe()
+        XCTAssertEqual(recorder.probeCount, 1)
+        vm.onAppear()
+        await waitForReady(vm)
+
+        XCTAssertEqual(recorder.probeCount, 1)
+        XCTAssertTrue(vm.canExportCurrentPreview)
     }
 
     func testRetryAfterMapFailure() async {
@@ -162,7 +230,7 @@ final class PNGSummaryExportViewModelTests: XCTestCase {
             initialConfiguration: PNGSummaryExportConfiguration(
                 includeMap: true,
                 appearance: .light,
-                routeColorMode: .solid
+                routeColorMode: .pace
             ),
             mapSnapshotter: BlankMapSnapshotter(),
             profileBuilder: CancellationObservingProfileBuilder(recorder: recorder)
@@ -387,6 +455,55 @@ private struct SlowMapSnapshotter: WorkoutMapSnapshotting {
         try await Task.sleep(nanoseconds: 500_000_000)
         try Task.checkCancellation()
         return try await BlankMapSnapshotter().makeSnapshot(request: request)
+    }
+}
+
+private final class ProfileProbeRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _probeCount = 0
+
+    var probeCount: Int {
+        lock.withLock { _probeCount }
+    }
+
+    func recordProbe() {
+        lock.withLock { _probeCount += 1 }
+    }
+}
+
+private struct ProbeRecordingProfileBuilder: RouteMetricProfileBuilding {
+    let recorder: ProfileProbeRecorder
+    private let base = RouteMetricProfileBuilder()
+
+    func build(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        mode: WorkoutRouteColorMode,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfile {
+        try base.build(
+            routePoints: routePoints,
+            context: context,
+            mode: mode,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+    }
+
+    func probe(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfileProbe {
+        recorder.recordProbe()
+        return try base.probe(
+            routePoints: routePoints,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        )
     }
 }
 
