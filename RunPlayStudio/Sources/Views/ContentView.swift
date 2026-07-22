@@ -79,16 +79,19 @@ struct ContentView: View {
                                             Label("End Comparison", systemImage: "arrow.left.arrow.right")
                                         }
                                         .help("Exit comparison mode")
+                                        .accessibilityLabel("End Comparison")
                                     } else if !appState.availableForComparison.isEmpty {
                                         Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
                                             Label("Compare", systemImage: "arrow.left.arrow.right")
                                         }
                                         .help("Compare with another run")
+                                        .accessibilityLabel("Compare runs")
                                     } else if appState.workouts.count < 2 {
                                         Button(action: { appState.enterEmptyComparisonMode() }) {
                                             Label("Compare", systemImage: "arrow.left.arrow.right")
                                         }
                                         .help("Import another run to compare")
+                                        .accessibilityLabel("Compare runs")
                                     }
 
                                     ExportView(
