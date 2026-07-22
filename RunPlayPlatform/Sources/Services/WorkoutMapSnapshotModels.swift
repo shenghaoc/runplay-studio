@@ -174,7 +174,9 @@ public struct WorkoutMapSnapshotResult: @unchecked Sendable {
     }
 }
 
-/// Converts geographic coordinates into snapshot image points.
+/// Converts geographic coordinates into snapshot image pixel points.
+///
+/// Points use the AppKit/Core Graphics bottom-left origin convention.
 public protocol MapCoordinateConverting: Sendable {
     func point(for coordinate: RouteMapCoordinate) -> CGPoint
 }

@@ -16,7 +16,8 @@ public struct MapKitWorkoutMapSnapshotter: WorkoutMapSnapshotting, Sendable {
         }
 
         let size = request.size
-        guard size.width > 0, size.height > 0 else {
+        guard size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0 else {
             throw WorkoutMapSnapshotError.invalidRegion
         }
 
@@ -28,9 +29,26 @@ public struct MapKitWorkoutMapSnapshotter: WorkoutMapSnapshotting, Sendable {
             throw WorkoutMapSnapshotError.invalidRegion
         }
 
+        let options = Self.makeSnapshotOptions(request: request, mapRect: mapRect)
+
+        let holder = SnapshotterHolder(options: options)
+        do {
+            return try await withTaskCancellationHandler {
+                try await holder.start(request: request)
+            } onCancel: {
+                holder.cancel()
+            }
+        } catch is CancellationError {
+            throw WorkoutMapSnapshotError.cancelled
+        }
+    }
+
+    static func makeSnapshotOptions(
+        request: WorkoutMapSnapshotRequest,
+        mapRect: MKMapRect
+    ) -> MKMapSnapshotter.Options {
         let options = MKMapSnapshotter.Options()
-        options.mapRect = mapRect
-        options.size = NSSize(width: size.width, height: size.height)
+        options.size = NSSize(width: request.size.width, height: request.size.height)
         options.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .flat)
         options.appearance = NSAppearance(
             named: request.appearance == .dark ? .darkAqua : .aqua
@@ -48,16 +66,10 @@ public struct MapKitWorkoutMapSnapshotter: WorkoutMapSnapshotting, Sendable {
         )
         options.camera = camera
 
-        let holder = SnapshotterHolder(options: options)
-        do {
-            return try await withTaskCancellationHandler {
-                try await holder.start(request: request)
-            } onCancel: {
-                holder.cancel()
-            }
-        } catch is CancellationError {
-            throw WorkoutMapSnapshotError.cancelled
-        }
+        // Setting the camera recalculates the visible region. Apply the
+        // planner's padded/aspect-correct rect last so it remains authoritative.
+        options.mapRect = mapRect
+        return options
     }
 }
 
@@ -78,14 +90,16 @@ private final class SnapshotterHolder: @unchecked Sendable {
         snapshotter.cancel()
     }
 
+    private func cancellationRequested() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return didCancel
+    }
+
     func start(request: WorkoutMapSnapshotRequest) async throws -> WorkoutMapSnapshotResult {
         try await withCheckedThrowingContinuation { continuation in
-            snapshotter.start(with: DispatchQueue.global(qos: .userInitiated)) { [lock] snap, error in
-                lock.lock()
-                let cancelled = self.didCancel
-                lock.unlock()
-
-                if cancelled || Task.isCancelled {
+            snapshotter.start(with: DispatchQueue.global(qos: .userInitiated)) { snap, error in
+                if self.cancellationRequested() {
                     continuation.resume(throwing: CancellationError())
                     return
                 }
@@ -110,7 +124,10 @@ private final class SnapshotterHolder: @unchecked Sendable {
                 }
 
                 do {
-                    let basemap = try Self.basemapImage(from: snap.image)
+                    let basemap = try WorkoutMapSnapshotImageNormalizer.normalizedCGImage(
+                        from: snap.image,
+                        targetSize: request.size
+                    )
                     let converter = ImmediateCoordinateConverter(snapshot: snap)
                     let result = try MapSnapshotOverlayComposer.compose(
                         basemap: basemap,
@@ -118,7 +135,7 @@ private final class SnapshotterHolder: @unchecked Sendable {
                         markers: request.markers,
                         converter: converter,
                         lineWidth: request.lineWidth,
-                        isCancelled: { Task.isCancelled }
+                        isCancelled: { self.cancellationRequested() }
                     )
                     continuation.resume(returning: result)
                 } catch is CancellationError {
@@ -133,13 +150,55 @@ private final class SnapshotterHolder: @unchecked Sendable {
             }
         }
     }
+}
 
-    private static func basemapImage(from image: NSImage) throws -> CGImage {
-        var rect = CGRect(origin: .zero, size: image.size)
-        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
-            return cgImage
+/// Converts AppKit's potentially Retina-backed snapshot image into the exact
+/// one-pixel-per-point canvas used by snapshot coordinate conversion.
+enum WorkoutMapSnapshotImageNormalizer {
+    static func normalizedCGImage(from image: NSImage, targetSize: CGSize) throws -> CGImage {
+        guard targetSize.width.isFinite, targetSize.height.isFinite,
+              targetSize.width > 0, targetSize.height > 0,
+              targetSize.width <= CGFloat(Int.max), targetSize.height <= CGFloat(Int.max) else {
+            throw WorkoutMapSnapshotError.compositionFailed("Basemap target size is invalid")
         }
-        throw WorkoutMapSnapshotError.compositionFailed("Could not obtain basemap CGImage")
+
+        let width = Int(targetSize.width.rounded())
+        let height = Int(targetSize.height.rounded())
+        guard width > 0, height > 0 else {
+            throw WorkoutMapSnapshotError.compositionFailed("Basemap target size is invalid")
+        }
+
+        var proposedRect = CGRect(origin: .zero, size: image.size)
+        guard let source = image.cgImage(
+            forProposedRect: &proposedRect,
+            context: nil,
+            hints: nil
+        ) else {
+            throw WorkoutMapSnapshotError.compositionFailed("Could not obtain basemap CGImage")
+        }
+
+        if source.width == width, source.height == height {
+            return source
+        }
+
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw WorkoutMapSnapshotError.compositionFailed("Could not normalize basemap pixels")
+        }
+
+        context.interpolationQuality = .high
+        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let normalized = context.makeImage() else {
+            throw WorkoutMapSnapshotError.compositionFailed("Could not finalize normalized basemap")
+        }
+        return normalized
     }
 }
 

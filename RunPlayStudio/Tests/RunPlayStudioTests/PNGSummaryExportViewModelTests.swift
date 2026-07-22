@@ -153,6 +153,57 @@ final class PNGSummaryExportViewModelTests: XCTestCase {
         XCTAssertNotEqual(vm.phase, .failed)
     }
 
+    func testCancelPropagatesIntoDetachedRoutePreparation() async {
+        let recorder = CancellationProbeRecorder()
+        let workout = sampleRouteWorkout()
+        let vm = PNGSummaryExportViewModel(
+            workout: workout,
+            segments: [],
+            initialConfiguration: PNGSummaryExportConfiguration(
+                includeMap: true,
+                appearance: .light,
+                routeColorMode: .solid
+            ),
+            mapSnapshotter: BlankMapSnapshotter(),
+            profileBuilder: CancellationObservingProfileBuilder(recorder: recorder)
+        )
+
+        vm.onAppear()
+        let started = await waitForCondition { recorder.started }
+        XCTAssertTrue(started)
+
+        vm.cancel()
+        let observedCancellation = await waitForCondition { recorder.observedCancellation }
+        XCTAssertTrue(observedCancellation)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertNotEqual(vm.phase, .failed)
+    }
+
+    func testAvailabilityProbeCancellationPropagatesIntoDetachedTask() async {
+        let recorder = CancellationProbeRecorder()
+        let workout = sampleRouteWorkout()
+        let vm = PNGSummaryExportViewModel(
+            workout: workout,
+            segments: [],
+            initialConfiguration: PNGSummaryExportConfiguration(
+                includeMap: true,
+                appearance: .light,
+                routeColorMode: .solid
+            ),
+            mapSnapshotter: BlankMapSnapshotter(),
+            profileBuilder: CancellationObservingProfileBuilder(recorder: recorder)
+        )
+
+        let probeTask = Task { await vm.updateAvailabilityProbe() }
+        let started = await waitForCondition { recorder.started }
+        XCTAssertTrue(started)
+
+        probeTask.cancel()
+        await probeTask.value
+        let observedCancellation = await waitForCondition { recorder.observedCancellation }
+        XCTAssertTrue(observedCancellation)
+    }
+
     func testSaveReusesReadyPreview() async throws {
         let workout = sampleRouteWorkout()
         let vm = PNGSummaryExportViewModel(
@@ -213,6 +264,18 @@ final class PNGSummaryExportViewModelTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTFail("Timed out waiting for view model phase (last=\(vm.phase), error=\(vm.errorMessage ?? "nil"), map=\(vm.mapFailureMessage ?? "nil"))")
+    }
+
+    private func waitForCondition(
+        timeout: TimeInterval = 2,
+        predicate: @escaping () -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if predicate() { return true }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return predicate()
     }
 
     private func sampleRouteWorkout() -> RunWorkout {
@@ -325,4 +388,77 @@ private struct SlowMapSnapshotter: WorkoutMapSnapshotting {
         try Task.checkCancellation()
         return try await BlankMapSnapshotter().makeSnapshot(request: request)
     }
+}
+
+private final class CancellationProbeRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _started = false
+    private var _observedCancellation = false
+
+    var started: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _started
+    }
+
+    var observedCancellation: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _observedCancellation
+    }
+
+    func markStarted() {
+        lock.lock()
+        _started = true
+        lock.unlock()
+    }
+
+    func markObservedCancellation() {
+        lock.lock()
+        _observedCancellation = true
+        lock.unlock()
+    }
+}
+
+private struct CancellationObservingProfileBuilder: RouteMetricProfileBuilding {
+    let recorder: CancellationProbeRecorder
+    private let base = RouteMetricProfileBuilder()
+
+    func build(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        mode: WorkoutRouteColorMode,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfile {
+        try base.build(
+            routePoints: routePoints,
+            context: context,
+            mode: mode,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+    }
+
+    func probe(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfileProbe {
+        recorder.markStarted()
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if isCancelled() {
+                recorder.markObservedCancellation()
+                throw CancellationError()
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        throw CancellationProbeTestError.timedOut
+    }
+}
+
+private enum CancellationProbeTestError: Error {
+    case timedOut
 }

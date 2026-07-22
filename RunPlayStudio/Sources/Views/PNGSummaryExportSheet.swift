@@ -27,6 +27,7 @@ struct PNGSummaryExportSheet: View {
         .frame(minWidth: 820, minHeight: 640)
         .task {
             await viewModel.updateAvailabilityProbe()
+            guard !Task.isCancelled else { return }
             viewModel.onAppear()
         }
         .onDisappear {

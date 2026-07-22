@@ -48,7 +48,7 @@ public enum MapSnapshotOverlayComposer: Sendable {
         context.setAllowsAntialiasing(true)
         context.interpolationQuality = .high
 
-        // CGContext origin is bottom-left; convert from top-left snapshot points.
+        // MapKit snapshot points and this CGContext both use a bottom-left origin.
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         context.draw(basemap, in: bounds)
 
@@ -73,10 +73,9 @@ public enum MapSnapshotOverlayComposer: Sendable {
             context.setStrokeColor(color.cgColor)
 
             let path = CGMutablePath()
-            let first = flip(points[0], height: CGFloat(height))
-            path.move(to: first)
+            path.move(to: points[0])
             for point in points.dropFirst() {
-                path.addLine(to: flip(point, height: CGFloat(height)))
+                path.addLine(to: point)
             }
             context.addPath(path)
             context.strokePath()
@@ -88,7 +87,7 @@ public enum MapSnapshotOverlayComposer: Sendable {
             // Export never includes live replay markers.
             guard marker.style == .start || marker.style == .finish else { continue }
 
-            let point = flip(converter.point(for: marker.coordinate), height: CGFloat(height))
+            let point = converter.point(for: marker.coordinate)
             // Skip markers that fall completely outside the image.
             if point.x < -markerRadius || point.y < -markerRadius
                 || point.x > CGFloat(width) + markerRadius
@@ -113,7 +112,7 @@ public enum MapSnapshotOverlayComposer: Sendable {
             context.setLineWidth(markerBorderWidth)
             context.strokeEllipse(in: rect)
 
-            // Glyph: flip the text matrix so letters stay upright in bottom-left CG space.
+            // Core Text uses the same bottom-left coordinate system here.
             let font = NSFont.systemFont(ofSize: 11, weight: .bold)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
@@ -123,9 +122,10 @@ public enum MapSnapshotOverlayComposer: Sendable {
                 NSAttributedString(string: marker.style.glyph, attributes: attrs)
             )
             let bounds = CTLineGetBoundsWithOptions(line, [])
-            context.translateBy(x: point.x, y: point.y)
-            context.scaleBy(x: 1, y: -1)
-            context.textPosition = CGPoint(x: -bounds.width / 2, y: -bounds.midY)
+            context.textPosition = CGPoint(
+                x: point.x - bounds.midX,
+                y: point.y - bounds.midY
+            )
             CTLineDraw(line, context)
             context.restoreGState()
         }
@@ -158,10 +158,6 @@ public enum MapSnapshotOverlayComposer: Sendable {
         case .current, .primaryCurrent, .comparisonCurrent:
             return RouteMetricPalette.nsColor(hex: 0xFFD60A, alpha: 1)
         }
-    }
-
-    private static func flip(_ point: CGPoint, height: CGFloat) -> CGPoint {
-        CGPoint(x: point.x, y: height - point.y)
     }
 }
 
@@ -202,8 +198,8 @@ public struct LinearMapCoordinateConverter: MapCoordinateConverting, Sendable {
         let latSpan = max(maxLatitude - minLatitude, 0.000_001)
         let lonSpan = max(maxLongitude - minLongitude, 0.000_001)
         let x = CGFloat((coordinate.longitude - minLongitude) / lonSpan) * size.width
-        // Snapshot points are top-left origin; north (higher lat) is smaller y.
-        let y = CGFloat((maxLatitude - coordinate.latitude) / latSpan) * size.height
+        // Match AppKit snapshot points: north (higher latitude) is larger y.
+        let y = CGFloat((coordinate.latitude - minLatitude) / latSpan) * size.height
         return CGPoint(x: x, y: y)
     }
 }

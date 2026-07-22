@@ -210,16 +210,24 @@ final class PNGSummaryExportViewModel {
         let builder = profileBuilder
         let workout = self.workout
         let context = analysisContext
+        let probeTask = Task.detached(priority: .utility) {
+            try builder.probe(
+                routePoints: workout.routePoints,
+                context: context,
+                policy: .runningDefault,
+                isCancelled: { Task.isCancelled }
+            )
+        }
         do {
-            let probe = try await Task.detached(priority: .utility) {
-                try builder.probe(
-                    routePoints: workout.routePoints,
-                    context: context,
-                    policy: .runningDefault,
-                    isCancelled: { Task.isCancelled }
-                )
-            }.value
+            let probe = try await withTaskCancellationHandler {
+                try await probeTask.value
+            } onCancel: {
+                probeTask.cancel()
+            }
+            try Task.checkCancellation()
             availability = probe.availability
+        } catch is CancellationError {
+            return
         } catch {
             availability = .init(pace: false, heartRate: false, correctedElevation: false)
         }

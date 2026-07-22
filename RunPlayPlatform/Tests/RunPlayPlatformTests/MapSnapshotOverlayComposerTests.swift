@@ -119,6 +119,32 @@ final class MapSnapshotOverlayComposerTests: XCTestCase {
         }
     }
 
+    func testUsesBottomLeftSnapshotCoordinatesWithoutVerticalFlip() throws {
+        let squareSize = CGSize(width: 100, height: 100)
+        let basemap = try makeBlankImage(size: squareSize, color: .white)
+        let route = line(
+            id: "lower-route",
+            style: .primary,
+            coords: [(20, 20), (20, 80)]
+        )
+
+        let result = try MapSnapshotOverlayComposer.compose(
+            basemap: basemap,
+            routes: [route],
+            markers: [],
+            converter: CoordinateValueConverter()
+        )
+
+        let lowerPixel = try pixelRGBA(result.cgImage, at: CGPoint(x: 50, y: 20))
+        XCTAssertLessThan(lowerPixel.red, 100)
+        XCTAssertGreaterThan(lowerPixel.blue, 200)
+
+        let reflectedPixel = try pixelRGBA(result.cgImage, at: CGPoint(x: 50, y: 80))
+        XCTAssertGreaterThan(reflectedPixel.red, 240)
+        XCTAssertGreaterThan(reflectedPixel.green, 240)
+        XCTAssertGreaterThan(reflectedPixel.blue, 240)
+    }
+
     // MARK: - Helpers
 
     private func line(
@@ -163,5 +189,36 @@ final class MapSnapshotOverlayComposerTests: XCTestCase {
             hash = hash &* 31 &+ UInt64(byte)
         }
         return hash &* 31 &+ UInt64(image.width) &* 1_000_003 &+ UInt64(image.height)
+    }
+
+    private func pixelRGBA(
+        _ image: CGImage,
+        at point: CGPoint
+    ) throws -> (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let context = CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw NSError(domain: "test", code: 3)
+        }
+        context.interpolationQuality = .none
+        context.translateBy(x: 0.5 - point.x, y: 0.5 - point.y)
+        context.draw(
+            image,
+            in: CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        )
+        return (pixel[0], pixel[1], pixel[2], pixel[3])
+    }
+}
+
+private struct CoordinateValueConverter: MapCoordinateConverting {
+    func point(for coordinate: RouteMapCoordinate) -> CGPoint {
+        CGPoint(x: coordinate.longitude, y: coordinate.latitude)
     }
 }

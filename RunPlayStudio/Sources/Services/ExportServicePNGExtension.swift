@@ -66,7 +66,7 @@ struct PNGExportService {
         let context = analysisContext ?? WorkoutAnalysisContext(workout: workout)
         let policy = RouteMetricColorPolicy.runningDefault
 
-        let routePrep = try await Task.detached(priority: .userInitiated) {
+        let routePreparationTask = Task.detached(priority: .userInitiated) {
             try prepareRoutePresentation(
                 workout: workout,
                 context: context,
@@ -76,7 +76,12 @@ struct PNGExportService {
                 lineBuilder: lineBuilder,
                 isCancelled: { Task.isCancelled }
             )
-        }.value
+        }
+        let routePrep = try await withTaskCancellationHandler {
+            try await routePreparationTask.value
+        } onCancel: {
+            routePreparationTask.cancel()
+        }
 
         try Task.checkCancellation()
         report(.loadingMap)
