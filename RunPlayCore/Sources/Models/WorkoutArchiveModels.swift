@@ -224,43 +224,19 @@ public struct WorkoutArchiveScanResult: Hashable, Sendable {
     }
 
     public var readyCount: Int {
-        var count = 0
-        for candidate in candidates {
-            if candidate.status == .ready || candidate.status == .possibleDuplicate {
-                count += 1
-            }
-        }
-        return count
+        candidates.count(where: { $0.status == .ready || $0.status == .possibleDuplicate })
     }
 
     public var duplicateCount: Int {
-        var count = 0
-        for candidate in candidates {
-            if candidate.status == .duplicate {
-                count += 1
-            }
-        }
-        return count
+        candidates.count(where: { $0.status == .duplicate })
     }
 
     public var unsupportedActivityTypeCount: Int {
-        var count = 0
-        for candidate in candidates {
-            if candidate.status == .unsupportedActivityType {
-                count += 1
-            }
-        }
-        return count
+        candidates.count(where: { $0.status == .unsupportedActivityType })
     }
 
     public var defaultSelectedCount: Int {
-        var count = 0
-        for candidate in candidates {
-            if candidate.isSelectedByDefault {
-                count += 1
-            }
-        }
-        return count
+        candidates.count(where: \.isSelectedByDefault)
     }
 }
 
@@ -387,13 +363,7 @@ public struct WorkoutBatchImportReport: Hashable, Sendable {
     public var importedCount: Int { importedWorkoutIDs.count }
 
     public func count(for status: WorkoutArchiveCandidateStatus) -> Int {
-        var count = 0
-        for item in items {
-            if item.status == status {
-                count += 1
-            }
-        }
-        return count
+        items.count(where: { $0.status == status })
     }
 }
 
