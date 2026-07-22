@@ -81,7 +81,13 @@ public struct RouteQualityProcessor: Sendable {
             in: retained,
             isCancelled: isCancelled
         )
-        diagnostics.inferredRouteGapCount = inferredBoundaries.filter { $0 }.count
+        var inferredRouteGapCount = 0
+        for isGap in inferredBoundaries {
+            if isGap {
+                inferredRouteGapCount += 1
+            }
+        }
+        diagnostics.inferredRouteGapCount = inferredRouteGapCount
         let sourceSegmentByNormalizedSegment = try compactSegments(
             in: &retained,
             inferredBoundaries: inferredBoundaries,
@@ -542,7 +548,12 @@ public struct RouteQualityProcessor: Sendable {
             cumulativeDistance = normalized[range.upperBound - 1].distanceFromStartMeters
         }
 
-        let suppliedCount = useSupplied.filter { $0 }.count
+        var suppliedCount = 0
+        for isSupplied in useSupplied {
+            if isSupplied {
+                suppliedCount += 1
+            }
+        }
         let source: RouteDistanceSource
         if suppliedCount == 0 {
             source = .coordinateDerived

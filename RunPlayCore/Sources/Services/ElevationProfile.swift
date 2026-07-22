@@ -556,6 +556,13 @@ public struct ElevationProfile: Sendable {
             ))
         }
 
+        var rejectedCount = 0
+        for isRejected in rejected {
+            if isRejected {
+                rejectedCount += 1
+            }
+        }
+
         let profile = ElevationProfile(
             samples: samples,
             hasMeaningfulElevation: meaningful,
@@ -571,7 +578,7 @@ public struct ElevationProfile: Sendable {
             runIdentifiers: runIDs,
             reliableRunIdentifiers: reliableRunIDs
         )
-        return (profile, rejected.filter { $0 }.count)
+        return (profile, rejectedCount)
     }
 
     private init(
