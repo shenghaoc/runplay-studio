@@ -84,11 +84,13 @@ struct ContentView: View {
                                             Label("Compare", systemImage: "arrow.left.arrow.right")
                                         }
                                         .help("Compare with another run")
+                                        .accessibilityLabel("Compare runs")
                                     } else if appState.workouts.count < 2 {
                                         Button(action: { appState.enterEmptyComparisonMode() }) {
                                             Label("Compare", systemImage: "arrow.left.arrow.right")
                                         }
                                         .help("Import another run to compare")
+                                        .accessibilityLabel("Compare runs")
                                     }
 
                                     ExportView(
