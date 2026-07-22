@@ -318,25 +318,21 @@ final class WorkoutLibraryQueryTests: XCTestCase {
     }
 
     func testSortComparatorTransitivitySample() {
-        let entries = (0..<20).map { i in
-            makeEntry(
-                index: i,
-                start: i % 3 == 0 ? nil : Date(timeIntervalSince1970: Double(i * 1000)),
-                distance: Double((i * 37) % 11) * 100,
-                pace: i % 4 == 0 ? 0 : Double(200 + i)
-            )
+        var entries: [WorkoutLibraryEntry] = []
+        entries.reserveCapacity(20)
+        for i in 0..<20 {
+            let start: Date? = (i % 3 == 0) ? nil : Date(timeIntervalSince1970: Double(i * 1000))
+            let distance = Double((i * 37) % 11) * 100
+            let pace: Double = (i % 4 == 0) ? 0 : Double(200 + i)
+            entries.append(makeEntry(index: i, start: start, distance: distance, pace: pace))
         }
         for sort in WorkoutLibrarySort.allCases {
             let sorted = WorkoutLibraryQueryService.sort(entries, by: sort)
             XCTAssertEqual(sorted.count, entries.count)
-            // Pairwise consistency with compare.
             for i in 0..<sorted.count {
                 for j in (i + 1)..<sorted.count {
-                    XCTAssertTrue(
-                        WorkoutLibraryQueryService.compare(sorted[i], sorted[j], by: sort)
-                            || sorted[i].id == sorted[j].id,
-                        "Order violated for \(sort) at \(i),\(j)"
-                    )
+                    let ordered = WorkoutLibraryQueryService.compare(sorted[i], sorted[j], by: sort)
+                    XCTAssertTrue(ordered || sorted[i].id == sorted[j].id, "Order violated for \(sort) at \(i),\(j)")
                 }
             }
         }
@@ -347,16 +343,28 @@ final class WorkoutLibraryQueryTests: XCTestCase {
     func testTenThousandEntriesQueryWithoutRouteAccess() async throws {
         var entries: [WorkoutLibraryEntry] = []
         entries.reserveCapacity(10_000)
+        let sources: [WorkoutSource] = [.gpx, .tcx, .fit, .json]
         for i in 0..<10_000 {
+            let name: String
+            if i % 7 == 0 {
+                name = "Long name \(String(repeating: "x", count: 80)) \(i)"
+            } else {
+                name = "Run \(i)"
+            }
+            let notes: String? = (i % 11 == 0) ? String(repeating: "note ", count: 40) : nil
+            let start: Date? = (i % 13 == 0)
+                ? nil
+                : Date(timeIntervalSince1970: Double(1_700_000_000 + i * 3600))
+            let pace: Double = (i % 17 == 0) ? 0 : Double(240 + (i % 120))
             entries.append(makeEntry(
                 index: i,
                 favorite: i % 50 == 0,
-                name: i % 7 == 0 ? "Long name \(String(repeating: "x", count: 80)) \(i)" : "Run \(i)",
-                notes: i % 11 == 0 ? String(repeating: "note ", count: 40) : nil,
-                source: [.gpx, .tcx, .fit, .json][i % 4],
-                start: i % 13 == 0 ? nil : Date(timeIntervalSince1970: Double(1_700_000_000 + i * 3600)),
+                name: name,
+                notes: notes,
+                source: sources[i % 4],
+                start: start,
                 distance: Double(1_000 + (i % 100) * 100),
-                pace: i % 17 == 0 ? 0 : Double(240 + i % 120),
+                pace: pace,
                 hasHR: i % 5 == 0,
                 hasElev: i % 6 == 0,
                 hasLaps: i % 9 == 0
