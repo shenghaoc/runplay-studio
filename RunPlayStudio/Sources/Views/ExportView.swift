@@ -1,5 +1,6 @@
 import SwiftUI
 import RunPlayCore
+import RunPlayPlatform
 import AppKit
 import UniformTypeIdentifiers
 
@@ -8,10 +9,14 @@ struct ExportView: View {
     let workout: RunWorkout
     let segments: [SegmentHighlight]
 
+    @AppStorage("routeColorMode") private var storedRouteColorMode: String = WorkoutRouteColorMode.solid.rawValue
+    @Environment(\.colorScheme) private var colorScheme
+
     @State private var exportError: String?
     @State private var showingError = false
     @State private var exportSuccess: String?
     @State private var showingSuccess = false
+    @State private var pngViewModel: PNGSummaryExportViewModel?
 
     private let exportService = ExportService()
 
@@ -41,7 +46,7 @@ struct ExportView: View {
 
             Divider()
 
-            Button(action: { exportPNG() }) {
+            Button(action: { openPNGSheet() }) {
                 Label("Export Summary Card (PNG)", systemImage: "photo")
             }
             .accessibilityLabel("Export summary card as PNG image")
@@ -65,6 +70,33 @@ struct ExportView: View {
         } message: {
             Text(exportSuccess ?? "")
         }
+        .sheet(item: $pngViewModel) { viewModel in
+            PNGSummaryExportSheet(
+                viewModel: viewModel,
+                onDismiss: {
+                    pngViewModel = nil
+                },
+                onSaved: { filename in
+                    showSuccess("Saved to \(filename)")
+                }
+            )
+        }
+    }
+
+    private func openPNGSheet() {
+        let routeMode = WorkoutRouteColorMode(rawValue: storedRouteColorMode) ?? .solid
+        let appearance: PNGSummaryExportAppearance = colorScheme == .dark ? .dark : .light
+        let includeMap = PNGExportService.hasUsableRoute(workout)
+        let configuration = PNGSummaryExportConfiguration(
+            includeMap: includeMap,
+            appearance: appearance,
+            routeColorMode: routeMode
+        )
+        pngViewModel = PNGSummaryExportViewModel(
+            workout: workout,
+            segments: segments,
+            initialConfiguration: configuration
+        )
     }
 
     private func exportJSON() {
@@ -106,16 +138,6 @@ struct ExportView: View {
     private func exportCombinedCSV() {
         do {
             let result = try exportService.exportCombinedCSV(workout: workout, segments: segments)
-            saveFile(result)
-        } catch {
-            showError(error.localizedDescription)
-        }
-    }
-
-    @MainActor
-    private func exportPNG() {
-        do {
-            let result = try PNGExportService.exportSummaryPNG(workout: workout, segments: segments)
             saveFile(result)
         } catch {
             showError(error.localizedDescription)

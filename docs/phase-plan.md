@@ -44,9 +44,11 @@
 - Segment highlights panel with seek-on-select
 
 ### Export ✅
-- JSON summary, splits CSV, segments CSV, combined CSV, PNG summary card (1200×1600)
+- JSON summary, splits CSV, segments CSV, combined CSV, PNG summary card (exact 1200×1600 pixels)
 - All exports local via NSSavePanel
-- `ImageRenderer`-based PNG export (requires GUI context)
+- Configurable PNG export: optional Apple Maps region, Light/Dark appearance, route-color modes
+- Deterministic `ImageRenderer` rasterization at scale 1.0 (no `NSScreen` dependence)
+- MapKit snapshot + manual route overlay composition; metrics-only fallback
 
 ### Route Comparison ✅
 - Distance-aligned comparison (no dynamic time warping)
@@ -80,8 +82,8 @@
 - [ ] Implement HealthKit workout query and importer
 
 ### Phase: Advanced Export
-- [ ] Dark mode PNG summary card variant
-- [ ] Map region screenshot in PNG export
+- [x] Dark mode PNG summary card variant
+- [x] Map region screenshot in PNG export
 - [ ] Video export (AVFoundation) — post-MVP
 
 ### Phase: Polish and Accessibility

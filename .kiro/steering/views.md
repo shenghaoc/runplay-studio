@@ -48,7 +48,11 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 - Heatmap aggregation runs off the main actor via `PersonalHeatmapViewModel`
   and must not set global `LibraryOperationState` busy for the whole app.
 - PNG export uses `ImageRenderer` on a concrete SwiftUI view
-  (`ExportSummaryCardView`) and requires a GUI context — do not call from tests.
+  (`ExportSummaryCardView`) at fixed 1200×1600 scale 1.0 — never `NSScreen` scale.
+- Map-inclusive PNG uses Platform `WorkoutMapSnapshotting` + overlay composition;
+  do not screenshot `RouteMapCanvas` or require Screen Recording.
+- Export sheet + `PNGSummaryExportViewModel` own configuration, preview, and
+  cancellation; keep workflow out of `AppState`.
 
 ## What belongs here vs. RunPlayCore
 
@@ -56,7 +60,9 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 |---------|-------|
 | SwiftUI views and modifiers | RunPlayStudio |
 | `@MainActor` state, Combine publishers | RunPlayStudio |
-| PNG rendering (`ImageRenderer`, `NSHostingView`) | RunPlayStudio |
+| PNG rendering (`ImageRenderer`, export palettes) | RunPlayStudio |
+| Map snapshot / overlay composition | RunPlayPlatform |
+| Export configuration + card model | RunPlayCore |
 | Distance/pace calculations | RunPlayCore |
 | Route projection, segment detection | RunPlayCore |
 | File I/O, manifest, persistence | RunPlayCore |

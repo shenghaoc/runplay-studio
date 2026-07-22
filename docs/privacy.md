@@ -69,7 +69,19 @@ frameworks.
 ## Exports
 
 All exports (JSON, CSV, PNG) are generated and saved locally via the macOS save
-panel. No export data is uploaded anywhere.
+panel. No export data is uploaded to a RunPlay Studio service or cloud backend.
+
+### PNG summary card
+
+- Output is an exact **1200×1600** pixel PNG with deterministic Light or Dark
+  appearance (not ambient system appearance at render time).
+- Metrics-only cards use only local analysis. No Screen Recording permission.
+- Map-inclusive cards request **Apple Maps** basemap imagery through MapKit for
+  the planned route region. Workout files, provider IDs, archive paths, and
+  precise home-address text are not embedded; the PNG does not include GPS/EXIF
+  location metadata. The privacy footer states that map imagery is provided
+  through Apple Maps when a map was included.
+- Do not claim that no network operation occurred when map imagery was requested.
 
 ## Private Workout Files
 

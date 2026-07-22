@@ -45,13 +45,30 @@ RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit va
 RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 ├── Sources/
 │   ├── Services/              # UI-adjacent services (library loading, PNG export)
-│   ├── ViewModels/            # View state management (AppState, ReplayController)
+│   ├── ViewModels/            # View state management (AppState, ReplayController, PNG export)
 │   ├── Views/                 # SwiftUI views
 │   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
 ├── Resources/                 # Sample data and fixtures
 └── Tests/
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
+
+## PNG Summary Export
+
+PNG summary export is a **data-driven card**, not a screenshot of the live window.
+
+| Layer | Responsibility |
+| --- | --- |
+| **RunPlayCore** | `PNGSummaryExportConfiguration`, layout limits, `ExportSummaryCardModel` |
+| **RunPlayPlatform** | `WorkoutMapSnapshotting` / `MKMapSnapshotter`, region planner, overlay composer, metric palette |
+| **RunPlayStudio** | Configuration sheet, `PNGSummaryExportViewModel`, presentation model, export palettes, fixed-scale `ImageRenderer` |
+
+Pipeline: prepare route lines with the same metric profile/line builders as the
+live map → optional MapKit basemap snapshot → composite routes/markers → render
+card at **1200×1600** with scale **1.0** → atomic save. Appearance is resolved
+Light/Dark before rendering. Map failures preserve configuration and offer
+Retry / Export Without Map. Map imagery is cached only in memory for identical
+request keys and is never persisted.
 
 ## Personal Heatmap
 
@@ -452,7 +469,7 @@ interpolates selected-distance markers without introducing another renderer.
 
 ## Future Considerations
 
-- AVFoundation for video export
+- AVFoundation for video export (still out of scope; PNG map export uses MapKit snapshots only)
 - HealthKit for direct Apple Health import
 
 

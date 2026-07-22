@@ -23,7 +23,12 @@ public struct ExportSummaryCardModel: Sendable {
     public let recordedLapCountText: String?
     public let segments: [SegmentCardItem]
     public let splits: [SplitCardItem]
+    /// Optional truncation caption such as "First 5 of 12 splits".
+    public let segmentsTruncationText: String?
+    public let splitsTruncationText: String?
     public let privacyNote: String
+    public let layout: PNGSummaryCardLayout
+    public let includesMapImagery: Bool
 
     /// Source-compatible display aliases.
     public var durationText: String { elapsedTimeText }
@@ -58,11 +63,24 @@ public struct ExportSummaryCardModel: Sendable {
         return formatter
     }()
 
-    public init(workout: RunWorkout, segments: [SegmentHighlight]) {
+    public static let metricsOnlyPrivacyNote =
+        "Generated locally by RunPlay Studio • No cloud upload • No account required"
+
+    public static let mapInclusivePrivacyNote =
+        "Generated locally by RunPlay Studio • Map imagery via Apple Maps • No account required"
+
+    public init(
+        workout: RunWorkout,
+        segments: [SegmentHighlight],
+        layout: PNGSummaryCardLayout = .metricsOnly,
+        includesMapImagery: Bool = false
+    ) {
         appBranding = "RunPlay Studio"
         workoutTitle = workout.displayName
         sourceText = workout.source.displayName
         dateText = workout.metadata.startDate.map(Self.dateFormatter.string) ?? "Unknown date"
+        self.layout = layout
+        self.includesMapImagery = includesMapImagery
 
         if workout.recordedLaps.isEmpty {
             recordedLapCountText = nil
@@ -96,7 +114,12 @@ public struct ExportSummaryCardModel: Sendable {
         }
         pointCountText = "\(workout.routePoints.count) points"
 
-        self.segments = segments.prefix(5).map { segment in
+        let maxSegments = layout.maxSegments
+        let maxSplits = layout.maxSplits
+        let totalSegments = segments.count
+        let totalSplits = workout.splits.count
+
+        self.segments = segments.prefix(maxSegments).map { segment in
             SegmentCardItem(
                 icon: segment.type.icon,
                 title: segment.title,
@@ -104,7 +127,13 @@ public struct ExportSummaryCardModel: Sendable {
                 color: segment.type.color
             )
         }
-        splits = workout.splits.prefix(10).map { split in
+        if totalSegments > maxSegments {
+            segmentsTruncationText = "First \(maxSegments) of \(totalSegments) segments"
+        } else {
+            segmentsTruncationText = nil
+        }
+
+        splits = workout.splits.prefix(maxSplits).map { split in
             SplitCardItem(
                 index: split.splitIndex,
                 distance: DisplayFormatter.formatDistanceKm(split.distanceMeters),
@@ -114,6 +143,16 @@ public struct ExportSummaryCardModel: Sendable {
                 elapsedPace: split.formattedElapsedPace
             )
         }
-        privacyNote = "Generated locally by RunPlay Studio • No cloud upload • No account required"
+        if totalSplits > maxSplits {
+            splitsTruncationText = "First \(maxSplits) of \(totalSplits) splits"
+        } else {
+            splitsTruncationText = nil
+        }
+
+        if includesMapImagery {
+            privacyNote = Self.mapInclusivePrivacyNote
+        } else {
+            privacyNote = Self.metricsOnlyPrivacyNote
+        }
     }
 }

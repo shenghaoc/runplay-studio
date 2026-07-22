@@ -430,6 +430,46 @@ Latest export notes:
   CSV, and PNG in a normal desktop session.
 
 
+## Map-aware PNG summary export (synthetic)
+
+Use **synthetic or bundled demo workouts only**. Do not commit private PNGs.
+
+1. Open Export → **Export Summary Card (PNG)** and confirm the configuration sheet.
+2. Generate Light and Dark **map-inclusive Solid** cards; reopen the PNG and confirm
+   exact **1200×1600** pixels and start/finish markers (no replay marker).
+3. Generate Pace, Heart Rate, and Elevation cards when available; compare legends
+   with the live single-workout map.
+4. Disable Include Map; confirm metrics-only export still works.
+5. Use a no-GPS synthetic workout; Include Map should be unavailable/off.
+6. Simulate offline/map failure if practical; use **Retry** and **Export Without Map**.
+7. Change options rapidly; confirm the preview updates without stale content.
+8. Cancel generation; confirm no error alert for cancellation.
+9. Keyboard-navigate the sheet; inspect VoiceOver labels on controls and preview.
+10. Confirm JSON/CSV export, comparison, and personal heatmap remain unchanged.
+
+Automated coverage: `PNGExportRendererTests`, `PNGSummaryExportTests`,
+`PNGSummaryExportViewModelTests`, `MapSnapshotRegionPlannerTests`,
+`MapSnapshotOverlayComposerTests`.
+
+Focused pre-merge smoke record (2026-07-22): the packaged app was launched with
+an isolated temporary home and only bundled or generated synthetic workouts.
+Light and Dark map-inclusive Solid cards, Pace, Heart Rate, Elevation,
+metrics-only, and no-GPS cards were saved under `/private/tmp`, reopened, and
+confirmed as distinct 1200×1600 PNGs. Start/finish markers appeared without a
+replay marker, and Pace, Heart Rate, and Elevation legend values matched the
+live map accessibility labels exactly. The no-GPS sheet disabled Include Map,
+explained the metrics-only fallback, and exported successfully. Rapid option
+changes settled on the latest configuration; Escape cancelled active preview
+work without an alert; Return invoked the default Export PNG action; and the
+accessibility tree exposed concise labels, help, status, and preview text.
+
+A host-wide network disconnect was not used because there is no safe per-app
+MapKit network fault switch. The same offline/map-failure state is exercised
+deterministically by `PNGSummaryExportViewModelTests`, including Retry, Export
+Without Map, stale-preview rejection, and save retry. Save-panel JSON and
+combined CSV exports were reopened and inspected, and comparison and Personal
+Heatmap were entered successfully after the PNG flow.
+
 ## Strava bulk archive import (synthetic)
 
 Use a **synthetic** ZIP only — never commit real exports.

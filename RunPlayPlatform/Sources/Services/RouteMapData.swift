@@ -60,7 +60,7 @@ public struct RouteMapLine: Identifiable, Hashable, Sendable {
 }
 
 /// Marker style for map annotations.
-public enum RouteMapMarkerStyle: Hashable {
+public enum RouteMapMarkerStyle: Hashable, Sendable {
     case start
     case finish
     case current
@@ -79,7 +79,7 @@ public enum RouteMapMarkerStyle: Hashable {
 }
 
 /// A marker annotation for the map.
-public struct RouteMapMarker: Identifiable, Hashable {
+public struct RouteMapMarker: Identifiable, Hashable, Sendable {
     public let id: String
     public let title: String
     public let coordinate: RouteMapCoordinate

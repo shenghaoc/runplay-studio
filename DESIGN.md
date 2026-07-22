@@ -166,6 +166,21 @@ Small badges showing supported import/export formats. Semantic `.caption2` mediu
 ### Empty State
 Native workspace background, hero icon in a material circle, and a reduced-motion-aware entrance. Import CTA uses `.borderedProminent` with large control size.
 
+### PNG Summary Export Card
+Fixed **1200×1600** canvas for offline sharing. Uses **explicit Light and Dark export
+palettes** (never ambient `windowBackgroundColor`). Map-inclusive hierarchy:
+
+1. Branding, title, date, source
+2. Static Apple Maps basemap with composited route + start/finish
+3. Route-color legend when Pace/HR/Elevation is active
+4. Primary metrics
+5. Compact key segments (up to 3) and splits (up to 5)
+6. Privacy/map note
+
+Metrics-only layout retains up to 5 segments / 10 splits. Typography uses larger
+inline system sizes appropriate to the fixed canvas. Route metric hex stops match
+the live map palettes.
+
 ## 6. Do's and Don'ts
 
 ### Do:
@@ -175,6 +190,7 @@ Native workspace background, hero icon in a material circle, and a reduced-motio
 - **Do** keep single-workout route metric palettes sequential and relative to the workout; never imply personalised HR zones. Comparison remains blue/orange; heatmap density colors stay separate.
 - **Do** use native adaptive surfaces and restrained semantic tints for separation — never decorative shadows.
 - **Do** keep the map as the dominant visual element. Metrics support the map, not the reverse.
+- **Do** resolve export Light/Dark colors explicitly so PNG output is identical regardless of system appearance at render time.
 - **Do** prefer native SwiftUI components and SF Symbols over custom-drawn equivalents.
 - **Do** use system font scaling (Dynamic Type) so the interface respects the user's accessibility settings.
 
