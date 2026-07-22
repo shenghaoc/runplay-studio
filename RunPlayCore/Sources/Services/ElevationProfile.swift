@@ -571,7 +571,7 @@ public struct ElevationProfile: Sendable {
             runIdentifiers: runIDs,
             reliableRunIdentifiers: reliableRunIDs
         )
-        return (profile, rejected.filter { $0 }.count)
+        return (profile, rejected.count(where: { $0 }))
     }
 
     private init(
