@@ -48,6 +48,9 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 workouts: appState.workouts,
+                favoriteIDs: appState.favoriteWorkoutIDs,
+                libraryCount: appState.workouts.count,
+                totalFavoriteCount: appState.favoriteWorkoutIDs.count,
                 selection: Binding(
                     get: { appState.sidebarSelection },
                     set: { appState.applySidebarSelection($0) }
@@ -56,12 +59,17 @@ struct ContentView: View {
                 onArchiveImport: { appState.showArchiveImporter = true },
                 onDelete: { workout in
                     Task { await appState.deleteWorkout(workout) }
+                },
+                onShowAllFavorites: {
+                    appState.showAllFavoritesInLibrary()
                 }
             )
         } detail: {
             switch appState.workspaceMode {
             case .personalHeatmap:
                 PersonalHeatmapView(appState: appState, viewModel: appState.personalHeatmap)
+            case .workoutLibrary:
+                WorkoutLibraryView(appState: appState, viewModel: appState.workoutLibrary)
             case .comparison:
                 if appState.selectedWorkout != nil {
                     CompareView(appState: appState)
@@ -183,6 +191,7 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
             showPersonalHeatmap: { appState.showPersonalHeatmap() },
+            showAllRuns: { appState.showWorkoutLibrary() },
             importFile: { appState.showImporter = true },
             importStravaArchive: { appState.showArchiveImporter = true }
         ))

@@ -28,13 +28,23 @@ coordinates, so the general area of your route is visible to Apple Maps. No
 workout file data, metrics, heart rate, or account information is included in
 map requests.
 
+## All Runs search index
+
+All Runs search builds an **in-memory** document per workout from lightweight
+metadata (display name, notes, activity type, device, source, import provider,
+original filename basename, and stable date tokens). Search does not scan route
+coordinates, raw FIT messages, export history, or absolute local paths.
+Documents are not written as a second full-text database on disk. Favourites and
+editable name/notes remain local Application Support data only.
+
 ## Personal Heatmap
 
 The Personal Heatmap workspace aggregates route coverage **locally** across the
 workout library currently loaded in the app. Aggregation never uploads route
 data, does not call geocoding or third-party heatmap services, and does not
 persist a separate heatmap database. Results live in an in-memory cache for the
-session and are recomputed when the library or filters change.
+session and are recomputed when the library or filters change. All Runs search
+and filters do not change which workouts heatmap aggregates.
 
 Apple Maps may still load basemap tiles for the heatmap’s geographic bounds under
 the MapKit policy above. Workout-cell counts and intensity are computed only on

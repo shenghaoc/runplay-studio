@@ -44,7 +44,7 @@ RunPlay Studio is a precision instrument, not a social network. The vibe is "pro
 
 3. **Energetic precision.** Color signals meaning: blue = primary/action, orange = comparison, green = improvement, red = heart rate/effort. Colors are vibrant but never gratuitous. Motion is purposeful (map transitions, chart scrubbing), never decorative.
 
-4. **Focused depth, not shallow breadth.** Deep replay, rich comparison, relative route metric coloring on the native map, personal route heatmap across the local library, and precise segment detection. No feature-creep: if it doesn't help a runner understand their workout better, it doesn't ship.
+4. **Focused depth, not shallow breadth.** Deep replay, rich comparison, relative route metric coloring on the native map, personal route heatmap across the local library, a scalable All Runs browser (search, filter, sort, favourites, name/notes), and precise segment detection. No feature-creep: if it doesn't help a runner understand their workout better, it doesn't ship.
 
 5. **Native-first, not cross-platform lowest-common-denominator.** The app feels like a macOS app — native navigation, system fonts, platform conventions, Apple Maps integration. No Electron-style generic UI.
 

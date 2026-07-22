@@ -18,6 +18,7 @@ extension FocusedValues {
 /// Actions for top-level workspace navigation from the menu bar.
 struct AppWorkspaceActions {
     var showPersonalHeatmap: () -> Void
+    var showAllRuns: () -> Void = {}
     var importFile: () -> Void = {}
     var importStravaArchive: () -> Void = {}
 }
@@ -80,6 +81,19 @@ struct WorkoutViewCommands: Commands {
             .disabled(selectedTab == nil)
 
             Divider()
+
+            Button("All Runs") {
+                if let workspaceActions {
+                    workspaceActions.showAllRuns()
+                } else {
+                    NotificationCenter.default.post(
+                        name: .runPlayWorkspaceCommand,
+                        object: AppWorkspaceCommand.showAllRuns
+                    )
+                }
+            }
+            .keyboardShortcut("l", modifiers: [.command, .shift])
+            .help("Browse and search the full local workout library")
 
             Button("Personal Heatmap") {
                 if let workspaceActions {

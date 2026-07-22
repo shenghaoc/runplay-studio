@@ -182,6 +182,24 @@ session; they are not claims of a completed manual pass.
 - [ ] Confirm a non-running FIT activity and an ambiguous multi-running-session FIT file show clear import errors.
 - [ ] Cancel a large FIT import and confirm it is neither displayed nor persisted after relaunch.
 
+## All Runs Library Checklist
+
+Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
+
+- [ ] Open **All Runs** from the Library sidebar (or Workout → All Runs / ⌘⇧L).
+- [ ] Confirm the sidebar does not list every workout; Favourites / Recent are capped.
+- [ ] Search by name, notes, year, source, and device.
+- [ ] Exercise date, source, favourite, and data filters; Clear Filters / Clear Search.
+- [ ] Exercise each sort mode; missing dates/pace sort after valid values.
+- [ ] Favourite / unfavourite a persisted workout; confirm sidebar Favourites update.
+- [ ] Confirm bundled demos cannot be favourited as persistent library entries.
+- [ ] Edit name and notes; search finds the new notes; empty name restores fallback display.
+- [ ] Quit and relaunch; favourites and metadata persist for library workouts.
+- [ ] Import one file and a Strava archive; All Runs refreshes once after commit.
+- [ ] Delete a favourite; manifest favourite set no longer contains it.
+- [ ] Open comparison, heatmap, and PNG export; none inherit All Runs filters.
+- [ ] Keyboard: select rows, Return to open, Delete with confirmation, focus search.
+
 ## Persistent Workout Library Checklist
 
 Use a synthetic fixture and confirm the original fixture checksum before and

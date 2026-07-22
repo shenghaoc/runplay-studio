@@ -6,6 +6,10 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
     case duplicateWorkoutID(UUID)
     /// The manifest was committed but the workout file could not be deleted.
     case orphanedFile(UUID, underlyingError: String)
+    /// The workout ID is not present in the library manifest.
+    case workoutNotInLibrary(UUID)
+    /// Metadata validation failed.
+    case invalidMetadata(String)
 
     public var errorDescription: String? {
         switch self {
@@ -13,6 +17,10 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
             return "Workout \(id) already exists in the library"
         case .orphanedFile(let id, let detail):
             return "Workout \(id) was removed from the library, but its file could not be deleted: \(detail)"
+        case .workoutNotInLibrary(let id):
+            return "Workout \(id) is not in the library"
+        case .invalidMetadata(let detail):
+            return detail
         }
     }
 }
@@ -151,12 +159,22 @@ public actor WorkoutLibraryStoreActor {
                 validIDs.contains(selectedID) ? selectedID : nil
             } ?? validIDs.first
 
-            if validIDs != manifest.workoutIDs || selectedWorkoutID != manifest.selectedWorkoutID {
+            var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(Set(validIDs))
+            let favoritesNeedRepair = favoriteIDs != manifest.favoriteWorkoutIDs
+            let orderNeedsRepair = validIDs != manifest.workoutIDs
+                || selectedWorkoutID != manifest.selectedWorkoutID
+                || favoritesNeedRepair
+                || manifest.version != WorkoutLibraryManifest.currentVersion
+
+            if orderNeedsRepair {
                 var repaired = manifest
                 repaired.workoutIDs = validIDs
                 repaired.selectedWorkoutID = selectedWorkoutID
+                repaired.favoriteWorkoutIDs = favoriteIDs
+                repaired.migrateToCurrentVersionIfNeeded()
                 do {
                     try store.saveManifest(repaired)
+                    favoriteIDs = repaired.favoriteWorkoutIDs
                 } catch {
                     warnings.append("Could not repair library manifest: \(error.localizedDescription)")
                 }
@@ -165,7 +183,12 @@ public actor WorkoutLibraryStoreActor {
             let warning = warnings.isEmpty
                 ? nil
                 : "Library warnings:\n" + warnings.joined(separator: "\n")
-            return .workouts(loaded, selectedWorkoutID: selectedWorkoutID, warning: warning)
+            return .workouts(
+                loaded,
+                selectedWorkoutID: selectedWorkoutID,
+                favoriteWorkoutIDs: favoriteIDs,
+                warning: warning
+            )
         } catch let error as WorkoutLibraryError {
             if case .manifestMissing = error {
                 return .demos(errorMessage: nil)
@@ -265,9 +288,11 @@ public actor WorkoutLibraryStoreActor {
 
         let wasSelected = manifest.selectedWorkoutID == id
         manifest.workoutIDs.removeAll { $0 == id }
+        manifest.favoriteWorkoutIDs.remove(id)
         if wasSelected {
             manifest.selectedWorkoutID = newSelectedID
         }
+        manifest.migrateToCurrentVersionIfNeeded()
 
         try store.saveManifest(manifest)
 
@@ -472,5 +497,87 @@ public actor WorkoutLibraryStoreActor {
     /// Whether a batch import is currently active.
     public var hasActiveBatch: Bool {
         activeBatch != nil
+    }
+
+    // MARK: - Favourites
+
+    /// Set or clear the favourite marker for a library workout.
+    ///
+    /// Idempotent for repeated same-value requests. Persists one atomic
+    /// manifest update. Does not rewrite workout snapshots.
+    public func setFavorite(_ isFavorite: Bool, workoutID: UUID) throws {
+        try Task.checkCancellation()
+        var manifest: WorkoutLibraryManifest
+        do {
+            manifest = try store.loadManifest()
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+            }
+            throw error
+        }
+
+        guard manifest.workoutIDs.contains(workoutID) else {
+            throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+        }
+
+        let currentlyFavorite = manifest.favoriteWorkoutIDs.contains(workoutID)
+        if currentlyFavorite == isFavorite {
+            return
+        }
+
+        if isFavorite {
+            manifest.favoriteWorkoutIDs.insert(workoutID)
+        } else {
+            manifest.favoriteWorkoutIDs.remove(workoutID)
+        }
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    // MARK: - Metadata
+
+    /// Update only editable name/notes for a library workout.
+    ///
+    /// Sequence: validate membership → load snapshot → normalize metadata →
+    /// save snapshot atomically → return updated workout. Does not rerun
+    /// normalization or analysis.
+    public func updateWorkoutMetadata(
+        workoutID: UUID,
+        name: String?,
+        notes: String?,
+        policy: WorkoutMetadataEditingPolicy = .default
+    ) throws -> RunWorkout {
+        try Task.checkCancellation()
+        var manifest: WorkoutLibraryManifest
+        do {
+            manifest = try store.loadManifest()
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+            }
+            throw error
+        }
+
+        guard manifest.workoutIDs.contains(workoutID) else {
+            throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+        }
+
+        let normalized: WorkoutMetadataEditingPolicy.NormalizedMetadata
+        do {
+            normalized = try policy.normalize(name: name, notes: notes)
+        } catch let error as WorkoutMetadataEditingPolicy.ValidationError {
+            throw WorkoutLibraryStoreError.invalidMetadata(error.localizedDescription)
+        }
+
+        var workout = try store.loadWorkout(id: workoutID)
+        if workout.metadata.name == normalized.name, workout.metadata.notes == normalized.notes {
+            return workout
+        }
+
+        workout.metadata.name = normalized.name
+        workout.metadata.notes = normalized.notes
+        try store.saveWorkout(workout)
+        return workout
     }
 }

@@ -124,7 +124,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _) = result else {
             XCTFail("Expected .workouts, got \(result)")
             return
         }
@@ -173,7 +173,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
             XCTFail("Expected migrated workouts, got \(result)")
             return
         }
@@ -210,7 +210,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
             XCTFail("Expected in-memory workout, got \(result)")
             return
         }
@@ -228,7 +228,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         )
 
         let retryResult = await actor.loadLibrary()
-        guard case .workouts(let retried, _, _) = retryResult else {
+        guard case .workouts(let retried, _, _, _) = retryResult else {
             XCTFail("Expected the original snapshot to remain retryable, got \(retryResult)")
             return
         }
@@ -250,7 +250,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
             XCTFail("Expected migrated workouts, got \(result)")
             return
         }
@@ -295,7 +295,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
             XCTFail("Expected current workout, got \(result)")
             return
         }
@@ -321,7 +321,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -548,7 +548,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -603,7 +603,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         try await actor.addWorkout(workout, select: true)
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -626,6 +626,142 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(RunWorkout.self, from: Data(contentsOf: legacyFixtureURL()))
+    }
+
+    // MARK: - Favourites & Metadata
+
+    func testSetFavoritePersistsAndIsIdempotent() async throws {
+        let workout = makeWorkout(name: "Fav")
+        let actor = WorkoutLibraryStoreActor(store: store)
+        try await actor.addWorkout(workout, select: true)
+
+        try await actor.setFavorite(true, workoutID: workout.id)
+        try await actor.setFavorite(true, workoutID: workout.id)
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.favoriteWorkoutIDs, [workout.id])
+        XCTAssertEqual(manifest.version, WorkoutLibraryManifest.currentVersion)
+
+        try await actor.setFavorite(false, workoutID: workout.id)
+        let cleared = try store.loadManifest()
+        XCTAssertTrue(cleared.favoriteWorkoutIDs.isEmpty)
+    }
+
+    func testSetFavoriteMissingIDThrows() async {
+        let actor = WorkoutLibraryStoreActor(store: store)
+        do {
+            try await actor.setFavorite(true, workoutID: UUID())
+            XCTFail("Expected error")
+        } catch let error as WorkoutLibraryStoreError {
+            guard case .workoutNotInLibrary = error else {
+                XCTFail("Unexpected \(error)")
+                return
+            }
+        } catch {
+            XCTFail("Unexpected \(error)")
+        }
+    }
+
+    func testDeleteRemovesFavorite() async throws {
+        let workout = makeWorkout()
+        let actor = WorkoutLibraryStoreActor(store: store)
+        try await actor.addWorkout(workout, select: true)
+        try await actor.setFavorite(true, workoutID: workout.id)
+        _ = try await actor.deleteWorkout(id: workout.id, newSelectedID: nil)
+        let manifest = try store.loadManifest()
+        XCTAssertTrue(manifest.favoriteWorkoutIDs.isEmpty)
+        XCTAssertTrue(manifest.workoutIDs.isEmpty)
+    }
+
+    func testBatchImportPreservesFavorites() async throws {
+        let existing = makeWorkout(name: "Existing")
+        let actor = WorkoutLibraryStoreActor(store: store)
+        try await actor.addWorkout(existing, select: true)
+        try await actor.setFavorite(true, workoutID: existing.id)
+
+        let staged = makeWorkout(name: "Staged")
+        let token = try await actor.beginBatchImport()
+        try await actor.stageWorkout(staged, in: token)
+        _ = try await actor.commitBatchImport(token, selectedWorkoutID: staged.id)
+
+        let manifest = try store.loadManifest()
+        XCTAssertTrue(manifest.favoriteWorkoutIDs.contains(existing.id))
+        XCTAssertFalse(manifest.favoriteWorkoutIDs.contains(staged.id))
+        XCTAssertEqual(manifest.workoutIDs, [existing.id, staged.id])
+    }
+
+    func testUpdateMetadataNameAndNotes() async throws {
+        let workout = makeWorkout(name: "Original")
+        let actor = WorkoutLibraryStoreActor(store: store)
+        try await actor.addWorkout(workout, select: true)
+
+        let updated = try await actor.updateWorkoutMetadata(
+            workoutID: workout.id,
+            name: "  Renamed  ",
+            notes: "Personal note"
+        )
+        XCTAssertEqual(updated.metadata.name, "Renamed")
+        XCTAssertEqual(updated.metadata.notes, "Personal note")
+        XCTAssertEqual(updated.id, workout.id)
+        XCTAssertEqual(updated.routePoints.count, workout.routePoints.count)
+        XCTAssertEqual(updated.analysisVersion, workout.analysisVersion)
+        XCTAssertEqual(updated.normalizationVersion, workout.normalizationVersion)
+
+        let loaded = try store.loadWorkout(id: workout.id)
+        XCTAssertEqual(loaded.metadata.name, "Renamed")
+        XCTAssertEqual(loaded.metadata.notes, "Personal note")
+    }
+
+    func testUpdateMetadataClearNameRestoresNil() async throws {
+        let workout = makeWorkout(name: "Named")
+        let actor = WorkoutLibraryStoreActor(store: store)
+        try await actor.addWorkout(workout, select: true)
+        let updated = try await actor.updateWorkoutMetadata(
+            workoutID: workout.id,
+            name: "   ",
+            notes: nil
+        )
+        XCTAssertNil(updated.metadata.name)
+    }
+
+    func testUpdateMetadataRejectsNUL() async {
+        let workout = makeWorkout()
+        let actor = WorkoutLibraryStoreActor(store: store)
+        do {
+            try await actor.addWorkout(workout, select: true)
+            _ = try await actor.updateWorkoutMetadata(
+                workoutID: workout.id,
+                name: "bad\0name",
+                notes: nil
+            )
+            XCTFail("Expected invalid metadata")
+        } catch let error as WorkoutLibraryStoreError {
+            guard case .invalidMetadata = error else {
+                XCTFail("Unexpected \(error)")
+                return
+            }
+        } catch {
+            XCTFail("Unexpected \(error)")
+        }
+    }
+
+    func testLoadLibraryRepairsMissingFavoriteIDs() async throws {
+        let workout = makeWorkout()
+        try store.saveWorkout(workout)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id,
+            favoriteWorkoutIDs: [workout.id, UUID()]
+        ))
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let result = await actor.loadLibrary()
+        guard case .workouts(_, _, let favorites, _) = result else {
+            XCTFail("Expected workouts")
+            return
+        }
+        XCTAssertEqual(favorites, [workout.id])
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.favoriteWorkoutIDs, [workout.id])
     }
 }
 

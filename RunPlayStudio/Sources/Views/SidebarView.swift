@@ -4,23 +4,62 @@ import RunPlayCore
 /// Unified sidebar selection so Library destinations and workouts share one
 /// native `List` selection binding (keyboard navigation, focus ring, VoiceOver).
 enum SidebarSelection: Hashable {
+    case allRuns
     case personalHeatmap
     case workout(UUID)
 }
 
-/// Sidebar showing library destinations and the workout list.
+/// Sidebar showing library destinations and bounded workout sections.
 struct SidebarView: View {
     let workouts: [RunWorkout]
+    let favoriteIDs: Set<UUID>
+    let libraryCount: Int
+    let totalFavoriteCount: Int
     @Binding var selection: SidebarSelection?
     var onImport: () -> Void
     var onArchiveImport: (() -> Void)? = nil
     var onDelete: ((RunWorkout) -> Void)?
+    var onShowAllFavorites: (() -> Void)? = nil
 
     @State private var workoutToDelete: RunWorkout?
+
+    private var sections: (
+        favorites: [RunWorkout],
+        recent: [RunWorkout],
+        selectedOverflow: RunWorkout?
+    ) {
+        let selectedID: UUID? = {
+            if case .workout(let id) = selection { return id }
+            return nil
+        }()
+        return WorkoutLibrarySidebarPolicy.sidebarSections(
+            workouts: workouts,
+            favoriteIDs: favoriteIDs,
+            selectedWorkoutID: selectedID
+        )
+    }
 
     var body: some View {
         List(selection: $selection) {
             Section {
+                Label {
+                    HStack {
+                        Text("All Runs")
+                        Spacer()
+                        if libraryCount > 0 {
+                            Text("\(libraryCount)")
+                                .font(AppDesign.Typography.compactLabel)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "list.bullet")
+                }
+                .tag(SidebarSelection.allRuns)
+                .help("Browse, search, and organise your full local library")
+                .accessibilityLabel("All Runs, \(libraryCount) runs")
+
                 Label("Personal Heatmap", systemImage: "square.grid.3x3.fill")
                     .tag(SidebarSelection.personalHeatmap)
                     .help("Show where you run most often across your local library (⌘⇧H)")
@@ -33,28 +72,75 @@ struct SidebarView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            Section {
-                ForEach(workouts) { workout in
-                    WorkoutRow(workout: workout)
-                        .tag(SidebarSelection.workout(workout.id))
+            let bounded = sections
+
+            if !bounded.favorites.isEmpty {
+                Section {
+                    ForEach(bounded.favorites) { workout in
+                        WorkoutRow(workout: workout, showsFavorite: true)
+                            .tag(SidebarSelection.workout(workout.id))
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    workoutToDelete = workout
+                                } label: {
+                                    Label("Delete Run", systemImage: "trash")
+                                }
+                            }
+                    }
+                    if WorkoutLibrarySidebarPolicy.hasMoreFavorites(favoriteCount: totalFavoriteCount) {
+                        Button {
+                            onShowAllFavorites?()
+                        } label: {
+                            Label("All Favourites…", systemImage: "star")
+                        }
+                        .accessibilityLabel("Show all favourites in All Runs")
+                    }
+                } header: {
+                    Text("Favourites")
+                        .font(AppDesign.Typography.compactLabel)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if !bounded.recent.isEmpty {
+                Section {
+                    ForEach(bounded.recent) { workout in
+                        WorkoutRow(workout: workout)
+                            .tag(SidebarSelection.workout(workout.id))
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    workoutToDelete = workout
+                                } label: {
+                                    Label("Delete Run", systemImage: "trash")
+                                }
+                            }
+                    }
+                } header: {
+                    Text("Recent")
+                        .font(AppDesign.Typography.compactLabel)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if let selected = bounded.selectedOverflow {
+                Section {
+                    WorkoutRow(workout: selected)
+                        .tag(SidebarSelection.workout(selected.id))
                         .contextMenu {
                             Button(role: .destructive) {
-                                workoutToDelete = workout
+                                workoutToDelete = selected
                             } label: {
                                 Label("Delete Run", systemImage: "trash")
                             }
                         }
+                } header: {
+                    Text("Selected Run")
+                        .font(AppDesign.Typography.compactLabel)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
                 }
-                .onDelete { indexSet in
-                    if let index = indexSet.first {
-                        workoutToDelete = workouts[index]
-                    }
-                }
-            } header: {
-                Text("Runs")
-                    .font(AppDesign.Typography.compactLabel)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.tertiary)
             }
         }
         .listStyle(.sidebar)
@@ -108,12 +194,13 @@ struct SidebarView: View {
 
 struct WorkoutRow: View {
     let workout: RunWorkout
+    var showsFavorite: Bool = false
 
     var body: some View {
         HStack(spacing: AppDesign.Spacing.medium) {
-            Image(systemName: "figure.run.circle.fill")
+            Image(systemName: showsFavorite ? "star.fill" : "figure.run.circle.fill")
                 .font(.title3)
-                .foregroundStyle(accentColor)
+                .foregroundStyle(showsFavorite ? Color.yellow.opacity(0.9) : accentColor)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {

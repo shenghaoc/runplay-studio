@@ -18,8 +18,10 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 
 | Type | Role |
 |------|------|
-| `AppState` | Central `@MainActor ObservableObject` coordinator. Owns `workouts`, `selectedWorkout`, `workspaceMode`, `replayController`, comparison state, `personalHeatmap`, and library operation state. |
-| `AppWorkspaceMode` | Mutually exclusive top-level destinations: `.workout`, `.comparison`, `.personalHeatmap`. |
+| `AppState` | Central `@MainActor ObservableObject` coordinator. Owns `workouts`, `selectedWorkout`, `workspaceMode`, favourites, `replayController`, comparison state, `personalHeatmap`, `workoutLibrary`, and library operation state. |
+| `AppWorkspaceMode` | Mutually exclusive top-level destinations: `.workout`, `.comparison`, `.personalHeatmap`, `.workoutLibrary` (All Runs). |
+| `WorkoutLibraryViewModel` | All Runs search/filter/sort state, search documents, cancellable off-main queries, stale-result suppression. |
+| `WorkoutLibraryView` | All Runs table UI, filters, empty states, metadata editor sheet. |
 | `PersonalHeatmapViewModel` | Dedicated heatmap filters, background aggregation, stale-request suppression, and in-memory cache. |
 | `PersonalHeatmapView` | Heatmap workspace UI: filters, statistics, map areas, legend, empty/loading/error states. |
 | `ReplayController` | `@MainActor ObservableObject` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
