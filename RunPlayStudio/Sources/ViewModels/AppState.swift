@@ -131,6 +131,10 @@ class AppState: ObservableObject {
     /// Bundled demos leave this false so favourite/metadata actions stay disabled.
     @Published private(set) var hasPersistedLibrary = false
 
+    /// IDs known to exist in the persisted library manifest.
+    /// Bundled demos are never added here, even if still shown in-session.
+    @Published private(set) var libraryWorkoutIDs: Set<UUID> = []
+
     /// Transient metadata editor error (stays in the sheet; not a workspace overlay).
     @Published var metadataEditError: String?
 
@@ -278,6 +282,7 @@ class AppState: ObservableObject {
         switch result {
         case .demos(let loadErrorMessage):
             favoriteWorkoutIDs = []
+            libraryWorkoutIDs = []
             hasPersistedLibrary = false
             loadSampleWorkouts()
             if let loadErrorMessage {
@@ -288,6 +293,7 @@ class AppState: ObservableObject {
             analysisContextCache.removeAll()
             workouts = loaded
             favoriteWorkoutIDs = favoriteIDs
+            libraryWorkoutIDs = Set(loaded.map(\.id))
             hasPersistedLibrary = true
             workoutLibrary.replaceLibrary(workouts: loaded, favoriteIDs: favoriteIDs)
             let selected = selectedWorkoutID.flatMap { id in
@@ -309,6 +315,7 @@ class AppState: ObservableObject {
 
         // Demos are not library entries — clear favourites and index demos for browsing only.
         favoriteWorkoutIDs = []
+        libraryWorkoutIDs = []
         hasPersistedLibrary = false
         workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: [])
 
@@ -341,10 +348,18 @@ class AppState: ObservableObject {
             try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
 
-            if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
+            // First successful import after demos: drop non-persisted demos so
+            // favourites/metadata cannot target IDs missing from the manifest.
+            if !hasPersistedLibrary || libraryWorkoutIDs.isEmpty {
+                analysisContextCache.removeAll()
+                workouts = [workout]
+                libraryWorkoutIDs = [workout.id]
+            } else if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
                 workouts[existingIndex] = workout
+                libraryWorkoutIDs.insert(workout.id)
             } else {
                 workouts.append(workout)
+                libraryWorkoutIDs.insert(workout.id)
             }
             hasPersistedLibrary = true
             workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: favoriteWorkoutIDs)
@@ -485,6 +500,7 @@ class AppState: ObservableObject {
                 // or failed, but the UI state is authoritative for display.
                 workouts.removeAll { $0.id == workout.id }
                 favoriteWorkoutIDs.remove(workout.id)
+                libraryWorkoutIDs.remove(workout.id)
                 analysisContextCache.removeValue(forKey: workout.id)
                 workoutLibrary.removeWorkout(id: workout.id)
                 applyDeletionSelection(
@@ -495,6 +511,7 @@ class AppState: ObservableObject {
                 // Manifest committed but file is orphaned. Remove from UI and warn.
                 workouts.removeAll { $0.id == workout.id }
                 favoriteWorkoutIDs.remove(workout.id)
+                libraryWorkoutIDs.remove(workout.id)
                 analysisContextCache.removeValue(forKey: workout.id)
                 workoutLibrary.removeWorkout(id: workout.id)
                 applyDeletionSelection(
@@ -512,6 +529,7 @@ class AppState: ObservableObject {
             // No store: just update in-memory state (demo-only mode).
             workouts.removeAll { $0.id == workout.id }
             favoriteWorkoutIDs.remove(workout.id)
+            libraryWorkoutIDs.remove(workout.id)
             analysisContextCache.removeValue(forKey: workout.id)
             workoutLibrary.removeWorkout(id: workout.id)
             applyDeletionSelection(
@@ -638,15 +656,20 @@ class AppState: ObservableObject {
 
     /// Whether favourite actions apply (imported library workouts only).
     func canFavorite(_ workout: RunWorkout) -> Bool {
+        canEditLibraryMetadata(workout)
+    }
+
+    /// Whether name/notes editing applies (persisted library IDs only, never demos).
+    func canEditLibraryMetadata(_ workout: RunWorkout) -> Bool {
         storeActor != nil
             && hasPersistedLibrary
-            && workouts.contains(where: { $0.id == workout.id })
+            && libraryWorkoutIDs.contains(workout.id)
     }
 
     /// Toggle favourite for a library workout. No-op / error for demos.
     @discardableResult
     func setFavorite(_ isFavorite: Bool, workoutID: UUID) async -> Bool {
-        guard let storeActor, hasPersistedLibrary else {
+        guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
             errorMessage = "Favourites apply to imported library workouts, not bundled demos."
             showingError = true
             return false
@@ -683,7 +706,7 @@ class AppState: ObservableObject {
         notes: String?
     ) async -> Bool {
         metadataEditError = nil
-        guard let storeActor, hasPersistedLibrary else {
+        guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
             metadataEditError = "Details can only be edited for imported library workouts."
             return false
         }
@@ -1005,6 +1028,7 @@ class AppState: ObservableObject {
                         self.analysisContextCache.removeAll()
                         self.workouts = loaded
                         self.favoriteWorkoutIDs = favoriteIDs
+                        self.libraryWorkoutIDs = Set(loaded.map(\.id))
                         self.hasPersistedLibrary = true
                         self.workoutLibrary.replaceLibrary(workouts: loaded, favoriteIDs: favoriteIDs)
                         let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }

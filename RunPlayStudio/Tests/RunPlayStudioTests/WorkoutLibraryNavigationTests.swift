@@ -126,10 +126,13 @@ final class WorkoutLibraryNavigationTests: XCTestCase {
         let a = makeWorkout(name: "Demo")
         appState.workouts = [a]
         XCTAssertFalse(appState.canFavorite(a))
+        XCTAssertFalse(appState.canEditLibraryMetadata(a))
         let ok = await appState.setFavorite(true, workoutID: a.id)
         XCTAssertFalse(ok)
         XCTAssertTrue(appState.favoriteWorkoutIDs.isEmpty)
     }
+
+
 
     func testAllRunsFiltersDoNotAffectHeatmapInputs() {
         let appState = AppState(storeActor: nil, importService: nil)
@@ -146,5 +149,83 @@ final class WorkoutLibraryNavigationTests: XCTestCase {
         XCTAssertEqual(appState.workouts.count, 2)
         XCTAssertEqual(appState.workspaceMode, .personalHeatmap)
         XCTAssertEqual(appState.workoutLibrary.searchText, "A")
+    }
+}
+
+@MainActor
+final class WorkoutLibraryPersistenceIntegrationTests: XCTestCase {
+    nonisolated(unsafe) private var tempDir: URL!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LibraryPersist-\(UUID().uuidString)")
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    private func makeImportableWorkout(name: String) -> RunWorkout {
+        RunWorkout(
+            metadata: WorkoutMetadata(name: name, startDate: Date(timeIntervalSince1970: 1_700_000_000)),
+            source: .json,
+            routePoints: [
+                RoutePoint(
+                    timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+                    latitude: 1.3,
+                    longitude: 103.8,
+                    distanceFromStartMeters: 0,
+                    elapsedSeconds: 0
+                ),
+                RoutePoint(
+                    timestamp: Date(timeIntervalSince1970: 1_700_000_100),
+                    latitude: 1.31,
+                    longitude: 103.9,
+                    distanceFromStartMeters: 1_000,
+                    elapsedSeconds: 100
+                )
+            ],
+            summary: RunSummary(totalDistanceMeters: 1_000, totalElapsedSeconds: 100)
+        )
+    }
+
+    func testFirstImportReplacesDemosAndEnablesFavoriteOnlyForLibraryID() async throws {
+        let store = FileWorkoutLibraryStore(rootURL: tempDir)
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let appState = AppState(storeActor: actor, importService: WorkoutImportService())
+        await appState.start()
+
+        // Empty store → demos.
+        XCTAssertFalse(appState.hasPersistedLibrary)
+        XCTAssertTrue(appState.libraryWorkoutIDs.isEmpty)
+        let demoIDs = Set(appState.workouts.map(\.id))
+        XCTAssertFalse(demoIDs.isEmpty)
+        for demo in appState.workouts {
+            XCTAssertFalse(appState.canFavorite(demo))
+            XCTAssertFalse(appState.canEditLibraryMetadata(demo))
+        }
+
+        let toImport = makeImportableWorkout(name: "Imported")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let url = tempDir.appendingPathComponent("import.json")
+        try encoder.encode(toImport).write(to: url)
+
+        await appState.importWorkout(from: url)
+
+        XCTAssertTrue(appState.hasPersistedLibrary)
+        XCTAssertEqual(appState.workouts.count, 1)
+        XCTAssertEqual(appState.libraryWorkoutIDs.count, 1)
+        XCTAssertTrue(demoIDs.isDisjoint(with: appState.libraryWorkoutIDs))
+        let imported = try XCTUnwrap(appState.workouts.first)
+        XCTAssertTrue(appState.canFavorite(imported))
+        XCTAssertTrue(appState.canEditLibraryMetadata(imported))
+
+        let favOK = await appState.setFavorite(true, workoutID: imported.id)
+        XCTAssertTrue(favOK)
+        XCTAssertTrue(appState.favoriteWorkoutIDs.contains(imported.id))
     }
 }

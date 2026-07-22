@@ -288,15 +288,11 @@ final class WorkoutLibraryViewModel: ObservableObject {
             return
         }
 
-        loadState = loadState == .idle || loadState == .failed("") ? .loading : loadState
-        // Keep previous results visible while recomputing (no global busy overlay).
-        if case .ready = loadState {
-            // leave resultIDs as-is
-        } else if case .emptySearch = loadState {
-            // keep
-        } else if case .emptyFilters = loadState {
-            // keep
-        } else {
+        // Keep previous results visible while recomputing unless we have nothing yet.
+        switch loadState {
+        case .ready, .emptySearch, .emptyFilters:
+            break
+        case .idle, .loading, .emptyLibrary, .failed:
             loadState = .loading
         }
 

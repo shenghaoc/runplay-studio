@@ -20,11 +20,19 @@ struct WorkoutLibraryView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .navigationTitle("All Runs")
+        .focusSection()
         .onExitCommand {
             if searchFocused, !viewModel.searchText.isEmpty {
                 viewModel.clearSearch()
             }
         }
+        .background(
+            Button("") { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        )
         .alert("Delete Run", isPresented: Binding(
             get: { workoutToDelete != nil },
             set: { if !$0 { workoutToDelete = nil } }
@@ -367,10 +375,20 @@ struct WorkoutLibraryView: View {
                     Button(entry.isFavorite ? "Unfavourite" : "Favourite") {
                         Task { await appState.setFavorite(!entry.isFavorite, workoutID: id) }
                     }
+                } else {
+                    Button("Favourite") {}
+                        .disabled(true)
+                        .help("Favourites apply to imported library workouts, not bundled demos.")
                 }
-                Button("Edit Details…") {
-                    appState.metadataEditError = nil
-                    metadataEditorWorkout = workout
+                if appState.canEditLibraryMetadata(workout) {
+                    Button("Edit Details…") {
+                        appState.metadataEditError = nil
+                        metadataEditorWorkout = workout
+                    }
+                } else {
+                    Button("Edit Details…") {}
+                        .disabled(true)
+                        .help("Details can only be edited for imported library workouts.")
                 }
                 Divider()
                 Button("Delete", role: .destructive) {

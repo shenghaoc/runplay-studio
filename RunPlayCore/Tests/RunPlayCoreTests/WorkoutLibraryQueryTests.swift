@@ -263,6 +263,27 @@ final class WorkoutLibraryQueryTests: XCTestCase {
         XCTAssertEqual(result.matchingIDs, [a.id])
     }
 
+    func testCustomRangeIncludesFullEndCalendarDay() async throws {
+        // End date is start-of-day (date-picker style); evening workouts that day must match.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2024, month: 1, day: 1))!
+        let endDay = cal.date(from: DateComponents(year: 2024, month: 1, day: 10))!
+        let eveningOnEnd = cal.date(from: DateComponents(year: 2024, month: 1, day: 10, hour: 21))!
+        let nextMorning = cal.date(from: DateComponents(year: 2024, month: 1, day: 11, hour: 1))!
+        let included = makeEntry(start: eveningOnEnd)
+        let excluded = makeEntry(start: nextMorning)
+        let q = WorkoutLibraryQuery(
+            searchText: "",
+            filter: WorkoutLibraryFilter(date: .custom(start: start, end: endDay)),
+            sort: .libraryOrder,
+            now: now,
+            calendar: cal
+        )
+        let result = try await run([included, excluded], query: q)
+        XCTAssertEqual(result.matchingIDs, [included.id])
+    }
+
     // MARK: - Sort
 
     func testDateNewestAndOldest() async throws {
