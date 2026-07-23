@@ -67,28 +67,47 @@ public actor WorkoutLibraryStoreActor {
         do {
             let manifest = try store.loadManifest()
             guard !manifest.workoutIDs.isEmpty else {
-                let organizationNonEmpty = !manifest.tags.isEmpty
-                    || !manifest.tagAssignments.isEmpty
-                    || !manifest.smartCollections.isEmpty
-                let manifestNeedsRepair = manifest.selectedWorkoutID != nil
-                    || !manifest.favoriteWorkoutIDs.isEmpty
-                    || organizationNonEmpty
-                    || manifest.version != WorkoutLibraryManifest.currentVersion
-                if manifestNeedsRepair {
-                    var repaired = manifest
-                    repaired.selectedWorkoutID = nil
-                    repaired.favoriteWorkoutIDs = []
-                    repaired.tags = []
-                    repaired.tagAssignments = []
-                    repaired.smartCollections = []
-                    repaired.migrateToCurrentVersionIfNeeded()
+                // Empty library still shows demos, but keep user-defined tags and
+                // smart collections. Only drop assignments (no workouts) plus
+                // selection/favourites that cannot apply without library rows.
+                var repaired = manifest
+                let hadAssignments = !repaired.tagAssignments.isEmpty
+                let hadSelectionOrFavorites = repaired.selectedWorkoutID != nil
+                    || !repaired.favoriteWorkoutIDs.isEmpty
+                repaired.selectedWorkoutID = nil
+                repaired.favoriteWorkoutIDs = []
+                repaired.tagAssignments = []
+                let organizationReport = repaired.repairOrganization()
+                repaired.upgradeSchemaVersionIfNeeded()
+                let needsPersist = hadAssignments
+                    || hadSelectionOrFavorites
+                    || !organizationReport.isEmpty
+                    || repaired.version != manifest.version
+                    || repaired.tags != manifest.tags
+                    || repaired.smartCollections != manifest.smartCollections
+                if needsPersist {
                     do {
                         try store.saveManifest(repaired)
                     } catch {
-                        return .demos(errorMessage: "Could not repair the empty library manifest: \(error.localizedDescription)")
+                        return .demos(
+                            errorMessage: "Could not repair the empty library manifest: \(error.localizedDescription)",
+                            organization: WorkoutLibraryOrganizationSnapshot(
+                                tags: repaired.tags,
+                                smartCollections: repaired.smartCollections
+                            ),
+                            manifestPresent: true
+                        )
                     }
                 }
-                return .demos(errorMessage: nil)
+                return .demos(
+                    errorMessage: nil,
+                    organization: WorkoutLibraryOrganizationSnapshot(
+                        tags: repaired.tags,
+                        tagAssignments: [],
+                        smartCollections: repaired.smartCollections
+                    ),
+                    manifestPresent: true
+                )
             }
 
             var loaded: [RunWorkout] = []
@@ -221,7 +240,17 @@ public actor WorkoutLibraryStoreActor {
                 let warning = warnings.isEmpty
                     ? nil
                     : "Library recovery:\n" + warnings.joined(separator: "\n")
-                return .demos(errorMessage: warning)
+                // All workout files missing/corrupt — keep organisation for an
+                // empty persisted library rather than wiping tags/collections.
+                return .demos(
+                    errorMessage: warning,
+                    organization: WorkoutLibraryOrganizationSnapshot(
+                        tags: workingManifest.tags,
+                        tagAssignments: workingManifest.tagAssignments,
+                        smartCollections: workingManifest.smartCollections
+                    ),
+                    manifestPresent: true
+                )
             }
 
             let organization = WorkoutLibraryOrganizationSnapshot(

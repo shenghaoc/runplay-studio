@@ -294,13 +294,16 @@ class AppState: ObservableObject {
 
     private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
         switch result {
-        case .demos(let loadErrorMessage):
+        case .demos(let loadErrorMessage, let organization, let manifestPresent):
+            analysisContextCache.removeAll()
+            workouts = []
             favoriteWorkoutIDs = []
-            tags = []
-            smartCollections = []
+            tags = organization.tags
+            smartCollections = organization.smartCollections
             libraryWorkoutIDs = []
-            hasPersistedLibrary = false
-            loadSampleWorkouts()
+            // Empty persisted libraries still own organisation (and future imports).
+            hasPersistedLibrary = manifestPresent
+            loadSampleWorkouts(resetOrganization: false)
             if let loadErrorMessage {
                 errorMessage = loadErrorMessage
                 showingError = true
@@ -330,18 +333,33 @@ class AppState: ObservableObject {
     }
 
     /// Load bundled demo workouts.
-    func loadSampleWorkouts() {
+    ///
+    /// - Parameter resetOrganization: When true (default), clear tags/collections and
+    ///   mark the library as non-persisted. Empty-library loads keep organisation.
+    func loadSampleWorkouts(resetOrganization: Bool = true) {
         let initialCount = workouts.count
         loadBundledWorkout(resource: "sample_run", extension: "json")
         loadBundledWorkout(resource: "comparison_park_run", extension: "json", subdirectory: "fixtures")
 
-        // Demos are not library entries — clear organisation and index demos for browsing only.
         favoriteWorkoutIDs = []
-        tags = []
-        smartCollections = []
         libraryWorkoutIDs = []
-        hasPersistedLibrary = false
-        workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: [], organization: .empty)
+        if resetOrganization {
+            tags = []
+            smartCollections = []
+            hasPersistedLibrary = false
+            workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: [], organization: .empty)
+        } else {
+            // Demos are browsable only; keep persisted tags/collections for management.
+            workoutLibrary.replaceLibrary(
+                workouts: workouts,
+                favoriteIDs: [],
+                organization: WorkoutLibraryOrganizationSnapshot(
+                    tags: tags,
+                    tagAssignments: [],
+                    smartCollections: smartCollections
+                )
+            )
+        }
 
         if workouts.count > initialCount {
             selectWorkout(workouts[initialCount], persistSelection: false)
@@ -626,6 +644,10 @@ class AppState: ObservableObject {
     }
 
     /// Open the All Runs library workspace. Does not clear selected workout.
+    ///
+    /// When `restoreManualQuery` is true and a smart collection is active, the
+    /// session manual query is restored once. Re-selecting All Runs while already
+    /// in the manual context must not re-apply a stale snapshot over live edits.
     func showWorkoutLibrary(restoreManualQuery: Bool = false) {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
@@ -634,8 +656,8 @@ class AppState: ObservableObject {
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
         workspaceMode = .workoutLibrary
-        if restoreManualQuery {
-            workoutLibrary.returnToManualQuery()
+        if restoreManualQuery, case .smartCollection = workoutLibrary.queryContext {
+            workoutLibrary.returnToManualQuery(clearSnapshot: true)
         }
         // Ensure the library index tracks the current in-memory library.
         workoutLibrary.replaceLibrary(
@@ -669,14 +691,15 @@ class AppState: ObservableObject {
     }
 
     private func currentOrganizationSnapshot() -> WorkoutLibraryOrganizationSnapshot {
-        WorkoutLibraryOrganizationSnapshot(
+        // Prefer live All Runs entry assignments so in-session tag edits stay
+        // coherent across replaceLibrary without reloading the manifest.
+        let assignments = workoutLibrary.entries.compactMap { entry -> WorkoutTagAssignment? in
+            guard !entry.tagIDs.isEmpty else { return nil }
+            return WorkoutTagAssignment(workoutID: entry.id, tagIDs: entry.tagIDs)
+        }
+        return WorkoutLibraryOrganizationSnapshot(
             tags: tags,
-            tagAssignments: tags.isEmpty && smartCollections.isEmpty
-                ? []
-                : workoutLibrary.entries.compactMap { entry in
-                    guard !entry.tagIDs.isEmpty else { return nil }
-                    return WorkoutTagAssignment(workoutID: entry.id, tagIDs: entry.tagIDs)
-                },
+            tagAssignments: assignments,
             smartCollections: smartCollections
         )
     }
@@ -1378,8 +1401,11 @@ class AppState: ObservableObject {
                         if self.workspaceMode == .personalHeatmap {
                             self.personalHeatmap.refresh(workouts: loaded)
                         }
-                    case .demos(let message):
+                    case .demos(let message, let organization, let manifestPresent):
                         // Unexpected after successful commit; fall back.
+                        self.tags = organization.tags
+                        self.smartCollections = organization.smartCollections
+                        self.hasPersistedLibrary = manifestPresent
                         if let message {
                             session.errorMessage = message
                         }

@@ -164,9 +164,14 @@ final class WorkoutLibraryViewModelTests: XCTestCase {
             XCTFail("Expected unmodified after revert")
         }
 
-        vm.returnToManualQuery()
+        vm.returnToManualQuery(clearSnapshot: true)
         XCTAssertEqual(vm.queryContext, .manual)
         XCTAssertEqual(vm.searchText, "jog")
+
+        // Live manual edits must not be overwritten by a stale stash.
+        vm.searchText = "edited-manual"
+        vm.returnToManualQuery(clearSnapshot: true)
+        XCTAssertEqual(vm.searchText, "edited-manual")
     }
 
     func testBulkTagChangeTriggersSingleReadyState() async {

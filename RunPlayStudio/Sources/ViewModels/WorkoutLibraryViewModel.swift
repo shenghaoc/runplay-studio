@@ -365,13 +365,14 @@ final class WorkoutLibraryViewModel: ObservableObject {
     }
 
     /// Return to ordinary All Runs, restoring the stashed manual query when present.
+    ///
+    /// When `clearSnapshot` is true (normal All Runs exit from a collection), the
+    /// snapshot is consumed so a later All Runs selection cannot overwrite live
+    /// manual edits with a stale stash.
     func returnToManualQuery(clearSnapshot: Bool = false) {
         queryContext = .manual
         if let snapshot = manualQuerySnapshot {
             applySnapshot(snapshot)
-            if clearSnapshot {
-                manualQuerySnapshot = nil
-            }
         } else {
             scheduleQuery(force: true)
         }
@@ -410,9 +411,14 @@ final class WorkoutLibraryViewModel: ObservableObject {
 
     /// After creating a collection from the current query, open it unmodified.
     func didCreateSmartCollection(_ collection: WorkoutSmartCollection) {
-        if !smartCollections.contains(where: { $0.id == collection.id }) {
+        if let index = smartCollections.firstIndex(where: { $0.id == collection.id }) {
+            smartCollections[index] = collection
+        } else {
             smartCollections.append(collection)
         }
+        // Stash the pre-collection manual working query once, then pin this
+        // collection as the active (unmodified) context. Filters already match
+        // the saved query because creation captured `currentSavedQuery()`.
         if case .manual = queryContext {
             manualQuerySnapshot = captureManualSnapshot()
         }
