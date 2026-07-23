@@ -174,6 +174,59 @@ final class WorkoutLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.searchText, "edited-manual")
     }
 
+    func testRenameWhileModifiedKeepsWorkingQueryAndModifiedFlag() async {
+        let vm = WorkoutLibraryViewModel()
+        let a = makeWorkout(name: "Race Day")
+        let tag = WorkoutTag(name: "Race", color: .red)
+        let collection = WorkoutSmartCollection(
+            name: "Races",
+            query: WorkoutLibrarySavedQuery(
+                searchText: "race",
+                filter: WorkoutLibraryFilter(
+                    tags: .selected(tagIDs: [tag.id], match: .any)
+                ),
+                sort: .nameAZ
+            )
+        )
+        vm.replaceLibrary(
+            workouts: [a],
+            favoriteIDs: [],
+            organization: WorkoutLibraryOrganizationSnapshot(
+                tags: [tag],
+                tagAssignments: [WorkoutTagAssignment(workoutID: a.id, tagIDs: [tag.id])],
+                smartCollections: [collection]
+            )
+        )
+        for _ in 0..<50 {
+            if vm.loadState == .ready { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        vm.openSmartCollection(id: collection.id)
+        vm.sourceFilter = .fit
+        XCTAssertTrue(vm.isCollectionModified)
+        XCTAssertEqual(vm.sourceFilter, .fit)
+
+        // Rename-only definition update (query unchanged on disk).
+        var renamed = collection
+        renamed.name = "Race Collection"
+        vm.applySmartCollectionChange([renamed])
+
+        XCTAssertTrue(vm.isCollectionModified)
+        XCTAssertEqual(vm.sourceFilter, .fit)
+        XCTAssertEqual(vm.activeSmartCollection?.name, "Race Collection")
+
+        // Explicit update clears Modified after saving the working query.
+        let saved = WorkoutSmartCollection(
+            id: collection.id,
+            name: "Race Collection",
+            query: vm.currentSavedQuery()
+        )
+        vm.markActiveCollectionUpdated(saved)
+        XCTAssertFalse(vm.isCollectionModified)
+        XCTAssertEqual(vm.sourceFilter, .fit)
+    }
+
     func testBulkTagChangeTriggersSingleReadyState() async {
         let vm = WorkoutLibraryViewModel()
         let a = makeWorkout(name: "A")

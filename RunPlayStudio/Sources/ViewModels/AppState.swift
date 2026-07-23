@@ -982,10 +982,10 @@ class AppState: ObservableObject {
             if let index = smartCollections.firstIndex(where: { $0.id == id }) {
                 smartCollections[index] = collection
             }
+            // Update definitions only. Do not clear Modified — rename/external
+            // query saves must not discard an unsaved working All Runs query.
+            // Explicit Update Collection uses markActiveCollectionUpdated after success.
             workoutLibrary.applySmartCollectionChange(smartCollections)
-            if case .smartCollection(let activeID, _) = workoutLibrary.queryContext, activeID == id {
-                workoutLibrary.markActiveCollectionUpdated(collection)
-            }
             return collection
         } catch {
             organizationEditError = error.localizedDescription
@@ -1039,7 +1039,10 @@ class AppState: ObservableObject {
             name: existing.name,
             query: workoutLibrary.currentSavedQuery()
         )
-        return updated != nil
+        guard let updated else { return false }
+        // Only explicit Update Collection clears Modified after a successful save.
+        workoutLibrary.markActiveCollectionUpdated(updated)
+        return true
     }
 
     private func stripTag(_ id: UUID, from filter: WorkoutLibraryTagFilter) -> WorkoutLibraryTagFilter {
