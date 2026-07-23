@@ -613,7 +613,7 @@ class AppState: ObservableObject {
     /// Open All Runs with the favourites-only filter applied.
     func showAllFavoritesInLibrary() {
         showWorkoutLibrary()
-        workoutLibrary.applyFavoritesOnlyFilter()
+        workoutLibrary.showAllFavorites()
     }
 
     /// Open a workout from All Runs (enters `.workout`).

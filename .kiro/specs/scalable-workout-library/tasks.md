@@ -8,4 +8,4 @@
 - [x] Bounded sidebar + workspace integration in AppState/ContentView
 - [x] Core + Studio tests for query, manifest, actor, navigation, view model
 - [x] Documentation and Kiro steering updates
-- [ ] Full suite + packaged app + CI green on final head
+- [x] Full suite + packaged app + CI green on final head

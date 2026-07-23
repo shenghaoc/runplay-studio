@@ -37,4 +37,6 @@ existing `selectWorkout` / `openWorkoutFromLibrary` paths.
 ## Sidebar policy
 
 `WorkoutLibrarySidebarPolicy.favoriteCap = 8`, `recentCap = 10`. Recent excludes
-all favourites. Selected overflow is a one-row section.
+all favourites. Selected overflow is a one-row section. The favourites overflow
+action clears prior All Runs search and non-favourite filters before showing the
+complete favourites collection.

@@ -192,6 +192,7 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Exercise date, source, favourite, and data filters; Clear Filters / Clear Search.
 - [ ] Exercise each sort mode; missing dates/pace sort after valid values.
 - [ ] Favourite / unfavourite a persisted workout; confirm sidebar Favourites update.
+- [ ] Open **All Favourites…** after applying other search/filters; confirm it shows the complete favourites collection.
 - [ ] Confirm bundled demos cannot be favourited as persistent library entries.
 - [ ] Edit name and notes; search finds the new notes; empty name restores fallback display.
 - [ ] Quit and relaunch; favourites and metadata persist for library workouts.

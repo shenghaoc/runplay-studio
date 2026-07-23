@@ -54,6 +54,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
     private var queryTask: Task<Void, Never>?
     private var queryGeneration: UInt64 = 0
     private var lastPublishedKey: QueryCacheKey?
+    private var isBatchingQueryChanges = false
     private let queryService: any WorkoutLibraryQuerying
     private let calendar: Calendar
     /// Injected clock for relative filters (tests).
@@ -194,20 +195,34 @@ final class WorkoutLibraryViewModel: ObservableObject {
     }
 
     func clearFilters() {
-        favoriteFilter = .all
-        sourceFilter = .all
-        dateFilter = .allTime
-        dataFilters = .none
+        updateQueryState {
+            favoriteFilter = .all
+            sourceFilter = .all
+            dateFilter = .allTime
+            dataFilters = .none
+        }
     }
 
     func clearSearchAndFilters() {
-        clearSearch()
-        clearFilters()
+        updateQueryState {
+            searchText = ""
+            favoriteFilter = .all
+            sourceFilter = .all
+            dateFilter = .allTime
+            dataFilters = .none
+        }
     }
 
-    func applyFavoritesOnlyFilter() {
-        favoriteFilter = .favoritesOnly
-        scheduleQuery(force: true)
+    /// Show the complete favourites collection from the sidebar overflow action.
+    /// Prior All Runs constraints must not hide favourites from this destination.
+    func showAllFavorites() {
+        updateQueryState {
+            searchText = ""
+            favoriteFilter = .favoritesOnly
+            sourceFilter = .all
+            dateFilter = .allTime
+            dataFilters = .none
+        }
     }
 
     func retryQuery() {
@@ -254,6 +269,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
     }
 
     private func scheduleQuery(force: Bool = false) {
+        guard !isBatchingQueryChanges else { return }
+
         queryTask?.cancel()
         queryGeneration &+= 1
         let generation = queryGeneration
@@ -318,6 +335,14 @@ final class WorkoutLibraryViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Publish one query after a related set of search/filter mutations.
+    private func updateQueryState(_ update: () -> Void) {
+        isBatchingQueryChanges = true
+        update()
+        isBatchingQueryChanges = false
+        scheduleQuery(force: true)
     }
 
     private func publish(result: WorkoutLibraryQueryResult, key: QueryCacheKey) {

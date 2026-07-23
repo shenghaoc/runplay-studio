@@ -545,7 +545,7 @@ public actor WorkoutLibraryStoreActor {
 
     /// Update only editable name/notes for a library workout.
     ///
-    /// Sequence: validate membership → load snapshot → normalize metadata →
+    /// Sequence: validate membership → normalize metadata → load snapshot →
     /// save snapshot atomically → return updated workout. Does not rerun
     /// normalization or analysis.
     public func updateWorkoutMetadata(

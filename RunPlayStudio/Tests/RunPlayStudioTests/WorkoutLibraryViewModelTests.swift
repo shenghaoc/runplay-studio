@@ -198,6 +198,36 @@ final class WorkoutLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.resultIDs, [a.id])
     }
 
+    func testShowAllFavoritesClearsPriorSearchAndFilters() async {
+        let vm = WorkoutLibraryViewModel()
+        let favorite = makeWorkout(name: "Favourite")
+        let other = makeWorkout(name: "Other")
+        vm.replaceLibrary(workouts: [favorite, other], favoriteIDs: [favorite.id])
+        for _ in 0..<50 {
+            if vm.loadState == .ready { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        vm.searchText = "does-not-match"
+        vm.sourceFilter = .fit
+        vm.dateFilter = .last30Days
+        vm.dataFilters = WorkoutLibraryDataFilters(requiresHeartRate: true)
+
+        vm.showAllFavorites()
+
+        for _ in 0..<50 {
+            if vm.resultIDs == [favorite.id] { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(vm.searchText, "")
+        XCTAssertEqual(vm.favoriteFilter, .favoritesOnly)
+        XCTAssertEqual(vm.sourceFilter, .all)
+        XCTAssertEqual(vm.dateFilter, .allTime)
+        XCTAssertEqual(vm.dataFilters, .none)
+        XCTAssertEqual(vm.resultIDs, [favorite.id])
+    }
+
     func testMetadataRenameInvalidatesSearchDocument() async {
         let vm = WorkoutLibraryViewModel()
         let a = makeWorkout(name: "Original")
