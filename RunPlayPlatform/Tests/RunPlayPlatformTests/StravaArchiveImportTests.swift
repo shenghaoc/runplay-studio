@@ -241,7 +241,7 @@ final class StravaArchiveImportTests: XCTestCase {
         XCTAssertNotNil(report.selectedWorkoutID)
 
         let loaded = await storeActor.loadLibrary()
-        guard case .workouts(let workouts, _, _) = loaded else {
+        guard case .workouts(let workouts, _, _, _) = loaded else {
             return XCTFail("expected workouts")
         }
         XCTAssertEqual(workouts.count, 2)
@@ -264,7 +264,7 @@ final class StravaArchiveImportTests: XCTestCase {
         XCTAssertEqual(report2.importedCount, 0)
 
         let loaded2 = await storeActor.loadLibrary()
-        guard case .workouts(let workouts2, _, _) = loaded2 else {
+        guard case .workouts(let workouts2, _, _, _) = loaded2 else {
             return XCTFail("expected workouts")
         }
         XCTAssertEqual(workouts2.count, 2)
@@ -293,7 +293,7 @@ final class StravaArchiveImportTests: XCTestCase {
             existingWorkouts: [],
             storeActor: storeActor
         )
-        guard case .workouts(let existing, _, _) = await storeActor.loadLibrary() else {
+        guard case .workouts(let existing, _, _, _) = await storeActor.loadLibrary() else {
             return XCTFail("expected imported workout")
         }
 

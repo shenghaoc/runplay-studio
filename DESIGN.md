@@ -156,7 +156,8 @@ The core data atom: label + value + optional icon, colored by semantic metric ty
 - **Internal Padding:** 8–12pt (inner to component scale).
 
 ### Navigation
-- **Sidebar:** Native `.sidebar` list style. Workout rows use one leading running symbol, one title line, and one compact metadata line.
+- **Sidebar:** Native `.sidebar` list style with one shared selection for Library destinations and bounded workout rows. Library lists **All Runs** and **Personal Heatmap**. Workout lists use capped **Favourites** and **Recent** sections (plus **Selected Run** when needed), not the full library. Rows use one leading symbol, one title line, and one compact metadata line.
+- **All Runs:** Native search field, compact filter/sort controls, and a `Table` of lightweight columns (favourite, date, name, distance, pace, elapsed, source, device). Missing values use an em dash, not fake zeros.
 - **Tab Bar:** Horizontal picker for workout detail tabs (Overview, Charts, Splits, Segments).
 - **Toolbar:** Primary action buttons (Compare, Export) in the toolbar, not inline.
 

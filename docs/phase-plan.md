@@ -72,6 +72,12 @@
 - Import/delete with transactional rollback on failure
 - Library persists across app relaunches; original imported files untouched
 
+### Scalable Workout Library (All Runs) ✅
+- All Runs workspace with search, filters, sort, favourites, name/notes editing
+- Manifest schema v2 favourites; bounded sidebar (Favourites / Recent / Selected Run)
+- In-memory search index; no route-point scanning during ordinary query
+- Off-main cancellable query service; heatmap isolation preserved
+
 ---
 
 ## Active / Upcoming Phases

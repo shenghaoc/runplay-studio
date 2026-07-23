@@ -104,7 +104,8 @@ size is exposed in the snapshot and UI.
 
 ### Workspace navigation
 
-`AppWorkspaceMode` is `.workout`, `.comparison`, or `.personalHeatmap` — mutually
+`AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`, or
+`.workoutLibrary` (All Runs) — mutually
 exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
@@ -323,6 +324,24 @@ sample is created. A split may aggregate corrected ascent from multiple
 continuous runs while interpolation remains confined to each run.
 
 ### Workout library persistence
+
+### All Runs library browser
+
+The All Runs workspace (`AppWorkspaceMode.workoutLibrary`) is driven by
+`WorkoutLibraryViewModel`. Lightweight `WorkoutLibraryEntry` rows and
+in-memory `WorkoutLibrarySearchDocument`s support search, filters, and sort
+without iterating route points. `WorkoutLibraryQueryService` runs filtering and
+sorting off the main actor with cooperative cancellation and stale-result
+suppression. All Runs filters never change Personal Heatmap inputs.
+
+The sidebar no longer lists every workout. `WorkoutLibrarySidebarPolicy` caps
+Favourites (8) and Recent (10, excluding all favourites), with a
+one-row Selected Run section when the selection is outside those bounds.
+
+Manifest schema version **2** stores `favoriteWorkoutIDs`. Version-1 manifests
+decode with an empty favourite set; order and selection are preserved.
+`WorkoutLibraryStoreActor.setFavorite` and `updateWorkoutMetadata` persist
+favourites and editable name/notes without rerunning analysis.
 
 `WorkoutLibraryStoring`, `FileWorkoutLibraryStore`, and
 `WorkoutLibraryManifest` live in `RunPlayCore`. The store writes complete

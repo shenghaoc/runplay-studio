@@ -100,12 +100,14 @@ enum AppWorkspaceMode: Hashable, Sendable {
     case workout
     case comparison
     case personalHeatmap
+    case workoutLibrary
 }
 
 /// Menu-level command routed through the same workspace transition methods as
 /// sidebar selection. Kept separate from the visible workspace state.
 enum AppWorkspaceCommand {
     case showPersonalHeatmap
+    case showAllRuns
 }
 
 /// Main application state manager.
@@ -121,6 +123,20 @@ class AppState: ObservableObject {
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
     @Published private(set) var operationState: LibraryOperationState = .idle
+
+    /// Local favourite markers for library workouts (not demos).
+    @Published private(set) var favoriteWorkoutIDs: Set<UUID> = []
+
+    /// True when the in-memory library is backed by a persisted manifest.
+    /// Bundled demos leave this false so favourite/metadata actions stay disabled.
+    @Published private(set) var hasPersistedLibrary = false
+
+    /// IDs known to exist in the persisted library manifest.
+    /// Bundled demos are never added here, even if still shown in-session.
+    @Published private(set) var libraryWorkoutIDs: Set<UUID> = []
+
+    /// Transient metadata editor error (stays in the sheet; not a workspace overlay).
+    @Published var metadataEditError: String?
 
     /// Single source of truth for which workspace is visible.
     @Published private(set) var workspaceMode: AppWorkspaceMode = .workout
@@ -147,6 +163,8 @@ class AppState: ObservableObject {
         switch workspaceMode {
         case .personalHeatmap:
             return .personalHeatmap
+        case .workoutLibrary:
+            return .allRuns
         case .workout, .comparison:
             if let id = selectedWorkout?.id {
                 return .workout(id)
@@ -158,6 +176,8 @@ class AppState: ObservableObject {
     /// Apply a sidebar selection change (keyboard, click, or VoiceOver).
     func applySidebarSelection(_ selection: SidebarSelection?) {
         switch selection {
+        case .allRuns:
+            showWorkoutLibrary()
         case .personalHeatmap:
             showPersonalHeatmap()
         case .workout(let id):
@@ -172,6 +192,7 @@ class AppState: ObservableObject {
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
     let personalHeatmap = PersonalHeatmapViewModel()
+    let workoutLibrary = WorkoutLibraryViewModel()
 
     private struct CachedAnalysisContext {
         let normalizationVersion: Int
@@ -260,14 +281,21 @@ class AppState: ObservableObject {
     private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
         switch result {
         case .demos(let loadErrorMessage):
+            favoriteWorkoutIDs = []
+            libraryWorkoutIDs = []
+            hasPersistedLibrary = false
             loadSampleWorkouts()
             if let loadErrorMessage {
                 errorMessage = loadErrorMessage
                 showingError = true
             }
-        case .workouts(let loaded, let selectedWorkoutID, let warning):
+        case .workouts(let loaded, let selectedWorkoutID, let favoriteIDs, let warning):
             analysisContextCache.removeAll()
             workouts = loaded
+            favoriteWorkoutIDs = favoriteIDs
+            libraryWorkoutIDs = Set(loaded.map(\.id))
+            hasPersistedLibrary = true
+            workoutLibrary.replaceLibrary(workouts: loaded, favoriteIDs: favoriteIDs)
             let selected = selectedWorkoutID.flatMap { id in
                 loaded.first(where: { $0.id == id })
             } ?? loaded.first
@@ -284,6 +312,12 @@ class AppState: ObservableObject {
         let initialCount = workouts.count
         loadBundledWorkout(resource: "sample_run", extension: "json")
         loadBundledWorkout(resource: "comparison_park_run", extension: "json", subdirectory: "fixtures")
+
+        // Demos are not library entries — clear favourites and index demos for browsing only.
+        favoriteWorkoutIDs = []
+        libraryWorkoutIDs = []
+        hasPersistedLibrary = false
+        workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: [])
 
         if workouts.count > initialCount {
             selectWorkout(workouts[initialCount], persistSelection: false)
@@ -314,12 +348,22 @@ class AppState: ObservableObject {
             try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
 
-            if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
+            // First successful import after demos: drop non-persisted demos so
+            // favourites/metadata cannot target IDs missing from the manifest.
+            if !hasPersistedLibrary || libraryWorkoutIDs.isEmpty {
+                analysisContextCache.removeAll()
+                workouts = [workout]
+                libraryWorkoutIDs = [workout.id]
+            } else if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
                 workouts[existingIndex] = workout
+                libraryWorkoutIDs.insert(workout.id)
             } else {
                 workouts.append(workout)
+                libraryWorkoutIDs.insert(workout.id)
             }
-            // Selecting a workout exits heatmap by design.
+            hasPersistedLibrary = true
+            workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: favoriteWorkoutIDs)
+            // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
         } catch is CancellationError {
             // Cancelled — do not add to UI.
@@ -388,6 +432,8 @@ class AppState: ObservableObject {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
             workspaceMode = .workout
+        } else if workspaceMode == .workoutLibrary {
+            workspaceMode = .workout
         }
         if let workout, comparisonWorkout?.id == workout.id {
             clearComparison()
@@ -453,7 +499,10 @@ class AppState: ObservableObject {
                 // manifest may disagree if selection persistence was pending
                 // or failed, but the UI state is authoritative for display.
                 workouts.removeAll { $0.id == workout.id }
+                favoriteWorkoutIDs.remove(workout.id)
+                libraryWorkoutIDs.remove(workout.id)
                 analysisContextCache.removeValue(forKey: workout.id)
+                workoutLibrary.removeWorkout(id: workout.id)
                 applyDeletionSelection(
                     deletingSelectedWorkout: deletingSelectedWorkout,
                     deletingComparisonWorkout: deletingComparisonWorkout
@@ -461,7 +510,10 @@ class AppState: ObservableObject {
             } catch let storeError as WorkoutLibraryStoreError {
                 // Manifest committed but file is orphaned. Remove from UI and warn.
                 workouts.removeAll { $0.id == workout.id }
+                favoriteWorkoutIDs.remove(workout.id)
+                libraryWorkoutIDs.remove(workout.id)
                 analysisContextCache.removeValue(forKey: workout.id)
+                workoutLibrary.removeWorkout(id: workout.id)
                 applyDeletionSelection(
                     deletingSelectedWorkout: deletingSelectedWorkout,
                     deletingComparisonWorkout: deletingComparisonWorkout
@@ -476,7 +528,10 @@ class AppState: ObservableObject {
         } else {
             // No store: just update in-memory state (demo-only mode).
             workouts.removeAll { $0.id == workout.id }
+            favoriteWorkoutIDs.remove(workout.id)
+            libraryWorkoutIDs.remove(workout.id)
             analysisContextCache.removeValue(forKey: workout.id)
+            workoutLibrary.removeWorkout(id: workout.id)
             applyDeletionSelection(
                 deletingSelectedWorkout: deletingSelectedWorkout,
                 deletingComparisonWorkout: deletingComparisonWorkout
@@ -489,9 +544,10 @@ class AppState: ObservableObject {
         deletingComparisonWorkout: Bool
     ) {
         let wasHeatmap = workspaceMode == .personalHeatmap
+        let wasLibrary = workspaceMode == .workoutLibrary
         if deletingSelectedWorkout {
             clearComparison()
-            // Preserve heatmap workspace when deleting while viewing heatmap.
+            // Preserve heatmap / All Runs workspace when deleting while visible.
             if wasHeatmap {
                 selectedWorkout = workouts.first
                 selectedSegment = nil
@@ -503,6 +559,16 @@ class AppState: ObservableObject {
                 }
                 workspaceMode = .personalHeatmap
                 personalHeatmap.refresh(workouts: workouts)
+            } else if wasLibrary {
+                selectedWorkout = workouts.first
+                selectedSegment = nil
+                if let selectedWorkout {
+                    replayController.load(selectedWorkout)
+                    detectedSegments = selectedWorkout.segments
+                } else {
+                    detectedSegments = []
+                }
+                workspaceMode = .workoutLibrary
             } else {
                 selectWorkout(workouts.first, persistSelection: false)
             }
@@ -511,6 +577,8 @@ class AppState: ObservableObject {
             if wasHeatmap {
                 workspaceMode = .personalHeatmap
                 personalHeatmap.refresh(workouts: workouts)
+            } else if wasLibrary {
+                workspaceMode = .workoutLibrary
             }
         } else if wasHeatmap {
             personalHeatmap.refresh(workouts: workouts)
@@ -524,13 +592,39 @@ class AppState: ObservableObject {
         switch command {
         case .showPersonalHeatmap:
             showPersonalHeatmap()
+        case .showAllRuns:
+            showWorkoutLibrary()
         }
+    }
+
+    /// Open the All Runs library workspace. Does not clear selected workout.
+    func showWorkoutLibrary() {
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        workspaceMode = .workoutLibrary
+        // Ensure the library index tracks the current in-memory library.
+        workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: favoriteWorkoutIDs)
+    }
+
+    /// Open All Runs with the favourites-only filter applied.
+    func showAllFavoritesInLibrary() {
+        showWorkoutLibrary()
+        workoutLibrary.showAllFavorites()
+    }
+
+    /// Open a workout from All Runs (enters `.workout`).
+    func openWorkoutFromLibrary(_ workout: RunWorkout) {
+        selectWorkout(workout)
     }
 
     /// Open the Personal Heatmap workspace. Does not change selected workout.
     func showPersonalHeatmap() {
         personalHeatmap.cancel()
-        // Leave comparison cleanly; heatmap and comparison are mutually exclusive.
+        // Leave comparison / All Runs cleanly; workspaces are mutually exclusive.
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
@@ -556,6 +650,92 @@ class AppState: ObservableObject {
             personalHeatmap.cancel()
         }
         workspaceMode = .comparison
+    }
+
+    // MARK: - Favourites & metadata
+
+    /// Whether favourite actions apply (imported library workouts only).
+    func canFavorite(_ workout: RunWorkout) -> Bool {
+        canEditLibraryMetadata(workout)
+    }
+
+    /// Whether name/notes editing applies (persisted library IDs only, never demos).
+    func canEditLibraryMetadata(_ workout: RunWorkout) -> Bool {
+        storeActor != nil
+            && hasPersistedLibrary
+            && libraryWorkoutIDs.contains(workout.id)
+    }
+
+    /// Toggle favourite for a library workout. No-op / error for demos.
+    @discardableResult
+    func setFavorite(_ isFavorite: Bool, workoutID: UUID) async -> Bool {
+        guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
+            errorMessage = "Favourites apply to imported library workouts, not bundled demos."
+            showingError = true
+            return false
+        }
+        guard let workout = workouts.first(where: { $0.id == workoutID }) else {
+            return false
+        }
+        guard canFavorite(workout) else {
+            errorMessage = "Favourites apply to imported library workouts, not bundled demos."
+            showingError = true
+            return false
+        }
+        do {
+            try await storeActor.setFavorite(isFavorite, workoutID: workoutID)
+            if isFavorite {
+                favoriteWorkoutIDs.insert(workoutID)
+            } else {
+                favoriteWorkoutIDs.remove(workoutID)
+            }
+            workoutLibrary.applyFavoriteChange(workoutID: workoutID, isFavorite: isFavorite)
+            return true
+        } catch {
+            errorMessage = "Could not update favourite: \(error.localizedDescription)"
+            showingError = true
+            return false
+        }
+    }
+
+    /// Persist name/notes for a library workout. UI updates only after success.
+    @discardableResult
+    func updateWorkoutMetadata(
+        workoutID: UUID,
+        name: String?,
+        notes: String?
+    ) async -> Bool {
+        metadataEditError = nil
+        guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
+            metadataEditError = "Details can only be edited for imported library workouts."
+            return false
+        }
+        guard workouts.contains(where: { $0.id == workoutID }) else {
+            metadataEditError = "Workout is not in the library."
+            return false
+        }
+        do {
+            let updated = try await storeActor.updateWorkoutMetadata(
+                workoutID: workoutID,
+                name: name,
+                notes: notes
+            )
+            if let index = workouts.firstIndex(where: { $0.id == workoutID }) {
+                workouts[index] = updated
+            }
+            if selectedWorkout?.id == workoutID {
+                selectedWorkout = updated
+            }
+            if comparisonWorkout?.id == workoutID {
+                comparisonWorkout = updated
+            }
+            analysisContextCache.removeValue(forKey: workoutID)
+            workoutLibrary.applyWorkoutUpdate(updated)
+            return true
+        } catch {
+            metadataEditError = error.localizedDescription
+            return false
+        }
     }
 
     // MARK: - Comparison
@@ -844,9 +1024,13 @@ class AppState: ObservableObject {
                     // Reload library from store for authoritative post-commit state.
                     let loadResult = await storeActor.loadLibrary()
                     switch loadResult {
-                    case .workouts(let loaded, let selectedID, _):
+                    case .workouts(let loaded, let selectedID, let favoriteIDs, _):
                         self.analysisContextCache.removeAll()
                         self.workouts = loaded
+                        self.favoriteWorkoutIDs = favoriteIDs
+                        self.libraryWorkoutIDs = Set(loaded.map(\.id))
+                        self.hasPersistedLibrary = true
+                        self.workoutLibrary.replaceLibrary(workouts: loaded, favoriteIDs: favoriteIDs)
                         let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
                             ?? loaded.first
                         self.selectWorkout(selected, persistSelection: false)

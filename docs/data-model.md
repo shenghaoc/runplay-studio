@@ -326,6 +326,32 @@ struct WorkoutMetadata: Codable {
 }
 ```
 
+Name and notes are user-editable through All Runs / Edit Details. Validation is
+centralised in `WorkoutMetadataEditingPolicy` (name ≤ 200 scalars, notes ≤ 5 000
+scalars, trim, empty → nil, reject NUL). Edits do not change activity type,
+dates, device, provenance, route points, or analysis versions.
+
+### WorkoutLibraryManifest (schema v2)
+
+```swift
+struct WorkoutLibraryManifest: Codable {
+    var version: Int                 // current = 2
+    var workoutIDs: [UUID]           // library order
+    var selectedWorkoutID: UUID?
+    var favoriteWorkoutIDs: Set<UUID>
+}
+```
+
+Version-1 manifests decode with an empty favourite set. Missing favourite IDs
+are removed during library recovery. Favourites apply only to persisted library
+workouts, not bundled demos.
+
+### Library query models
+
+`WorkoutLibraryEntry` is a lightweight derived row (no route-point array) used
+for search, filters, sort, and the All Runs table. `WorkoutLibrarySearchDocument`
+is an in-memory, precomputed folded haystack. Search never scans GPS samples.
+
 ### SegmentHighlight
 
 A notable segment of the route (fastest 400m, biggest climb, etc.)

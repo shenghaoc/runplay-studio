@@ -77,19 +77,27 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
             throw WorkoutLibraryError.manifestCorrupted("Cannot decode manifest: \(error.localizedDescription)")
         }
 
-        guard manifest.version == WorkoutLibraryManifest.currentVersion else {
+        guard WorkoutLibraryManifest.isSupportedSchemaVersion(manifest.version) else {
             throw WorkoutLibraryError.unsupportedSchemaVersion(manifest.version)
         }
 
-        return manifest
+        var migrated = manifest
+        migrated.upgradeSchemaVersionIfNeeded()
+        // Keep dangling favourite IDs visible to WorkoutLibraryStoreActor so
+        // library recovery can remove and atomically persist them. Saves
+        // always sanitize favourites before writing the manifest.
+        return migrated
     }
 
     public func saveManifest(_ manifest: WorkoutLibraryManifest) throws {
         try ensureDirectoriesExist()
 
+        var toSave = manifest
+        toSave.migrateToCurrentVersionIfNeeded()
+
         let data: Data
         do {
-            data = try encoder.encode(manifest)
+            data = try encoder.encode(toSave)
         } catch {
             throw WorkoutLibraryError.writeFailed("Cannot encode manifest: \(error.localizedDescription)")
         }
