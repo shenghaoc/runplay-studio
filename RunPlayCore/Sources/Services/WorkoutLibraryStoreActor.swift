@@ -10,6 +10,14 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
     case workoutNotInLibrary(UUID)
     /// Metadata validation failed.
     case invalidMetadata(String)
+    /// Tag validation or mutation failed.
+    case invalidTag(String)
+    /// Smart collection validation or mutation failed.
+    case invalidSmartCollection(String)
+    /// A referenced tag ID is not in the library.
+    case tagNotFound(UUID)
+    /// A referenced smart collection ID is not in the library.
+    case smartCollectionNotFound(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -21,6 +29,14 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
             return "Workout \(id) is not in the library"
         case .invalidMetadata(let detail):
             return detail
+        case .invalidTag(let detail):
+            return detail
+        case .invalidSmartCollection(let detail):
+            return detail
+        case .tagNotFound(let id):
+            return "Tag \(id) is not in the library"
+        case .smartCollectionNotFound(let id):
+            return "Smart collection \(id) is not in the library"
         }
     }
 }
@@ -51,13 +67,20 @@ public actor WorkoutLibraryStoreActor {
         do {
             let manifest = try store.loadManifest()
             guard !manifest.workoutIDs.isEmpty else {
+                let organizationNonEmpty = !manifest.tags.isEmpty
+                    || !manifest.tagAssignments.isEmpty
+                    || !manifest.smartCollections.isEmpty
                 let manifestNeedsRepair = manifest.selectedWorkoutID != nil
                     || !manifest.favoriteWorkoutIDs.isEmpty
+                    || organizationNonEmpty
                     || manifest.version != WorkoutLibraryManifest.currentVersion
                 if manifestNeedsRepair {
                     var repaired = manifest
                     repaired.selectedWorkoutID = nil
                     repaired.favoriteWorkoutIDs = []
+                    repaired.tags = []
+                    repaired.tagAssignments = []
+                    repaired.smartCollections = []
                     repaired.migrateToCurrentVersionIfNeeded()
                     do {
                         try store.saveManifest(repaired)
@@ -160,20 +183,35 @@ public actor WorkoutLibraryStoreActor {
             let validIDSet = Set(validIDs)
             var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(validIDSet)
             let favoritesNeedRepair = favoriteIDs != manifest.favoriteWorkoutIDs
+
+            var workingManifest = manifest
+            workingManifest.workoutIDs = validIDs
+            workingManifest.selectedWorkoutID = selectedWorkoutID
+            workingManifest.favoriteWorkoutIDs = favoriteIDs
+            let organizationReport = workingManifest.repairOrganization()
+            workingManifest.upgradeSchemaVersionIfNeeded()
+            if workingManifest.version == WorkoutLibraryManifest.currentVersion {
+                workingManifest.sanitizeFavorites()
+            }
+
+            let organizationChanged =
+                workingManifest.tags != manifest.tags
+                || workingManifest.tagAssignments != manifest.tagAssignments
+                || workingManifest.smartCollections != manifest.smartCollections
             let manifestNeedsRepair = validIDs != manifest.workoutIDs
                 || selectedWorkoutID != manifest.selectedWorkoutID
                 || favoritesNeedRepair
+                || organizationChanged
                 || manifest.version != WorkoutLibraryManifest.currentVersion
 
+            if !organizationReport.warnings.isEmpty {
+                warnings.append(contentsOf: organizationReport.warnings)
+            }
+
             if manifestNeedsRepair {
-                var repaired = manifest
-                repaired.workoutIDs = validIDs
-                repaired.selectedWorkoutID = selectedWorkoutID
-                repaired.favoriteWorkoutIDs = favoriteIDs
-                repaired.migrateToCurrentVersionIfNeeded()
                 do {
-                    try store.saveManifest(repaired)
-                    favoriteIDs = repaired.favoriteWorkoutIDs
+                    try store.saveManifest(workingManifest)
+                    favoriteIDs = workingManifest.favoriteWorkoutIDs
                 } catch {
                     warnings.append("Could not repair library manifest: \(error.localizedDescription)")
                 }
@@ -186,6 +224,11 @@ public actor WorkoutLibraryStoreActor {
                 return .demos(errorMessage: warning)
             }
 
+            let organization = WorkoutLibraryOrganizationSnapshot(
+                tags: workingManifest.tags,
+                tagAssignments: workingManifest.tagAssignments,
+                smartCollections: workingManifest.smartCollections
+            )
             let warning = warnings.isEmpty
                 ? nil
                 : "Library warnings:\n" + warnings.joined(separator: "\n")
@@ -193,6 +236,7 @@ public actor WorkoutLibraryStoreActor {
                 loaded,
                 selectedWorkoutID: selectedWorkoutID,
                 favoriteWorkoutIDs: favoriteIDs,
+                organization: organization,
                 warning: warning
             )
         } catch let error as WorkoutLibraryError {
@@ -295,6 +339,7 @@ public actor WorkoutLibraryStoreActor {
         let wasSelected = manifest.selectedWorkoutID == id
         manifest.workoutIDs.removeAll { $0 == id }
         manifest.favoriteWorkoutIDs.remove(id)
+        manifest.removeTagAssignment(forWorkoutID: id)
         if wasSelected {
             manifest.selectedWorkoutID = newSelectedID
         }
@@ -585,5 +630,316 @@ public actor WorkoutLibraryStoreActor {
         workout.metadata.notes = normalized.notes
         try store.saveWorkout(workout)
         return workout
+    }
+
+    // MARK: - Tags
+
+    /// Create a user-defined tag and persist one atomic manifest update.
+    public func createTag(
+        name: String,
+        color: WorkoutTagColor,
+        policy: WorkoutTagPolicy = .default
+    ) throws -> WorkoutTag {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        try policy.validateCanCreate(existingCount: manifest.tags.count)
+        let normalized: WorkoutTagPolicy.NormalizedName
+        do {
+            normalized = try policy.normalizeName(name)
+            try policy.validateUniqueName(normalized, existing: manifest.tags)
+        } catch let error as WorkoutTagPolicy.ValidationError {
+            throw WorkoutLibraryStoreError.invalidTag(error.localizedDescription)
+        }
+
+        let tag = WorkoutTag(name: normalized.display, color: color)
+        manifest.tags.append(tag)
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+        return tag
+    }
+
+    /// Rename and/or recolor a tag. ID is stable. Idempotent for equivalent values.
+    public func updateTag(
+        id: UUID,
+        name: String,
+        color: WorkoutTagColor,
+        policy: WorkoutTagPolicy = .default
+    ) throws -> WorkoutTag {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        guard let index = manifest.tags.firstIndex(where: { $0.id == id }) else {
+            throw WorkoutLibraryStoreError.tagNotFound(id)
+        }
+
+        let normalized: WorkoutTagPolicy.NormalizedName
+        do {
+            normalized = try policy.normalizeName(name)
+            try policy.validateUniqueName(normalized, existing: manifest.tags, excludingID: id)
+        } catch let error as WorkoutTagPolicy.ValidationError {
+            throw WorkoutLibraryStoreError.invalidTag(error.localizedDescription)
+        }
+
+        var tag = manifest.tags[index]
+        if tag.name == normalized.display, tag.color == color {
+            return tag
+        }
+        tag.name = normalized.display
+        tag.color = color
+        manifest.tags[index] = tag
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+        return tag
+    }
+
+    /// Delete a tag, removing assignments and saved-collection tag references.
+    public func deleteTag(id: UUID) throws {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        guard manifest.tags.contains(where: { $0.id == id }) else {
+            throw WorkoutLibraryStoreError.tagNotFound(id)
+        }
+        manifest.deleteTag(id: id)
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    /// Reorder tag definitions. `orderedIDs` must be a permutation of existing tag IDs.
+    public func reorderTags(_ orderedIDs: [UUID]) throws {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        let currentIDs = manifest.tags.map(\.id)
+        guard Set(orderedIDs) == Set(currentIDs), orderedIDs.count == currentIDs.count else {
+            throw WorkoutLibraryStoreError.invalidTag("Tag reorder list must include every tag exactly once.")
+        }
+        if orderedIDs == currentIDs {
+            return
+        }
+        let byID = Dictionary(uniqueKeysWithValues: manifest.tags.map { ($0.id, $0) })
+        manifest.tags = orderedIDs.compactMap { byID[$0] }
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    // MARK: - Tag assignments
+
+    /// Replace the complete tag set for one library workout.
+    public func setTags(
+        _ tagIDs: Set<UUID>,
+        forWorkoutID workoutID: UUID,
+        policy: WorkoutTagPolicy = .default
+    ) throws {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        guard manifest.workoutIDs.contains(workoutID) else {
+            throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+        }
+
+        let validTagIDs = Set(manifest.tags.map(\.id))
+        guard tagIDs.isSubset(of: validTagIDs) else {
+            if let missing = tagIDs.first(where: { !validTagIDs.contains($0) }) {
+                throw WorkoutLibraryStoreError.tagNotFound(missing)
+            }
+            throw WorkoutLibraryStoreError.invalidTag("Unknown tag in assignment.")
+        }
+        do {
+            try policy.validateAssignmentCount(tagIDs.count)
+        } catch let error as WorkoutTagPolicy.ValidationError {
+            throw WorkoutLibraryStoreError.invalidTag(error.localizedDescription)
+        }
+
+        let current = manifest.tagIDs(forWorkoutID: workoutID)
+        if current == tagIDs {
+            return
+        }
+        manifest.setTagIDs(tagIDs, forWorkoutID: workoutID)
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    /// Bulk add/remove tags across many workouts in one atomic manifest write.
+    public func updateTags(
+        workoutIDs: Set<UUID>,
+        addTagIDs: Set<UUID>,
+        removeTagIDs: Set<UUID>,
+        policy: WorkoutTagPolicy = .default
+    ) throws {
+        try Task.checkCancellation()
+        if workoutIDs.isEmpty || (addTagIDs.isEmpty && removeTagIDs.isEmpty) {
+            return
+        }
+
+        var manifest = try loadOrCreateManifest()
+        let libraryIDs = Set(manifest.workoutIDs)
+        guard workoutIDs.isSubset(of: libraryIDs) else {
+            if let missing = workoutIDs.first(where: { !libraryIDs.contains($0) }) {
+                throw WorkoutLibraryStoreError.workoutNotInLibrary(missing)
+            }
+            throw WorkoutLibraryStoreError.invalidTag("Unknown workout in bulk tag update.")
+        }
+
+        let validTagIDs = Set(manifest.tags.map(\.id))
+        let referenced = addTagIDs.union(removeTagIDs)
+        guard referenced.isSubset(of: validTagIDs) else {
+            if let missing = referenced.first(where: { !validTagIDs.contains($0) }) {
+                throw WorkoutLibraryStoreError.tagNotFound(missing)
+            }
+            throw WorkoutLibraryStoreError.invalidTag("Unknown tag in bulk update.")
+        }
+
+        var changed = false
+        for workoutID in workoutIDs {
+            var next = manifest.tagIDs(forWorkoutID: workoutID)
+            let before = next
+            next.formUnion(addTagIDs)
+            next.subtract(removeTagIDs)
+            do {
+                try policy.validateAssignmentCount(next.count)
+            } catch let error as WorkoutTagPolicy.ValidationError {
+                throw WorkoutLibraryStoreError.invalidTag(error.localizedDescription)
+            }
+            if next != before {
+                manifest.setTagIDs(next, forWorkoutID: workoutID)
+                changed = true
+            }
+        }
+
+        if !changed {
+            return
+        }
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    // MARK: - Smart collections
+
+    public func createSmartCollection(
+        name: String,
+        query: WorkoutLibrarySavedQuery,
+        policy: WorkoutSmartCollectionPolicy = .default
+    ) throws -> WorkoutSmartCollection {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        try policy.validateCanCreate(existingCount: manifest.smartCollections.count)
+        let normalized: WorkoutSmartCollectionPolicy.NormalizedName
+        do {
+            normalized = try policy.normalizeName(name)
+            try policy.validateUniqueName(normalized, existing: manifest.smartCollections)
+            try policy.validateSavedQuery(query)
+        } catch let error as WorkoutSmartCollectionPolicy.ValidationError {
+            throw WorkoutLibraryStoreError.invalidSmartCollection(error.localizedDescription)
+        }
+
+        var sanitizedQuery = query
+        sanitizedQuery.filter.tags = Self.sanitizeTagFilter(
+            query.filter.tags,
+            validTagIDs: Set(manifest.tags.map(\.id))
+        )
+
+        let collection = WorkoutSmartCollection(name: normalized.display, query: sanitizedQuery)
+        manifest.smartCollections.append(collection)
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+        return collection
+    }
+
+    public func updateSmartCollection(
+        id: UUID,
+        name: String,
+        query: WorkoutLibrarySavedQuery,
+        policy: WorkoutSmartCollectionPolicy = .default
+    ) throws -> WorkoutSmartCollection {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        guard let index = manifest.smartCollections.firstIndex(where: { $0.id == id }) else {
+            throw WorkoutLibraryStoreError.smartCollectionNotFound(id)
+        }
+
+        let normalized: WorkoutSmartCollectionPolicy.NormalizedName
+        do {
+            normalized = try policy.normalizeName(name)
+            try policy.validateUniqueName(
+                normalized,
+                existing: manifest.smartCollections,
+                excludingID: id
+            )
+            try policy.validateSavedQuery(query)
+        } catch let error as WorkoutSmartCollectionPolicy.ValidationError {
+            throw WorkoutLibraryStoreError.invalidSmartCollection(error.localizedDescription)
+        }
+
+        var sanitizedQuery = query
+        sanitizedQuery.filter.tags = Self.sanitizeTagFilter(
+            query.filter.tags,
+            validTagIDs: Set(manifest.tags.map(\.id))
+        )
+
+        var collection = manifest.smartCollections[index]
+        if collection.name == normalized.display, collection.query == sanitizedQuery {
+            return collection
+        }
+        collection.name = normalized.display
+        collection.query = sanitizedQuery
+        manifest.smartCollections[index] = collection
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+        return collection
+    }
+
+    public func deleteSmartCollection(id: UUID) throws {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        guard manifest.smartCollections.contains(where: { $0.id == id }) else {
+            throw WorkoutLibraryStoreError.smartCollectionNotFound(id)
+        }
+        manifest.smartCollections.removeAll { $0.id == id }
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    public func reorderSmartCollections(_ orderedIDs: [UUID]) throws {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+        let currentIDs = manifest.smartCollections.map(\.id)
+        guard Set(orderedIDs) == Set(currentIDs), orderedIDs.count == currentIDs.count else {
+            throw WorkoutLibraryStoreError.invalidSmartCollection(
+                "Smart collection reorder list must include every collection exactly once."
+            )
+        }
+        if orderedIDs == currentIDs {
+            return
+        }
+        let byID = Dictionary(uniqueKeysWithValues: manifest.smartCollections.map { ($0.id, $0) })
+        manifest.smartCollections = orderedIDs.compactMap { byID[$0] }
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    // MARK: - Private helpers
+
+    private func loadOrCreateManifest() throws -> WorkoutLibraryManifest {
+        do {
+            return try store.loadManifest()
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                return WorkoutLibraryManifest()
+            }
+            throw error
+        }
+    }
+
+    private static func sanitizeTagFilter(
+        _ filter: WorkoutLibraryTagFilter,
+        validTagIDs: Set<UUID>
+    ) -> WorkoutLibraryTagFilter {
+        switch filter {
+        case .anyTags, .untaggedOnly:
+            return filter
+        case .selected(let tagIDs, let match):
+            let kept = tagIDs.intersection(validTagIDs)
+            if kept.isEmpty {
+                return .anyTags
+            }
+            return .selected(tagIDs: kept, match: match)
+        }
     }
 }

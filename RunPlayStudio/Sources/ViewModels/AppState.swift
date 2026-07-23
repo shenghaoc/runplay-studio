@@ -127,6 +127,12 @@ class AppState: ObservableObject {
     /// Local favourite markers for library workouts (not demos).
     @Published private(set) var favoriteWorkoutIDs: Set<UUID> = []
 
+    /// User-defined tags (library organisation; empty for demos).
+    @Published private(set) var tags: [WorkoutTag] = []
+
+    /// Smart collections (saved dynamic All Runs queries).
+    @Published private(set) var smartCollections: [WorkoutSmartCollection] = []
+
     /// True when the in-memory library is backed by a persisted manifest.
     /// Bundled demos leave this false so favourite/metadata actions stay disabled.
     @Published private(set) var hasPersistedLibrary = false
@@ -137,6 +143,9 @@ class AppState: ObservableObject {
 
     /// Transient metadata editor error (stays in the sheet; not a workspace overlay).
     @Published var metadataEditError: String?
+
+    /// Transient tag/collection editor error (stays in the sheet).
+    @Published var organizationEditError: String?
 
     /// Single source of truth for which workspace is visible.
     @Published private(set) var workspaceMode: AppWorkspaceMode = .workout
@@ -164,6 +173,9 @@ class AppState: ObservableObject {
         case .personalHeatmap:
             return .personalHeatmap
         case .workoutLibrary:
+            if case .smartCollection(let id, _) = workoutLibrary.queryContext {
+                return .smartCollection(id)
+            }
             return .allRuns
         case .workout, .comparison:
             if let id = selectedWorkout?.id {
@@ -177,9 +189,11 @@ class AppState: ObservableObject {
     func applySidebarSelection(_ selection: SidebarSelection?) {
         switch selection {
         case .allRuns:
-            showWorkoutLibrary()
+            showWorkoutLibrary(restoreManualQuery: true)
         case .personalHeatmap:
             showPersonalHeatmap()
+        case .smartCollection(let id):
+            showSmartCollection(id: id)
         case .workout(let id):
             if let workout = workouts.first(where: { $0.id == id }) {
                 selectWorkout(workout)
@@ -282,6 +296,8 @@ class AppState: ObservableObject {
         switch result {
         case .demos(let loadErrorMessage):
             favoriteWorkoutIDs = []
+            tags = []
+            smartCollections = []
             libraryWorkoutIDs = []
             hasPersistedLibrary = false
             loadSampleWorkouts()
@@ -289,13 +305,19 @@ class AppState: ObservableObject {
                 errorMessage = loadErrorMessage
                 showingError = true
             }
-        case .workouts(let loaded, let selectedWorkoutID, let favoriteIDs, let warning):
+        case .workouts(let loaded, let selectedWorkoutID, let favoriteIDs, let organization, let warning):
             analysisContextCache.removeAll()
             workouts = loaded
             favoriteWorkoutIDs = favoriteIDs
+            tags = organization.tags
+            smartCollections = organization.smartCollections
             libraryWorkoutIDs = Set(loaded.map(\.id))
             hasPersistedLibrary = true
-            workoutLibrary.replaceLibrary(workouts: loaded, favoriteIDs: favoriteIDs)
+            workoutLibrary.replaceLibrary(
+                workouts: loaded,
+                favoriteIDs: favoriteIDs,
+                organization: organization
+            )
             let selected = selectedWorkoutID.flatMap { id in
                 loaded.first(where: { $0.id == id })
             } ?? loaded.first
@@ -313,11 +335,13 @@ class AppState: ObservableObject {
         loadBundledWorkout(resource: "sample_run", extension: "json")
         loadBundledWorkout(resource: "comparison_park_run", extension: "json", subdirectory: "fixtures")
 
-        // Demos are not library entries — clear favourites and index demos for browsing only.
+        // Demos are not library entries — clear organisation and index demos for browsing only.
         favoriteWorkoutIDs = []
+        tags = []
+        smartCollections = []
         libraryWorkoutIDs = []
         hasPersistedLibrary = false
-        workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: [])
+        workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: [], organization: .empty)
 
         if workouts.count > initialCount {
             selectWorkout(workouts[initialCount], persistSelection: false)
@@ -362,7 +386,11 @@ class AppState: ObservableObject {
                 libraryWorkoutIDs.insert(workout.id)
             }
             hasPersistedLibrary = true
-            workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: favoriteWorkoutIDs)
+            workoutLibrary.replaceLibrary(
+                workouts: workouts,
+                favoriteIDs: favoriteWorkoutIDs,
+                organization: currentOrganizationSnapshot()
+            )
             // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
         } catch is CancellationError {
@@ -593,12 +621,12 @@ class AppState: ObservableObject {
         case .showPersonalHeatmap:
             showPersonalHeatmap()
         case .showAllRuns:
-            showWorkoutLibrary()
+            showWorkoutLibrary(restoreManualQuery: true)
         }
     }
 
     /// Open the All Runs library workspace. Does not clear selected workout.
-    func showWorkoutLibrary() {
+    func showWorkoutLibrary(restoreManualQuery: Bool = false) {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
         }
@@ -606,14 +634,51 @@ class AppState: ObservableObject {
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
         workspaceMode = .workoutLibrary
+        if restoreManualQuery {
+            workoutLibrary.returnToManualQuery()
+        }
         // Ensure the library index tracks the current in-memory library.
-        workoutLibrary.replaceLibrary(workouts: workouts, favoriteIDs: favoriteWorkoutIDs)
+        workoutLibrary.replaceLibrary(
+            workouts: workouts,
+            favoriteIDs: favoriteWorkoutIDs,
+            organization: currentOrganizationSnapshot()
+        )
+    }
+
+    /// Open All Runs under a smart collection.
+    func showSmartCollection(id: UUID) {
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        workspaceMode = .workoutLibrary
+        workoutLibrary.replaceLibrary(
+            workouts: workouts,
+            favoriteIDs: favoriteWorkoutIDs,
+            organization: currentOrganizationSnapshot()
+        )
+        workoutLibrary.openSmartCollection(id: id)
     }
 
     /// Open All Runs with the favourites-only filter applied.
     func showAllFavoritesInLibrary() {
-        showWorkoutLibrary()
+        showWorkoutLibrary(restoreManualQuery: true)
         workoutLibrary.showAllFavorites()
+    }
+
+    private func currentOrganizationSnapshot() -> WorkoutLibraryOrganizationSnapshot {
+        WorkoutLibraryOrganizationSnapshot(
+            tags: tags,
+            tagAssignments: tags.isEmpty && smartCollections.isEmpty
+                ? []
+                : workoutLibrary.entries.compactMap { entry in
+                    guard !entry.tagIDs.isEmpty else { return nil }
+                    return WorkoutTagAssignment(workoutID: entry.id, tagIDs: entry.tagIDs)
+                },
+            smartCollections: smartCollections
+        )
     }
 
     /// Open a workout from All Runs (enters `.workout`).
@@ -695,6 +760,274 @@ class AppState: ObservableObject {
             errorMessage = "Could not update favourite: \(error.localizedDescription)"
             showingError = true
             return false
+        }
+    }
+
+    /// Whether tags can be assigned (persisted library workouts only, never demos).
+    func canTag(_ workout: RunWorkout) -> Bool {
+        canEditLibraryMetadata(workout)
+    }
+
+    /// Whether organisation management (tags/collections) is available.
+    var canManageOrganization: Bool {
+        storeActor != nil && hasPersistedLibrary
+    }
+
+    // MARK: - Tags & smart collections
+
+    @discardableResult
+    func createTag(name: String, color: WorkoutTagColor) async -> WorkoutTag? {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Tags require a saved local library."
+            return nil
+        }
+        do {
+            let tag = try await storeActor.createTag(name: name, color: color)
+            tags.append(tag)
+            workoutLibrary.applyTagDefinitions(tags)
+            return tag
+        } catch {
+            organizationEditError = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateTag(id: UUID, name: String, color: WorkoutTagColor) async -> WorkoutTag? {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Tags require a saved local library."
+            return nil
+        }
+        do {
+            let tag = try await storeActor.updateTag(id: id, name: name, color: color)
+            if let index = tags.firstIndex(where: { $0.id == id }) {
+                tags[index] = tag
+            }
+            workoutLibrary.applyTagDefinitions(tags)
+            return tag
+        } catch {
+            organizationEditError = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func deleteTag(id: UUID) async -> Bool {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Tags require a saved local library."
+            return false
+        }
+        do {
+            try await storeActor.deleteTag(id: id)
+            tags.removeAll { $0.id == id }
+            // Strip from local entry assignments and collection filters.
+            var assignmentChanges: [UUID: Set<UUID>] = [:]
+            for entry in workoutLibrary.entries where entry.tagIDs.contains(id) {
+                var next = entry.tagIDs
+                next.remove(id)
+                assignmentChanges[entry.id] = next
+            }
+            if !assignmentChanges.isEmpty {
+                workoutLibrary.applyBulkWorkoutTagChange(changes: assignmentChanges)
+            }
+            workoutLibrary.applyTagDefinitions(tags)
+            // Repair in-memory collection filters.
+            for index in smartCollections.indices {
+                smartCollections[index].query.filter.tags = stripTag(
+                    id,
+                    from: smartCollections[index].query.filter.tags
+                )
+            }
+            workoutLibrary.applySmartCollectionChange(smartCollections)
+            // Repair active tag filter.
+            workoutLibrary.tagFilter = stripTag(id, from: workoutLibrary.tagFilter)
+            return true
+        } catch {
+            organizationEditError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func reorderTags(_ orderedIDs: [UUID]) async -> Bool {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else { return false }
+        do {
+            try await storeActor.reorderTags(orderedIDs)
+            let byID = Dictionary(uniqueKeysWithValues: tags.map { ($0.id, $0) })
+            tags = orderedIDs.compactMap { byID[$0] }
+            workoutLibrary.applyTagDefinitions(tags)
+            return true
+        } catch {
+            organizationEditError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func setTags(_ tagIDs: Set<UUID>, forWorkoutID workoutID: UUID) async -> Bool {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
+            organizationEditError = "Tags apply to imported library workouts, not bundled demos."
+            return false
+        }
+        do {
+            try await storeActor.setTags(tagIDs, forWorkoutID: workoutID)
+            workoutLibrary.applyWorkoutTagChange(workoutID: workoutID, tagIDs: tagIDs)
+            return true
+        } catch {
+            organizationEditError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateTags(
+        workoutIDs: Set<UUID>,
+        addTagIDs: Set<UUID>,
+        removeTagIDs: Set<UUID>
+    ) async -> Bool {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Tags require a saved local library."
+            return false
+        }
+        let valid = workoutIDs.intersection(libraryWorkoutIDs)
+        guard !valid.isEmpty else {
+            organizationEditError = "Select imported library workouts to edit tags."
+            return false
+        }
+        do {
+            try await storeActor.updateTags(
+                workoutIDs: valid,
+                addTagIDs: addTagIDs,
+                removeTagIDs: removeTagIDs
+            )
+            var changes: [UUID: Set<UUID>] = [:]
+            for id in valid {
+                var next = workoutLibrary.entry(for: id)?.tagIDs ?? []
+                next.formUnion(addTagIDs)
+                next.subtract(removeTagIDs)
+                changes[id] = next
+            }
+            workoutLibrary.applyBulkWorkoutTagChange(changes: changes)
+            return true
+        } catch {
+            organizationEditError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func createSmartCollection(name: String, query: WorkoutLibrarySavedQuery) async -> WorkoutSmartCollection? {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Smart collections require a saved local library."
+            return nil
+        }
+        do {
+            let collection = try await storeActor.createSmartCollection(name: name, query: query)
+            smartCollections.append(collection)
+            workoutLibrary.didCreateSmartCollection(collection)
+            return collection
+        } catch {
+            organizationEditError = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateSmartCollection(
+        id: UUID,
+        name: String,
+        query: WorkoutLibrarySavedQuery
+    ) async -> WorkoutSmartCollection? {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Smart collections require a saved local library."
+            return nil
+        }
+        do {
+            let collection = try await storeActor.updateSmartCollection(
+                id: id,
+                name: name,
+                query: query
+            )
+            if let index = smartCollections.firstIndex(where: { $0.id == id }) {
+                smartCollections[index] = collection
+            }
+            workoutLibrary.applySmartCollectionChange(smartCollections)
+            if case .smartCollection(let activeID, _) = workoutLibrary.queryContext, activeID == id {
+                workoutLibrary.markActiveCollectionUpdated(collection)
+            }
+            return collection
+        } catch {
+            organizationEditError = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func deleteSmartCollection(id: UUID) async -> Bool {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else {
+            organizationEditError = "Smart collections require a saved local library."
+            return false
+        }
+        do {
+            try await storeActor.deleteSmartCollection(id: id)
+            smartCollections.removeAll { $0.id == id }
+            workoutLibrary.didDeleteSmartCollection(id: id)
+            return true
+        } catch {
+            organizationEditError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func reorderSmartCollections(_ orderedIDs: [UUID]) async -> Bool {
+        organizationEditError = nil
+        guard let storeActor, hasPersistedLibrary else { return false }
+        do {
+            try await storeActor.reorderSmartCollections(orderedIDs)
+            let byID = Dictionary(uniqueKeysWithValues: smartCollections.map { ($0.id, $0) })
+            smartCollections = orderedIDs.compactMap { byID[$0] }
+            workoutLibrary.applySmartCollectionChange(smartCollections)
+            return true
+        } catch {
+            organizationEditError = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Persist the active modified collection query.
+    @discardableResult
+    func updateActiveSmartCollectionFromCurrentQuery() async -> Bool {
+        guard case .smartCollection(let id, true) = workoutLibrary.queryContext,
+              let existing = smartCollections.first(where: { $0.id == id }) else {
+            return false
+        }
+        let updated = await updateSmartCollection(
+            id: id,
+            name: existing.name,
+            query: workoutLibrary.currentSavedQuery()
+        )
+        return updated != nil
+    }
+
+    private func stripTag(_ id: UUID, from filter: WorkoutLibraryTagFilter) -> WorkoutLibraryTagFilter {
+        switch filter {
+        case .anyTags, .untaggedOnly:
+            return filter
+        case .selected(let tagIDs, let match):
+            var remaining = tagIDs
+            remaining.remove(id)
+            if remaining.isEmpty { return .anyTags }
+            return .selected(tagIDs: remaining, match: match)
         }
     }
 
@@ -1024,13 +1357,19 @@ class AppState: ObservableObject {
                     // Reload library from store for authoritative post-commit state.
                     let loadResult = await storeActor.loadLibrary()
                     switch loadResult {
-                    case .workouts(let loaded, let selectedID, let favoriteIDs, _):
+                    case .workouts(let loaded, let selectedID, let favoriteIDs, let organization, _):
                         self.analysisContextCache.removeAll()
                         self.workouts = loaded
                         self.favoriteWorkoutIDs = favoriteIDs
+                        self.tags = organization.tags
+                        self.smartCollections = organization.smartCollections
                         self.libraryWorkoutIDs = Set(loaded.map(\.id))
                         self.hasPersistedLibrary = true
-                        self.workoutLibrary.replaceLibrary(workouts: loaded, favoriteIDs: favoriteIDs)
+                        self.workoutLibrary.replaceLibrary(
+                            workouts: loaded,
+                            favoriteIDs: favoriteIDs,
+                            organization: organization
+                        )
                         let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
                             ?? loaded.first
                         self.selectWorkout(selected, persistSelection: false)

@@ -124,7 +124,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, _) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, _) = result else {
             XCTFail("Expected .workouts, got \(result)")
             return
         }
@@ -173,7 +173,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected migrated workouts, got \(result)")
             return
         }
@@ -210,7 +210,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected in-memory workout, got \(result)")
             return
         }
@@ -228,7 +228,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         )
 
         let retryResult = await actor.loadLibrary()
-        guard case .workouts(let retried, _, _, _) = retryResult else {
+        guard case .workouts(let retried, _, _, _, _) = retryResult else {
             XCTFail("Expected the original snapshot to remain retryable, got \(retryResult)")
             return
         }
@@ -250,7 +250,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected migrated workouts, got \(result)")
             return
         }
@@ -295,7 +295,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected current workout, got \(result)")
             return
         }
@@ -321,7 +321,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -548,7 +548,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -603,7 +603,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         try await actor.addWorkout(workout, select: true)
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -758,7 +758,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
-        guard case .workouts(_, _, let favorites, _) = result else {
+        guard case .workouts(_, _, let favorites, _, _) = result else {
             XCTFail("Expected workouts")
             return
         }

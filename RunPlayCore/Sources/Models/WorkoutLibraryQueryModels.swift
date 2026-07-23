@@ -128,6 +128,99 @@ public struct WorkoutLibraryDataFilters: Hashable, Sendable, Codable {
     }
 }
 
+// MARK: - Tag filters
+
+/// Whether selected tags require any-of or all-of matching.
+public enum WorkoutLibraryTagMatchMode: String, Codable, Hashable, Sendable {
+    case any
+    case all
+}
+
+/// Tag restriction combined with other library filters via AND.
+public enum WorkoutLibraryTagFilter: Hashable, Sendable {
+    /// No tag restriction.
+    case anyTags
+    /// Workouts with zero assigned tags.
+    case untaggedOnly
+    /// Workouts matching the selected tag IDs.
+    ///
+    /// An empty `tagIDs` set behaves as ``anyTags`` (no restriction).
+    case selected(tagIDs: Set<UUID>, match: WorkoutLibraryTagMatchMode)
+
+    public static let `default` = WorkoutLibraryTagFilter.anyTags
+
+    public var isActive: Bool {
+        switch self {
+        case .anyTags:
+            return false
+        case .untaggedOnly:
+            return true
+        case .selected(let tagIDs, _):
+            return !tagIDs.isEmpty
+        }
+    }
+
+    public var activeFilterCount: Int {
+        isActive ? 1 : 0
+    }
+}
+
+extension WorkoutLibraryTagFilter: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case tagIDs
+        case match
+    }
+
+    private enum FilterType: String, Codable {
+        case anyTags
+        case untaggedOnly
+        case selected
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawType = try container.decodeIfPresent(String.self, forKey: .type) ?? FilterType.anyTags.rawValue
+        switch FilterType(rawValue: rawType) {
+        case .untaggedOnly:
+            self = .untaggedOnly
+        case .selected:
+            let ids = try container.decodeIfPresent([UUID].self, forKey: .tagIDs) ?? []
+            let matchRaw = try container.decodeIfPresent(String.self, forKey: .match)
+                ?? WorkoutLibraryTagMatchMode.any.rawValue
+            let match = WorkoutLibraryTagMatchMode(rawValue: matchRaw) ?? .any
+            if ids.isEmpty {
+                self = .anyTags
+            } else {
+                self = .selected(tagIDs: Set(ids), match: match)
+            }
+        case .anyTags, .none:
+            self = .anyTags
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .anyTags:
+            try container.encode(FilterType.anyTags.rawValue, forKey: .type)
+        case .untaggedOnly:
+            try container.encode(FilterType.untaggedOnly.rawValue, forKey: .type)
+        case .selected(let tagIDs, let match):
+            if tagIDs.isEmpty {
+                try container.encode(FilterType.anyTags.rawValue, forKey: .type)
+            } else {
+                try container.encode(FilterType.selected.rawValue, forKey: .type)
+                let ordered = tagIDs.sorted {
+                    $0.uuidString.localizedStandardCompare($1.uuidString) == .orderedAscending
+                }
+                try container.encode(ordered, forKey: .tagIDs)
+                try container.encode(match.rawValue, forKey: .match)
+            }
+        }
+    }
+}
+
 // MARK: - Filter aggregate
 
 public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
@@ -135,17 +228,20 @@ public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
     public var date: WorkoutLibraryDateFilter
     public var source: WorkoutLibrarySourceFilter
     public var data: WorkoutLibraryDataFilters
+    public var tags: WorkoutLibraryTagFilter
 
     public init(
         favorite: WorkoutLibraryFavoriteFilter = .all,
         date: WorkoutLibraryDateFilter = .allTime,
         source: WorkoutLibrarySourceFilter = .all,
-        data: WorkoutLibraryDataFilters = .none
+        data: WorkoutLibraryDataFilters = .none,
+        tags: WorkoutLibraryTagFilter = .anyTags
     ) {
         self.favorite = favorite
         self.date = date
         self.source = source
         self.data = data
+        self.tags = tags
     }
 
     public static let `default` = WorkoutLibraryFilter()
@@ -155,6 +251,7 @@ public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
             && date == .allTime
             && source == .all
             && !data.isActive
+            && !tags.isActive
     }
 
     public var activeFilterCount: Int {
@@ -163,6 +260,7 @@ public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
         if date != .allTime { count += 1 }
         if source != .all { count += 1 }
         count += data.activeCount
+        count += tags.activeFilterCount
         return count
     }
 }

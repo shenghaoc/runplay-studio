@@ -338,8 +338,11 @@ The sidebar no longer lists every workout. `WorkoutLibrarySidebarPolicy` caps
 Favourites (8) and Recent (10, excluding all favourites), with a
 one-row Selected Run section when the selection is outside those bounds.
 
-Manifest schema version **2** stores `favoriteWorkoutIDs`. Version-1 manifests
-decode with an empty favourite set; order and selection are preserved.
+Manifest schema version **3** stores `favoriteWorkoutIDs`, ordered `tags`,
+`tagAssignments`, and `smartCollections`. Version-1/2 manifests decode with empty
+organisation fields; order, selection, and favourites are preserved. Tags are not
+written into workout snapshots. Smart collections store `WorkoutLibrarySavedQuery`
+(no membership IDs); relative date filters resolve when opened.
 `WorkoutLibraryStoreActor.setFavorite` and `updateWorkoutMetadata` persist
 favourites and editable name/notes without rerunning analysis.
 

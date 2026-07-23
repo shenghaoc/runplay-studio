@@ -103,6 +103,145 @@ final class WorkoutLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.totalCount, 0)
     }
 
+    func testSmartCollectionManualQueryRestorationAndModified() async {
+        let vm = WorkoutLibraryViewModel()
+        let a = makeWorkout(name: "Race Day")
+        let b = makeWorkout(name: "Easy Jog")
+        let tag = WorkoutTag(name: "Race", color: .red)
+        let collection = WorkoutSmartCollection(
+            name: "Races",
+            query: WorkoutLibrarySavedQuery(
+                searchText: "race",
+                filter: WorkoutLibraryFilter(
+                    tags: .selected(tagIDs: [tag.id], match: .any)
+                ),
+                sort: .nameAZ
+            )
+        )
+        let org = WorkoutLibraryOrganizationSnapshot(
+            tags: [tag],
+            tagAssignments: [WorkoutTagAssignment(workoutID: a.id, tagIDs: [tag.id])],
+            smartCollections: [collection]
+        )
+        vm.replaceLibrary(workouts: [a, b], favoriteIDs: [], organization: org)
+
+        for _ in 0..<50 {
+            if vm.loadState == .ready { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        vm.searchText = "jog"
+        for _ in 0..<50 {
+            if vm.filteredCount == 1 { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(vm.resultIDs, [b.id])
+
+        vm.openSmartCollection(id: collection.id)
+        for _ in 0..<50 {
+            if vm.searchText == "race" { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(vm.searchText, "race")
+        XCTAssertEqual(vm.sort, .nameAZ)
+        if case .smartCollection(let id, false) = vm.queryContext {
+            XCTAssertEqual(id, collection.id)
+        } else {
+            XCTFail("Expected unmodified collection context")
+        }
+
+        vm.sourceFilter = .fit
+        if case .smartCollection(_, true) = vm.queryContext {
+            // modified
+        } else {
+            XCTFail("Expected modified collection")
+        }
+
+        vm.revertActiveCollection()
+        if case .smartCollection(_, false) = vm.queryContext {
+            XCTAssertEqual(vm.sourceFilter, .all)
+        } else {
+            XCTFail("Expected unmodified after revert")
+        }
+
+        vm.returnToManualQuery()
+        XCTAssertEqual(vm.queryContext, .manual)
+        XCTAssertEqual(vm.searchText, "jog")
+    }
+
+    func testBulkTagChangeTriggersSingleReadyState() async {
+        let vm = WorkoutLibraryViewModel()
+        let a = makeWorkout(name: "A")
+        let b = makeWorkout(name: "B")
+        let tag = WorkoutTag(name: "Easy", color: .green)
+        vm.replaceLibrary(
+            workouts: [a, b],
+            favoriteIDs: [],
+            organization: WorkoutLibraryOrganizationSnapshot(tags: [tag])
+        )
+        for _ in 0..<50 {
+            if vm.loadState == .ready { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        vm.applyBulkWorkoutTagChange(changes: [
+            a.id: [tag.id],
+            b.id: [tag.id],
+        ])
+        for _ in 0..<50 {
+            if vm.entry(for: a.id)?.tagIDs.contains(tag.id) == true { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(vm.entry(for: a.id)?.tagNames, ["Easy"])
+        XCTAssertEqual(vm.entry(for: b.id)?.tagNames, ["Easy"])
+    }
+
+    func testTableSelectionIsSetAndRepairedOnFilter() async {
+        let vm = WorkoutLibraryViewModel()
+        let a = makeWorkout(name: "Alpha")
+        let b = makeWorkout(name: "Bravo")
+        vm.replaceLibrary(workouts: [a, b], favoriteIDs: [])
+        for _ in 0..<50 {
+            if vm.loadState == .ready { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        vm.tableSelection = [a.id, b.id]
+        vm.searchText = "Alpha"
+        for _ in 0..<50 {
+            if vm.filteredCount == 1 { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(vm.tableSelection, [a.id])
+    }
+
+    func testTagRenameUpdatesSearchDocument() async {
+        let vm = WorkoutLibraryViewModel()
+        let a = makeWorkout(name: "Morning")
+        let tag = WorkoutTag(name: "Race", color: .red)
+        vm.replaceLibrary(
+            workouts: [a],
+            favoriteIDs: [],
+            organization: WorkoutLibraryOrganizationSnapshot(
+                tags: [tag],
+                tagAssignments: [WorkoutTagAssignment(workoutID: a.id, tagIDs: [tag.id])]
+            )
+        )
+        for _ in 0..<50 {
+            if vm.loadState == .ready { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        var renamed = tag
+        renamed.name = "Competition"
+        vm.applyTagDefinitions([renamed])
+        vm.searchText = "competition"
+        for _ in 0..<50 {
+            if vm.filteredCount == 1 { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(vm.resultIDs, [a.id])
+    }
+
     func testStaleResultSuppression() async {
         final class Gate: @unchecked Sendable {
             private let lock = NSLock()

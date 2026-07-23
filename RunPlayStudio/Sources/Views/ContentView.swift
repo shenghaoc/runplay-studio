@@ -49,6 +49,7 @@ struct ContentView: View {
             SidebarView(
                 workouts: appState.workouts,
                 favoriteIDs: appState.favoriteWorkoutIDs,
+                smartCollections: appState.smartCollections,
                 libraryCount: appState.workouts.count,
                 totalFavoriteCount: appState.favoriteWorkoutIDs.count,
                 selection: Binding(
@@ -62,6 +63,11 @@ struct ContentView: View {
                 },
                 onShowAllFavorites: {
                     appState.showAllFavoritesInLibrary()
+                },
+                onManageSmartCollections: {
+                    appState.showWorkoutLibrary(restoreManualQuery: false)
+                    // Sheet is presented from All Runs; ensure workspace is open.
+                    NotificationCenter.default.post(name: .runPlayManageSmartCollections, object: nil)
                 }
             )
         } detail: {
@@ -191,7 +197,7 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
             showPersonalHeatmap: { appState.showPersonalHeatmap() },
-            showAllRuns: { appState.showWorkoutLibrary() },
+            showAllRuns: { appState.showWorkoutLibrary(restoreManualQuery: true) },
             importFile: { appState.showImporter = true },
             importStravaArchive: { appState.showArchiveImporter = true }
         ))

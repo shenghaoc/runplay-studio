@@ -176,6 +176,10 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
             return false
         }
 
+        guard matchesTagFilter(entry: entry, filter: filter.tags) else {
+            return false
+        }
+
         // Date filter
         if dateBounds.start == nil, dateBounds.end == nil, dateBounds.includeMissingDates {
             return true
@@ -194,6 +198,28 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
             }
         }
         return true
+    }
+
+    public static func matchesTagFilter(
+        entry: WorkoutLibraryEntry,
+        filter: WorkoutLibraryTagFilter
+    ) -> Bool {
+        switch filter {
+        case .anyTags:
+            return true
+        case .untaggedOnly:
+            return entry.tagIDs.isEmpty
+        case .selected(let tagIDs, let match):
+            if tagIDs.isEmpty {
+                return true
+            }
+            switch match {
+            case .any:
+                return !entry.tagIDs.isDisjoint(with: tagIDs)
+            case .all:
+                return tagIDs.isSubset(of: entry.tagIDs)
+            }
+        }
     }
 
     // MARK: - Sort
@@ -377,6 +403,8 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
 public enum WorkoutLibrarySidebarPolicy: Sendable {
     public static let favoriteCap = 8
     public static let recentCap = 10
+    /// Maximum smart collections shown before "All Smart Collections…".
+    public static let smartCollectionCap = 8
 
     /// Favourites (manifest order), recent non-favourites (date desc), optional selected overflow.
     public static func sidebarSections(

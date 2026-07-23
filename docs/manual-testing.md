@@ -199,6 +199,15 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Import one file and a Strava archive; All Runs refreshes once after commit.
 - [ ] Delete a favourite; manifest favourite set no longer contains it.
 - [ ] Open comparison, heatmap, and PNG export; none inherit All Runs filters.
+- [ ] Create tags; reject a folded duplicate name; rename/recolor; assign tags; search by tag name.
+- [ ] Filter by any/all selected tags and untagged only.
+- [ ] Multi-select runs and bulk-add/remove tags; verify tri-state mixed tags.
+- [ ] Delete an assigned tag; confirm workouts remain and collections drop that criterion.
+- [ ] Save current query as a smart collection; open from sidebar; confirm Modified/Revert/Update.
+- [ ] Return to All Runs and confirm the prior manual query is restored.
+- [ ] Import a matching workout; confirm dynamic collection membership updates.
+- [ ] Quit/relaunch; tags, assignments, collections, favourites, and selection persist.
+- [ ] Keyboard navigate tags/collections; inspect VoiceOver labels; light/dark tag colors.
 - [ ] Keyboard: select rows, Return to open, Delete with confirmation, focus search.
 
 ## Persistent Workout Library Checklist

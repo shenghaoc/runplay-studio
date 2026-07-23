@@ -75,6 +75,13 @@
 ### Scalable Workout Library (All Runs) ✅
 - All Runs workspace with search, filters, sort, favourites, name/notes editing
 - Manifest schema v2 favourites; bounded sidebar (Favourites / Recent / Selected Run)
+
+### Tags and Smart Collections ✅
+- User-defined tags (finite color palette) with bulk assignment; tags live in the manifest, not workout snapshots
+- Tag search/filter (any/all/untagged) reuses `WorkoutLibraryQueryService`
+- Smart collections are saved dynamic queries (search/filters/tags/sort); relative dates resolve on open
+- Manifest schema v3; Modified/Revert/Update collection chrome; session-only manual query restoration
+- Bounded Smart Collections sidebar; Manage Tags / Manage Collections sheets
 - In-memory search index; no route-point scanning during ordinary query
 - Off-main cancellable query service; heatmap isolation preserved
 

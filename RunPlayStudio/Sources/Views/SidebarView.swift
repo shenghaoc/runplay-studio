@@ -6,6 +6,7 @@ import RunPlayCore
 enum SidebarSelection: Hashable {
     case allRuns
     case personalHeatmap
+    case smartCollection(UUID)
     case workout(UUID)
 }
 
@@ -13,6 +14,7 @@ enum SidebarSelection: Hashable {
 struct SidebarView: View {
     let workouts: [RunWorkout]
     let favoriteIDs: Set<UUID>
+    let smartCollections: [WorkoutSmartCollection]
     let libraryCount: Int
     let totalFavoriteCount: Int
     @Binding var selection: SidebarSelection?
@@ -20,6 +22,7 @@ struct SidebarView: View {
     var onArchiveImport: (() -> Void)? = nil
     var onDelete: ((RunWorkout) -> Void)?
     var onShowAllFavorites: (() -> Void)? = nil
+    var onManageSmartCollections: (() -> Void)? = nil
 
     @State private var workoutToDelete: RunWorkout?
 
@@ -37,6 +40,14 @@ struct SidebarView: View {
             favoriteIDs: favoriteIDs,
             selectedWorkoutID: selectedID
         )
+    }
+
+    private var visibleCollections: [WorkoutSmartCollection] {
+        Array(smartCollections.prefix(WorkoutLibrarySidebarPolicy.smartCollectionCap))
+    }
+
+    private var hasMoreCollections: Bool {
+        smartCollections.count > WorkoutLibrarySidebarPolicy.smartCollectionCap
     }
 
     var body: some View {
@@ -70,6 +81,30 @@ struct SidebarView: View {
                     .font(AppDesign.Typography.compactLabel)
                     .textCase(.uppercase)
                     .foregroundStyle(.tertiary)
+            }
+
+            if !smartCollections.isEmpty {
+                Section {
+                    ForEach(visibleCollections) { collection in
+                        Label(collection.name, systemImage: "rectangle.stack")
+                            .tag(SidebarSelection.smartCollection(collection.id))
+                            .help("Open smart collection “\(collection.name)”")
+                            .accessibilityLabel("Smart collection \(collection.name)")
+                    }
+                    if hasMoreCollections {
+                        Button {
+                            onManageSmartCollections?()
+                        } label: {
+                            Label("All Smart Collections…", systemImage: "rectangle.stack.badge.person.crop")
+                        }
+                        .accessibilityLabel("Show all smart collections")
+                    }
+                } header: {
+                    Text("Smart Collections")
+                        .font(AppDesign.Typography.compactLabel)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             let bounded = sections
