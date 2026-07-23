@@ -520,6 +520,38 @@ final class WorkoutLibraryQueryTests: XCTestCase {
         XCTAssertTrue(Set(sections.favorites.map(\.id)).isDisjoint(with: Set(sections.recent.map(\.id))))
     }
 
+    func testSidebarRecentExcludesFavoritesBeyondFavoriteCap() {
+        let favorites = (0..<(WorkoutLibrarySidebarPolicy.favoriteCap + 2)).map { index in
+            RunWorkout(
+                metadata: WorkoutMetadata(
+                    name: "Fav \(index)",
+                    startDate: Date(timeIntervalSince1970: 2_000 + Double(index))
+                ),
+                summary: RunSummary(totalDistanceMeters: 1000)
+            )
+        }
+        let nonFavorites = (0..<2).map { index in
+            RunWorkout(
+                metadata: WorkoutMetadata(
+                    name: "Recent \(index)",
+                    startDate: Date(timeIntervalSince1970: 1_000 + Double(index))
+                ),
+                summary: RunSummary(totalDistanceMeters: 1000)
+            )
+        }
+        let favoriteIDs = Set(favorites.map(\.id))
+
+        let sections = WorkoutLibrarySidebarPolicy.sidebarSections(
+            workouts: favorites + nonFavorites,
+            favoriteIDs: favoriteIDs,
+            selectedWorkoutID: nil
+        )
+
+        XCTAssertEqual(sections.favorites.count, WorkoutLibrarySidebarPolicy.favoriteCap)
+        XCTAssertEqual(Set(sections.recent.map(\.id)), Set(nonFavorites.map(\.id)))
+        XCTAssertTrue(Set(sections.recent.map(\.id)).isDisjoint(with: favoriteIDs))
+    }
+
     // MARK: - Metadata policy
 
     func testMetadataPolicyTrimsAndRejectsOverLimit() throws {

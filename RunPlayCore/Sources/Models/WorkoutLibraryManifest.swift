@@ -46,12 +46,19 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         favoriteWorkoutIDs = favoriteWorkoutIDs.intersection(Set(workoutIDs))
     }
 
-    /// Promote a supported legacy schema to the current version after decode.
+    /// Promote a supported legacy schema to the current version without
+    /// discarding references that actor-level recovery must persistently repair.
     /// Unsupported versions are left unchanged so load validation can reject them.
-    public mutating func migrateToCurrentVersionIfNeeded() {
+    mutating func upgradeSchemaVersionIfNeeded() {
         if Self.isSupportedSchemaVersion(version), version < Self.currentVersion {
             version = Self.currentVersion
         }
+    }
+
+    /// Promote a supported manifest to the current schema and normalize its
+    /// favourite references before persistence.
+    public mutating func migrateToCurrentVersionIfNeeded() {
+        upgradeSchemaVersionIfNeeded()
         if version == Self.currentVersion {
             sanitizeFavorites()
         }

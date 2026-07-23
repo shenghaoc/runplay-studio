@@ -393,7 +393,7 @@ public enum WorkoutLibrarySidebarPolicy: Sendable {
         let favoriteShown = Set(favorites.map(\.id))
 
         let recentCandidates = workouts
-            .filter { !favoriteShown.contains($0.id) }
+            .filter { !favoriteIDs.contains($0.id) }
             .sorted { lhs, rhs in
                 let ld = WorkoutLibraryEntry.canonicalStartDate(for: lhs)
                 let rd = WorkoutLibraryEntry.canonicalStartDate(for: rhs)

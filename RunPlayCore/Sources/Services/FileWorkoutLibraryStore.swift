@@ -82,7 +82,10 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         }
 
         var migrated = manifest
-        migrated.migrateToCurrentVersionIfNeeded()
+        migrated.upgradeSchemaVersionIfNeeded()
+        // Keep dangling favourite IDs visible to WorkoutLibraryStoreActor so
+        // library recovery can remove and atomically persist them. Saves
+        // always sanitize favourites before writing the manifest.
         return migrated
     }
 

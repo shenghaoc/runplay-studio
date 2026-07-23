@@ -51,13 +51,18 @@ public actor WorkoutLibraryStoreActor {
         do {
             let manifest = try store.loadManifest()
             guard !manifest.workoutIDs.isEmpty else {
-                if manifest.selectedWorkoutID != nil {
+                let manifestNeedsRepair = manifest.selectedWorkoutID != nil
+                    || !manifest.favoriteWorkoutIDs.isEmpty
+                    || manifest.version != WorkoutLibraryManifest.currentVersion
+                if manifestNeedsRepair {
                     var repaired = manifest
                     repaired.selectedWorkoutID = nil
+                    repaired.favoriteWorkoutIDs = []
+                    repaired.migrateToCurrentVersionIfNeeded()
                     do {
                         try store.saveManifest(repaired)
                     } catch {
-                        return .demos(errorMessage: "Could not repair the empty library selection: \(error.localizedDescription)")
+                        return .demos(errorMessage: "Could not repair the empty library manifest: \(error.localizedDescription)")
                     }
                 }
                 return .demos(errorMessage: nil)
@@ -148,25 +153,19 @@ public actor WorkoutLibraryStoreActor {
                 }
             }
 
-            guard !loaded.isEmpty else {
-                let warning = warnings.isEmpty
-                    ? nil
-                    : "Library recovery:\n" + warnings.joined(separator: "\n")
-                return .demos(errorMessage: warning)
-            }
-
             let selectedWorkoutID = manifest.selectedWorkoutID.flatMap { selectedID in
                 validIDs.contains(selectedID) ? selectedID : nil
             } ?? validIDs.first
 
-            var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(Set(validIDs))
+            let validIDSet = Set(validIDs)
+            var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(validIDSet)
             let favoritesNeedRepair = favoriteIDs != manifest.favoriteWorkoutIDs
-            let orderNeedsRepair = validIDs != manifest.workoutIDs
+            let manifestNeedsRepair = validIDs != manifest.workoutIDs
                 || selectedWorkoutID != manifest.selectedWorkoutID
                 || favoritesNeedRepair
                 || manifest.version != WorkoutLibraryManifest.currentVersion
 
-            if orderNeedsRepair {
+            if manifestNeedsRepair {
                 var repaired = manifest
                 repaired.workoutIDs = validIDs
                 repaired.selectedWorkoutID = selectedWorkoutID
@@ -178,6 +177,13 @@ public actor WorkoutLibraryStoreActor {
                 } catch {
                     warnings.append("Could not repair library manifest: \(error.localizedDescription)")
                 }
+            }
+
+            guard !loaded.isEmpty else {
+                let warning = warnings.isEmpty
+                    ? nil
+                    : "Library recovery:\n" + warnings.joined(separator: "\n")
+                return .demos(errorMessage: warning)
             }
 
             let warning = warnings.isEmpty

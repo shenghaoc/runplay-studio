@@ -37,4 +37,4 @@ existing `selectWorkout` / `openWorkoutFromLibrary` paths.
 ## Sidebar policy
 
 `WorkoutLibrarySidebarPolicy.favoriteCap = 8`, `recentCap = 10`. Recent excludes
-favourites already shown. Selected overflow is a one-row section.
+all favourites. Selected overflow is a one-row section.

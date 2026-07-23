@@ -547,4 +547,3 @@ struct WorkoutMetadataEditorSheet: View {
         .onAppear { focusedField = .name }
     }
 }
-

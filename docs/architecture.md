@@ -335,7 +335,7 @@ sorting off the main actor with cooperative cancellation and stale-result
 suppression. All Runs filters never change Personal Heatmap inputs.
 
 The sidebar no longer lists every workout. `WorkoutLibrarySidebarPolicy` caps
-Favourites (8) and Recent (10, excluding favourites already shown), with a
+Favourites (8) and Recent (10, excluding all favourites), with a
 one-row Selected Run section when the selection is outside those bounds.
 
 Manifest schema version **2** stores `favoriteWorkoutIDs`. Version-1 manifests

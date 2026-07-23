@@ -745,14 +745,17 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
     }
 
-    func testLoadLibraryRepairsMissingFavoriteIDs() async throws {
+    func testLoadLibraryRepairsAndPersistsMissingFavoriteIDs() async throws {
         let workout = makeWorkout()
         try store.saveWorkout(workout)
-        try store.saveManifest(WorkoutLibraryManifest(
-            workoutIDs: [workout.id],
-            selectedWorkoutID: workout.id,
-            favoriteWorkoutIDs: [workout.id, UUID()]
-        ))
+        try store.ensureDirectoriesExist()
+        let missingFavoriteID = UUID()
+        let raw = """
+        {"version":2,"workoutIDs":["\(workout.id.uuidString)"],"selectedWorkoutID":"\(workout.id.uuidString)","favoriteWorkoutIDs":["\(workout.id.uuidString)","\(missingFavoriteID.uuidString)"]}
+        """
+        let manifestURL = tempDir.appendingPathComponent("manifest.json")
+        try Data(raw.utf8).write(to: manifestURL)
+
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
         guard case .workouts(_, _, let favorites, _) = result else {
@@ -760,8 +763,35 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
             return
         }
         XCTAssertEqual(favorites, [workout.id])
-        let manifest = try store.loadManifest()
-        XCTAssertEqual(manifest.favoriteWorkoutIDs, [workout.id])
+        let persisted = try JSONDecoder().decode(
+            WorkoutLibraryManifest.self,
+            from: Data(contentsOf: manifestURL)
+        )
+        XCTAssertEqual(persisted.favoriteWorkoutIDs, [workout.id])
+    }
+
+    func testLoadLibraryRepairsFavoritesInEmptyManifest() async throws {
+        try store.ensureDirectoriesExist()
+        let missingFavoriteID = UUID()
+        let raw = """
+        {"version":2,"workoutIDs":[],"favoriteWorkoutIDs":["\(missingFavoriteID.uuidString)"]}
+        """
+        let manifestURL = tempDir.appendingPathComponent("manifest.json")
+        try Data(raw.utf8).write(to: manifestURL)
+
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let result = await actor.loadLibrary()
+        guard case .demos(let warning) = result else {
+            XCTFail("Expected demos")
+            return
+        }
+        XCTAssertNil(warning)
+
+        let persisted = try JSONDecoder().decode(
+            WorkoutLibraryManifest.self,
+            from: Data(contentsOf: manifestURL)
+        )
+        XCTAssertTrue(persisted.favoriteWorkoutIDs.isEmpty)
     }
 }
 
