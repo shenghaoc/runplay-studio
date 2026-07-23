@@ -107,6 +107,38 @@ final class AppStatePersistenceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(appState.workouts.count, 1)
     }
 
+    func testDeletingTagKeepsActiveCollectionUnmodifiedAfterSavedFilterRepair() async throws {
+        let store = makeStore()
+        let workout = makeWorkout(name: "Tagged Run")
+        let tag = WorkoutTag(name: "Race", color: .red)
+        let collection = WorkoutSmartCollection(
+            name: "Races",
+            query: WorkoutLibrarySavedQuery(
+                filter: WorkoutLibraryFilter(
+                    tags: .selected(tagIDs: [tag.id], match: .any)
+                )
+            )
+        )
+        try store.saveWorkout(workout)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [workout.id],
+            selectedWorkoutID: workout.id,
+            tags: [tag],
+            tagAssignments: [WorkoutTagAssignment(workoutID: workout.id, tagIDs: [tag.id])],
+            smartCollections: [collection]
+        ))
+
+        let appState = makeAppState(store: store)
+        await appState.start()
+        appState.showSmartCollection(id: collection.id)
+        XCTAssertFalse(appState.workoutLibrary.isCollectionModified)
+
+        let deleted = await appState.deleteTag(id: tag.id)
+        XCTAssertTrue(deleted)
+        XCTAssertFalse(appState.workoutLibrary.isCollectionModified)
+        XCTAssertEqual(appState.workoutLibrary.tagFilter, .anyTags)
+    }
+
     // MARK: - Startup With Saved Workouts Does Not Insert Demos
 
     func testStartupWithSavedWorkoutsDoesNotInsertDemos() async throws {

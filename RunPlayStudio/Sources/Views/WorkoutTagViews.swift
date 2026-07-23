@@ -345,6 +345,7 @@ struct ManageTagsSheet: View {
     @State private var editingID: UUID?
     @State private var tagPendingDelete: WorkoutTag?
     @State private var orderedIDs: [UUID]
+    @State private var reorderGeneration = 0
 
     init(
         tags: [WorkoutTag],
@@ -440,8 +441,17 @@ struct ManageTagsSheet: View {
                     }
                 }
                 .onMove { source, destination in
+                    let previous = orderedIDs
                     orderedIDs.move(fromOffsets: source, toOffset: destination)
-                    Task { _ = await onReorder(orderedIDs) }
+                    let requested = orderedIDs
+                    reorderGeneration &+= 1
+                    let generation = reorderGeneration
+                    Task {
+                        let succeeded = await onReorder(requested)
+                        if !succeeded, generation == reorderGeneration {
+                            orderedIDs = previous
+                        }
+                    }
                 }
             }
             .frame(minHeight: 260)
@@ -557,6 +567,7 @@ struct ManageSmartCollectionsSheet: View {
     @State private var renamingID: UUID?
     @State private var renameDraft = ""
     @State private var pendingDelete: WorkoutSmartCollection?
+    @State private var reorderGeneration = 0
 
     init(
         collections: [WorkoutSmartCollection],
@@ -637,8 +648,17 @@ struct ManageSmartCollectionsSheet: View {
                         .padding(.vertical, 2)
                     }
                     .onMove { source, destination in
+                        let previous = orderedIDs
                         orderedIDs.move(fromOffsets: source, toOffset: destination)
-                        Task { _ = await onReorder(orderedIDs) }
+                        let requested = orderedIDs
+                        reorderGeneration &+= 1
+                        let generation = reorderGeneration
+                        Task {
+                            let succeeded = await onReorder(requested)
+                            if !succeeded, generation == reorderGeneration {
+                                orderedIDs = previous
+                            }
+                        }
                     }
                 }
                 .frame(minHeight: 280)

@@ -185,7 +185,7 @@ extension WorkoutLibraryTagFilter: Codable {
         case .untaggedOnly:
             self = .untaggedOnly
         case .selected:
-            let ids = try container.decodeIfPresent([UUID].self, forKey: .tagIDs) ?? []
+            let ids = try Self.decodeCappedTagIDs(from: container)
             let matchRaw = try container.decodeIfPresent(String.self, forKey: .match)
                 ?? WorkoutLibraryTagMatchMode.any.rawValue
             let match = WorkoutLibraryTagMatchMode(rawValue: matchRaw) ?? .any
@@ -197,6 +197,22 @@ extension WorkoutLibraryTagFilter: Codable {
         case .anyTags, .none:
             self = .anyTags
         }
+    }
+
+    private static func decodeCappedTagIDs(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> [UUID] {
+        guard container.contains(.tagIDs), try !container.decodeNil(forKey: .tagIDs) else {
+            return []
+        }
+
+        var ids: [UUID] = []
+        ids.reserveCapacity(WorkoutTagPolicy.default.maxTags)
+        var unkeyed = try container.nestedUnkeyedContainer(forKey: .tagIDs)
+        while !unkeyed.isAtEnd, ids.count < WorkoutTagPolicy.default.maxTags {
+            ids.append(try unkeyed.decode(UUID.self))
+        }
+        return ids
     }
 
     public func encode(to encoder: Encoder) throws {

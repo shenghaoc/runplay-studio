@@ -437,13 +437,10 @@ final class WorkoutLibraryViewModel: ObservableObject {
     // MARK: - Private
 
     var currentFilter: WorkoutLibraryFilter {
-        let date: WorkoutLibraryDateFilter
-        switch dateFilter {
-        case .custom:
-            date = .custom(start: customDateStart, end: customDateEnd)
-        default:
-            date = dateFilter
-        }
+        // Keep the optional bounds captured by a saved query. The date picker
+        // state is only a UI editing aid; rebuilding every custom filter from
+        // it would turn a one-sided persisted range into a two-sided range.
+        let date = dateFilter
         return WorkoutLibraryFilter(
             favorite: favoriteFilter,
             date: date,

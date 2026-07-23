@@ -866,7 +866,10 @@ class AppState: ObservableObject {
             }
             workoutLibrary.applySmartCollectionChange(smartCollections)
             // Repair active tag filter.
-            workoutLibrary.tagFilter = stripTag(id, from: workoutLibrary.tagFilter)
+            let repairedActiveFilter = stripTag(id, from: workoutLibrary.tagFilter)
+            if repairedActiveFilter != workoutLibrary.tagFilter {
+                workoutLibrary.tagFilter = repairedActiveFilter
+            }
             return true
         } catch {
             organizationEditError = error.localizedDescription

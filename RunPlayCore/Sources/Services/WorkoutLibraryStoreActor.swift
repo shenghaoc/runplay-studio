@@ -671,9 +671,9 @@ public actor WorkoutLibraryStoreActor {
     ) throws -> WorkoutTag {
         try Task.checkCancellation()
         var manifest = try loadOrCreateManifest()
-        try policy.validateCanCreate(existingCount: manifest.tags.count)
         let normalized: WorkoutTagPolicy.NormalizedName
         do {
+            try policy.validateCanCreate(existingCount: manifest.tags.count)
             normalized = try policy.normalizeName(name)
             try policy.validateUniqueName(normalized, existing: manifest.tags)
         } catch let error as WorkoutTagPolicy.ValidationError {
@@ -848,9 +848,9 @@ public actor WorkoutLibraryStoreActor {
     ) throws -> WorkoutSmartCollection {
         try Task.checkCancellation()
         var manifest = try loadOrCreateManifest()
-        try policy.validateCanCreate(existingCount: manifest.smartCollections.count)
         let normalized: WorkoutSmartCollectionPolicy.NormalizedName
         do {
+            try policy.validateCanCreate(existingCount: manifest.smartCollections.count)
             normalized = try policy.normalizeName(name)
             try policy.validateUniqueName(normalized, existing: manifest.smartCollections)
             try policy.validateSavedQuery(query)
@@ -946,14 +946,22 @@ public actor WorkoutLibraryStoreActor {
     // MARK: - Private helpers
 
     private func loadOrCreateManifest() throws -> WorkoutLibraryManifest {
+        var manifest: WorkoutLibraryManifest
         do {
-            return try store.loadManifest()
+            manifest = try store.loadManifest()
         } catch let error as WorkoutLibraryError {
             if case .manifestMissing = error {
-                return WorkoutLibraryManifest()
+                manifest = WorkoutLibraryManifest()
+            } else {
+                throw error
             }
-            throw error
         }
+        // Mutations operate on the same repaired shape that loadLibrary
+        // publishes. This prevents malformed duplicate IDs from reaching the
+        // reorder dictionaries and keeps dangling organisation references from
+        // being carried into a later write.
+        manifest.migrateToCurrentVersionIfNeeded()
+        return manifest
     }
 
     private static func sanitizeTagFilter(

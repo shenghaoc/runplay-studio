@@ -174,6 +174,34 @@ final class WorkoutLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.searchText, "edited-manual")
     }
 
+    func testSavedCollectionPreservesOneSidedCustomDateBounds() async {
+        let vm = WorkoutLibraryViewModel()
+        let workout = makeWorkout(name: "Recent")
+        let start = Date(timeIntervalSince1970: 1_650_000_000)
+        let collection = WorkoutSmartCollection(
+            name: "Since 2022",
+            query: WorkoutLibrarySavedQuery(
+                filter: WorkoutLibraryFilter(
+                    date: .custom(start: start, end: nil)
+                )
+            )
+        )
+
+        vm.replaceLibrary(
+            workouts: [workout],
+            favoriteIDs: [],
+            organization: WorkoutLibraryOrganizationSnapshot(
+                smartCollections: [collection]
+            )
+        )
+        vm.openSmartCollection(id: collection.id)
+
+        XCTAssertEqual(
+            vm.currentSavedQuery().filter.date,
+            .custom(start: start, end: nil)
+        )
+    }
+
     func testRenameWhileModifiedKeepsWorkingQueryAndModifiedFlag() async {
         let vm = WorkoutLibraryViewModel()
         let a = makeWorkout(name: "Race Day")

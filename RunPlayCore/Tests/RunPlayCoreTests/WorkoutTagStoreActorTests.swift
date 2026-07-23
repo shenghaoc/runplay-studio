@@ -81,6 +81,36 @@ final class WorkoutTagStoreActorTests: XCTestCase {
         }
     }
 
+    func testCreateLimitsUseStoreErrorSurface() async throws {
+        _ = try await seedWorkout()
+
+        do {
+            _ = try await actor.createTag(
+                name: "Too Many",
+                color: .blue,
+                policy: WorkoutTagPolicy(maxTags: 0)
+            )
+            XCTFail("expected tag limit failure")
+        } catch let error as WorkoutLibraryStoreError {
+            guard case .invalidTag = error else {
+                return XCTFail("unexpected " + String(describing: error))
+            }
+        }
+
+        do {
+            _ = try await actor.createSmartCollection(
+                name: "Too Many Collections",
+                query: WorkoutLibrarySavedQuery(),
+                policy: WorkoutSmartCollectionPolicy(maxCollections: 0)
+            )
+            XCTFail("expected collection limit failure")
+        } catch let error as WorkoutLibraryStoreError {
+            guard case .invalidSmartCollection = error else {
+                return XCTFail("unexpected " + String(describing: error))
+            }
+        }
+    }
+
     func testBulkUpdateTagsOneWrite() async throws {
         let a = try await seedWorkout()
         let b = makeWorkout(name: "B")

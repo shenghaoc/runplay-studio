@@ -93,7 +93,7 @@ public struct WorkoutTagAssignment: Codable, Hashable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         workoutID = try container.decode(UUID.self, forKey: .workoutID)
-        let raw = try container.decodeIfPresent([UUID].self, forKey: .tagIDs) ?? []
+        let raw = try Self.decodeCappedTagIDs(from: container)
         tagIDs = Self.normalizedTagIDs(raw)
     }
 
@@ -108,6 +108,22 @@ public struct WorkoutTagAssignment: Codable, Hashable, Sendable {
         Array(Set(ids)).sorted {
             $0.uuidString.localizedStandardCompare($1.uuidString) == .orderedAscending
         }
+    }
+
+    private static func decodeCappedTagIDs(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> [UUID] {
+        guard container.contains(.tagIDs), try !container.decodeNil(forKey: .tagIDs) else {
+            return []
+        }
+
+        var ids: [UUID] = []
+        ids.reserveCapacity(WorkoutTagPolicy.default.maxTagsPerWorkout)
+        var unkeyed = try container.nestedUnkeyedContainer(forKey: .tagIDs)
+        while !unkeyed.isAtEnd, ids.count < WorkoutTagPolicy.default.maxTagsPerWorkout {
+            ids.append(try unkeyed.decode(UUID.self))
+        }
+        return ids
     }
 }
 

@@ -67,6 +67,37 @@ final class WorkoutTagQueryAndManifestTests: XCTestCase {
         XCTAssertEqual(decoded.favoriteWorkoutIDs, [workoutID])
     }
 
+    func testManifestDecodeCapsOrganizationArrays() throws {
+        let workoutID = UUID()
+        let tags = (0...WorkoutLibraryManifest.ResourceLimits.maxTags).map { index in
+            WorkoutTag(name: "Tag " + String(index))
+        }
+        let tagIDs = (0..<(WorkoutTagPolicy.default.maxTagsPerWorkout + 5)).map { _ in UUID() }
+        let assignment = WorkoutTagAssignment(workoutID: workoutID, tagIDs: tagIDs)
+        let collections = (0...WorkoutLibraryManifest.ResourceLimits.maxSmartCollections).map { index in
+            WorkoutSmartCollection(name: "Collection " + String(index), query: WorkoutLibrarySavedQuery())
+        }
+        let original = WorkoutLibraryManifest(
+            workoutIDs: [workoutID],
+            tags: tags,
+            tagAssignments: [assignment],
+            smartCollections: collections
+        )
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(WorkoutLibraryManifest.self, from: data)
+
+        XCTAssertEqual(decoded.tags.count, WorkoutLibraryManifest.ResourceLimits.maxTags)
+        XCTAssertEqual(
+            decoded.tagAssignments.first?.tagIDs.count,
+            WorkoutLibraryManifest.ResourceLimits.maxTagIDsPerAssignment
+        )
+        XCTAssertEqual(
+            decoded.smartCollections.count,
+            WorkoutLibraryManifest.ResourceLimits.maxSmartCollections
+        )
+    }
+
     func testMigratePromotesToVersion3() {
         var manifest = WorkoutLibraryManifest(version: 1, workoutIDs: [UUID()])
         manifest.migrateToCurrentVersionIfNeeded()

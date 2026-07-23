@@ -323,21 +323,27 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
             favoriteWorkoutIDs = []
         }
 
-        // Version 1–2 omit organisation fields.
-        tags = try container.decodeIfPresent([WorkoutTag].self, forKey: .tags) ?? []
-        tagAssignments = try container.decodeIfPresent([WorkoutTagAssignment].self, forKey: .tagAssignments) ?? []
-        smartCollections = try container.decodeIfPresent([WorkoutSmartCollection].self, forKey: .smartCollections) ?? []
-
-        // Soft resource caps at decode time (hard truncation; full repair later).
-        if tags.count > ResourceLimits.maxTags {
-            tags = Array(tags.prefix(ResourceLimits.maxTags))
-        }
-        if tagAssignments.count > ResourceLimits.maxAssignments {
-            tagAssignments = Array(tagAssignments.prefix(ResourceLimits.maxAssignments))
-        }
-        if smartCollections.count > ResourceLimits.maxSmartCollections {
-            smartCollections = Array(smartCollections.prefix(ResourceLimits.maxSmartCollections))
-        }
+        // Version 1–2 omit organisation fields. Decode only up to the resource
+        // caps so a malformed local manifest cannot allocate an unbounded
+        // organisation array before repair truncates it.
+        tags = try Self.decodeCappedArray(
+            WorkoutTag.self,
+            from: container,
+            forKey: .tags,
+            maxCount: ResourceLimits.maxTags
+        )
+        tagAssignments = try Self.decodeCappedArray(
+            WorkoutTagAssignment.self,
+            from: container,
+            forKey: .tagAssignments,
+            maxCount: ResourceLimits.maxAssignments
+        )
+        smartCollections = try Self.decodeCappedArray(
+            WorkoutSmartCollection.self,
+            from: container,
+            forKey: .smartCollections,
+            maxCount: ResourceLimits.maxSmartCollections
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -357,5 +363,24 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         }
         try container.encode(orderedAssignments, forKey: .tagAssignments)
         try container.encode(smartCollections, forKey: .smartCollections)
+    }
+
+    private static func decodeCappedArray<Element: Decodable>(
+        _ type: Element.Type,
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys,
+        maxCount: Int
+    ) throws -> [Element] {
+        guard container.contains(key), try !container.decodeNil(forKey: key) else {
+            return []
+        }
+
+        var values: [Element] = []
+        values.reserveCapacity(min(maxCount, 64))
+        var unkeyed = try container.nestedUnkeyedContainer(forKey: key)
+        while !unkeyed.isAtEnd, values.count < maxCount {
+            values.append(try unkeyed.decode(type))
+        }
+        return values
     }
 }
