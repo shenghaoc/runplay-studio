@@ -28,3 +28,8 @@
 **Fix:** Removed `\t` and `\r` from `dangerousPrefixes`. The whitespace-trimming slow path already handles these characters correctly — it trims the whitespace, inspects the first non-whitespace character for dangerous prefixes, and only prepends `'` when a formula is detected. Added regression tests verifying that `\tHello` and `\rHello` are NOT incorrectly escaped.
 
 **Verification:** All 39 ExportServiceTests pass, including the new regression tests for non-formula whitespace-prefixed fields.
+
+## 2026-10-24 - SSRF/Remote File Inclusion Prevention with ZIPFoundation Archive
+**Vulnerability:** Found missing `url.isFileURL` checks before calling `Archive(url: url, accessMode: .read)` in `WorkoutArchiveService.swift`. Like `Data(contentsOf:)`, passing an arbitrary or untrusted URL to ZIPFoundation's `Archive` initialization can result in Server-Side Request Forgery (SSRF) or remote file inclusion if network URLs are allowed.
+**Learning:** Initializers that read from a `URL`, such as `Archive(url: accessMode:)` from the `ZIPFoundation` library, are vulnerable to SSRF just like `Data(contentsOf:)` if the URL is not verified to be a local file.
+**Prevention:** Always validate that URLs intended for local file access are actually local files using `guard url.isFileURL else { ... }` before passing them to file-reading APIs, including third-party library initializers like `Archive(url:)`.

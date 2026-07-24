@@ -84,6 +84,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         }
 
         let archive: Archive
+        guard url.isFileURL else {
+            throw WorkoutArchiveError.cannotOpenArchive("Only local file URLs are supported")
+        }
+
         do {
             archive = try Archive(url: url, accessMode: .read)
         } catch {
@@ -288,6 +292,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         ))
 
         let archive: Archive
+        guard archiveURL.isFileURL else {
+            throw WorkoutArchiveError.cannotOpenArchive("Only local file URLs are supported")
+        }
+
         do {
             archive = try Archive(url: archiveURL, accessMode: .read)
         } catch {
