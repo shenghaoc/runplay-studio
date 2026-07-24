@@ -13,8 +13,12 @@ public struct MetricSmoother {
         for i in 0..<values.count {
             let start = max(0, i - window / 2)
             let end = min(values.count, i + window / 2 + 1)
-            let slice = values[start..<end]
-            let avg = slice.reduce(0, +) / Double(slice.count)
+            // ⚡ Bolt: Inline sum loop avoids closure call overhead from .reduce on every iteration.
+            var sum = 0.0
+            for j in start..<end {
+                sum += values[j]
+            }
+            let avg = sum / Double(end - start)
             smoothed.append(avg)
         }
 

@@ -53,3 +53,7 @@
 ## 2026-07-22 - Prefer formatted() Over Cached DateFormatter in SwiftUI Views
 **Learning:** Caching a `DateFormatter` as a `static let` to avoid O(N) instantiation overhead in SwiftUI render logic works but introduces Swift 6 concurrency complications (`nonisolated(unsafe)` vs `Sendable` inference varies by SDK). For simple date-only or time-only formatting, the modern `formatted(date:time:)` API is inherently `Sendable`, requires no cached instance, and eliminates concurrency concerns entirely.
 **Action:** In SwiftUI views targeting macOS 12+, prefer `date.formatted(date: .abbreviated, time: .omitted)` over cached `DateFormatter` instances. Reserve `DateFormatter` caching for complex custom format strings where `formatted()` cannot express the desired output.
+
+## 2026-07-25 - Avoid Closure Overhead in High-Frequency Loops
+**Learning:** `MetricSmoother.movingAverage` extracted a slice (`let slice = values[start..<end]`) and then called `.reduce(0, +)` on it inside a high-frequency loop. While `ArraySlice` is a view and does not allocate O(N) memory, using `reduce` involves closure call overhead for every element summed. Since this runs on every iteration across thousands of points, it creates unnecessary ARC overhead and slows down execution.
+**Action:** Replace `slice.reduce` operations inside windowing loops with a simple inline `for` loop that iterates over the array by index, avoiding closure call overhead. For further optimization, consider a sliding window running sum to reduce time complexity to O(N).
