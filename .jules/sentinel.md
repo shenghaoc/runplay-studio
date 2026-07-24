@@ -29,7 +29,7 @@
 
 **Verification:** All 39 ExportServiceTests pass, including the new regression tests for non-formula whitespace-prefixed fields.
 
-## 2026-10-24 - SSRF/Remote File Inclusion Prevention with ZIPFoundation Archive
-**Vulnerability:** Found missing `url.isFileURL` checks before calling `Archive(url: url, accessMode: .read)` in `WorkoutArchiveService.swift`. Like `Data(contentsOf:)`, passing an arbitrary or untrusted URL to ZIPFoundation's `Archive` initialization can result in Server-Side Request Forgery (SSRF) or remote file inclusion if network URLs are allowed.
-**Learning:** Initializers that read from a `URL`, such as `Archive(url: accessMode:)` from the `ZIPFoundation` library, are vulnerable to SSRF just like `Data(contentsOf:)` if the URL is not verified to be a local file.
-**Prevention:** Always validate that URLs intended for local file access are actually local files using `guard url.isFileURL else { ... }` before passing them to file-reading APIs, including third-party library initializers like `Archive(url:)`.
+## 2026-07-24 - Local-Only URL Validation Before ZIPFoundation Archive Open
+**Vulnerability:** `WorkoutArchiveService` opened ZIP archives via `Archive(url:accessMode:)` without first requiring a local file URL. A non-file scheme could still reach filesystem probes (`attributesOfItem(atPath:)`) via `url.path` and third-party open paths intended only for local archives.
+**Learning:** Any API that accepts a `URL` for local file access — including third-party openers like ZIPFoundation's `Archive(url:)` and Foundation path helpers that read `url.path` — must reject non-file URLs before filesystem or network I/O.
+**Prevention:** Validate `url.isFileURL` at the start of archive scan/import entry points, before size checks, path-based FileManager calls, or `Archive(url:)` initialization.
