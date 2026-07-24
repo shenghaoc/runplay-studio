@@ -13,6 +13,25 @@ enum WorkoutLibraryLoadState: Equatable {
     case failed(String)
 }
 
+/// Whether All Runs is showing the manual query or a smart collection.
+public enum WorkoutLibraryQueryContext: Equatable, Hashable, Sendable {
+    case manual
+    case smartCollection(id: UUID, isModified: Bool)
+}
+
+/// Session-only snapshot of the ordinary All Runs query.
+private struct ManualQuerySnapshot: Equatable {
+    var searchText: String
+    var sort: WorkoutLibrarySort
+    var favoriteFilter: WorkoutLibraryFavoriteFilter
+    var sourceFilter: WorkoutLibrarySourceFilter
+    var dateFilter: WorkoutLibraryDateFilter
+    var customDateStart: Date
+    var customDateEnd: Date
+    var dataFilters: WorkoutLibraryDataFilters
+    var tagFilter: WorkoutLibraryTagFilter
+}
+
 /// Dedicated view model for All Runs search, filter, sort, and result state.
 ///
 /// Keeps heavy query work out of `AppState`. Search documents are in-memory only.
@@ -24,37 +43,51 @@ final class WorkoutLibraryViewModel: ObservableObject {
     @Published private(set) var filteredCount: Int = 0
     @Published private(set) var loadState: WorkoutLibraryLoadState = .idle
     @Published private(set) var favoriteIDs: Set<UUID> = []
+    @Published private(set) var tags: [WorkoutTag] = []
+    @Published private(set) var smartCollections: [WorkoutSmartCollection] = []
+    @Published private(set) var queryContext: WorkoutLibraryQueryContext = .manual
 
     @Published var searchText: String = "" {
-        didSet { scheduleQuery() }
+        didSet { handleQueryMutation() }
     }
     @Published var sort: WorkoutLibrarySort = .dateNewest {
-        didSet { scheduleQuery() }
+        didSet { handleQueryMutation() }
     }
     @Published var favoriteFilter: WorkoutLibraryFavoriteFilter = .all {
-        didSet { scheduleQuery() }
+        didSet { handleQueryMutation() }
     }
     @Published var sourceFilter: WorkoutLibrarySourceFilter = .all {
-        didSet { scheduleQuery() }
+        didSet { handleQueryMutation() }
     }
     @Published var dateFilter: WorkoutLibraryDateFilter = .allTime {
-        didSet { scheduleQuery() }
+        didSet { handleQueryMutation() }
     }
-    @Published var customDateStart: Date = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-    @Published var customDateEnd: Date = Date()
+    @Published var customDateStart: Date = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date() {
+        didSet { handleQueryMutation() }
+    }
+    @Published var customDateEnd: Date = Date() {
+        didSet { handleQueryMutation() }
+    }
     @Published var dataFilters: WorkoutLibraryDataFilters = .none {
-        didSet { scheduleQuery() }
+        didSet { handleQueryMutation() }
+    }
+    @Published var tagFilter: WorkoutLibraryTagFilter = .anyTags {
+        didSet { handleQueryMutation() }
     }
 
-    @Published var tableSelection: UUID?
+    /// Multi-select table selection (Command/Shift-click).
+    @Published var tableSelection: Set<UUID> = []
     @Published var editorError: String?
 
     private var documents: [UUID: WorkoutLibrarySearchDocument] = [:]
     private var entryByID: [UUID: WorkoutLibraryEntry] = [:]
+    private var tagAssignmentsByWorkout: [UUID: Set<UUID>] = [:]
     private var queryTask: Task<Void, Never>?
     private var queryGeneration: UInt64 = 0
     private var lastPublishedKey: QueryCacheKey?
     private var isBatchingQueryChanges = false
+    private var isApplyingSavedQuery = false
+    private var manualQuerySnapshot: ManualQuerySnapshot?
     private let queryService: any WorkoutLibraryQuerying
     private let calendar: Calendar
     /// Injected clock for relative filters (tests).
@@ -75,22 +108,44 @@ final class WorkoutLibraryViewModel: ObservableObject {
     // MARK: - Library revisions
 
     /// Replace the full library used by All Runs (import, load, batch commit).
-    func replaceLibrary(workouts: [RunWorkout], favoriteIDs: Set<UUID>) {
+    func replaceLibrary(
+        workouts: [RunWorkout],
+        favoriteIDs: Set<UUID>,
+        organization: WorkoutLibraryOrganizationSnapshot = .empty
+    ) {
         self.favoriteIDs = favoriteIDs
+        applyOrganizationSnapshot(organization, schedule: false)
         rebuildEntries(from: workouts)
+        // Re-apply active collection query if still present.
+        if case .smartCollection(let id, _) = queryContext {
+            if let collection = smartCollections.first(where: { $0.id == id }) {
+                if case .smartCollection(_, true) = queryContext {
+                    // Keep modified working query; only refresh results.
+                    scheduleQuery(force: true)
+                } else {
+                    applySavedQuery(collection.query, markUnmodifiedCollectionID: id)
+                }
+                return
+            } else {
+                // Collection deleted externally — return to manual without clobbering snapshot.
+                queryContext = .manual
+            }
+        }
         scheduleQuery(force: true)
     }
 
     /// Apply a single workout mutation (metadata) without full rebuild of unrelated documents.
     func applyWorkoutUpdate(_ workout: RunWorkout) {
         guard let index = entries.firstIndex(where: { $0.id == workout.id }) else {
-            // New workout not yet in entries — full rebuild path preferred via replaceLibrary.
             return
         }
+        let tagIDs = tagAssignmentsByWorkout[workout.id] ?? []
         let entry = WorkoutLibraryEntry.make(
             from: workout,
             manifestIndex: entries[index].manifestIndex,
-            isFavorite: favoriteIDs.contains(workout.id)
+            isFavorite: favoriteIDs.contains(workout.id),
+            tagIDs: tagIDs,
+            tagsByID: tagsByID
         )
         entries[index] = entry
         entryByID[entry.id] = entry
@@ -105,76 +160,122 @@ final class WorkoutLibraryViewModel: ObservableObject {
             favoriteIDs.remove(workoutID)
         }
         if let index = entries.firstIndex(where: { $0.id == workoutID }) {
-            let old = entries[index]
-            let updated = WorkoutLibraryEntry(
-                id: old.id,
-                manifestIndex: old.manifestIndex,
-                isFavorite: isFavorite,
-                displayName: old.displayName,
-                metadataName: old.metadataName,
-                notes: old.notes,
-                activityType: old.activityType,
-                deviceName: old.deviceName,
-                source: old.source,
-                importProvider: old.importProvider,
-                originalFilename: old.originalFilename,
-                startDate: old.startDate,
-                totalDistanceMeters: old.totalDistanceMeters,
-                activePaceSecondsPerKilometer: old.activePaceSecondsPerKilometer,
-                totalElapsedSeconds: old.totalElapsedSeconds,
-                hasHeartRate: old.hasHeartRate,
-                hasCorrectedElevation: old.hasCorrectedElevation,
-                hasRecordedLaps: old.hasRecordedLaps,
-                nameNotesRevision: old.nameNotesRevision
-            )
+            let updated = entries[index].withFavorite(isFavorite)
             entries[index] = updated
             entryByID[updated.id] = updated
         }
         scheduleQuery(force: true)
     }
 
+    func applyTagDefinitions(_ tags: [WorkoutTag]) {
+        let oldByID = tagsByID
+        self.tags = tags
+        let newByID = tagsByID
+
+        // Rebuild documents only for workouts whose assigned tag names changed.
+        var affected: Set<UUID> = []
+        for (workoutID, tagIDs) in tagAssignmentsByWorkout {
+            for tagID in tagIDs {
+                let oldName = oldByID[tagID]?.name
+                let newName = newByID[tagID]?.name
+                if oldName != newName {
+                    affected.insert(workoutID)
+                    break
+                }
+            }
+        }
+        if !affected.isEmpty {
+            rebuildTagsOnEntries(workoutIDs: affected)
+        }
+        // Color-only changes do not need a query rerun for text search.
+        let namesChanged = affected.isEmpty == false
+        if namesChanged {
+            scheduleQuery(force: true)
+        } else {
+            objectWillChange.send()
+        }
+    }
+
+    func applyWorkoutTagChange(workoutID: UUID, tagIDs: Set<UUID>) {
+        if tagIDs.isEmpty {
+            tagAssignmentsByWorkout.removeValue(forKey: workoutID)
+        } else {
+            tagAssignmentsByWorkout[workoutID] = tagIDs
+        }
+        rebuildTagsOnEntries(workoutIDs: [workoutID])
+        scheduleQuery(force: true)
+    }
+
+    func applyBulkWorkoutTagChange(changes: [UUID: Set<UUID>]) {
+        guard !changes.isEmpty else { return }
+        for (workoutID, tagIDs) in changes {
+            if tagIDs.isEmpty {
+                tagAssignmentsByWorkout.removeValue(forKey: workoutID)
+            } else {
+                tagAssignmentsByWorkout[workoutID] = tagIDs
+            }
+        }
+        rebuildTagsOnEntries(workoutIDs: Set(changes.keys))
+        scheduleQuery(force: true)
+    }
+
+    func applySmartCollectionChange(_ collections: [WorkoutSmartCollection]) {
+        smartCollections = collections
+        if case .smartCollection(let id, let modified) = queryContext {
+            if let collection = collections.first(where: { $0.id == id }) {
+                if !modified {
+                    // Name-only or external update while unmodified: re-sync query.
+                    applySavedQuery(collection.query, markUnmodifiedCollectionID: id)
+                } else {
+                    objectWillChange.send()
+                }
+            } else {
+                // Collection deleted — leave current working filters as manual.
+                queryContext = .manual
+                manualQuerySnapshot = nil
+            }
+        } else {
+            objectWillChange.send()
+        }
+    }
+
+    func applyOrganizationSnapshot(
+        _ organization: WorkoutLibraryOrganizationSnapshot,
+        schedule: Bool = true
+    ) {
+        tags = organization.tags
+        smartCollections = organization.smartCollections
+        tagAssignmentsByWorkout = organization.tagIDsByWorkout
+        if schedule {
+            // Entries may already exist (e.g. live organisation-only update).
+            rebuildTagsOnEntries(workoutIDs: Set(entries.map(\.id)))
+            scheduleQuery(force: true)
+        }
+    }
+
     func removeWorkout(id: UUID) {
         favoriteIDs.remove(id)
+        tagAssignmentsByWorkout.removeValue(forKey: id)
         entries.removeAll { $0.id == id }
         entryByID.removeValue(forKey: id)
         documents.removeValue(forKey: id)
-        // Reindex manifest positions.
         for i in entries.indices {
-            let old = entries[i]
-            if old.manifestIndex != i {
-                let updated = WorkoutLibraryEntry(
-                    id: old.id,
-                    manifestIndex: i,
-                    isFavorite: old.isFavorite,
-                    displayName: old.displayName,
-                    metadataName: old.metadataName,
-                    notes: old.notes,
-                    activityType: old.activityType,
-                    deviceName: old.deviceName,
-                    source: old.source,
-                    importProvider: old.importProvider,
-                    originalFilename: old.originalFilename,
-                    startDate: old.startDate,
-                    totalDistanceMeters: old.totalDistanceMeters,
-                    activePaceSecondsPerKilometer: old.activePaceSecondsPerKilometer,
-                    totalElapsedSeconds: old.totalElapsedSeconds,
-                    hasHeartRate: old.hasHeartRate,
-                    hasCorrectedElevation: old.hasCorrectedElevation,
-                    hasRecordedLaps: old.hasRecordedLaps,
-                    nameNotesRevision: old.nameNotesRevision
-                )
+            if entries[i].manifestIndex != i {
+                let updated = entries[i].withManifestIndex(i)
                 entries[i] = updated
                 entryByID[updated.id] = updated
             }
         }
-        if tableSelection == id {
-            tableSelection = nil
-        }
+        tableSelection.remove(id)
         scheduleQuery(force: true)
     }
 
     func entry(for id: UUID) -> WorkoutLibraryEntry? {
         entryByID[id]
+    }
+
+    var tagsByID: [UUID: WorkoutTag] {
+        Dictionary(uniqueKeysWithValues: tags.map { ($0.id, $0) })
     }
 
     var matchingEntries: [WorkoutLibraryEntry] {
@@ -190,6 +291,21 @@ final class WorkoutLibraryViewModel: ObservableObject {
             || !currentFilter.isDefault
     }
 
+    var activeSmartCollection: WorkoutSmartCollection? {
+        guard case .smartCollection(let id, _) = queryContext else { return nil }
+        return smartCollections.first { $0.id == id }
+    }
+
+    var isCollectionModified: Bool {
+        if case .smartCollection(_, true) = queryContext { return true }
+        return false
+    }
+
+    /// Persisted library workouts in the current table selection (excludes demos).
+    func persistedSelectedWorkoutIDs(libraryIDs: Set<UUID>) -> Set<UUID> {
+        tableSelection.intersection(libraryIDs)
+    }
+
     func clearSearch() {
         searchText = ""
     }
@@ -200,6 +316,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             sourceFilter = .all
             dateFilter = .allTime
             dataFilters = .none
+            tagFilter = .anyTags
         }
     }
 
@@ -210,18 +327,23 @@ final class WorkoutLibraryViewModel: ObservableObject {
             sourceFilter = .all
             dateFilter = .allTime
             dataFilters = .none
+            tagFilter = .anyTags
         }
     }
 
     /// Show the complete favourites collection from the sidebar overflow action.
-    /// Prior All Runs constraints must not hide favourites from this destination.
     func showAllFavorites() {
+        // Favourites destination is a manual All Runs query.
+        if case .smartCollection = queryContext {
+            returnToManualQuery(clearSnapshot: true)
+        }
         updateQueryState {
             searchText = ""
             favoriteFilter = .favoritesOnly
             sourceFilter = .all
             dateFilter = .allTime
             dataFilters = .none
+            tagFilter = .anyTags
         }
     }
 
@@ -229,22 +351,165 @@ final class WorkoutLibraryViewModel: ObservableObject {
         scheduleQuery(force: true)
     }
 
+    // MARK: - Smart collection navigation
+
+    /// Open a smart collection from the sidebar or manager.
+    func openSmartCollection(id: UUID) {
+        guard let collection = smartCollections.first(where: { $0.id == id }) else { return }
+        if case .manual = queryContext {
+            manualQuerySnapshot = captureManualSnapshot()
+        } else if case .smartCollection(let currentID, _) = queryContext, currentID != id {
+            // Switching collections does not overwrite the stashed manual query.
+        }
+        applySavedQuery(collection.query, markUnmodifiedCollectionID: id)
+    }
+
+    /// Return to ordinary All Runs, restoring the stashed manual query when present.
+    ///
+    /// When `clearSnapshot` is true (normal All Runs exit from a collection), the
+    /// snapshot is consumed so a later All Runs selection cannot overwrite live
+    /// manual edits with a stale stash.
+    func returnToManualQuery(clearSnapshot: Bool = false) {
+        queryContext = .manual
+        if let snapshot = manualQuerySnapshot {
+            applySnapshot(snapshot)
+        } else {
+            scheduleQuery(force: true)
+        }
+        if clearSnapshot {
+            manualQuerySnapshot = nil
+        }
+    }
+
+    /// Restore the saved query of the active collection.
+    func revertActiveCollection() {
+        guard case .smartCollection(let id, true) = queryContext,
+              let collection = smartCollections.first(where: { $0.id == id }) else {
+            return
+        }
+        applySavedQuery(collection.query, markUnmodifiedCollectionID: id)
+    }
+
+    /// Capture the current working query as a saved query.
+    func currentSavedQuery() -> WorkoutLibrarySavedQuery {
+        WorkoutLibrarySavedQuery.capture(
+            searchText: searchText,
+            filter: currentFilter,
+            sort: sort
+        )
+    }
+
+    /// After a successful Update Collection persistence, mark unmodified and sync.
+    func markActiveCollectionUpdated(_ collection: WorkoutSmartCollection) {
+        if let index = smartCollections.firstIndex(where: { $0.id == collection.id }) {
+            smartCollections[index] = collection
+        } else {
+            smartCollections.append(collection)
+        }
+        queryContext = .smartCollection(id: collection.id, isModified: false)
+    }
+
+    /// After creating a collection from the current query, open it unmodified.
+    func didCreateSmartCollection(_ collection: WorkoutSmartCollection) {
+        if let index = smartCollections.firstIndex(where: { $0.id == collection.id }) {
+            smartCollections[index] = collection
+        } else {
+            smartCollections.append(collection)
+        }
+        // Stash the pre-collection manual working query once, then pin this
+        // collection as the active (unmodified) context. Filters already match
+        // the saved query because creation captured `currentSavedQuery()`.
+        if case .manual = queryContext {
+            manualQuerySnapshot = captureManualSnapshot()
+        }
+        queryContext = .smartCollection(id: collection.id, isModified: false)
+    }
+
+    func didDeleteSmartCollection(id: UUID) {
+        smartCollections.removeAll { $0.id == id }
+        if case .smartCollection(let activeID, _) = queryContext, activeID == id {
+            // Keep working filters as the new manual query.
+            queryContext = .manual
+            manualQuerySnapshot = nil
+        }
+    }
+
     // MARK: - Private
 
-    private var currentFilter: WorkoutLibraryFilter {
-        let date: WorkoutLibraryDateFilter
-        switch dateFilter {
-        case .custom:
-            date = .custom(start: customDateStart, end: customDateEnd)
-        default:
-            date = dateFilter
-        }
+    var currentFilter: WorkoutLibraryFilter {
+        // Keep the optional bounds captured by a saved query. The date picker
+        // state is only a UI editing aid; rebuilding every custom filter from
+        // it would turn a one-sided persisted range into a two-sided range.
+        let date = dateFilter
         return WorkoutLibraryFilter(
             favorite: favoriteFilter,
             date: date,
             source: sourceFilter,
-            data: dataFilters
+            data: dataFilters,
+            tags: tagFilter
         )
+    }
+
+    private func captureManualSnapshot() -> ManualQuerySnapshot {
+        ManualQuerySnapshot(
+            searchText: searchText,
+            sort: sort,
+            favoriteFilter: favoriteFilter,
+            sourceFilter: sourceFilter,
+            dateFilter: dateFilter,
+            customDateStart: customDateStart,
+            customDateEnd: customDateEnd,
+            dataFilters: dataFilters,
+            tagFilter: tagFilter
+        )
+    }
+
+    private func applySnapshot(_ snapshot: ManualQuerySnapshot) {
+        updateQueryState {
+            searchText = snapshot.searchText
+            sort = snapshot.sort
+            favoriteFilter = snapshot.favoriteFilter
+            sourceFilter = snapshot.sourceFilter
+            dateFilter = snapshot.dateFilter
+            customDateStart = snapshot.customDateStart
+            customDateEnd = snapshot.customDateEnd
+            dataFilters = snapshot.dataFilters
+            tagFilter = snapshot.tagFilter
+        }
+    }
+
+    private func applySavedQuery(
+        _ query: WorkoutLibrarySavedQuery,
+        markUnmodifiedCollectionID id: UUID
+    ) {
+        isApplyingSavedQuery = true
+        isBatchingQueryChanges = true
+        searchText = query.searchText
+        sort = query.sort
+        favoriteFilter = query.filter.favorite
+        sourceFilter = query.filter.source
+        dataFilters = query.filter.data
+        tagFilter = query.filter.tags
+        switch query.filter.date {
+        case .custom(let start, let end):
+            dateFilter = .custom(start: start, end: end)
+            if let start { customDateStart = start }
+            if let end { customDateEnd = end }
+        default:
+            dateFilter = query.filter.date
+        }
+        queryContext = .smartCollection(id: id, isModified: false)
+        isBatchingQueryChanges = false
+        isApplyingSavedQuery = false
+        scheduleQuery(force: true)
+    }
+
+    private func handleQueryMutation() {
+        guard !isBatchingQueryChanges else { return }
+        if !isApplyingSavedQuery, case .smartCollection(let id, false) = queryContext {
+            queryContext = .smartCollection(id: id, isModified: true)
+        }
+        scheduleQuery()
     }
 
     private func rebuildEntries(from workouts: [RunWorkout]) {
@@ -252,11 +517,15 @@ final class WorkoutLibraryViewModel: ObservableObject {
         built.reserveCapacity(workouts.count)
         var docs: [UUID: WorkoutLibrarySearchDocument] = [:]
         var byID: [UUID: WorkoutLibraryEntry] = [:]
+        let tagMap = tagsByID
         for (index, workout) in workouts.enumerated() {
+            let tagIDs = tagAssignmentsByWorkout[workout.id] ?? []
             let entry = WorkoutLibraryEntry.make(
                 from: workout,
                 manifestIndex: index,
-                isFavorite: favoriteIDs.contains(workout.id)
+                isFavorite: favoriteIDs.contains(workout.id),
+                tagIDs: tagIDs,
+                tagsByID: tagMap
             )
             built.append(entry)
             byID[entry.id] = entry
@@ -266,6 +535,19 @@ final class WorkoutLibraryViewModel: ObservableObject {
         entryByID = byID
         documents = docs
         totalCount = built.count
+    }
+
+    private func rebuildTagsOnEntries(workoutIDs: Set<UUID>) {
+        let tagMap = tagsByID
+        for id in workoutIDs {
+            guard let index = entries.firstIndex(where: { $0.id == id }) else { continue }
+            let tagIDs = tagAssignmentsByWorkout[id] ?? []
+            let names = WorkoutLibraryEntry.orderedTagNames(tagIDs: tagIDs, tagsByID: tagMap)
+            let updated = entries[index].withTags(tagIDs: tagIDs, tagNames: names)
+            entries[index] = updated
+            entryByID[id] = updated
+            documents[id] = WorkoutLibrarySearchDocument.make(from: updated, calendar: calendar)
+        }
     }
 
     private func scheduleQuery(force: Bool = false) {
@@ -284,8 +566,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
         )
         let key = QueryCacheKey(
             entries: entries,
-            favoriteIDs: favoriteIDs,
-            query: query
+            query: query,
+            context: queryContext
         )
         if !force, key == lastPublishedKey, loadState == .ready || loadState == .emptyLibrary
             || loadState == .emptySearch(query: searchText) || loadState == .emptyFilters {
@@ -302,10 +584,10 @@ final class WorkoutLibraryViewModel: ObservableObject {
             totalCount = 0
             loadState = .emptyLibrary
             lastPublishedKey = key
+            tableSelection = []
             return
         }
 
-        // Keep previous results visible while recomputing unless we have nothing yet.
         switch loadState {
         case .ready, .emptySearch, .emptyFilters:
             break
@@ -342,6 +624,9 @@ final class WorkoutLibraryViewModel: ObservableObject {
         isBatchingQueryChanges = true
         update()
         isBatchingQueryChanges = false
+        if !isApplyingSavedQuery, case .smartCollection(let id, false) = queryContext {
+            queryContext = .smartCollection(id: id, isModified: true)
+        }
         scheduleQuery(force: true)
     }
 
@@ -364,17 +649,17 @@ final class WorkoutLibraryViewModel: ObservableObject {
             loadState = .ready
         }
 
-        // Drop stale table selection when the row left the result set.
-        if let selection = tableSelection, !result.matchingIDs.contains(selection) {
-            tableSelection = nil
-        }
+        // Drop stale table selection when rows leave the result set.
+        let matching = Set(result.matchingIDs)
+        tableSelection = tableSelection.intersection(matching)
     }
 
-    /// Cache key covering IDs, metadata revision, favourites, and full query.
+    /// Cache key covering IDs, metadata/tag revisions, favourites, and full query.
     struct QueryCacheKey: Hashable {
         struct EntryRevision: Hashable {
             let id: UUID
             let nameNotesRevision: String
+            let tagRevision: String
             let isFavorite: Bool
             let manifestIndex: Int
         }
@@ -384,12 +669,18 @@ final class WorkoutLibraryViewModel: ObservableObject {
         let filter: WorkoutLibraryFilter
         let sort: WorkoutLibrarySort
         let nowHour: Int
+        let context: WorkoutLibraryQueryContext
 
-        init(entries: [WorkoutLibraryEntry], favoriteIDs: Set<UUID>, query: WorkoutLibraryQuery) {
+        init(
+            entries: [WorkoutLibraryEntry],
+            query: WorkoutLibraryQuery,
+            context: WorkoutLibraryQueryContext
+        ) {
             self.revisions = entries.map {
                 EntryRevision(
                     id: $0.id,
                     nameNotesRevision: $0.nameNotesRevision,
+                    tagRevision: $0.tagRevision,
                     isFavorite: $0.isFavorite,
                     manifestIndex: $0.manifestIndex
                 )
@@ -397,9 +688,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
             self.searchText = query.searchText
             self.filter = query.filter
             self.sort = query.sort
-            // Floor relative filters to the hour for stable cache keys.
             self.nowHour = Int(query.now.timeIntervalSince1970 / 3600)
-            _ = favoriteIDs
+            self.context = context
         }
     }
 }

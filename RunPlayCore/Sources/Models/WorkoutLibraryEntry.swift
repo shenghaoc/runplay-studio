@@ -34,6 +34,16 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
     /// Cheap revision token for cache invalidation after metadata edits.
     public let nameNotesRevision: String
 
+    /// Assigned tag IDs (empty when untagged).
+    public let tagIDs: Set<UUID>
+    /// Deterministically ordered display names for assigned tags.
+    public let tagNames: [String]
+    /// Revision of tag IDs + names for search-document invalidation.
+    public let tagRevision: String
+
+    /// Maximum chips shown in compact table cells before `+N`.
+    public static let visibleTagChipLimit = 3
+
     public init(
         id: UUID,
         manifestIndex: Int,
@@ -53,7 +63,10 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
         hasHeartRate: Bool,
         hasCorrectedElevation: Bool,
         hasRecordedLaps: Bool,
-        nameNotesRevision: String
+        nameNotesRevision: String,
+        tagIDs: Set<UUID> = [],
+        tagNames: [String] = [],
+        tagRevision: String = ""
     ) {
         self.id = id
         self.manifestIndex = manifestIndex
@@ -74,13 +87,20 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
         self.hasCorrectedElevation = hasCorrectedElevation
         self.hasRecordedLaps = hasRecordedLaps
         self.nameNotesRevision = nameNotesRevision
+        self.tagIDs = tagIDs
+        self.tagNames = tagNames
+        self.tagRevision = tagRevision.isEmpty
+            ? Self.makeTagRevision(tagIDs: tagIDs, tagNames: tagNames)
+            : tagRevision
     }
 
     /// Build a search/filter entry without copying route-point storage.
     public static func make(
         from workout: RunWorkout,
         manifestIndex: Int,
-        isFavorite: Bool
+        isFavorite: Bool,
+        tagIDs: Set<UUID> = [],
+        tagsByID: [UUID: WorkoutTag] = [:]
     ) -> WorkoutLibraryEntry {
         let startDate = Self.canonicalStartDate(for: workout)
         let hasHeartRate =
@@ -93,6 +113,7 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
             || workout.summary.elevationLossMeters > 0
         let name = workout.metadata.name
         let notes = workout.metadata.notes
+        let orderedTagNames = Self.orderedTagNames(tagIDs: tagIDs, tagsByID: tagsByID)
         return WorkoutLibraryEntry(
             id: workout.id,
             manifestIndex: manifestIndex,
@@ -112,7 +133,9 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
             hasHeartRate: hasHeartRate,
             hasCorrectedElevation: hasCorrectedElevation,
             hasRecordedLaps: !workout.recordedLaps.isEmpty,
-            nameNotesRevision: "\(name ?? "")|\(notes ?? "")"
+            nameNotesRevision: "\(name ?? "")|\(notes ?? "")",
+            tagIDs: tagIDs,
+            tagNames: orderedTagNames
         )
     }
 
@@ -122,5 +145,103 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
             return start
         }
         return workout.routePoints.first?.timestamp
+    }
+
+    public static func orderedTagNames(
+        tagIDs: Set<UUID>,
+        tagsByID: [UUID: WorkoutTag]
+    ) -> [String] {
+        tagIDs
+            .compactMap { tagsByID[$0]?.name }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    public static func makeTagRevision(tagIDs: Set<UUID>, tagNames: [String]) -> String {
+        let ids = tagIDs.map(\.uuidString).sorted().joined(separator: ",")
+        let names = tagNames.joined(separator: "|")
+        return "\(ids)#\(names)"
+    }
+
+    /// Copy with updated favourite flag.
+    public func withFavorite(_ isFavorite: Bool) -> WorkoutLibraryEntry {
+        WorkoutLibraryEntry(
+            id: id,
+            manifestIndex: manifestIndex,
+            isFavorite: isFavorite,
+            displayName: displayName,
+            metadataName: metadataName,
+            notes: notes,
+            activityType: activityType,
+            deviceName: deviceName,
+            source: source,
+            importProvider: importProvider,
+            originalFilename: originalFilename,
+            startDate: startDate,
+            totalDistanceMeters: totalDistanceMeters,
+            activePaceSecondsPerKilometer: activePaceSecondsPerKilometer,
+            totalElapsedSeconds: totalElapsedSeconds,
+            hasHeartRate: hasHeartRate,
+            hasCorrectedElevation: hasCorrectedElevation,
+            hasRecordedLaps: hasRecordedLaps,
+            nameNotesRevision: nameNotesRevision,
+            tagIDs: tagIDs,
+            tagNames: tagNames,
+            tagRevision: tagRevision
+        )
+    }
+
+    /// Copy with updated tag assignment / names.
+    public func withTags(tagIDs: Set<UUID>, tagNames: [String]) -> WorkoutLibraryEntry {
+        WorkoutLibraryEntry(
+            id: id,
+            manifestIndex: manifestIndex,
+            isFavorite: isFavorite,
+            displayName: displayName,
+            metadataName: metadataName,
+            notes: notes,
+            activityType: activityType,
+            deviceName: deviceName,
+            source: source,
+            importProvider: importProvider,
+            originalFilename: originalFilename,
+            startDate: startDate,
+            totalDistanceMeters: totalDistanceMeters,
+            activePaceSecondsPerKilometer: activePaceSecondsPerKilometer,
+            totalElapsedSeconds: totalElapsedSeconds,
+            hasHeartRate: hasHeartRate,
+            hasCorrectedElevation: hasCorrectedElevation,
+            hasRecordedLaps: hasRecordedLaps,
+            nameNotesRevision: nameNotesRevision,
+            tagIDs: tagIDs,
+            tagNames: tagNames
+        )
+    }
+
+    /// Copy with updated manifest index.
+    public func withManifestIndex(_ index: Int) -> WorkoutLibraryEntry {
+        WorkoutLibraryEntry(
+            id: id,
+            manifestIndex: index,
+            isFavorite: isFavorite,
+            displayName: displayName,
+            metadataName: metadataName,
+            notes: notes,
+            activityType: activityType,
+            deviceName: deviceName,
+            source: source,
+            importProvider: importProvider,
+            originalFilename: originalFilename,
+            startDate: startDate,
+            totalDistanceMeters: totalDistanceMeters,
+            activePaceSecondsPerKilometer: activePaceSecondsPerKilometer,
+            totalElapsedSeconds: totalElapsedSeconds,
+            hasHeartRate: hasHeartRate,
+            hasCorrectedElevation: hasCorrectedElevation,
+            hasRecordedLaps: hasRecordedLaps,
+            nameNotesRevision: nameNotesRevision,
+            tagIDs: tagIDs,
+            tagNames: tagNames,
+            tagRevision: tagRevision
+        )
     }
 }

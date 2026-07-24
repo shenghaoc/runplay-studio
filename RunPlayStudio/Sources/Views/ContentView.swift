@@ -49,6 +49,7 @@ struct ContentView: View {
             SidebarView(
                 workouts: appState.workouts,
                 favoriteIDs: appState.favoriteWorkoutIDs,
+                smartCollections: appState.smartCollections,
                 libraryCount: appState.workouts.count,
                 totalFavoriteCount: appState.favoriteWorkoutIDs.count,
                 selection: Binding(
@@ -62,6 +63,12 @@ struct ContentView: View {
                 },
                 onShowAllFavorites: {
                     appState.showAllFavoritesInLibrary()
+                },
+                onManageSmartCollections: {
+                    appState.showWorkoutLibrary(restoreManualQuery: false)
+                    // The presentation request is shared state so it survives
+                    // mounting the All Runs destination from another workspace.
+                    appState.showSmartCollectionsManager = true
                 }
             )
         } detail: {
@@ -191,7 +198,7 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
             showPersonalHeatmap: { appState.showPersonalHeatmap() },
-            showAllRuns: { appState.showWorkoutLibrary() },
+            showAllRuns: { appState.showWorkoutLibrary(restoreManualQuery: true) },
             importFile: { appState.showImporter = true },
             importStravaArchive: { appState.showArchiveImporter = true }
         ))

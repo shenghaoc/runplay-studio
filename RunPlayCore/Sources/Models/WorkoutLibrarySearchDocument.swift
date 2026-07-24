@@ -73,6 +73,11 @@ public struct WorkoutLibrarySearchDocument: Hashable, Sendable {
             }
         }
 
+        // Assigned tag names participate in free-text search (not tag colors).
+        for tagName in entry.tagNames {
+            tokens.append(tagName)
+        }
+
         // Separate fields with a unit separator so quoted phrases cannot match
         // across independent metadata fields (e.g. name "Marina" + notes "Bay…").
         let joined = tokens

@@ -106,11 +106,13 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .demos(let error) = result else {
+        guard case .demos(let error, let organization, let manifestPresent) = result else {
             XCTFail("Expected .demos, got \(result)")
             return
         }
         XCTAssertNil(error)
+        XCTAssertTrue(organization.isEmpty)
+        XCTAssertFalse(manifestPresent)
     }
 
     func testLoadLibraryWithWorkoutsReturnsThem() async throws {
@@ -124,7 +126,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, _) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, _) = result else {
             XCTFail("Expected .workouts, got \(result)")
             return
         }
@@ -173,7 +175,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected migrated workouts, got \(result)")
             return
         }
@@ -210,7 +212,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected in-memory workout, got \(result)")
             return
         }
@@ -228,7 +230,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         )
 
         let retryResult = await actor.loadLibrary()
-        guard case .workouts(let retried, _, _, _) = retryResult else {
+        guard case .workouts(let retried, _, _, _, _) = retryResult else {
             XCTFail("Expected the original snapshot to remain retryable, got \(retryResult)")
             return
         }
@@ -250,7 +252,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected migrated workouts, got \(result)")
             return
         }
@@ -295,7 +297,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let result = await actor.loadLibrary()
 
-        guard case .workouts(let loaded, let selectedID, _, let warning) = result else {
+        guard case .workouts(let loaded, let selectedID, _, _, let warning) = result else {
             XCTFail("Expected current workout, got \(result)")
             return
         }
@@ -321,7 +323,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -517,7 +519,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
 
-        guard case .demos(let error) = result else {
+        guard case .demos(let error, _, _) = result else {
             XCTFail("Expected .demos for corrupt manifest")
             return
         }
@@ -548,7 +550,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         }
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -603,7 +605,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         try await actor.addWorkout(workout, select: true)
 
         let result = await actor.loadLibrary()
-        guard case .workouts(let loaded, _, _, _) = result else {
+        guard case .workouts(let loaded, _, _, _, _) = result else {
             XCTFail("Expected .workouts")
             return
         }
@@ -758,7 +760,7 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
-        guard case .workouts(_, _, let favorites, _) = result else {
+        guard case .workouts(_, _, let favorites, _, _) = result else {
             XCTFail("Expected workouts")
             return
         }
@@ -781,17 +783,62 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
 
         let actor = WorkoutLibraryStoreActor(store: store)
         let result = await actor.loadLibrary()
-        guard case .demos(let warning) = result else {
+        guard case .demos(let warning, let organization, let manifestPresent) = result else {
             XCTFail("Expected demos")
             return
         }
         XCTAssertNil(warning)
+        XCTAssertTrue(manifestPresent)
+        XCTAssertTrue(organization.tagAssignments.isEmpty)
 
         let persisted = try JSONDecoder().decode(
             WorkoutLibraryManifest.self,
             from: Data(contentsOf: manifestURL)
         )
         XCTAssertTrue(persisted.favoriteWorkoutIDs.isEmpty)
+    }
+
+    func testEmptyLibraryPreservesTagsAndSmartCollections() async throws {
+        let tag = WorkoutTag(name: "Race", color: .red)
+        let collection = WorkoutSmartCollection(
+            name: "Races",
+            query: WorkoutLibrarySavedQuery(
+                filter: WorkoutLibraryFilter(tags: .selected(tagIDs: [tag.id], match: .any))
+            )
+        )
+        try store.saveManifest(
+            WorkoutLibraryManifest(
+                version: 3,
+                workoutIDs: [],
+                tags: [tag],
+                tagAssignments: [WorkoutTagAssignment(workoutID: UUID(), tagIDs: [tag.id])],
+                smartCollections: [collection]
+            )
+        )
+
+        let actor = WorkoutLibraryStoreActor(store: store)
+        let result = await actor.loadLibrary()
+        guard case .demos(let warning, let organization, let manifestPresent) = result else {
+            XCTFail("Expected demos for empty library, got \(result)")
+            return
+        }
+        XCTAssertNil(warning)
+        XCTAssertTrue(manifestPresent)
+        XCTAssertEqual(organization.tags.map(\.id), [tag.id])
+        // Assignments for missing workouts are dropped; the tag definition remains.
+        XCTAssertTrue(organization.tagAssignments.isEmpty)
+        XCTAssertEqual(organization.smartCollections.map(\.id), [collection.id])
+        // Collection still references an existing tag ID — keep the filter.
+        if case .selected(let ids, .any) = organization.smartCollections[0].query.filter.tags {
+            XCTAssertEqual(ids, [tag.id])
+        } else {
+            XCTFail("Expected preserved selected tag filter, got \(organization.smartCollections[0].query.filter.tags)")
+        }
+
+        let persisted = try store.loadManifest()
+        XCTAssertEqual(persisted.tags.map(\.id), [tag.id])
+        XCTAssertTrue(persisted.tagAssignments.isEmpty)
+        XCTAssertEqual(persisted.smartCollections.count, 1)
     }
 }
 

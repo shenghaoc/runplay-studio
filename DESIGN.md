@@ -204,3 +204,10 @@ the live map palettes.
 - **Don't** add gamification language ("You crushed it!", "New record!", streaks, challenges).
 - **Don't** clutter the interface with social features — no sharing buttons, follower counts, kudos, or community feeds.
 - **Don't** use custom fonts. SF Pro (system) is the only typeface. Rounded design modifier is reserved for hero metrics only.
+
+## Tags and smart collections
+
+- Tag chips show the **name** with a finite supplemental color token (not RGB freeform).
+- All Runs table Tags column shows up to three chips plus `+N`; untagged shows `—`.
+- Smart Collections appear as a bounded sidebar section (cap 8) with overflow management.
+- Active collection chrome shows Modified, Revert, and Update Collection (never silent save).

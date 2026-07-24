@@ -28,6 +28,14 @@ coordinates, so the general area of your route is visible to Apple Maps. No
 workout file data, metrics, heart rate, or account information is included in
 map requests.
 
+## Tags and smart collections
+
+Tags, tag assignments, and smart collections are local organisation metadata in
+`manifest.json`. They never leave the device, are not uploaded, and are not
+included in existing CSV/JSON/PNG exports. Smart collections store query
+criteria only (not result workout IDs). Bundled demos cannot receive persistent
+tags.
+
 ## All Runs search index
 
 All Runs search builds an **in-memory** document per workout from lightweight

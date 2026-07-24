@@ -342,6 +342,14 @@ struct WorkoutLibraryManifest: Codable {
 }
 ```
 
+Schema version **3** adds ordered tag definitions, tag assignments (one record
+per tagged workout; empty omitted), and ordered smart collections (saved queries
+with search/filter/sort; no stored membership). Tag names are unique under case/
+diacritic/width-insensitive folding (limits: 200 tags, 50 name scalars, 20 tags
+per workout). Collection names use the same folding policy in a separate
+namespace (limits: 100 collections, 80 name scalars). Repair drops dangling
+assignment and saved-filter tag references without deleting collections.
+
 Version-1 manifests decode with an empty favourite set. Missing favourite IDs
 are removed during library recovery. Favourites apply only to persisted library
 workouts, not bundled demos.

@@ -76,7 +76,7 @@ final class WorkoutLibraryManifestTests: XCTestCase {
 
         try store.saveManifest(loaded)
         let reloaded = try store.loadManifest()
-        XCTAssertEqual(reloaded.version, 2)
+        XCTAssertEqual(reloaded.version, WorkoutLibraryManifest.currentVersion)
         XCTAssertEqual(reloaded.workoutIDs, [id])
         XCTAssertEqual(reloaded.selectedWorkoutID, id)
     }
