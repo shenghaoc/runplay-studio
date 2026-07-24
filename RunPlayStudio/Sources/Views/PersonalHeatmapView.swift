@@ -33,21 +33,26 @@ struct PersonalHeatmapView: View {
         }
         .onChange(of: viewModel.datePreset) { _, _ in
             viewModel.refresh(workouts: appState.workouts)
+            appState.requestSessionSave()
         }
         .onChange(of: viewModel.resolution) { _, _ in
             viewModel.refresh(workouts: appState.workouts)
+            appState.requestSessionSave()
         }
         .onChange(of: viewModel.minimumWorkoutCount) { _, _ in
             viewModel.refresh(workouts: appState.workouts)
+            appState.requestSessionSave()
         }
         .onChange(of: viewModel.customStartDate) { _, _ in
             if viewModel.datePreset == .custom {
                 viewModel.refresh(workouts: appState.workouts)
+                appState.requestSessionSave()
             }
         }
         .onChange(of: viewModel.customEndDate) { _, _ in
             if viewModel.datePreset == .custom {
                 viewModel.refresh(workouts: appState.workouts)
+                appState.requestSessionSave()
             }
         }
         .onDisappear {

@@ -1,5 +1,6 @@
 import SwiftUI
 import RunPlayCore
+import AppKit
 import UniformTypeIdentifiers
 
 /// Manages security-scoped resource access for the lifetime of an async import.
@@ -34,9 +35,16 @@ extension UTType {
 
 /// Main content view with sidebar, 3D route view, and detail panels.
 struct ContentView: View {
-    @StateObject private var appState = AppState(
-        libraryRoot: ContentView.defaultLibraryRoot
-    )
+    @ObservedObject var appState: AppState
+    @ObservedObject var sessionController: AppSessionController
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var sidebarSelection: SidebarSelection?
+
+    init(appState: AppState, sessionController: AppSessionController) {
+        self.appState = appState
+        self.sessionController = sessionController
+        self._sidebarSelection = State(initialValue: appState.sidebarSelection)
+    }
 
     /// Default library root in Application Support.
     static var defaultLibraryRoot: URL {
@@ -44,8 +52,35 @@ struct ContentView: View {
         return appSupport.appendingPathComponent("RunPlayStudio", isDirectory: true)
     }
 
+    private var sidebarVisibilityBinding: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: {
+                switch appState.sidebarVisibilityRaw {
+                case "all":
+                    return .all
+                case "detailOnly":
+                    return .detailOnly
+                default:
+                    return .automatic
+                }
+            },
+            set: { visibility in
+                let raw: String
+                if visibility == .all || visibility == .doubleColumn {
+                    raw = "all"
+                } else if visibility == .detailOnly {
+                    raw = "detailOnly"
+                } else {
+                    raw = "automatic"
+                }
+                appState.sidebarVisibilityRaw = raw
+                appState.requestSessionSave()
+            }
+        )
+    }
+
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: sidebarVisibilityBinding) {
             SidebarView(
                 workouts: appState.workouts,
                 favoriteIDs: appState.favoriteWorkoutIDs,
@@ -53,8 +88,12 @@ struct ContentView: View {
                 libraryCount: appState.workouts.count,
                 totalFavoriteCount: appState.favoriteWorkoutIDs.count,
                 selection: Binding(
-                    get: { appState.sidebarSelection },
-                    set: { appState.applySidebarSelection($0) }
+                    get: { sidebarSelection },
+                    set: {
+                        sidebarSelection = $0
+                        guard !sessionController.isRestoring else { return }
+                        appState.applySidebarSelection($0)
+                    }
                 ),
                 onImport: { appState.showImporter = true },
                 onArchiveImport: { appState.showArchiveImporter = true },
@@ -182,9 +221,12 @@ struct ContentView: View {
             Text(appState.errorMessage ?? "Something went wrong. Please try again.")
         }
         .task {
-            await appState.start()
+            await sessionController.startIfNeeded()
         }
         .disabled({
+            if sessionController.isRestoring {
+                return true
+            }
             switch appState.operationState {
             case .idle, .importingArchive:
                 // Archive progress UI lives in the sheet; keep the window usable.
@@ -194,7 +236,12 @@ struct ContentView: View {
             }
         }())
         .overlay {
-            operationStateOverlay
+            if sessionController.isRestoring {
+                ProgressView("Restoring workspace…")
+                    .padding()
+            } else {
+                operationStateOverlay
+            }
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
             showPersonalHeatmap: { appState.showPersonalHeatmap() },
@@ -206,6 +253,26 @@ struct ContentView: View {
             guard let command = notification.object as? AppWorkspaceCommand else { return }
             appState.handleWorkspaceCommand(command)
         }
+        .onChange(of: appState.sidebarSelection) { _, selection in
+            sidebarSelection = selection
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            Task {
+                await sessionController.pauseReplayAndFlush()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            Task {
+                await sessionController.pauseReplayAndFlush()
+            }
+        }
+        .onDisappear {
+            Task {
+                await sessionController.pauseReplayAndFlush()
+            }
+        }
+        .frame(minWidth: 720, minHeight: 500)
     }
 
     @ViewBuilder

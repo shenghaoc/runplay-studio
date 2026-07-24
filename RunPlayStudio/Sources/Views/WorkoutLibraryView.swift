@@ -29,6 +29,9 @@ struct WorkoutLibraryView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .navigationTitle(navigationTitle)
         .focusSection()
+        .onReceive(viewModel.objectWillChange) { _ in
+            appState.requestSessionSave()
+        }
         .onExitCommand {
             if searchFocused, !viewModel.searchText.isEmpty {
                 viewModel.clearSearch()

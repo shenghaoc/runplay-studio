@@ -156,6 +156,23 @@ class AppState: ObservableObject {
     /// Single source of truth for which workspace is visible.
     @Published private(set) var workspaceMode: AppWorkspaceMode = .workout
 
+    /// Durable presentation values owned by the application rather than a
+    /// recreated detail view.
+    @Published var workoutDetailTabRaw = "Overview" {
+        didSet { requestSessionSave() }
+    }
+    @Published var workoutMapDisplayModeRaw = "2D" {
+        didSet { requestSessionSave() }
+    }
+    @Published var sidebarVisibilityRaw = "automatic" {
+        didSet { requestSessionSave() }
+    }
+
+    /// Set by RunPlayStudioApp after both application-owned objects exist.
+    /// AppSessionController's back-reference to AppState is weak, so this
+    /// forward link does not create a retain cycle.
+    var sessionController: AppSessionController?
+
     // Comparison state
     @Published var comparisonWorkout: RunWorkout?
     @Published var comparisonSelectionMessage: String?
@@ -276,6 +293,192 @@ class AppState: ObservableObject {
     deinit {
         selectionTask?.cancel()
         archiveTask?.cancel()
+    }
+
+    // MARK: - Application session
+
+    func requestSessionSave(replay: Bool = false) {
+        sessionController?.requestSave(replay: replay)
+    }
+
+    /// Build a logical snapshot from current application/workspace state.
+    /// Library membership and selected-workout authority remain in the
+    /// manifest; replay stores only a validated ID and scalar position.
+    func makeSessionSnapshot() -> AppSessionSnapshot {
+        let destination: AppSessionDestination
+        switch workspaceMode {
+        case .workout:
+            destination = .workout
+        case .comparison:
+            destination = .comparison
+        case .personalHeatmap:
+            destination = .personalHeatmap
+        case .workoutLibrary:
+            if case .smartCollection(let id, _) = workoutLibrary.queryContext {
+                destination = .smartCollection(id)
+            } else {
+                destination = .allRuns
+            }
+        }
+
+        let activeCollection: (UUID, Bool, WorkoutLibrarySavedQuery?)? = {
+            guard case .smartCollection(let id, let modified) = workoutLibrary.queryContext else {
+                return nil
+            }
+            return (
+                id,
+                modified,
+                modified ? workoutLibrary.currentSavedQuery() : nil
+            )
+        }()
+        let comparison: AppSessionComparisonState? = {
+            guard workspaceMode == .comparison,
+                  let peer = comparisonWorkout,
+                  let primary = selectedWorkout,
+                  primary.id != peer.id else {
+                return nil
+            }
+            return AppSessionComparisonState(
+                peerWorkoutID: peer.id,
+                distanceMeters: clampedComparisonDistanceMeters
+            )
+        }()
+        let replay: AppSessionReplayState? = selectedWorkout.map {
+            AppSessionReplayState(
+                workoutID: $0.id,
+                elapsedSeconds: replayController.state.currentTime,
+                playbackSpeed: replayController.state.playbackSpeed
+            )
+        }
+
+        return AppSessionSnapshot(
+            destination: destination,
+            sidebarVisibilityRaw: sidebarVisibilityRaw,
+            workout: AppSessionWorkoutState(
+                tabRaw: workoutDetailTabRaw,
+                mapDisplayModeRaw: workoutMapDisplayModeRaw
+            ),
+            library: AppSessionLibraryState(
+                manualQuery: workoutLibrary.sessionManualQuery(),
+                activeSmartCollectionID: activeCollection?.0,
+                activeSmartCollectionModified: activeCollection?.1 ?? false,
+                modifiedWorkingQuery: activeCollection?.2
+            ),
+            heatmap: AppSessionHeatmapState(
+                datePresetRaw: personalHeatmap.datePreset.rawValue,
+                customStartDate: personalHeatmap.customStartDate,
+                customEndDate: personalHeatmap.customEndDate,
+                resolutionRaw: personalHeatmap.resolution.rawValue,
+                minimumWorkoutCount: personalHeatmap.minimumWorkoutCount
+            ),
+            comparison: comparison,
+            replay: replay
+        )
+    }
+
+    /// Lightweight facts used to validate persisted references before apply.
+    func sessionValidationContext() -> AppSessionValidationContext {
+        AppSessionValidationContext(
+            workoutIDs: Set(workouts.map(\.id)),
+            selectedWorkoutID: selectedWorkout?.id,
+            smartCollectionIDs: Set(smartCollections.map(\.id)),
+            tagIDs: Set(tags.map(\.id)),
+            replayDuration: replayController.state.totalDuration.isFinite
+                ? replayController.state.totalDuration
+                : selectedWorkout?.summary.totalElapsedSeconds,
+            workoutDistanceMetersByID: Dictionary(
+                uniqueKeysWithValues: workouts.map {
+                    ($0.id, max(0, $0.summary.totalDistanceMeters))
+                }
+            )
+        )
+    }
+
+    /// Apply validated session context after the manifest-selected workout is
+    /// already published. This never changes selectedWorkout from disk.
+    func applySessionSnapshot(_ snapshot: AppSessionSnapshot) {
+        workoutDetailTabRaw = snapshot.workout.tabRaw
+        workoutMapDisplayModeRaw = snapshot.workout.mapDisplayModeRaw
+        sidebarVisibilityRaw = snapshot.sidebarVisibilityRaw
+        personalHeatmap.restoreSessionState(snapshot.heatmap)
+
+        workoutLibrary.replaceLibrary(
+            workouts: workouts,
+            favoriteIDs: favoriteWorkoutIDs,
+            organization: currentOrganizationSnapshot()
+        )
+
+        switch snapshot.destination {
+        case .workout:
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            workspaceMode = .workout
+        case .allRuns:
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            workspaceMode = .workoutLibrary
+        case .smartCollection(let id):
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: id,
+                activeSmartCollectionModified: snapshot.library.activeSmartCollectionModified,
+                modifiedWorkingQuery: snapshot.library.modifiedWorkingQuery
+            )
+            workspaceMode = .workoutLibrary
+        case .personalHeatmap:
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            workspaceMode = .personalHeatmap
+            personalHeatmap.refresh(workouts: workouts)
+        case .comparison:
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            if let peerID = snapshot.comparison?.peerWorkoutID,
+               let peer = workouts.first(where: { $0.id == peerID }),
+               canCompare(peer) {
+                comparisonWorkout = peer
+                comparisonSelectionMessage = nil
+                selectedComparisonDistanceMeters = snapshot.comparison?.distanceMeters ?? 0
+                workspaceMode = .comparison
+                clampComparisonDistance()
+            } else {
+                clearComparison()
+                workspaceMode = .workout
+            }
+        }
+
+        if let selectedWorkout,
+           let replay = snapshot.replay,
+           replay.workoutID == selectedWorkout.id {
+            replayController.restore(
+                workout: selectedWorkout,
+                elapsedSeconds: replay.elapsedSeconds,
+                playbackSpeed: replay.playbackSpeed
+            )
+        } else if let selectedWorkout {
+            replayController.load(selectedWorkout)
+            replayController.pause()
+        }
     }
 
     // MARK: - Startup
@@ -417,6 +620,7 @@ class AppState: ObservableObject {
             )
             // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
+            requestSessionSave()
         } catch is CancellationError {
             // Cancelled — do not add to UI.
         } catch let error as WorkoutImportError {
@@ -506,6 +710,7 @@ class AppState: ObservableObject {
             selectionTask = Task { [weak self] in
                 do {
                     try await storeActor.setSelectedWorkoutID(id)
+                    self?.requestSessionSave()
                 } catch is CancellationError {
                     // A newer selection superseded this one.
                 } catch {
@@ -513,6 +718,8 @@ class AppState: ObservableObject {
                     self?.showingError = true
                 }
             }
+        } else if persistSelection {
+            requestSessionSave()
         }
     }
 
@@ -589,6 +796,7 @@ class AppState: ObservableObject {
                 deletingComparisonWorkout: deletingComparisonWorkout
             )
         }
+        requestSessionSave()
     }
 
     private func applyDeletionSelection(
@@ -671,6 +879,7 @@ class AppState: ObservableObject {
             favoriteIDs: favoriteWorkoutIDs,
             organization: currentOrganizationSnapshot()
         )
+        requestSessionSave()
     }
 
     /// Open All Runs under a smart collection.
@@ -688,12 +897,14 @@ class AppState: ObservableObject {
             organization: currentOrganizationSnapshot()
         )
         workoutLibrary.openSmartCollection(id: id)
+        requestSessionSave()
     }
 
     /// Open All Runs with the favourites-only filter applied.
     func showAllFavoritesInLibrary() {
         showWorkoutLibrary(restoreManualQuery: true)
         workoutLibrary.showAllFavorites()
+        requestSessionSave()
     }
 
     private func currentOrganizationSnapshot() -> WorkoutLibraryOrganizationSnapshot {
@@ -724,6 +935,7 @@ class AppState: ObservableObject {
         selectedComparisonDistanceMeters = 0
         workspaceMode = .personalHeatmap
         personalHeatmap.refresh(workouts: workouts)
+        requestSessionSave()
     }
 
     /// Return to the selected workout workspace (if any).
@@ -737,6 +949,7 @@ class AppState: ObservableObject {
             selectedComparisonDistanceMeters = 0
         }
         workspaceMode = .workout
+        requestSessionSave()
     }
 
     private func enterComparisonWorkspace() {
@@ -744,6 +957,7 @@ class AppState: ObservableObject {
             personalHeatmap.cancel()
         }
         workspaceMode = .comparison
+        requestSessionSave()
     }
 
     // MARK: - Favourites & metadata
@@ -784,6 +998,7 @@ class AppState: ObservableObject {
                 favoriteWorkoutIDs.remove(workoutID)
             }
             workoutLibrary.applyFavoriteChange(workoutID: workoutID, isFavorite: isFavorite)
+            requestSessionSave()
             return true
         } catch {
             errorMessage = "Could not update favourite: \(error.localizedDescription)"
@@ -815,6 +1030,7 @@ class AppState: ObservableObject {
             let tag = try await storeActor.createTag(name: name, color: color)
             tags.append(tag)
             workoutLibrary.applyTagDefinitions(tags)
+            requestSessionSave()
             return tag
         } catch {
             organizationEditError = error.localizedDescription
@@ -835,6 +1051,7 @@ class AppState: ObservableObject {
                 tags[index] = tag
             }
             workoutLibrary.applyTagDefinitions(tags)
+            requestSessionSave()
             return tag
         } catch {
             organizationEditError = error.localizedDescription
@@ -876,6 +1093,7 @@ class AppState: ObservableObject {
             if repairedActiveFilter != workoutLibrary.tagFilter {
                 workoutLibrary.tagFilter = repairedActiveFilter
             }
+            requestSessionSave()
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -892,6 +1110,7 @@ class AppState: ObservableObject {
             let byID = Dictionary(uniqueKeysWithValues: tags.map { ($0.id, $0) })
             tags = orderedIDs.compactMap { byID[$0] }
             workoutLibrary.applyTagDefinitions(tags)
+            requestSessionSave()
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -909,6 +1128,7 @@ class AppState: ObservableObject {
         do {
             try await storeActor.setTags(tagIDs, forWorkoutID: workoutID)
             workoutLibrary.applyWorkoutTagChange(workoutID: workoutID, tagIDs: tagIDs)
+            requestSessionSave()
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -946,6 +1166,7 @@ class AppState: ObservableObject {
                 changes[id] = next
             }
             workoutLibrary.applyBulkWorkoutTagChange(changes: changes)
+            requestSessionSave()
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -964,6 +1185,7 @@ class AppState: ObservableObject {
             let collection = try await storeActor.createSmartCollection(name: name, query: query)
             smartCollections.append(collection)
             workoutLibrary.didCreateSmartCollection(collection)
+            requestSessionSave()
             return collection
         } catch {
             organizationEditError = error.localizedDescription
@@ -995,6 +1217,7 @@ class AppState: ObservableObject {
             // query saves must not discard an unsaved working All Runs query.
             // Explicit Update Collection uses markActiveCollectionUpdated after success.
             workoutLibrary.applySmartCollectionChange(smartCollections)
+            requestSessionSave()
             return collection
         } catch {
             organizationEditError = error.localizedDescription
@@ -1013,6 +1236,7 @@ class AppState: ObservableObject {
             try await storeActor.deleteSmartCollection(id: id)
             smartCollections.removeAll { $0.id == id }
             workoutLibrary.didDeleteSmartCollection(id: id)
+            requestSessionSave()
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1029,6 +1253,7 @@ class AppState: ObservableObject {
             let byID = Dictionary(uniqueKeysWithValues: smartCollections.map { ($0.id, $0) })
             smartCollections = orderedIDs.compactMap { byID[$0] }
             workoutLibrary.applySmartCollectionChange(smartCollections)
+            requestSessionSave()
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1051,6 +1276,7 @@ class AppState: ObservableObject {
         guard let updated else { return false }
         // Only explicit Update Collection clears Modified after a successful save.
         workoutLibrary.markActiveCollectionUpdated(updated)
+        requestSessionSave()
         return true
     }
 
@@ -1099,6 +1325,7 @@ class AppState: ObservableObject {
             }
             analysisContextCache.removeValue(forKey: workoutID)
             workoutLibrary.applyWorkoutUpdate(updated)
+            requestSessionSave()
             return true
         } catch {
             metadataEditError = error.localizedDescription
@@ -1134,6 +1361,7 @@ class AppState: ObservableObject {
         comparisonWorkout = workout
         workspaceMode = .comparison
         clampComparisonDistance()
+        requestSessionSave()
     }
 
     /// Clear comparison mode and return to the selected workout.
@@ -1144,6 +1372,7 @@ class AppState: ObservableObject {
         if workspaceMode == .comparison {
             workspaceMode = .workout
         }
+        requestSessionSave()
     }
 
     /// Enter comparison mode without a specific comparison workout,
@@ -1155,6 +1384,7 @@ class AppState: ObservableObject {
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         workspaceMode = .comparison
+        requestSessionSave()
     }
 
     /// Whether the supplied workout can be compared with the current primary selection.
@@ -1252,6 +1482,7 @@ class AppState: ObservableObject {
         if selectedComparisonDistanceMeters < 0 {
             selectedComparisonDistanceMeters = 0
         }
+        requestSessionSave()
     }
 
     /// Other workouts available for comparison (excluding current selection).
@@ -1413,6 +1644,7 @@ class AppState: ObservableObject {
                         if self.workspaceMode == .personalHeatmap {
                             self.personalHeatmap.refresh(workouts: loaded)
                         }
+                        self.requestSessionSave()
                     case .demos(let message, let organization, let manifestPresent):
                         // Unexpected after successful commit; fall back.
                         self.tags = organization.tags

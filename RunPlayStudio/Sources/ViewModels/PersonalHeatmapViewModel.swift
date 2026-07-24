@@ -167,6 +167,23 @@ final class PersonalHeatmapViewModel: ObservableObject {
         self.customEndDate = now
     }
 
+    /// Apply durable filter selections without rebuilding generated map state.
+    /// The visible heatmap workspace owns the subsequent refresh.
+    func restoreSessionState(_ session: AppSessionHeatmapState) {
+        cancel()
+        datePreset = PersonalHeatmapDatePreset(rawValue: session.datePresetRaw) ?? .allTime
+        if let customStartDate = session.customStartDate {
+            self.customStartDate = customStartDate
+        }
+        if let customEndDate = session.customEndDate {
+            self.customEndDate = customEndDate
+        }
+        resolution = PersonalHeatmapResolution(rawValue: session.resolutionRaw) ?? .standard
+        minimumWorkoutCount = Self.minimumRepeatOptions.contains(session.minimumWorkoutCount)
+            ? session.minimumWorkoutCount
+            : 1
+    }
+
     deinit {
         cancelFlag?.cancel()
         computeTask?.cancel()

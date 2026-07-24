@@ -80,10 +80,17 @@
 - User-defined tags (finite color palette) with bulk assignment; tags live in the manifest, not workout snapshots
 - Tag search/filter (any/all/untagged) reuses `WorkoutLibraryQueryService`
 - Smart collections are saved dynamic queries (search/filters/tags/sort); relative dates resolve on open
-- Manifest schema v3; Modified/Revert/Update collection chrome; session-only manual query restoration
+- Manifest schema v3; Modified/Revert/Update collection chrome; session-backed manual query restoration
 - Bounded Smart Collections sidebar; Manage Tags / Manage Collections sheets
 - In-memory search index; no route-point scanning during ordinary query
 - Off-main cancellable query service; heatmap isolation preserved
+
+### Native Window and Application Session Restoration ✅
+- Stable-ID singleton `Window` with one app-owned `AppState` and native macOS frame restoration
+- Separate bounded version-1 session JSON; manifest remains authoritative for library and selected-workout state
+- Restores durable workspace, All Runs queries, smart-collection Modified state, heatmap filters, comparison, paused replay, tabs, map presentation, and sidebar visibility
+- Validates missing/corrupt/future state and excludes transient sheets, alerts, operations, caches, result IDs, and active playback
+- Actor-backed atomic writes with structural debounce, replay throttling, pause/lifecycle flushes, and synthetic focused tests
 
 ---
 
@@ -102,7 +109,7 @@
 ### Phase: Polish and Accessibility
 - [ ] Keyboard shortcuts for replay and navigation
 - [ ] Accessibility labels and VoiceOver support audit
-- [ ] Window state persistence across relaunches
+- [x] Window state persistence across relaunches
 
 ### Phase: Expanded Import
 - [ ] Strava export (.zip) importer

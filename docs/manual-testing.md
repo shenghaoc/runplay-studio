@@ -210,6 +210,40 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Keyboard navigate tags/collections; inspect VoiceOver labels; light/dark tag colors.
 - [ ] Keyboard: select rows, Return to open, Delete with confirmation, focus search.
 
+## Window and application-session restoration checklist
+
+Use the packaged app from `./scripts/package-demo.sh` and synthetic repository
+fixtures only. Native macOS owns frame placement and restoration; the JSON
+session file owns logical workspace state. Do not mark the relaunch or display
+items complete without performing them on the supported desktop target.
+
+- [x] Confirm the packaged app presents one stable-ID main `Window` and does not
+  create an independent second workspace through New Window.
+- [x] Change the workout tab and All Runs destination; confirm the bounded
+  session JSON changes without route points, result IDs, or map/cache data.
+- [ ] Move and resize the main window, quit normally, and relaunch; confirm
+  native frame placement, size, minimise, zoom, and full-screen behavior.
+- [ ] Change sidebar visibility, quit, and relaunch; confirm visibility returns
+  without persisting an exact sidebar width.
+- [ ] Quit from a workout, All Runs, smart collection, Personal Heatmap, and
+  valid comparison; confirm each durable destination and substate restores.
+- [ ] Set replay position and speed, start playback, quit, and relaunch;
+  confirm position/speed return paused with no active timer.
+- [ ] Modify a smart collection without updating it, relaunch, and confirm
+  Modified/Revert/Update behavior plus return to the prior manual query.
+- [ ] Delete a referenced workout or smart collection, relaunch, and confirm
+  safe fallback without an alert or dangling ID.
+- [ ] Open importer, export, editor, manager, confirmation, and error UI,
+  relaunch, and confirm no transient presentation returns.
+- [ ] Repeat with a secondary display attached, then unavailable, and confirm
+  native restoration keeps the window on a visible display.
+
+Packaged-app smoke record (2026-07-25): the rebuilt app was inspected with
+Computer Use. The singleton scene exposed one main window; tab and All Runs
+changes were written as bounded session JSON. Full frame, sidebar, secondary
+display, and final clean-relaunch checks remain intentionally unchecked until
+they are performed on an unlocked desktop session.
+
 ## Persistent Workout Library Checklist
 
 Use a synthetic fixture and confirm the original fixture checksum before and

@@ -17,6 +17,21 @@ you kept it.
 No external database, cloud storage, or sync service is used. All data stays on
 your filesystem under your control.
 
+## Application session state
+
+The app stores a small local JSON session snapshot at
+`Application Support/RunPlayStudio/session.json` to continue the desktop
+workspace after relaunch. It contains logical UI context such as destination,
+query/filter values, smart-collection context, heatmap filters, comparison IDs,
+paused replay scalars, tab/map presentation, and sidebar visibility. It does
+not contain route points, map images, generated heatmap cells, query result
+IDs, table selections, timer/playing state, sheets, alerts, or editor content.
+
+The snapshot is bounded, versioned, written atomically by an actor, and repaired
+or discarded when malformed or no longer compatible with the loaded local
+library. No session data is uploaded or synchronized, and native macOS window
+frame restoration remains owned by the operating system.
+
 ## MapKit / Apple Maps
 
 The app uses a SwiftUI MapKit view with flat 2D and realistic-elevation 3D

@@ -331,11 +331,11 @@ centralised in `WorkoutMetadataEditingPolicy` (name ≤ 200 scalars, notes ≤ 5
 scalars, trim, empty → nil, reject NUL). Edits do not change activity type,
 dates, device, provenance, route points, or analysis versions.
 
-### WorkoutLibraryManifest (schema v2)
+### WorkoutLibraryManifest (schema v3)
 
 ```swift
 struct WorkoutLibraryManifest: Codable {
-    var version: Int                 // current = 2
+    var version: Int                 // current = 3
     var workoutIDs: [UUID]           // library order
     var selectedWorkoutID: UUID?
     var favoriteWorkoutIDs: Set<UUID>
@@ -353,6 +353,30 @@ assignment and saved-filter tag references without deleting collections.
 Version-1 manifests decode with an empty favourite set. Missing favourite IDs
 are removed during library recovery. Favourites apply only to persisted library
 workouts, not bundled demos.
+
+### Application session snapshot (Studio-owned)
+
+`AppSessionSnapshot` is a separate version-1 `Codable`, `Equatable`, `Sendable`
+model in `RunPlayStudio`. It is not part of `RunWorkout` or
+`WorkoutLibraryManifest`, and no manifest, analysis, or normalization version is
+bumped for it. Its destination is one of `workout`, `allRuns`,
+`smartCollection(UUID)`, `personalHeatmap`, or `comparison`.
+
+The snapshot stores only logical continuation state: workout detail tab and map
+presentation raw values; sidebar visibility; manual All Runs search/filter/date
+/source/data/tag/sort state; active smart-collection ID, Modified flag, and
+working query; heatmap date/resolution/minimum-repeat filters; comparison peer
+and distance; and replay workout ID, elapsed time, and supported speed. The
+manifest-selected workout remains the normal selected-workout authority.
+
+`FileAppSessionStore` writes sorted-key ISO-8601 JSON atomically under
+`Application Support/RunPlayStudio/session.json`, with an injectable actor
+boundary and a 512 KiB limit. `AppSessionValidator` repairs raw enum values,
+dangling tags/collections, invalid numeric values, stale comparison peers, and
+replay times before application. Missing, malformed, oversized, or future
+versions use safe defaults. Route points, map images, generated heatmap cells,
+caches, query result IDs, table selections, timer state, playing state, sheets,
+alerts, and operation progress are intentionally absent.
 
 ### Library query models
 

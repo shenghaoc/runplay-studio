@@ -26,8 +26,8 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 | `PersonalHeatmapViewModel` | Dedicated heatmap filters, background aggregation, stale-request suppression, and in-memory cache. |
 | `PersonalHeatmapView` | Heatmap workspace UI: filters, statistics, map areas, legend, empty/loading/error states. |
 | `ReplayController` | `@MainActor ObservableObject` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
-| `ContentView` | Root view. Hosts the sidebar and detail split. Owns the `.fileImporter` modifier and delegates import to `AppState`. |
-| `WorkoutDetailView` | Detail host. Provides shared replay controls, metrics panel, and tab picker (Overview / Charts). |
+| `ContentView` | Injected root view. Hosts the sidebar and detail split, owns the `.fileImporter` modifier, and delegates import/session lifecycle to app-owned state. |
+| `WorkoutDetailView` | Detail host. Provides shared replay controls, metrics panel, and tab picker (Overview / Charts / Splits / Segments). |
 | `OverviewView` | Default landing tab. Embeds `MapReferenceView` / `RouteMapCanvas` and passes the current point index from `ReplayController`. |
 | `WorkoutRouteMapViewModel` | Single-workout metric route lines: off-main builds, cache, cancellation; does not rebuild on replay ticks. |
 | `RouteMapCanvas` | Shared SwiftUI `Map` surface for single-run, comparison, and heatmap maps. Owns `MapCameraPosition`, optional `RouteMapArea` fills, and the 2D/3D pitch toggle. |
@@ -37,8 +37,17 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 
 ## Patterns
 
-- `ContentView` owns `AppState` with `@StateObject`; dependent views use
-  `@ObservedObject` for `AppState` and `ReplayController`.
+- `RunPlayStudioApp` owns `AppState` and `AppSessionController` with
+  `@StateObject`; `ContentView` receives them by injection and never creates a
+  production coordinator. Dependent views use `@ObservedObject` for app state
+  and replay state.
+- The stable-ID main `Window` is singleton by policy. macOS owns native frame
+  restoration; `AppSessionController` restores bounded logical workspace state
+  only after the manifest/library has loaded.
+- `AppSessionSnapshot` is separate from the manifest. It restores destination,
+  All Runs query/smart-collection context, heatmap filters, comparison,
+  paused replay, detail presentation, and sidebar visibility; it excludes
+  sheets, alerts, operations, result IDs, caches, selections, and playing state.
 - Chart drag-to-seek: `WorkoutDetailView` pauses `ReplayController`, then calls
   `seekToDistance(_:)` with the distance emitted by `MetricsChartView`.
 - Map 2D/3D toggle: changes `MapCamera.pitch` on the shared `MapCameraPosition`
@@ -68,7 +77,8 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 | Export configuration + card model | RunPlayCore |
 | Distance/pace calculations | RunPlayCore |
 | Route projection, segment detection | RunPlayCore |
-| File I/O, manifest, persistence | RunPlayCore |
+| Workout library file I/O, manifest, persistence | RunPlayCore |
+| Logical application-session file I/O and restoration | RunPlayStudio |
 
 ## Running the app for manual verification
 
