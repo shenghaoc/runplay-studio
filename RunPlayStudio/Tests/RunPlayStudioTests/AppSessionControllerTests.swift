@@ -162,14 +162,21 @@ final class AppSessionControllerTests: XCTestCase {
 
     private func makeWorkout() -> RunWorkout {
         let start = Date(timeIntervalSince1970: 1_700_000_000)
-        let points = (0...4).map { index in
-            RoutePoint(
-                timestamp: start.addingTimeInterval(Double(index) * 10),
-                latitude: 1.3 + Double(index) * 0.001,
-                longitude: 103.8 + Double(index) * 0.001,
-                distanceFromStartMeters: Double(index) * 100,
-                elapsedSeconds: Double(index) * 10
-            )
+        var points: [RoutePoint] = []
+        for index in 0...4 {
+            let offset = Double(index)
+            let timestamp = start.addingTimeInterval(offset * 10)
+            let latitude = 1.3 + offset * 0.001
+            let longitude = 103.8 + offset * 0.001
+            let distance = offset * 100
+            let elapsed = offset * 10
+            points.append(RoutePoint(
+                timestamp: timestamp,
+                latitude: latitude,
+                longitude: longitude,
+                distanceFromStartMeters: distance,
+                elapsedSeconds: elapsed
+            ))
         }
         return RunWorkout(
             metadata: WorkoutMetadata(name: "Session Test", startDate: start),
