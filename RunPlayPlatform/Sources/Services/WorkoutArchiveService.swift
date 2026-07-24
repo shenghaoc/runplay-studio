@@ -77,6 +77,11 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         await progress(WorkoutBatchImportProgress(phase: .openingArchive))
         try Task.checkCancellation()
 
+        // Reject non-local URLs before any filesystem access or ZIP open.
+        guard url.isFileURL else {
+            throw WorkoutArchiveError.cannotOpenArchive("Only local file URLs are supported")
+        }
+
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         if fileSize > policy.maxArchiveFileBytes {
@@ -288,6 +293,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         ))
 
         let archive: Archive
+        guard archiveURL.isFileURL else {
+            throw WorkoutArchiveError.cannotOpenArchive("Only local file URLs are supported")
+        }
+
         do {
             archive = try Archive(url: archiveURL, accessMode: .read)
         } catch {

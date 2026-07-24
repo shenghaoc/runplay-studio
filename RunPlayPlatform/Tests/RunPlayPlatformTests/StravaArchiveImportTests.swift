@@ -434,4 +434,50 @@ final class StravaArchiveImportTests: XCTestCase {
         XCTAssertEqual(a.count, 64)
         XCTAssertEqual(a, a.lowercased())
     }
+
+    // MARK: - Local file URL validation
+
+    func testScanRejectsNonFileURLBeforeFilesystemAccess() async {
+        let service = StravaArchiveService()
+        // Network-scheme URL whose path would otherwise look like a local filesystem path.
+        let remote = URL(string: "https://example.com/tmp/export.zip")!
+        do {
+            _ = try await service.scanArchive(at: remote, existingWorkouts: [])
+            XCTFail("Expected non-file URL to throw cannotOpenArchive")
+        } catch let error as WorkoutArchiveError {
+            XCTAssertEqual(
+                error,
+                .cannotOpenArchive("Only local file URLs are supported")
+            )
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    func testImportRejectsNonFileURL() async {
+        let service = StravaArchiveService()
+        let remote = URL(string: "https://example.com/tmp/export.zip")!
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library-nonfile"))
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let selection = WorkoutBatchImportSelection(
+            selectedCandidateIDs: [],
+            candidates: []
+        )
+        do {
+            _ = try await service.importCandidates(
+                selection,
+                from: remote,
+                existingWorkouts: [],
+                storeActor: storeActor
+            ) { _ in }
+            XCTFail("Expected non-file URL to throw cannotOpenArchive")
+        } catch let error as WorkoutArchiveError {
+            XCTAssertEqual(
+                error,
+                .cannotOpenArchive("Only local file URLs are supported")
+            )
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
 }
