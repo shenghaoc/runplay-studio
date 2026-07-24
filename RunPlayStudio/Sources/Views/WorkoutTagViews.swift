@@ -78,12 +78,6 @@ struct WorkoutTagChipRow: View {
     }
 }
 
-// MARK: - Notifications
-
-extension Notification.Name {
-    static let runPlayManageSmartCollections = Notification.Name("runPlayManageSmartCollections")
-}
-
 // MARK: - Single tag editor
 
 struct WorkoutTagEditorSheet: View {

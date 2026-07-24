@@ -133,6 +133,12 @@ class AppState: ObservableObject {
     /// Smart collections (saved dynamic All Runs queries).
     @Published private(set) var smartCollections: [WorkoutSmartCollection] = []
 
+    /// Requests the All Runs view to present the collection manager. This is
+    /// shared workspace state so a sidebar action survives the destination
+    /// transition instead of relying on a notification that a new view may
+    /// not yet be observing.
+    @Published var showSmartCollectionsManager = false
+
     /// True when the in-memory library is backed by a persisted manifest.
     /// Bundled demos leave this false so favourite/metadata actions stay disabled.
     @Published private(set) var hasPersistedLibrary = false

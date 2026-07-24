@@ -55,7 +55,10 @@ reuse the existing query engine.
 14. UI SHALL provide tag chips, a Tags table column, single and bulk tag editors
     (tri-state bulk), Manage Tags, Save as Smart Collection, collection header
     with Modified/Revert/Update, sidebar Smart Collections (bounded cap), and
-    Manage Collections.
+    Manage Collections. Creating a tag from an active tag editor SHALL dismiss
+    that editor before presenting the create sheet; deleting a smart collection
+    SHALL require confirmation; and requesting Manage Collections while another
+    workspace is visible SHALL survive the transition to All Runs.
 15. Favourites remain first-class (not a synthetic tag). Heatmap, comparison,
     and exports continue using the full library / existing export content.
 16. Bundled demos cannot receive persistent tags. All organisation is local-only.

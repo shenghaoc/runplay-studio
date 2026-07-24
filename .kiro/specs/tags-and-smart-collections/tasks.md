@@ -10,8 +10,9 @@
 - [x] Load result organisation payload; delete/import integration
 - [x] View model: multi-select, query context, organisation apply
 - [x] UI: chips, column, editors, managers, sidebar, collection chrome
+- [x] UI interaction hardening: sheet sequencing, deletion confirmation, and cross-workspace manager presentation
 - [x] Core + Studio tests
 - [x] Documentation and steering updates
-- [x] Validation + draft PR
+- [x] Validation + merge-ready PR gate
 
 Checked boxes track intended delivery scope; tests and CI prove completion.

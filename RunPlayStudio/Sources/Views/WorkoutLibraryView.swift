@@ -12,7 +12,8 @@ struct WorkoutLibraryView: View {
     @State private var showManageTags = false
     @State private var showCreateTag = false
     @State private var showSaveCollection = false
-    @State private var showManageCollections = false
+    @State private var collectionToDelete: WorkoutSmartCollection?
+    @State private var collectionDeleteError: String?
     @State private var createTagName = ""
     @State private var createTagColor: WorkoutTagColor = .default
     @FocusState private var searchFocused: Bool
@@ -137,11 +138,11 @@ struct WorkoutLibraryView: View {
                 )
             )
         }
-        .sheet(isPresented: $showManageCollections) {
+        .sheet(isPresented: $appState.showSmartCollectionsManager) {
             ManageSmartCollectionsSheet(
                 collections: appState.smartCollections,
                 tagsByID: viewModel.tagsByID,
-                onClose: { showManageCollections = false },
+                onClose: { appState.showSmartCollectionsManager = false },
                 onOpen: { id in
                     appState.showSmartCollection(id: id)
                 },
@@ -168,8 +169,34 @@ struct WorkoutLibraryView: View {
                 )
             )
         }
-        .onReceive(NotificationCenter.default.publisher(for: .runPlayManageSmartCollections)) { _ in
-            showManageCollections = true
+        .alert("Delete Smart Collection", isPresented: Binding(
+            get: { collectionToDelete != nil },
+            set: { if !$0 { collectionToDelete = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { collectionToDelete = nil }
+            Button("Delete", role: .destructive) {
+                guard let collection = collectionToDelete else { return }
+                collectionToDelete = nil
+                Task { @MainActor in
+                    let succeeded = await appState.deleteSmartCollection(id: collection.id)
+                    if !succeeded {
+                        collectionDeleteError = appState.organizationEditError
+                            ?? "The smart collection could not be deleted."
+                    }
+                }
+            }
+        } message: {
+            if let collection = collectionToDelete {
+                Text("Delete “\(collection.name)”? Workouts and tags are not affected.")
+            }
+        }
+        .alert("Unable to Delete Smart Collection", isPresented: Binding(
+            get: { collectionDeleteError != nil },
+            set: { if !$0 { collectionDeleteError = nil } }
+        )) {
+            Button("OK") { collectionDeleteError = nil }
+        } message: {
+            Text(collectionDeleteError ?? "The smart collection could not be deleted.")
         }
     }
 
@@ -237,16 +264,11 @@ struct WorkoutLibraryView: View {
             }
             if let collection = viewModel.activeSmartCollection {
                 Button("Rename…") {
-                    // Lightweight rename via manage sheet focused flow.
-                    showManageCollections = true
-                    _ = collection
+                    // Lightweight rename via the manage sheet focused flow.
+                    appState.showSmartCollectionsManager = true
                 }
                 Button("Delete…", role: .destructive) {
-                    Task {
-                        if let id = viewModel.activeSmartCollection?.id {
-                            _ = await appState.deleteSmartCollection(id: id)
-                        }
-                    }
+                    collectionToDelete = collection
                 }
             }
         }
@@ -308,7 +330,7 @@ struct WorkoutLibraryView: View {
                         }
                         Button("Manage Smart Collections…") {
                             appState.organizationEditError = nil
-                            showManageCollections = true
+                            appState.showSmartCollectionsManager = true
                         }
                     } label: {
                         Label("Organise", systemImage: "folder.badge.gearshape")
@@ -738,7 +760,14 @@ struct WorkoutLibraryView: View {
                         }
                     },
                     onCreateTag: {
-                        showCreateTag = true
+                        // Dismiss the tag editor before presenting the create
+                        // sheet; SwiftUI cannot reliably stack both sheets
+                        // from the same parent presentation transaction.
+                        tagEditorWorkoutIDs = nil
+                        Task { @MainActor in
+                            await Task.yield()
+                            showCreateTag = true
+                        }
                     },
                     onManageTags: {
                         tagEditorWorkoutIDs = nil

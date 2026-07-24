@@ -52,6 +52,13 @@ SidebarView
 4. Revert → re-apply saved query.
 5. Return to All Runs → restore manual snapshot.
 
+Destructive collection deletion from the active collection header and the
+manager requires native confirmation before the actor mutation runs. The
+collection manager presentation request is owned by `AppState`, so a sidebar
+request remains pending while the All Runs destination mounts. A create-tag
+request from an active tag editor dismisses that editor before presenting the
+create sheet, avoiding competing sheet presentations.
+
 ## Isolation
 
 Personal Heatmap, comparison availability, and exports ignore All Runs

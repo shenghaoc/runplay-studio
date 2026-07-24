@@ -66,8 +66,9 @@ struct ContentView: View {
                 },
                 onManageSmartCollections: {
                     appState.showWorkoutLibrary(restoreManualQuery: false)
-                    // Sheet is presented from All Runs; ensure workspace is open.
-                    NotificationCenter.default.post(name: .runPlayManageSmartCollections, object: nil)
+                    // The presentation request is shared state so it survives
+                    // mounting the All Runs destination from another workspace.
+                    appState.showSmartCollectionsManager = true
                 }
             )
         } detail: {
