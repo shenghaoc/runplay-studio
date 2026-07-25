@@ -14,7 +14,8 @@ without needing to know in advance whether the file holds one run or many.
 2. A FIT file with zero session messages (legacy) imports directly through the
    existing single-workout path.
 3. A FIT file with exactly one session message imports directly through the
-   existing single-workout path, with byte-identical results to `main`.
+   existing single-workout path, with field-level parity between direct import
+   and `FITImporter.buildSession` for ordinary one-session files.
 4. A FIT file with two or more session messages opens the **Import FIT
    Sessions** review sheet.
 5. Non-FIT files (GPX, TCX, JSON) never reach the FIT scanner.
@@ -53,8 +54,9 @@ the scanner and the importer:
 
 1. Session start prefers a valid `start_time`, then a valid end timestamp minus
    a valid `total_elapsed_time`.
-2. Session end prefers a valid session `timestamp`, then the next ordered
-   session's resolved start as a bounded conservative fallback.
+2. Session end prefers a valid session `timestamp`, then the next session in
+   **FIT source order** (not time-sorted) when its resolved start is ≥ this
+   session's start — as a bounded conservative fallback.
 3. A session with no reliable start, or no reliable end and no next boundary,
    is not importable.
 4. Records, events, and laps without a usable timestamp are excluded in
@@ -62,9 +64,9 @@ the scanner and the importer:
 5. Boundary policy: session start is inclusive; session end is inclusive only
    when it does not equal a later session's start. A shared boundary timestamp
    belongs to the **later** session.
-6. Materially overlapping session ranges mark both sessions ambiguous unless
-   FIT `message_index` lap metadata resolves ownership. Overlapping records are
-   never assigned by guesswork.
+6. Materially overlapping session ranges mark both sessions ambiguous.
+   Overlapping records are never assigned by guesswork. Lap index metadata does
+   not resolve time-range overlap.
 7. Laps are associated by `first_lap_index` + `number_of_laps` (lower 12 bits
    of `message_index`) first, then by timestamp range, then not at all. One lap
    never appears in two workouts.
@@ -90,7 +92,9 @@ the scanner and the importer:
    SHA-256 of the whole original FIT container. Old snapshots decode as `nil`.
 3. `providerActivityID` is `fit-session-v1:<sha256 of identity tuple>` where the
    tuple covers container hash, source session ordinal, raw start and end
-   timestamps, sport, sub-sport, message index, first lap index, and lap count.
+   timestamps, sport, sub-sport, first lap index, and lap count. Session
+   `message_index` is not part of the tuple until the decoder parses it (then
+   bump the version prefix).
 4. Same file → same IDs. Renaming the file does not change IDs. Sibling
    sessions differ. Identical session metadata in two different containers does
    not collide.
@@ -105,16 +109,18 @@ the scanner and the importer:
 `FITMultiSessionImportPolicy` centralises: maximum container bytes (reusing the
 existing 100 MB FIT parser limit), maximum scanned sessions (256), maximum
 selected sessions (100), maximum records, events, and laps, cancellation-check
-stride, maximum candidate display-name length, and maximum provider-ID length.
-Only local `file:` URLs are read. Security-scoped access is held for the whole
-scan → review → import lifetime and released on dismissal.
+stride, and maximum candidate display-name length. Only local `file:` URLs are
+read. Security-scoped access is held for the whole scan → review → import
+lifetime and released on dismissal.
 
 ## Accessibility requirements
 
-Full keyboard access, default and cancel key actions, VoiceOver labels and
-values for every row and control, a live selected-count value, status conveyed
-by text rather than colour alone, and participation in the existing modal
-command-blocking architecture.
+Default and cancel key actions are wired (same idiom as the Strava archive
+sheet), with VoiceOver labels and values for every row and control, a live
+selected-count value, status conveyed by text rather than colour alone, and
+participation in the existing modal command-blocking architecture. Escape-to-
+cancel and a full VoiceOver pass remain manual verification items
+(see `docs/manual-testing.md`).
 
 ## Non-goals
 

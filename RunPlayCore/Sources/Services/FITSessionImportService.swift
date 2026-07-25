@@ -159,6 +159,9 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         let batch: WorkoutLibraryBatchToken
         do {
             batch = try await storeActor.beginBatchImport()
+        } catch is CancellationError {
+            // Cooperative cancel must not look like a library batch conflict.
+            throw CancellationError()
         } catch {
             throw FITSessionImportError.batchConflict
         }
@@ -338,6 +341,10 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                     batch,
                     selectedWorkoutID: selectedWorkoutID
                 )
+            } catch is CancellationError {
+                // Cancel at commit is still a structured cancellation, not a
+                // hard commit failure.
+                throw CancellationError()
             } catch {
                 // Commit failed: nothing is imported. Items keep their staged
                 // status but `importedWorkoutIDs` stays empty, so the report

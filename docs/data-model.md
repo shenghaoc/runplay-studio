@@ -724,12 +724,13 @@ A workout extracted from a multi-session `.fit` container records
 
 ```
 fit-session-v1:<sha256 of container hash + source ordinal + raw start + raw end
-                + sport + sub-sport + message index + first lap index + lap count>
+                + sport + sub-sport + first lap index + lap count>
 ```
 
 Components are joined with an ASCII unit separator and rendered from integers
 and enum raw values only — no locale-formatted dates, absolute paths, or account
-identifiers. The version prefix is bumped only when the tuple's shape changes.
+identifiers. Session `message_index` is not included (not parsed on session
+messages yet). The version prefix is bumped only when the tuple's shape changes.
 
 `contentSHA256` is deliberately `nil` for these workouts: every sibling session
 shares one container, so a whole-file hash there would make distinct runs look

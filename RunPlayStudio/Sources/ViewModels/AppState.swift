@@ -1604,7 +1604,12 @@ class AppState: ObservableObject {
 
     /// Begin scanning a user-selected Strava bulk-export ZIP.
     func beginArchiveImport(from url: URL) {
-        guard operationState == .idle, archiveSession == nil else { return }
+        // Mutual exclusion with multi-session FIT review / import (same as
+        // `importWorkout` guarding `archiveSession`).
+        guard operationState == .idle,
+              archiveSession == nil,
+              fitSessionImportSession == nil
+        else { return }
         guard let archiveService, storeActor != nil else {
             errorMessage = "Archive import is unavailable in this session."
             showingError = true
@@ -1970,16 +1975,29 @@ class AppState: ObservableObject {
     }
 
     /// Cancel an in-progress FIT session import, or dismiss the review sheet.
+    ///
+    /// During `.importing`, only requests cooperative cancellation and keeps
+    /// the sheet until the task returns a cancelled (or committed) report so
+    /// the user always sees a structured outcome. Announcement happens once on
+    /// task completion, not here.
     func cancelFITSessionImport() {
         fitImportTask?.cancel()
         fitImportTask = nil
-        // Session deinit releases security scope. After a report, use
-        // dismissFITSessionImport instead so the outcome stays visible.
-        if fitSessionImportSession?.phase != .report {
+
+        switch fitSessionImportSession?.phase {
+        case .importing:
+            // Keep the sheet and operation state; the import task applies the
+            // cancelled report and announces once.
+            break
+        case .report:
+            // Outcome is already visible; use dismissFITSessionImport.
+            break
+        case .reviewing, nil:
+            // Session deinit releases security scope.
             fitSessionImportSession = nil
+            operationState = .idle
+            announcementPolicy.handle(.importCancelled)
         }
-        operationState = .idle
-        announcementPolicy.handle(.importCancelled)
     }
 
     /// Dismiss the FIT sheet after a completed report.

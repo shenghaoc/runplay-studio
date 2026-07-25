@@ -361,4 +361,21 @@ final class AppStateFITSessionImportTests: XCTestCase {
         XCTAssertTrue(appState.workouts.isEmpty)
         XCTAssertTrue(appState.fitSessionImportSession === session)
     }
+
+    func testArchiveImportCannotStartWhileFITReviewSheetIsOpen() async throws {
+        let appState = makeAppState()
+        let url = try writeFixture(FITFixtureBuilder.buildTwoRunningSessions(), named: "multi.fit")
+        await appState.importWorkout(from: url)
+        let session = try XCTUnwrap(appState.fitSessionImportSession)
+
+        // Even with a plausible archive path, the FIT review sheet must block
+        // archive import from starting a second modal flow.
+        let archiveURL = tempDir.appendingPathComponent("export.zip")
+        try Data([0x50, 0x4B, 0x05, 0x06]).write(to: archiveURL)
+        appState.beginArchiveImport(from: archiveURL)
+
+        XCTAssertTrue(appState.fitSessionImportSession === session)
+        XCTAssertNil(appState.archiveSession)
+        XCTAssertEqual(appState.operationState, .idle)
+    }
 }

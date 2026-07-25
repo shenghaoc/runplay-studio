@@ -7,7 +7,7 @@ RunPlayStudio   FITSessionImportSession (main actor) + FITSessionImportView
                 AppState routing: Import File… → scan → direct or review
         │
 RunPlayCore     FITSessionImportService (actor)
-                  ├─ FITSessionScanner        (pure, decoded-file in)
+                  ├─ makeScanResult / FITSessionMessageIndex
                   ├─ FITSessionAttribution    (boundaries + bounded walk)
                   ├─ FITSessionIdentity       (versioned digest)
                   ├─ FITSportPolicy           (single classification)
@@ -55,32 +55,31 @@ Every other extension goes straight to `WorkoutImportServicing`.
 
 ## Canonical workout builder
 
-`FITImporter.buildSession(from:sessionIndex:suggestedName:provenance:)` owns
+`FITImporter.buildSession(index:sessionIndex:suggestedName:provenance:)` owns
 session-scoped record decoding, timer-event segmentation, metadata, recorded
 laps, normalisation, analysis, timing warnings, source-structure version, and
 provenance. `FITImporter.importWorkout(data:suggestedName:)` resolves the
 existing single-session selection policy and then calls the same builder, so
 direct and batch import can never diverge.
 
-`FITDecoder.decodeRawResult(decodedFile:sessionIndex:)` is the explicit
-decode-by-index entry point. `decodeRawResult(decodedFile:)` is now a thin
-wrapper that applies the legacy selection policy and delegates. No global
-decoder selection state exists.
+`FITDecoder.decodeRawResult(index:sessionIndex:)` is the explicit decode-by-index
+entry point. No global decoder selection state exists.
 
 ## Boundary and attribution
 
-`FITSessionAttribution.prepare(sessions:)` resolves one `ResolvedRange` per
-session, sorts a copy by `(start, end, sourceIndex)` in `O(s log s)`, marks
-materially overlapping ranges ambiguous, and converts a shared boundary
-timestamp into an exclusive upper bound on the earlier range so the record goes
-to the later session.
+`FITSessionAttribution.prepare(sessions:)` resolves one `FITSessionRange` per
+session, sorts a copy by `(start, upperExclusive, sourceIndex)` in
+`O(s log s)`, marks materially overlapping ranges ambiguous, and converts a
+shared boundary timestamp into an exclusive upper bound on the earlier range so
+the record goes to the later session.
 
-`attribute(records:)` checks chronological monotonicity in one pass. When the
-source order is chronological it walks records and ordered ranges with two
-advancing cursors in `O(r + s)`. Otherwise it sorts an index permutation once
-(`O(r log r)`) and then walks. Either way, owners are written into one
-`[Int32]` array and buckets are filled in a single source-order pass, so no
-`records × sessions` scan exists anywhere. Events and laps use the same walk.
+`attributeOwners(timestamps:orderedRanges:)` checks chronological monotonicity
+in one pass. When the source order is chronological it walks timestamps and
+ordered ranges with two advancing cursors in `O(n + s)`. Otherwise it sorts an
+index permutation once (`O(n log n)`) and then walks. Either way, owners are
+written into one `[Int32]` array and buckets are filled in a single source-order
+pass, so no `records × sessions` scan exists anywhere. Events and laps use the
+same walk.
 
 Lap association runs index-first: every session's `first_lap_index` /
 `number_of_laps` claim is computed against a one-pass ordinal map, conflicting
@@ -94,10 +93,11 @@ providerActivityID = "fit-session-v1:" + sha256Hex(
     containerSHA256 + "\u{1F}" + sourceIndex + "\u{1F}" + rawStart + …)
 ```
 
-Fields are joined with an ASCII unit separator and rendered with
-`String(describing:)` on integers only — no locale formatting, no paths, no
-account data. Two sessions in one file differ by ordinal; the same session in
-two containers differs by container hash.
+Fields are joined with an ASCII unit separator and rendered with `String(value)`
+on integers only — no locale formatting, no paths, no account data. Session
+`message_index` is not part of the tuple until the decoder parses it. Two
+sessions in one file differ by ordinal; the same session in two containers
+differs by container hash.
 
 ## Transaction
 

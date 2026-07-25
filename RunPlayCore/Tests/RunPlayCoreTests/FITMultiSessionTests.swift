@@ -303,10 +303,36 @@ final class FITMultiSessionTests: XCTestCase {
         task.cancel()
         do {
             _ = try await task.value
+            XCTFail("Scan must not complete successfully after cancellation")
         } catch is CancellationError {
-            return // Expected.
+            // Expected.
         } catch {
             XCTFail("Cancellation surfaced as \(error)")
+        }
+    }
+
+    func testExceedsResourceLimitMarksSessionsNotImportable() async throws {
+        let result = try await scan(
+            FITMultiSessionFixtureBuilder.twoSequentialRuns(),
+            policy: FITMultiSessionImportPolicy(maxRecords: 5)
+        )
+        XCTAssertEqual(result.candidates.count, 2)
+        XCTAssertTrue(
+            result.candidates.allSatisfy { $0.status == .exceedsResourceLimit },
+            "Over-limit containers must mark every session, not leave them Ready"
+        )
+        XCTAssertEqual(result.defaultSelectedCount, 0)
+        XCTAssertEqual(result.readyCount, 0)
+    }
+
+    func testContainerTooLargeIsRejected() async throws {
+        let url = try write(FITMultiSessionFixtureBuilder.twoSequentialRuns())
+        let service = makeService(policy: FITMultiSessionImportPolicy(maxContainerBytes: 16))
+        do {
+            _ = try await service.scanFITFile(at: url, existingWorkouts: []) { _ in }
+            XCTFail("Expected containerTooLarge")
+        } catch let error as FITSessionImportError {
+            XCTAssertEqual(error, .containerTooLarge)
         }
     }
 
@@ -429,6 +455,26 @@ final class FITMultiSessionTests: XCTestCase {
         )
         let rescan = try await scan(data, existing: [other])
         XCTAssertEqual(rescan.readyCount, 2)
+    }
+
+    func testDuplicateRequiresFitMultiSessionProvider() async throws {
+        let data = FITMultiSessionFixtureBuilder.twoSequentialRuns()
+        let initial = try await scan(data)
+        var singleFileWithMatchingID = makeStubWorkout()
+        // Same activity ID under a different provider must not count as a
+        // multi-session exact duplicate.
+        singleFileWithMatchingID.importProvenance = WorkoutImportProvenance(
+            provider: .singleFile,
+            providerActivityID: initial.candidates[0].providerActivityID,
+            sourceContainerSHA256: initial.containerSHA256
+        )
+
+        let rescan = try await scan(data, existing: [singleFileWithMatchingID])
+        XCTAssertEqual(
+            rescan.candidates[0].status, .ready,
+            "Duplicate detection requires provider .fitMultiSessionFile"
+        )
+        XCTAssertEqual(rescan.candidates[1].status, .ready)
     }
 
     func testOldProvenanceDecodesWithoutTheNewField() throws {
@@ -631,6 +677,43 @@ final class FITMultiSessionTests: XCTestCase {
         for id in report.items.compactMap(\.importedWorkoutID) {
             XCTAssertFalse(store.workoutExists(id: id), "Cancellation must leave no staged file")
         }
+        let hasActiveBatch = await storeActor.hasActiveBatch
+        XCTAssertFalse(hasActiveBatch)
+    }
+
+    func testCancellationAtCommitIsStructuredCancelNotCommitFailure() async throws {
+        let data = FITMultiSessionFixtureBuilder.twoSequentialRuns()
+        let url = try write(data)
+        let service = makeService()
+        let scanResult = try await service.scanFITFile(at: url, existingWorkouts: []) { _ in }
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("lib-commit-cancel"))
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let selection = FITSessionImportSelection(
+            selectedCandidateIDs: scanResult.candidates.map(\.providerActivityID),
+            candidates: scanResult.candidates
+        )
+
+        // Cancel once both candidates are staged and the service moves to commit.
+        let box = TaskBox()
+        let task = Task { () -> FITSessionBatchImportReport in
+            try await service.importSessions(
+                selection,
+                from: url,
+                existingWorkouts: [],
+                storeActor: storeActor
+            ) { progress in
+                if progress.phase == .committing {
+                    box.cancel()
+                }
+            }
+        }
+        box.task = task
+        let report = try await task.value
+
+        XCTAssertTrue(report.wasCancelled, "Cancel at commit must be wasCancelled, not commitFailed")
+        XCTAssertFalse(report.commitFailed)
+        XCTAssertEqual(report.importedCount, 0)
+        XCTAssertThrowsError(try store.loadManifest())
         let hasActiveBatch = await storeActor.hasActiveBatch
         XCTAssertFalse(hasActiveBatch)
     }

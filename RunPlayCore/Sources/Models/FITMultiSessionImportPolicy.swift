@@ -32,9 +32,6 @@ public struct FITMultiSessionImportPolicy: Hashable, Sendable {
     /// Maximum length of a user-visible candidate display name.
     public var maxDisplayNameLength: Int
 
-    /// Maximum length of a generated provider activity identifier.
-    public var maxProviderIDLength: Int
-
     public init(
         maxContainerBytes: Int = 100 * 1024 * 1024,
         maxScannedSessions: Int = 256,
@@ -43,8 +40,7 @@ public struct FITMultiSessionImportPolicy: Hashable, Sendable {
         maxEvents: Int = 200_000,
         maxLaps: Int = 50_000,
         cancellationCheckStride: Int = 1_000,
-        maxDisplayNameLength: Int = 120,
-        maxProviderIDLength: Int = 128
+        maxDisplayNameLength: Int = 120
     ) {
         self.maxContainerBytes = maxContainerBytes
         self.maxScannedSessions = maxScannedSessions
@@ -54,7 +50,6 @@ public struct FITMultiSessionImportPolicy: Hashable, Sendable {
         self.maxLaps = maxLaps
         self.cancellationCheckStride = cancellationCheckStride
         self.maxDisplayNameLength = maxDisplayNameLength
-        self.maxProviderIDLength = maxProviderIDLength
     }
 
     public static let `default` = FITMultiSessionImportPolicy()

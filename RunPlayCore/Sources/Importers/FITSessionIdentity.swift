@@ -9,6 +9,11 @@ import Foundation
 /// - Identical session metadata in two containers cannot collide (the whole
 ///   container hash is part of the tuple).
 /// - No locale-formatted dates, absolute paths, or account identifiers.
+///
+/// Session `message_index` is intentionally **not** part of the tuple: the FIT
+/// decoder does not yet parse that field on session messages. Adding it later
+/// requires bumping ``version`` so existing libraries re-import cleanly rather
+/// than silently changing IDs.
 public enum FITSessionIdentity {
 
     /// Version prefix. Bump only when the identity tuple changes shape;
@@ -26,14 +31,11 @@ public enum FITSessionIdentity {
     ///   - containerSHA256: Lowercase hex SHA-256 of the whole original file.
     ///   - sourceIndex: Zero-based FIT source ordinal.
     ///   - session: The session message.
-    ///   - messageIndex: Optional FIT `message_index` when the profile supplies
-    ///     one for the session record.
     ///   - digest: Injected SHA-256 provider.
     public static func providerActivityID(
         containerSHA256: String,
         sourceIndex: Int,
         session: FITSessionMessage,
-        messageIndex: UInt16? = nil,
         digest: any ContentDigesting
     ) -> String {
         let components: [String] = [
@@ -44,7 +46,6 @@ public enum FITSessionIdentity {
             component(FITParser.timestampIfValid(session.timestamp)),
             component(session.sport),
             component(session.subSport),
-            component(messageIndex.flatMap { $0 == FITParser.invalidUint16 ? nil : $0 }),
             component(session.firstLapIndex.flatMap { $0 == FITParser.invalidUint16 ? nil : $0 }),
             component(session.numberOfLaps.flatMap { $0 == FITParser.invalidUint16 ? nil : $0 })
         ]

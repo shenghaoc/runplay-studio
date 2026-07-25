@@ -59,8 +59,9 @@ Strava bulk-export metadata rows rather than to FIT session messages.
 
 - Start prefers a valid `start_time`, then a valid end timestamp minus a valid
   `total_elapsed_time`.
-- End prefers the session's own `timestamp`, then the immediately following
-  session's resolved start as a bounded conservative fallback (exclusive).
+- End prefers the session's own `timestamp`, then the **next session in FIT
+  source order** (not time-sorted) when that next session's resolved start is
+  ≥ this session's start — used as a bounded exclusive fallback.
 - A session with no reliable start, or no reliable end and no next boundary, is
   not importable. The first or last record of the whole file is never used as a
   silent fallback in a multi-session container.
@@ -70,7 +71,7 @@ Strava bulk-export metadata rows rather than to FIT session messages.
   two workouts.
 - Materially overlapping ranges mark every affected session ambiguous. Records
   inside an overlap are not assigned by guesswork and the sessions are not
-  selected by default.
+  selected by default. Lap index metadata never resolves time-range overlap.
 
 ### Record, event, and lap attribution
 
@@ -113,9 +114,11 @@ FIT source order as the deterministic tie breaker.
 Multi-session imports record `WorkoutImportProvider.fitMultiSessionFile` and an
 optional `sourceContainerSHA256` (lowercase hex SHA-256 of the whole original
 container). `providerActivityID` is `fit-session-v1:<digest>` over the container
-hash, source ordinal, raw start and end timestamps, sport, sub-sport, message
-index, first lap index, and lap count — no locale-formatted dates, absolute
-paths, or account identifiers.
+hash, source ordinal, raw start and end timestamps, sport, sub-sport, first lap
+index, and lap count — no locale-formatted dates, absolute paths, or account
+identifiers. Session `message_index` is not part of the identity today (the
+decoder does not parse it on session messages); adding it later requires a
+`fit-session-v*` version bump.
 
 An exact duplicate requires provider `.fitMultiSessionFile` **and** a matching
 `providerActivityID`. A shared container hash alone never marks siblings
@@ -138,11 +141,15 @@ report rather than a parse error.
 
 ### Accessibility
 
-The review sheet supports full keyboard access with default and cancel key
-actions, VoiceOver labels and values for every row and control, a live selected
-count, and status conveyed as text rather than colour alone. It participates in
-the existing modal command-blocking architecture, so background replay, delete,
-and import commands stay inert while it is visible.
+The review sheet wires default and cancel key actions (same idiom as the Strava
+archive sheet), VoiceOver labels and values for every row and control, a live
+selected count, and status conveyed as text rather than colour alone. It
+participates in the existing modal command-blocking architecture, so background
+replay, delete, and import commands stay inert while it is visible.
+
+**Verification note:** Escape-to-cancel and a full VoiceOver pass still need a
+physical-keyboard / accessibility confirmation — see
+[manual-testing.md](manual-testing.md). Clicking **Cancel** is verified.
 
 ### Known limitation: nested batch review
 
