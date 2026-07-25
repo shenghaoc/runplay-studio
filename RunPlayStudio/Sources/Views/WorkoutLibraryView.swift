@@ -29,6 +29,24 @@ struct WorkoutLibraryView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .navigationTitle(navigationTitle)
         .focusSection()
+        .focusedSceneValue(\.libraryActions, LibraryActions(
+            isAvailable: { true },
+            focusSearch: { searchFocused = true },
+            openSelection: {
+                guard viewModel.tableSelection.count == 1,
+                      let id = viewModel.tableSelection.first,
+                      let workout = appState.workouts.first(where: { $0.id == id }) else {
+                    return
+                }
+                appState.openWorkoutFromLibrary(workout)
+            },
+            editTags: {
+                let persisted = viewModel.tableSelection.intersection(appState.libraryWorkoutIDs)
+                guard !persisted.isEmpty else { return }
+                appState.organizationEditError = nil
+                tagEditorWorkoutIDs = persisted
+            }
+        ))
         .onReceive(viewModel.objectWillChange) { _ in
             appState.requestSessionSave()
         }
@@ -37,13 +55,6 @@ struct WorkoutLibraryView: View {
                 viewModel.clearSearch()
             }
         }
-        .background(
-            Button("") { searchFocused = true }
-                .keyboardShortcut("f", modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        )
         .alert("Delete Run", isPresented: Binding(
             get: { workoutToDelete != nil },
             set: { if !$0 { workoutToDelete = nil } }
@@ -663,12 +674,18 @@ struct WorkoutLibraryView: View {
             .width(min: 50, ideal: 60)
 
             TableColumn("Device") { entry in
-                Text(entry.deviceName ?? "—")
+                Text(entry.deviceName ?? "Unavailable")
                     .lineLimit(1)
                     .foregroundStyle(entry.deviceName == nil ? .secondary : .primary)
+                    .accessibilityLabel(entry.deviceName ?? "Device unavailable")
             }
             .width(min: 80, ideal: 120)
         }
+        .accessibilityLabel(
+            viewModel.tableSelection.isEmpty
+                ? "All Runs table"
+                : "All Runs table, \(viewModel.tableSelection.count) selected"
+        )
         .contextMenu(forSelectionType: UUID.self) { ids in
             let persisted = ids.intersection(appState.libraryWorkoutIDs)
             if ids.count == 1, let id = ids.first,

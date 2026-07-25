@@ -210,6 +210,9 @@ the live map palettes.
 - **Do** resolve export Light/Dark colors explicitly so PNG output is identical regardless of system appearance at render time.
 - **Do** prefer native SwiftUI components and SF Symbols over custom-drawn equivalents.
 - **Do** use system font scaling (Dynamic Type) so the interface respects the user's accessibility settings.
+- **Do** route menu shortcuts through focused action bundles and `CommandRegistry` so Help → Keyboard Shortcuts cannot drift from live commands.
+- **Do not** announce replay ticks or continuous progress; announce only deliberate state changes.
+- **Do** provide chart descriptors, map summaries, and non-colour identity for comparison (P/C text) when Differentiate Without Colour is enabled.
 
 ### Don't:
 - **Don't** look like Strava or Garmin — no dark/black-heavy schemes, no social feeds, no gamification badges, no leaderboard aesthetics.

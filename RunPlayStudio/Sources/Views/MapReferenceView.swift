@@ -33,6 +33,23 @@ struct MapReferenceView: View {
         self._displayMode = displayMode
     }
 
+    private var currentDistanceMeters: Double? {
+        guard routePoints.indices.contains(currentPointIndex) else { return nil }
+        return routePoints[currentPointIndex].distanceFromStartMeters
+    }
+
+    private var routeSummary: RouteAccessibilitySummary {
+        let presentation = mapViewModel?.presentation
+        let modeName = presentation?.effectiveMode.displayName ?? preferredMode.displayName
+        let coverage = presentation?.profile?.validCoverageFraction
+        return RouteAccessibilitySummary.make(
+            routePoints: routePoints,
+            currentDistanceMeters: currentDistanceMeters,
+            colorModeName: modeName,
+            coverageFraction: coverage
+        )
+    }
+
     private var preferredMode: WorkoutRouteColorMode {
         WorkoutRouteColorMode(rawValue: storedColorModeRaw) ?? .solid
     }
@@ -59,14 +76,23 @@ struct MapReferenceView: View {
             routes: routes,
             markers: markers,
             fitRequest: fitRequest,
-            controlBottomInset: legendBottomInset
+            controlBottomInset: legendBottomInset,
+            animateCamera: !reduceMotion
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Workout route map")
+        .accessibilityValue(routeSummary.spokenSummary)
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
                 mapModeBadge
                 if mapViewModel != nil {
                     routeColorControl
                 }
+                // Nonvisual route summary for VoiceOver (not a second map surface).
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityLabel("Route summary")
+                    .accessibilityValue(routeSummary.spokenSummary)
             }
             .padding()
         }
@@ -80,6 +106,8 @@ struct MapReferenceView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help("Zoom and center the map to show the full route")
+            .accessibilityLabel("Fit Route")
+            .accessibilityHint("Zooms and centers the map on the full route")
             .padding()
         }
         .overlay(alignment: .bottomLeading) {
@@ -89,6 +117,14 @@ struct MapReferenceView: View {
                     .padding(.bottom, 4)
             }
         }
+        .focusedSceneValue(\.mapActions, MapActions(
+            isAvailable: { !routePoints.isEmpty },
+            fit: { fitRequest += 1 },
+            togglePresentation: {
+                displayMode = displayMode == .threeD ? .twoD : .threeD
+            },
+            canTogglePresentation: { !routePoints.isEmpty }
+        ))
         .onAppear {
             syncPreferredMode()
         }

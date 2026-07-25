@@ -87,6 +87,46 @@ struct WorkoutDetailView: View {
                 .ignoresSafeArea()
         }
         .focusedSceneValue(\.workoutTabSelection, selectedTabBinding)
+        .focusedSceneValue(\.replayActions, ReplayActions(
+            isAvailable: { true },
+            togglePlayPause: {
+                let wasPlaying = replayController.isPlaying
+                replayController.togglePlayPause()
+                if wasPlaying {
+                    AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayPaused.message)
+                } else {
+                    AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayPlayed.message)
+                }
+            },
+            seekBackward: { replayController.seekBySeconds(-5) },
+            seekForward: { replayController.seekBySeconds(5) },
+            stepBackward: { replayController.stepBackward() },
+            stepForward: { replayController.stepForward() },
+            slower: {
+                let speed = replayController.slower()
+                AccessibilityAnnouncer.shared.announce(
+                    AccessibilityAnnouncementEvent.speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed).message
+                )
+            },
+            faster: {
+                let speed = replayController.faster()
+                AccessibilityAnnouncer.shared.announce(
+                    AccessibilityAnnouncementEvent.speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed).message
+                )
+            },
+            restart: {
+                replayController.restart()
+                AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayRestarted.message)
+            }
+        ))
+        .onChange(of: replayController.isPlaying) { wasPlaying, isPlaying in
+            // Announce reaching the end once when the engine auto-pauses.
+            if wasPlaying, !isPlaying,
+               replayController.state.totalDuration > 0,
+               abs(replayController.state.currentTime - replayController.state.totalDuration) < 0.05 {
+                AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayReachedEnd.message)
+            }
+        }
         .onChange(of: appState.workoutDetailTabRaw) { _, _ in
             appState.requestSessionSave()
         }
@@ -380,7 +420,7 @@ private struct TabBarView: View {
     private var tabContext: String {
         switch selectedTab {
         case .overview: return "Route replay"
-        case .charts: return "Drag the chart to navigate"
+        case .charts: return "Use Jump to distance or chart accessibility actions to seek"
         case .splits: return "Kilometer breakdown"
         case .segments: return "Detected highlights"
         }

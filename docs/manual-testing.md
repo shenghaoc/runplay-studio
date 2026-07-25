@@ -7,6 +7,34 @@ Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
 checklist below; unchecked items have not been manually verified.
 
+The durable accessibility matrix lives in
+[accessibility-audit.md](accessibility-audit.md).
+
+## Keyboard and VoiceOver Checklist
+
+Use only synthetic or approved repository fixtures. Enable Full Keyboard Access
+for the keyboard-only pass. Do not claim a spoken VoiceOver pass from
+Accessibility Inspector alone.
+
+- [ ] Launch the packaged `.app`; open and reopen the main window.
+- [ ] Sidebar: All Runs, Heatmap, smart collection, favourite, recent.
+- [ ] All Runs: ⌘F search, Escape clear (search focused), Return open one row, Delete one persisted row.
+- [ ] Filters, sort, bulk tags, create tag, smart collection save/update/delete via keyboard.
+- [ ] Workout tabs ⌘1–⌘4; Replay Space, ⌥←/→ seek, [ / ] speed, ⌘⇧← restart.
+- [ ] Bare arrows do not break table/list/slider when replay is not focused.
+- [ ] Space does not play while editing metadata notes.
+- [ ] Charts: Jump to distance; VoiceOver chart summary; seek earlier/later actions.
+- [ ] Map: Fit (⌘0), 2D/3D (⌘⌥D), Route Color menu, legend summary.
+- [ ] Comparison: textual P/C identity; distance slider; End Comparison.
+- [ ] Heatmap: filters, Fit Heatmap, summary statistics.
+- [ ] Import file and Strava archive; cancel sheets with Escape.
+- [ ] PNG export configuration, preview, save/cancel.
+- [ ] Help → Keyboard Shortcuts matches live menu chords.
+- [ ] Reduce Motion: map fit jumps without animation; replay still works.
+- [ ] Differentiate Without Colour: comparison shows P/C markers.
+- [ ] Increased Contrast / Reduce Transparency: panels and controls remain legible.
+- [ ] VoiceOver: no announcement spam during replay or archive progress.
+
 ## Native Route Metric Coloring Checklist
 
 Use only synthetic or approved repository fixtures. Do not claim scenarios that

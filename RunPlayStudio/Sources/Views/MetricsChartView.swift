@@ -1,3 +1,4 @@
+import Accessibility
 import SwiftUI
 import RunPlayCore
 import Charts
@@ -114,6 +115,15 @@ struct MetricsChartView: View {
         case pace = "Active Pace"
         case heartRate = "Heart Rate"
         case speed = "Speed"
+
+        var unit: String {
+            switch self {
+            case .elevation: return "m"
+            case .pace: return "s/km"
+            case .heartRate: return "bpm"
+            case .speed: return "m/s"
+            }
+        }
     }
 
     var body: some View {
@@ -238,6 +248,19 @@ struct MetricsChartView: View {
                             .foregroundStyle(.quaternary)
                     }
                 }
+                .accessibilityChartDescriptor(MetricChartDescriptor(
+                    model: chartAccessibilityModel,
+                    samples: downsampledChartSamples,
+                    metric: selectedMetric
+                ))
+                .accessibilityLabel(chartAccessibilityModel.title)
+                .accessibilityValue(chartAccessibilityModel.spokenSummary)
+                .accessibilityAction(named: "Seek earlier") {
+                    seekRelative(meters: -100)
+                }
+                .accessibilityAction(named: "Seek later") {
+                    seekRelative(meters: 100)
+                }
                 .frame(height: 180)
                 .padding(.horizontal)
 
@@ -246,7 +269,18 @@ struct MetricsChartView: View {
                 }
             }
 
-            // Keyboard-accessible seek alternative — hidden by default
+            // Always-visible summary for VoiceOver and sighted keyboard users.
+            if !chartData.isEmpty {
+                Text(chartAccessibilityModel.spokenSummary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .accessibilityLabel("Chart summary")
+                    .accessibilityValue(chartAccessibilityModel.spokenSummary)
+            }
+
+            // Keyboard-accessible seek alternative
             if !chartData.isEmpty {
                 DisclosureGroup("Jump to distance") {
                     seekDistanceContent
@@ -254,6 +288,7 @@ struct MetricsChartView: View {
                 }
                 .font(AppDesign.Typography.compactMetric)
                 .padding(.horizontal)
+                .accessibilityHint("Keyboard alternative to dragging the chart")
             }
         }
         .onAppear {
@@ -317,6 +352,34 @@ struct MetricsChartView: View {
             return
         }
         onSeek?(km * 1000)
+    }
+
+    private func seekRelative(meters: Double) {
+        let total = routePoints.last?.distanceFromStartMeters ?? 0
+        let next = max(0, min(currentDistance + meters, total))
+        onSeek?(next)
+        seekDistanceKmText = String(format: "%.2f", next / 1000)
+    }
+
+    private var chartAccessibilityModel: ChartAccessibilityModel {
+        ChartAccessibilityModel.make(
+            metricName: selectedMetric.rawValue,
+            unit: selectedMetric.unit,
+            values: chartData.map(\.value),
+            seriesIDs: chartData.map(\.seriesID),
+            currentValue: valueForDistance(currentDistance),
+            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
+        )
+    }
+
+    /// Bound samples for the AX chart descriptor (not one element per GPS point).
+    private var downsampledChartSamples: [(Double, Double)] {
+        let strideCount = max(1, chartData.count / 80)
+        return chartData.enumerated().compactMap { index, point in
+            guard index % strideCount == 0 || index == chartData.count - 1 else { return nil }
+            guard point.value.isFinite else { return nil }
+            return (point.distanceKm, point.value)
+        }
     }
 
     // MARK: - No Data Overlay
@@ -447,5 +510,59 @@ struct MetricsChartView: View {
         case .heartRate: return "\(Int(value))"
         case .speed: return String(format: "%.1f", value)
         }
+    }
+}
+
+// MARK: - AXChartDescriptorRepresentable
+
+/// Value-type chart descriptor so conformance stays off the main SwiftUI view.
+struct MetricChartDescriptor: AXChartDescriptorRepresentable {
+    let model: ChartAccessibilityModel
+    let samples: [(Double, Double)]
+    let metric: MetricsChartView.MetricType
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let xScale = AXNumericDataAxisDescriptor(
+            title: "\(model.xAxisTitle) (\(model.xAxisUnit))",
+            range: 0...max(model.totalDistanceMeters / 1000, 0.001),
+            gridlinePositions: []
+        ) { value in
+            String(format: "%.2f km", value)
+        }
+
+        let yValues = samples.map(\.1)
+        let yMin = yValues.min() ?? 0
+        let yMax = yValues.max() ?? 1
+        let yScale = AXNumericDataAxisDescriptor(
+            title: "\(model.yAxisTitle) (\(model.yAxisUnit))",
+            range: min(yMin, yMax)...max(yMin, yMax, yMin + 0.001),
+            gridlinePositions: []
+        ) { [metric] value in
+            switch metric {
+            case .elevation: return "\(Int(value)) m"
+            case .pace:
+                let mins = Int(value) / 60
+                let secs = Int(value) % 60
+                return String(format: "%d:%02d /km", mins, secs)
+            case .heartRate: return "\(Int(value)) bpm"
+            case .speed: return String(format: "%.1f m/s", value)
+            }
+        }
+
+        let dataPoints = samples.map { AXDataPoint(x: $0.0, y: $0.1) }
+        let dataSeries = AXDataSeriesDescriptor(
+            name: model.series.name,
+            isContinuous: true,
+            dataPoints: dataPoints
+        )
+
+        return AXChartDescriptor(
+            title: model.title,
+            summary: model.spokenSummary,
+            xAxis: xScale,
+            yAxis: yScale,
+            additionalAxes: [],
+            series: [dataSeries]
+        )
     }
 }

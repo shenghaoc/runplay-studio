@@ -50,10 +50,13 @@ struct RouteMapCanvas: View {
     let controlBottomInset: CGFloat
     /// When set, applied on appear if the binding still has the default value.
     let defaultDisplayMode: RouteMapDisplayMode?
+    /// When false, fit/pitch updates jump without animation (Reduce Motion).
+    let animateCamera: Bool
 
     @State private var position: MapCameraPosition = .automatic
     @State private var currentCamera: MapCamera?
     @Namespace private var mapScope
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         displayMode: Binding<RouteMapDisplayMode>,
@@ -62,7 +65,8 @@ struct RouteMapCanvas: View {
         areas: [RouteMapArea] = [],
         fitRequest: Int,
         controlBottomInset: CGFloat,
-        defaultDisplayMode: RouteMapDisplayMode? = nil
+        defaultDisplayMode: RouteMapDisplayMode? = nil,
+        animateCamera: Bool = true
     ) {
         self._displayMode = displayMode
         self.routes = routes
@@ -71,6 +75,11 @@ struct RouteMapCanvas: View {
         self.fitRequest = fitRequest
         self.controlBottomInset = controlBottomInset
         self.defaultDisplayMode = defaultDisplayMode
+        self.animateCamera = animateCamera
+    }
+
+    private var shouldAnimateCamera: Bool {
+        animateCamera && !reduceMotion
     }
 
     var body: some View {
@@ -115,14 +124,16 @@ struct RouteMapCanvas: View {
                 Button(displayMode == .threeD ? "2D" : "3D") {
                     let nextMode: RouteMapDisplayMode = displayMode == .threeD ? .twoD : .threeD
                     displayMode = nextMode
-                    updatePitch(nextMode, animated: true)
+                    updatePitch(nextMode, animated: shouldAnimateCamera)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
                 .help(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
                 .accessibilityLabel(displayMode == .threeD ? "Switch to 2D" : "Switch to 3D")
+                .accessibilityValue(displayMode == .threeD ? "3D" : "2D")
                 MapZoomStepper(scope: mapScope)
                     .controlSize(.regular)
+                    .accessibilityLabel("Map zoom")
             }
             .padding()
             .padding(.bottom, controlBottomInset)
@@ -153,7 +164,7 @@ struct RouteMapCanvas: View {
             fitContent(animated: false)
         }
         .onChange(of: fitRequest) { _, _ in
-            fitContent(animated: true)
+            fitContent(animated: shouldAnimateCamera)
         }
     }
 

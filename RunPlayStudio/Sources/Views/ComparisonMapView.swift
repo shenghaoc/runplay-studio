@@ -11,9 +11,25 @@ struct ComparisonMapView: View {
 
     @State private var displayMode: RouteMapDisplayMode = .twoD
     @State private var fitRequest = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     private var commonDistance: Double {
         appState.comparisonCommonDistanceMeters
+    }
+
+    private var comparisonSummary: ComparisonAccessibilitySummary {
+        let metrics = appState.comparisonDistanceMetrics
+        return ComparisonAccessibilitySummary(
+            primaryName: primaryWorkout.displayName,
+            comparisonName: comparisonWorkout.displayName,
+            commonDistanceMeters: commonDistance,
+            selectedDistanceMeters: appState.clampedComparisonDistanceMeters,
+            primaryTimeLabel: metrics.primaryElapsedFormatted,
+            comparisonTimeLabel: metrics.comparisonElapsedFormatted,
+            deltaLabel: metrics.elapsedTimeDeltaFormatted,
+            warnings: warnings.map(\.rawValue)
+        )
     }
 
     private var routes: [RouteMapLine] {
@@ -73,8 +89,11 @@ struct ComparisonMapView: View {
                 routes: routes,
                 markers: markers,
                 fitRequest: fitRequest,
-                controlBottomInset: 168
+                controlBottomInset: 168,
+                animateCamera: !reduceMotion
             )
+            .accessibilityLabel("Comparison route map")
+            .accessibilityValue(comparisonSummary.spokenSummary)
 
             VStack {
                 HStack(alignment: .top) {
@@ -91,6 +110,7 @@ struct ComparisonMapView: View {
                     }
                     .buttonStyle(.bordered)
                     .help("Zoom and center the map to show both routes")
+                    .accessibilityLabel("Fit Routes")
                 }
 
                 Spacer()
@@ -98,6 +118,14 @@ struct ComparisonMapView: View {
             }
             .padding()
         }
+        .focusedSceneValue(\.mapActions, MapActions(
+            isAvailable: { true },
+            fit: { fitRequest += 1 },
+            togglePresentation: {
+                displayMode = displayMode == .threeD ? .twoD : .threeD
+            },
+            canTogglePresentation: { true }
+        ))
         .onAppear {
             appState.clampComparisonDistance()
         }
@@ -106,8 +134,16 @@ struct ComparisonMapView: View {
     private var comparisonLegend: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             MapModeBadge(displayMode: displayMode)
-            legendRow(color: AppDesign.primaryBlue, label: "Primary: \(primaryWorkout.displayName)")
-            legendRow(color: AppDesign.comparisonOrange, label: "Comp.: \(comparisonWorkout.displayName)")
+            legendRow(
+                color: AppDesign.primaryBlue,
+                symbol: "P",
+                label: "Primary: \(primaryWorkout.displayName)"
+            )
+            legendRow(
+                color: AppDesign.comparisonOrange,
+                symbol: "C",
+                label: "Comparison: \(comparisonWorkout.displayName)"
+            )
 
             Divider()
 
@@ -121,22 +157,39 @@ struct ComparisonMapView: View {
                 Text("Finish")
                     .font(AppDesign.Typography.compactLabel)
             }
+
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityLabel("Comparison summary")
+                .accessibilityValue(comparisonSummary.spokenSummary)
         }
         .font(AppDesign.Typography.compactMetric)
         .padding(AppDesign.Spacing.medium)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
+        .accessibilityElement(children: .combine)
     }
 
-    private func legendRow(color: Color, label: String) -> some View {
+    private func legendRow(color: Color, symbol: String, label: String) -> some View {
         HStack(spacing: AppDesign.Spacing.small) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(color)
-                .frame(width: 16, height: 3)
+            if differentiateWithoutColor {
+                Text(symbol)
+                    .font(AppDesign.Typography.compactLabel.weight(.bold))
+                    .foregroundStyle(color)
+                    .frame(width: 16, alignment: .center)
+                    .accessibilityHidden(true)
+            } else {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(color)
+                    .frame(width: 16, height: 3)
+                    .accessibilityHidden(true)
+            }
             Text(label)
                 .font(AppDesign.Typography.compactLabel)
                 .lineLimit(1)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
     }
 
     private var comparisonWarnings: some View {

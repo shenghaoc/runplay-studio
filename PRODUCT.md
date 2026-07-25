@@ -66,7 +66,7 @@ RunPlay Studio is a precision instrument, not a social network. The vibe is "pro
 
 ## Accessibility & Inclusion
 
-- WCAG 2.1 AA equivalent where applicable on macOS (sufficient color contrast, keyboard navigation, VoiceOver compatibility)
+- WCAG 2.1 AA equivalent where applicable on macOS (sufficient color contrast, keyboard navigation, VoiceOver compatibility). See [docs/accessibility-audit.md](docs/accessibility-audit.md) for the authoritative shortcut matrix and audit boundary.
 - Semantic color usage ensures metrics remain distinguishable for common forms of color blindness (blue/orange/green/red are on distinct hue axes)
 - Reduced motion support via system `Reduce Motion` accessibility setting
 - Dynamic Type support for system font scaling
