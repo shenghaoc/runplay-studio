@@ -27,6 +27,8 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
 | `PersonalHeatmapView` | Heatmap workspace UI: filters, statistics, map areas, legend, empty/loading/error states. |
 | `ReplayController` | `@MainActor ObservableObject` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
 | `ContentView` | Injected root view. Hosts the sidebar and detail split, owns the `.fileImporter` modifier, and delegates import/session lifecycle to app-owned state. |
+| `FITSessionImportSession` | `@MainActor ObservableObject` for one multi-session FIT import: security-scoped URL, scan result, selection, phase, progress, report. Holds descriptors only — never decoded FIT messages. |
+| `FITSessionImportView` | Import FIT Sessions review / progress / report sheet. Mirrors `StravaArchiveImportView` so keyboard, modal blocking, and dismissal behave identically. |
 | `WorkoutDetailView` | Detail host. Provides shared replay controls, metrics panel, and tab picker (Overview / Charts / Splits / Segments). |
 | `OverviewView` | Default landing tab. Embeds `MapReferenceView` / `RouteMapCanvas` and passes the current point index from `ReplayController`. |
 | `WorkoutRouteMapViewModel` | Single-workout metric route lines: off-main builds, cache, cancellation; does not rebuild on replay ticks. |
@@ -65,6 +67,15 @@ UI state. It must not be imported by `RunPlayPlatform` or `RunPlayCore`.
   do not screenshot `RouteMapCanvas` or require Screen Recording.
 - Export sheet + `PNGSummaryExportViewModel` own configuration, preview, and
   cancellation; keep workflow out of `AppState`.
+- `AppState.importWorkout(from:)` routes only `.fit` URLs through
+  `FITSessionImportService`. Zero or one session message keeps the existing
+  direct single-workout path; two or more open the review sheet. GPX, TCX, and
+  JSON never reach the FIT scanner.
+- Batch review sheets own their own progress. `LibraryOperationState`
+  `.importingArchive` and `.importingFITSessions` deliberately do **not** disable
+  the main window; `.scanningArchive` and `.scanningFITFile` do.
+- `AppState.isModalPresentationActive` is the app-owned half of modal command
+  blocking; `ContentView` combines it with its view-local presentations.
 
 ## What belongs here vs. RunPlayCore
 

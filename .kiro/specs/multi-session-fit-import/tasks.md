@@ -1,23 +1,23 @@
 # Tasks — Multi-session FIT import
 
-- [ ] Core models: session descriptor, statuses, scan result, selection,
+- [x] Core models: session descriptor, statuses, scan result, selection,
       report, resource policy, `ContentDigesting`
-- [ ] Centralised `FITSportPolicy` used by scan and import
-- [ ] `FITSessionAttribution`: boundary resolution + bounded record/event/lap
+- [x] Centralised `FITSportPolicy` used by scan and import
+- [x] `FITSessionAttribution`: boundary resolution + bounded record/event/lap
       attribution with overlap detection
-- [ ] `FITSessionIdentity`: versioned provider activity ID
-- [ ] Provenance: `.fitMultiSessionFile` + optional `sourceContainerSHA256`
-- [ ] `FITDecoder.decodeRawResult(decodedFile:sessionIndex:)` explicit
+- [x] `FITSessionIdentity`: versioned provider activity ID
+- [x] Provenance: `.fitMultiSessionFile` + optional `sourceContainerSHA256`
+- [x] `FITDecoder.decodeRawResult(decodedFile:sessionIndex:)` explicit
       decode-by-index; legacy selection becomes a wrapper
-- [ ] `FITImporter.buildSession(...)` canonical builder; single-session path
+- [x] `FITImporter.buildSession(...)` canonical builder; single-session path
       delegates to it
-- [ ] `FITSessionImportService` actor implementing scan + batch import
-- [ ] Platform `CryptoKitContentDigest`
-- [ ] Studio `FITSessionImportSession`, `FITSessionImportView`, AppState
+- [x] `FITSessionImportService` actor implementing scan + batch import
+- [x] Platform `CryptoKitContentDigest`
+- [x] Studio `FITSessionImportSession`, `FITSessionImportView`, AppState
       routing, ContentView sheet, modal command blocking
-- [ ] Core tests: discovery, attribution, events, laps, workout construction,
+- [x] Core tests: discovery, attribution, events, laps, workout construction,
       provenance, transaction, performance
-- [ ] Studio tests: AppState routing, single-session regression parity
-- [ ] Documentation + Kiro steering + roadmap correction
+- [x] Studio tests: AppState routing, single-session regression parity
+- [x] Documentation + Kiro steering + roadmap correction
 - [ ] Packaged-app build/launch verification
 - [ ] CI green on PR head

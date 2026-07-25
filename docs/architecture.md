@@ -543,3 +543,34 @@ interpolates selected-distance markers without introducing another renderer.
   AppState orchestration. Archive parsing never runs on `@MainActor`.
 - Persistence uses a private `.staging/<batch-id>/` directory, then a single
   atomic manifest commit. The personal heatmap refreshes once after commit.
+
+
+## Multi-session FIT import
+
+- **RunPlayCore** owns everything FIT: `FITSportPolicy` (one classifier for scan
+  and import), `FITSessionAttribution` (boundary resolution, shared-boundary
+  ownership, overlap detection, and the bounded attribution walk),
+  `FITSessionMessageIndex` (one-pass record/event/lap buckets per container),
+  `FITSessionIdentity`, `FITMultiSessionImportPolicy`, and the
+  `FITSessionImportService` actor implementing `FITFileScanning` and
+  `FITSessionBatchImporting`.
+- `FITImporter.buildSession(index:sessionIndex:suggestedName:provenance:)` is the
+  single workout builder. The direct importer resolves the existing
+  single-workout selection policy and then delegates to it, so direct and batch
+  import can never drift apart. `FITDecoder.decodeRawResult(index:sessionIndex:)`
+  is the explicit decode-by-index entry point; no global decoder selection state
+  exists.
+- **RunPlayPlatform** gains no FIT semantics. It supplies only
+  `CryptoKitContentDigest`, a `ContentDigesting` conformance, because
+  `RunPlayCore` must build on Linux where CryptoKit is unavailable and the
+  repository forbids hand-rolled hashes.
+- **RunPlayStudio** owns `FITSessionImportSession` (main actor) and
+  `FITSessionImportView`. `AppState.importWorkout(from:)` sends only `.fit` URLs
+  through the scanner; zero or one session message keeps the direct path, two or
+  more open the review sheet. Scanning and importing never run on `@MainActor`.
+- Persistence reuses the same `beginBatchImport` → `stageWorkout` →
+  `commitBatchImport` sequence as archive import. No second staging format or
+  batch token type is introduced.
+- `WorkoutImportServicing.importWorkout` still returns exactly one `RunWorkout`.
+  Multi-session FIT is an additional service rather than a weakening of the
+  general import contract.
