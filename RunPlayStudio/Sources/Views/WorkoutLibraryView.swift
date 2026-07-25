@@ -350,6 +350,7 @@ struct WorkoutLibraryView: View {
                         viewModel.clearSearchAndFilters()
                     }
                     .help("Clear search and filters")
+                    .accessibilityLabel("Clear search and filters")
                 }
 
                 Spacer()
@@ -487,6 +488,8 @@ struct WorkoutLibraryView: View {
 
             Divider()
             Button("Clear Filters") { viewModel.clearFilters() }
+                .help("Clear all active filters")
+                .accessibilityLabel("Clear all active filters")
         } label: {
             Label(
                 viewModel.activeFilterCount > 0
@@ -625,6 +628,8 @@ struct WorkoutLibraryView: View {
             Text("No runs match “\(query)”")
                 .font(.title3.weight(.semibold))
             Button("Clear Search") { viewModel.clearSearch() }
+                .help("Clear search query")
+                .accessibilityLabel("Clear search query")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -635,6 +640,8 @@ struct WorkoutLibraryView: View {
             Text("No runs match the selected filters.")
                 .font(.title3.weight(.semibold))
             Button("Clear Filters") { viewModel.clearFilters() }
+                .help("Clear all active filters")
+                .accessibilityLabel("Clear all active filters")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
