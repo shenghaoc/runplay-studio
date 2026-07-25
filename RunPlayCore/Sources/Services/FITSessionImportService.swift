@@ -101,6 +101,29 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         storeActor: WorkoutLibraryStoreActor,
         progress: @Sendable (WorkoutBatchImportProgress) async -> Void = { _ in }
     ) async throws -> FITSessionBatchImportReport {
+        do {
+            return try await performImport(
+                selection,
+                from: url,
+                existingWorkouts: existingWorkouts,
+                storeActor: storeActor,
+                progress: progress
+            )
+        } catch is CancellationError {
+            // Cancellation before the transaction opens still reports a
+            // structured cancelled result rather than a bare error.
+            await progress(WorkoutBatchImportProgress(phase: .cancelled))
+            return FITSessionBatchImportReport(wasCancelled: true)
+        }
+    }
+
+    private func performImport(
+        _ selection: FITSessionImportSelection,
+        from url: URL,
+        existingWorkouts: [RunWorkout],
+        storeActor: WorkoutLibraryStoreActor,
+        progress: @Sendable (WorkoutBatchImportProgress) async -> Void
+    ) async throws -> FITSessionBatchImportReport {
         try Task.checkCancellation()
 
         let selected = selection.selectedCandidates

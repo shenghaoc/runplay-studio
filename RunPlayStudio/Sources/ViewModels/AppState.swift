@@ -251,6 +251,19 @@ class AppState: ObservableObject {
         operationState == .loadingLibrary
     }
 
+    /// True when an application-owned modal presentation is on screen.
+    ///
+    /// Background replay, delete, and import commands stay inert while this is
+    /// true. `ContentView` combines it with its own view-local presentations.
+    var isModalPresentationActive: Bool {
+        archiveSession != nil
+            || fitSessionImportSession != nil
+            || showImporter
+            || showArchiveImporter
+            || showSmartCollectionsManager
+            || showingError
+    }
+
     /// The store actor for persistence. Nil only in tests without persistence.
     private let storeActor: WorkoutLibraryStoreActor?
 

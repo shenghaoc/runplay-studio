@@ -49,12 +49,7 @@ struct ContentView: View {
     }
 
     private var isSheetPresented: Bool {
-        appState.archiveSession != nil
-            || appState.fitSessionImportSession != nil
-            || appState.showImporter
-            || appState.showArchiveImporter
-            || appState.showSmartCollectionsManager
-            || appState.showingError
+        appState.isModalPresentationActive
             || showKeyboardShortcuts
             || descendantPresentationActive
     }
