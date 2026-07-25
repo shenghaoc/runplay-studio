@@ -221,19 +221,19 @@ items complete without performing them on the supported desktop target.
   create an independent second workspace through New Window.
 - [x] Change the workout tab and All Runs destination; confirm the bounded
   session JSON changes without route points, result IDs, or map/cache data.
-- [ ] Move and resize the main window, quit normally, and relaunch; confirm
+- [x] Move and resize the main window, quit normally, and relaunch; confirm
   native frame placement, size, minimise, zoom, and full-screen behavior.
 - [x] Change sidebar visibility, quit, and relaunch; confirm visibility returns
   without persisting an exact sidebar width.
-- [ ] Quit from a workout, All Runs, smart collection, Personal Heatmap, and
+- [x] Quit from a workout, All Runs, smart collection, Personal Heatmap, and
   valid comparison; confirm each durable destination and substate restores.
-- [ ] Set replay position and speed, start playback, quit, and relaunch;
+- [x] Set replay position and speed, start playback, quit, and relaunch;
   confirm position/speed return paused with no active timer.
-- [ ] Modify a smart collection without updating it, relaunch, and confirm
+- [x] Modify a smart collection without updating it, relaunch, and confirm
   Modified/Revert/Update behavior plus return to the prior manual query.
-- [ ] Delete a referenced workout or smart collection, relaunch, and confirm
+- [x] Delete a referenced workout or smart collection, relaunch, and confirm
   safe fallback without an alert or dangling ID.
-- [ ] Open importer, export, editor, manager, confirmation, and error UI,
+- [x] Open importer, export, editor, manager, confirmation, and error UI,
   relaunch, and confirm no transient presentation returns.
 - [ ] Repeat with a secondary display attached, then unavailable, and confirm
   native restoration keeps the window on a visible display.
@@ -241,13 +241,21 @@ items complete without performing them on the supported desktop target.
 Packaged-app smoke record (2026-07-25): the release app was rebuilt warning
 clean and inspected in an unlocked desktop session with Computer Use. The
 singleton scene exposed one stable-ID main window and no New Window command.
-Charts, All Runs, a bounded search query, and hidden-sidebar state survived
-normal quit/relaunch. Continuous replay at the default speed wrote a checkpoint
-while still playing; quitting at roughly 5:14 restored that position paused. A
-non-default speed still needs a successful packaged-app selection before that
-checklist item can be marked complete. The host reported one connected display,
-so the secondary-display item remains hardware-gated and the README states
-that boundary.
+Charts, All Runs, the manual query, hidden-sidebar state, a modified smart
+collection, Personal Heatmap at Broad resolution, and a 2.20 km comparison
+survived normal quit/relaunch. Replay at 2.0× checkpointed while playing and
+restored its position and speed paused. Deleting a temporary referenced workout
+and smart collection produced a safe durable fallback.
+
+The native Window menu moved and resized the main window from 1200×766 to
+757×553; normal quit/relaunch restored the tiled placement and 756×552 frame,
+allowing for native border normalization. Minimise, zoom, and full-screen
+transitions remained native. Forced relaunches with the importer, export save
+panel, metadata editor, smart-collection manager, delete confirmation, and
+invalid-FIT error open returned only the durable main workspace; no transient
+presentation returned. The host reported one connected display, so the
+secondary-display item remains hardware-gated and the README states that
+boundary.
 
 ## Persistent Workout Library Checklist
 
