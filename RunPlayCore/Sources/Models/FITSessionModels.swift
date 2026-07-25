@@ -190,12 +190,20 @@ public struct FITSessionImportSelection: Hashable, Sendable {
 // MARK: - Report
 
 /// Outcome for a single selected session.
+///
+/// `status` is the **candidate classification at process time** (duplicate,
+/// no GPS, staged-as-ready, …). It is **not** by itself a commit outcome:
+/// a staged `.ready` item is only “Imported” when the report’s
+/// `commitFailed == false` and the workout ID appears in
+/// `importedWorkoutIDs`. Use ``reportLabel(commitFailed:)`` for UI text.
 public struct FITSessionImportItemResult: Hashable, Sendable {
     public var candidateID: String
     public var sourceIndex: Int
     public var sessionName: String
+    /// Candidate / process classification — not the final commit outcome.
     public var status: FITSessionCandidateStatus
     public var detail: String?
+    /// Set when the workout was staged successfully; commit may still fail.
     public var importedWorkoutID: UUID?
 
     public init(
@@ -212,6 +220,14 @@ public struct FITSessionImportItemResult: Hashable, Sendable {
         self.status = status
         self.detail = detail
         self.importedWorkoutID = importedWorkoutID
+    }
+
+    /// User-facing report row label. Never treat bare `.ready` as “Imported”.
+    public func reportLabel(commitFailed: Bool) -> String {
+        if status == .ready {
+            return commitFailed ? "Not saved" : "Imported"
+        }
+        return status.userFacingSummary
     }
 }
 
@@ -248,6 +264,8 @@ public struct FITSessionBatchImportReport: Hashable, Sendable {
 
     public func count(for status: FITSessionCandidateStatus) -> Int {
         // Staged-but-not-committed items must not be reported as imported.
+        // Only report-level `importedWorkoutIDs` / `!commitFailed` are authority
+        // for "how many actually landed in the library".
         guard status == .ready else {
             return items.count(where: { $0.status == status })
         }

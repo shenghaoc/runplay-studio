@@ -394,10 +394,9 @@ struct FITSessionImportView: View {
         _ item: FITSessionImportItemResult,
         commitFailed: Bool
     ) -> String {
-        if item.status == .ready {
-            return commitFailed ? "Not saved" : "Imported"
-        }
-        return item.status.userFacingSummary
+        // Report label is authoritative: item.status alone is process-time
+        // classification, not commit outcome.
+        item.reportLabel(commitFailed: commitFailed)
     }
 
     private func reportStat(_ title: String, _ value: Int) -> some View {

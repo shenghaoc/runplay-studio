@@ -455,35 +455,18 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
             let endDate = range.map { FITParser.timestampToDate($0.end) }
                 ?? FITParser.timestampIfValid(session.timestamp).map(FITParser.timestampToDate)
 
-            var status: FITSessionCandidateStatus = .ready
-            var detail: String?
-
-            if classification == .unsupported {
-                status = .unsupportedSport
-                detail = "\(FITSportPolicy.displayName(sport: session.sport)) sessions are not supported."
-            } else if !isUniqueWithinFile {
-                status = .duplicate
-                detail = "Another session in this file produced the same identity."
-            } else if existingSessionIDs.contains(providerActivityID) {
-                status = .duplicate
-                detail = "This session is already in your library."
-            } else if let boundaryProblem {
-                status = .invalidBoundaries
-                detail = boundaryProblem.detail
-            } else if isAmbiguous {
-                status = .ambiguousAttribution
-                detail = "This session's time range overlaps another session, so its data cannot be separated reliably."
-            } else if overLimit {
-                status = .exceedsResourceLimit
-                detail = "This file exceeds the supported record, event, or lap limit."
-            } else if gpsRecordCount == 0 {
-                status = .noGPSRoute
-                detail = "No GPS records could be attributed to this session."
-            }
-
-            if status == .ready, classification == .unknownTreatedAsRunning {
-                detail = "This session has no recognised sport and is being treated as a run."
-            }
+            let classified = FITSessionCandidateClassifier.classify(
+                sport: classification,
+                sportDisplayName: FITSportPolicy.displayName(sport: session.sport),
+                isUniqueWithinFile: isUniqueWithinFile,
+                isExistingInLibrary: existingSessionIDs.contains(providerActivityID),
+                boundaryProblem: boundaryProblem,
+                isAmbiguous: isAmbiguous,
+                overLimit: overLimit,
+                gpsRecordCount: gpsRecordCount
+            )
+            let status = classified.status
+            let detail = classified.detail
 
             candidates.append(FITSessionDescriptor(
                 sourceIndex: sourceIndex,

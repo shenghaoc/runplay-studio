@@ -1687,6 +1687,7 @@ class AppState: ObservableObject {
         )
         let archiveURL = session.archiveURL
         let existing = workouts
+        let completedName = session.archiveName
 
         archiveTask?.cancel()
         archiveTask = Task { [weak self] in
@@ -1703,56 +1704,41 @@ class AppState: ObservableObject {
                     }
                 }
 
-                // Cancellation after a successful commit must still surface the report
-                // (library already changed; do not pretend the import rolled back).
-                if report.wasCancelled && report.importedCount == 0 && !report.commitFailed {
-                    self.operationState = .idle
-                    self.archiveSession = nil
-                    return
-                }
-
-                if report.commitFailed {
-                    self.operationState = .idle
-                    session.phase = .report
-                    session.report = report
-                    session.errorMessage = report.errorMessage
-                        ?? "Could not save imported workouts."
-                    self.announcementPolicy.handle(
-                        .importFailed(
-                            message: session.errorMessage ?? "Could not save imported workouts."
-                        )
-                    )
-                    return
-                }
-
-                if report.importedCount > 0 {
-                    await self.reloadLibraryAfterBatchCommit(
-                        storeActor: storeActor,
-                        onLoadFailure: { message in session.errorMessage = message }
-                    )
-                }
-
-                session.report = report
-                session.phase = .report
-                self.operationState = .idle
-                if report.importedCount > 0 {
-                    self.announcementPolicy.handle(
-                        .importCompleted(name: session.archiveName)
-                    )
-                }
-            } catch is CancellationError {
-                self.operationState = .idle
-                self.archiveSession = nil
-            } catch {
-                self.operationState = .idle
-                session.phase = .report
-                session.report = WorkoutBatchImportReport(
-                    commitFailed: true,
-                    errorMessage: error.localizedDescription
+                await self.finishBatchSheetImport(
+                    wasCancelled: report.wasCancelled,
+                    commitFailed: report.commitFailed,
+                    importedCount: report.importedCount,
+                    errorMessage: report.errorMessage,
+                    completedName: completedName,
+                    commitFailedFallback: "Could not save imported workouts.",
+                    // Cancel during import keeps the sheet and announces here
+                    // once (review-phase cancel announces in cancelBatchSheet).
+                    announceQuietCancel: true,
+                    storeActor: storeActor,
+                    applyReport: { message in
+                        session.report = report
+                        session.phase = .report
+                        if let message { session.errorMessage = message }
+                    },
+                    dismissSession: { self.archiveSession = nil },
+                    onLoadFailure: { message in session.errorMessage = message }
                 )
-                session.errorMessage = error.localizedDescription
-                self.announcementPolicy.handle(
-                    .importFailed(message: error.localizedDescription)
+            } catch is CancellationError {
+                self.finishBatchSheetTaskCancellation(
+                    announce: true,
+                    dismissSession: { self.archiveSession = nil }
+                )
+            } catch {
+                self.finishBatchSheetTaskError(
+                    message: error.localizedDescription,
+                    applyReport: {
+                        session.report = WorkoutBatchImportReport(
+                            commitFailed: true,
+                            errorMessage: error.localizedDescription
+                        )
+                        session.phase = .report
+                        session.errorMessage = error.localizedDescription
+                    }
                 )
             }
         }
@@ -1760,15 +1746,17 @@ class AppState: ObservableObject {
 
     /// Cancel an in-progress archive scan or import.
     func cancelArchiveImport() {
-        archiveTask?.cancel()
-        archiveTask = nil
-        // Session deinit releases security scope; discard review/progress UI.
-        // After report, use dismissArchiveSession instead.
-        if archiveSession?.phase != .report {
-            archiveSession = nil
-        }
-        operationState = .idle
-        announcementPolicy.handle(.importCancelled)
+        cancelBatchSheet(
+            task: &archiveTask,
+            phase: archiveSession.map {
+                switch $0.phase {
+                case .reviewing: return .reviewing
+                case .importing: return .importing
+                case .report: return .report
+                }
+            },
+            dismissSession: { archiveSession = nil }
+        )
     }
 
     /// Dismiss the archive sheet after a completed report.
@@ -1875,6 +1863,7 @@ class AppState: ObservableObject {
         let selection = session.makeSelection()
         let fileURL = session.fileURL
         let existing = workouts
+        let completedName = session.fileName
 
         fitImportTask?.cancel()
         fitImportTask = Task { [weak self] in
@@ -1891,55 +1880,41 @@ class AppState: ObservableObject {
                     }
                 }
 
-                // A cancellation that committed nothing simply closes the sheet.
-                if report.wasCancelled, report.importedCount == 0, !report.commitFailed {
-                    self.operationState = .idle
-                    self.fitSessionImportSession = nil
-                    self.announcementPolicy.handle(.importCancelled)
-                    return
-                }
-
-                if report.commitFailed {
-                    self.operationState = .idle
-                    session.report = report
-                    session.phase = .report
-                    session.errorMessage = report.errorMessage
-                        ?? "Could not save the imported sessions."
-                    self.announcementPolicy.handle(
-                        .importFailed(
-                            message: session.errorMessage ?? "Could not save the imported sessions."
-                        )
-                    )
-                    return
-                }
-
-                if report.importedCount > 0 {
-                    await self.reloadLibraryAfterBatchCommit(
-                        storeActor: storeActor,
-                        onLoadFailure: { message in session.errorMessage = message }
-                    )
-                }
-
-                session.report = report
-                session.phase = .report
-                self.operationState = .idle
-                if report.importedCount > 0 {
-                    self.announcementPolicy.handle(.importCompleted(name: session.fileName))
-                }
-            } catch is CancellationError {
-                self.operationState = .idle
-                self.fitSessionImportSession = nil
-                self.announcementPolicy.handle(.importCancelled)
-            } catch {
-                self.operationState = .idle
-                session.report = FITSessionBatchImportReport(
-                    commitFailed: true,
-                    errorMessage: error.localizedDescription
+                await self.finishBatchSheetImport(
+                    wasCancelled: report.wasCancelled,
+                    commitFailed: report.commitFailed,
+                    importedCount: report.importedCount,
+                    errorMessage: report.errorMessage,
+                    completedName: completedName,
+                    commitFailedFallback: "Could not save the imported sessions.",
+                    // Cancel during import does not announce in
+                    // `cancelFITSessionImport`; the task completion does.
+                    announceQuietCancel: true,
+                    storeActor: storeActor,
+                    applyReport: { message in
+                        session.report = report
+                        session.phase = .report
+                        if let message { session.errorMessage = message }
+                    },
+                    dismissSession: { self.fitSessionImportSession = nil },
+                    onLoadFailure: { message in session.errorMessage = message }
                 )
-                session.phase = .report
-                session.errorMessage = error.localizedDescription
-                self.announcementPolicy.handle(
-                    .importFailed(message: error.localizedDescription)
+            } catch is CancellationError {
+                self.finishBatchSheetTaskCancellation(
+                    announce: true,
+                    dismissSession: { self.fitSessionImportSession = nil }
+                )
+            } catch {
+                self.finishBatchSheetTaskError(
+                    message: error.localizedDescription,
+                    applyReport: {
+                        session.report = FITSessionBatchImportReport(
+                            commitFailed: true,
+                            errorMessage: error.localizedDescription
+                        )
+                        session.phase = .report
+                        session.errorMessage = error.localizedDescription
+                    }
                 )
             }
         }
@@ -1952,23 +1927,17 @@ class AppState: ObservableObject {
     /// the user always sees a structured outcome. Announcement happens once on
     /// task completion, not here.
     func cancelFITSessionImport() {
-        fitImportTask?.cancel()
-        fitImportTask = nil
-
-        switch fitSessionImportSession?.phase {
-        case .importing:
-            // Keep the sheet and operation state; the import task applies the
-            // cancelled report and announces once.
-            break
-        case .report:
-            // Outcome is already visible; use dismissFITSessionImport.
-            break
-        case .reviewing, nil:
-            // Session deinit releases security scope.
-            fitSessionImportSession = nil
-            operationState = .idle
-            announcementPolicy.handle(.importCancelled)
-        }
+        cancelBatchSheet(
+            task: &fitImportTask,
+            phase: fitSessionImportSession.map {
+                switch $0.phase {
+                case .reviewing: return .reviewing
+                case .importing: return .importing
+                case .report: return .report
+                }
+            },
+            dismissSession: { fitSessionImportSession = nil }
+        )
     }
 
     /// Dismiss the FIT sheet after a completed report.
@@ -1994,6 +1963,106 @@ class AppState: ObservableObject {
     func showAllRunsAfterFITImport() {
         dismissFITSessionImport()
         showWorkoutLibrary(restoreManualQuery: true)
+    }
+
+    // MARK: - Shared batch-sheet lifecycle
+
+    /// UI phases shared by Strava archive and multi-session FIT sheets.
+    private enum BatchSheetPhase {
+        case reviewing
+        case importing
+        case report
+    }
+
+    /// Shared cancel semantics for archive and FIT review sheets.
+    ///
+    /// During `.importing`, only requests cooperative cancellation and keeps
+    /// the sheet until the task returns a structured report. Announcement for
+    /// that path happens on task completion (when `announceQuietCancel` is set
+    /// on the finish helper). Review-phase cancel dismisses immediately.
+    private func cancelBatchSheet(
+        task: inout Task<Void, Never>?,
+        phase: BatchSheetPhase?,
+        dismissSession: () -> Void
+    ) {
+        task?.cancel()
+        task = nil
+        switch phase {
+        case .importing:
+            break
+        case .report:
+            break
+        case .reviewing, nil:
+            dismissSession()
+            operationState = .idle
+            announcementPolicy.handle(.importCancelled)
+        }
+    }
+
+    /// Shared post-import sheet finish path for archive and FIT batch reports.
+    private func finishBatchSheetImport(
+        wasCancelled: Bool,
+        commitFailed: Bool,
+        importedCount: Int,
+        errorMessage: String?,
+        completedName: String,
+        commitFailedFallback: String,
+        announceQuietCancel: Bool,
+        storeActor: WorkoutLibraryStoreActor,
+        applyReport: (_ errorMessage: String?) -> Void,
+        dismissSession: () -> Void,
+        onLoadFailure: (String) -> Void
+    ) async {
+        // Cancellation that committed nothing simply closes the sheet.
+        if wasCancelled, importedCount == 0, !commitFailed {
+            operationState = .idle
+            dismissSession()
+            if announceQuietCancel {
+                announcementPolicy.handle(.importCancelled)
+            }
+            return
+        }
+
+        if commitFailed {
+            operationState = .idle
+            let message = errorMessage ?? commitFailedFallback
+            applyReport(message)
+            announcementPolicy.handle(.importFailed(message: message))
+            return
+        }
+
+        if importedCount > 0 {
+            await reloadLibraryAfterBatchCommit(
+                storeActor: storeActor,
+                onLoadFailure: onLoadFailure
+            )
+        }
+
+        applyReport(nil)
+        operationState = .idle
+        if importedCount > 0 {
+            announcementPolicy.handle(.importCompleted(name: completedName))
+        }
+    }
+
+    private func finishBatchSheetTaskCancellation(
+        announce: Bool,
+        dismissSession: () -> Void
+    ) {
+        operationState = .idle
+        dismissSession()
+        if announce {
+            announcementPolicy.handle(.importCancelled)
+        }
+    }
+
+    private func finishBatchSheetTaskError(
+        message: String,
+        applyReport: () -> Void
+    ) {
+        operationState = .idle
+        applyReport()
+        announcementPolicy.handle(.importFailed(message: message))
     }
 
     /// Reload the authoritative post-commit library state.
