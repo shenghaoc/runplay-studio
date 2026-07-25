@@ -292,10 +292,12 @@ struct WorkoutLibraryView: View {
                     viewModel.revertActiveCollection()
                 }
                 .help("Restore the saved collection query")
+                .accessibilityLabel("Restore the saved collection query")
                 Button("Update Collection") {
                     Task { _ = await appState.updateActiveSmartCollectionFromCurrentQuery() }
                 }
                 .help("Save the current search and filters to this collection")
+                .accessibilityLabel("Save the current search and filters to this collection")
                 .keyboardShortcut(.defaultAction)
             }
             if let collection = viewModel.activeSmartCollection {
@@ -592,6 +594,8 @@ struct WorkoutLibraryView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button("Retry") { viewModel.retryQuery() }
+                    .help("Retry loading the library")
+                    .accessibilityLabel("Retry loading the library")
                     .keyboardShortcut(.defaultAction)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
