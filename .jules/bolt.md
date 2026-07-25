@@ -57,3 +57,7 @@
 ## 2026-07-25 - Avoid Closure Overhead in High-Frequency Loops
 **Learning:** `MetricSmoother.movingAverage` extracted a slice (`let slice = values[start..<end]`) and then called `.reduce(0, +)` on it inside a high-frequency loop. While `ArraySlice` is a view and does not allocate O(N) memory, using `reduce` involves closure call overhead for every element summed. Since this runs on every iteration across thousands of points, it creates unnecessary ARC overhead and slows down execution.
 **Action:** Replace `slice.reduce` operations inside windowing loops with a simple inline `for` loop that iterates over the array by index, avoiding closure call overhead. For further optimization, consider a sliding window running sum to reduce time complexity to O(N).
+
+## 2026-10-25 - Avoid Closure Overhead in High-Frequency Loops on ArraySlices
+**Learning:** Calling `.reduce` on an `ArraySlice` inside a high-frequency loop (like `MovementProfile.init` iterating over route points) introduces closure call overhead and ARC activity for every element summed. Even though `ArraySlice` is memory-efficient and avoids array allocations, the higher-order function overhead can become a performance bottleneck when executed thousands of times.
+**Action:** Replace `.reduce` and similar higher-order functions on `ArraySlice` inside O(N) loops with simple inline `for` loops that iterate over the index range, accumulating the result manually to avoid closure overhead.

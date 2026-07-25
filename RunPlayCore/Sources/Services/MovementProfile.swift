@@ -349,8 +349,13 @@ public struct MovementProfile: Sendable {
                 runEnd += 1
             }
 
-            let runDuration = activeDeltas[i...runEnd].reduce(0, +)
-            let runDistance = distanceDeltas[i...runEnd].reduce(0, +)
+            // ⚡ Bolt: Inline loop instead of .reduce on ArraySlice to avoid closure/ARC overhead
+            var runDuration: Double = 0
+            var runDistance: Double = 0
+            for j in i...runEnd {
+                runDuration += activeDeltas[j]
+                runDistance += distanceDeltas[j]
+            }
 
             if merged[i] == .stopped, runDuration < policy.minimumStopDurationSeconds {
                 for j in i...runEnd { merged[j] = .uncertain }
