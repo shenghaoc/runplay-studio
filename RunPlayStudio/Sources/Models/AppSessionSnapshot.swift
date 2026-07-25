@@ -238,4 +238,10 @@ enum AppSessionPolicy {
     static let validWorkoutTabs = Set(["Overview", "Charts", "Splits", "Segments"])
     static let validMapDisplayModes = Set(["2D", "3D"])
     static let validHeatmapDatePresets = Set(["allTime", "last30Days", "last90Days", "currentYear", "custom"])
+
+    static func boundedQuery(_ query: WorkoutLibrarySavedQuery) -> WorkoutLibrarySavedQuery {
+        var bounded = query
+        bounded.searchText = String(query.searchText.unicodeScalars.prefix(maxSearchTextScalars))
+        return bounded
+    }
 }

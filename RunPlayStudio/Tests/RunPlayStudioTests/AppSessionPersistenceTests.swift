@@ -120,7 +120,12 @@ final class AppSessionPersistenceTests: XCTestCase {
         XCTAssertEqual(result.snapshot.destination, .allRuns)
         XCTAssertEqual(result.snapshot.workout.tabRaw, "Overview")
         XCTAssertEqual(result.snapshot.workout.mapDisplayModeRaw, "2D")
-        XCTAssertEqual(result.snapshot.library.manualQuery, WorkoutLibrarySavedQuery())
+        XCTAssertEqual(result.snapshot.library.manualQuery.searchText.unicodeScalars.count, 500)
+        XCTAssertEqual(
+            result.snapshot.library.manualQuery.filter.tags,
+            .selected(tagIDs: [knownTagID], match: .any)
+        )
+        XCTAssertEqual(result.snapshot.library.manualQuery.sort, .dateNewest)
         XCTAssertNil(result.snapshot.library.activeSmartCollectionID)
         XCTAssertEqual(result.snapshot.heatmap.datePresetRaw, "allTime")
         XCTAssertEqual(result.snapshot.heatmap.resolutionRaw, "standard")

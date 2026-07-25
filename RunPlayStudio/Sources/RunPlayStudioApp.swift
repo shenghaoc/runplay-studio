@@ -1,9 +1,12 @@
 import SwiftUI
 import RunPlayCore
+import AppKit
 
 @main
 @MainActor
 struct RunPlayStudioApp: App {
+    @NSApplicationDelegateAdaptor(AppTerminationCoordinator.self)
+    private var terminationCoordinator
     @StateObject private var appState: AppState
     @StateObject private var sessionController: AppSessionController
 
@@ -17,6 +20,7 @@ struct RunPlayStudioApp: App {
         appState.sessionController = sessionController
         _appState = StateObject(wrappedValue: appState)
         _sessionController = StateObject(wrappedValue: sessionController)
+        terminationCoordinator.sessionController = sessionController
     }
 
     var body: some Scene {

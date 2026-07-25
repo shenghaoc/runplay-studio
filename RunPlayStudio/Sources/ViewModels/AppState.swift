@@ -328,7 +328,7 @@ class AppState: ObservableObject {
             return (
                 id,
                 modified,
-                modified ? workoutLibrary.currentSavedQuery() : nil
+                modified ? AppSessionPolicy.boundedQuery(workoutLibrary.currentSavedQuery()) : nil
             )
         }()
         let comparison: AppSessionComparisonState? = {
@@ -359,7 +359,7 @@ class AppState: ObservableObject {
                 mapDisplayModeRaw: workoutMapDisplayModeRaw
             ),
             library: AppSessionLibraryState(
-                manualQuery: workoutLibrary.sessionManualQuery(),
+                manualQuery: AppSessionPolicy.boundedQuery(workoutLibrary.sessionManualQuery()),
                 activeSmartCollectionID: activeCollection?.0,
                 activeSmartCollectionModified: activeCollection?.1 ?? false,
                 modifiedWorkingQuery: activeCollection?.2

@@ -124,6 +124,48 @@ final class AppSessionControllerTests: XCTestCase {
         XCTAssertFalse(appState.replayController.isPlaying)
     }
 
+    func testContinuousReplayWritesPeriodicCheckpointsBeforePause() async {
+        let appState = AppState(storeActor: nil, importService: nil)
+        let store = RecordingAppSessionStore()
+        let controller = AppSessionController(
+            appState: appState,
+            store: store,
+            replayCheckpointInterval: 40_000_000
+        )
+        appState.sessionController = controller
+
+        await controller.startIfNeeded()
+        await controller.flush()
+        let initialSaveCount = await store.saveCount
+
+        appState.replayController.engine.play()
+        for _ in 0..<24 {
+            appState.replayController.advancePlayback(by: 1.0 / 30.0)
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        let checkpointCount = await store.saveCount - initialSaveCount
+        XCTAssertGreaterThanOrEqual(checkpointCount, 3)
+        XCTAssertLessThanOrEqual(checkpointCount, 7)
+
+        appState.replayController.pause()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(appState.replayController.isPlaying)
+    }
+
+    func testSnapshotBoundsSearchWithoutDroppingFiltersOrSort() {
+        let appState = AppState(storeActor: nil, importService: nil)
+        appState.workoutLibrary.searchText = String(repeating: "x", count: 501)
+        appState.workoutLibrary.favoriteFilter = .favoritesOnly
+        appState.workoutLibrary.sort = .distanceLongest
+
+        let query = appState.makeSessionSnapshot().library.manualQuery
+
+        XCTAssertEqual(query.searchText.unicodeScalars.count, 500)
+        XCTAssertEqual(query.filter.favorite, .favoritesOnly)
+        XCTAssertEqual(query.sort, .distanceLongest)
+    }
+
     func testApplySessionSnapshotRestoresFiltersAndAlwaysPausesReplay() {
         let appState = AppState(storeActor: nil, importService: nil)
         let workout = makeWorkout()

@@ -41,10 +41,10 @@ safe default.
 
 AppSessionValidator receives only IDs, collection/tag IDs, the selected
 workout's duration, and comparison distance limits. It sanitizes enum-like raw
-values, rejects oversized search text and invalid dates, removes dangling tag
-references, clamps replay and comparison numbers, rejects invalid comparison
-pairs, and falls back to the selected workout/manual query when a destination
-cannot be restored.
+values, bounds oversized search text without discarding valid filters or sort,
+repairs invalid dates, removes dangling tag references, clamps replay and
+comparison numbers, rejects invalid comparison pairs, and falls back to the
+selected workout/manual query when a destination cannot be restored.
 
 ## Startup and write lifecycle
 
@@ -59,9 +59,10 @@ AppSessionController coordinates this sequence:
 The root view shows a restoration overlay until step 4 completes. Structural
 changes are debounced; replay ticks are throttled and never write at 30 fps.
 The controller flushes pending state before pausing for inactive/background
-transitions and before termination. Import and deletion only schedule a save
-after their manifest transaction has committed. Failed operations leave the
-previous session untouched.
+transitions. A narrow AppKit application-delegate adapter delays normal
+termination until that flush completes. Import and deletion only schedule a
+save after their manifest transaction has committed. Failed operations leave
+the previous session untouched.
 
 ## View-model integration
 
@@ -73,5 +74,6 @@ visible heatmap view triggers the rebuild. ReplayController adds an explicit
 restore operation that loads a workout, seeks a clamped time, applies a valid
 speed, and pauses unconditionally.
 
-No session type imports SwiftUI, MapKit, AppKit, Combine, or route/map
-rendering types.
+Snapshot, store, and validator types do not import SwiftUI, MapKit, AppKit,
+Combine, or route/map rendering types. AppKit is confined to the application
+scene and its focused termination coordinator.

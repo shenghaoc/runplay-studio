@@ -355,10 +355,10 @@ enum AppSessionValidator {
         issues: inout [String],
         usedFallback: inout Bool
     ) -> WorkoutLibrarySavedQuery {
-        guard query.searchText.unicodeScalars.count <= AppSessionPolicy.maxSearchTextScalars else {
+        let boundedQuery = AppSessionPolicy.boundedQuery(query)
+        if boundedQuery.searchText != query.searchText {
             issues.append("Query search text exceeded the session limit.")
             usedFallback = true
-            return WorkoutLibrarySavedQuery()
         }
 
         let date: WorkoutLibraryDateFilter
@@ -399,7 +399,7 @@ enum AppSessionValidator {
         }
 
         return WorkoutLibrarySavedQuery(
-            searchText: query.searchText,
+            searchText: boundedQuery.searchText,
             filter: WorkoutLibraryFilter(
                 favorite: query.filter.favorite,
                 date: date,

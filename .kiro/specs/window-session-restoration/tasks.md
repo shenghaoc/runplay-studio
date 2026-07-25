@@ -13,7 +13,7 @@
 - [x] Add startup/workspace/replay/query/heatmap/comparison/native-window tests
       and update architecture, data model, privacy, manual testing, README,
       product/design, phase plan, and Kiro steering documentation.
-- [ ] Run warning-clean SwiftPM and packaged-app verification, publish the
+- [x] Run warning-clean SwiftPM and packaged-app verification, publish the
       first coherent implementation commit, open the requested draft PR, and
       refresh exact-head CI/status without merging.
 

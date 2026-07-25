@@ -223,7 +223,7 @@ items complete without performing them on the supported desktop target.
   session JSON changes without route points, result IDs, or map/cache data.
 - [ ] Move and resize the main window, quit normally, and relaunch; confirm
   native frame placement, size, minimise, zoom, and full-screen behavior.
-- [ ] Change sidebar visibility, quit, and relaunch; confirm visibility returns
+- [x] Change sidebar visibility, quit, and relaunch; confirm visibility returns
   without persisting an exact sidebar width.
 - [ ] Quit from a workout, All Runs, smart collection, Personal Heatmap, and
   valid comparison; confirm each durable destination and substate restores.
@@ -238,11 +238,16 @@ items complete without performing them on the supported desktop target.
 - [ ] Repeat with a secondary display attached, then unavailable, and confirm
   native restoration keeps the window on a visible display.
 
-Packaged-app smoke record (2026-07-25): the rebuilt app was inspected with
-Computer Use. The singleton scene exposed one main window; tab and All Runs
-changes were written as bounded session JSON. Full frame, sidebar, secondary
-display, and final clean-relaunch checks remain intentionally unchecked until
-they are performed on an unlocked desktop session.
+Packaged-app smoke record (2026-07-25): the release app was rebuilt warning
+clean and inspected in an unlocked desktop session with Computer Use. The
+singleton scene exposed one stable-ID main window and no New Window command.
+Charts, All Runs, a bounded search query, and hidden-sidebar state survived
+normal quit/relaunch. Continuous replay at the default speed wrote a checkpoint
+while still playing; quitting at roughly 5:14 restored that position paused. A
+non-default speed still needs a successful packaged-app selection before that
+checklist item can be marked complete. The host reported one connected display,
+so the secondary-display item remains hardware-gated and the README states
+that boundary.
 
 ## Persistent Workout Library Checklist
 

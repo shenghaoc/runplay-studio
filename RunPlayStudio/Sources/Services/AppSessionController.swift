@@ -18,11 +18,21 @@ final class AppSessionController: ObservableObject {
     weak var appState: AppState?
 
     private let store: any AppSessionStoring
-    private var saveTask: Task<Void, Never>?
+    private let structuralSaveDelay: UInt64
+    private let replayCheckpointInterval: UInt64
+    private var structuralSaveTask: Task<Void, Never>?
+    private var replayCheckpointTask: Task<Void, Never>?
 
-    init(appState: AppState, store: any AppSessionStoring) {
+    init(
+        appState: AppState,
+        store: any AppSessionStoring,
+        structuralSaveDelay: UInt64 = 250_000_000,
+        replayCheckpointInterval: UInt64 = 1_000_000_000
+    ) {
         self.appState = appState
         self.store = store
+        self.structuralSaveDelay = structuralSaveDelay
+        self.replayCheckpointInterval = replayCheckpointInterval
         appState.replayController.onStateChange = { [weak self] in
             self?.requestSave(replay: true)
         }
@@ -34,7 +44,8 @@ final class AppSessionController: ObservableObject {
     }
 
     deinit {
-        saveTask?.cancel()
+        structuralSaveTask?.cancel()
+        replayCheckpointTask?.cancel()
     }
 
     var isRestoring: Bool {
@@ -71,27 +82,51 @@ final class AppSessionController: ObservableObject {
         }
     }
 
-    /// Schedule a structural or replay save. Replay callbacks can arrive at
-    /// 30 fps; the one-second delay bounds those writes.
+    /// Debounce structural changes and throttle replay checkpoints. Replay
+    /// callbacks can arrive at 30 fps, so an existing checkpoint must not be
+    /// cancelled by each subsequent tick.
     func requestSave(replay: Bool = false) {
         guard phase == .active, appState != nil else { return }
-        saveTask?.cancel()
-        let delay: UInt64 = replay ? 1_000_000_000 : 250_000_000
-        saveTask = Task { [weak self] in
+        if replay {
+            guard replayCheckpointTask == nil else { return }
+            replayCheckpointTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await Task.sleep(nanoseconds: replayCheckpointInterval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                replayCheckpointTask = nil
+                await persistCurrentSnapshot()
+            }
+            return
+        }
+
+        structuralSaveTask?.cancel()
+        structuralSaveTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                try await Task.sleep(nanoseconds: delay)
+                try await Task.sleep(nanoseconds: structuralSaveDelay)
             } catch {
                 return
             }
             guard !Task.isCancelled else { return }
-            await self?.flush()
+            structuralSaveTask = nil
+            await persistCurrentSnapshot()
         }
     }
 
     /// Cancel a pending debounce and persist the current logical state.
     func flush() async {
-        saveTask?.cancel()
-        saveTask = nil
+        structuralSaveTask?.cancel()
+        structuralSaveTask = nil
+        replayCheckpointTask?.cancel()
+        replayCheckpointTask = nil
+        await persistCurrentSnapshot()
+    }
+
+    private func persistCurrentSnapshot() async {
         guard phase == .active, let appState else { return }
 
         do {

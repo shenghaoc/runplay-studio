@@ -262,11 +262,6 @@ struct ContentView: View {
                 await sessionController.pauseReplayAndFlush()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-            Task {
-                await sessionController.pauseReplayAndFlush()
-            }
-        }
         .onDisappear {
             Task {
                 await sessionController.pauseReplayAndFlush()
