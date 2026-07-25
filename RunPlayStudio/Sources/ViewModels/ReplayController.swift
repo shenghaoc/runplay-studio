@@ -29,13 +29,42 @@ class ReplayController: ObservableObject {
     /// Available playback speeds.
     static let speedOptions: [Double] = PlaybackEngine.speedOptions
 
+    /// Called after a logical replay state change. The application session
+    /// controller throttles this callback so timer ticks never write at 30 fps.
+    var onStateChange: (@MainActor () -> Void)?
+
+    /// Called when replay transitions from playing to paused/stopped or reaches
+    /// its end. The application session controller uses this to flush the
+    /// latest position immediately.
+    var onPause: (@MainActor () -> Void)?
+
     // MARK: - Public Interface
 
     /// Load a workout for replay.
     func load(_ workout: RunWorkout) {
         stopTimer()
         engine.load(workout)
-        syncFromEngine()
+        // Selection persistence owns the commit boundary for a newly loaded
+        // workout; do not save a transient pre-commit replay state here.
+        syncFromEngine(notifyState: false, notifyPause: false)
+    }
+
+    /// Restore a durable replay position. Loading the workout remains the
+    /// authority for route data; persisted time is clamped by the engine and
+    /// playback is always paused after restoration.
+    func restore(
+        workout: RunWorkout,
+        elapsedSeconds: Double,
+        playbackSpeed: Double
+    ) {
+        stopTimer()
+        engine.load(workout)
+        let speed = Self.speedOptions.contains(playbackSpeed) ? playbackSpeed : 1
+        engine.setSpeed(speed)
+        engine.seekToTime(elapsedSeconds.isFinite ? max(0, elapsedSeconds) : 0)
+        engine.pause()
+        syncFromEngine(notifyState: false, notifyPause: false)
+        stopTimer()
     }
 
     /// Start or resume playback.
@@ -145,8 +174,19 @@ class ReplayController: ObservableObject {
     // MARK: - Private
 
     private func syncFromEngine() {
+        syncFromEngine(notifyState: true, notifyPause: true)
+    }
+
+    private func syncFromEngine(notifyState: Bool, notifyPause: Bool) {
+        let wasPlaying = isPlaying
         state = engine.state
         isPlaying = engine.isPlaying
+        if notifyState {
+            onStateChange?()
+        }
+        if notifyPause, wasPlaying, !isPlaying {
+            onPause?()
+        }
     }
 
     private func startTimer() {

@@ -161,6 +161,22 @@ The core data atom: label + value + optional icon, colored by semantic metric ty
 - **Tab Bar:** Horizontal picker for workout detail tabs (Overview, Charts, Splits, Segments).
 - **Toolbar:** Primary action buttons (Compare, Export) in the toolbar, not inline.
 
+### Window and session behavior
+
+- **Main window:** A stable-ID SwiftUI `Window` provides one coordinated
+  workspace. `RunPlayStudioApp` owns the `AppState` and session controller;
+  `ContentView` receives them and never creates production root state.
+- **Native frame restoration:** macOS owns close, minimise, zoom, full-screen,
+  placement, and frame restoration. A display-aware default near 1200×800 is
+  used only for a new window, with a 720×500 minimum content size.
+- **Logical session:** A separate versioned JSON snapshot restores destination,
+  All Runs/manual-query and smart-collection context, heatmap filters,
+  comparison, paused replay, detail presentation, and sidebar visibility.
+  Library manifest state remains authoritative for selected workout and library
+  organisation.
+- **Transient state:** Sheets, alerts, editors, active operations, map/cache
+  data, query results, table selections, and active playback are not restored.
+
 ### Format Pills
 Small badges showing supported import/export formats. Semantic `.caption2` medium typography with panel background fill and 6pt radius. Used in empty state and format hints.
 

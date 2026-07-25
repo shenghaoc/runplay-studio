@@ -1,5 +1,6 @@
 import SwiftUI
 import RunPlayCore
+import RunPlayPlatform
 
 /// Overview tab showing a map with route overlay as the default landing view.
 ///
@@ -19,12 +20,14 @@ struct OverviewView: View {
     let workout: RunWorkout
     let currentPointIndex: Int
     var mapViewModel: WorkoutRouteMapViewModel?
+    var displayMode: Binding<RouteMapDisplayMode> = .constant(.twoD)
 
     var body: some View {
         MapReferenceView(
             routePoints: workout.routePoints,
             currentPointIndex: currentPointIndex,
-            mapViewModel: mapViewModel
+            mapViewModel: mapViewModel,
+            displayMode: displayMode
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

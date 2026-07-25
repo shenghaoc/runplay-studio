@@ -16,6 +16,22 @@ RunPlay Studio is a local-first desktop replay and analysis studio for GPS runni
 
 Success means: a runner opens the app, imports a workout, and within seconds sees their route on a map with meaningful metrics — no accounts, no cloud, no friction.
 
+## Desktop continuity
+
+RunPlay Studio is a single-workspace macOS app rather than a document editor.
+It presents one native main window backed by one app-owned coordinator, while
+macOS restores the window frame and the app restores its logical workspace in
+a separate, versioned session file. A relaunch can return to a workout tab,
+manual All Runs query, active smart collection, Personal Heatmap filters,
+comparison pair, paused replay position, and sidebar visibility.
+
+The workout-library manifest remains the authority for library membership,
+order, selected workout, favourites, tags, assignments, and smart collections.
+Session restoration is best-effort and validated against the freshly loaded
+library; deleted references fall back safely. Sheets, alerts, active playback,
+map/cache data, query results, table selections, and in-progress operations are
+transient and never reopened.
+
 ## Brand Personality
 
 **Clean, energetic, focused.**

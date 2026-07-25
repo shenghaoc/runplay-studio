@@ -110,6 +110,32 @@ exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
 
+### Application scene and session restoration
+
+`RunPlayStudioApp` owns one stable-ID SwiftUI `Window`, one `AppState`, and one
+`AppSessionController`. `ContentView` is an injected root view; it does not
+construct a second production coordinator. Closing and reopening the main
+window in the same process reuses the app-owned state, and the scene is left on
+native macOS restoration for frame, minimise, zoom, and full-screen behavior.
+
+The logical desktop context is separate from `WorkoutLibraryManifest`. The
+Studio-owned `AppSessionSnapshot` is stored as bounded, sorted-key JSON at
+`Application Support/RunPlayStudio/session.json` through the actor-backed
+`FileAppSessionStore`. It contains only restorable values: destination, workout
+tab/map presentation, manual All Runs query, active smart collection and its
+optional modified working query, heatmap filters, comparison peer/distance,
+paused replay scalars, and sidebar visibility. It never contains route points,
+map images, caches, query result IDs, selections, sheets, alerts, operations,
+or a playing flag.
+
+Startup is library-first: the manifest and organisation load first, then the
+session is decoded, validated against lightweight loaded IDs/policies, applied
+once, and only then made active for writes. Invalid or missing references fall
+back to a usable workout/manual-library state without an alert. Structural
+changes debounce; replay callbacks are throttled and pause/inactive/close/
+termination paths flush. A failed library mutation does not publish a session
+reference until the committed in-memory state is available.
+
 ### Native route metric coloring
 
 Single-workout Apple Maps routes can be colored by Solid, Pace, Heart Rate, or

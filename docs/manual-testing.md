@@ -210,6 +210,53 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Keyboard navigate tags/collections; inspect VoiceOver labels; light/dark tag colors.
 - [ ] Keyboard: select rows, Return to open, Delete with confirmation, focus search.
 
+## Window and application-session restoration checklist
+
+Use the packaged app from `./scripts/package-demo.sh` and synthetic repository
+fixtures only. Native macOS owns frame placement and restoration; the JSON
+session file owns logical workspace state. Do not mark the relaunch or display
+items complete without performing them on the supported desktop target.
+
+- [x] Confirm the packaged app presents one stable-ID main `Window` and does not
+  create an independent second workspace through New Window.
+- [x] Change the workout tab and All Runs destination; confirm the bounded
+  session JSON changes without route points, result IDs, or map/cache data.
+- [x] Move and resize the main window, quit normally, and relaunch; confirm
+  native frame placement, size, minimise, zoom, and full-screen behavior.
+- [x] Change sidebar visibility, quit, and relaunch; confirm visibility returns
+  without persisting an exact sidebar width.
+- [x] Quit from a workout, All Runs, smart collection, Personal Heatmap, and
+  valid comparison; confirm each durable destination and substate restores.
+- [x] Set replay position and speed, start playback, quit, and relaunch;
+  confirm position/speed return paused with no active timer.
+- [x] Modify a smart collection without updating it, relaunch, and confirm
+  Modified/Revert/Update behavior plus return to the prior manual query.
+- [x] Delete a referenced workout or smart collection, relaunch, and confirm
+  safe fallback without an alert or dangling ID.
+- [x] Open importer, export, editor, manager, confirmation, and error UI,
+  relaunch, and confirm no transient presentation returns.
+- [ ] Repeat with a secondary display attached, then unavailable, and confirm
+  native restoration keeps the window on a visible display.
+
+Packaged-app smoke record (2026-07-25): the release app was rebuilt warning
+clean and inspected in an unlocked desktop session with Computer Use. The
+singleton scene exposed one stable-ID main window and no New Window command.
+Charts, All Runs, the manual query, hidden-sidebar state, a modified smart
+collection, Personal Heatmap at Broad resolution, and a 2.20 km comparison
+survived normal quit/relaunch. Replay at 2.0× checkpointed while playing and
+restored its position and speed paused. Deleting a temporary referenced workout
+and smart collection produced a safe durable fallback.
+
+The native Window menu moved and resized the main window from 1200×766 to
+757×553; normal quit/relaunch restored the tiled placement and 756×552 frame,
+allowing for native border normalization. Minimise, zoom, and full-screen
+transitions remained native. Forced relaunches with the importer, export save
+panel, metadata editor, smart-collection manager, delete confirmation, and
+invalid-FIT error open returned only the durable main workspace; no transient
+presentation returned. The host reported one connected display, so the
+secondary-display item remains hardware-gated and the README states that
+boundary.
+
 ## Persistent Workout Library Checklist
 
 Use a synthetic fixture and confirm the original fixture checksum before and

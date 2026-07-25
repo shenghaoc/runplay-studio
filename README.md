@@ -29,6 +29,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Synchronized views** — Map and charts stay in sync with the timeline
 - **Route comparison** — Elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay
 - **Segment detection** — Auto-identify active-pace fastest/slowest windows and biggest climb/descent
+- **Native session restoration** — One coordinated macOS window restores bounded logical workspace state on relaunch without restoring transient UI; macOS separately owns frame and display placement
 - **Chart click/drag to seek** — Click or drag on charts to navigate the run
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 - **Strava bulk archive import** — Import running activities from a local Strava export ZIP (no login or network)
@@ -72,6 +73,25 @@ RunPlay Studio is a **local-only** application:
 For manual dogfooding with real workouts, keep private files in ignored local
 paths and follow [docs/private-data.md](docs/private-data.md). Public fixtures
 and demo assets must be synthetic or anonymized.
+
+## Application session restoration
+
+RunPlay Studio uses one app-owned main window and one app-owned `AppState` for
+the coordinated workspace. macOS owns native window frame restoration; the
+app supplies a display-aware default near 1200×800 only when no restorable
+frame exists.
+
+The separate Studio session file restores the visible workout, All Runs or
+smart-collection query context, Personal Heatmap filters, comparison pair and
+distance, workout tab/map presentation, replay position and speed, and sidebar
+visibility. The library manifest remains authoritative for workout order,
+selected workout, favourites, tags, assignments, and smart collections.
+Replay always returns paused. Import/export sheets, alerts, editors, map/cache
+data, table selections, query results, and in-progress operations are never
+restored. Missing or corrupt session data falls back to the manifest-selected
+workout and safe defaults. The packaged-app checklist in
+[`docs/manual-testing.md`](docs/manual-testing.md) records the desktop flows
+actually exercised; secondary-display placement requires matching hardware.
 
 ---
 

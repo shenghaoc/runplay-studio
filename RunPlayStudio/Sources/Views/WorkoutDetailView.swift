@@ -1,5 +1,6 @@
 import SwiftUI
 import RunPlayCore
+import RunPlayPlatform
 
 /// Main detail view for a selected workout showing Apple Maps, charts, and summary.
 ///
@@ -10,7 +11,6 @@ struct WorkoutDetailView: View {
     @ObservedObject var appState: AppState
     @ObservedObject private var replayController: ReplayController
 
-    @State private var selectedTab: ViewTab = .overview
     /// Owns metric route map lines; must not rebuild on replay ticks.
     @State private var routeMapViewModel = WorkoutRouteMapViewModel()
 
@@ -27,6 +27,32 @@ struct WorkoutDetailView: View {
         case segments = "Segments"
 
         var id: String { rawValue }
+    }
+
+    private var selectedTab: ViewTab {
+        ViewTab(rawValue: appState.workoutDetailTabRaw) ?? .overview
+    }
+
+    private var selectedTabBinding: Binding<ViewTab> {
+        Binding(
+            get: { ViewTab(rawValue: appState.workoutDetailTabRaw) ?? .overview },
+            set: {
+                appState.workoutDetailTabRaw = $0.rawValue
+                appState.requestSessionSave()
+            }
+        )
+    }
+
+    private var mapDisplayModeBinding: Binding<RouteMapDisplayMode> {
+        Binding(
+            get: {
+                RouteMapDisplayMode(rawValue: appState.workoutMapDisplayModeRaw) ?? .twoD
+            },
+            set: {
+                appState.workoutMapDisplayModeRaw = $0.rawValue
+                appState.requestSessionSave()
+            }
+        )
     }
 
     var body: some View {
@@ -48,7 +74,7 @@ struct WorkoutDetailView: View {
             Divider()
 
             VStack(spacing: AppDesign.Spacing.large) {
-                TabBarView(selectedTab: $selectedTab)
+                TabBarView(selectedTab: selectedTabBinding)
                 mainContentArea
                     .layoutPriority(1)
                 replayDock
@@ -60,7 +86,13 @@ struct WorkoutDetailView: View {
             AppDesign.workspaceBackground
                 .ignoresSafeArea()
         }
-        .focusedSceneValue(\.workoutTabSelection, $selectedTab)
+        .focusedSceneValue(\.workoutTabSelection, selectedTabBinding)
+        .onChange(of: appState.workoutDetailTabRaw) { _, _ in
+            appState.requestSessionSave()
+        }
+        .onChange(of: appState.workoutMapDisplayModeRaw) { _, _ in
+            appState.requestSessionSave()
+        }
         .onAppear {
             refreshRouteMapModel()
         }
@@ -132,7 +164,8 @@ struct WorkoutDetailView: View {
             OverviewView(
                 workout: workout,
                 currentPointIndex: replayController.state.currentPointIndex,
-                mapViewModel: routeMapViewModel
+                mapViewModel: routeMapViewModel,
+                displayMode: mapDisplayModeBinding
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))

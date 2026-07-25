@@ -399,6 +399,61 @@ final class WorkoutLibraryViewModel: ObservableObject {
         )
     }
 
+    /// Capture the ordinary All Runs query even while a smart collection is
+    /// active. Result IDs, counts, selection, and query caches are excluded.
+    func sessionManualQuery() -> WorkoutLibrarySavedQuery {
+        guard let manualQuerySnapshot else {
+            return currentSavedQuery()
+        }
+        return WorkoutLibrarySavedQuery.capture(
+            searchText: manualQuerySnapshot.searchText,
+            filter: WorkoutLibraryFilter(
+                favorite: manualQuerySnapshot.favoriteFilter,
+                date: manualQuerySnapshot.dateFilter,
+                source: manualQuerySnapshot.sourceFilter,
+                data: manualQuerySnapshot.dataFilters,
+                tags: manualQuerySnapshot.tagFilter
+            ),
+            sort: manualQuerySnapshot.sort
+        )
+    }
+
+    /// Apply session-only All Runs and smart-collection state after the
+    /// manifest has been loaded. Missing collections are intentionally treated
+    /// as manual All Runs by the caller/validator.
+    func restoreSessionState(
+        manualQuery: WorkoutLibrarySavedQuery,
+        activeSmartCollectionID: UUID?,
+        activeSmartCollectionModified: Bool,
+        modifiedWorkingQuery: WorkoutLibrarySavedQuery?
+    ) {
+        let manualSnapshot = makeManualSnapshot(from: manualQuery)
+        guard let activeSmartCollectionID,
+              smartCollections.contains(where: { $0.id == activeSmartCollectionID }) else {
+            manualQuerySnapshot = nil
+            queryContext = .manual
+            applySnapshot(manualSnapshot)
+            return
+        }
+
+        manualQuerySnapshot = manualSnapshot
+        if activeSmartCollectionModified, let modifiedWorkingQuery {
+            applySavedQuery(
+                modifiedWorkingQuery,
+                markUnmodifiedCollectionID: activeSmartCollectionID,
+                isModified: true
+            )
+        } else if let collection = smartCollections.first(where: { $0.id == activeSmartCollectionID }) {
+            applySavedQuery(collection.query, markUnmodifiedCollectionID: collection.id)
+        } else {
+            // Defensive fallback for a collection removed between validation
+            // and application.
+            manualQuerySnapshot = nil
+            queryContext = .manual
+            applySnapshot(manualSnapshot)
+        }
+    }
+
     /// After a successful Update Collection persistence, mark unmodified and sync.
     func markActiveCollectionUpdated(_ collection: WorkoutSmartCollection) {
         if let index = smartCollections.firstIndex(where: { $0.id == collection.id }) {
@@ -478,9 +533,33 @@ final class WorkoutLibraryViewModel: ObservableObject {
         }
     }
 
+    private func makeManualSnapshot(from query: WorkoutLibrarySavedQuery) -> ManualQuerySnapshot {
+        let customBounds: (Date, Date) = {
+            if case .custom(let start, let end) = query.filter.date {
+                return (
+                    start ?? customDateStart,
+                    end ?? customDateEnd
+                )
+            }
+            return (customDateStart, customDateEnd)
+        }()
+        return ManualQuerySnapshot(
+            searchText: query.searchText,
+            sort: query.sort,
+            favoriteFilter: query.filter.favorite,
+            sourceFilter: query.filter.source,
+            dateFilter: query.filter.date,
+            customDateStart: customBounds.0,
+            customDateEnd: customBounds.1,
+            dataFilters: query.filter.data,
+            tagFilter: query.filter.tags
+        )
+    }
+
     private func applySavedQuery(
         _ query: WorkoutLibrarySavedQuery,
-        markUnmodifiedCollectionID id: UUID
+        markUnmodifiedCollectionID id: UUID,
+        isModified: Bool = false
     ) {
         isApplyingSavedQuery = true
         isBatchingQueryChanges = true
@@ -498,7 +577,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
         default:
             dateFilter = query.filter.date
         }
-        queryContext = .smartCollection(id: id, isModified: false)
+        queryContext = .smartCollection(id: id, isModified: isModified)
         isBatchingQueryChanges = false
         isApplyingSavedQuery = false
         scheduleQuery(force: true)

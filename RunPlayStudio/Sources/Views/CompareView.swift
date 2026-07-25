@@ -63,6 +63,9 @@ struct CompareView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppDesign.workspaceBackground)
+        .onChange(of: appState.selectedComparisonDistanceMeters) { _, _ in
+            appState.requestSessionSave()
+        }
     }
 
     // MARK: - Selector

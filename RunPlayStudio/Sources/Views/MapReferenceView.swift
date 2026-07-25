@@ -15,9 +15,23 @@ struct MapReferenceView: View {
     var mapViewModel: WorkoutRouteMapViewModel?
 
     @AppStorage("routeColorMode") private var storedColorModeRaw: String = WorkoutRouteColorMode.solid.rawValue
-    @State private var displayMode: RouteMapDisplayMode = .twoD
+    @Binding private var displayMode: RouteMapDisplayMode
     @State private var fitRequest = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(
+        routePoints: [RoutePoint],
+        currentPointIndex: Int = 0,
+        showAnnotations: Bool = true,
+        mapViewModel: WorkoutRouteMapViewModel? = nil,
+        displayMode: Binding<RouteMapDisplayMode> = .constant(.twoD)
+    ) {
+        self.routePoints = routePoints
+        self.currentPointIndex = currentPointIndex
+        self.showAnnotations = showAnnotations
+        self.mapViewModel = mapViewModel
+        self._displayMode = displayMode
+    }
 
     private var preferredMode: WorkoutRouteColorMode {
         WorkoutRouteColorMode(rawValue: storedColorModeRaw) ?? .solid

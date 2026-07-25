@@ -46,9 +46,18 @@ final class AppState: ObservableObject {
 }
 ```
 
-`ContentView` owns `AppState` with `@StateObject`; dependent views observe
-`AppState` or `ReplayController` with `@ObservedObject`. Match the live source
-when changing observation rather than migrating the architecture incidentally.
+`RunPlayStudioApp` owns `AppState` and `AppSessionController` with
+`@StateObject`; `ContentView` receives them by injection. Dependent views
+observe `AppState` or `ReplayController` with `@ObservedObject`. Match the live
+source when changing observation rather than migrating the architecture
+incidentally.
+
+`FileAppSessionStore` is an actor. It performs bounded atomic session JSON I/O
+off the main actor. `AppSessionController` applies a validated snapshot only
+after library startup, suppresses writes during restoration, debounces
+structural changes, throttles replay updates, and flushes on pause/lifecycle
+transitions. Session snapshots must remain logical and must not carry route
+arrays, map/cache values, timer state, or transient presentations.
 
 ## Cross-layer data flow
 
