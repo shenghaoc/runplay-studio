@@ -188,6 +188,24 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
             )
         }
 
+        func record(
+            candidateID: String,
+            sourceIndex: Int,
+            sessionName: String,
+            status: FITSessionCandidateStatus,
+            detail: String? = nil,
+            workoutID: UUID? = nil
+        ) {
+            items.append(FITSessionImportItemResult(
+                candidateID: candidateID,
+                sourceIndex: sourceIndex,
+                sessionName: sessionName,
+                status: status,
+                detail: detail,
+                importedWorkoutID: workoutID
+            ))
+        }
+
         do {
             for candidate in selected {
                 try Task.checkCancellation()
@@ -198,13 +216,13 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                 // this session no longer exists in the container.
                 guard let live = liveByID[candidate.providerActivityID] else {
                     failed += 1
-                    items.append(FITSessionImportItemResult(
+                    record(
                         candidateID: candidate.providerActivityID,
                         sourceIndex: candidate.sourceIndex,
                         sessionName: candidate.displayName,
                         status: .parseFailed,
                         detail: "This session is no longer present in the file."
-                    ))
+                    )
                     continue
                 }
 
@@ -216,13 +234,13 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                     } else {
                         skipped += 1
                     }
-                    items.append(FITSessionImportItemResult(
+                    record(
                         candidateID: live.providerActivityID,
                         sourceIndex: live.sourceIndex,
                         sessionName: live.displayName,
                         status: live.status,
                         detail: live.statusDetail
-                    ))
+                    )
                     continue
                 }
 
@@ -230,13 +248,13 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                 // would claim the same provider identity.
                 guard stagedIDsInBatch.insert(live.providerActivityID).inserted else {
                     skipped += 1
-                    items.append(FITSessionImportItemResult(
+                    record(
                         candidateID: live.providerActivityID,
                         sourceIndex: live.sourceIndex,
                         sessionName: live.displayName,
                         status: .duplicate,
                         detail: "Duplicate session identity within this file."
-                    ))
+                    )
                     continue
                 }
 
@@ -262,29 +280,25 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                     throw CancellationError()
                 } catch let error as WorkoutImportError {
                     failed += 1
-                    let status: FITSessionCandidateStatus
-                    if case .missingData = error {
-                        status = .noGPSRoute
-                    } else {
-                        status = .parseFailed
-                    }
-                    items.append(FITSessionImportItemResult(
+                    let status: FITSessionCandidateStatus =
+                        if case .missingData = error { .noGPSRoute } else { .parseFailed }
+                    record(
                         candidateID: live.providerActivityID,
                         sourceIndex: live.sourceIndex,
                         sessionName: live.displayName,
                         status: status,
                         detail: error.localizedDescription
-                    ))
+                    )
                     continue
                 } catch {
                     failed += 1
-                    items.append(FITSessionImportItemResult(
+                    record(
                         candidateID: live.providerActivityID,
                         sourceIndex: live.sourceIndex,
                         sessionName: live.displayName,
                         status: .parseFailed,
                         detail: error.localizedDescription
-                    ))
+                    )
                     continue
                 }
 
@@ -302,26 +316,25 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                         startDate: startDate,
                         sourceIndex: live.sourceIndex
                     ))
-                    items.append(FITSessionImportItemResult(
+                    record(
                         candidateID: live.providerActivityID,
                         sourceIndex: live.sourceIndex,
                         sessionName: displayName,
                         status: .ready,
-                        detail: nil,
-                        importedWorkoutID: workoutID
-                    ))
+                        workoutID: workoutID
+                    )
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
                     failed += 1
                     stagedIDsInBatch.remove(live.providerActivityID)
-                    items.append(FITSessionImportItemResult(
+                    record(
                         candidateID: live.providerActivityID,
                         sourceIndex: live.sourceIndex,
                         sessionName: live.displayName,
                         status: .parseFailed,
                         detail: error.localizedDescription
-                    ))
+                    )
                 }
             }
 

@@ -1726,40 +1726,10 @@ class AppState: ObservableObject {
                 }
 
                 if report.importedCount > 0 {
-                    // Reload library from store for authoritative post-commit state.
-                    let loadResult = await storeActor.loadLibrary()
-                    switch loadResult {
-                    case .workouts(let loaded, let selectedID, let favoriteIDs, let organization, _):
-                        self.analysisContextCache.removeAll()
-                        self.workouts = loaded
-                        self.favoriteWorkoutIDs = favoriteIDs
-                        self.tags = organization.tags
-                        self.smartCollections = organization.smartCollections
-                        self.libraryWorkoutIDs = Set(loaded.map(\.id))
-                        self.hasPersistedLibrary = true
-                        self.workoutLibrary.replaceLibrary(
-                            workouts: loaded,
-                            favoriteIDs: favoriteIDs,
-                            organization: organization
-                        )
-                        let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
-                            ?? loaded.first
-                        self.selectWorkout(selected, persistSelection: false)
-                        // Keep heatmap invalidation coherent: refresh when visible,
-                        // otherwise the next open path reloads from `workouts`.
-                        if self.workspaceMode == .personalHeatmap {
-                            self.personalHeatmap.refresh(workouts: loaded)
-                        }
-                        self.requestSessionSave()
-                    case .demos(let message, let organization, let manifestPresent):
-                        // Unexpected after successful commit; fall back.
-                        self.tags = organization.tags
-                        self.smartCollections = organization.smartCollections
-                        self.hasPersistedLibrary = manifestPresent
-                        if let message {
-                            session.errorMessage = message
-                        }
-                    }
+                    await self.reloadLibraryAfterBatchCommit(
+                        storeActor: storeActor,
+                        onLoadFailure: { message in session.errorMessage = message }
+                    )
                 }
 
                 session.report = report
@@ -1824,6 +1794,7 @@ class AppState: ObservableObject {
         dismissArchiveSession()
         showPersonalHeatmap()
     }
+
 
     // MARK: - Multi-session FIT import
 

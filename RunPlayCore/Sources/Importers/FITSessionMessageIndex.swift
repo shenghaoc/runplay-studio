@@ -82,7 +82,10 @@ public struct FITSessionMessageIndex: Sendable {
                 sessions: sessions,
                 prepared: prepared
             )
-            let laps = hasReliableLapIndexMetadata(session: session, laps: decodedFile.laps)
+            let laps = FITSessionAttribution.hasReliableLapIndexMetadata(
+                session: session,
+                laps: decodedFile.laps
+            )
                 ? indexClaimed[0]
                 : Array(decodedFile.laps.indices)
 
@@ -194,31 +197,4 @@ public struct FITSessionMessageIndex: Sendable {
         )
     }
 
-    /// Whether the session declares a complete, non-duplicated lap ordinal range.
-    private static func hasReliableLapIndexMetadata(
-        session: FITSessionMessage,
-        laps: [FITLapMessage]
-    ) -> Bool {
-        guard let firstLapIndex = session.firstLapIndex,
-              firstLapIndex != FITParser.invalidUint16,
-              let numberOfLaps = session.numberOfLaps,
-              numberOfLaps != FITParser.invalidUint16
-        else {
-            return false
-        }
-        let lowerBound = Int(firstLapIndex & 0x0FFF)
-        let upperBound = lowerBound + Int(numberOfLaps)
-        var matched = 0
-        var ordinals = Set<Int>()
-        for lap in laps {
-            guard let rawIndex = lap.messageIndex, rawIndex != FITParser.invalidUint16 else {
-                continue
-            }
-            let ordinal = Int(rawIndex & 0x0FFF)
-            guard ordinal >= lowerBound, ordinal < upperBound else { continue }
-            matched += 1
-            ordinals.insert(ordinal)
-        }
-        return matched == Int(numberOfLaps) && ordinals.count == Int(numberOfLaps)
-    }
 }

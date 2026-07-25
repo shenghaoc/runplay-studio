@@ -244,30 +244,21 @@ public enum FITSessionAttribution {
         var owners = [Int32](repeating: unattributed, count: timestamps.count)
         guard !orderedRanges.isEmpty, !timestamps.isEmpty else { return owners }
 
+        // One walk body for both orders. Chronological source order is the
+        // common FIT case and stays O(n); otherwise sort a non-nil index
+        // permutation once so the cursor still advances monotically.
+        let order: [Int]
         if isChronological(timestamps) {
-            var cursor = orderedRanges.startIndex
-            for index in timestamps.indices {
-                guard let timestamp = timestamps[index] else { continue }
-                while cursor < orderedRanges.endIndex,
-                      timestamp >= orderedRanges[cursor].upperExclusive {
-                    cursor += 1
+            order = Array(timestamps.indices)
+        } else {
+            order = timestamps.indices
+                .filter { timestamps[$0] != nil }
+                .sorted { lhs, rhs in
+                    let left = timestamps[lhs] ?? 0
+                    let right = timestamps[rhs] ?? 0
+                    if left != right { return left < right }
+                    return lhs < rhs
                 }
-                guard cursor < orderedRanges.endIndex else { break }
-                if timestamp >= orderedRanges[cursor].start {
-                    owners[index] = Int32(orderedRanges[cursor].sourceIndex)
-                }
-            }
-            return owners
-        }
-
-        // Source order is not chronological. Sort an index permutation once so
-        // the walk stays a single advancing cursor rather than a nested scan.
-        var order = timestamps.indices.filter { timestamps[$0] != nil }
-        order.sort { lhs, rhs in
-            let left = timestamps[lhs] ?? 0
-            let right = timestamps[rhs] ?? 0
-            if left != right { return left < right }
-            return lhs < rhs
         }
 
         var cursor = orderedRanges.startIndex
@@ -340,43 +331,18 @@ public enum FITSessionAttribution {
         guard !laps.isEmpty else { return [[Int]](repeating: [], count: sessionCount) }
 
         // One pass: lower-12-bit ordinal → lap array indexes.
-        var lapsByOrdinal: [Int: [Int]] = [:]
-        for (arrayIndex, lap) in laps.enumerated() {
-            guard let rawIndex = lap.messageIndex, rawIndex != FITParser.invalidUint16 else {
-                continue
-            }
-            lapsByOrdinal[Int(rawIndex & 0x0FFF), default: []].append(arrayIndex)
-        }
+        let lapsByOrdinal = Self.lapsByOrdinalMap(laps)
 
-        // Tentative index-metadata claims.
+        // Tentative index-metadata claims (shared completeness rule).
         var tentativeClaims = [[Int]?](repeating: nil, count: sessionCount)
         var claimCount = [Int](repeating: 0, count: laps.count)
         for sessionIndex in 0..<sessionCount {
-            let session = sessions[sessionIndex]
-            guard let firstLapIndex = session.firstLapIndex,
-                  firstLapIndex != FITParser.invalidUint16,
-                  let numberOfLaps = session.numberOfLaps,
-                  numberOfLaps != FITParser.invalidUint16
-            else {
+            guard let matched = reliableIndexClaimedLaps(
+                session: sessions[sessionIndex],
+                lapsByOrdinal: lapsByOrdinal
+            ) else {
                 continue
             }
-            let lowerBound = Int(firstLapIndex & 0x0FFF)
-            let upperBound = lowerBound + Int(numberOfLaps)
-            var matched: [Int] = []
-            var matchedOrdinals = Set<Int>()
-            for ordinal in lowerBound..<upperBound {
-                guard let arrayIndexes = lapsByOrdinal[ordinal] else { continue }
-                matched.append(contentsOf: arrayIndexes)
-                matchedOrdinals.insert(ordinal)
-            }
-            // Same completeness rule as the single-session importer: a partial
-            // or duplicated ordinal range is not reliable metadata.
-            guard matched.count == Int(numberOfLaps),
-                  matchedOrdinals.count == Int(numberOfLaps)
-            else {
-                continue
-            }
-            matched.sort()
             tentativeClaims[sessionIndex] = matched
             for arrayIndex in matched {
                 claimCount[arrayIndex] += 1
@@ -385,14 +351,12 @@ public enum FITSessionAttribution {
 
         // Drop any claim that shares a lap with another session's claim.
         var indexClaims = [[Int]?](repeating: nil, count: sessionCount)
-        var claimedLapIndexes = Set<Int>()
         var claimedBySession = [Int](repeating: -1, count: laps.count)
         for sessionIndex in 0..<sessionCount {
             guard let claim = tentativeClaims[sessionIndex] else { continue }
             guard claim.allSatisfy({ claimCount[$0] == 1 }) else { continue }
             indexClaims[sessionIndex] = claim
             for arrayIndex in claim {
-                claimedLapIndexes.insert(arrayIndex)
                 claimedBySession[arrayIndex] = sessionIndex
             }
         }
@@ -419,6 +383,62 @@ public enum FITSessionAttribution {
             result[Int(owner)].append(arrayIndex)
         }
         return result
+    }
+
+    // MARK: - Shared lap index metadata
+
+    /// Lower-12-bit ordinal map of lap array indexes (profile `message_index`).
+    public static func lapsByOrdinalMap(_ laps: [FITLapMessage]) -> [Int: [Int]] {
+        var lapsByOrdinal: [Int: [Int]] = [:]
+        for (arrayIndex, lap) in laps.enumerated() {
+            guard let rawIndex = lap.messageIndex, rawIndex != FITParser.invalidUint16 else {
+                continue
+            }
+            lapsByOrdinal[Int(rawIndex & 0x0FFF), default: []].append(arrayIndex)
+        }
+        return lapsByOrdinal
+    }
+
+    /// Sorted lap array indexes when `first_lap_index` + `number_of_laps` is a
+    /// complete, non-duplicated claim; otherwise `nil`.
+    ///
+    /// Used by multi-session `attributeLaps` and the single-session message
+    /// index so both paths cannot diverge on the reliability rule.
+    public static func reliableIndexClaimedLaps(
+        session: FITSessionMessage,
+        lapsByOrdinal: [Int: [Int]]
+    ) -> [Int]? {
+        guard let firstLapIndex = session.firstLapIndex,
+              firstLapIndex != FITParser.invalidUint16,
+              let numberOfLaps = session.numberOfLaps,
+              numberOfLaps != FITParser.invalidUint16
+        else {
+            return nil
+        }
+        let lowerBound = Int(firstLapIndex & 0x0FFF)
+        let upperBound = lowerBound + Int(numberOfLaps)
+        var matched: [Int] = []
+        var matchedOrdinals = Set<Int>()
+        for ordinal in lowerBound..<upperBound {
+            guard let arrayIndexes = lapsByOrdinal[ordinal] else { continue }
+            matched.append(contentsOf: arrayIndexes)
+            matchedOrdinals.insert(ordinal)
+        }
+        guard matched.count == Int(numberOfLaps),
+              matchedOrdinals.count == Int(numberOfLaps)
+        else {
+            return nil
+        }
+        matched.sort()
+        return matched
+    }
+
+    /// Whether the session declares a complete, non-duplicated lap ordinal range.
+    public static func hasReliableLapIndexMetadata(
+        session: FITSessionMessage,
+        laps: [FITLapMessage]
+    ) -> Bool {
+        reliableIndexClaimedLaps(session: session, lapsByOrdinal: lapsByOrdinalMap(laps)) != nil
     }
 
     // MARK: - Private helpers
