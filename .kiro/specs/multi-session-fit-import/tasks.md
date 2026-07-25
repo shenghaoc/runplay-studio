@@ -19,5 +19,5 @@
       provenance, transaction, performance
 - [x] Studio tests: AppState routing, single-session regression parity
 - [x] Documentation + Kiro steering + roadmap correction
-- [ ] Packaged-app build/launch verification
+- [x] Packaged-app build/launch verification (Escape-to-cancel unconfirmed; see docs/manual-testing.md)
 - [ ] CI green on PR head

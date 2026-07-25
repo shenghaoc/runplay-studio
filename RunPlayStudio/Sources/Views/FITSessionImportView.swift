@@ -27,7 +27,7 @@ struct FITSessionImportView: View {
                 reportBody
             }
         }
-        .frame(minWidth: 760, minHeight: 480)
+        .frame(minWidth: 940, minHeight: 480)
         .background(AppDesign.workspaceBackground)
     }
 
@@ -44,7 +44,6 @@ struct FITSessionImportView: View {
             Spacer()
             if session.phase == .reviewing {
                 Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
             }
         }
         .padding()
@@ -57,7 +56,7 @@ struct FITSessionImportView: View {
     private var reviewBody: some View {
         VStack(spacing: 0) {
             summaryBar
-            filterBar
+            selectionBar
             candidateTable
             reviewFooter
         }
@@ -93,12 +92,11 @@ struct FITSessionImportView: View {
         .accessibilityLabel("\(title): \(value)")
     }
 
-    private var filterBar: some View {
+    private var selectionBar: some View {
         HStack {
-            TextField("Search sessions", text: $session.searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
-                .accessibilityLabel("Search sessions")
+            Text(session.selectionAccessibilityValue)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
 
             Spacer()
 
@@ -119,7 +117,7 @@ struct FITSessionImportView: View {
     }
 
     private var candidateTable: some View {
-        Table(session.filteredCandidates) {
+        Table(session.displayedCandidates) {
             TableColumn("Include") { candidate in
                 Toggle(
                     "",
@@ -138,7 +136,7 @@ struct FITSessionImportView: View {
                         : candidate.statusDetail ?? candidate.status.userFacingSummary
                 )
             }
-            .width(64)
+            .width(58)
 
             TableColumn("Session") { candidate in
                 VStack(alignment: .leading, spacing: 1) {
@@ -153,44 +151,44 @@ struct FITSessionImportView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(session.accessibilityLabel(for: candidate))
             }
-            .width(min: 180, ideal: 260)
+            .width(min: 150, ideal: 172)
 
             TableColumn("Date") { candidate in
                 Text(dateText(candidate.startDate))
                     .font(AppDesign.Typography.compactLabel)
                     .monospacedDigit()
             }
-            .width(min: 120, ideal: 150)
+            .width(min: 105, ideal: 116)
 
             TableColumn("Sport") { candidate in
                 Text(candidate.sportDescription)
                     .foregroundStyle(.secondary)
             }
-            .width(min: 80, ideal: 110)
+            .width(min: 70, ideal: 78)
 
             TableColumn("Elapsed") { candidate in
                 Text(DisplayFormatter.formatDuration(candidate.elapsedSeconds))
                     .monospacedDigit()
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 62, ideal: 68)
 
             TableColumn("Distance") { candidate in
                 Text(DisplayFormatter.formatDistance(candidate.reportedDistanceMeters))
                     .monospacedDigit()
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 66, ideal: 72)
 
             TableColumn("GPS Points") { candidate in
                 Text("\(candidate.gpsRecordCount)")
                     .monospacedDigit()
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 74, ideal: 80)
 
             TableColumn("Laps") { candidate in
                 Text("\(candidate.recordedLapCount)")
                     .monospacedDigit()
             }
-            .width(50)
+            .width(46)
 
             TableColumn("Status") { candidate in
                 // Status is conveyed by text; colour is only reinforcement.
@@ -201,7 +199,7 @@ struct FITSessionImportView: View {
                         "\(candidate.status.userFacingSummary). \(candidate.statusDetail ?? "")"
                     )
             }
-            .width(min: 130, ideal: 180)
+            .width(min: 120, ideal: 138)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .accessibilityLabel("FIT sessions in \(session.fileName)")
@@ -220,6 +218,7 @@ struct FITSessionImportView: View {
             }
             Spacer()
             Button("Cancel", action: onCancel)
+                .keyboardShortcut(.cancelAction)
             Button(importButtonTitle) {
                 onImport()
             }
@@ -255,6 +254,7 @@ struct FITSessionImportView: View {
 
             Button("Cancel", action: onCancel)
                 .help("Cancel the import and leave the library unchanged")
+                .keyboardShortcut(.cancelAction)
                 .disabled(session.progress.phase == .committing)
 
             Spacer()

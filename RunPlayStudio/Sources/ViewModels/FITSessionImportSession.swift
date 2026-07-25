@@ -19,7 +19,6 @@ final class FITSessionImportSession: ObservableObject {
     @Published var phase: FITSessionImportUIPhase = .reviewing
     @Published var scanResult: FITSessionScanResult
     @Published var selectedIDs: Set<String>
-    @Published var searchText: String = ""
     @Published var progress: WorkoutBatchImportProgress = WorkoutBatchImportProgress()
     @Published var report: FITSessionBatchImportReport?
     @Published var errorMessage: String?
@@ -50,22 +49,11 @@ final class FITSessionImportSession: ObservableObject {
         }
     }
 
-    /// Candidates in FIT source order. Search narrows the list but never
-    /// reorders it: staging and reporting follow source order too.
-    var filteredCandidates: [FITSessionDescriptor] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let list: [FITSessionDescriptor]
-        if query.isEmpty {
-            list = scanResult.candidates
-        } else {
-            list = scanResult.candidates.filter { candidate in
-                candidate.displayName.lowercased().contains(query)
-                    || candidate.sportDescription.lowercased().contains(query)
-                    || candidate.status.userFacingSummary.lowercased().contains(query)
-                    || (candidate.subSportDescription?.lowercased().contains(query) ?? false)
-            }
-        }
-        return list.sorted { $0.sourceIndex < $1.sourceIndex }
+    /// Candidates in FIT source order, which is also the staging and reporting
+    /// order. A container holds a short, fully visible session list, so there
+    /// is no search field to trap the Escape key or steal initial focus.
+    var displayedCandidates: [FITSessionDescriptor] {
+        scanResult.candidates.sorted { $0.sourceIndex < $1.sourceIndex }
     }
 
     var selectedCount: Int { selectedIDs.count }

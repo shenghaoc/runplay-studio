@@ -188,17 +188,37 @@ final class AppStateFITSessionImportTests: XCTestCase {
         XCTAssertTrue(session.canImport)
     }
 
-    func testCandidatesStayInSourceOrderWhileSearching() async throws {
+    func testCandidatesAreDisplayedInFITSourceOrder() async throws {
         let appState = makeAppState()
         let url = try writeFixture(FITFixtureBuilder.buildTwoRunningSessions(), named: "multi.fit")
         await appState.importWorkout(from: url)
         let session = try XCTUnwrap(appState.fitSessionImportSession)
 
-        XCTAssertEqual(session.filteredCandidates.map(\.sourceIndex), [0, 1])
-        session.searchText = "running"
-        XCTAssertEqual(session.filteredCandidates.map(\.sourceIndex), [0, 1])
-        session.searchText = "no-such-session"
-        XCTAssertTrue(session.filteredCandidates.isEmpty)
+        XCTAssertEqual(session.displayedCandidates.map(\.sourceIndex), [0, 1])
+        XCTAssertEqual(
+            session.displayedCandidates.map(\.providerActivityID),
+            session.scanResult.candidates.map(\.providerActivityID)
+        )
+    }
+
+    func testSelectionSummaryReportsImportableCount() async throws {
+        let appState = makeAppState()
+        let url = try writeFixture(
+            FITFixtureBuilder.buildRunningPlusCyclingSessions(),
+            named: "mixed.fit"
+        )
+        await appState.importWorkout(from: url)
+        let session = try XCTUnwrap(appState.fitSessionImportSession)
+
+        XCTAssertEqual(
+            session.selectionAccessibilityValue,
+            "1 of 1 importable sessions selected"
+        )
+        session.selectNone()
+        XCTAssertEqual(
+            session.selectionAccessibilityValue,
+            "0 of 1 importable sessions selected"
+        )
     }
 
     // MARK: - Import

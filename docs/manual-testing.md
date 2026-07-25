@@ -245,6 +245,33 @@ completed manual pass.
 21. Put a multi-session FIT file inside a synthetic Strava archive → that entry
     is reported as failed; **no** nested review sheet appears.
 
+Focused pre-merge smoke record (2026-07-25), packaged
+`.build/artifacts/RunPlayStudio.app`, synthetic fixtures only:
+
+- **Import File…** (⌘I) exposed the review sheet for a two-session FIT file;
+  no separate multi-session command exists in the File menu.
+- The sheet listed both sessions in FIT source order with Include, Session,
+  Date, Sport, Elapsed, Distance, GPS Points, Laps, and Status columns.
+- **Import 2 Runs** committed both; the library went 7 → 9, the newer session
+  (20:23) was selected, and the two workouts had distinct routes and durations
+  (5.10 km / 19:30 and 4.35 km / 14:30).
+- The per-session source-timing warning fired on the paused session only.
+- Reimporting the same file, and a renamed copy of it, showed **Already
+  imported** for both sessions with **Import 0 Runs** disabled.
+- A running-plus-cycling file showed `Importable 1` / `Unsupported 1`, with the
+  cycling row visible, disabled, and labelled **Unsupported sport**; importing
+  brought in the running session only.
+- Return triggered the default **Import N Runs** action.
+- Deleting the imported workouts restored the library to its original state.
+
+**Not verified in that pass:** Escape-to-cancel could not be confirmed. Synthetic
+Escape key events did not dismiss the sheet, while synthetic Return did trigger
+the default action, so it is unclear whether `.keyboardShortcut(.cancelAction)`
+is not firing or whether the injected key event is simply not delivered the way
+a physical Escape is. Clicking **Cancel** always worked. This needs a check with
+a physical keyboard. VoiceOver, Accessibility Inspector, increased contrast, and
+narrow-window passes were not performed.
+
 ## All Runs Library Checklist
 
 Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
