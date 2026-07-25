@@ -331,18 +331,11 @@ public struct FITImporter: WorkoutImporting {
         fileName: String,
         routePoints: [RoutePoint]
     ) -> WorkoutMetadata {
-        // Activity type from selected session sport, or first session if none selected
-        let activityType: String
+        // Activity type from selected session sport, or first session if none selected.
+        // Single classifier shared with multi-session scan/import.
         let session = selectedSessionIndex.flatMap { decodedFile.sessions.indices.contains($0) ? decodedFile.sessions[$0] : nil }
             ?? decodedFile.sessions.first
-
-        if let session = session,
-           let sport = session.sport,
-           let sportType = FITSport(rawValue: sport) {
-            activityType = activityTypeFromSport(sportType)
-        } else {
-            activityType = "running"
-        }
+        let activityType = FITSportPolicy.activityType(sport: session?.sport)
 
         // Start/end dates from route points
         let startDate = routePoints.first?.timestamp
@@ -358,20 +351,6 @@ public struct FITImporter: WorkoutImporting {
             endDate: endDate,
             deviceName: deviceName
         )
-    }
-
-    /// Convert FIT sport enum to human-readable activity type.
-    private func activityTypeFromSport(_ sport: FITSport) -> String {
-        switch sport {
-        case .running: return "running"
-        case .walking: return "walking"
-        case .hiking: return "hiking"
-        case .cycling: return "cycling"
-        case .swimming: return "swimming"
-        case .generic: return "running"
-        case .training: return "running"
-        default: return "running"
-        }
     }
 
     /// Build device name from device info messages.

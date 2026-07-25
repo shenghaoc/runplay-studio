@@ -12,8 +12,7 @@ final class FITSessionAttributionTests: XCTestCase {
         elapsedSeconds: UInt32? = nil,
         sport: FITSport? = .running,
         firstLapIndex: UInt16? = nil,
-        numberOfLaps: UInt16? = nil,
-        messageIndexBits: UInt16? = nil
+        numberOfLaps: UInt16? = nil
     ) -> FITSessionMessage {
         var message = FITSessionMessage()
         message.startTime = start ?? UInt32.max
@@ -22,7 +21,6 @@ final class FITSessionAttributionTests: XCTestCase {
         message.sport = sport?.rawValue
         message.firstLapIndex = firstLapIndex ?? UInt16.max
         message.numberOfLaps = numberOfLaps ?? UInt16.max
-        _ = messageIndexBits
         return message
     }
 

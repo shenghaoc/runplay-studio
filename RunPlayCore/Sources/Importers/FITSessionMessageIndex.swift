@@ -39,8 +39,7 @@ public struct FITSessionMessageIndex: Sendable {
                 mode: .legacyNoSessions,
                 decodedFile: decodedFile,
                 prepared: FITPreparedSessions(
-                    ranges: [],
-                    problems: [],
+                    resolutions: [],
                     ambiguousIndexes: [],
                     orderedRanges: []
                 ),

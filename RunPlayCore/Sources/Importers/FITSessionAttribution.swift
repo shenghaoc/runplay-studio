@@ -39,29 +39,53 @@ public struct FITSessionRange: Hashable, Sendable {
     public let endWasDerived: Bool
 }
 
+/// Boundary outcome for one session source index.
+///
+/// Encodes the XOR that parallel optional arrays used to leave unenforced:
+/// a session either has a resolved range or a boundary problem, never both
+/// and never neither once `prepare` finishes.
+public enum FITSessionBoundaryResolution: Hashable, Sendable {
+    case resolved(FITSessionRange)
+    case failed(FITSessionBoundaryProblem)
+}
+
 /// Session ranges plus the diagnostics needed to classify each candidate.
 public struct FITPreparedSessions: Sendable {
-    /// Resolved range per source index; `nil` when the session is unusable.
-    public let ranges: [FITSessionRange?]
-    /// Boundary problem per source index; `nil` when the range resolved.
-    public let problems: [FITSessionBoundaryProblem?]
+    /// One resolution per FIT source index.
+    public let resolutions: [FITSessionBoundaryResolution]
     /// Source indexes whose ranges materially overlap another session.
     public let ambiguousIndexes: Set<Int>
     /// Non-ambiguous ranges sorted by `(start, upperExclusive, sourceIndex)`.
     /// Guaranteed pairwise non-overlapping, so one advancing cursor is correct.
     public let orderedRanges: [FITSessionRange]
 
+    public init(
+        resolutions: [FITSessionBoundaryResolution],
+        ambiguousIndexes: Set<Int>,
+        orderedRanges: [FITSessionRange]
+    ) {
+        self.resolutions = resolutions
+        self.ambiguousIndexes = ambiguousIndexes
+        self.orderedRanges = orderedRanges
+    }
+
     public func range(at sourceIndex: Int) -> FITSessionRange? {
-        guard ranges.indices.contains(sourceIndex) else { return nil }
-        return ranges[sourceIndex]
+        guard resolutions.indices.contains(sourceIndex) else { return nil }
+        if case .resolved(let range) = resolutions[sourceIndex] {
+            return range
+        }
+        return nil
     }
 
     public func problem(at sourceIndex: Int) -> FITSessionBoundaryProblem? {
-        guard problems.indices.contains(sourceIndex) else { return nil }
-        return problems[sourceIndex]
+        guard resolutions.indices.contains(sourceIndex) else { return nil }
+        if case .failed(let problem) = resolutions[sourceIndex] {
+            return problem
+        }
+        return nil
     }
 
-    public var sessionCount: Int { ranges.count }
+    public var sessionCount: Int { resolutions.count }
 }
 
 /// Resolves FIT session boundaries and attributes records, timer events, and
@@ -118,12 +142,16 @@ public enum FITSessionAttribution {
             declaredEnds[index] = resolveDeclaredEnd(of: sessions[index])
         }
 
-        var ranges = [FITSessionRange?](repeating: nil, count: count)
-        var problems = [FITSessionBoundaryProblem?](repeating: nil, count: count)
+        // Default failed; every index is overwritten below so the sum type is
+        // total — no parallel optional holes.
+        var resolutions = [FITSessionBoundaryResolution](
+            repeating: .failed(.missingStart),
+            count: count
+        )
 
         for index in 0..<count {
             guard let start = starts[index] else {
-                problems[index] = .missingStart
+                resolutions[index] = .failed(.missingStart)
                 continue
             }
 
@@ -141,27 +169,33 @@ public enum FITSessionAttribution {
                 end = nextStart
                 endWasDerived = true
             } else {
-                problems[index] = .missingEnd
+                resolutions[index] = .failed(.missingEnd)
                 continue
             }
 
             guard end >= start else {
-                problems[index] = .invalidOrder
+                resolutions[index] = .failed(.invalidOrder)
                 continue
             }
 
-            ranges[index] = FITSessionRange(
+            resolutions[index] = .resolved(FITSessionRange(
                 sourceIndex: index,
                 start: start,
                 end: end,
                 upperExclusive: endWasDerived ? end : exclusiveBound(after: end),
                 endWasDerived: endWasDerived
-            )
+            ))
         }
 
         // Sort a copy for the boundary and overlap passes. Source order is
-        // preserved separately in `ranges` and drives display and staging.
-        var sorted = ranges.compactMap { $0 }
+        // preserved separately in `resolutions` and drives display and staging.
+        var sorted: [FITSessionRange] = []
+        sorted.reserveCapacity(count)
+        for resolution in resolutions {
+            if case .resolved(let range) = resolution {
+                sorted.append(range)
+            }
+        }
         sorted.sort { lhs, rhs in
             if lhs.start != rhs.start { return lhs.start < rhs.start }
             if lhs.upperExclusive != rhs.upperExclusive {
@@ -196,7 +230,7 @@ public enum FITSessionAttribution {
                 endWasDerived: current.endWasDerived
             )
             sorted[position] = demoted
-            ranges[current.sourceIndex] = demoted
+            resolutions[current.sourceIndex] = .resolved(demoted)
         }
 
         // Material overlap. Because `sorted` is ascending by start, range i
@@ -222,8 +256,7 @@ public enum FITSessionAttribution {
         let orderedRanges = sorted.filter { !ambiguous.contains($0.sourceIndex) }
 
         return FITPreparedSessions(
-            ranges: ranges,
-            problems: problems,
+            resolutions: resolutions,
             ambiguousIndexes: ambiguous,
             orderedRanges: orderedRanges
         )
