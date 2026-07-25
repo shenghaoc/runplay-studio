@@ -31,6 +31,7 @@ actor FileAppSessionStore: AppSessionStoring {
     }
 
     func load() async -> AppSessionSnapshot? {
+        guard sessionURL.isFileURL else { return nil }
         guard fileManager.fileExists(atPath: sessionURL.path) else { return nil }
         do {
             let attributes = try fileManager.attributesOfItem(atPath: sessionURL.path)

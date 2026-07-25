@@ -59,6 +59,10 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
     // MARK: - Manifest
 
     public func loadManifest() throws -> WorkoutLibraryManifest {
+        guard manifestURL.isFileURL else {
+            throw WorkoutLibraryError.manifestCorrupted("Only local file URLs are supported")
+        }
+
         guard fileManager.fileExists(atPath: manifestURL.path) else {
             throw WorkoutLibraryError.manifestMissing("No manifest at \(manifestURL.path)")
         }
@@ -109,6 +113,10 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
 
     public func loadWorkout(id: UUID) throws -> RunWorkout {
         let url = workoutURL(for: id)
+
+        guard url.isFileURL else {
+            throw WorkoutLibraryError.workoutCorrupted(id, "Only local file URLs are supported")
+        }
 
         guard fileManager.fileExists(atPath: url.path) else {
             throw WorkoutLibraryError.workoutFileMissing(id)
@@ -206,6 +214,9 @@ extension FileWorkoutLibraryStore {
 
     public func loadStagedWorkout(id: UUID, batchID: UUID) throws -> RunWorkout {
         let url = stagedWorkoutURL(id: id, batchID: batchID)
+        guard url.isFileURL else {
+            throw WorkoutLibraryError.workoutCorrupted(id, "Only local file URLs are supported")
+        }
         guard fileManager.fileExists(atPath: url.path) else {
             throw WorkoutLibraryError.workoutFileMissing(id)
         }
