@@ -20,4 +20,4 @@
 - [x] Studio tests: AppState routing, single-session regression parity
 - [x] Documentation + Kiro steering + roadmap correction
 - [x] Packaged-app build/launch verification (Escape-to-cancel unconfirmed; see docs/manual-testing.md)
-- [ ] CI green on PR head
+- [x] CI green on PR head (a2c0617: RunPlayCore Linux + macOS Full Stack)
