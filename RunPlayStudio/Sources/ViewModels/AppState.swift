@@ -13,6 +13,8 @@ public enum LibraryOperationState: Equatable {
     case deleting(workoutID: UUID)
     case scanningArchive(filename: String)
     case importingArchive
+    case scanningFITFile(filename: String)
+    case importingFITSessions
 }
 
 /// Phases of the Strava archive import sheet.
@@ -118,6 +120,7 @@ class AppState: ObservableObject {
     @Published var showImporter = false
     @Published var showArchiveImporter = false
     @Published var archiveSession: ArchiveImportSession?
+    @Published var fitSessionImportSession: FITSessionImportSession?
     @Published var errorMessage: String?
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
@@ -257,6 +260,10 @@ class AppState: ObservableObject {
     /// Platform archive service (ZIP scan/import). Nil in tests without platform.
     private let archiveService: StravaArchiveService?
 
+    /// Core multi-session FIT scan/import service. Nil disables the review
+    /// sheet entirely; every FIT file then follows the direct import path.
+    private let fitSessionService: FITSessionImportService?
+
     /// Retained, injectable policy shared by app-owned transition models.
     private let announcementPolicy: AccessibilityAnnouncementPolicy
 
@@ -265,6 +272,9 @@ class AppState: ObservableObject {
 
     /// Handle for the active archive scan/import task.
     private var archiveTask: Task<Void, Never>?
+
+    /// Handle for the active multi-session FIT import task.
+    private var fitImportTask: Task<Void, Never>?
 
     /// Create AppState with injectable services.
     ///
@@ -278,6 +288,7 @@ class AppState: ObservableObject {
         storeActor: WorkoutLibraryStoreActor? = nil,
         importService: WorkoutImportServicing? = nil,
         archiveService: StravaArchiveService? = nil,
+        fitSessionService: FITSessionImportService? = nil,
         accessibilityAnnouncer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
     ) {
         let announcementPolicy = AccessibilityAnnouncementPolicy(
@@ -286,6 +297,7 @@ class AppState: ObservableObject {
         self.storeActor = storeActor
         self.importService = importService
         self.archiveService = archiveService
+        self.fitSessionService = fitSessionService
         self.announcementPolicy = announcementPolicy
         self.personalHeatmap = PersonalHeatmapViewModel(
             announcementPolicy: announcementPolicy
@@ -301,12 +313,19 @@ class AppState: ObservableObject {
         let actor = WorkoutLibraryStoreActor(store: store)
         let importService = WorkoutImportService()
         let archiveService = StravaArchiveService()
-        self.init(storeActor: actor, importService: importService, archiveService: archiveService)
+        let fitSessionService = FITSessionImportService(digest: CryptoKitContentDigest())
+        self.init(
+            storeActor: actor,
+            importService: importService,
+            archiveService: archiveService,
+            fitSessionService: fitSessionService
+        )
     }
 
     deinit {
         selectionTask?.cancel()
         archiveTask?.cancel()
+        fitImportTask?.cancel()
     }
 
     // MARK: - Application session
@@ -602,7 +621,19 @@ class AppState: ObservableObject {
     /// `.importing(filename:)` while in progress.
     func importWorkout(from url: URL) async {
         guard let importService, let storeActor else { return }
-        guard operationState == .idle, archiveSession == nil else { return }
+        guard operationState == .idle,
+              archiveSession == nil,
+              fitSessionImportSession == nil
+        else {
+            return
+        }
+
+        // Only FIT containers are scanned for multiple sessions. GPX, TCX, and
+        // JSON always take the direct path.
+        if url.pathExtension.lowercased() == "fit",
+           await presentFITSessionReviewIfNeeded(from: url) {
+            return
+        }
 
         let filename = url.lastPathComponent
         operationState = .importing(filename: filename)
@@ -1774,5 +1805,233 @@ class AppState: ObservableObject {
     func openHeatmapAfterArchiveImport() {
         dismissArchiveSession()
         showPersonalHeatmap()
+    }
+
+    // MARK: - Multi-session FIT import
+
+    /// Scan a FIT file and, when it holds several sessions, open the review
+    /// sheet instead of importing directly.
+    ///
+    /// - Returns: `true` when the caller must stop, either because the review
+    ///   sheet is now presented or because the scan was cancelled or rejected
+    ///   the file outright. `false` means "continue with the direct import",
+    ///   which also produces the canonical parse-error message for a container
+    ///   the FIT parser cannot read at all.
+    func presentFITSessionReviewIfNeeded(from url: URL) async -> Bool {
+        guard let fitSessionService else { return false }
+
+        let filename = url.lastPathComponent
+        operationState = .scanningFITFile(filename: filename)
+        let existing = workouts
+
+        do {
+            let result = try await fitSessionService.scanFITFile(
+                at: url,
+                existingWorkouts: existing
+            ) { _ in }
+            try Task.checkCancellation()
+
+            guard result.routing == .review else {
+                // Legacy sessionless files and ordinary one-session files keep
+                // the existing direct-import flow — no sheet.
+                operationState = .idle
+                return false
+            }
+
+            // The sheet owns security-scoped access for its whole lifetime.
+            let accessing = url.startAccessingSecurityScopedResource()
+            fitSessionImportSession = FITSessionImportSession(
+                fileURL: url,
+                scanResult: result,
+                securityScoped: accessing
+            )
+            operationState = .idle
+            return true
+        } catch is CancellationError {
+            operationState = .idle
+            announcementPolicy.handle(.importCancelled)
+            return true
+        } catch let error as FITSessionImportError {
+            operationState = .idle
+            errorMessage = error.localizedDescription
+            showingError = true
+            announcementPolicy.handle(.importFailed(message: error.localizedDescription))
+            return true
+        } catch {
+            // Parsing problems fall through so the single-file importer reports
+            // them with its established wording.
+            operationState = .idle
+            return false
+        }
+    }
+
+    /// Import the sessions currently selected in the FIT review sheet.
+    func confirmFITSessionImport() {
+        guard let session = fitSessionImportSession,
+              let fitSessionService,
+              let storeActor,
+              session.phase == .reviewing,
+              !session.selectedIDs.isEmpty
+        else {
+            return
+        }
+
+        operationState = .importingFITSessions
+        session.phase = .importing
+        session.progress = WorkoutBatchImportProgress(
+            phase: .importing,
+            totalCount: session.selectedIDs.count
+        )
+
+        let selection = session.makeSelection()
+        let fileURL = session.fileURL
+        let existing = workouts
+
+        fitImportTask?.cancel()
+        fitImportTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let report = try await fitSessionService.importSessions(
+                    selection,
+                    from: fileURL,
+                    existingWorkouts: existing,
+                    storeActor: storeActor
+                ) { progress in
+                    await MainActor.run {
+                        self.fitSessionImportSession?.progress = progress
+                    }
+                }
+
+                // A cancellation that committed nothing simply closes the sheet.
+                if report.wasCancelled, report.importedCount == 0, !report.commitFailed {
+                    self.operationState = .idle
+                    self.fitSessionImportSession = nil
+                    self.announcementPolicy.handle(.importCancelled)
+                    return
+                }
+
+                if report.commitFailed {
+                    self.operationState = .idle
+                    session.report = report
+                    session.phase = .report
+                    session.errorMessage = report.errorMessage
+                        ?? "Could not save the imported sessions."
+                    self.announcementPolicy.handle(
+                        .importFailed(
+                            message: session.errorMessage ?? "Could not save the imported sessions."
+                        )
+                    )
+                    return
+                }
+
+                if report.importedCount > 0 {
+                    await self.reloadLibraryAfterBatchCommit(
+                        storeActor: storeActor,
+                        onLoadFailure: { message in session.errorMessage = message }
+                    )
+                }
+
+                session.report = report
+                session.phase = .report
+                self.operationState = .idle
+                if report.importedCount > 0 {
+                    self.announcementPolicy.handle(.importCompleted(name: session.fileName))
+                }
+            } catch is CancellationError {
+                self.operationState = .idle
+                self.fitSessionImportSession = nil
+                self.announcementPolicy.handle(.importCancelled)
+            } catch {
+                self.operationState = .idle
+                session.report = FITSessionBatchImportReport(
+                    commitFailed: true,
+                    errorMessage: error.localizedDescription
+                )
+                session.phase = .report
+                session.errorMessage = error.localizedDescription
+                self.announcementPolicy.handle(
+                    .importFailed(message: error.localizedDescription)
+                )
+            }
+        }
+    }
+
+    /// Cancel an in-progress FIT session import, or dismiss the review sheet.
+    func cancelFITSessionImport() {
+        fitImportTask?.cancel()
+        fitImportTask = nil
+        // Session deinit releases security scope. After a report, use
+        // dismissFITSessionImport instead so the outcome stays visible.
+        if fitSessionImportSession?.phase != .report {
+            fitSessionImportSession = nil
+        }
+        operationState = .idle
+        announcementPolicy.handle(.importCancelled)
+    }
+
+    /// Dismiss the FIT sheet after a completed report.
+    func dismissFITSessionImport() {
+        fitSessionImportSession = nil
+        operationState = .idle
+    }
+
+    /// Open the newest imported session from the FIT report.
+    func viewMostRecentFITImportedRun() {
+        guard let report = fitSessionImportSession?.report,
+              let id = report.selectedWorkoutID,
+              let workout = workouts.first(where: { $0.id == id })
+        else {
+            dismissFITSessionImport()
+            return
+        }
+        dismissFITSessionImport()
+        selectWorkout(workout, persistSelection: true)
+    }
+
+    /// Open All Runs after a FIT session import.
+    func showAllRunsAfterFITImport() {
+        dismissFITSessionImport()
+        showWorkoutLibrary(restoreManualQuery: true)
+    }
+
+    /// Reload the authoritative post-commit library state.
+    ///
+    /// Shared by the archive and FIT batch flows so both surface exactly the
+    /// same library, selection, and heatmap behaviour after a commit.
+    private func reloadLibraryAfterBatchCommit(
+        storeActor: WorkoutLibraryStoreActor,
+        onLoadFailure: (String) -> Void
+    ) async {
+        switch await storeActor.loadLibrary() {
+        case .workouts(let loaded, let selectedID, let favoriteIDs, let organization, _):
+            analysisContextCache.removeAll()
+            workouts = loaded
+            favoriteWorkoutIDs = favoriteIDs
+            tags = organization.tags
+            smartCollections = organization.smartCollections
+            libraryWorkoutIDs = Set(loaded.map(\.id))
+            hasPersistedLibrary = true
+            workoutLibrary.replaceLibrary(
+                workouts: loaded,
+                favoriteIDs: favoriteIDs,
+                organization: organization
+            )
+            let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
+                ?? loaded.first
+            selectWorkout(selected, persistSelection: false)
+            if workspaceMode == .personalHeatmap {
+                personalHeatmap.refresh(workouts: loaded)
+            }
+            requestSessionSave()
+        case .demos(let message, let organization, let manifestPresent):
+            // Unexpected after a successful commit; fall back without wiping
+            // user organisation.
+            tags = organization.tags
+            smartCollections = organization.smartCollections
+            hasPersistedLibrary = manifestPresent
+            if let message {
+                onLoadFailure(message)
+            }
+        }
     }
 }
