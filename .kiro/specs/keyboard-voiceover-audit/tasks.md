@@ -11,7 +11,11 @@
 - [x] Reduce Motion camera policy on map canvas
 - [x] Differentiate Without Colour comparison P/C markers
 - [x] Automated tests (registry, focused actions, summaries, charts, announcements, replay)
+- [x] Pre-merge remediation: focus-gated arrows, modal command gate, map camera
+  requests, gap-preserving/cached chart descriptors, command availability, and
+  retained transition announcements
+- [x] Remove the ⌘⌥D system Dock conflict; keep 2D/3D in the native View menu
 - [x] `docs/accessibility-audit.md` and product doc updates
-- [ ] Packaged-app keyboard-only pass (record results in audit)
-- [ ] Accessibility Inspector pass (record results in audit)
-- [ ] Spoken VoiceOver pass where environment permits (record honestly)
+- [x] Packaged-app keyboard-only pass (record results in audit)
+- [x] Accessibility Inspector pass (record results in audit)
+- [x] Spoken VoiceOver pass where environment permits (record honestly)

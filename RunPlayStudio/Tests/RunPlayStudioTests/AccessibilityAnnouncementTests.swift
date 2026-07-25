@@ -1,4 +1,5 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
 
 @MainActor
@@ -6,7 +7,7 @@ final class AccessibilityAnnouncementTests: XCTestCase {
 
     func testDeliberateEventsProduceMessages() {
         let recorder = RecordingAccessibilityAnnouncer()
-        var policy = AccessibilityAnnouncementPolicy(announcer: recorder)
+        let policy = AccessibilityAnnouncementPolicy(announcer: recorder)
 
         policy.handle(.replayPlayed)
         policy.handle(.replayPaused)
@@ -26,7 +27,7 @@ final class AccessibilityAnnouncementTests: XCTestCase {
 
     func testQueryResultAnnouncesOncePerDistinctCount() {
         let recorder = RecordingAccessibilityAnnouncer()
-        var policy = AccessibilityAnnouncementPolicy(announcer: recorder)
+        let policy = AccessibilityAnnouncementPolicy(announcer: recorder)
 
         policy.handle(.queryResultPublished(count: 2))
         policy.handle(.queryResultPublished(count: 2))
@@ -37,6 +38,52 @@ final class AccessibilityAnnouncementTests: XCTestCase {
             "2 runs.",
             "No runs match the current search or filters."
         ])
+    }
+
+    func testLibraryLoadSuppressesImmediateDuplicateQueryCount() {
+        let recorder = RecordingAccessibilityAnnouncer()
+        let policy = AccessibilityAnnouncementPolicy(announcer: recorder)
+
+        policy.handle(.libraryLoaded(count: 2))
+        policy.handle(.queryResultPublished(count: 2))
+        policy.handle(.queryResultPublished(count: 1))
+
+        XCTAssertEqual(recorder.messages, [
+            "Library loaded. 2 runs.",
+            "1 run.",
+        ])
+    }
+
+    func testAppStateComparisonTransitionsUseRetainedPolicy() {
+        let recorder = RecordingAccessibilityAnnouncer()
+        let appState = AppState(accessibilityAnnouncer: recorder)
+        let primary = RunWorkout(metadata: WorkoutMetadata(name: "Primary"))
+        let comparison = RunWorkout(metadata: WorkoutMetadata(name: "Comparison"))
+        appState.workouts = [primary, comparison]
+        appState.selectedWorkout = primary
+
+        appState.setComparison(comparison)
+        appState.clearComparison()
+
+        XCTAssertEqual(recorder.messages, [
+            "Entered comparison.",
+            "Ended comparison.",
+        ])
+    }
+
+    func testWorkoutLibraryPublishesQueryResultAnnouncement() async {
+        let recorder = RecordingAccessibilityAnnouncer()
+        let policy = AccessibilityAnnouncementPolicy(announcer: recorder)
+        let viewModel = WorkoutLibraryViewModel(announcementPolicy: policy)
+        let workout = RunWorkout(metadata: WorkoutMetadata(name: "Synthetic"))
+
+        viewModel.replaceLibrary(workouts: [workout], favoriteIDs: [])
+        for _ in 0..<100 where viewModel.loadState != .ready {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(viewModel.resultIDs, [workout.id])
+        XCTAssertTrue(recorder.messages.contains("1 run."))
     }
 
     func testReplayTickAndProgressNeverAnnounce() {
@@ -62,6 +109,10 @@ final class AccessibilityAnnouncementTests: XCTestCase {
         XCTAssertTrue(
             AccessibilityAnnouncementEvent.exportFailed(message: "disk full").message
                 .contains("disk full")
+        )
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.exportCompleted(name: "summary.png").message,
+            "Exported summary.png."
         )
     }
 }

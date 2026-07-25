@@ -1,4 +1,3 @@
-import Accessibility
 import SwiftUI
 import RunPlayCore
 import Charts
@@ -93,6 +92,8 @@ struct MetricsChartView: View {
     @State private var isDragging: Bool = false
     @State private var dragDistance: Double? = nil
     @State private var chartData: [MetricChartDataPoint] = []
+    @State private var chartAccessibilityBaseModel: ChartAccessibilityModel?
+    @State private var downsampledChartSamples: [MetricChartAccessibilitySample] = []
     @State private var seekDistanceKmText: String = ""
     @FocusState private var seekFieldFocused: Bool
 
@@ -127,7 +128,8 @@ struct MetricsChartView: View {
     }
 
     var body: some View {
-        VStack(spacing: AppDesign.Spacing.medium) {
+        let accessibilityModel = chartAccessibilityModel
+        return VStack(spacing: AppDesign.Spacing.medium) {
             // Metric picker with semantic color indicator
             HStack {
                 Picker("Metric", selection: $selectedMetric) {
@@ -249,12 +251,12 @@ struct MetricsChartView: View {
                     }
                 }
                 .accessibilityChartDescriptor(MetricChartDescriptor(
-                    model: chartAccessibilityModel,
+                    model: accessibilityModel,
                     samples: downsampledChartSamples,
                     metric: selectedMetric
                 ))
-                .accessibilityLabel(chartAccessibilityModel.title)
-                .accessibilityValue(chartAccessibilityModel.spokenSummary)
+                .accessibilityLabel(accessibilityModel.title)
+                .accessibilityValue(accessibilityModel.spokenSummary)
                 .accessibilityAction(named: "Seek earlier") {
                     seekRelative(meters: -100)
                 }
@@ -271,13 +273,13 @@ struct MetricsChartView: View {
 
             // Always-visible summary for VoiceOver and sighted keyboard users.
             if !chartData.isEmpty {
-                Text(chartAccessibilityModel.spokenSummary)
+                Text(accessibilityModel.spokenSummary)
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .accessibilityLabel("Chart summary")
-                    .accessibilityValue(chartAccessibilityModel.spokenSummary)
+                    .accessibilityValue(accessibilityModel.spokenSummary)
             }
 
             // Keyboard-accessible seek alternative
@@ -362,24 +364,15 @@ struct MetricsChartView: View {
     }
 
     private var chartAccessibilityModel: ChartAccessibilityModel {
-        ChartAccessibilityModel.make(
+        let base = chartAccessibilityBaseModel ?? ChartAccessibilityModel.make(
             metricName: selectedMetric.rawValue,
             unit: selectedMetric.unit,
-            values: chartData.map(\.value),
-            seriesIDs: chartData.map(\.seriesID),
-            currentValue: valueForDistance(currentDistance),
+            values: [],
+            seriesIDs: [],
+            currentValue: nil,
             totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
         )
-    }
-
-    /// Bound samples for the AX chart descriptor (not one element per GPS point).
-    private var downsampledChartSamples: [(Double, Double)] {
-        let strideCount = max(1, chartData.count / 80)
-        return chartData.enumerated().compactMap { index, point in
-            guard index % strideCount == 0 || index == chartData.count - 1 else { return nil }
-            guard point.value.isFinite else { return nil }
-            return (point.distanceKm, point.value)
-        }
+        return base.updatingCurrentValue(valueForDistance(currentDistance))
     }
 
     // MARK: - No Data Overlay
@@ -441,10 +434,20 @@ struct MetricsChartView: View {
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
 
-        chartData = MetricChartDataBuilder.build(
+        let updatedData = MetricChartDataBuilder.build(
             routePoints: routePoints,
             values: smoothedValues
         )
+        chartData = updatedData
+        chartAccessibilityBaseModel = ChartAccessibilityModel.make(
+            metricName: selectedMetric.rawValue,
+            unit: selectedMetric.unit,
+            values: updatedData.map(\.value),
+            seriesIDs: updatedData.map(\.seriesID),
+            currentValue: nil,
+            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
+        )
+        downsampledChartSamples = MetricChartAccessibilityBuilder.downsample(updatedData)
     }
 
     private var chartColor: Color {
@@ -510,59 +513,5 @@ struct MetricsChartView: View {
         case .heartRate: return "\(Int(value))"
         case .speed: return String(format: "%.1f", value)
         }
-    }
-}
-
-// MARK: - AXChartDescriptorRepresentable
-
-/// Value-type chart descriptor so conformance stays off the main SwiftUI view.
-struct MetricChartDescriptor: AXChartDescriptorRepresentable {
-    let model: ChartAccessibilityModel
-    let samples: [(Double, Double)]
-    let metric: MetricsChartView.MetricType
-
-    func makeChartDescriptor() -> AXChartDescriptor {
-        let xScale = AXNumericDataAxisDescriptor(
-            title: "\(model.xAxisTitle) (\(model.xAxisUnit))",
-            range: 0...max(model.totalDistanceMeters / 1000, 0.001),
-            gridlinePositions: []
-        ) { value in
-            String(format: "%.2f km", value)
-        }
-
-        let yValues = samples.map(\.1)
-        let yMin = yValues.min() ?? 0
-        let yMax = yValues.max() ?? 1
-        let yScale = AXNumericDataAxisDescriptor(
-            title: "\(model.yAxisTitle) (\(model.yAxisUnit))",
-            range: min(yMin, yMax)...max(yMin, yMax, yMin + 0.001),
-            gridlinePositions: []
-        ) { [metric] value in
-            switch metric {
-            case .elevation: return "\(Int(value)) m"
-            case .pace:
-                let mins = Int(value) / 60
-                let secs = Int(value) % 60
-                return String(format: "%d:%02d /km", mins, secs)
-            case .heartRate: return "\(Int(value)) bpm"
-            case .speed: return String(format: "%.1f m/s", value)
-            }
-        }
-
-        let dataPoints = samples.map { AXDataPoint(x: $0.0, y: $0.1) }
-        let dataSeries = AXDataSeriesDescriptor(
-            name: model.series.name,
-            isContinuous: true,
-            dataPoints: dataPoints
-        )
-
-        return AXChartDescriptor(
-            title: model.title,
-            summary: model.spokenSummary,
-            xAxis: xScale,
-            yAxis: yScale,
-            additionalAxes: [],
-            series: [dataSeries]
-        )
     }
 }

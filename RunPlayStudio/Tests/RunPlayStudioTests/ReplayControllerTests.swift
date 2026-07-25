@@ -28,6 +28,19 @@ final class ReplayControllerTests: XCTestCase {
     func testLoadSetsTotalDuration() {
         XCTAssertGreaterThan(controller.state.totalDuration, 0)
         XCTAssertGreaterThan(controller.state.totalDistance, 0)
+        XCTAssertTrue(controller.hasPlayableTimeline)
+    }
+
+    func testWorkoutWithoutRouteHasNoPlayableTimeline() {
+        controller.load(
+            RunWorkout(
+                routePoints: [],
+                summary: RunSummary(totalElapsedSeconds: 600)
+            )
+        )
+
+        XCTAssertFalse(controller.hasPlayableTimeline)
+        XCTAssertFalse(controller.isPlaying)
     }
 
     func testLoadStopsActivePlaybackTimer() {

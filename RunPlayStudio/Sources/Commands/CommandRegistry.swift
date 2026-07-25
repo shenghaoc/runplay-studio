@@ -61,8 +61,11 @@ struct CommandDefinition: Equatable, Sendable, Identifiable {
     let localOnly: Bool
 
     var displayShortcut: String {
+        if keyEquivalent.isEmpty {
+            return "Menu"
+        }
         if localOnly {
-            return keyEquivalent.isEmpty ? "—" : "\(modifierSymbols)\(keyEquivalent) (when focused)"
+            return "\(modifierSymbols)\(keyEquivalent) (when focused)"
         }
         return "\(modifierSymbols)\(keyEquivalent)"
     }
@@ -286,8 +289,8 @@ enum CommandRegistry {
             id: .mapTogglePresentation,
             menuTitle: "Toggle 2D/3D",
             menu: "View",
-            keyEquivalent: "D",
-            modifiers: [.command, .option],
+            keyEquivalent: "",
+            modifiers: [],
             workspace: .any,
             purpose: "Toggle the visible map between 2D and 3D presentation",
             accessibilityDescription: "Toggle map 2D or 3D",
@@ -322,7 +325,7 @@ enum CommandRegistry {
     static func duplicateGlobalShortcuts() -> [(CommandID, CommandID, String)] {
         var seen: [String: CommandID] = [:]
         var duplicates: [(CommandID, CommandID, String)] = []
-        for command in menuCommands {
+        for command in menuCommands where !command.keyEquivalent.isEmpty {
             let key = shortcutKey(command)
             if let existing = seen[key] {
                 duplicates.append((existing, command.id, key))

@@ -19,7 +19,9 @@ struct ReplayActions {
 struct LibraryActions {
     var isAvailable: () -> Bool = { false }
     var focusSearch: () -> Void = {}
+    var canOpenSelection: () -> Bool = { false }
     var openSelection: () -> Void = {}
+    var canEditTags: () -> Bool = { false }
     var editTags: () -> Void = {}
 }
 
@@ -56,6 +58,26 @@ private struct AppPresentationActionsKey: FocusedValueKey {
 
 private struct SheetPresentationActiveKey: FocusedValueKey {
     typealias Value = Bool
+}
+
+/// Descendant presentation hosts publish whether they currently own a sheet or
+/// alert. `ContentView` folds the preference into the scene command gate so
+/// background shortcuts cannot mutate an obscured workspace.
+struct CommandBlockingPresentationPreferenceKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+extension View {
+    func blocksBackgroundCommands(_ isPresented: Bool) -> some View {
+        preference(
+            key: CommandBlockingPresentationPreferenceKey.self,
+            value: isPresented
+        )
+    }
 }
 
 extension FocusedValues {

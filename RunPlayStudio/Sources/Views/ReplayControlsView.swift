@@ -60,7 +60,6 @@ struct ReplayControlsView: View {
                 .help("Step backward one route point when replay controls are focused")
                 .accessibilityLabel("Step backward")
                 .accessibilityHint("Moves to the previous route point")
-                .keyboardShortcut(.leftArrow, modifiers: [])
                 .disabled(!controller.canStepBackward)
                 .focused($controlsFocused)
 
@@ -90,8 +89,8 @@ struct ReplayControlsView: View {
                 .help("Step forward one route point when replay controls are focused")
                 .accessibilityLabel("Step forward")
                 .accessibilityHint("Moves to the next route point")
-                .keyboardShortcut(.rightArrow, modifiers: [])
                 .disabled(!controller.canStepForward)
+                .focused($controlsFocused)
 
                 Spacer()
 
@@ -135,6 +134,20 @@ struct ReplayControlsView: View {
                     .foregroundStyle(AppDesign.MetricColor.distance)
                     .accessibilityLabel("Current distance")
                     .accessibilityValue(controller.state.formattedCurrentDistance)
+            }
+            .onKeyPress(.leftArrow) {
+                guard controlsFocused, controller.canStepBackward else {
+                    return .ignored
+                }
+                controller.stepBackward()
+                return .handled
+            }
+            .onKeyPress(.rightArrow) {
+                guard controlsFocused, controller.canStepForward else {
+                    return .ignored
+                }
+                controller.stepForward()
+                return .handled
             }
         }
         .accessibilityElement(children: .contain)

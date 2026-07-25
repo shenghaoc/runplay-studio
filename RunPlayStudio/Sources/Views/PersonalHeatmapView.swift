@@ -8,6 +8,7 @@ struct PersonalHeatmapView: View {
     @ObservedObject var viewModel: PersonalHeatmapViewModel
 
     @State private var displayMode: RouteMapDisplayMode = .twoD
+    @State private var presentationRequest = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -207,9 +208,11 @@ struct PersonalHeatmapView: View {
             markers: [],
             areas: viewModel.mapAreas,
             fitRequest: viewModel.fitRequest,
+            presentationRequest: presentationRequest,
             controlBottomInset: 0,
             defaultDisplayMode: .twoD
         )
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Personal route heatmap")
         .accessibilityValue(summary.spokenSummary)
         .focusedSceneValue(\.mapActions, MapActions(
@@ -217,6 +220,7 @@ struct PersonalHeatmapView: View {
             fit: { viewModel.requestFit() },
             togglePresentation: {
                 displayMode = displayMode == .threeD ? .twoD : .threeD
+                presentationRequest += 1
             },
             canTogglePresentation: { true }
         ))

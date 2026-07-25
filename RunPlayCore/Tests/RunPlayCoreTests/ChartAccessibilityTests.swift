@@ -63,6 +63,24 @@ final class ChartAccessibilityTests: XCTestCase {
         XCTAssertEqual(model.gapCount, 2)
     }
 
+    func testReplayValueUpdatePreservesCachedAggregates() {
+        let base = ChartAccessibilityModel.make(
+            metricName: "Speed",
+            unit: "m/s",
+            values: [1, 2, 3],
+            seriesIDs: [1, 1, 1],
+            currentValue: nil,
+            totalDistanceMeters: 1_000
+        )
+
+        let updated = base.updatingCurrentValue(2.5)
+
+        XCTAssertEqual(updated.series.minimum, base.series.minimum)
+        XCTAssertEqual(updated.series.maximum, base.series.maximum)
+        XCTAssertEqual(updated.series.average, base.series.average)
+        XCTAssertEqual(updated.series.currentValue, 2.5)
+    }
+
     func testBoundedRepresentationDoesNotRequirePerPointElements() {
         // The pure model holds aggregate facts only; UI downsampling is separate.
         let values = (0..<10_000).map { Double($0 % 50) }

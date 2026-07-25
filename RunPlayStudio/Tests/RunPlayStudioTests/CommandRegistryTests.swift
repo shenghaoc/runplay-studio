@@ -55,6 +55,13 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(CommandRegistry.definition(for: .mapFit).workspace, .any)
     }
 
+    func testMapPresentationUsesNativeViewMenuWithoutSystemDockShortcut() {
+        let command = CommandRegistry.definition(for: .mapTogglePresentation)
+        XCTAssertEqual(command.menu, "View")
+        XCTAssertTrue(command.keyEquivalent.isEmpty)
+        XCTAssertEqual(command.displayShortcut, "Menu")
+    }
+
     func testLocalOnlyOpenSelectionIsNotMenuCommand() {
         XCTAssertTrue(CommandRegistry.definition(for: .openSelectedWorkout).localOnly)
         XCTAssertFalse(CommandRegistry.menuCommands.contains { $0.id == .openSelectedWorkout })

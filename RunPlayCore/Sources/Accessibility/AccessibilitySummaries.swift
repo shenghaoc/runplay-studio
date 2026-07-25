@@ -285,6 +285,32 @@ public struct ChartAccessibilityModel: Equatable, Sendable {
         return parts.joined(separator: " ")
     }
 
+    /// Returns the cached series aggregates with only the replay-position value
+    /// replaced. This is O(1), so a 30 fps replay tick does not rescan every
+    /// chart sample.
+    public func updatingCurrentValue(_ currentValue: Double?) -> ChartAccessibilityModel {
+        ChartAccessibilityModel(
+            title: title,
+            xAxisTitle: xAxisTitle,
+            xAxisUnit: xAxisUnit,
+            yAxisTitle: yAxisTitle,
+            yAxisUnit: yAxisUnit,
+            series: ChartAccessibilitySeries(
+                name: series.name,
+                unit: series.unit,
+                minimum: series.minimum,
+                maximum: series.maximum,
+                average: series.average,
+                currentValue: currentValue,
+                pointCount: series.pointCount,
+                seriesCount: series.seriesCount,
+                missingData: series.missingData
+            ),
+            totalDistanceMeters: totalDistanceMeters,
+            gapCount: gapCount
+        )
+    }
+
     /// Builds a model from precomputed finite chart samples (already gap-split).
     public static func make(
         metricName: String,

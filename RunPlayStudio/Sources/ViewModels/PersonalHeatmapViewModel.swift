@@ -145,6 +145,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
 
     private let builder: any PersonalHeatmapBuilding
     private let calendar: Calendar
+    private let announcementPolicy: AccessibilityAnnouncementPolicy
     private var computeTask: Task<Void, Never>?
     private var cancelFlag: HeatmapCancelFlag?
     private var cache: [PersonalHeatmapRequestKey: PersonalHeatmapSnapshot] = [:]
@@ -159,10 +160,12 @@ final class PersonalHeatmapViewModel: ObservableObject {
     init(
         builder: any PersonalHeatmapBuilding = PersonalHeatmapBuilder(),
         calendar: Calendar = .current,
-        now: Date = Date()
+        now: Date = Date(),
+        announcementPolicy: AccessibilityAnnouncementPolicy = AccessibilityAnnouncementPolicy()
     ) {
         self.builder = builder
         self.calendar = calendar
+        self.announcementPolicy = announcementPolicy
         self.customStartDate = calendar.date(byAdding: .day, value: -30, to: now) ?? now
         self.customEndDate = now
     }
@@ -327,6 +330,9 @@ final class PersonalHeatmapViewModel: ObservableObject {
                 fittedKey = key
             }
         }
+        announcementPolicy.handle(
+            .heatmapReady(runCount: snapshot.statistics.includedWorkoutCount)
+        )
     }
 
     private func makeConfiguration(now: Date) -> PersonalHeatmapConfiguration {

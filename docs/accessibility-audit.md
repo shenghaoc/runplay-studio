@@ -1,11 +1,8 @@
 # Accessibility Audit — RunPlay Studio
 
-This document describes the **final tested application behaviour** on branch
-`feat/keyboard-voiceover-audit`, not an aspirational checklist.
-
-Last implementation head documented here: branch tip after keyboard/VoiceOver
-work. Re-run automated commands at the final commit before merge; do not cite an
-earlier green commit as final-head validation.
+This document describes the durable keyboard and accessibility contract.
+Unchecked manual items are explicitly unverified; the live pull request and CI,
+not this document, record transient head-specific results.
 
 ## Scope
 
@@ -59,7 +56,7 @@ commands when scene focus is cleared after reopening the main window.
 | Faster | ] | Workout | Supported speed list only |
 | Restart | ⌘⇧← | Workout | Pauses at start |
 | Fit Map | ⌘0 | Visible map | Route / routes / heatmap |
-| Toggle 2D/3D | ⌘⌥D | Visible map | See conflict note below |
+| Toggle 2D/3D | View menu | Visible map | No global chord; avoids the system Dock shortcut |
 | Keyboard Shortcuts | ⌘/ | Any | Help sheet from registry |
 | Open Selected Run | ↩ | All Runs table | Local; single selection only |
 | Step frame ± | ← / → | Replay controls focused | Local only; not global menu |
@@ -75,9 +72,8 @@ commands when scene focus is cleared after reopening the main window.
 - **Escape / Delete**: not global. Escape clears All Runs search only when search
   is focused and nonempty. Delete deletes only one eligible selected persisted
   workout from the table context.
-- **⌘⌥D**: macOS also uses ⌘⌥D for Dock hide. If packaging verification shows
-  a practical conflict, remap in `CommandRegistry` and this document. Prefer
-  remapping over fighting a system chord.
+- **Toggle 2D/3D**: remains keyboard reachable through the native View menu.
+  It intentionally has no global chord because ⌘⌥D belongs to the system Dock.
 
 ## Focus management
 
@@ -87,8 +83,11 @@ commands when scene focus is cleared after reopening the main window.
   and dismiss actions exist.
 - Strava archive and PNG export keep progress as a single status element without
   moving VoiceOver focus on every percentage tick.
-- Background workspace shortcuts disable while `sheetPresentationActive` is true
-  for the archive importer and related presentation flags.
+- Descendant sheet/alert hosts publish
+  `CommandBlockingPresentationPreferenceKey`; `ContentView` folds that into
+  `sheetPresentationActive`. Background workspace shortcuts therefore disable
+  for metadata, tag, collection, export, help, archive, importer, and error
+  presentations.
 
 ## Replay keyboard behaviour
 
@@ -97,6 +96,8 @@ commands when scene focus is cleared after reopening the main window.
 - `seekBySeconds(_:)` with timeline clamping
 - `slower()` / `faster()` over `speedOptions`
 - `restart()` → stop at beginning, paused
+- Replay commands disable when the selected workout has no playable GPS
+  timeline.
 
 Deliberate announcements: play, pause, restart, end reached, speed change.
 Timer ticks never announce.
@@ -131,7 +132,10 @@ Timer ticks never announce.
 - `ChartAccessibilityModel` builds summary text (range, average orientation,
   current value, gap count).
 - `MetricChartDescriptor` implements `AXChartDescriptorRepresentable` with
-  downsampled series (bounded points, not one per GPS sample).
+  bounded, separately emitted continuous regions so audio graphs do not bridge
+  recording gaps.
+- Series aggregates and descriptor samples rebuild only when the selected
+  metric or route data changes; replay ticks update only the current value.
 - Keyboard seek: Jump to distance field, stepper, and VoiceOver custom actions
   “Seek earlier” / “Seek later” (±100 m).
 
@@ -139,6 +143,9 @@ Timer ticks never announce.
 
 - Route map accessibility value: distance, segments, start/finish, replay
   position, colour mode, coverage.
+- Each workout, comparison, or heatmap map exposes its analytical summary once;
+  decorative siblings and child map content do not duplicate the same long
+  VoiceOver value.
 - Metric legend already combines numeric ends and direction text.
 - Comparison summary uses Primary P / Comparison C text identity; when
   Differentiate Without Colour is on, legend shows P/C symbols.
@@ -164,7 +171,8 @@ Timer ticks never announce.
 
 Announce: library/import/export phase completions, heatmap ready, query result
 publication (once per distinct count), comparison enter/exit, deliberate replay
-state changes, tag/collection updates when wired.
+state changes, and successful tag/collection updates. App-owned view models
+share one retained, injectable `AccessibilityAnnouncementPolicy`.
 
 Never announce: replay ticks, map camera motion, every progress percent,
 per-keystroke search.
@@ -198,42 +206,66 @@ per-keystroke search.
 | `ReplayControllerTests` | Seek by seconds, speed, restart |
 | `AccessibilitySummaryTests` | Route/comparison/heatmap/chart models |
 | `ChartAccessibilityTests` | Series, gaps, missing data |
+| `MetricChartAccessibilityTests` | Bounded samples and separate gap series |
 | `AccessibilityAnnouncementTests` | Policy, no tick spam |
 
-## Exact commands run (implementation verification)
+## Automated verification commands
 
 ```bash
 git diff --check origin/main
 swift build -Xswiftc -warnings-as-errors
-swift test --filter "CommandRegistryTests|FocusedActionTests|AccessibilitySummaryTests|ChartAccessibilityTests|AccessibilityAnnouncementTests|ReplayControllerTests" -Xswiftc -warnings-as-errors
+swift test --filter "CommandRegistryTests|FocusedActionTests|AccessibilitySummaryTests|ChartAccessibilityTests|MetricChartAccessibilityTests|AccessibilityAnnouncementTests|ReplayControllerTests" -Xswiftc -warnings-as-errors
 ```
 
-Full suite and packaged-app verification are recorded at PR final-head.
+Head-specific results belong in the live PR testing section.
 
 ## Keyboard-only verification
 
-**Status:** Implementation complete; full 34-step packaged-app keyboard-only
-pass should be re-run on the final packaged `.app` before merge. Prior feature
-areas (library Return/Delete, route colour menu, PNG sheet, archive sheet)
-already had partial keyboard checks in `docs/manual-testing.md`.
+**Status:** Completed on the packaged app on 25 July 2026 using only synthetic
+or repository-approved workouts. The pass covered:
+
+- All Runs navigation, Command-F search focus, Escape clear, empty/single
+  selection command availability, and Return opening the selected run.
+- Command-1 through Command-4 workout tabs; Space play/pause; Option-Left/Right
+  seek; restart; and speed changes through the keyboard-reachable Replay menu.
+- Bare Right leaving replay unchanged at scene scope while retaining the
+  timeline slider's native arrow adjustment when that slider owns focus.
+- Help → Keyboard Shortcuts, including the menu-only 2D/3D entry and absence of
+  the conflicting system Dock chord.
+- Tag, Help, and PNG export sheets blocking background workspace commands.
+- Workout, comparison, and heatmap map fit/presentation routing, including a
+  visible camera transition and comparison enter/exit.
+- PNG preview reaching Ready with one coherent labelled preview and keyboard
+  cancel action.
+
+Destructive deletion was not performed against the local library during this
+pass. Eligibility, confirmation, and failure behavior remain covered by the
+existing store, app-state, and library tests.
 
 ## Accessibility Inspector verification
 
-**Status:** Labels and values were designed against the hierarchy described
-above. Final-head Inspector pass on the packaged app remains a pre-merge manual
-gate.
+**Status:** Completed on 25 July 2026 against the packaged app. The standard
+macOS Accessibility Inspector audit completed with an empty warnings outline.
+Direct hierarchy inspection confirmed bounded chart groups; labelled replay
+controls; selection-aware disabled actions; and one analytical summary
+container each for workout, comparison, and heatmap maps.
 
 ## Spoken VoiceOver verification status
 
-**Status:** Not claimed complete from Inspector alone. Spoken pass should be
-recorded when the environment permits VoiceOver during packaging verification.
+**Status:** Completed to the environment's observable boundary on 25 July 2026.
+macOS VoiceOver was started, the tutorial was dismissed, the caption panel
+setting was confirmed enabled, and VoiceOver-modifier navigation was exercised
+over the packaged app. The automation environment cannot record or transcribe
+speaker audio, so spoken strings were cross-checked against the live VoiceOver
+hierarchy and `AccessibilityAnnouncementTests`. VoiceOver and its tutorial were
+stopped after the pass. Replay/progress tick suppression is also enforced by
+the retained announcement policy tests rather than inferred from Inspector.
 
 ## Known limitations
 
 - Map basemap remains primarily visual; summaries convey analytical meaning only
   (no reverse geocoding / place names).
 - Heatmap cells are not individually accessible (by design).
-- ⌘⌥D may conflict with system Dock hide; remap if observed.
 - Focus return to the exact invoking control after every sheet is best-effort
   under SwiftUI.
 - High-frequency metric readouts update values on focused controls without

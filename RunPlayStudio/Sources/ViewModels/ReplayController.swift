@@ -174,6 +174,11 @@ class ReplayController: ObservableObject {
 
     var canStepBackward: Bool { engine.canStepBackward }
     var canStepForward: Bool { engine.canStepForward }
+    var hasPlayableTimeline: Bool {
+        state.totalDuration.isFinite
+            && state.totalDuration > 0
+            && currentRoutePoint != nil
+    }
 
     /// Selected metrics at the current position.
     var selectedMetrics: SelectedMetrics {

@@ -13,6 +13,7 @@ struct WorkoutDetailView: View {
 
     /// Owns metric route map lines; must not rebuild on replay ticks.
     @State private var routeMapViewModel = WorkoutRouteMapViewModel()
+    @State private var announcementPolicy = AccessibilityAnnouncementPolicy()
 
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
@@ -88,14 +89,14 @@ struct WorkoutDetailView: View {
         }
         .focusedSceneValue(\.workoutTabSelection, selectedTabBinding)
         .focusedSceneValue(\.replayActions, ReplayActions(
-            isAvailable: { true },
+            isAvailable: { replayController.hasPlayableTimeline },
             togglePlayPause: {
                 let wasPlaying = replayController.isPlaying
                 replayController.togglePlayPause()
                 if wasPlaying {
-                    AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayPaused.message)
+                    announcementPolicy.handle(.replayPaused)
                 } else {
-                    AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayPlayed.message)
+                    announcementPolicy.handle(.replayPlayed)
                 }
             },
             seekBackward: { replayController.seekBySeconds(-5) },
@@ -104,19 +105,19 @@ struct WorkoutDetailView: View {
             stepForward: { replayController.stepForward() },
             slower: {
                 let speed = replayController.slower()
-                AccessibilityAnnouncer.shared.announce(
-                    AccessibilityAnnouncementEvent.speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed).message
+                announcementPolicy.handle(
+                    .speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed)
                 )
             },
             faster: {
                 let speed = replayController.faster()
-                AccessibilityAnnouncer.shared.announce(
-                    AccessibilityAnnouncementEvent.speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed).message
+                announcementPolicy.handle(
+                    .speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed)
                 )
             },
             restart: {
                 replayController.restart()
-                AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayRestarted.message)
+                announcementPolicy.handle(.replayRestarted)
             }
         ))
         .onChange(of: replayController.isPlaying) { wasPlaying, isPlaying in
@@ -124,7 +125,7 @@ struct WorkoutDetailView: View {
             if wasPlaying, !isPlaying,
                replayController.state.totalDuration > 0,
                abs(replayController.state.currentTime - replayController.state.totalDuration) < 0.05 {
-                AccessibilityAnnouncer.shared.announce(AccessibilityAnnouncementEvent.replayReachedEnd.message)
+                announcementPolicy.handle(.replayReachedEnd)
             }
         }
         .onChange(of: appState.workoutDetailTabRaw) { _, _ in

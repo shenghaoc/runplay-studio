@@ -24,7 +24,7 @@ Accessibility Inspector alone.
 - [ ] Bare arrows do not break table/list/slider when replay is not focused.
 - [ ] Space does not play while editing metadata notes.
 - [ ] Charts: Jump to distance; VoiceOver chart summary; seek earlier/later actions.
-- [ ] Map: Fit (⌘0), 2D/3D (⌘⌥D), Route Color menu, legend summary.
+- [ ] Map: Fit (⌘0), View → Toggle 2D/3D, Route Color menu, legend summary.
 - [ ] Comparison: textual P/C identity; distance slider; End Comparison.
 - [ ] Heatmap: filters, Fit Heatmap, summary statistics.
 - [ ] Import file and Strava archive; cancel sheets with Escape.

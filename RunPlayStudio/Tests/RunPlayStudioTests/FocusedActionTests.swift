@@ -91,18 +91,23 @@ final class FocusedActionTests: XCTestCase {
         let actions = LibraryActions(
             isAvailable: { true },
             focusSearch: {},
+            canOpenSelection: { selectionCount == 1 },
             openSelection: {
                 guard selectionCount == 1 else { return }
                 opened = true
             },
+            canEditTags: { selectionCount > 0 },
             editTags: {}
         )
 
         selectionCount = 2
+        XCTAssertFalse(actions.canOpenSelection())
         actions.openSelection()
         XCTAssertFalse(opened)
 
         selectionCount = 1
+        XCTAssertTrue(actions.canOpenSelection())
+        XCTAssertTrue(actions.canEditTags())
         actions.openSelection()
         XCTAssertTrue(opened)
     }
@@ -130,6 +135,23 @@ final class FocusedActionTests: XCTestCase {
         let libraryAvailable = !sheetActive && true
         XCTAssertFalse(replayAvailable)
         XCTAssertFalse(libraryAvailable)
+    }
+
+    func testCommandBlockingPreferenceReducesAcrossPresentationHosts() {
+        var isBlocked = false
+        CommandBlockingPresentationPreferenceKey.reduce(
+            value: &isBlocked,
+            nextValue: { false }
+        )
+        CommandBlockingPresentationPreferenceKey.reduce(
+            value: &isBlocked,
+            nextValue: { true }
+        )
+        CommandBlockingPresentationPreferenceKey.reduce(
+            value: &isBlocked,
+            nextValue: { false }
+        )
+        XCTAssertTrue(isBlocked)
     }
 
     private func makeWorkout() -> RunWorkout {

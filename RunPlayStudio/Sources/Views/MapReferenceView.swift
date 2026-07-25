@@ -17,6 +17,7 @@ struct MapReferenceView: View {
     @AppStorage("routeColorMode") private var storedColorModeRaw: String = WorkoutRouteColorMode.solid.rawValue
     @Binding private var displayMode: RouteMapDisplayMode
     @State private var fitRequest = 0
+    @State private var presentationRequest = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -76,6 +77,7 @@ struct MapReferenceView: View {
             routes: routes,
             markers: markers,
             fitRequest: fitRequest,
+            presentationRequest: presentationRequest,
             controlBottomInset: legendBottomInset,
             animateCamera: !reduceMotion
         )
@@ -88,11 +90,6 @@ struct MapReferenceView: View {
                 if mapViewModel != nil {
                     routeColorControl
                 }
-                // Nonvisual route summary for VoiceOver (not a second map surface).
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityLabel("Route summary")
-                    .accessibilityValue(routeSummary.spokenSummary)
             }
             .padding()
         }
@@ -122,6 +119,7 @@ struct MapReferenceView: View {
             fit: { fitRequest += 1 },
             togglePresentation: {
                 displayMode = displayMode == .threeD ? .twoD : .threeD
+                presentationRequest += 1
             },
             canTogglePresentation: { !routePoints.isEmpty }
         ))

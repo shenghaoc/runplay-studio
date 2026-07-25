@@ -18,6 +18,44 @@ struct WorkoutLibraryView: View {
     @State private var createTagColor: WorkoutTagColor = .default
     @FocusState private var searchFocused: Bool
 
+    private var canOpenSelection: Bool {
+        viewModel.tableSelection.count == 1
+            && viewModel.tableSelection.first.map { selectedID in
+                appState.workouts.contains { $0.id == selectedID }
+            } == true
+    }
+
+    private var persistedSelection: Set<UUID> {
+        viewModel.tableSelection.intersection(appState.libraryWorkoutIDs)
+    }
+
+    private var isPresentingCommandBlockingUI: Bool {
+        workoutToDelete != nil
+            || metadataEditorWorkout != nil
+            || tagEditorWorkoutIDs != nil
+            || showManageTags
+            || showCreateTag
+            || showSaveCollection
+            || appState.showSmartCollectionsManager
+            || collectionToDelete != nil
+            || collectionDeleteError != nil
+    }
+
+    private var libraryActions: LibraryActions {
+        LibraryActions(
+            isAvailable: { true },
+            focusSearch: { searchFocused = true },
+            canOpenSelection: { canOpenSelection },
+            openSelection: openSelectedWorkout,
+            canEditTags: { !persistedSelection.isEmpty },
+            editTags: {
+                guard !persistedSelection.isEmpty else { return }
+                appState.organizationEditError = nil
+                tagEditorWorkoutIDs = persistedSelection
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -29,24 +67,8 @@ struct WorkoutLibraryView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .navigationTitle(navigationTitle)
         .focusSection()
-        .focusedSceneValue(\.libraryActions, LibraryActions(
-            isAvailable: { true },
-            focusSearch: { searchFocused = true },
-            openSelection: {
-                guard viewModel.tableSelection.count == 1,
-                      let id = viewModel.tableSelection.first,
-                      let workout = appState.workouts.first(where: { $0.id == id }) else {
-                    return
-                }
-                appState.openWorkoutFromLibrary(workout)
-            },
-            editTags: {
-                let persisted = viewModel.tableSelection.intersection(appState.libraryWorkoutIDs)
-                guard !persisted.isEmpty else { return }
-                appState.organizationEditError = nil
-                tagEditorWorkoutIDs = persisted
-            }
-        ))
+        .focusedSceneValue(\.libraryActions, libraryActions)
+        .blocksBackgroundCommands(isPresentingCommandBlockingUI)
         .onReceive(viewModel.objectWillChange) { _ in
             appState.requestSessionSave()
         }
@@ -750,16 +772,23 @@ struct WorkoutLibraryView: View {
         }
         .onKeyPress(.return) {
             // Return opens only when exactly one workout is selected.
-            guard viewModel.tableSelection.count == 1,
-                  let id = viewModel.tableSelection.first,
-                  let workout = appState.workouts.first(where: { $0.id == id }) else {
+            guard libraryActions.canOpenSelection() else {
                 return .ignored
             }
-            appState.openWorkoutFromLibrary(workout)
+            libraryActions.openSelection()
             return .handled
         }
         .focusable()
         .padding(.horizontal, AppDesign.Spacing.small)
+    }
+
+    private func openSelectedWorkout() {
+        guard viewModel.tableSelection.count == 1,
+              let id = viewModel.tableSelection.first,
+              let workout = appState.workouts.first(where: { $0.id == id }) else {
+            return
+        }
+        appState.openWorkoutFromLibrary(workout)
     }
 
     // MARK: - Tag editor sheets

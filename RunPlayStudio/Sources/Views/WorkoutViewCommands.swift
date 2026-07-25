@@ -191,7 +191,10 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("t", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .editSelectedTags).purpose)
-            .disabled(!libraryAvailable)
+            .disabled(
+                !libraryAvailable
+                    || !(libraryActions?.canEditTags() ?? false)
+            )
         }
 
         CommandMenu("View") {
@@ -205,7 +208,6 @@ struct WorkoutViewCommands: Commands {
             Button(CommandRegistry.definition(for: .mapTogglePresentation).menuTitle) {
                 mapActions?.togglePresentation()
             }
-            .keyboardShortcut("d", modifiers: [.command, .option])
             .help(CommandRegistry.definition(for: .mapTogglePresentation).purpose)
             .disabled(!mapAvailable || !(mapActions?.canTogglePresentation() ?? false))
         }

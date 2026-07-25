@@ -11,6 +11,7 @@ struct ComparisonMapView: View {
 
     @State private var displayMode: RouteMapDisplayMode = .twoD
     @State private var fitRequest = 0
+    @State private var presentationRequest = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
@@ -89,9 +90,11 @@ struct ComparisonMapView: View {
                 routes: routes,
                 markers: markers,
                 fitRequest: fitRequest,
+                presentationRequest: presentationRequest,
                 controlBottomInset: 168,
                 animateCamera: !reduceMotion
             )
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("Comparison route map")
             .accessibilityValue(comparisonSummary.spokenSummary)
 
@@ -123,6 +126,7 @@ struct ComparisonMapView: View {
             fit: { fitRequest += 1 },
             togglePresentation: {
                 displayMode = displayMode == .threeD ? .twoD : .threeD
+                presentationRequest += 1
             },
             canTogglePresentation: { true }
         ))
@@ -157,11 +161,6 @@ struct ComparisonMapView: View {
                 Text("Finish")
                     .font(AppDesign.Typography.compactLabel)
             }
-
-            Color.clear
-                .frame(width: 1, height: 1)
-                .accessibilityLabel("Comparison summary")
-                .accessibilityValue(comparisonSummary.spokenSummary)
         }
         .font(AppDesign.Typography.compactMetric)
         .padding(AppDesign.Spacing.medium)

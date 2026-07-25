@@ -47,6 +47,10 @@ struct RouteMapCanvas: View {
     let markers: [RouteMapMarker]
     let areas: [RouteMapArea]
     let fitRequest: Int
+    /// Explicit request from a menu/focused action to apply `displayMode` to
+    /// the live Map camera. Camera callbacks may update the binding without
+    /// creating a reciprocal request.
+    let presentationRequest: Int
     let controlBottomInset: CGFloat
     /// When set, applied on appear if the binding still has the default value.
     let defaultDisplayMode: RouteMapDisplayMode?
@@ -64,6 +68,7 @@ struct RouteMapCanvas: View {
         markers: [RouteMapMarker],
         areas: [RouteMapArea] = [],
         fitRequest: Int,
+        presentationRequest: Int = 0,
         controlBottomInset: CGFloat,
         defaultDisplayMode: RouteMapDisplayMode? = nil,
         animateCamera: Bool = true
@@ -73,6 +78,7 @@ struct RouteMapCanvas: View {
         self.markers = markers
         self.areas = areas
         self.fitRequest = fitRequest
+        self.presentationRequest = presentationRequest
         self.controlBottomInset = controlBottomInset
         self.defaultDisplayMode = defaultDisplayMode
         self.animateCamera = animateCamera
@@ -165,6 +171,9 @@ struct RouteMapCanvas: View {
         }
         .onChange(of: fitRequest) { _, _ in
             fitContent(animated: shouldAnimateCamera)
+        }
+        .onChange(of: presentationRequest) { _, _ in
+            updatePitch(displayMode, animated: shouldAnimateCamera)
         }
     }
 

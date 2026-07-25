@@ -75,6 +75,7 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case importCancelled
     case importFailed(message: String)
     case exportPreviewReady
+    case exportCompleted(name: String)
     case exportFailed(message: String)
     case heatmapReady(runCount: Int)
     case queryResultPublished(count: Int)
@@ -100,6 +101,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Import failed. \(message)"
         case .exportPreviewReady:
             return "Export preview ready."
+        case .exportCompleted(let name):
+            return "Exported \(name)."
         case .exportFailed(let message):
             return "Export failed. \(message)"
         case .heatmapReady(let runCount):
@@ -131,7 +134,7 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
 
 /// Policy helper that maps events to announcements without spamming.
 @MainActor
-struct AccessibilityAnnouncementPolicy {
+final class AccessibilityAnnouncementPolicy {
     private let announcer: any AccessibilityAnnouncing
     private var lastQueryAnnouncementKey: String?
 
@@ -139,8 +142,12 @@ struct AccessibilityAnnouncementPolicy {
         self.announcer = announcer
     }
 
-    mutating func handle(_ event: AccessibilityAnnouncementEvent) {
-        if case .queryResultPublished(let count) = event {
+    func handle(_ event: AccessibilityAnnouncementEvent) {
+        if case .libraryLoaded(let count) = event {
+            // Suppress the immediate identical query publication that follows
+            // initial library loading.
+            lastQueryAnnouncementKey = "query:\(count)"
+        } else if case .queryResultPublished(let count) = event {
             let key = "query:\(count)"
             if key == lastQueryAnnouncementKey { return }
             lastQueryAnnouncementKey = key

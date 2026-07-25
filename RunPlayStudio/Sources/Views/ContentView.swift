@@ -40,6 +40,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var sidebarSelection: SidebarSelection?
     @State private var showKeyboardShortcuts = false
+    @State private var descendantPresentationActive = false
 
     init(appState: AppState, sessionController: AppSessionController) {
         self.appState = appState
@@ -52,6 +53,9 @@ struct ContentView: View {
             || appState.showImporter
             || appState.showArchiveImporter
             || appState.showSmartCollectionsManager
+            || appState.showingError
+            || showKeyboardShortcuts
+            || descendantPresentationActive
     }
 
     /// Default library root in Application Support.
@@ -263,6 +267,9 @@ struct ContentView: View {
         .focusedSceneValue(\.sheetPresentationActive, isSheetPresented)
         .sheet(isPresented: $showKeyboardShortcuts) {
             KeyboardShortcutsHelpView()
+        }
+        .onPreferenceChange(CommandBlockingPresentationPreferenceKey.self) {
+            descendantPresentationActive = $0
         }
         .onReceive(NotificationCenter.default.publisher(for: .runPlayWorkspaceCommand)) { notification in
             guard let command = notification.object as? AppWorkspaceCommand else { return }
