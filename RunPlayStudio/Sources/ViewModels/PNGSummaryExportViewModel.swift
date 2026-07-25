@@ -39,6 +39,7 @@ final class PNGSummaryExportViewModel: Identifiable {
     private let mapSnapshotter: any WorkoutMapSnapshotting
     private let profileBuilder: RouteMetricProfileBuilding
     private let lineBuilder: RouteMetricMapLineBuilding
+    private let announcementPolicy: AccessibilityAnnouncementPolicy
 
     private var generateTask: Task<Void, Never>?
     private var requestSerial = 0
@@ -60,7 +61,8 @@ final class PNGSummaryExportViewModel: Identifiable {
         analysisContext: WorkoutAnalysisContext? = nil,
         mapSnapshotter: any WorkoutMapSnapshotting = CachingWorkoutMapSnapshotter(),
         profileBuilder: RouteMetricProfileBuilding = DefaultRouteMetricProfileBuilder(),
-        lineBuilder: RouteMetricMapLineBuilding = DefaultRouteMetricMapLineBuilder()
+        lineBuilder: RouteMetricMapLineBuilding = DefaultRouteMetricMapLineBuilder(),
+        announcementPolicy: AccessibilityAnnouncementPolicy = AccessibilityAnnouncementPolicy()
     ) {
         self.workout = workout
         self.segments = segments
@@ -68,6 +70,7 @@ final class PNGSummaryExportViewModel: Identifiable {
         self.mapSnapshotter = mapSnapshotter
         self.profileBuilder = profileBuilder
         self.lineBuilder = lineBuilder
+        self.announcementPolicy = announcementPolicy
         let usable = PNGExportService.hasUsableRoute(workout)
         self.hasUsableRoute = usable
         var config = initialConfiguration
@@ -106,6 +109,7 @@ final class PNGSummaryExportViewModel: Identifiable {
     func reportSaveFailure(_ message: String) {
         errorMessage = message
         phase = previewData != nil && readyConfiguration == configuration ? .ready : .failed
+        announcementPolicy.handle(.exportFailed(message: message))
     }
 
     /// Save using the last ready preview when configuration is unchanged.
@@ -163,6 +167,7 @@ final class PNGSummaryExportViewModel: Identifiable {
                 self.isGenerating = false
                 self.mapFailureMessage = nil
                 self.errorMessage = nil
+                self.announcementPolicy.handle(.exportPreviewReady)
             } catch is CancellationError {
                 guard serial == self.requestSerial else { return }
                 self.isGenerating = false
@@ -180,6 +185,9 @@ final class PNGSummaryExportViewModel: Identifiable {
                     return
                 }
                 self.mapFailureMessage = error.localizedDescription
+                self.announcementPolicy.handle(
+                    .exportFailed(message: error.localizedDescription)
+                )
             } catch {
                 guard serial == self.requestSerial else { return }
                 self.isGenerating = false
@@ -190,6 +198,9 @@ final class PNGSummaryExportViewModel: Identifiable {
                 } else {
                     self.errorMessage = error.localizedDescription
                 }
+                self.announcementPolicy.handle(
+                    .exportFailed(message: error.localizedDescription)
+                )
             }
         }
     }

@@ -17,6 +17,7 @@ struct MapReferenceView: View {
     @AppStorage("routeColorMode") private var storedColorModeRaw: String = WorkoutRouteColorMode.solid.rawValue
     @Binding private var displayMode: RouteMapDisplayMode
     @State private var fitRequest = 0
+    @State private var presentationRequest = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -31,6 +32,23 @@ struct MapReferenceView: View {
         self.showAnnotations = showAnnotations
         self.mapViewModel = mapViewModel
         self._displayMode = displayMode
+    }
+
+    private var currentDistanceMeters: Double? {
+        guard routePoints.indices.contains(currentPointIndex) else { return nil }
+        return routePoints[currentPointIndex].distanceFromStartMeters
+    }
+
+    private var routeSummary: RouteAccessibilitySummary {
+        let presentation = mapViewModel?.presentation
+        let modeName = presentation?.effectiveMode.displayName ?? preferredMode.displayName
+        let coverage = presentation?.profile?.validCoverageFraction
+        return RouteAccessibilitySummary.make(
+            routePoints: routePoints,
+            currentDistanceMeters: currentDistanceMeters,
+            colorModeName: modeName,
+            coverageFraction: coverage
+        )
     }
 
     private var preferredMode: WorkoutRouteColorMode {
@@ -59,8 +77,13 @@ struct MapReferenceView: View {
             routes: routes,
             markers: markers,
             fitRequest: fitRequest,
-            controlBottomInset: legendBottomInset
+            presentationRequest: presentationRequest,
+            controlBottomInset: legendBottomInset,
+            animateCamera: !reduceMotion
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Workout route map")
+        .accessibilityValue(routeSummary.spokenSummary)
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
                 mapModeBadge
@@ -80,6 +103,8 @@ struct MapReferenceView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help("Zoom and center the map to show the full route")
+            .accessibilityLabel("Fit Route")
+            .accessibilityHint("Zooms and centers the map on the full route")
             .padding()
         }
         .overlay(alignment: .bottomLeading) {
@@ -89,6 +114,15 @@ struct MapReferenceView: View {
                     .padding(.bottom, 4)
             }
         }
+        .focusedSceneValue(\.mapActions, MapActions(
+            isAvailable: { !routePoints.isEmpty },
+            fit: { fitRequest += 1 },
+            togglePresentation: {
+                displayMode = displayMode == .threeD ? .twoD : .threeD
+                presentationRequest += 1
+            },
+            canTogglePresentation: { !routePoints.isEmpty }
+        ))
         .onAppear {
             syncPreferredMode()
         }

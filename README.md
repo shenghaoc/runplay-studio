@@ -30,7 +30,8 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Route comparison** — Elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay
 - **Segment detection** — Auto-identify active-pace fastest/slowest windows and biggest climb/descent
 - **Native session restoration** — One coordinated macOS window restores bounded logical workspace state on relaunch without restoring transient UI; macOS separately owns frame and display placement
-- **Chart click/drag to seek** — Click or drag on charts to navigate the run
+- **Chart click/drag to seek** — Click or drag on charts to navigate the run; keyboard Jump to distance and VoiceOver seek actions provide non-pointer equivalents
+- **Keyboard and VoiceOver** — Native menus for File, Workout, Replay, Library, View, and Help → Keyboard Shortcuts; chart descriptors, map summaries, and deliberate announcements without 30 fps spam
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 - **Strava bulk archive import** — Import running activities from a local Strava export ZIP (no login or network)
 

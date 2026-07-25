@@ -92,6 +92,8 @@ struct MetricsChartView: View {
     @State private var isDragging: Bool = false
     @State private var dragDistance: Double? = nil
     @State private var chartData: [MetricChartDataPoint] = []
+    @State private var chartAccessibilityBaseModel: ChartAccessibilityModel?
+    @State private var downsampledChartSamples: [MetricChartAccessibilitySample] = []
     @State private var seekDistanceKmText: String = ""
     @FocusState private var seekFieldFocused: Bool
 
@@ -114,10 +116,20 @@ struct MetricsChartView: View {
         case pace = "Active Pace"
         case heartRate = "Heart Rate"
         case speed = "Speed"
+
+        var unit: String {
+            switch self {
+            case .elevation: return "m"
+            case .pace: return "s/km"
+            case .heartRate: return "bpm"
+            case .speed: return "m/s"
+            }
+        }
     }
 
     var body: some View {
-        VStack(spacing: AppDesign.Spacing.medium) {
+        let accessibilityModel = chartAccessibilityModel
+        return VStack(spacing: AppDesign.Spacing.medium) {
             // Metric picker with semantic color indicator
             HStack {
                 Picker("Metric", selection: $selectedMetric) {
@@ -238,6 +250,19 @@ struct MetricsChartView: View {
                             .foregroundStyle(.quaternary)
                     }
                 }
+                .accessibilityChartDescriptor(MetricChartDescriptor(
+                    model: accessibilityModel,
+                    samples: downsampledChartSamples,
+                    metric: selectedMetric
+                ))
+                .accessibilityLabel(accessibilityModel.title)
+                .accessibilityValue(accessibilityModel.spokenSummary)
+                .accessibilityAction(named: "Seek earlier") {
+                    seekRelative(meters: -100)
+                }
+                .accessibilityAction(named: "Seek later") {
+                    seekRelative(meters: 100)
+                }
                 .frame(height: 180)
                 .padding(.horizontal)
 
@@ -246,7 +271,18 @@ struct MetricsChartView: View {
                 }
             }
 
-            // Keyboard-accessible seek alternative — hidden by default
+            // Always-visible summary for VoiceOver and sighted keyboard users.
+            if !chartData.isEmpty {
+                Text(accessibilityModel.spokenSummary)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .accessibilityLabel("Chart summary")
+                    .accessibilityValue(accessibilityModel.spokenSummary)
+            }
+
+            // Keyboard-accessible seek alternative
             if !chartData.isEmpty {
                 DisclosureGroup("Jump to distance") {
                     seekDistanceContent
@@ -254,6 +290,7 @@ struct MetricsChartView: View {
                 }
                 .font(AppDesign.Typography.compactMetric)
                 .padding(.horizontal)
+                .accessibilityHint("Keyboard alternative to dragging the chart")
             }
         }
         .onAppear {
@@ -319,6 +356,25 @@ struct MetricsChartView: View {
         onSeek?(km * 1000)
     }
 
+    private func seekRelative(meters: Double) {
+        let total = routePoints.last?.distanceFromStartMeters ?? 0
+        let next = max(0, min(currentDistance + meters, total))
+        onSeek?(next)
+        seekDistanceKmText = String(format: "%.2f", next / 1000)
+    }
+
+    private var chartAccessibilityModel: ChartAccessibilityModel {
+        let base = chartAccessibilityBaseModel ?? ChartAccessibilityModel.make(
+            metricName: selectedMetric.rawValue,
+            unit: selectedMetric.unit,
+            values: [],
+            seriesIDs: [],
+            currentValue: nil,
+            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
+        )
+        return base.updatingCurrentValue(valueForDistance(currentDistance))
+    }
+
     // MARK: - No Data Overlay
 
     private var noDataOverlay: some View {
@@ -378,10 +434,20 @@ struct MetricsChartView: View {
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
 
-        chartData = MetricChartDataBuilder.build(
+        let updatedData = MetricChartDataBuilder.build(
             routePoints: routePoints,
             values: smoothedValues
         )
+        chartData = updatedData
+        chartAccessibilityBaseModel = ChartAccessibilityModel.make(
+            metricName: selectedMetric.rawValue,
+            unit: selectedMetric.unit,
+            values: updatedData.map(\.value),
+            seriesIDs: updatedData.map(\.seriesID),
+            currentValue: nil,
+            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
+        )
+        downsampledChartSamples = MetricChartAccessibilityBuilder.downsample(updatedData)
     }
 
     private var chartColor: Color {

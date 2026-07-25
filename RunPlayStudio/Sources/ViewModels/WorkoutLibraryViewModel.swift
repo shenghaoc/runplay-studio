@@ -90,15 +90,18 @@ final class WorkoutLibraryViewModel: ObservableObject {
     private var manualQuerySnapshot: ManualQuerySnapshot?
     private let queryService: any WorkoutLibraryQuerying
     private let calendar: Calendar
+    private let announcementPolicy: AccessibilityAnnouncementPolicy
     /// Injected clock for relative filters (tests).
     var nowProvider: () -> Date = { Date() }
 
     init(
         queryService: any WorkoutLibraryQuerying = WorkoutLibraryQueryService(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        announcementPolicy: AccessibilityAnnouncementPolicy = AccessibilityAnnouncementPolicy()
     ) {
         self.queryService = queryService
         self.calendar = calendar
+        self.announcementPolicy = announcementPolicy
     }
 
     deinit {
@@ -664,6 +667,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             loadState = .emptyLibrary
             lastPublishedKey = key
             tableSelection = []
+            announcementPolicy.handle(.queryResultPublished(count: 0))
             return
         }
 
@@ -731,6 +735,9 @@ final class WorkoutLibraryViewModel: ObservableObject {
         // Drop stale table selection when rows leave the result set.
         let matching = Set(result.matchingIDs)
         tableSelection = tableSelection.intersection(matching)
+        announcementPolicy.handle(
+            .queryResultPublished(count: result.filteredCount)
+        )
     }
 
     /// Cache key covering IDs, metadata/tag revisions, favourites, and full query.

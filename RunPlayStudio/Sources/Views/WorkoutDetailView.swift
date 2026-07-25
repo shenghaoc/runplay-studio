@@ -13,6 +13,7 @@ struct WorkoutDetailView: View {
 
     /// Owns metric route map lines; must not rebuild on replay ticks.
     @State private var routeMapViewModel = WorkoutRouteMapViewModel()
+    @State private var announcementPolicy = AccessibilityAnnouncementPolicy()
 
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
@@ -87,6 +88,46 @@ struct WorkoutDetailView: View {
                 .ignoresSafeArea()
         }
         .focusedSceneValue(\.workoutTabSelection, selectedTabBinding)
+        .focusedSceneValue(\.replayActions, ReplayActions(
+            isAvailable: { replayController.hasPlayableTimeline },
+            togglePlayPause: {
+                let wasPlaying = replayController.isPlaying
+                replayController.togglePlayPause()
+                if wasPlaying {
+                    announcementPolicy.handle(.replayPaused)
+                } else {
+                    announcementPolicy.handle(.replayPlayed)
+                }
+            },
+            seekBackward: { replayController.seekBySeconds(-5) },
+            seekForward: { replayController.seekBySeconds(5) },
+            stepBackward: { replayController.stepBackward() },
+            stepForward: { replayController.stepForward() },
+            slower: {
+                let speed = replayController.slower()
+                announcementPolicy.handle(
+                    .speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed)
+                )
+            },
+            faster: {
+                let speed = replayController.faster()
+                announcementPolicy.handle(
+                    .speedChanged(label: ReplayState(playbackSpeed: speed).formattedSpeed)
+                )
+            },
+            restart: {
+                replayController.restart()
+                announcementPolicy.handle(.replayRestarted)
+            }
+        ))
+        .onChange(of: replayController.isPlaying) { wasPlaying, isPlaying in
+            // Announce reaching the end once when the engine auto-pauses.
+            if wasPlaying, !isPlaying,
+               replayController.state.totalDuration > 0,
+               abs(replayController.state.currentTime - replayController.state.totalDuration) < 0.05 {
+                announcementPolicy.handle(.replayReachedEnd)
+            }
+        }
         .onChange(of: appState.workoutDetailTabRaw) { _, _ in
             appState.requestSessionSave()
         }
@@ -380,7 +421,7 @@ private struct TabBarView: View {
     private var tabContext: String {
         switch selectedTab {
         case .overview: return "Route replay"
-        case .charts: return "Drag the chart to navigate"
+        case .charts: return "Use Jump to distance or chart accessibility actions to seek"
         case .splits: return "Kilometer breakdown"
         case .segments: return "Detected highlights"
         }

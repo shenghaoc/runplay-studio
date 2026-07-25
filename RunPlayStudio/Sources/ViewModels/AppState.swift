@@ -228,8 +228,8 @@ class AppState: ObservableObject {
 
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
-    let personalHeatmap = PersonalHeatmapViewModel()
-    let workoutLibrary = WorkoutLibraryViewModel()
+    let personalHeatmap: PersonalHeatmapViewModel
+    let workoutLibrary: WorkoutLibraryViewModel
 
     private struct CachedAnalysisContext {
         let normalizationVersion: Int
@@ -257,6 +257,9 @@ class AppState: ObservableObject {
     /// Platform archive service (ZIP scan/import). Nil in tests without platform.
     private let archiveService: StravaArchiveService?
 
+    /// Retained, injectable policy shared by app-owned transition models.
+    private let announcementPolicy: AccessibilityAnnouncementPolicy
+
     /// Handle for the current selection persistence task.
     private var selectionTask: Task<Void, Never>?
 
@@ -274,11 +277,22 @@ class AppState: ObservableObject {
     init(
         storeActor: WorkoutLibraryStoreActor? = nil,
         importService: WorkoutImportServicing? = nil,
-        archiveService: StravaArchiveService? = nil
+        archiveService: StravaArchiveService? = nil,
+        accessibilityAnnouncer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
     ) {
+        let announcementPolicy = AccessibilityAnnouncementPolicy(
+            announcer: accessibilityAnnouncer
+        )
         self.storeActor = storeActor
         self.importService = importService
         self.archiveService = archiveService
+        self.announcementPolicy = announcementPolicy
+        self.personalHeatmap = PersonalHeatmapViewModel(
+            announcementPolicy: announcementPolicy
+        )
+        self.workoutLibrary = WorkoutLibraryViewModel(
+            announcementPolicy: announcementPolicy
+        )
     }
 
     /// Convenience init for production: creates real services rooted at the given directory.
@@ -491,6 +505,7 @@ class AppState: ObservableObject {
     func start() async {
         guard let storeActor else {
             loadSampleWorkouts()
+            announcementPolicy.handle(.libraryLoaded(count: workouts.count))
             return
         }
 
@@ -499,6 +514,7 @@ class AppState: ObservableObject {
 
         let result = await storeActor.loadLibrary()
         applyLibraryLoadResult(result)
+        announcementPolicy.handle(.libraryLoaded(count: workouts.count))
     }
 
     private func applyLibraryLoadResult(_ result: WorkoutLibraryLoadResult) {
@@ -621,15 +637,23 @@ class AppState: ObservableObject {
             // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
             requestSessionSave()
+            announcementPolicy.handle(.importCompleted(name: filename))
         } catch is CancellationError {
             // Cancelled — do not add to UI.
+            announcementPolicy.handle(.importCancelled)
         } catch let error as WorkoutImportError {
             errorMessage = importErrorMessage(for: error, filename: filename)
             showingError = true
+            announcementPolicy.handle(
+                .importFailed(message: errorMessage ?? error.localizedDescription)
+            )
         } catch {
             errorMessage = "Imported but could not save to your library. "
                 + "Check available storage and app permissions. Details: \(error.localizedDescription)"
             showingError = true
+            announcementPolicy.handle(
+                .importFailed(message: errorMessage ?? error.localizedDescription)
+            )
         }
     }
 
@@ -1031,6 +1055,7 @@ class AppState: ObservableObject {
             tags.append(tag)
             workoutLibrary.applyTagDefinitions(tags)
             requestSessionSave()
+            announcementPolicy.handle(.tagUpdateCompleted)
             return tag
         } catch {
             organizationEditError = error.localizedDescription
@@ -1052,6 +1077,7 @@ class AppState: ObservableObject {
             }
             workoutLibrary.applyTagDefinitions(tags)
             requestSessionSave()
+            announcementPolicy.handle(.tagUpdateCompleted)
             return tag
         } catch {
             organizationEditError = error.localizedDescription
@@ -1094,6 +1120,7 @@ class AppState: ObservableObject {
                 workoutLibrary.tagFilter = repairedActiveFilter
             }
             requestSessionSave()
+            announcementPolicy.handle(.tagUpdateCompleted)
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1111,6 +1138,7 @@ class AppState: ObservableObject {
             tags = orderedIDs.compactMap { byID[$0] }
             workoutLibrary.applyTagDefinitions(tags)
             requestSessionSave()
+            announcementPolicy.handle(.tagUpdateCompleted)
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1129,6 +1157,7 @@ class AppState: ObservableObject {
             try await storeActor.setTags(tagIDs, forWorkoutID: workoutID)
             workoutLibrary.applyWorkoutTagChange(workoutID: workoutID, tagIDs: tagIDs)
             requestSessionSave()
+            announcementPolicy.handle(.tagUpdateCompleted)
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1167,6 +1196,7 @@ class AppState: ObservableObject {
             }
             workoutLibrary.applyBulkWorkoutTagChange(changes: changes)
             requestSessionSave()
+            announcementPolicy.handle(.tagUpdateCompleted)
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1186,6 +1216,7 @@ class AppState: ObservableObject {
             smartCollections.append(collection)
             workoutLibrary.didCreateSmartCollection(collection)
             requestSessionSave()
+            announcementPolicy.handle(.smartCollectionUpdated)
             return collection
         } catch {
             organizationEditError = error.localizedDescription
@@ -1218,6 +1249,7 @@ class AppState: ObservableObject {
             // Explicit Update Collection uses markActiveCollectionUpdated after success.
             workoutLibrary.applySmartCollectionChange(smartCollections)
             requestSessionSave()
+            announcementPolicy.handle(.smartCollectionUpdated)
             return collection
         } catch {
             organizationEditError = error.localizedDescription
@@ -1237,6 +1269,7 @@ class AppState: ObservableObject {
             smartCollections.removeAll { $0.id == id }
             workoutLibrary.didDeleteSmartCollection(id: id)
             requestSessionSave()
+            announcementPolicy.handle(.smartCollectionUpdated)
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1254,6 +1287,7 @@ class AppState: ObservableObject {
             smartCollections = orderedIDs.compactMap { byID[$0] }
             workoutLibrary.applySmartCollectionChange(smartCollections)
             requestSessionSave()
+            announcementPolicy.handle(.smartCollectionUpdated)
             return true
         } catch {
             organizationEditError = error.localizedDescription
@@ -1337,6 +1371,7 @@ class AppState: ObservableObject {
 
     /// Set the comparison workout and enter comparison mode.
     func setComparison(_ workout: RunWorkout?) {
+        let wasComparing = workspaceMode == .comparison
         comparisonSelectionMessage = nil
         guard let workout else {
             clearComparison()
@@ -1362,10 +1397,14 @@ class AppState: ObservableObject {
         workspaceMode = .comparison
         clampComparisonDistance()
         requestSessionSave()
+        if !wasComparing {
+            announcementPolicy.handle(.comparisonEntered)
+        }
     }
 
     /// Clear comparison mode and return to the selected workout.
     func clearComparison() {
+        let wasComparing = workspaceMode == .comparison
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
@@ -1373,11 +1412,15 @@ class AppState: ObservableObject {
             workspaceMode = .workout
         }
         requestSessionSave()
+        if wasComparing {
+            announcementPolicy.handle(.comparisonExited)
+        }
     }
 
     /// Enter comparison mode without a specific comparison workout,
     /// showing the empty state so users can import additional runs.
     func enterEmptyComparisonMode() {
+        let wasComparing = workspaceMode == .comparison
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
         }
@@ -1385,6 +1428,9 @@ class AppState: ObservableObject {
         comparisonSelectionMessage = nil
         workspaceMode = .comparison
         requestSessionSave()
+        if !wasComparing {
+            announcementPolicy.handle(.comparisonEntered)
+        }
     }
 
     /// Whether the supplied workout can be compared with the current primary selection.
@@ -1545,6 +1591,9 @@ class AppState: ObservableObject {
                     self.errorMessage = result.rejectionMessage
                         ?? "This ZIP does not appear to be a supported Strava bulk export."
                     self.showingError = true
+                    self.announcementPolicy.handle(
+                        .importFailed(message: self.errorMessage ?? "Unsupported archive.")
+                    )
                     return
                 }
                 self.archiveSession = ArchiveImportSession(
@@ -1561,6 +1610,9 @@ class AppState: ObservableObject {
                 self.operationState = .idle
                 self.errorMessage = error.localizedDescription
                 self.showingError = true
+                self.announcementPolicy.handle(
+                    .importFailed(message: error.localizedDescription)
+                )
             }
         }
     }
@@ -1616,6 +1668,11 @@ class AppState: ObservableObject {
                     session.report = report
                     session.errorMessage = report.errorMessage
                         ?? "Could not save imported workouts."
+                    self.announcementPolicy.handle(
+                        .importFailed(
+                            message: session.errorMessage ?? "Could not save imported workouts."
+                        )
+                    )
                     return
                 }
 
@@ -1659,6 +1716,11 @@ class AppState: ObservableObject {
                 session.report = report
                 session.phase = .report
                 self.operationState = .idle
+                if report.importedCount > 0 {
+                    self.announcementPolicy.handle(
+                        .importCompleted(name: session.archiveName)
+                    )
+                }
             } catch is CancellationError {
                 self.operationState = .idle
                 self.archiveSession = nil
@@ -1670,6 +1732,9 @@ class AppState: ObservableObject {
                     errorMessage: error.localizedDescription
                 )
                 session.errorMessage = error.localizedDescription
+                self.announcementPolicy.handle(
+                    .importFailed(message: error.localizedDescription)
+                )
             }
         }
     }
@@ -1684,6 +1749,7 @@ class AppState: ObservableObject {
             archiveSession = nil
         }
         operationState = .idle
+        announcementPolicy.handle(.importCancelled)
     }
 
     /// Dismiss the archive sheet after a completed report.

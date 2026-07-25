@@ -28,6 +28,19 @@ final class ReplayControllerTests: XCTestCase {
     func testLoadSetsTotalDuration() {
         XCTAssertGreaterThan(controller.state.totalDuration, 0)
         XCTAssertGreaterThan(controller.state.totalDistance, 0)
+        XCTAssertTrue(controller.hasPlayableTimeline)
+    }
+
+    func testWorkoutWithoutRouteHasNoPlayableTimeline() {
+        controller.load(
+            RunWorkout(
+                routePoints: [],
+                summary: RunSummary(totalElapsedSeconds: 600)
+            )
+        )
+
+        XCTAssertFalse(controller.hasPlayableTimeline)
+        XCTAssertFalse(controller.isPlaying)
     }
 
     func testLoadStopsActivePlaybackTimer() {
@@ -99,6 +112,37 @@ final class ReplayControllerTests: XCTestCase {
 
         controller.setSpeed(0.5)
         XCTAssertEqual(controller.state.playbackSpeed, 0.5)
+    }
+
+    func testSeekBySecondsClamps() {
+        controller.seekBySeconds(5)
+        XCTAssertEqual(controller.state.currentTime, 5, accuracy: 1)
+
+        controller.seekBySeconds(-100_000)
+        XCTAssertEqual(controller.state.currentTime, 0, accuracy: 0.01)
+
+        controller.seekBySeconds(controller.state.totalDuration + 100)
+        XCTAssertEqual(controller.state.currentTime, controller.state.totalDuration, accuracy: 1)
+    }
+
+    func testSlowerAndFasterUseSupportedOptions() {
+        controller.setSpeed(1.0)
+        XCTAssertEqual(controller.faster(), 2.0)
+        XCTAssertEqual(controller.faster(), 4.0)
+        XCTAssertEqual(controller.slower(), 2.0)
+        controller.setSpeed(0.25)
+        XCTAssertEqual(controller.slower(), 0.25)
+        controller.setSpeed(8.0)
+        XCTAssertEqual(controller.faster(), 8.0)
+    }
+
+    func testRestartResetsAndPauses() {
+        controller.play()
+        controller.seekToTime(controller.state.totalDuration / 2)
+        controller.restart()
+        XCTAssertFalse(controller.isPlaying)
+        XCTAssertEqual(controller.state.currentTime, 0, accuracy: 0.01)
+        XCTAssertEqual(controller.state.currentPointIndex, 0)
     }
 
     func testSpeedClamping() {

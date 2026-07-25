@@ -8,6 +8,7 @@ struct PersonalHeatmapView: View {
     @ObservedObject var viewModel: PersonalHeatmapViewModel
 
     @State private var displayMode: RouteMapDisplayMode = .twoD
+    @State private var presentationRequest = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -200,16 +201,42 @@ struct PersonalHeatmapView: View {
     // MARK: - Map
 
     private var mapContent: some View {
-        RouteMapCanvas(
+        let summary = heatmapAccessibilitySummary
+        return RouteMapCanvas(
             displayMode: $displayMode,
             routes: [],
             markers: [],
             areas: viewModel.mapAreas,
             fitRequest: viewModel.fitRequest,
+            presentationRequest: presentationRequest,
             controlBottomInset: 0,
             defaultDisplayMode: .twoD
         )
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Personal route heatmap")
+        .accessibilityValue(summary.spokenSummary)
+        .focusedSceneValue(\.mapActions, MapActions(
+            isAvailable: { !viewModel.mapAreas.isEmpty },
+            fit: { viewModel.requestFit() },
+            togglePresentation: {
+                displayMode = displayMode == .threeD ? .twoD : .threeD
+                presentationRequest += 1
+            },
+            canTogglePresentation: { true }
+        ))
+    }
+
+    private var heatmapAccessibilitySummary: HeatmapAccessibilitySummary {
+        let stats = viewModel.snapshot?.statistics
+        return HeatmapAccessibilitySummary(
+            includedRunCount: stats?.includedWorkoutCount ?? 0,
+            totalDistanceMeters: stats?.totalDistanceMeters ?? 0,
+            maximumOverlap: stats?.maximumOverlap ?? 0,
+            requestedCellSizeMeters: viewModel.resolution.cellSizeMeters,
+            effectiveCellSizeMeters: stats?.effectiveCellSizeMeters ?? viewModel.resolution.cellSizeMeters,
+            dateFilterDescription: viewModel.datePreset.title,
+            minimumRepeatCount: viewModel.minimumWorkoutCount
+        )
     }
 
     @ViewBuilder

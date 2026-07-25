@@ -17,6 +17,7 @@ struct ExportView: View {
     @State private var exportSuccess: String?
     @State private var showingSuccess = false
     @State private var pngViewModel: PNGSummaryExportViewModel?
+    @State private var announcementPolicy = AccessibilityAnnouncementPolicy()
 
     private let exportService = ExportService()
 
@@ -81,6 +82,9 @@ struct ExportView: View {
                 }
             )
         }
+        .blocksBackgroundCommands(
+            showingError || showingSuccess || pngViewModel != nil
+        )
     }
 
     private func openPNGSheet() {
@@ -168,10 +172,15 @@ struct ExportView: View {
     private func showError(_ message: String) {
         exportError = "Export failed: \(message). Try choosing a different location or format."
         showingError = true
+        announcementPolicy.handle(.exportFailed(message: message))
     }
 
     private func showSuccess(_ message: String) {
         exportSuccess = message
         showingSuccess = true
+        let filename = message.hasPrefix("Saved to ")
+            ? String(message.dropFirst("Saved to ".count))
+            : message
+        announcementPolicy.handle(.exportCompleted(name: filename))
     }
 }

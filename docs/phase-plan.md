@@ -107,8 +107,8 @@
 - [ ] Video export (AVFoundation) — post-MVP
 
 ### Phase: Polish and Accessibility
-- [ ] Keyboard shortcuts for replay and navigation
-- [ ] Accessibility labels and VoiceOver support audit
+- [x] Keyboard shortcuts for replay and navigation
+- [x] Accessibility labels and VoiceOver support audit
 - [x] Window state persistence across relaunches
 
 ### Phase: Expanded Import

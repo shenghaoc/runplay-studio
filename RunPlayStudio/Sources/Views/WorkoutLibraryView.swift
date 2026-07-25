@@ -18,6 +18,44 @@ struct WorkoutLibraryView: View {
     @State private var createTagColor: WorkoutTagColor = .default
     @FocusState private var searchFocused: Bool
 
+    private var canOpenSelection: Bool {
+        viewModel.tableSelection.count == 1
+            && viewModel.tableSelection.first.map { selectedID in
+                appState.workouts.contains { $0.id == selectedID }
+            } == true
+    }
+
+    private var persistedSelection: Set<UUID> {
+        viewModel.tableSelection.intersection(appState.libraryWorkoutIDs)
+    }
+
+    private var isPresentingCommandBlockingUI: Bool {
+        workoutToDelete != nil
+            || metadataEditorWorkout != nil
+            || tagEditorWorkoutIDs != nil
+            || showManageTags
+            || showCreateTag
+            || showSaveCollection
+            || appState.showSmartCollectionsManager
+            || collectionToDelete != nil
+            || collectionDeleteError != nil
+    }
+
+    private var libraryActions: LibraryActions {
+        LibraryActions(
+            isAvailable: { true },
+            focusSearch: { searchFocused = true },
+            canOpenSelection: { canOpenSelection },
+            openSelection: openSelectedWorkout,
+            canEditTags: { !persistedSelection.isEmpty },
+            editTags: {
+                guard !persistedSelection.isEmpty else { return }
+                appState.organizationEditError = nil
+                tagEditorWorkoutIDs = persistedSelection
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -29,6 +67,8 @@ struct WorkoutLibraryView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .navigationTitle(navigationTitle)
         .focusSection()
+        .focusedSceneValue(\.libraryActions, libraryActions)
+        .blocksBackgroundCommands(isPresentingCommandBlockingUI)
         .onReceive(viewModel.objectWillChange) { _ in
             appState.requestSessionSave()
         }
@@ -37,13 +77,6 @@ struct WorkoutLibraryView: View {
                 viewModel.clearSearch()
             }
         }
-        .background(
-            Button("") { searchFocused = true }
-                .keyboardShortcut("f", modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        )
         .alert("Delete Run", isPresented: Binding(
             get: { workoutToDelete != nil },
             set: { if !$0 { workoutToDelete = nil } }
@@ -663,12 +696,18 @@ struct WorkoutLibraryView: View {
             .width(min: 50, ideal: 60)
 
             TableColumn("Device") { entry in
-                Text(entry.deviceName ?? "—")
+                Text(entry.deviceName ?? "Unavailable")
                     .lineLimit(1)
                     .foregroundStyle(entry.deviceName == nil ? .secondary : .primary)
+                    .accessibilityLabel(entry.deviceName ?? "Device unavailable")
             }
             .width(min: 80, ideal: 120)
         }
+        .accessibilityLabel(
+            viewModel.tableSelection.isEmpty
+                ? "All Runs table"
+                : "All Runs table, \(viewModel.tableSelection.count) selected"
+        )
         .contextMenu(forSelectionType: UUID.self) { ids in
             let persisted = ids.intersection(appState.libraryWorkoutIDs)
             if ids.count == 1, let id = ids.first,
@@ -733,16 +772,23 @@ struct WorkoutLibraryView: View {
         }
         .onKeyPress(.return) {
             // Return opens only when exactly one workout is selected.
-            guard viewModel.tableSelection.count == 1,
-                  let id = viewModel.tableSelection.first,
-                  let workout = appState.workouts.first(where: { $0.id == id }) else {
+            guard libraryActions.canOpenSelection() else {
                 return .ignored
             }
-            appState.openWorkoutFromLibrary(workout)
+            libraryActions.openSelection()
             return .handled
         }
         .focusable()
         .padding(.horizontal, AppDesign.Spacing.small)
+    }
+
+    private func openSelectedWorkout() {
+        guard viewModel.tableSelection.count == 1,
+              let id = viewModel.tableSelection.first,
+              let workout = appState.workouts.first(where: { $0.id == id }) else {
+            return
+        }
+        appState.openWorkoutFromLibrary(workout)
     }
 
     // MARK: - Tag editor sheets

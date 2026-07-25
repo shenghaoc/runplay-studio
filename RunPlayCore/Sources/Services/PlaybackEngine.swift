@@ -97,6 +97,34 @@ public class PlaybackEngine {
         state.playbackSpeed = max(0.1, min(speed, 16))
     }
 
+    /// Seek by a signed elapsed-time delta, clamped to the workout timeline.
+    public func seekBySeconds(_ delta: Double) {
+        guard delta.isFinite else { return }
+        seekToTime(state.currentTime + delta)
+    }
+
+    /// Move to the previous slower supported speed option, if any.
+    @discardableResult
+    public func slower() -> Double {
+        let options = Self.speedOptions
+        guard let index = options.firstIndex(of: state.playbackSpeed), index > 0 else {
+            return state.playbackSpeed
+        }
+        setSpeed(options[index - 1])
+        return state.playbackSpeed
+    }
+
+    /// Move to the next faster supported speed option, if any.
+    @discardableResult
+    public func faster() -> Double {
+        let options = Self.speedOptions
+        guard let index = options.firstIndex(of: state.playbackSpeed), index + 1 < options.count else {
+            return state.playbackSpeed
+        }
+        setSpeed(options[index + 1])
+        return state.playbackSpeed
+    }
+
     /// Step between real route points, including points with duplicate times.
     public func stepForward() {
         guard let workout, !workout.routePoints.isEmpty else { return }

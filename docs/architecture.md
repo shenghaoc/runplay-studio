@@ -33,6 +33,7 @@ Import File → Importer → RouteQualityProcessor → Normalized Route + Diagno
 RunPlayCore/                   # Platform-neutral library (no UI frameworks)
 ├── Sources/
 │   ├── Models/                # Data structures (RunWorkout, RoutePoint, etc.)
+│   ├── Accessibility/         # Pure spoken summaries and chart accessibility models
 │   ├── Importers/             # File format parsers (JSON, GPX, TCX, FIT)
 │   └── Services/              # Analysis, splits, segments, comparison, projection, export
 └── Tests/
@@ -44,7 +45,8 @@ RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit va
 
 RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 ├── Sources/
-│   ├── Services/              # UI-adjacent services (library loading, PNG export)
+│   ├── Commands/              # CommandRegistry, focused actions, shortcuts help
+│   ├── Services/              # UI-adjacent services (library, PNG export, announcements)
 │   ├── ViewModels/            # View state management (AppState, ReplayController, PNG export)
 │   ├── Views/                 # SwiftUI views
 │   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
@@ -52,6 +54,15 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 └── Tests/
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
+
+### Commands and accessibility
+
+Menu shortcuts are owned by `CommandRegistry` and `WorkoutViewCommands`, with
+focused action bundles (`ReplayActions`, `LibraryActions`, `MapActions`) published
+from the active workspace. Pure summary text lives in RunPlayCore so Linux CI can
+test spoken semantics without AppKit. See
+[accessibility-audit.md](accessibility-audit.md).
+
 
 ## PNG Summary Export
 

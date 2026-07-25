@@ -39,11 +39,23 @@ struct ContentView: View {
     @ObservedObject var sessionController: AppSessionController
     @Environment(\.scenePhase) private var scenePhase
     @State private var sidebarSelection: SidebarSelection?
+    @State private var showKeyboardShortcuts = false
+    @State private var descendantPresentationActive = false
 
     init(appState: AppState, sessionController: AppSessionController) {
         self.appState = appState
         self.sessionController = sessionController
         self._sidebarSelection = State(initialValue: appState.sidebarSelection)
+    }
+
+    private var isSheetPresented: Bool {
+        appState.archiveSession != nil
+            || appState.showImporter
+            || appState.showArchiveImporter
+            || appState.showSmartCollectionsManager
+            || appState.showingError
+            || showKeyboardShortcuts
+            || descendantPresentationActive
     }
 
     /// Default library root in Application Support.
@@ -249,6 +261,16 @@ struct ContentView: View {
             importFile: { appState.showImporter = true },
             importStravaArchive: { appState.showArchiveImporter = true }
         ))
+        .focusedSceneValue(\.appPresentationActions, AppPresentationActions(
+            showKeyboardShortcuts: { showKeyboardShortcuts = true }
+        ))
+        .focusedSceneValue(\.sheetPresentationActive, isSheetPresented)
+        .sheet(isPresented: $showKeyboardShortcuts) {
+            KeyboardShortcutsHelpView()
+        }
+        .onPreferenceChange(CommandBlockingPresentationPreferenceKey.self) {
+            descendantPresentationActive = $0
+        }
         .onReceive(NotificationCenter.default.publisher(for: .runPlayWorkspaceCommand)) { notification in
             guard let command = notification.object as? AppWorkspaceCommand else { return }
             appState.handleWorkspaceCommand(command)
@@ -276,15 +298,23 @@ struct ContentView: View {
         case .loadingLibrary:
             ProgressView("Loading workout library…")
                 .padding()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Loading workout library")
         case .importing(let filename):
             ProgressView("Importing \(filename)…")
                 .padding()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Importing \(filename)")
         case .deleting:
             ProgressView("Deleting…")
                 .padding()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Deleting stored workout copy")
         case .scanningArchive(let filename):
             ProgressView("Scanning \(filename)…")
                 .padding()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Scanning archive \(filename)")
         case .importingArchive:
             // Progress lives in the archive sheet.
             EmptyView()

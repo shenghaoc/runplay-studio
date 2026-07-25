@@ -123,6 +123,33 @@ class ReplayController: ObservableObject {
         syncFromEngine()
     }
 
+    /// Seek by a signed elapsed-time delta (clamped by the engine).
+    func seekBySeconds(_ delta: Double) {
+        engine.seekBySeconds(delta)
+        syncFromEngine()
+    }
+
+    /// Choose the previous slower supported speed.
+    @discardableResult
+    func slower() -> Double {
+        let speed = engine.slower()
+        syncFromEngine()
+        return speed
+    }
+
+    /// Choose the next faster supported speed.
+    @discardableResult
+    func faster() -> Double {
+        let speed = engine.faster()
+        syncFromEngine()
+        return speed
+    }
+
+    /// Restart from the beginning and remain paused.
+    func restart() {
+        stop()
+    }
+
     /// Step forward one frame.
     func stepForward() {
         engine.stepForward()
@@ -147,6 +174,11 @@ class ReplayController: ObservableObject {
 
     var canStepBackward: Bool { engine.canStepBackward }
     var canStepForward: Bool { engine.canStepForward }
+    var hasPlayableTimeline: Bool {
+        state.totalDuration.isFinite
+            && state.totalDuration > 0
+            && currentRoutePoint != nil
+    }
 
     /// Selected metrics at the current position.
     var selectedMetrics: SelectedMetrics {
