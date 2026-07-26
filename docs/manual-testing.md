@@ -264,13 +264,25 @@ Focused pre-merge smoke record (2026-07-25), packaged
 - Return triggered the default **Import N Runs** action.
 - Deleting the imported workouts restored the library to its original state.
 
-**Not verified in that pass:** Escape-to-cancel could not be confirmed. Synthetic
-Escape key events did not dismiss the sheet, while synthetic Return did trigger
-the default action, so it is unclear whether `.keyboardShortcut(.cancelAction)`
-is not firing or whether the injected key event is simply not delivered the way
-a physical Escape is. Clicking **Cancel** always worked. This needs a check with
-a physical keyboard. VoiceOver, Accessibility Inspector, increased contrast, and
-narrow-window passes were not performed.
+Final pre-merge follow-up (2026-07-26), using the current packaged artifact:
+
+- Escape dismissed both ready and duplicate review sheets without mutating the
+  library; Return invoked the default import action.
+- The accessibility tree exposed the selected-count summary, complete row
+  summaries (name, sport, date, elapsed time, distance, GPS points, laps, and
+  textual status), checkbox state/help, and every action.
+- Exact reimport showed two disabled **Already imported** rows and a disabled
+  **Import 0 Runs** action.
+- A running-plus-cycling fixture exposed one selected running row and one
+  disabled cycling row with the explanation **Cycling sessions are not
+  supported**; only the run committed.
+- Completion reports and the 7 → 9 / 9 → 10 library transitions matched the
+  committed workouts. The three synthetic workouts were then deleted, restoring
+  the original seven-run library.
+
+A spoken VoiceOver pass, increased-contrast pass, and appearance variants remain
+part of the broader release checklist; they are not substitutes for the
+packaged-app and accessibility-tree checks above.
 
 ## All Runs Library Checklist
 

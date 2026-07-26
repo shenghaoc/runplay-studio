@@ -79,7 +79,9 @@ ordered ranges with two advancing cursors in `O(n + s)`. Otherwise it sorts an
 index permutation once (`O(n log n)`) and then walks. Either way, owners are
 written into one `[Int32]` array and buckets are filled in a single source-order
 pass, so no `records × sessions` scan exists anywhere. Events and laps use the
-same walk.
+same walk. Import-time message-index construction probes cooperative
+cancellation while extracting timestamps, determining order, walking owners,
+building buckets, and attributing laps, using the central policy stride.
 
 Lap association runs index-first: every session's `first_lap_index` /
 `number_of_laps` claim is computed against a one-pass ordinal map, conflicting

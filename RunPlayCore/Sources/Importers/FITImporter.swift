@@ -51,7 +51,7 @@ public struct FITImporter: WorkoutImporting {
         // have two implementations of workout construction.
         let selectedSessionIndex = try FITDecoder.selectedSessionIndex(from: decodedFile)
         return try buildSession(
-            index: FITSessionMessageIndex.build(decodedFile: decodedFile),
+            index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
             sessionIndex: selectedSessionIndex,
             suggestedName: suggestedName,
             provenance: nil
@@ -72,7 +72,7 @@ public struct FITImporter: WorkoutImporting {
         provenance: WorkoutImportProvenance?
     ) throws -> RunWorkout {
         try buildSession(
-            index: FITSessionMessageIndex.build(decodedFile: decodedFile),
+            index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
             sessionIndex: sessionIndex,
             suggestedName: suggestedName,
             provenance: provenance

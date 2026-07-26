@@ -76,7 +76,10 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
             throw FITSessionImportError.tooManySessions(policy.maxScannedSessions)
         }
 
-        let index = FITSessionMessageIndex.build(decodedFile: decodedFile)
+        let index = try FITSessionMessageIndex.build(
+            decodedFile: decodedFile,
+            cancellationCheckStride: policy.cancellationCheckStride
+        )
         var result = try makeScanResult(
             index: index,
             containerSHA256: containerSHA256,
@@ -141,7 +144,10 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         let data = try readContainer(at: url)
         let containerSHA256 = digest.sha256Hex(of: data)
         let decodedFile = try parseContainer(data)
-        let index = FITSessionMessageIndex.build(decodedFile: decodedFile)
+        let index = try FITSessionMessageIndex.build(
+            decodedFile: decodedFile,
+            cancellationCheckStride: policy.cancellationCheckStride
+        )
 
         // Re-derive statuses from the file as it is *now*, so a container that
         // changed between review and import cannot import stale selections.

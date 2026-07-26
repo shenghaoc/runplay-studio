@@ -422,4 +422,50 @@ final class FITSessionAttributionTests: XCTestCase {
         )
         XCTAssertEqual(owners, repeated)
     }
+
+    func testMessageIndexBuildChecksCancellationDuringAttribution() {
+        let sessions = [
+            session(start: 0, end: 5_000),
+            session(start: 10_000, end: 15_000)
+        ]
+        let records = (0..<10_000).map { record(UInt32($0)) }
+        let decodedFile = FITDecodedFile(sessions: sessions, records: records)
+        // Entry + boundary preparation consume two probes, timestamp extraction
+        // consumes ten more at a 1,000-record stride, and the owner walk checks
+        // once before its first chronological-order probe. Cancel on that next
+        // probe to prove the attribution walk itself remains interruptible.
+        let probe = AttributionCancellationProbe(cancelOnCheck: 14)
+
+        XCTAssertThrowsError(
+            try FITSessionMessageIndex.build(
+                decodedFile: decodedFile,
+                cancellationCheckStride: 1_000,
+                isCancelled: { probe.check() }
+            )
+        ) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertGreaterThanOrEqual(probe.checkCount, 14)
+    }
+}
+
+private final class AttributionCancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let cancelOnCheck: Int
+    private var checks = 0
+
+    init(cancelOnCheck: Int) {
+        self.cancelOnCheck = cancelOnCheck
+    }
+
+    var checkCount: Int {
+        lock.withLock { checks }
+    }
+
+    func check() -> Bool {
+        lock.withLock {
+            checks += 1
+            return checks >= cancelOnCheck
+        }
+    }
 }

@@ -274,28 +274,82 @@ public enum FITSessionAttribution {
         timestamps: [UInt32?],
         orderedRanges: [FITSessionRange]
     ) -> [Int32] {
+        attributeOwners(
+            timestamps: timestamps,
+            orderedRanges: orderedRanges,
+            cancellationCheckStride: .max,
+            isCancelled: { false }
+        ) ?? [Int32](repeating: unattributed, count: timestamps.count)
+    }
+
+    /// Cancellable attribution used while building an import message index.
+    ///
+    /// The public nonthrowing helper above remains convenient for pure callers;
+    /// import work uses this overload so a large container cannot ignore task
+    /// cancellation after parsing has finished.
+    static func attributeOwnersCheckingCancellation(
+        timestamps: [UInt32?],
+        orderedRanges: [FITSessionRange],
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [Int32] {
+        guard let owners = attributeOwners(
+            timestamps: timestamps,
+            orderedRanges: orderedRanges,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
+        ) else {
+            throw CancellationError()
+        }
+        return owners
+    }
+
+    private static func attributeOwners(
+        timestamps: [UInt32?],
+        orderedRanges: [FITSessionRange],
+        cancellationCheckStride: Int,
+        isCancelled: () -> Bool
+    ) -> [Int32]? {
         var owners = [Int32](repeating: unattributed, count: timestamps.count)
+        guard !isCancelled() else { return nil }
         guard !orderedRanges.isEmpty, !timestamps.isEmpty else { return owners }
+        let stride = max(cancellationCheckStride, 1)
 
         // One walk body for both orders. Chronological source order is the
         // common FIT case and stays O(n); otherwise sort a non-nil index
         // permutation once so the cursor still advances monotically.
         let order: [Int]
-        if isChronological(timestamps) {
+        guard let chronological = isChronological(
+            timestamps,
+            cancellationCheckStride: stride,
+            isCancelled: isCancelled
+        ) else {
+            return nil
+        }
+        if chronological {
             order = Array(timestamps.indices)
         } else {
-            order = timestamps.indices
-                .filter { timestamps[$0] != nil }
-                .sorted { lhs, rhs in
+            var sortable: [Int] = []
+            sortable.reserveCapacity(timestamps.count)
+            for index in timestamps.indices {
+                if index.isMultiple(of: stride), isCancelled() { return nil }
+                if timestamps[index] != nil {
+                    sortable.append(index)
+                }
+            }
+            sortable.sort { lhs, rhs in
                     let left = timestamps[lhs] ?? 0
                     let right = timestamps[rhs] ?? 0
                     if left != right { return left < right }
                     return lhs < rhs
                 }
+            guard !isCancelled() else { return nil }
+            order = sortable
         }
 
         var cursor = orderedRanges.startIndex
-        for index in order {
+        for (offset, index) in order.enumerated() {
+            if offset.isMultiple(of: stride), isCancelled() { return nil }
             guard let timestamp = timestamps[index] else { continue }
             while cursor < orderedRanges.endIndex,
                   timestamp >= orderedRanges[cursor].upperExclusive {
@@ -318,8 +372,42 @@ public enum FITSessionAttribution {
         owners: [Int32],
         sessionCount: Int
     ) -> [[Int]] {
+        buckets(
+            owners: owners,
+            sessionCount: sessionCount,
+            cancellationCheckStride: .max,
+            isCancelled: { false }
+        ) ?? [[Int]](repeating: [], count: sessionCount)
+    }
+
+    static func bucketsCheckingCancellation(
+        owners: [Int32],
+        sessionCount: Int,
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [[Int]] {
+        guard let buckets = buckets(
+            owners: owners,
+            sessionCount: sessionCount,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
+        ) else {
+            throw CancellationError()
+        }
+        return buckets
+    }
+
+    private static func buckets(
+        owners: [Int32],
+        sessionCount: Int,
+        cancellationCheckStride: Int,
+        isCancelled: () -> Bool
+    ) -> [[Int]]? {
         var buckets = [[Int]](repeating: [], count: sessionCount)
+        guard !isCancelled() else { return nil }
+        let stride = max(cancellationCheckStride, 1)
         for index in owners.indices {
+            if index.isMultiple(of: stride), isCancelled() { return nil }
             let owner = owners[index]
             guard owner >= 0, Int(owner) < sessionCount else { continue }
             buckets[Int(owner)].append(index)
@@ -335,6 +423,40 @@ public enum FITSessionAttribution {
 
     public static func eventTimestamps(_ events: [FITEventMessage]) -> [UInt32?] {
         events.map { FITParser.timestampIfValid($0.timestamp) }
+    }
+
+    static func recordTimestampsCheckingCancellation(
+        _ records: [FITRecordMessage],
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [UInt32?] {
+        let stride = max(cancellationCheckStride, 1)
+        var timestamps: [UInt32?] = []
+        timestamps.reserveCapacity(records.count)
+        for (index, record) in records.enumerated() {
+            if index.isMultiple(of: stride), isCancelled() {
+                throw CancellationError()
+            }
+            timestamps.append(FITParser.timestampIfValid(record.timestamp))
+        }
+        return timestamps
+    }
+
+    static func eventTimestampsCheckingCancellation(
+        _ events: [FITEventMessage],
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [UInt32?] {
+        let stride = max(cancellationCheckStride, 1)
+        var timestamps: [UInt32?] = []
+        timestamps.reserveCapacity(events.count)
+        for (index, event) in events.enumerated() {
+            if index.isMultiple(of: stride), isCancelled() {
+                throw CancellationError()
+            }
+            timestamps.append(FITParser.timestampIfValid(event.timestamp))
+        }
+        return timestamps
     }
 
     /// Lap membership anchors on `start_time`, falling back to the lap's end
@@ -359,17 +481,62 @@ public enum FITSessionAttribution {
         sessions: [FITSessionMessage],
         prepared: FITPreparedSessions
     ) -> [[Int]] {
+        attributeLaps(
+            laps: laps,
+            sessions: sessions,
+            prepared: prepared,
+            cancellationCheckStride: .max,
+            isCancelled: { false }
+        ) ?? [[Int]](repeating: [], count: sessions.count)
+    }
+
+    static func attributeLapsCheckingCancellation(
+        laps: [FITLapMessage],
+        sessions: [FITSessionMessage],
+        prepared: FITPreparedSessions,
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [[Int]] {
+        guard let result = attributeLaps(
+            laps: laps,
+            sessions: sessions,
+            prepared: prepared,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
+        ) else {
+            throw CancellationError()
+        }
+        return result
+    }
+
+    private static func attributeLaps(
+        laps: [FITLapMessage],
+        sessions: [FITSessionMessage],
+        prepared: FITPreparedSessions,
+        cancellationCheckStride: Int,
+        isCancelled: () -> Bool
+    ) -> [[Int]]? {
         let sessionCount = sessions.count
+        guard !isCancelled() else { return nil }
         guard sessionCount > 0 else { return [] }
         guard !laps.isEmpty else { return [[Int]](repeating: [], count: sessionCount) }
+        let stride = max(cancellationCheckStride, 1)
 
         // One pass: lower-12-bit ordinal → lap array indexes.
-        let lapsByOrdinal = Self.lapsByOrdinalMap(laps)
+        var lapsByOrdinal: [Int: [Int]] = [:]
+        for (arrayIndex, lap) in laps.enumerated() {
+            if arrayIndex.isMultiple(of: stride), isCancelled() { return nil }
+            guard let rawIndex = lap.messageIndex, rawIndex != FITParser.invalidUint16 else {
+                continue
+            }
+            lapsByOrdinal[Int(rawIndex & 0x0FFF), default: []].append(arrayIndex)
+        }
 
         // Tentative index-metadata claims (shared completeness rule).
         var tentativeClaims = [[Int]?](repeating: nil, count: sessionCount)
         var claimCount = [Int](repeating: 0, count: laps.count)
         for sessionIndex in 0..<sessionCount {
+            if sessionIndex.isMultiple(of: stride), isCancelled() { return nil }
             guard let matched = reliableIndexClaimedLaps(
                 session: sessions[sessionIndex],
                 lapsByOrdinal: lapsByOrdinal
@@ -386,6 +553,7 @@ public enum FITSessionAttribution {
         var indexClaims = [[Int]?](repeating: nil, count: sessionCount)
         var claimedBySession = [Int](repeating: -1, count: laps.count)
         for sessionIndex in 0..<sessionCount {
+            if sessionIndex.isMultiple(of: stride), isCancelled() { return nil }
             guard let claim = tentativeClaims[sessionIndex] else { continue }
             guard claim.allSatisfy({ claimCount[$0] == 1 }) else { continue }
             indexClaims[sessionIndex] = claim
@@ -396,13 +564,27 @@ public enum FITSessionAttribution {
 
         // Timestamp fallback only for sessions without reliable index metadata,
         // and only over laps no session claimed by index.
-        let owners = attributeOwners(
-            timestamps: lapTimestamps(laps),
-            orderedRanges: prepared.orderedRanges
-        )
+        var lapTimestampValues: [UInt32?] = []
+        lapTimestampValues.reserveCapacity(laps.count)
+        for (index, lap) in laps.enumerated() {
+            if index.isMultiple(of: stride), isCancelled() { return nil }
+            lapTimestampValues.append(
+                FITParser.timestampIfValid(lap.startTime)
+                    ?? FITParser.timestampIfValid(lap.timestamp)
+            )
+        }
+        guard let owners = attributeOwners(
+            timestamps: lapTimestampValues,
+            orderedRanges: prepared.orderedRanges,
+            cancellationCheckStride: stride,
+            isCancelled: isCancelled
+        ) else {
+            return nil
+        }
 
         var result = [[Int]](repeating: [], count: sessionCount)
         for arrayIndex in laps.indices {
+            if arrayIndex.isMultiple(of: stride), isCancelled() { return nil }
             let claimingSession = claimedBySession[arrayIndex]
             if claimingSession >= 0 {
                 result[claimingSession].append(arrayIndex)
@@ -480,9 +662,16 @@ public enum FITSessionAttribution {
         end == UInt32.max ? UInt32.max : end + 1
     }
 
-    private static func isChronological(_ timestamps: [UInt32?]) -> Bool {
+    private static func isChronological(
+        _ timestamps: [UInt32?],
+        cancellationCheckStride: Int,
+        isCancelled: () -> Bool
+    ) -> Bool? {
         var previous: UInt32?
-        for timestamp in timestamps {
+        for (index, timestamp) in timestamps.enumerated() {
+            if index.isMultiple(of: cancellationCheckStride), isCancelled() {
+                return nil
+            }
             guard let timestamp else { continue }
             if let previous, timestamp < previous { return false }
             previous = timestamp

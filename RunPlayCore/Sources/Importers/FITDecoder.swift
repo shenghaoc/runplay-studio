@@ -64,7 +64,7 @@ public struct FITDecoder {
         switch try selectSession(from: decodedFile) {
         case .selected(_, let sessionIndex):
             return try decodeRawResult(
-                index: FITSessionMessageIndex.build(decodedFile: decodedFile),
+                index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
                 sessionIndex: sessionIndex
             )
         case .legacyFallback:
@@ -99,7 +99,7 @@ public struct FITDecoder {
         sessionIndex: Int
     ) throws -> FITDecodedRouteResult {
         try decodeRawResult(
-            index: FITSessionMessageIndex.build(decodedFile: decodedFile),
+            index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
             sessionIndex: sessionIndex
         )
     }

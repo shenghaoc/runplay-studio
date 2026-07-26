@@ -19,5 +19,9 @@
       provenance, transaction, performance
 - [x] Studio tests: AppState routing, single-session regression parity
 - [x] Documentation + Kiro steering + roadmap correction
-- [x] Packaged-app build/launch verification (Escape-to-cancel unconfirmed; see docs/manual-testing.md)
-- [x] CI green on PR head (a2c0617: RunPlayCore Linux + macOS Full Stack)
+- [x] Cooperative cancellation coverage through parse, attribution, staging,
+      and commit boundaries
+- [x] Packaged-app review flow, default/cancel keyboard actions, duplicate
+      handling, mixed-sport handling, completion report, and library cleanup
+- [x] Warning-clean Core, Platform, and full-stack SwiftPM verification, plus
+      the repository's Linux and macOS CI jobs

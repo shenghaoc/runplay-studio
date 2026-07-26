@@ -147,9 +147,11 @@ selected count, and status conveyed as text rather than colour alone. It
 participates in the existing modal command-blocking architecture, so background
 replay, delete, and import commands stay inert while it is visible.
 
-**Verification note:** Escape-to-cancel and a full VoiceOver pass still need a
-physical-keyboard / accessibility confirmation — see
-[manual-testing.md](manual-testing.md). Clicking **Cancel** is verified.
+**Verification note:** The packaged app has been checked with Return-to-import
+and Escape-to-cancel. Its accessibility tree exposes the summary, every row's
+name/sport/timing/counts/status, selection state, and every actionable control.
+A spoken VoiceOver pass remains part of the broader release checklist; see
+[manual-testing.md](manual-testing.md).
 
 ### Known limitation: nested batch review
 

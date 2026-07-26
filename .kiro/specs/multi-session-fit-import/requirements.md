@@ -118,9 +118,10 @@ lifetime and released on dismissal.
 Default and cancel key actions are wired (same idiom as the Strava archive
 sheet), with VoiceOver labels and values for every row and control, a live
 selected-count value, status conveyed by text rather than colour alone, and
-participation in the existing modal command-blocking architecture. Escape-to-
-cancel and a full VoiceOver pass remain manual verification items
-(see `docs/manual-testing.md`).
+participation in the existing modal command-blocking architecture. Packaged-app
+verification covers Return-to-import, Escape-to-cancel, and the accessibility
+tree exposed for the sheet. A spoken VoiceOver pass remains part of the broader
+release checklist (see `docs/manual-testing.md`).
 
 ## Non-goals
 

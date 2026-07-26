@@ -31,7 +31,12 @@ public struct FITSessionMessageIndex: Sendable {
 
     // MARK: - Build
 
-    public static func build(decodedFile: FITDecodedFile) -> FITSessionMessageIndex {
+    public static func build(
+        decodedFile: FITDecodedFile,
+        cancellationCheckStride: Int = 1_000,
+        isCancelled: @Sendable () -> Bool = { Task.isCancelled }
+    ) throws -> FITSessionMessageIndex {
+        guard !isCancelled() else { throw CancellationError() }
         let sessions = decodedFile.sessions
 
         if sessions.isEmpty {
@@ -50,6 +55,7 @@ public struct FITSessionMessageIndex: Sendable {
         }
 
         let prepared = FITSessionAttribution.prepare(sessions: sessions)
+        guard !isCancelled() else { throw CancellationError() }
 
         if sessions.count == 1 {
             // Preserve the exact pre-existing single-session filter, including
@@ -67,26 +73,43 @@ public struct FITSessionMessageIndex: Sendable {
                 return true
             }
 
-            let records = decodedFile.records.indices.filter {
-                withinSession(decodedFile.records[$0].timestamp)
+            let stride = max(cancellationCheckStride, 1)
+            var records: [Int] = []
+            records.reserveCapacity(decodedFile.records.count)
+            for index in decodedFile.records.indices {
+                if index.isMultiple(of: stride), isCancelled() {
+                    throw CancellationError()
+                }
+                if withinSession(decodedFile.records[index].timestamp) {
+                    records.append(index)
+                }
             }
-            let events = decodedFile.events.indices.filter {
-                withinSession(decodedFile.events[$0].timestamp)
+            var events: [Int] = []
+            events.reserveCapacity(decodedFile.events.count)
+            for index in decodedFile.events.indices {
+                if index.isMultiple(of: stride), isCancelled() {
+                    throw CancellationError()
+                }
+                if withinSession(decodedFile.events[index].timestamp) {
+                    events.append(index)
+                }
             }
             // With one session there is no cross-session ambiguity, so keep even
             // boundaryless lap messages and let the analyzer diagnose them —
             // unless the profile supplied a complete, unambiguous lap range.
-            let indexClaimed = FITSessionAttribution.attributeLaps(
+            let indexClaimed = try FITSessionAttribution.attributeLapsCheckingCancellation(
                 laps: decodedFile.laps,
                 sessions: sessions,
-                prepared: prepared
+                prepared: prepared,
+                cancellationCheckStride: cancellationCheckStride,
+                isCancelled: isCancelled
             )
-            let laps = FITSessionAttribution.hasReliableLapIndexMetadata(
+            let hasReliableLapMetadata = FITSessionAttribution.hasReliableLapIndexMetadata(
                 session: session,
                 laps: decodedFile.laps
             )
-                ? indexClaimed[0]
-                : Array(decodedFile.laps.indices)
+            guard !isCancelled() else { throw CancellationError() }
+            let laps = hasReliableLapMetadata ? indexClaimed[0] : Array(decodedFile.laps.indices)
 
             return FITSessionMessageIndex(
                 mode: .singleSession,
@@ -98,31 +121,51 @@ public struct FITSessionMessageIndex: Sendable {
             )
         }
 
-        let recordOwners = FITSessionAttribution.attributeOwners(
-            timestamps: FITSessionAttribution.recordTimestamps(decodedFile.records),
-            orderedRanges: prepared.orderedRanges
+        let recordTimestamps = try FITSessionAttribution.recordTimestampsCheckingCancellation(
+            decodedFile.records,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
         )
-        let eventOwners = FITSessionAttribution.attributeOwners(
-            timestamps: FITSessionAttribution.eventTimestamps(decodedFile.events),
-            orderedRanges: prepared.orderedRanges
+        let eventTimestamps = try FITSessionAttribution.eventTimestampsCheckingCancellation(
+            decodedFile.events,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
+        )
+        let recordOwners = try FITSessionAttribution.attributeOwnersCheckingCancellation(
+            timestamps: recordTimestamps,
+            orderedRanges: prepared.orderedRanges,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
+        )
+        let eventOwners = try FITSessionAttribution.attributeOwnersCheckingCancellation(
+            timestamps: eventTimestamps,
+            orderedRanges: prepared.orderedRanges,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
         )
 
         return FITSessionMessageIndex(
             mode: .multiSession,
             decodedFile: decodedFile,
             prepared: prepared,
-            recordBuckets: FITSessionAttribution.buckets(
+            recordBuckets: try FITSessionAttribution.bucketsCheckingCancellation(
                 owners: recordOwners,
-                sessionCount: sessions.count
+                sessionCount: sessions.count,
+                cancellationCheckStride: cancellationCheckStride,
+                isCancelled: isCancelled
             ),
-            eventBuckets: FITSessionAttribution.buckets(
+            eventBuckets: try FITSessionAttribution.bucketsCheckingCancellation(
                 owners: eventOwners,
-                sessionCount: sessions.count
+                sessionCount: sessions.count,
+                cancellationCheckStride: cancellationCheckStride,
+                isCancelled: isCancelled
             ),
-            lapBuckets: FITSessionAttribution.attributeLaps(
+            lapBuckets: try FITSessionAttribution.attributeLapsCheckingCancellation(
                 laps: decodedFile.laps,
                 sessions: sessions,
-                prepared: prepared
+                prepared: prepared,
+                cancellationCheckStride: cancellationCheckStride,
+                isCancelled: isCancelled
             )
         )
     }
