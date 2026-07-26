@@ -1,6 +1,25 @@
 import Foundation
 import RunPlayCore
 
+/// Thread-safe flag for cooperative DTW cancellation inside `Task.detached`,
+/// where `Task.isCancelled` would only reflect the detached task's own status.
+private final class AlignmentCancellationToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _cancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        _cancelled = true
+        lock.unlock()
+    }
+}
+
 /// Cache key for in-memory route alignment results.
 struct RouteAlignmentCacheKey: Hashable, Sendable {
     let primaryID: UUID
@@ -64,6 +83,7 @@ final class ComparisonViewModel: ObservableObject {
 
     private var cache: [RouteAlignmentCacheKey: RouteAlignmentSnapshot] = [:]
     private var alignmentTask: Task<Void, Never>?
+    private var alignmentCancellationToken: AlignmentCancellationToken?
     private var requestGeneration = 0
     private var activePairIDs: (primary: UUID, comparison: UUID)?
 
@@ -187,6 +207,9 @@ final class ComparisonViewModel: ObservableObject {
         let generation = requestGeneration
         routeAlignmentLoadState = .loading
 
+        let token = AlignmentCancellationToken()
+        alignmentCancellationToken = token
+
         let primary = pair.primary
         let comparison = pair.comparison
         let aligner = self.aligner
@@ -196,7 +219,7 @@ final class ComparisonViewModel: ObservableObject {
         let comparisonCtx = comparisonContext
 
         alignmentTask = Task { [weak self] in
-            let isCancelled: @Sendable () -> Bool = { Task.isCancelled }
+            let isCancelled: @Sendable () -> Bool = { token.isCancelled || Task.isCancelled }
             let snapshot: RouteAlignmentSnapshot
             do {
                 snapshot = try await Task.detached(priority: .userInitiated) {
@@ -300,6 +323,8 @@ final class ComparisonViewModel: ObservableObject {
     }
 
     private func cancelAlignmentWork() {
+        alignmentCancellationToken?.cancel()
+        alignmentCancellationToken = nil
         alignmentTask?.cancel()
         alignmentTask = nil
         requestGeneration += 1
