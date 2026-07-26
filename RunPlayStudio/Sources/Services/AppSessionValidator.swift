@@ -201,9 +201,26 @@ enum AppSessionValidator {
                 }()
                 let limit = (context.comparisonDistanceLimit ?? derivedLimit)
                     .flatMap { $0.isFinite ? max(0, $0) : nil }
+                let modeRaw = ComparisonAlignmentMode(rawValue: persistedComparison.alignmentModeRaw)?.rawValue
+                    ?? ComparisonAlignmentMode.distance.rawValue
+                if modeRaw != persistedComparison.alignmentModeRaw {
+                    issues.append("Invalid comparison alignment mode.")
+                    usedFallback = true
+                }
+                let rawAligned = persistedComparison.alignedProgressMeters
+                let repairedAligned: Double
+                if rawAligned.isFinite, rawAligned >= 0 {
+                    repairedAligned = rawAligned
+                } else {
+                    issues.append("Invalid comparison aligned progress.")
+                    usedFallback = true
+                    repairedAligned = 0
+                }
                 comparison = AppSessionComparisonState(
                     peerWorkoutID: persistedComparison.peerWorkoutID,
-                    distanceMeters: limit.map { min(repairedDistance, $0) } ?? repairedDistance
+                    distanceMeters: limit.map { min(repairedDistance, $0) } ?? repairedDistance,
+                    alignmentModeRaw: modeRaw,
+                    alignedProgressMeters: repairedAligned
                 )
             }
         }

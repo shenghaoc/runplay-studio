@@ -22,7 +22,7 @@ your filesystem under your control.
 The app stores a small local JSON session snapshot at
 `Application Support/RunPlayStudio/session.json` to continue the desktop
 workspace after relaunch. It contains logical UI context such as destination,
-query/filter values, smart-collection context, heatmap filters, comparison IDs,
+query/filter values, smart-collection context, heatmap filters, comparison IDs and alignment mode (never DTW paths),
 paused replay scalars, tab/map presentation, and sidebar visibility. It does
 not contain route points, map images, generated heatmap cells, query result
 IDs, table selections, timer/playing state, sheets, alerts, or editor content.

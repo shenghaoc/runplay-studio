@@ -81,6 +81,10 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case queryResultPublished(count: Int)
     case comparisonEntered
     case comparisonExited
+    case usingDistanceAlignment
+    case usingRouteAwareAlignment
+    case routeAlignmentReady
+    case routeAlignmentUnavailable
     case replayPlayed
     case replayPaused
     case replayRestarted
@@ -114,6 +118,14 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Entered comparison."
         case .comparisonExited:
             return "Ended comparison."
+        case .usingDistanceAlignment:
+            return "Using Distance alignment."
+        case .usingRouteAwareAlignment:
+            return "Using Route-Aware alignment."
+        case .routeAlignmentReady:
+            return "Route alignment ready."
+        case .routeAlignmentUnavailable:
+            return "Route alignment unavailable."
         case .replayPlayed:
             return "Replay playing."
         case .replayPaused:

@@ -23,7 +23,7 @@ It presents one native main window backed by one app-owned coordinator, while
 macOS restores the window frame and the app restores its logical workspace in
 a separate, versioned session file. A relaunch can return to a workout tab,
 manual All Runs query, active smart collection, Personal Heatmap filters,
-comparison pair, paused replay position, and sidebar visibility.
+comparison pair and alignment mode, paused replay position, and sidebar visibility.
 
 The workout-library manifest remains the authority for library membership,
 order, selected workout, favourites, tags, assignments, and smart collections.

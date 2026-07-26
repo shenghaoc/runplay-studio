@@ -134,7 +134,7 @@ Studio-owned `AppSessionSnapshot` is stored as bounded, sorted-key JSON at
 `Application Support/RunPlayStudio/session.json` through the actor-backed
 `FileAppSessionStore`. It contains only restorable values: destination, workout
 tab/map presentation, manual All Runs query, active smart collection and its
-optional modified working query, heatmap filters, comparison peer/distance,
+optional modified working query, heatmap filters, comparison peer/distance/alignment mode/aligned progress,
 paused replay scalars, and sidebar visibility. It never contains route points,
 map images, caches, query result IDs, selections, sheets, alerts, operations,
 or a playing flag.
@@ -463,8 +463,10 @@ it does not maintain an independent raw-altitude delta algorithm.
 
 ### WorkoutComparisonService
 
-Route comparison is intentionally distance-based for the MVP. It does not do
-dynamic time warping or complex route matching.
+Distance-mode comparison remains equal cumulative distance. Route-Aware
+comparison is a separate optional path implemented by
+`ConstrainedDynamicTimeWarpingAligner` and owned at the UI boundary by
+`ComparisonViewModel`.
 
 ```swift
 public struct WorkoutComparisonService {
@@ -475,18 +477,44 @@ public struct WorkoutComparisonService {
     public func commonDistance(primary: RunWorkout, comparison: RunWorkout) -> Double
     public func metricsAtDistance(_ distance: Double, primary: RunWorkout, comparison: RunWorkout, primaryScenePoints: [RouteScenePoint], comparisonScenePoints: [RouteScenePoint]) -> ComparisonDistanceMetrics
 }
+
+public protocol RouteComparisonAligning: Sendable {
+    func align(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryContext: WorkoutAnalysisContext,
+        comparisonContext: WorkoutAnalysisContext,
+        policy: RouteAlignmentPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteAlignmentSnapshot
+}
 ```
 
-The service clamps metric series to the common distance, filters non-finite
-metric values, handles missing heart-rate/elevation data, and returns warnings
-instead of crashing on weak comparisons. Summary comparison distinguishes
-elapsed, active, paused, active-pace, and elapsed-pace deltas. At selected
-distance, `WorkoutTimeline` supplies elapsed and active time plus cumulative
-active pace; route coordinates still use segment-local interpolation. Runs with
-materially different pause durations receive an informative warning.
-Recorded laps are paired by ordinal only, with unavailable results and caveats
-for missing laps, legacy snapshots, count/trigger differences, or materially
-different lap distances; they are never presented as route-aligned intervals.
+**Distance mode** clamps metric series to the common distance, filters
+non-finite metric values, handles missing heart-rate/elevation data, and
+returns warnings instead of crashing on weak comparisons. Summary comparison
+distinguishes elapsed, active, paused, active-pace, and elapsed-pace deltas.
+At selected distance, `WorkoutTimeline` supplies elapsed and active time plus
+cumulative active pace; route coordinates still use segment-local
+interpolation. Runs with materially different pause durations receive an
+informative warning. Recorded laps are paired by ordinal only and are never
+presented as route-aligned intervals.
+
+**Route-Aware mode** matches geographic route shape with constrained DTW:
+
+- segment-aware resampling in distance space (preferred 20 m, cap 2 000 samples)
+- shared local metre-space origin (same policy family as comparison projection)
+- geometry-only point cost (spatial separation + heading + progress); never pace/time/HR/elevation
+- Sakoe–Chiba-style band, warp-run caps, bounded open prefix/suffix
+- opposite-direction probe rejects cumulative-time alignment when reverse is preferred
+- gap-preserving alignment blocks; mapping never interpolates across blocks
+- matched-section clocks start at the current block’s start anchor
+- quality: Excellent / Good / Limited / structured unavailable reasons
+- complexity O(samples × bandWidth); slider lookup does not recompute DTW
+- in-memory cache only; alignment paths are never written to disk
+
+Whole-workout summary cards, kilometre splits, and recorded laps remain
+independent of alignment mode.
 
 Replay remains on elapsed time, so its total duration equals summary elapsed
 time. Inside a route gap the clock advances while the marker, distance, point

@@ -158,8 +158,63 @@ final class AppSessionPersistenceTests: XCTestCase {
         XCTAssertEqual(result.snapshot.destination, .comparison)
         XCTAssertEqual(result.snapshot.comparison?.peerWorkoutID, peerID)
         XCTAssertEqual(result.snapshot.comparison?.distanceMeters, 300)
+        XCTAssertEqual(result.snapshot.comparison?.alignmentModeRaw, ComparisonAlignmentMode.distance.rawValue)
         XCTAssertEqual(result.snapshot.replay?.playbackSpeed, 0.5)
         XCTAssertFalse(result.snapshot.replay?.elapsedSeconds == 0)
+    }
+
+    func testVersion1ComparisonSessionMigratesToDistanceAlignment() throws {
+        let peerID = UUID()
+        // Encode a v1-shaped payload by omitting alignment fields from a full
+        // snapshot JSON, then decode as the current schema.
+        let v1Base = AppSessionSnapshot(
+            version: 1,
+            destination: .comparison,
+            comparison: AppSessionComparisonState(peerWorkoutID: peerID, distanceMeters: 250)
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        var object = try JSONSerialization.jsonObject(with: encoder.encode(v1Base)) as! [String: Any]
+        object["version"] = 1
+        if var comparison = object["comparison"] as? [String: Any] {
+            comparison.removeValue(forKey: "alignmentModeRaw")
+            comparison.removeValue(forKey: "alignedProgressMeters")
+            object["comparison"] = comparison
+        }
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(AppSessionSnapshot.self, from: data)
+        XCTAssertEqual(decoded.version, 2)
+        XCTAssertEqual(decoded.comparison?.peerWorkoutID, peerID)
+        XCTAssertEqual(decoded.comparison?.distanceMeters, 250)
+        XCTAssertEqual(decoded.comparison?.alignmentModeRaw, ComparisonAlignmentMode.distance.rawValue)
+        XCTAssertEqual(decoded.comparison?.alignedProgressMeters, 0)
+    }
+
+    func testInvalidAlignmentModeFallsBackToDistance() {
+        let selectedID = UUID()
+        let peerID = UUID()
+        let snapshot = AppSessionSnapshot(
+            destination: .comparison,
+            comparison: AppSessionComparisonState(
+                peerWorkoutID: peerID,
+                distanceMeters: 100,
+                alignmentModeRaw: "not-a-mode",
+                alignedProgressMeters: 50
+            )
+        )
+        let result = AppSessionValidator.validate(
+            snapshot,
+            context: AppSessionValidationContext(
+                workoutIDs: [selectedID, peerID],
+                selectedWorkoutID: selectedID,
+                comparisonDistanceLimit: 200
+            )
+        )
+        XCTAssertEqual(result.snapshot.comparison?.alignmentModeRaw, ComparisonAlignmentMode.distance.rawValue)
+        XCTAssertTrue(result.usedFallback)
     }
 
     func testValidatorRepairsInvalidHeatmapDateRangeAndMinimum() {

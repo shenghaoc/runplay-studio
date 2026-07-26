@@ -42,6 +42,30 @@ final class AccessibilitySummaryTests: XCTestCase {
         XCTAssertFalse(spoken.lowercased().contains("orange"))
     }
 
+    func testComparisonSummaryIncludesRouteAwareFields() {
+        let summary = ComparisonAccessibilitySummary(
+            primaryName: "Morning",
+            comparisonName: "Evening",
+            commonDistanceMeters: 5000,
+            selectedDistanceMeters: 2500,
+            alignmentModeName: "Route-Aware",
+            routeAlignmentQualityName: "Good",
+            matchedDistanceMeters: 4_700,
+            primaryCoverageFraction: 0.94,
+            comparisonCoverageFraction: 0.91,
+            alignedProgressMeters: 2_400,
+            mappedPrimaryDistanceMeters: 2_520,
+            mappedComparisonDistanceMeters: 2_470,
+            spatialSeparationMeters: 12
+        )
+        let spoken = summary.spokenSummary
+        XCTAssertTrue(spoken.contains("Alignment mode Route-Aware"))
+        XCTAssertTrue(spoken.contains("Route alignment Good"))
+        XCTAssertTrue(spoken.contains("Matched distance"))
+        XCTAssertTrue(spoken.contains("Coverage 94 percent primary, 91 percent comparison"))
+        XCTAssertTrue(spoken.contains("Matched positions 12 metres apart"))
+    }
+
     func testHeatmapSummary() {
         let summary = HeatmapAccessibilitySummary(
             includedRunCount: 12,

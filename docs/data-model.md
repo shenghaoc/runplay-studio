@@ -356,8 +356,8 @@ workouts, not bundled demos.
 
 ### Application session snapshot (Studio-owned)
 
-`AppSessionSnapshot` is a separate version-1 `Codable`, `Equatable`, `Sendable`
-model in `RunPlayStudio`. It is not part of `RunWorkout` or
+`AppSessionSnapshot` is a separate versioned `Codable`, `Equatable`, `Sendable`
+model in `RunPlayStudio` (current version 2). It is not part of `RunWorkout` or
 `WorkoutLibraryManifest`, and no manifest, analysis, or normalization version is
 bumped for it. Its destination is one of `workout`, `allRuns`,
 `smartCollection(UUID)`, `personalHeatmap`, or `comparison`.
@@ -365,8 +365,11 @@ bumped for it. Its destination is one of `workout`, `allRuns`,
 The snapshot stores only logical continuation state: workout detail tab and map
 presentation raw values; sidebar visibility; manual All Runs search/filter/date
 /source/data/tag/sort state; active smart-collection ID, Modified flag, and
-working query; heatmap date/resolution/minimum-repeat filters; comparison peer
-and distance; and replay workout ID, elapsed time, and supported speed. The
+working query; heatmap date/resolution/minimum-repeat filters; comparison peer,
+distance, alignment mode raw value, and selected aligned progress; and replay
+workout ID, elapsed time, and supported speed. Alignment anchors, DTW matrices,
+diagnostics caches, and chart points are never persisted. Version-1 sessions
+migrate to Distance alignment with zero aligned progress. The
 manifest-selected workout remains the normal selected-workout authority.
 
 `FileAppSessionStore` writes sorted-key ISO-8601 JSON atomically under

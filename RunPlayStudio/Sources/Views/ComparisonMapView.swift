@@ -19,7 +19,38 @@ struct ComparisonMapView: View {
         appState.comparisonCommonDistanceMeters
     }
 
+    private var isRouteAware: Bool {
+        appState.comparisonViewModel.isRouteAwareReady
+    }
+
+    private var alignedMetrics: ComparisonAlignedMetrics {
+        appState.comparisonAlignedMetrics
+    }
+
     private var comparisonSummary: ComparisonAccessibilitySummary {
+        if isRouteAware {
+            let snapshot = appState.comparisonViewModel.routeAlignmentSnapshot
+            let metrics = alignedMetrics
+            return ComparisonAccessibilitySummary(
+                primaryName: primaryWorkout.displayName,
+                comparisonName: comparisonWorkout.displayName,
+                commonDistanceMeters: commonDistance,
+                selectedDistanceMeters: appState.clampedComparisonDistanceMeters,
+                primaryTimeLabel: metrics.primaryElapsedFormatted,
+                comparisonTimeLabel: metrics.comparisonElapsedFormatted,
+                deltaLabel: metrics.elapsedDeltaFormatted,
+                warnings: warnings.map(\.rawValue) + (snapshot?.diagnostics.warnings ?? []),
+                alignmentModeName: ComparisonAlignmentMode.routeAware.displayName,
+                routeAlignmentQualityName: snapshot?.availability.quality?.displayName,
+                matchedDistanceMeters: snapshot?.totalAlignedDistanceMeters,
+                primaryCoverageFraction: snapshot?.diagnostics.primaryCoverageFraction,
+                comparisonCoverageFraction: snapshot?.diagnostics.comparisonCoverageFraction,
+                alignedProgressMeters: appState.comparisonViewModel.clampedAlignedProgressMeters,
+                mappedPrimaryDistanceMeters: metrics.primaryDistanceMeters,
+                mappedComparisonDistanceMeters: metrics.comparisonDistanceMeters,
+                spatialSeparationMeters: metrics.spatialSeparationMeters
+            )
+        }
         let metrics = appState.comparisonDistanceMetrics
         return ComparisonAccessibilitySummary(
             primaryName: primaryWorkout.displayName,
@@ -29,7 +60,8 @@ struct ComparisonMapView: View {
             primaryTimeLabel: metrics.primaryElapsedFormatted,
             comparisonTimeLabel: metrics.comparisonElapsedFormatted,
             deltaLabel: metrics.elapsedTimeDeltaFormatted,
-            warnings: warnings.map(\.rawValue)
+            warnings: warnings.map(\.rawValue),
+            alignmentModeName: ComparisonAlignmentMode.distance.displayName
         )
     }
 
@@ -59,25 +91,49 @@ struct ComparisonMapView: View {
             finishTitle: "Comp. Finish"
         )
 
-        let distance = appState.clampedComparisonDistanceMeters
-        if distance > 0 {
-            if let marker = RouteMapContent.marker(
-                points: primaryWorkout.routePoints,
-                distance: distance,
-                id: "primary-current",
-                title: "Primary at selected distance",
-                style: .primaryCurrent
-            ) {
-                markers.append(marker)
+        if isRouteAware {
+            let metrics = alignedMetrics
+            if metrics.primaryDistanceMeters > 0 || metrics.comparisonDistanceMeters > 0 {
+                if let marker = RouteMapContent.marker(
+                    points: primaryWorkout.routePoints,
+                    distance: metrics.primaryDistanceMeters,
+                    id: "primary-current",
+                    title: "Selected run at matched position",
+                    style: .primaryCurrent
+                ) {
+                    markers.append(marker)
+                }
+                if let marker = RouteMapContent.marker(
+                    points: comparisonWorkout.routePoints,
+                    distance: metrics.comparisonDistanceMeters,
+                    id: "comparison-current",
+                    title: "Compared run at matched position",
+                    style: .comparisonCurrent
+                ) {
+                    markers.append(marker)
+                }
             }
-            if let marker = RouteMapContent.marker(
-                points: comparisonWorkout.routePoints,
-                distance: distance,
-                id: "comparison-current",
-                title: "Comparison at selected distance",
-                style: .comparisonCurrent
-            ) {
-                markers.append(marker)
+        } else {
+            let distance = appState.clampedComparisonDistanceMeters
+            if distance > 0 {
+                if let marker = RouteMapContent.marker(
+                    points: primaryWorkout.routePoints,
+                    distance: distance,
+                    id: "primary-current",
+                    title: "Primary at selected distance",
+                    style: .primaryCurrent
+                ) {
+                    markers.append(marker)
+                }
+                if let marker = RouteMapContent.marker(
+                    points: comparisonWorkout.routePoints,
+                    distance: distance,
+                    id: "comparison-current",
+                    title: "Comparison at selected distance",
+                    style: .comparisonCurrent
+                ) {
+                    markers.append(marker)
+                }
             }
         }
         return markers
@@ -117,7 +173,11 @@ struct ComparisonMapView: View {
                 }
 
                 Spacer()
-                distanceSliderBar
+                if isRouteAware {
+                    matchedRouteSliderBar
+                } else {
+                    distanceSliderBar
+                }
             }
             .padding()
         }
@@ -266,6 +326,87 @@ struct ComparisonMapView: View {
         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
     }
 
+    private var matchedRouteSliderBar: some View {
+        let total = appState.comparisonViewModel.totalAlignedDistanceMeters
+        let progress = appState.comparisonViewModel.clampedAlignedProgressMeters
+        let metrics = alignedMetrics
+        return VStack(spacing: AppDesign.Spacing.small) {
+            HStack {
+                Text("Matched Route Progress")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Text(String(format: "%.2f / %.2f km", progress / 1000, total / 1000))
+                    .font(AppDesign.Typography.compactMetric.monospacedDigit())
+            }
+
+            Text(
+                String(
+                    format: "Selected run %.2f km ↔ Compared run %.2f km",
+                    metrics.primaryDistanceMeters / 1000,
+                    metrics.comparisonDistanceMeters / 1000
+                )
+            )
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Matched positions are \(metrics.spatialSeparationFormatted)")
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: AppDesign.Spacing.small) {
+                Button {
+                    appState.comparisonViewModel.selectedAlignedProgressMeters = 0
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                        .font(.body)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Jump to start of matched route")
+                .accessibilityLabel("Jump to start of matched route")
+                .disabled(total <= 0)
+
+                Slider(
+                    value: Binding(
+                        get: { appState.comparisonViewModel.selectedAlignedProgressMeters },
+                        set: {
+                            appState.comparisonViewModel.selectedAlignedProgressMeters = $0
+                            appState.comparisonViewModel.clampAlignedProgress()
+                        }
+                    ),
+                    in: 0...max(total, 1),
+                    step: max(total / 500, 1)
+                )
+                .tint(AppDesign.comparisonOrange)
+                .accessibilityLabel("Matched route progress")
+                .accessibilityValue(DisplayFormatter.formatDistanceKm(progress))
+                .disabled(total <= 0)
+
+                Button {
+                    appState.comparisonViewModel.selectedAlignedProgressMeters = total
+                } label: {
+                    Image(systemName: "forward.end.fill")
+                        .font(.body)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Jump to end of matched route")
+                .accessibilityLabel("Jump to end of matched route")
+                .disabled(total <= 0)
+            }
+
+            alignedMetricsRow(metrics)
+        }
+        .padding(AppDesign.Spacing.medium)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.medium))
+    }
+
     private var comparisonDistanceMetricsRow: some View {
         let metrics = appState.comparisonDistanceMetrics
         return Grid(horizontalSpacing: AppDesign.Spacing.large, verticalSpacing: AppDesign.Spacing.xSmall) {
@@ -314,6 +455,55 @@ struct ComparisonMapView: View {
             }
         }
         .help("Elapsed includes pauses. Active excludes recording gaps. Moving and stopped time are estimates.")
+    }
+
+    private func alignedMetricsRow(_ metrics: ComparisonAlignedMetrics) -> some View {
+        Grid(horizontalSpacing: AppDesign.Spacing.large, verticalSpacing: AppDesign.Spacing.xSmall) {
+            GridRow {
+                Text("")
+                Text("Selected")
+                Text("Comparison")
+                Text("Delta")
+            }
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.tertiary)
+
+            GridRow {
+                metricLabel("Elapsed")
+                metricValue(metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.elapsedDeltaFormatted, color: deltaColor(metrics.elapsedDeltaSeconds))
+            }
+
+            GridRow {
+                metricLabel("Active")
+                metricValue(metrics.primaryActiveFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonActiveFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.activeDeltaFormatted, color: deltaColor(metrics.activeDeltaSeconds))
+            }
+
+            GridRow {
+                metricLabel("Moving (est.)")
+                metricValue(metrics.primaryMovingFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonMovingFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.movingDeltaFormatted, color: deltaColor(metrics.movingDeltaSeconds))
+            }
+
+            GridRow {
+                metricLabel("Stopped (est.)")
+                metricValue(metrics.primaryStoppedFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonStoppedFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.stoppedDeltaFormatted, color: deltaColor(metrics.stoppedDeltaSeconds))
+            }
+
+            GridRow {
+                metricLabel("Active Pace")
+                metricValue(metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
+                metricValue(metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
+                metricValue(metrics.paceDeltaFormatted, color: deltaColor(metrics.activePaceDeltaSecondsPerKm))
+            }
+        }
+        .help("Matched-section clocks begin at the current alignment block start. Unmatched prefixes are excluded.")
     }
 
     private func metricLabel(_ label: String) -> some View {

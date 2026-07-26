@@ -93,6 +93,15 @@ public struct ComparisonAccessibilitySummary: Equatable, Sendable {
     public let comparisonTimeLabel: String?
     public let deltaLabel: String?
     public let warnings: [String]
+    public let alignmentModeName: String?
+    public let routeAlignmentQualityName: String?
+    public let matchedDistanceMeters: Double?
+    public let primaryCoverageFraction: Double?
+    public let comparisonCoverageFraction: Double?
+    public let alignedProgressMeters: Double?
+    public let mappedPrimaryDistanceMeters: Double?
+    public let mappedComparisonDistanceMeters: Double?
+    public let spatialSeparationMeters: Double?
 
     public init(
         primaryName: String,
@@ -102,7 +111,16 @@ public struct ComparisonAccessibilitySummary: Equatable, Sendable {
         primaryTimeLabel: String? = nil,
         comparisonTimeLabel: String? = nil,
         deltaLabel: String? = nil,
-        warnings: [String] = []
+        warnings: [String] = [],
+        alignmentModeName: String? = nil,
+        routeAlignmentQualityName: String? = nil,
+        matchedDistanceMeters: Double? = nil,
+        primaryCoverageFraction: Double? = nil,
+        comparisonCoverageFraction: Double? = nil,
+        alignedProgressMeters: Double? = nil,
+        mappedPrimaryDistanceMeters: Double? = nil,
+        mappedComparisonDistanceMeters: Double? = nil,
+        spatialSeparationMeters: Double? = nil
     ) {
         self.primaryName = primaryName
         self.comparisonName = comparisonName
@@ -112,16 +130,51 @@ public struct ComparisonAccessibilitySummary: Equatable, Sendable {
         self.comparisonTimeLabel = comparisonTimeLabel
         self.deltaLabel = deltaLabel
         self.warnings = warnings
+        self.alignmentModeName = alignmentModeName
+        self.routeAlignmentQualityName = routeAlignmentQualityName
+        self.matchedDistanceMeters = matchedDistanceMeters.flatMap { $0.isFinite ? max(0, $0) : nil }
+        self.primaryCoverageFraction = primaryCoverageFraction.flatMap { $0.isFinite ? min(max(0, $0), 1) : nil }
+        self.comparisonCoverageFraction = comparisonCoverageFraction.flatMap { $0.isFinite ? min(max(0, $0), 1) : nil }
+        self.alignedProgressMeters = alignedProgressMeters.flatMap { $0.isFinite ? max(0, $0) : nil }
+        self.mappedPrimaryDistanceMeters = mappedPrimaryDistanceMeters.flatMap { $0.isFinite ? max(0, $0) : nil }
+        self.mappedComparisonDistanceMeters = mappedComparisonDistanceMeters.flatMap { $0.isFinite ? max(0, $0) : nil }
+        self.spatialSeparationMeters = spatialSeparationMeters.flatMap { $0.isFinite ? max(0, $0) : nil }
     }
 
     public var spokenSummary: String {
         var parts: [String] = [
             "Comparison map.",
             "Primary P: \(primaryName).",
-            "Comparison C: \(comparisonName).",
-            "Common distance \(formatDistance(commonDistanceMeters)).",
-            "Selected distance \(formatDistance(selectedDistanceMeters))."
+            "Comparison C: \(comparisonName)."
         ]
+        if let alignmentModeName {
+            parts.append("Alignment mode \(alignmentModeName).")
+        }
+        if let routeAlignmentQualityName {
+            parts.append("Route alignment \(routeAlignmentQualityName).")
+        }
+        if let matchedDistanceMeters {
+            parts.append("Matched distance \(formatDistance(matchedDistanceMeters)).")
+        }
+        if let primaryCoverageFraction, let comparisonCoverageFraction {
+            let p = Int((primaryCoverageFraction * 100).rounded())
+            let c = Int((comparisonCoverageFraction * 100).rounded())
+            parts.append("Coverage \(p) percent primary, \(c) percent comparison.")
+        }
+        if let alignedProgressMeters {
+            parts.append("Matched route progress \(formatDistance(alignedProgressMeters)).")
+        }
+        if let mappedPrimaryDistanceMeters, let mappedComparisonDistanceMeters {
+            parts.append(
+                "Mapped distances \(formatDistance(mappedPrimaryDistanceMeters)) and \(formatDistance(mappedComparisonDistanceMeters))."
+            )
+        } else {
+            parts.append("Common distance \(formatDistance(commonDistanceMeters)).")
+            parts.append("Selected distance \(formatDistance(selectedDistanceMeters)).")
+        }
+        if let spatialSeparationMeters {
+            parts.append("Matched positions \(Int(spatialSeparationMeters.rounded())) metres apart.")
+        }
         if let primaryTimeLabel {
             parts.append("Primary time \(primaryTimeLabel).")
         }

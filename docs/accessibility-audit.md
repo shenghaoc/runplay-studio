@@ -157,6 +157,9 @@ Timer ticks never announce.
 - Legend, distance slider, and metrics row expose selected distance and deltas.
 - Warnings retain symbol + text.
 - End Comparison / Compare runs toolbar controls use clear spoken names.
+- Comparison alignment picker announces Distance vs Route-Aware; Route-Aware
+  summaries include quality, coverage, matched progress, mapped distances, and
+  spatial separation without exposing individual DTW anchors.
 
 ## Import / export
 
