@@ -124,14 +124,42 @@ struct AppSessionHeatmapState: Codable, Equatable, Sendable {
 }
 
 /// Durable comparison context. The peer is validated against the current
-/// library before it is applied.
+/// library before it is applied. Alignment anchors are never persisted.
 struct AppSessionComparisonState: Codable, Equatable, Sendable {
     var peerWorkoutID: UUID
     var distanceMeters: Double
+    /// Raw `ComparisonAlignmentMode` value. Unknown values fall back to distance.
+    var alignmentModeRaw: String
+    /// Selected matched-route progress for Route-Aware mode.
+    var alignedProgressMeters: Double
 
-    init(peerWorkoutID: UUID, distanceMeters: Double = 0) {
+    init(
+        peerWorkoutID: UUID,
+        distanceMeters: Double = 0,
+        alignmentModeRaw: String = ComparisonAlignmentMode.distance.rawValue,
+        alignedProgressMeters: Double = 0
+    ) {
         self.peerWorkoutID = peerWorkoutID
         self.distanceMeters = distanceMeters
+        self.alignmentModeRaw = alignmentModeRaw
+        self.alignedProgressMeters = alignedProgressMeters
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        peerWorkoutID = try container.decode(UUID.self, forKey: .peerWorkoutID)
+        distanceMeters = try container.decodeIfPresent(Double.self, forKey: .distanceMeters) ?? 0
+        // Version-1 sessions omit alignment fields; default to Distance.
+        alignmentModeRaw = try container.decodeIfPresent(String.self, forKey: .alignmentModeRaw)
+            ?? ComparisonAlignmentMode.distance.rawValue
+        alignedProgressMeters = try container.decodeIfPresent(Double.self, forKey: .alignedProgressMeters) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case peerWorkoutID
+        case distanceMeters
+        case alignmentModeRaw
+        case alignedProgressMeters
     }
 }
 
@@ -155,7 +183,10 @@ struct AppSessionReplayState: Codable, Equatable, Sendable {
 /// Studio boundary so future enum values cannot make the whole session
 /// undecodable.
 struct AppSessionSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    /// Version 2 adds optional comparison alignment mode and aligned progress.
+    /// Version 1 sessions migrate to Distance alignment with zero aligned progress.
+    static let currentVersion = 2
+    static let minimumSupportedVersion = 1
 
     var version: Int
     var destination: AppSessionDestination
@@ -189,16 +220,26 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let decodedVersion = try container.decodeIfPresent(Int.self, forKey: .version) ?? 0
-        guard decodedVersion == Self.currentVersion else {
+        guard decodedVersion >= Self.minimumSupportedVersion,
+              decodedVersion <= Self.currentVersion else {
             throw AppSessionSnapshotError.unsupportedVersion(decodedVersion)
         }
-        version = decodedVersion
+        version = Self.currentVersion
         destination = try container.decodeIfPresent(AppSessionDestination.self, forKey: .destination) ?? .workout
         sidebarVisibilityRaw = try container.decodeIfPresent(String.self, forKey: .sidebarVisibilityRaw) ?? "automatic"
         workout = try container.decodeIfPresent(AppSessionWorkoutState.self, forKey: .workout) ?? AppSessionWorkoutState()
         library = try container.decodeIfPresent(AppSessionLibraryState.self, forKey: .library) ?? AppSessionLibraryState()
         heatmap = try container.decodeIfPresent(AppSessionHeatmapState.self, forKey: .heatmap) ?? AppSessionHeatmapState()
-        comparison = try container.decodeIfPresent(AppSessionComparisonState.self, forKey: .comparison)
+        var decodedComparison = try container.decodeIfPresent(AppSessionComparisonState.self, forKey: .comparison)
+        // v1 → v2: missing alignment fields already default to Distance / 0.
+        if decodedVersion < 2, var migrated = decodedComparison {
+            if ComparisonAlignmentMode(rawValue: migrated.alignmentModeRaw) == nil {
+                migrated.alignmentModeRaw = ComparisonAlignmentMode.distance.rawValue
+            }
+            migrated.alignedProgressMeters = max(0, migrated.alignedProgressMeters)
+            decodedComparison = migrated
+        }
+        comparison = decodedComparison
         replay = try container.decodeIfPresent(AppSessionReplayState.self, forKey: .replay)
     }
 

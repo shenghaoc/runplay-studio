@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import RunPlayCore
 import RunPlayPlatform
@@ -100,6 +101,8 @@ class AppState: ObservableObject {
     @Published var comparisonWorkout: RunWorkout?
     @Published var comparisonSelectionMessage: String?
     @Published var selectedComparisonDistanceMeters: Double = 0
+    /// Owns alignment mode, Route-Aware DTW load state, cache, and mapping.
+    let comparisonViewModel: ComparisonViewModel
 
     /// Compatibility view of comparison mode. Prefer `workspaceMode`.
     var isComparing: Bool {
@@ -238,7 +241,17 @@ class AppState: ObservableObject {
         self.workoutLibrary = WorkoutLibraryViewModel(
             announcementPolicy: announcementPolicy
         )
+        let comparisonViewModel = ComparisonViewModel(
+            announcementPolicy: announcementPolicy
+        )
+        self.comparisonViewModel = comparisonViewModel
+        // Forward alignment load-state changes so SwiftUI views observing AppState refresh.
+        comparisonViewModel.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &comparisonViewModelCancellables)
     }
+
+    private var comparisonViewModelCancellables: Set<AnyCancellable> = []
 
     /// Convenience init for production: creates real services rooted at the given directory.
     convenience init(libraryRoot: URL) {
@@ -306,7 +319,9 @@ class AppState: ObservableObject {
             }
             return AppSessionComparisonState(
                 peerWorkoutID: peer.id,
-                distanceMeters: clampedComparisonDistanceMeters
+                distanceMeters: clampedComparisonDistanceMeters,
+                alignmentModeRaw: comparisonViewModel.alignmentMode.rawValue,
+                alignedProgressMeters: comparisonViewModel.clampedAlignedProgressMeters
             )
         }()
         let replay: AppSessionReplayState? = selectedWorkout.map {
@@ -425,8 +440,24 @@ class AppState: ObservableObject {
                 comparisonWorkout = peer
                 comparisonSelectionMessage = nil
                 selectedComparisonDistanceMeters = snapshot.comparison?.distanceMeters ?? 0
+                let restoredMode = ComparisonAlignmentMode(
+                    rawValue: snapshot.comparison?.alignmentModeRaw ?? ComparisonAlignmentMode.distance.rawValue
+                ) ?? .distance
+                comparisonViewModel.restoreAlignmentMode(restoredMode)
+                comparisonViewModel.selectedAlignedProgressMeters =
+                    snapshot.comparison?.alignedProgressMeters ?? 0
                 workspaceMode = .comparison
                 clampComparisonDistance()
+                // Recompute Route-Aware from current workout data; do not trust
+                // persisted alignment anchors.
+                if restoredMode == .routeAware, let pair = comparisonPair {
+                    comparisonViewModel.ensureRouteAlignment(
+                        pair: pair,
+                        primaryContext: analysisContext(for: pair.primary),
+                        comparisonContext: analysisContext(for: pair.comparison)
+                    )
+                    comparisonViewModel.clampAlignedProgress()
+                }
             } else {
                 clearComparison()
                 workspaceMode = .workout
@@ -857,6 +888,7 @@ class AppState: ObservableObject {
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
         workspaceMode = .workoutLibrary
         if restoreManualQuery, case .smartCollection = workoutLibrary.queryContext {
             workoutLibrary.returnToManualQuery(clearSnapshot: true)
@@ -878,6 +910,7 @@ class AppState: ObservableObject {
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
         workspaceMode = .workoutLibrary
         workoutLibrary.replaceLibrary(
             workouts: workouts,
@@ -921,6 +954,7 @@ class AppState: ObservableObject {
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
         workspaceMode = .personalHeatmap
         personalHeatmap.refresh(workouts: workouts)
         requestSessionSave()
@@ -935,6 +969,7 @@ class AppState: ObservableObject {
             comparisonWorkout = nil
             comparisonSelectionMessage = nil
             selectedComparisonDistanceMeters = 0
+            comparisonViewModel.clear()
         }
         workspaceMode = .workout
         requestSessionSave()
@@ -1360,6 +1395,13 @@ class AppState: ObservableObject {
         comparisonWorkout = workout
         workspaceMode = .comparison
         clampComparisonDistance()
+        if let pair = comparisonPair {
+            comparisonViewModel.pairDidChange(
+                pair: pair,
+                primaryContext: analysisContext(for: pair.primary),
+                comparisonContext: analysisContext(for: pair.comparison)
+            )
+        }
         requestSessionSave()
         if !wasComparing {
             announcementPolicy.handle(.comparisonEntered)
@@ -1372,6 +1414,7 @@ class AppState: ObservableObject {
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
         if workspaceMode == .comparison {
             workspaceMode = .workout
         }
@@ -1379,6 +1422,18 @@ class AppState: ObservableObject {
         if wasComparing {
             announcementPolicy.handle(.comparisonExited)
         }
+    }
+
+    /// Switch comparison alignment mode (Distance vs Route-Aware).
+    func setComparisonAlignmentMode(_ mode: ComparisonAlignmentMode) {
+        let pair = comparisonPair
+        comparisonViewModel.setAlignmentMode(
+            mode,
+            pair: pair,
+            primaryContext: pair.map { analysisContext(for: $0.primary) },
+            comparisonContext: pair.map { analysisContext(for: $0.comparison) }
+        )
+        requestSessionSave()
     }
 
     /// Enter comparison mode without a specific comparison workout,
@@ -1483,6 +1538,17 @@ class AppState: ObservableObject {
         )
     }
 
+    /// Route-Aware matched-section metrics at the selected aligned progress.
+    var comparisonAlignedMetrics: ComparisonAlignedMetrics {
+        guard let pair = comparisonPair else { return .empty }
+        return comparisonViewModel.alignedMetrics(
+            primary: pair.primary,
+            comparison: pair.comparison,
+            primaryContext: analysisContext(for: pair.primary),
+            comparisonContext: analysisContext(for: pair.comparison)
+        )
+    }
+
     /// Clamp the selected comparison distance to the common route distance.
     func clampComparisonDistance() {
         let common = comparisonCommonDistanceMeters
@@ -1492,7 +1558,17 @@ class AppState: ObservableObject {
         if selectedComparisonDistanceMeters < 0 {
             selectedComparisonDistanceMeters = 0
         }
+        comparisonViewModel.clampAlignedProgress()
         requestSessionSave()
+    }
+
+    /// Comparison warnings filtered for the active alignment mode.
+    var comparisonDisplayWarnings: [ComparisonWarning] {
+        guard let warnings = comparisonSummary?.warnings else { return [] }
+        if comparisonViewModel.isRouteAwareReady {
+            return warnings.filter { $0 != .differentRouteShape }
+        }
+        return warnings
     }
 
     /// Other workouts available for comparison (excluding current selection).

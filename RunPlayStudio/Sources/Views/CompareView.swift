@@ -19,18 +19,23 @@ struct CompareView: View {
                         ComparisonSummaryView(summary: summary)
                     }
 
+                    alignmentControls
+
                     HStack(spacing: AppDesign.Spacing.large) {
                         ComparisonMapView(
                             primaryWorkout: pair.primary,
                             comparisonWorkout: pair.comparison,
-                            warnings: appState.comparisonSummary?.warnings ?? [],
+                            warnings: appState.comparisonDisplayWarnings,
                             appState: appState
                         )
                         .layoutPriority(1)
                         .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
 
                         VStack(spacing: AppDesign.Spacing.large) {
-                            SplitComparisonTableView(splits: appState.splitComparisons)
+                            SplitComparisonTableView(
+                                splits: appState.splitComparisons,
+                                isRouteAwareMode: appState.comparisonViewModel.alignmentMode == .routeAware
+                            )
                             if !appState.recordedLapComparisons.isEmpty {
                                 RecordedLapComparisonTableView(
                                     comparisons: appState.recordedLapComparisons
@@ -45,6 +50,9 @@ struct CompareView: View {
 
                     ComparisonChartView(
                         metrics: appState.comparisonMetrics,
+                        alignedMetrics: appState.comparisonViewModel.alignedChartPoints,
+                        alignmentMode: appState.comparisonViewModel.alignmentMode,
+                        isRouteAwareReady: appState.comparisonViewModel.isRouteAwareReady,
                         primaryName: pair.primary.displayName,
                         comparisonName: pair.comparison.displayName
                     )
@@ -65,6 +73,125 @@ struct CompareView: View {
         .background(AppDesign.workspaceBackground)
         .onChange(of: appState.selectedComparisonDistanceMeters) { _, _ in
             appState.requestSessionSave()
+        }
+        .onChange(of: appState.comparisonViewModel.selectedAlignedProgressMeters) { _, _ in
+            appState.requestSessionSave()
+        }
+        .onChange(of: appState.comparisonViewModel.alignmentMode) { _, _ in
+            appState.requestSessionSave()
+        }
+    }
+
+    // MARK: - Alignment controls
+
+    private var alignmentControls: some View {
+        let vm = appState.comparisonViewModel
+        return VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+            HStack(spacing: AppDesign.Spacing.large) {
+                Text("Alignment")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+
+                Picker("Alignment", selection: Binding(
+                    get: { vm.alignmentMode },
+                    set: { appState.setComparisonAlignmentMode($0) }
+                )) {
+                    ForEach(ComparisonAlignmentMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 280)
+                .help(vm.alignmentMode.helpText)
+                .accessibilityLabel("Comparison alignment mode")
+                .accessibilityValue(vm.alignmentMode.displayName)
+                .accessibilityHint(vm.alignmentMode.helpText)
+
+                Text(vm.alignmentMode.helpText)
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                Spacer(minLength: 0)
+            }
+
+            if vm.alignmentMode == .routeAware {
+                routeAwareStatusPanel
+            }
+        }
+        .padding(AppDesign.Spacing.large)
+        .panelBackground()
+    }
+
+    @ViewBuilder
+    private var routeAwareStatusPanel: some View {
+        let vm = appState.comparisonViewModel
+        switch vm.routeAlignmentLoadState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack(spacing: AppDesign.Spacing.small) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Aligning routes…")
+                    .font(AppDesign.Typography.compactMetric)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Aligning routes")
+        case .ready:
+            if let snapshot = vm.routeAlignmentSnapshot,
+               case .available(let quality) = snapshot.availability {
+                HStack(spacing: AppDesign.Spacing.medium) {
+                    Label(
+                        "\(quality.displayName) · \(snapshot.diagnostics.compactStatusLabel)",
+                        systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                    )
+                    .font(AppDesign.Typography.compactMetric)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(
+                    "Route alignment \(quality.displayName). \(snapshot.diagnostics.compactStatusLabel)"
+                )
+            }
+        case .unavailable(let reason):
+            HStack(alignment: .top, spacing: AppDesign.Spacing.medium) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(AppDesign.comparisonOrange)
+                VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+                    Text(reason.userFacingExplanation)
+                        .font(AppDesign.Typography.compactMetric)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Use Distance Alignment") {
+                        appState.setComparisonAlignmentMode(.distance)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Use Distance Alignment")
+                }
+                Spacer(minLength: 0)
+            }
+        case .failed(let message):
+            HStack(alignment: .top, spacing: AppDesign.Spacing.medium) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(AppDesign.comparisonOrange)
+                VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+                    Text(message)
+                        .font(AppDesign.Typography.compactMetric)
+                        .foregroundStyle(.secondary)
+                    Button("Use Distance Alignment") {
+                        appState.setComparisonAlignmentMode(.distance)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                Spacer(minLength: 0)
+            }
         }
     }
 

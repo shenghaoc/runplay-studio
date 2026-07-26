@@ -25,7 +25,7 @@ Accessibility Inspector alone.
 - [ ] Space does not play while editing metadata notes.
 - [ ] Charts: Jump to distance; VoiceOver chart summary; seek earlier/later actions.
 - [ ] Map: Fit (⌘0), View → Toggle 2D/3D, Route Color menu, legend summary.
-- [ ] Comparison: textual P/C identity; distance slider; End Comparison.
+- [ ] Comparison: textual P/C identity; Distance / Route-Aware alignment picker; distance or matched-route slider; End Comparison.
 - [ ] Heatmap: filters, Fit Heatmap, summary statistics.
 - [ ] Import file, multi-session FIT review, and Strava archive; cancel sheets with Escape.
 - [ ] PNG export configuration, preview, save/cancel.
@@ -416,6 +416,28 @@ Checklist:
 
 - [x] App launches with at least two workouts loaded.
 - [ ] Single-run map toggles between 2D and 3D before entering comparison.
+## Route-Aware DTW Comparison Checklist
+
+Use only synthetic or approved repository fixtures. Route-Aware alignment is
+GPS shape matching, not road-level map matching.
+
+- [ ] Compare two identical-geometry routes with different sample rates; both Distance and Route-Aware work; Route-Aware quality is high.
+- [ ] Move the matched-route slider; P and C markers use mapped distances that may differ.
+- [ ] Confirm matched-section elapsed/active clocks exclude unmatched prefixes.
+- [ ] Mild GPS noise and a short detour remain available.
+- [ ] Small start/end offsets are tolerated within policy.
+- [ ] A recording gap produces separate alignment/chart blocks (no bridge).
+- [ ] Completely different routes: Route-Aware unavailable; Distance still works.
+- [ ] Opposite-direction runs: Route-Aware unavailable with clear explanation.
+- [ ] Loop with large rotated start: limited/unavailable with explicit copy.
+- [ ] Rapid peer switching does not show stale aligned markers.
+- [ ] Quit with Route-Aware selected; relaunch recomputes alignment and clamps progress.
+- [ ] Delete the comparison workout; comparison falls back safely.
+- [ ] Keyboard-only: alignment picker, Use Distance action, matched-route slider.
+- [ ] VoiceOver: mode, quality, coverage, progress, mapped distances, separation.
+- [ ] Distance mode retains existing marker, metric, chart, split, and lap behaviour.
+- [ ] Splits/laps headings remain “not route-aligned” under Route-Aware.
+
 - [x] Open Compare view from the toolbar.
 - [x] Select a primary workout.
 - [x] Select a comparison workout.

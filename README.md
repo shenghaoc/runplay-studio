@@ -27,7 +27,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Personal heatmap** — Local density map of places you run most often across the workout library (distinct workouts per cell, not GPS sample density)
 - **All Runs library** — Search, filter, sort, favourite, tag, and rename runs; save smart collections as dynamic queries; the sidebar shows bounded Favourites, Recent, and Smart Collections instead of every workout
 - **Synchronized views** — Map and charts stay in sync with the timeline
-- **Route comparison** — Elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay
+- **Route comparison** — Distance or Route-Aware (constrained DTW) alignment, elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay
 - **Segment detection** — Auto-identify active-pace fastest/slowest windows and biggest climb/descent
 - **Native session restoration** — One coordinated macOS window restores bounded logical workspace state on relaunch without restoring transient UI; macOS separately owns frame and display placement
 - **Chart click/drag to seek** — Click or drag on charts to navigate the run; keyboard Jump to distance and VoiceOver seek actions provide non-pointer equivalents
@@ -84,7 +84,7 @@ app supplies a display-aware default near 1200×800 only when no restorable
 frame exists.
 
 The separate Studio session file restores the visible workout, All Runs or
-smart-collection query context, Personal Heatmap filters, comparison pair and
+smart-collection query context, Personal Heatmap filters, comparison pair, alignment mode,
 distance, workout tab/map presentation, replay position and speed, and sidebar
 visibility. The library manifest remains authoritative for workout order,
 selected workout, favourites, tags, assignments, and smart collections.
@@ -330,21 +330,24 @@ The README demo image is generated from bundled synthetic data.
 
 Compare two completed runs side by side:
 
-- Summary deltas for distance, Active Time, Elapsed Time, paused time, active pace, elevation, and heart rate
-- Per-split comparison table with explicitly labelled active pace, delta, and winner columns
-- Active pace over distance chart with actual workout names in the legend
+- Alignment modes: **Distance** (equal cumulative distance) and **Route-Aware**
+  (constrained dynamic time warping over GPS route shape)
+- Summary deltas for distance, Active Time, Elapsed Time, paused time, active pace, elevation, and heart rate (whole-workout; independent of alignment mode)
+- Per-split and recorded-lap tables remain distance/ordinal, not DTW-aligned
+- Active pace chart over distance or matched route progress
 - One comparison map whose native pitch toggle switches both route overlays
   between 2D and 3D
-- Distance slider to scrub along the common route and see where both runners
-  were at each point, with elapsed-time, active-time, and active-pace deltas
+- Distance or matched-route slider with elapsed/active/pace deltas
+- Route-Aware quality panel, opposite-direction / low-coverage fallbacks
 - Warnings for different pause durations, distances, route shapes, and missing data
 
 ---
 
 ## Limitations
 
-- Comparison is distance-aligned only — no dynamic time warping or route matching
-- Moving-time estimation is not implemented; Active is recorded time inside continuous route segments
+- Route-Aware alignment is GPS shape matching, not road-level map matching or survey-grade geometry
+- Opposite-direction runs and large cyclic start rotations are unavailable or limited in Route-Aware mode
+- Moving-time estimation remains an estimate; Active is recorded time inside continuous route segments
 - FIT support targets common running activities rather than the full FIT profile; developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported
 - A Strava archive entry that itself contains several running sessions is reported as unsupported rather than opening a nested review sheet
 - No HealthKit integration (placeholder importer exists but is not yet functional)
