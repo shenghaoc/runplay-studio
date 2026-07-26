@@ -281,6 +281,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
             // if the whole chunk is no-data, keep no-data.
             var weighted: [(bucket: Int, weight: Double)] = []
             var noDataWeight = 0.0
+            var dataWeight = 0.0
             for j in chunkStart..<end {
                 let weight = max(0, intervals[j].distanceMeters)
                 switch buckets[j] {
@@ -288,13 +289,14 @@ public struct RouteMetricMapLineBuilder: Sendable {
                     noDataWeight += weight
                 case .level(let level):
                     weighted.append((bucket: level, weight: weight))
+                    dataWeight += weight
                 }
             }
 
             let representative: RouteMetricColorBucket
             if weighted.isEmpty {
                 representative = .noData
-            } else if noDataWeight > weighted.reduce(0, { $0 + $1.weight }) {
+            } else if noDataWeight > dataWeight { // ⚡ Bolt: Tracked weight inline to avoid closure call overhead from .reduce
                 // Substantial no-data span: do not absorb into coloured run.
                 representative = .noData
             } else if let median = DistanceWeightedStatistics.weightedMedianBucket(values: weighted) {
