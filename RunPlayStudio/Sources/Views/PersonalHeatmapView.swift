@@ -261,6 +261,8 @@ struct PersonalHeatmapView: View {
                     viewModel.retry(workouts: appState.workouts)
                 }
                 .keyboardShortcut(.defaultAction)
+                .help("Retry building the heatmap")
+                .accessibilityLabel("Retry building heatmap")
             }
             .padding(AppDesign.Spacing.xxLarge)
             .background(.regularMaterial)
@@ -282,6 +284,8 @@ struct PersonalHeatmapView: View {
                     appState.showImporter = true
                 }
                 .keyboardShortcut("i", modifiers: .command)
+                .help("Import a GPX, TCX, FIT, or JSON workout file")
+                .accessibilityLabel("Import workout file")
             case .filterExcludedAll:
                 Text("No workouts match this date range.")
                     .font(AppDesign.Typography.heading3)
@@ -290,9 +294,14 @@ struct PersonalHeatmapView: View {
                         viewModel.datePreset = .allTime
                         viewModel.refresh(workouts: appState.workouts)
                     }
+                    .help("Show workouts from all time")
+                    .accessibilityLabel("Show workouts from all time")
+
                     Button("Reset Filters") {
                         viewModel.resetFilters(workouts: appState.workouts)
                     }
+                    .help("Clear all personal heatmap filters")
+                    .accessibilityLabel("Reset all personal heatmap filters")
                 }
             case .noCells:
                 Text("No heatmap cells for the current filters.")
@@ -300,6 +309,8 @@ struct PersonalHeatmapView: View {
                 Button("Reset Filters") {
                     viewModel.resetFilters(workouts: appState.workouts)
                 }
+                .help("Clear all personal heatmap filters")
+                .accessibilityLabel("Reset all personal heatmap filters")
             }
         }
         .padding(AppDesign.Spacing.xxLarge)

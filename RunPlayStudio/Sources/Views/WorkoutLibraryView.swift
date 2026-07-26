@@ -620,7 +620,11 @@ struct WorkoutLibraryView: View {
             HStack {
                 Button("Import File…") { appState.showImporter = true }
                     .keyboardShortcut("i", modifiers: .command)
+                    .help("Import a GPX, TCX, FIT, or JSON workout file")
+                    .accessibilityLabel("Import workout file")
                 Button("Import Strava Archive…") { appState.showArchiveImporter = true }
+                    .help("Import workouts from a Strava bulk-export archive")
+                    .accessibilityLabel("Import Strava Archive")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
