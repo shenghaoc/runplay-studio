@@ -137,3 +137,19 @@ contact Strava, does not require an account, and does not upload the archive.
 Import provenance stores provider activity IDs and content hashes only — never
 absolute archive paths, email addresses, or profile identifiers. Photos and
 social data inside the export are ignored.
+
+
+## Multi-session FIT import
+
+A `.fit` container is read from a user-selected **local** file only; HTTP and
+other remote schemes, arbitrary string paths, and directories are rejected
+before any read. Security-scoped access is held for the scan → review → import
+lifetime and released when the sheet is dismissed. Nothing is uploaded and no
+account is required.
+
+Stored provenance for an extracted session is a SHA-256 container digest and a
+`fit-session-v1:` identity digest derived from container hash, source ordinal,
+raw FIT timestamps, sport, sub-sport, and lap metadata. It contains no absolute
+path, no filename-derived identity, no locale-formatted date, and no account or
+device serial. User-visible session names use the file's base name plus a
+fixed-locale date or an ordinal — never a fingerprint, UUID, or raw FIT field.

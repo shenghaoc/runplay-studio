@@ -13,87 +13,9 @@ public enum LibraryOperationState: Equatable {
     case deleting(workoutID: UUID)
     case scanningArchive(filename: String)
     case importingArchive
+    case scanningFITFile(filename: String)
+    case importingFITSessions
 }
-
-/// Phases of the Strava archive import sheet.
-enum ArchiveImportUIPhase: Equatable {
-    case reviewing
-    case importing
-    case report
-}
-
-/// Main-actor UI state for a single Strava archive import session.
-@MainActor
-final class ArchiveImportSession: ObservableObject {
-    @Published var phase: ArchiveImportUIPhase = .reviewing
-    @Published var scanResult: WorkoutArchiveScanResult
-    @Published var selectedIDs: Set<String>
-    @Published var searchText: String = ""
-    @Published var showRunningOnly: Bool = true
-    @Published var progress: WorkoutBatchImportProgress = WorkoutBatchImportProgress()
-    @Published var report: WorkoutBatchImportReport?
-    @Published var errorMessage: String?
-
-    let archiveURL: URL
-    let archiveName: String
-    /// Keeps security-scoped access alive for the session lifetime.
-    let securityScopedURL: URL
-    private let isAccessing: Bool
-
-    init(archiveURL: URL, scanResult: WorkoutArchiveScanResult, securityScoped: Bool) {
-        self.archiveURL = archiveURL
-        self.archiveName = archiveURL.lastPathComponent
-        self.securityScopedURL = archiveURL
-        self.isAccessing = securityScoped
-        self.scanResult = scanResult
-        self.selectedIDs = Set(scanResult.candidates.filter(\.isSelectedByDefault).map(\.id))
-    }
-
-    deinit {
-        if isAccessing {
-            securityScopedURL.stopAccessingSecurityScopedResource()
-        }
-    }
-
-    var filteredCandidates: [WorkoutArchiveCandidate] {
-        var list = scanResult.candidates
-        if showRunningOnly {
-            list = list.filter { candidate in
-                if selectedIDs.contains(candidate.id) { return true }
-                switch StravaActivityTypePolicy.classify(candidate.activityType) {
-                case .running, .walkOrHike:
-                    return true
-                case .unsupported, .unknown:
-                    // Still surface missing files / errors for transparency.
-                    return candidate.status != .unsupportedActivityType
-                }
-            }
-        }
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !q.isEmpty {
-            list = list.filter {
-                $0.displayName.lowercased().contains(q)
-                    || ($0.activityType?.lowercased().contains(q) ?? false)
-                    || $0.archiveRelativePath.lowercased().contains(q)
-                    || $0.status.userFacingSummary.lowercased().contains(q)
-            }
-        }
-        return list.sorted { $0.archiveOrder < $1.archiveOrder }
-    }
-
-    var selectedCount: Int { selectedIDs.count }
-
-    func selectAllImportable() {
-        for c in scanResult.candidates where c.status.isImportableByDefault {
-            selectedIDs.insert(c.id)
-        }
-    }
-
-    func selectNone() {
-        selectedIDs.removeAll()
-    }
-}
-
 
 /// Top-level workspace mode. Mutually exclusive destinations.
 enum AppWorkspaceMode: Hashable, Sendable {
@@ -118,20 +40,21 @@ class AppState: ObservableObject {
     @Published var showImporter = false
     @Published var showArchiveImporter = false
     @Published var archiveSession: ArchiveImportSession?
+    @Published var fitSessionImportSession: FITSessionImportSession?
     @Published var errorMessage: String?
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
-    @Published private(set) var operationState: LibraryOperationState = .idle
+    @Published var operationState: LibraryOperationState = .idle
 
     /// Local favourite markers for library workouts (not demos).
-    @Published private(set) var favoriteWorkoutIDs: Set<UUID> = []
+    @Published var favoriteWorkoutIDs: Set<UUID> = []
 
     /// User-defined tags (library organisation; empty for demos).
-    @Published private(set) var tags: [WorkoutTag] = []
+    @Published var tags: [WorkoutTag] = []
 
     /// Smart collections (saved dynamic All Runs queries).
-    @Published private(set) var smartCollections: [WorkoutSmartCollection] = []
+    @Published var smartCollections: [WorkoutSmartCollection] = []
 
     /// Requests the All Runs view to present the collection manager. This is
     /// shared workspace state so a sidebar action survives the destination
@@ -141,11 +64,11 @@ class AppState: ObservableObject {
 
     /// True when the in-memory library is backed by a persisted manifest.
     /// Bundled demos leave this false so favourite/metadata actions stay disabled.
-    @Published private(set) var hasPersistedLibrary = false
+    @Published var hasPersistedLibrary = false
 
     /// IDs known to exist in the persisted library manifest.
     /// Bundled demos are never added here, even if still shown in-session.
-    @Published private(set) var libraryWorkoutIDs: Set<UUID> = []
+    @Published var libraryWorkoutIDs: Set<UUID> = []
 
     /// Transient metadata editor error (stays in the sheet; not a workspace overlay).
     @Published var metadataEditError: String?
@@ -231,7 +154,7 @@ class AppState: ObservableObject {
     let personalHeatmap: PersonalHeatmapViewModel
     let workoutLibrary: WorkoutLibraryViewModel
 
-    private struct CachedAnalysisContext {
+    struct CachedAnalysisContext {
         let normalizationVersion: Int
         let pointCount: Int
         let firstPointID: UUID?
@@ -241,30 +164,50 @@ class AppState: ObservableObject {
 
     /// Main-actor-owned immutable contexts avoid rebuilding 100k-point
     /// elevation profiles from multiple SwiftUI computed properties.
-    private var analysisContextCache: [UUID: CachedAnalysisContext] = [:]
+    var analysisContextCache: [UUID: CachedAnalysisContext] = [:]
 
     /// Backward-compatible computed property for views that check loading state.
     var isLoadingLibrary: Bool {
         operationState == .loadingLibrary
     }
 
+    /// True when an application-owned modal presentation is on screen.
+    ///
+    /// Background replay, delete, and import commands stay inert while this is
+    /// true. `ContentView` combines it with its own view-local presentations.
+    var isModalPresentationActive: Bool {
+        archiveSession != nil
+            || fitSessionImportSession != nil
+            || showImporter
+            || showArchiveImporter
+            || showSmartCollectionsManager
+            || showingError
+    }
+
     /// The store actor for persistence. Nil only in tests without persistence.
-    private let storeActor: WorkoutLibraryStoreActor?
+    let storeActor: WorkoutLibraryStoreActor?
 
     /// The import service for parsing workout files off the main actor.
     private let importService: WorkoutImportServicing?
 
     /// Platform archive service (ZIP scan/import). Nil in tests without platform.
-    private let archiveService: StravaArchiveService?
+    let archiveService: StravaArchiveService?
+
+    /// Core multi-session FIT scan/import service. Nil disables the review
+    /// sheet entirely; every FIT file then follows the direct import path.
+    let fitSessionService: FITSessionImportService?
 
     /// Retained, injectable policy shared by app-owned transition models.
-    private let announcementPolicy: AccessibilityAnnouncementPolicy
+    let announcementPolicy: AccessibilityAnnouncementPolicy
 
     /// Handle for the current selection persistence task.
     private var selectionTask: Task<Void, Never>?
 
     /// Handle for the active archive scan/import task.
-    private var archiveTask: Task<Void, Never>?
+    var archiveTask: Task<Void, Never>?
+
+    /// Handle for the active multi-session FIT import task.
+    var fitImportTask: Task<Void, Never>?
 
     /// Create AppState with injectable services.
     ///
@@ -278,6 +221,7 @@ class AppState: ObservableObject {
         storeActor: WorkoutLibraryStoreActor? = nil,
         importService: WorkoutImportServicing? = nil,
         archiveService: StravaArchiveService? = nil,
+        fitSessionService: FITSessionImportService? = nil,
         accessibilityAnnouncer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
     ) {
         let announcementPolicy = AccessibilityAnnouncementPolicy(
@@ -286,6 +230,7 @@ class AppState: ObservableObject {
         self.storeActor = storeActor
         self.importService = importService
         self.archiveService = archiveService
+        self.fitSessionService = fitSessionService
         self.announcementPolicy = announcementPolicy
         self.personalHeatmap = PersonalHeatmapViewModel(
             announcementPolicy: announcementPolicy
@@ -301,12 +246,19 @@ class AppState: ObservableObject {
         let actor = WorkoutLibraryStoreActor(store: store)
         let importService = WorkoutImportService()
         let archiveService = StravaArchiveService()
-        self.init(storeActor: actor, importService: importService, archiveService: archiveService)
+        let fitSessionService = FITSessionImportService(digest: CryptoKitContentDigest())
+        self.init(
+            storeActor: actor,
+            importService: importService,
+            archiveService: archiveService,
+            fitSessionService: fitSessionService
+        )
     }
 
     deinit {
         selectionTask?.cancel()
         archiveTask?.cancel()
+        fitImportTask?.cancel()
     }
 
     // MARK: - Application session
@@ -602,7 +554,19 @@ class AppState: ObservableObject {
     /// `.importing(filename:)` while in progress.
     func importWorkout(from url: URL) async {
         guard let importService, let storeActor else { return }
-        guard operationState == .idle, archiveSession == nil else { return }
+        guard operationState == .idle,
+              archiveSession == nil,
+              fitSessionImportSession == nil
+        else {
+            return
+        }
+
+        // Only FIT containers are scanned for multiple sessions. GPX, TCX, and
+        // JSON always take the direct path.
+        if url.pathExtension.lowercased() == "fit",
+           await presentFITSessionReviewIfNeeded(from: url) {
+            return
+        }
 
         let filename = url.lastPathComponent
         operationState = .importing(filename: filename)
@@ -1554,225 +1518,5 @@ class AppState: ObservableObject {
             context: context
         )
         return context
-    }
-
-    // MARK: - Strava Archive Import
-
-    /// Begin scanning a user-selected Strava bulk-export ZIP.
-    func beginArchiveImport(from url: URL) {
-        guard operationState == .idle, archiveSession == nil else { return }
-        guard let archiveService, storeActor != nil else {
-            errorMessage = "Archive import is unavailable in this session."
-            showingError = true
-            return
-        }
-
-        let accessing = url.startAccessingSecurityScopedResource()
-        let filename = url.lastPathComponent
-        operationState = .scanningArchive(filename: filename)
-
-        archiveTask?.cancel()
-        archiveTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let existing = self.workouts
-                let result = try await archiveService.scanArchive(
-                    at: url,
-                    existingWorkouts: existing
-                ) { _ in }
-                guard !Task.isCancelled else {
-                    if accessing { url.stopAccessingSecurityScopedResource() }
-                    self.operationState = .idle
-                    return
-                }
-                if !result.isRecognizedStravaExport {
-                    if accessing { url.stopAccessingSecurityScopedResource() }
-                    self.operationState = .idle
-                    self.errorMessage = result.rejectionMessage
-                        ?? "This ZIP does not appear to be a supported Strava bulk export."
-                    self.showingError = true
-                    self.announcementPolicy.handle(
-                        .importFailed(message: self.errorMessage ?? "Unsupported archive.")
-                    )
-                    return
-                }
-                self.archiveSession = ArchiveImportSession(
-                    archiveURL: url,
-                    scanResult: result,
-                    securityScoped: accessing
-                )
-                self.operationState = .idle
-            } catch is CancellationError {
-                if accessing { url.stopAccessingSecurityScopedResource() }
-                self.operationState = .idle
-            } catch {
-                if accessing { url.stopAccessingSecurityScopedResource() }
-                self.operationState = .idle
-                self.errorMessage = error.localizedDescription
-                self.showingError = true
-                self.announcementPolicy.handle(
-                    .importFailed(message: error.localizedDescription)
-                )
-            }
-        }
-    }
-
-    /// Import currently selected archive candidates.
-    func confirmArchiveImport() {
-        guard let session = archiveSession,
-              let archiveService,
-              let storeActor,
-              session.phase == .reviewing,
-              !session.selectedIDs.isEmpty else { return }
-
-        operationState = .importingArchive
-        session.phase = .importing
-        session.progress = WorkoutBatchImportProgress(
-            phase: .importing,
-            totalCount: session.selectedIDs.count
-        )
-
-        let selection = WorkoutBatchImportSelection(
-            selectedCandidateIDs: Array(session.selectedIDs),
-            candidates: session.scanResult.candidates
-        )
-        let archiveURL = session.archiveURL
-        let existing = workouts
-
-        archiveTask?.cancel()
-        archiveTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let report = try await archiveService.importCandidates(
-                    selection,
-                    from: archiveURL,
-                    existingWorkouts: existing,
-                    storeActor: storeActor
-                ) { progress in
-                    await MainActor.run {
-                        self.archiveSession?.progress = progress
-                    }
-                }
-
-                // Cancellation after a successful commit must still surface the report
-                // (library already changed; do not pretend the import rolled back).
-                if report.wasCancelled && report.importedCount == 0 && !report.commitFailed {
-                    self.operationState = .idle
-                    self.archiveSession = nil
-                    return
-                }
-
-                if report.commitFailed {
-                    self.operationState = .idle
-                    session.phase = .report
-                    session.report = report
-                    session.errorMessage = report.errorMessage
-                        ?? "Could not save imported workouts."
-                    self.announcementPolicy.handle(
-                        .importFailed(
-                            message: session.errorMessage ?? "Could not save imported workouts."
-                        )
-                    )
-                    return
-                }
-
-                if report.importedCount > 0 {
-                    // Reload library from store for authoritative post-commit state.
-                    let loadResult = await storeActor.loadLibrary()
-                    switch loadResult {
-                    case .workouts(let loaded, let selectedID, let favoriteIDs, let organization, _):
-                        self.analysisContextCache.removeAll()
-                        self.workouts = loaded
-                        self.favoriteWorkoutIDs = favoriteIDs
-                        self.tags = organization.tags
-                        self.smartCollections = organization.smartCollections
-                        self.libraryWorkoutIDs = Set(loaded.map(\.id))
-                        self.hasPersistedLibrary = true
-                        self.workoutLibrary.replaceLibrary(
-                            workouts: loaded,
-                            favoriteIDs: favoriteIDs,
-                            organization: organization
-                        )
-                        let selected = selectedID.flatMap { id in loaded.first(where: { $0.id == id }) }
-                            ?? loaded.first
-                        self.selectWorkout(selected, persistSelection: false)
-                        // Keep heatmap invalidation coherent: refresh when visible,
-                        // otherwise the next open path reloads from `workouts`.
-                        if self.workspaceMode == .personalHeatmap {
-                            self.personalHeatmap.refresh(workouts: loaded)
-                        }
-                        self.requestSessionSave()
-                    case .demos(let message, let organization, let manifestPresent):
-                        // Unexpected after successful commit; fall back.
-                        self.tags = organization.tags
-                        self.smartCollections = organization.smartCollections
-                        self.hasPersistedLibrary = manifestPresent
-                        if let message {
-                            session.errorMessage = message
-                        }
-                    }
-                }
-
-                session.report = report
-                session.phase = .report
-                self.operationState = .idle
-                if report.importedCount > 0 {
-                    self.announcementPolicy.handle(
-                        .importCompleted(name: session.archiveName)
-                    )
-                }
-            } catch is CancellationError {
-                self.operationState = .idle
-                self.archiveSession = nil
-            } catch {
-                self.operationState = .idle
-                session.phase = .report
-                session.report = WorkoutBatchImportReport(
-                    commitFailed: true,
-                    errorMessage: error.localizedDescription
-                )
-                session.errorMessage = error.localizedDescription
-                self.announcementPolicy.handle(
-                    .importFailed(message: error.localizedDescription)
-                )
-            }
-        }
-    }
-
-    /// Cancel an in-progress archive scan or import.
-    func cancelArchiveImport() {
-        archiveTask?.cancel()
-        archiveTask = nil
-        // Session deinit releases security scope; discard review/progress UI.
-        // After report, use dismissArchiveSession instead.
-        if archiveSession?.phase != .report {
-            archiveSession = nil
-        }
-        operationState = .idle
-        announcementPolicy.handle(.importCancelled)
-    }
-
-    /// Dismiss the archive sheet after a completed report.
-    func dismissArchiveSession() {
-        archiveSession = nil
-        operationState = .idle
-    }
-
-    /// Open the most recently imported workout from the archive report.
-    func viewMostRecentImportedRun() {
-        guard let report = archiveSession?.report,
-              let id = report.selectedWorkoutID,
-              let workout = workouts.first(where: { $0.id == id }) else {
-            dismissArchiveSession()
-            return
-        }
-        dismissArchiveSession()
-        selectWorkout(workout, persistSelection: true)
-    }
-
-    /// Open personal heatmap after archive import.
-    func openHeatmapAfterArchiveImport() {
-        dismissArchiveSession()
-        showPersonalHeatmap()
     }
 }

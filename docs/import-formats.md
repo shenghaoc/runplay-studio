@@ -10,14 +10,162 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | JSON | Full support | Native fixture format with route points, metadata, biometrics, optional recorded laps, versioned route normalization, and versioned derived analysis. Legacy snapshots are normalized before they are reanalysed. |
 | GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. Standard GPX does **not** define device laps — `recordedLaps` stays empty and `<trkseg>` is never treated as a lap. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
 | TCX | Track support | Parses one GPS-bearing activity's laps (including summary fields and `TriggerMethod`), tracks, trackpoints, distance, elevation, heart rate, and cadence. A `<Lap>` boundary alone does **not** create a route gap; multi-`<Track>` continuity is resolved deterministically. Files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
-| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. |
+| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
+
+## Multi-session FIT import
+
+**Import File…** is the only entry point. A user never has to know in advance
+whether a `.fit` file holds one run or many.
+
+### Direct versus review routing
+
+| Session messages in the container | Behaviour |
+| --- | --- |
+| 0 (legacy sessionless file) | Direct single-workout import; no review sheet |
+| 1 | Direct single-workout import; no review sheet |
+| 2 or more | **Import FIT Sessions** review sheet |
+
+GPX, TCX, and JSON never reach the FIT scanner. The scan runs off the main
+actor and parses the container once; the review sheet holds only lightweight
+session descriptors, never decoded FIT messages.
+
+### Candidate statuses
+
+| Status | Meaning | Selectable |
+| --- | --- | --- |
+| Ready | Attributable running session with GPS | Yes (default) |
+| Already imported | A workout with this session identity exists | No |
+| Unsupported sport | A known non-running FIT sport | No |
+| No GPS route | No attributable record carries usable coordinates | No |
+| Missing session boundaries | Start or end could not be resolved | No |
+| Ambiguous session data | Time range materially overlaps another session | No |
+| Exceeds resource limit | Container exceeds record/event/lap limits | No |
+| Could not parse | The session failed during import | No |
+
+Only **Ready** is selected by default. Every other session stays visible for
+transparency, with a text explanation rather than colour alone.
+
+### Sport policy
+
+`FITSportPolicy` is the single classifier used by both scan and import.
+`FITSport.running` is supported. A missing or unrecognised sport value is
+treated as running and carries an explicit warning. Every other known profile
+sport — **including walking and hiking** — is unsupported. This intentionally
+differs from `StravaActivityTypePolicy`, whose walk/hike acceptance applies to
+Strava bulk-export metadata rows rather than to FIT session messages.
+
+### Boundary and overlap policy
+
+- Start prefers a valid `start_time`, then a valid end timestamp minus a valid
+  `total_elapsed_time`.
+- End prefers the session's own `timestamp`, then the **next session in FIT
+  source order** (not time-sorted) when that next session's resolved start is
+  ≥ this session's start — used as a bounded exclusive fallback.
+- A session with no reliable start, or no reliable end and no next boundary, is
+  not importable. The first or last record of the whole file is never used as a
+  silent fallback in a multi-session container.
+- Session start is inclusive. A session end is inclusive **unless** a later
+  session starts on that exact timestamp, in which case the boundary sample
+  belongs to the **later** session. One record therefore never contributes to
+  two workouts.
+- Materially overlapping ranges mark every affected session ambiguous. Records
+  inside an overlap are not assigned by guesswork and the sessions are not
+  selected by default. Lap index metadata never resolves time-range overlap.
+
+### Record, event, and lap attribution
+
+- Records, timer events, and laps without a usable timestamp are excluded in
+  multi-session mode; they are never guessed into a session.
+- Timer events remain authoritative for pause/resume route segmentation and are
+  scoped per session. An event in one session never splits another session's
+  route, and a session boundary is not treated as a pause.
+- Laps are associated by `first_lap_index` + `number_of_laps` using the lower
+  12 bits of `message_index`, then by lap timestamp range, then not at all.
+  Conflicting index claims are dropped for every claimant. A lap array index is
+  claimed at most once across the whole container.
+- Malformed laps inside a session that declares them are retained provisionally
+  so `RecordedLapAnalyzer` can diagnose them; one malformed lap does not reject
+  an otherwise valid session.
+- Source elapsed/timer warnings compare each workout only against its own
+  session totals, never against file-wide totals or a sibling session.
+
+### Complexity
+
+Session preparation is `O(s log s)`. Record, event, and lap attribution are
+each `O(n + s)` after preparation, rising to `O(n log n)` only when the
+container's source order is not chronological. Buckets for every session are
+filled in one source-order pass, so no `records × sessions` scan exists. The
+container is parsed at most once per phase; each selected session is decoded
+from that one `FITDecodedFile` rather than by re-reading the binary.
+
+### Transaction semantics
+
+Selected sessions are parsed individually and staged; a per-session failure
+does not prevent valid siblings from being staged. All staged workouts commit
+together in one manifest update. Zero staged workouts roll back. A commit
+failure imports none of them and the report says so — a staged session whose
+commit failed is reported as **Not saved**, never as imported. After a
+successful commit the newest imported session by start date is selected, with
+FIT source order as the deterministic tie breaker.
+
+### Identity and duplicates
+
+Multi-session imports record `WorkoutImportProvider.fitMultiSessionFile` and an
+optional `sourceContainerSHA256` (lowercase hex SHA-256 of the whole original
+container). `providerActivityID` is `fit-session-v1:<digest>` over the container
+hash, source ordinal, raw start and end timestamps, sport, sub-sport, first lap
+index, and lap count — no locale-formatted dates, absolute paths, or account
+identifiers. Session `message_index` is not part of the identity today (the
+decoder does not parse it on session messages); adding it later requires a
+`fit-session-v*` version bump.
+
+An exact duplicate requires provider `.fitMultiSessionFile` **and** a matching
+`providerActivityID`. A shared container hash alone never marks siblings
+duplicate, and `contentSHA256` stays `nil` for these workouts so sibling
+sessions cannot look identical. Renaming the file does not change identity.
+Editing the container produces new identities; RunPlay Studio does not silently
+merge a modified file with previous imports.
+
+### Resource limits and cancellation
+
+`FITMultiSessionImportPolicy` centralises the limits: the existing 100 MB FIT
+container ceiling, at most 256 scanned sessions, at most 100 selected sessions
+per transaction, and record/event/lap ceilings. Only local `file:` URLs are
+read — never HTTP, remote schemes, string paths, or directories — and
+security-scoped access is held for the whole scan → review → import lifetime,
+then released on dismissal. Cancellation is checked before the file read,
+during parsing, during attribution, between candidate imports, before staging,
+and before commit; it rolls staging back and returns a structured cancelled
+report rather than a parse error.
+
+### Accessibility
+
+The review sheet wires default and cancel key actions (same idiom as the Strava
+archive sheet), VoiceOver labels and values for every row and control, a live
+selected count, and status conveyed as text rather than colour alone. It
+participates in the existing modal command-blocking architecture, so background
+replay, delete, and import commands stay inert while it is visible.
+
+**Verification note:** The packaged app has been checked with Return-to-import
+and Escape-to-cancel. Its accessibility tree exposes the summary, every row's
+name/sport/timing/counts/status, selection state, and every actionable control.
+A spoken VoiceOver pass remains part of the broader release checklist; see
+[manual-testing.md](manual-testing.md).
+
+### Known limitation: nested batch review
+
+A Strava bulk-export archive entry that itself contains several running
+sessions stays fail-safe. Archive activity entries continue to use
+`WorkoutImporterFactory.importWorkout(from: WorkoutImportInput)`, which rejects
+an ambiguous multi-session container and reports that entry in the archive
+report. Nested batch review inside archive import is out of scope.
 
 ## Current Limitations
 
 - Import is file-based and local-only.
 - FIT support targets common running activity files, not the full FIT profile. It was implemented against Garmin FIT SDK Profile 21.205.0.
-- FIT developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
+- FIT developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported.
 - All formats use route-derived clocks: elapsed is final timestamp minus initial timestamp, falling back to a normalized per-point elapsed series only when timestamps do not span. Active sums positive adjacent deltas within a continuous route segment; the fallback treats all elapsed time as active because it cannot infer pauses. Paused is elapsed minus active. Moving time is not estimated.
 - Every format passes through the same local, platform-neutral
   `RouteQualityProcessor`. It validates fields, removes only strongly supported

@@ -39,6 +39,10 @@ public struct WorkoutLibrarySearchDocument: Hashable, Sendable {
             case .singleFile:
                 tokens.append("single")
                 tokens.append("file")
+            case .fitMultiSessionFile:
+                tokens.append("FIT")
+                tokens.append("fit")
+                tokens.append("session")
             case .unknown:
                 break
             }

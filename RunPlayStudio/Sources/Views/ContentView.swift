@@ -49,11 +49,7 @@ struct ContentView: View {
     }
 
     private var isSheetPresented: Bool {
-        appState.archiveSession != nil
-            || appState.showImporter
-            || appState.showArchiveImporter
-            || appState.showSmartCollectionsManager
-            || appState.showingError
+        appState.isModalPresentationActive
             || showKeyboardShortcuts
             || descendantPresentationActive
     }
@@ -227,6 +223,29 @@ struct ContentView: View {
                 .interactiveDismissDisabled(session.phase == .importing)
             }
         }
+        .sheet(isPresented: Binding(
+            get: { appState.fitSessionImportSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.fitSessionImportSession?.phase == .importing {
+                    appState.cancelFITSessionImport()
+                } else {
+                    appState.dismissFITSessionImport()
+                }
+            }
+        )) {
+            if let session = appState.fitSessionImportSession {
+                FITSessionImportView(
+                    session: session,
+                    onImport: { appState.confirmFITSessionImport() },
+                    onCancel: { appState.cancelFITSessionImport() },
+                    onDone: { appState.dismissFITSessionImport() },
+                    onViewImported: { appState.viewMostRecentFITImportedRun() },
+                    onOpenAllRuns: { appState.showAllRunsAfterFITImport() }
+                )
+                .interactiveDismissDisabled(session.phase == .importing)
+            }
+        }
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("Got it") { appState.errorMessage = nil }
         } message: {
@@ -240,10 +259,10 @@ struct ContentView: View {
                 return true
             }
             switch appState.operationState {
-            case .idle, .importingArchive:
-                // Archive progress UI lives in the sheet; keep the window usable.
+            case .idle, .importingArchive, .importingFITSessions:
+                // Batch progress UI lives in its sheet; keep the window usable.
                 return false
-            case .loadingLibrary, .importing, .deleting, .scanningArchive:
+            case .loadingLibrary, .importing, .deleting, .scanningArchive, .scanningFITFile:
                 return true
             }
         }())
@@ -317,6 +336,14 @@ struct ContentView: View {
                 .accessibilityLabel("Scanning archive \(filename)")
         case .importingArchive:
             // Progress lives in the archive sheet.
+            EmptyView()
+        case .scanningFITFile(let filename):
+            ProgressView("Scanning \(filename)…")
+                .padding()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Scanning FIT file \(filename)")
+        case .importingFITSessions:
+            // Progress lives in the FIT sessions sheet.
             EmptyView()
         case .idle:
             EmptyView()

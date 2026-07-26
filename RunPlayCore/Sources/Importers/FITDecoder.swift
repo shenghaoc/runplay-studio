@@ -1,5 +1,18 @@
 import Foundation
 
+/// Route points decoded from one FIT session, plus the diagnostics the
+/// analyzer needs. Named rather than a tuple so the explicit decode-by-index
+/// entry point can be public API.
+public struct FITDecodedRouteResult: Sendable {
+    public let routePoints: [RoutePoint]
+    public let invalidCoordinatePointCount: Int
+
+    public init(routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
+        self.routePoints = routePoints
+        self.invalidCoordinatePointCount = invalidCoordinatePointCount
+    }
+}
+
 /// Decodes FIT record messages into RoutePoints.
 ///
 /// Handles coordinate conversion, scaling, validation, session selection,
@@ -24,6 +37,9 @@ public struct FITDecoder {
     /// - Non-running sessions + one running session: select running
     /// - Multiple GPS-bearing running sessions: reject as ambiguous
     /// - Non-running only: reject
+    ///
+    /// Multi-session containers reach `FITSessionImportService` instead, which
+    /// decodes each selected session by explicit index.
     public static func decode(decodedFile: FITDecodedFile) throws -> [RoutePoint] {
         RoutePointSanitizer.normalize(
             try decodeRaw(decodedFile: decodedFile),
@@ -37,40 +53,80 @@ public struct FITDecoder {
         try decodeRawResult(decodedFile: decodedFile).routePoints
     }
 
+    /// Apply the single-workout session selection policy, then decode by index.
+    ///
+    /// This is a thin wrapper: the selection policy and the decoding are two
+    /// separate steps so batch import can skip the former without duplicating
+    /// the latter.
     static func decodeRawResult(
         decodedFile: FITDecodedFile
-    ) throws -> (routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
-        let selection = try selectSession(from: decodedFile)
-        let records: [FITRecordMessage]
-        let segments: [RouteSegment]
-        let usesTimerSegmentation: Bool
-
-        switch selection {
-        case .selected(let session, _):
-            // Filter records to those within the session timeframe
-            records = try filterRecords(
-                decodedFile.records,
-                for: session,
-                totalSessionCount: decodedFile.sessions.count
+    ) throws -> FITDecodedRouteResult {
+        switch try selectSession(from: decodedFile) {
+        case .selected(_, let sessionIndex):
+            return try decodeRawResult(
+                index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
+                sessionIndex: sessionIndex
             )
-            let sessionEvents = try filterEvents(
-                decodedFile.events,
-                for: session,
-                totalSessionCount: decodedFile.sessions.count
-            )
-            // Build segments from timer events
-            segments = buildSegments(
-                events: sessionEvents,
-                records: records
-            )
-            usesTimerSegmentation = sessionEvents.contains {
-                $0.timerEventType != nil
-                    && FITParser.timestampIfValid($0.timestamp) != nil
-            }
         case .legacyFallback:
-            records = decodedFile.records
-            segments = []
-            usesTimerSegmentation = false
+            return try decodeLegacyWholeFile(decodedFile: decodedFile)
+        }
+    }
+
+    /// Decode every record with no session scoping and no timer segmentation.
+    ///
+    /// Reached when the selection policy finds no GPS-bearing session — either
+    /// because the container has no session messages at all, or because none of
+    /// its sessions carries GPS. Behaviour is unchanged from before the
+    /// multi-session refactor.
+    static func decodeLegacyWholeFile(
+        decodedFile: FITDecodedFile
+    ) throws -> FITDecodedRouteResult {
+        try decodeRecordsToRoutePoints(
+            records: decodedFile.records,
+            segments: [],
+            usesTimerSegmentation: false
+        )
+    }
+
+    /// Explicit decode-by-index. Does not consult the selection policy and does
+    /// not mutate any shared decoder state.
+    ///
+    /// Prefer the `index:` overload when decoding several sessions from one
+    /// container: rebuilding the message index per session would reintroduce a
+    /// records × sessions scan.
+    public static func decodeRawResult(
+        decodedFile: FITDecodedFile,
+        sessionIndex: Int
+    ) throws -> FITDecodedRouteResult {
+        try decodeRawResult(
+            index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
+            sessionIndex: sessionIndex
+        )
+    }
+
+    /// Explicit decode-by-index against a message index built once per container.
+    public static func decodeRawResult(
+        index: FITSessionMessageIndex,
+        sessionIndex: Int
+    ) throws -> FITDecodedRouteResult {
+        guard index.mode != .legacyNoSessions else {
+            return try decodeRecordsToRoutePoints(
+                records: index.decodedFile.records,
+                segments: [],
+                usesTimerSegmentation: false
+            )
+        }
+        guard index.decodedFile.sessions.indices.contains(sessionIndex) else {
+            throw WorkoutImportError.parsingError(
+                "FIT session \(sessionIndex + 1) is not present in this file"
+            )
+        }
+
+        let records = index.records(for: sessionIndex)
+        let events = index.events(for: sessionIndex)
+        let segments = buildSegments(events: events, records: records)
+        let usesTimerSegmentation = events.contains {
+            $0.timerEventType != nil && FITParser.timestampIfValid($0.timestamp) != nil
         }
 
         return try decodeRecordsToRoutePoints(
@@ -180,27 +236,37 @@ public struct FITDecoder {
             return .legacyFallback
         }
 
-        // Determine which sessions (by index) have GPS data in records
-        var sessionsWithRecordGPS = Set<Int>()
-
-        for record in decodedFile.records {
-            guard let lat = record.positionLat, let lon = record.positionLong else { continue }
-            guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else { continue }
-            guard let timestamp = FITParser.timestampIfValid(record.timestamp) else { continue }
-
-            // Find which session(s) this record belongs to
-            for (sessionIndex, session) in decodedFile.sessions.enumerated() {
-                guard let sessionStart = sessionStartTime(for: session) else { continue }
-
-                // Check if record is within the session timeframe
-                if let sessionEnd = FITParser.timestampIfValid(session.timestamp) {
-                    guard timestamp >= sessionStart && timestamp <= sessionEnd else { continue }
-                } else {
-                    guard timestamp >= sessionStart else { continue }
+        // Determine which sessions (by index) have GPS data in records.
+        //
+        // Sorting the GPS timestamps once and binary searching each session's
+        // range keeps this at O(r log r + s log r). The previous nested scan
+        // was O(records × sessions); the containment rule is unchanged, so a
+        // record inside two overlapping sessions still counts for both.
+        let gpsTimestamps = decodedFile.records
+            .compactMap { record -> UInt32? in
+                guard let lat = record.positionLat, let lon = record.positionLong else { return nil }
+                guard lat != FITParser.invalidCoordinate,
+                      lon != FITParser.invalidCoordinate
+                else {
+                    return nil
                 }
-
-                sessionsWithRecordGPS.insert(sessionIndex)
+                return FITParser.timestampIfValid(record.timestamp)
             }
+            .sorted()
+
+        var sessionsWithRecordGPS = Set<Int>()
+        for (sessionIndex, session) in decodedFile.sessions.enumerated() {
+            guard let sessionStart = FITSessionAttribution.resolveStart(of: session) else {
+                continue
+            }
+            guard let candidate = firstTimestamp(atOrAfter: sessionStart, in: gpsTimestamps) else {
+                continue
+            }
+            if let sessionEnd = FITParser.timestampIfValid(session.timestamp),
+               candidate > sessionEnd {
+                continue
+            }
+            sessionsWithRecordGPS.insert(sessionIndex)
         }
 
         // Find GPS-bearing sessions (either by start coords or by records with GPS)
@@ -223,12 +289,11 @@ public struct FITDecoder {
             gpsSessions.append((index: index, session: session, hasGPS: hasRecordGPS))
         }
 
-        // Filter to GPS-bearing running sessions
+        // Filter to GPS-bearing running sessions. Classification lives in
+        // FITSportPolicy so scan and import can never disagree; an unknown or
+        // missing sport is still treated as running.
         let gpsRunningSessions = gpsSessions.filter { entry in
-            guard entry.hasGPS else { return false }
-            guard let sport = entry.session.sport else { return true } // Unknown sport treated as running
-            guard let sportType = FITSport(rawValue: sport) else { return true }
-            return sportType.isRunning
+            entry.hasGPS && FITSportPolicy.classify(session: entry.session).isImportable
         }
 
         // Filter to any GPS-bearing sessions
@@ -248,9 +313,7 @@ public struct FITDecoder {
         } else {
             // Check if all sessions are non-running
             let hasNonRunningSessions = gpsSessions.contains { entry in
-                guard entry.hasGPS, let sport = entry.session.sport else { return false }
-                guard let sportType = FITSport(rawValue: sport) else { return false }
-                return !sportType.isRunning
+                entry.hasGPS && FITSportPolicy.classify(session: entry.session) == .unsupported
             }
 
             if hasNonRunningSessions {
@@ -269,78 +332,23 @@ public struct FITDecoder {
         }
     }
 
-    /// Filter records to those within the session timeframe.
-    private static func filterRecords(
-        _ records: [FITRecordMessage],
-        for session: FITSessionMessage,
-        totalSessionCount: Int
-    ) throws -> [FITRecordMessage] {
-        guard let sessionStart = sessionStartTime(for: session) else {
-            guard totalSessionCount == 1 else {
-                throw WorkoutImportError.parsingError(
-                    "Could not match GPS data to runs in this FIT file"
-                )
+    /// First timestamp at or after `lowerBound` in a sorted array.
+    /// Keeps session GPS detection logarithmic rather than a nested scan.
+    private static func firstTimestamp(
+        atOrAfter lowerBound: UInt32,
+        in sorted: [UInt32]
+    ) -> UInt32? {
+        var low = sorted.startIndex
+        var high = sorted.endIndex
+        while low < high {
+            let mid = low + (high - low) / 2
+            if sorted[mid] < lowerBound {
+                low = mid + 1
+            } else {
+                high = mid
             }
-            return records
         }
-
-        // A timestamp is required to associate a record with a selected session.
-        // Unattributed records must not contaminate a multi-session import.
-        return records.filter { record in
-            guard let recordTimestamp = FITParser.timestampIfValid(record.timestamp) else { return false }
-            if recordTimestamp < sessionStart { return false }
-            if let sessionEnd = FITParser.timestampIfValid(session.timestamp),
-               recordTimestamp > sessionEnd {
-                return false
-            }
-            return true
-        }
-    }
-
-    /// Keep only timestamped events that can belong to the selected session.
-    private static func filterEvents(
-        _ events: [FITEventMessage],
-        for session: FITSessionMessage,
-        totalSessionCount: Int
-    ) throws -> [FITEventMessage] {
-        guard let sessionStart = sessionStartTime(for: session) else {
-            guard totalSessionCount == 1 else {
-                throw WorkoutImportError.parsingError(
-                    "Could not match timing data to runs in this FIT file"
-                )
-            }
-            return events
-        }
-
-        return events.filter { event in
-            guard let timestamp = FITParser.timestampIfValid(event.timestamp) else { return false }
-            if timestamp < sessionStart { return false }
-            if let sessionEnd = FITParser.timestampIfValid(session.timestamp),
-               timestamp > sessionEnd {
-                return false
-            }
-            return true
-        }
-    }
-
-    /// FIT session messages normally include `start_time`; when they do not,
-    /// derive it from the end timestamp and profile-scaled total elapsed time.
-    /// Returning nil keeps multi-session imports fail-safe rather than merging
-    /// records that cannot be attributed to one session.
-    private static func sessionStartTime(for session: FITSessionMessage) -> UInt32? {
-        if let startTime = FITParser.timestampIfValid(session.startTime) {
-            return startTime
-        }
-        guard let endTime = FITParser.timestampIfValid(session.timestamp),
-              let totalElapsedMilliseconds = session.totalElapsedTime,
-              totalElapsedMilliseconds != FITParser.invalidUint32
-        else {
-            return nil
-        }
-
-        let elapsedSeconds = totalElapsedMilliseconds / 1_000
-        guard elapsedSeconds <= endTime else { return nil }
-        return endTime - elapsedSeconds
+        return low < sorted.endIndex ? sorted[low] : nil
     }
 
     // MARK: - Route Segmentation from Timer Events
@@ -492,7 +500,7 @@ public struct FITDecoder {
         records: [FITRecordMessage],
         segments: [RouteSegment],
         usesTimerSegmentation: Bool
-    ) throws -> (routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
+    ) throws -> FITDecodedRouteResult {
         var validRecords: [(record: FITRecordMessage, segmentIndex: Int)] = []
         validRecords.reserveCapacity(records.count)
         var invalidCoordinatePointCount = 0
@@ -528,7 +536,10 @@ public struct FITDecoder {
         }
 
         guard !validRecords.isEmpty else {
-            return ([], invalidCoordinatePointCount)
+            return FITDecodedRouteResult(
+                routePoints: [],
+                invalidCoordinatePointCount: invalidCoordinatePointCount
+            )
         }
 
         let resolvedTimestamps = RouteTimestampResolver.resolve(
@@ -541,7 +552,10 @@ public struct FITDecoder {
             }
         )
         guard let resolvedTimestamps, let startDate = resolvedTimestamps.first else {
-            return ([], invalidCoordinatePointCount)
+            return FITDecodedRouteResult(
+                routePoints: [],
+                invalidCoordinatePointCount: invalidCoordinatePointCount
+            )
         }
 
         var routePoints: [RoutePoint] = []
@@ -593,7 +607,10 @@ public struct FITDecoder {
             routePoints.append(point)
         }
 
-        return (routePoints, invalidCoordinatePointCount)
+        return FITDecodedRouteResult(
+            routePoints: routePoints,
+            invalidCoordinatePointCount: invalidCoordinatePointCount
+        )
     }
 
     // MARK: - Enhanced Metric Decoding

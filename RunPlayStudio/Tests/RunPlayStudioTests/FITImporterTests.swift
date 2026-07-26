@@ -319,6 +319,92 @@ final class FITImporterTests: XCTestCase {
         XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
     }
 
+    // MARK: - Shared canonical builder
+
+    /// The direct import path and the explicit decode-by-index builder must
+    /// produce identical workouts for an ordinary one-session file. If they
+    /// ever diverge, direct and batch import have two implementations again.
+    func testDirectImportMatchesExplicitSessionBuilderFieldByField() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithLaps()
+        let url = writeTempFIT(data: data)
+
+        let direct = try importer.importWorkout(from: url)
+        let decodedFile = try FITParser.parse(data: data)
+        let viaBuilder = try importer.importSession(
+            from: decodedFile,
+            sessionIndex: 0,
+            suggestedName: direct.metadata.name ?? "",
+            provenance: direct.importProvenance
+        )
+
+        XCTAssertEqual(viaBuilder.source, direct.source)
+        XCTAssertEqual(viaBuilder.metadata.name, direct.metadata.name)
+        XCTAssertEqual(viaBuilder.metadata.activityType, direct.metadata.activityType)
+        XCTAssertEqual(viaBuilder.metadata.startDate, direct.metadata.startDate)
+        XCTAssertEqual(viaBuilder.metadata.endDate, direct.metadata.endDate)
+        XCTAssertEqual(viaBuilder.metadata.deviceName, direct.metadata.deviceName)
+        XCTAssertEqual(viaBuilder.routePoints.count, direct.routePoints.count)
+        XCTAssertEqual(
+            viaBuilder.routePoints.map(\.routeSegmentIndex),
+            direct.routePoints.map(\.routeSegmentIndex)
+        )
+        XCTAssertEqual(
+            viaBuilder.routePoints.map(\.latitude),
+            direct.routePoints.map(\.latitude)
+        )
+        XCTAssertEqual(
+            viaBuilder.routePoints.map(\.distanceFromStartMeters),
+            direct.routePoints.map(\.distanceFromStartMeters)
+        )
+        XCTAssertEqual(viaBuilder.summary, direct.summary)
+        XCTAssertEqual(viaBuilder.splits.count, direct.splits.count)
+        XCTAssertEqual(viaBuilder.segments.count, direct.segments.count)
+        XCTAssertEqual(viaBuilder.recordedLaps.count, direct.recordedLaps.count)
+        XCTAssertEqual(
+            viaBuilder.recordedLaps.map(\.trigger),
+            direct.recordedLaps.map(\.trigger)
+        )
+        XCTAssertEqual(
+            viaBuilder.recordedLaps.map(\.reportedMetrics),
+            direct.recordedLaps.map(\.reportedMetrics)
+        )
+        XCTAssertEqual(viaBuilder.analysisWarnings, direct.analysisWarnings)
+        XCTAssertEqual(viaBuilder.normalizationVersion, direct.normalizationVersion)
+        XCTAssertEqual(viaBuilder.analysisVersion, direct.analysisVersion)
+        XCTAssertEqual(viaBuilder.sourceStructureVersion, direct.sourceStructureVersion)
+        XCTAssertEqual(viaBuilder.routeDistanceSource, direct.routeDistanceSource)
+        XCTAssertEqual(
+            viaBuilder.routeDistanceProvenance.segmentSources,
+            direct.routeDistanceProvenance.segmentSources
+        )
+    }
+
+    func testOrdinaryFITImportKeepsSingleFileProvenance() throws {
+        let url = writeTempFIT(data: FITFixtureBuilder.buildSampleRunWithLaps())
+        let workout = try WorkoutImporterFactory.importWorkout(from: url)
+        XCTAssertEqual(workout.importProvenance?.provider, .singleFile)
+        XCTAssertNil(workout.importProvenance?.sourceContainerSHA256)
+    }
+
+    // MARK: - Archive compatibility
+
+    /// A Strava archive entry containing several running sessions must stay
+    /// fail-safe: the shared data-based factory rejects it, so archive import
+    /// reports the entry rather than presenting a nested review sheet.
+    func testMultiSessionFITThroughArchiveEntryPathIsRejected() {
+        let input = WorkoutImportInput(
+            data: FITFixtureBuilder.buildTwoRunningSessions(),
+            fileExtension: "fit",
+            suggestedName: "activity.fit"
+        )
+        XCTAssertThrowsError(try WorkoutImporterFactory.importWorkout(from: input)) { error in
+            guard case WorkoutImportError.parsingError(let detail) = error else {
+                return XCTFail("Expected a parsing error, got \(error)")
+            }
+            XCTAssertTrue(detail.contains("2 runs"), "Got: \(detail)")
+        }
+    }
+
     // MARK: - Helpers
 
     private func writeTempFIT(data: Data) -> URL {

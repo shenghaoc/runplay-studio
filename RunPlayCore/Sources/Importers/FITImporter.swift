@@ -46,11 +46,60 @@ public struct FITImporter: WorkoutImporting {
             throw WorkoutImportError.missingData("No records found in FIT file")
         }
 
-        // Get the selected session index before decoding
+        // Resolve the single-workout selection policy, then hand off to the
+        // same builder batch import uses. Direct and batch import must never
+        // have two implementations of workout construction.
         let selectedSessionIndex = try FITDecoder.selectedSessionIndex(from: decodedFile)
+        return try buildSession(
+            index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
+            sessionIndex: selectedSessionIndex,
+            suggestedName: suggestedName,
+            provenance: nil
+        )
+    }
 
-        // Decode records with session selection and segmentation
-        let decodedRoute = try FITDecoder.decodeRawResult(decodedFile: decodedFile)
+    // MARK: - Canonical session builder
+
+    /// Build one workout from an explicitly chosen FIT session.
+    ///
+    /// Convenience entry point that builds the message index itself. When
+    /// importing several sessions from one container, build the index once and
+    /// call `buildSession(index:...)` instead.
+    public func importSession(
+        from decodedFile: FITDecodedFile,
+        sessionIndex: Int,
+        suggestedName: String,
+        provenance: WorkoutImportProvenance?
+    ) throws -> RunWorkout {
+        try buildSession(
+            index: try FITSessionMessageIndex.build(decodedFile: decodedFile),
+            sessionIndex: sessionIndex,
+            suggestedName: suggestedName,
+            provenance: provenance
+        )
+    }
+
+    /// The single implementation of FIT workout construction.
+    ///
+    /// Owns session-scoped record decoding, timer-event segmentation, metadata,
+    /// recorded-lap extraction, normalisation, analysis, source timing warnings,
+    /// source-structure version, and provenance.
+    ///
+    /// - Parameter sessionIndex: `nil` selects the legacy whole-file fallback
+    ///   used when the container has no GPS-bearing session.
+    func buildSession(
+        index: FITSessionMessageIndex,
+        sessionIndex: Int?,
+        suggestedName: String,
+        provenance: WorkoutImportProvenance?
+    ) throws -> RunWorkout {
+        let decodedFile = index.decodedFile
+        let decodedRoute: FITDecodedRouteResult
+        if let sessionIndex {
+            decodedRoute = try FITDecoder.decodeRawResult(index: index, sessionIndex: sessionIndex)
+        } else {
+            decodedRoute = try FITDecoder.decodeLegacyWholeFile(decodedFile: decodedFile)
+        }
         let routePoints = decodedRoute.routePoints
 
         guard !routePoints.isEmpty else {
@@ -60,7 +109,7 @@ public struct FITImporter: WorkoutImporting {
         // Build metadata from selected session and device info
         let metadata = buildMetadata(
             decodedFile: decodedFile,
-            selectedSessionIndex: selectedSessionIndex,
+            selectedSessionIndex: sessionIndex,
             fileName: suggestedName,
             routePoints: routePoints
         )
@@ -68,8 +117,8 @@ public struct FITImporter: WorkoutImporting {
         // Associate FIT lap messages with the selected session only.
         // Lap messages never create route segments; timer events remain authority.
         let provisionalLaps = provisionalRecordedLaps(
-            from: decodedFile,
-            selectedSessionIndex: selectedSessionIndex,
+            index: index,
+            selectedSessionIndex: sessionIndex,
             sessionEndDate: routePoints.last?.timestamp
         )
 
@@ -80,6 +129,9 @@ public struct FITImporter: WorkoutImporting {
             recordedLaps: provisionalLaps
         )
         workout.sourceStructureVersion = RunWorkout.currentSourceStructureVersion
+        if let provenance {
+            workout.importProvenance = provenance
+        }
 
         // Run analysis (rederives canonical lap metrics from source boundaries)
         let analyzer = WorkoutAnalyzer()
@@ -90,7 +142,7 @@ public struct FITImporter: WorkoutImporting {
         )
         let timing = timingWarnings(
             decodedFile: decodedFile,
-            selectedSessionIndex: selectedSessionIndex,
+            selectedSessionIndex: sessionIndex,
             summary: workout.summary
         )
         for warning in timing where !workout.analysisWarnings.contains(warning) {
@@ -107,28 +159,33 @@ public struct FITImporter: WorkoutImporting {
     /// Preserves original message order. Malformed selected-session laps are
     /// retained provisionally so `RecordedLapAnalyzer` can diagnose and skip
     /// them without rejecting the route. Empty collections are valid.
+    ///
+    /// Lap association itself lives in `FITSessionMessageIndex`, so one lap can
+    /// never be handed to two sessions of the same container.
     private func provisionalRecordedLaps(
-        from decodedFile: FITDecodedFile,
+        index: FITSessionMessageIndex,
         selectedSessionIndex: Int?,
         sessionEndDate: Date?
     ) -> [RecordedLap] {
-        let sessionLaps = filterLaps(
-            decodedFile.laps,
-            selectedSessionIndex: selectedSessionIndex,
-            sessions: decodedFile.sessions
-        )
+        let sessionLaps: [FITLapMessage]
+        if let selectedSessionIndex {
+            sessionLaps = index.laps(for: selectedSessionIndex)
+        } else {
+            // Legacy whole-file fallback: keep all laps in source order.
+            sessionLaps = index.decodedFile.laps
+        }
 
         var result: [RecordedLap] = []
         result.reserveCapacity(sessionLaps.count)
 
-        for (index, lap) in sessionLaps.enumerated() {
+        for (lapIndex, lap) in sessionLaps.enumerated() {
             let startDate = fitDate(lap.startTime)
             var endDate = fitDate(lap.timestamp)
 
             // Safe end fallback: next lap start, else selected session/route end.
             if endDate == nil {
-                if index + 1 < sessionLaps.count {
-                    endDate = fitDate(sessionLaps[index + 1].startTime)
+                if lapIndex + 1 < sessionLaps.count {
+                    endDate = fitDate(sessionLaps[lapIndex + 1].startTime)
                 }
                 if endDate == nil {
                     endDate = sessionEndDate
@@ -158,79 +215,6 @@ public struct FITImporter: WorkoutImporting {
         }
 
         return result
-    }
-
-    /// Keep only laps that belong to the selected session timeframe.
-    private func filterLaps(
-        _ laps: [FITLapMessage],
-        selectedSessionIndex: Int?,
-        sessions: [FITSessionMessage]
-    ) -> [FITLapMessage] {
-        guard let selectedSessionIndex,
-              sessions.indices.contains(selectedSessionIndex)
-        else {
-            // Legacy fallback (no session): keep all laps in source order.
-            return laps
-        }
-
-        let session = sessions[selectedSessionIndex]
-        if let firstLapIndex = session.firstLapIndex,
-           firstLapIndex != FITParser.invalidUint16,
-           let numberOfLaps = session.numberOfLaps,
-           numberOfLaps != FITParser.invalidUint16 {
-            // FIT `message_index` reserves its upper bits for flags. Session
-            // association uses the lower 12-bit ordinal, not the lap array offset.
-            let lowerBound = Int(firstLapIndex & 0x0FFF)
-            let upperBound = lowerBound + Int(numberOfLaps)
-            var matchedOrdinals = Set<Int>()
-            let indexedLaps = laps.filter { lap in
-                guard let rawIndex = lap.messageIndex,
-                      rawIndex != FITParser.invalidUint16
-                else {
-                    return false
-                }
-                let index = Int(rawIndex & 0x0FFF)
-                guard index >= lowerBound, index < upperBound else { return false }
-                matchedOrdinals.insert(index)
-                return true
-            }
-            if indexedLaps.count == Int(numberOfLaps),
-               matchedOrdinals.count == Int(numberOfLaps) {
-                return indexedLaps
-            }
-        }
-
-        // With one session there is no cross-session ambiguity, so retain even
-        // boundaryless messages and let the analyzer diagnose malformed laps.
-        if sessions.count == 1 {
-            return laps
-        }
-
-        let sessionEnd = FITParser.timestampIfValid(session.timestamp)
-        let sessionStart = FITParser.timestampIfValid(session.startTime)
-            ?? sessionEnd.flatMap { end -> UInt32? in
-                guard let elapsed = session.totalElapsedTime, elapsed != FITParser.invalidUint32 else {
-                    return nil
-                }
-                let seconds = elapsed / 1_000
-                guard seconds <= end else { return nil }
-                return end - seconds
-            }
-
-        return laps.filter { lap in
-            // Prefer start_time; fall back to end timestamp for membership.
-            let lapStart = FITParser.timestampIfValid(lap.startTime)
-            let lapEnd = FITParser.timestampIfValid(lap.timestamp)
-            let anchor = lapStart ?? lapEnd
-            guard let anchor else { return false }
-            if let sessionStart, anchor < sessionStart { return false }
-            if let sessionEnd, anchor > sessionEnd { return false }
-            // Also reject laps that clearly end before the session starts.
-            if let lapEnd, let sessionStart, lapEnd < sessionStart {
-                return false
-            }
-            return true
-        }
     }
 
     private func reportedMetrics(from lap: FITLapMessage) -> RecordedLapReportedMetrics? {
@@ -347,18 +331,11 @@ public struct FITImporter: WorkoutImporting {
         fileName: String,
         routePoints: [RoutePoint]
     ) -> WorkoutMetadata {
-        // Activity type from selected session sport, or first session if none selected
-        let activityType: String
+        // Activity type from selected session sport, or first session if none selected.
+        // Single classifier shared with multi-session scan/import.
         let session = selectedSessionIndex.flatMap { decodedFile.sessions.indices.contains($0) ? decodedFile.sessions[$0] : nil }
             ?? decodedFile.sessions.first
-
-        if let session = session,
-           let sport = session.sport,
-           let sportType = FITSport(rawValue: sport) {
-            activityType = activityTypeFromSport(sportType)
-        } else {
-            activityType = "running"
-        }
+        let activityType = FITSportPolicy.activityType(sport: session?.sport)
 
         // Start/end dates from route points
         let startDate = routePoints.first?.timestamp
@@ -374,20 +351,6 @@ public struct FITImporter: WorkoutImporting {
             endDate: endDate,
             deviceName: deviceName
         )
-    }
-
-    /// Convert FIT sport enum to human-readable activity type.
-    private func activityTypeFromSport(_ sport: FITSport) -> String {
-        switch sport {
-        case .running: return "running"
-        case .walking: return "walking"
-        case .hiking: return "hiking"
-        case .cycling: return "cycling"
-        case .swimming: return "swimming"
-        case .generic: return "running"
-        case .training: return "running"
-        default: return "running"
-        }
     }
 
     /// Build device name from device info messages.

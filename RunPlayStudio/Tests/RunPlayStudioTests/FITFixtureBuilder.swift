@@ -244,7 +244,136 @@ struct FITFixtureBuilder {
         return data
     }
 
+    /// Build a FIT file containing two sequential, non-overlapping running
+    /// sessions with disjoint routes. Used to exercise the review flow.
+    static func buildTwoRunningSessions() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let perSession = 10
+        for index in 0..<perSession {
+            writeOffsetRecordMessage(
+                to: &content,
+                timestampOffset: UInt32(index * 10),
+                coordinateOffset: Int32(index) * 2_000
+            )
+        }
+        for index in 0..<perSession {
+            writeOffsetRecordMessage(
+                to: &content,
+                timestampOffset: 1_000 + UInt32(index * 10),
+                coordinateOffset: 500_000 + Int32(index) * 2_000
+            )
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 90,
+            timerSeconds: 90,
+            numberOfLaps: 0,
+            startOffset: 0,
+            endOffset: 90,
+            to: &content
+        )
+        writeSessionMessage(
+            elapsedSeconds: 90,
+            timerSeconds: 90,
+            numberOfLaps: 0,
+            startOffset: 1_000,
+            endOffset: 1_090,
+            to: &content
+        )
+
+        return finalize(content: content)
+    }
+
+    /// Two sessions where the second is a cycling activity.
+    static func buildRunningPlusCyclingSessions() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        for index in 0..<10 {
+            writeOffsetRecordMessage(
+                to: &content,
+                timestampOffset: UInt32(index * 10),
+                coordinateOffset: Int32(index) * 2_000
+            )
+        }
+        for index in 0..<10 {
+            writeOffsetRecordMessage(
+                to: &content,
+                timestampOffset: 1_000 + UInt32(index * 10),
+                coordinateOffset: 500_000 + Int32(index) * 2_000
+            )
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 90,
+            timerSeconds: 90,
+            numberOfLaps: 0,
+            startOffset: 0,
+            endOffset: 90,
+            to: &content
+        )
+        writeSessionMessage(
+            elapsedSeconds: 90,
+            timerSeconds: 90,
+            numberOfLaps: 0,
+            startOffset: 1_000,
+            endOffset: 1_090,
+            sport: .cycling,
+            to: &content
+        )
+
+        return finalize(content: content)
+    }
+
     // MARK: - Private Helpers
+
+    private static func finalize(content: Data) -> Data {
+        var data = Data()
+        writeHeader(to: &data, dataSize: UInt32(content.count))
+        let headerCRC = FITParser.crc16(over: data[0..<12])
+        data[12] = UInt8(headerCRC & 0xFF)
+        data[13] = UInt8(headerCRC >> 8)
+        data.append(content)
+        let fileCRC = FITParser.crc16(over: data)
+        data.append(UInt8(fileCRC & 0xFF))
+        data.append(UInt8(fileCRC >> 8))
+        return data
+    }
+
+    /// Record writer with explicit time and coordinate offsets so several
+    /// sessions can occupy distinct time windows and distinct geography.
+    private static func writeOffsetRecordMessage(
+        to data: inout Data,
+        timestampOffset: UInt32,
+        coordinateOffset: Int32
+    ) {
+        data.append(0x00)
+
+        let baseTimestamp: UInt32 = 1_000_000_000
+        data.append(contentsOf: withUnsafeBytes(of: (baseTimestamp + timestampOffset).littleEndian) { Array($0) })
+
+        let lat: Int32 = 12_780_237 + coordinateOffset
+        data.append(contentsOf: withUnsafeBytes(of: lat.littleEndian) { Array($0) })
+        let lon: Int32 = 1_241_516_163 + coordinateOffset
+        data.append(contentsOf: withUnsafeBytes(of: lon.littleEndian) { Array($0) })
+
+        let altScaled = UInt16((20.0 + 500) * 5)
+        data.append(contentsOf: withUnsafeBytes(of: altScaled.littleEndian) { Array($0) })
+
+        let distScaled = UInt32(Double(coordinateOffset) / 20.0)
+        data.append(contentsOf: withUnsafeBytes(of: distScaled.littleEndian) { Array($0) })
+
+        let speedScaled = UInt16(3_000)
+        data.append(contentsOf: withUnsafeBytes(of: speedScaled.littleEndian) { Array($0) })
+
+        data.append(UInt8(140)) // heart rate
+        data.append(UInt8(85))  // cadence
+    }
+
 
     private static func writeHeader(to data: inout Data, dataSize: UInt32) {
         data.append(14) // header length

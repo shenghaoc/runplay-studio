@@ -112,8 +112,8 @@
 - [x] Window state persistence across relaunches
 
 ### Phase: Expanded Import
-- [ ] Strava export (.zip) importer
-- [ ] Multi-session FIT batch import
+- [x] Strava export (.zip) importer
+- [x] Multi-session FIT batch import
 - [ ] iPhone companion exporter (future)
 
 ### Phase: Analysis Enhancements
@@ -126,3 +126,12 @@
 
 Local-only ZIP import of running activities with review UI, secure path handling,
 GZIP support, provenance/dedup, and staged batch commits. Not a Strava API client.
+
+## Multi-session FIT import (implemented)
+
+Import File… scans `.fit` containers off the main actor. Zero or one session
+message keeps the existing direct single-workout path; two or more open the
+Import FIT Sessions review sheet, where supported running sessions become
+separate workouts committed in one staged transaction. Sport policy, boundary
+resolution, attribution, identity, and limits are documented in
+[import-formats.md](import-formats.md).

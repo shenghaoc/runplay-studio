@@ -180,6 +180,16 @@ The core data atom: label + value + optional icon, colored by semantic metric ty
 ### Format Pills
 Small badges showing supported import/export formats. Semantic `.caption2` medium typography with panel background fill and 6pt radius. Used in empty state and format hints.
 
+### Batch import review sheets
+
+Strava archive import and multi-session FIT import share one shape: a titled
+header with the source name, a summary chip row, a filter row, a native
+`Table` of candidates in **source order**, and a footer with Cancel plus a
+counted primary action. Rows that cannot be imported stay visible and disabled
+with a text status — status is never conveyed by colour alone. The progress and
+report phases replace the table in place rather than opening a second sheet, and
+a determinate bar is shown only when the total work is actually known.
+
 ### Empty State
 Native workspace background, hero icon in a material circle, and a reduced-motion-aware entrance. Import CTA uses `.borderedProminent` with large control size.
 

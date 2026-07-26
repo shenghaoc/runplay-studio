@@ -27,13 +27,13 @@ Accessibility Inspector alone.
 - [ ] Map: Fit (⌘0), View → Toggle 2D/3D, Route Color menu, legend summary.
 - [ ] Comparison: textual P/C identity; distance slider; End Comparison.
 - [ ] Heatmap: filters, Fit Heatmap, summary statistics.
-- [ ] Import file and Strava archive; cancel sheets with Escape.
+- [ ] Import file, multi-session FIT review, and Strava archive; cancel sheets with Escape.
 - [ ] PNG export configuration, preview, save/cancel.
 - [ ] Help → Keyboard Shortcuts matches live menu chords.
 - [ ] Reduce Motion: map fit jumps without animation; replay still works.
 - [ ] Differentiate Without Colour: comparison shows P/C markers.
 - [ ] Increased Contrast / Reduce Transparency: panels and controls remain legible.
-- [ ] VoiceOver: no announcement spam during replay or archive progress.
+- [ ] VoiceOver: no announcement spam during replay, archive, or FIT session progress.
 
 ## Native Route Metric Coloring Checklist
 
@@ -207,8 +207,82 @@ session; they are not claims of a completed manual pass.
 - [ ] Import a compressed-timestamp FIT running activity and verify its route, duration, replay, and charts.
 - [ ] Import a FIT activity with timer stop/start events and verify the map and replay do not bridge the paused gap.
 - [ ] Import enhanced altitude/speed values and confirm they are not truncated.
-- [ ] Confirm a non-running FIT activity and an ambiguous multi-running-session FIT file show clear import errors.
+- [ ] Confirm a non-running FIT activity shows a clear import error.
 - [ ] Cancel a large FIT import and confirm it is neither displayed nor persisted after relaunch.
+
+## Multi-session FIT import (synthetic)
+
+Use **synthetic** FIT fixtures only — never commit real workout files. These
+are manual checks to perform in a GUI session; they are not claims of a
+completed manual pass.
+
+1. Import an ordinary one-session FIT file → **no** review sheet appears.
+2. Import a legacy sessionless FIT file → **no** review sheet appears.
+3. Import a FIT file with two running sessions → **Import FIT Sessions** opens.
+4. Confirm both sessions are listed in FIT source order with date, sport,
+   elapsed, distance, GPS points, laps, and status.
+5. Import both; confirm two workouts appear in the library.
+6. Confirm the newest imported session opens after commit.
+7. Replay each and inspect route separation — no shared points.
+8. Inspect timer pauses per session; a pause in one must not split the other.
+9. Inspect recorded laps per session; no lap appears twice.
+10. Reimport the exact same file → both sessions show **Already imported**.
+11. Rename the file and reimport → still **Already imported**.
+12. Import a running-plus-cycling FIT file → running selected, cycling visible
+    but disabled with an explanation.
+13. Import a file with one valid and one malformed session → the valid session
+    commits and the malformed one is reported.
+14. Cancel during processing → nothing commits.
+15. Keyboard-only pass: Tab through the table, toggle Include with Space, use
+    Select All Importable / Select None, Return to import, Escape to cancel.
+16. VoiceOver: row summaries read name, sport, timing, counts, and status; the
+    selected count is announced; no announcement spam during progress.
+17. Narrow window, light/dark appearance, and increased contrast: status text
+    stays readable and no state is signalled by colour alone.
+18. Quit and relaunch → library and selected workout persist.
+19. Confirm tags, smart collections, heatmap, and comparison still work.
+20. Import an ordinary FIT file from a synthetic Strava archive → unchanged.
+21. Put a multi-session FIT file inside a synthetic Strava archive → that entry
+    is reported as failed; **no** nested review sheet appears.
+
+Focused pre-merge smoke record (2026-07-25), packaged
+`.build/artifacts/RunPlayStudio.app`, synthetic fixtures only:
+
+- **Import File…** (⌘I) exposed the review sheet for a two-session FIT file;
+  no separate multi-session command exists in the File menu.
+- The sheet listed both sessions in FIT source order with Include, Session,
+  Date, Sport, Elapsed, Distance, GPS Points, Laps, and Status columns.
+- **Import 2 Runs** committed both; the library went 7 → 9, the newer session
+  (20:23) was selected, and the two workouts had distinct routes and durations
+  (5.10 km / 19:30 and 4.35 km / 14:30).
+- The per-session source-timing warning fired on the paused session only.
+- Reimporting the same file, and a renamed copy of it, showed **Already
+  imported** for both sessions with **Import 0 Runs** disabled.
+- A running-plus-cycling file showed `Importable 1` / `Unsupported 1`, with the
+  cycling row visible, disabled, and labelled **Unsupported sport**; importing
+  brought in the running session only.
+- Return triggered the default **Import N Runs** action.
+- Deleting the imported workouts restored the library to its original state.
+
+Final pre-merge follow-up (2026-07-26), using the current packaged artifact:
+
+- Escape dismissed both ready and duplicate review sheets without mutating the
+  library; Return invoked the default import action.
+- The accessibility tree exposed the selected-count summary, complete row
+  summaries (name, sport, date, elapsed time, distance, GPS points, laps, and
+  textual status), checkbox state/help, and every action.
+- Exact reimport showed two disabled **Already imported** rows and a disabled
+  **Import 0 Runs** action.
+- A running-plus-cycling fixture exposed one selected running row and one
+  disabled cycling row with the explanation **Cycling sessions are not
+  supported**; only the run committed.
+- Completion reports and the 7 → 9 / 9 → 10 library transitions matched the
+  committed workouts. The three synthetic workouts were then deleted, restoring
+  the original seven-run library.
+
+A spoken VoiceOver pass, increased-contrast pass, and appearance variants remain
+part of the broader release checklist; they are not substitutes for the
+packaged-app and accessibility-tree checks above.
 
 ## All Runs Library Checklist
 

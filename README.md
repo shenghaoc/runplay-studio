@@ -34,6 +34,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Keyboard and VoiceOver** — Native menus for File, Workout, Replay, Library, View, and Help → Keyboard Shortcuts; chart descriptors, map summaries, and deliberate announcements without 30 fps spam
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 - **Strava bulk archive import** — Import running activities from a local Strava export ZIP (no login or network)
+- **Multi-session FIT import** — Review every session in a multi-session `.fit` file and import the supported runs as separate workouts in one transaction
 
 ---
 
@@ -46,7 +47,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -231,12 +232,12 @@ To build a local `.app` bundle:
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
 
-**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. The importer requires one unambiguous GPS-bearing running session when session metadata is present; without sessions, it retains a legacy single-activity fallback. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported.
+**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. A file with zero or one session message imports directly; a file with several session messages opens the **Import FIT Sessions** review sheet, where supported running sessions become separate workouts committed in one transaction. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported.
 
 ## App Features
 
@@ -344,7 +345,8 @@ Compare two completed runs side by side:
 
 - Comparison is distance-aligned only — no dynamic time warping or route matching
 - Moving-time estimation is not implemented; Active is recorded time inside continuous route segments
-- FIT support targets common running activities rather than the full FIT profile; developer metrics, component accumulation, unsupported subfields, course/workout files, and batch multi-session import remain unsupported
+- FIT support targets common running activities rather than the full FIT profile; developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported
+- A Strava archive entry that itself contains several running sessions is reported as unsupported rather than opening a nested review sheet
 - No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)

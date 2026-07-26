@@ -705,9 +705,34 @@ route cannot be reconstructed and the original activity must be reimported.
 
 Optional `WorkoutImportProvenance` on `RunWorkout` (backward-compatible decode):
 
-- `provider`: `singleFile` | `stravaBulkExport` | `unknown`
-- `providerActivityID`: Strava activity ID when known
+- `provider`: `singleFile` | `stravaBulkExport` | `fitMultiSessionFile` | `unknown`
+- `providerActivityID`: Strava activity ID, or a FIT session identity, when known
 - `contentSHA256`: lowercase hex digest of original activity-file bytes
 - `originalFilename`: archive-relative activity filename (not an absolute path)
+- `sourceContainerSHA256`: lowercase hex digest of the whole original container
+  when the workout is one of several extracted from it
 
-No analysis-version, normalization-version, or manifest-schema bump is required.
+No analysis-version, normalization-version, source-structure-version, or
+manifest-schema bump is required. Snapshots written before
+`sourceContainerSHA256` existed decode it as `nil`.
+
+### Multi-session FIT identity
+
+A workout extracted from a multi-session `.fit` container records
+`provider == .fitMultiSessionFile`, a `sourceContainerSHA256`, and a
+`providerActivityID` of the form:
+
+```
+fit-session-v1:<sha256 of container hash + source ordinal + raw start + raw end
+                + sport + sub-sport + first lap index + lap count>
+```
+
+Components are joined with an ASCII unit separator and rendered from integers
+and enum raw values only — no locale-formatted dates, absolute paths, or account
+identifiers. Session `message_index` is not included (not parsed on session
+messages yet). The version prefix is bumped only when the tuple's shape changes.
+
+`contentSHA256` is deliberately `nil` for these workouts: every sibling session
+shares one container, so a whole-file hash there would make distinct runs look
+identical. Exact duplicate detection therefore requires both
+`provider == .fitMultiSessionFile` and a matching `providerActivityID`.
