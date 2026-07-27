@@ -480,4 +480,21 @@ final class StravaArchiveImportTests: XCTestCase {
             XCTFail("Unexpected error type: \(error)")
         }
     }
+
+    // MARK: - Archive URL Validation
+
+    func testArchiveInitRejectsNonFileURL() throws {
+        let httpURL = try XCTUnwrap(URL(string: "https://example.com/archive.zip"))
+        XCTAssertThrowsError(try Archive(url: httpURL, accessMode: .read)) { error in
+            let cocoaError = error as? CocoaError
+            XCTAssertNotNil(cocoaError, "Expected CocoaError, got \(type(of: error))")
+            XCTAssertEqual(cocoaError?.code, .fileReadUnsupportedScheme)
+        }
+    }
+
+    func testArchiveInitAcceptsFileURL() throws {
+        let url = tempDir.appendingPathComponent("test.zip")
+        let archive = try Archive(url: url, accessMode: .create)
+        XCTAssertEqual(archive.url, url)
+    }
 }
