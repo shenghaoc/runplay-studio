@@ -39,11 +39,17 @@ var targets: [Target] = [
         cxxSettings: engineCppSettings
     ),
     // Native C++ test executable (no GoogleTest/Catch2). Exit status is the result.
+    // Prefer `./scripts/run-cpp-engine-tests.sh` in CI: SPM + modular headers can
+    // fail on Linux with "module 'RunPlayEngineCpp' is needed but has not been
+    // provided". -fno-modules lets this target still build via `swift build`
+    // when the module map is present but implicit modules are disabled.
     .executableTarget(
         name: "RunPlayEngineCppTests",
         dependencies: ["RunPlayEngineCpp"],
         path: "RunPlayEngineCpp/Tests",
-        cxxSettings: engineCppSettings
+        cxxSettings: engineCppSettings + [
+            .unsafeFlags(["-fno-modules", "-fno-implicit-modules"])
+        ]
     ),
     // Cross-platform core: Foundation (and conditional FoundationXML) only.
     // This target and its tests are the complete Swift-facing package graph on Linux.

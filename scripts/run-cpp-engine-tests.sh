@@ -2,13 +2,15 @@
 # run-cpp-engine-tests.sh — build and run native RunPlayEngineCppTests
 #
 # Usage:
-#   ./scripts/run-cpp-engine-tests.sh              # SPM build + run
+#   ./scripts/run-cpp-engine-tests.sh              # normal clang++ build + run
 #   ./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan via clang++
 #
-# Sanitizer mode compiles the same engine sources and native test with clang++
-# rather than forwarding -fsanitize through SPM's -Xlinker path. Apple's ld
-# rejects -fsanitize when passed as a bare linker flag; the clang++ driver must
-# own instrumentation and runtime linking.
+# The native C++ test binary is compiled with clang++ on all platforms.
+# SwiftPM's C++ executable target can fail on Linux with:
+#   module 'RunPlayEngineCpp' is needed but has not been provided
+# when a dependent target includes modular public headers under -fmodules with
+# implicit modules disabled. Compiling the same sources with clang++ matches
+# the intended C++23 warning policy and works on macOS and Linux CI.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,7 +25,7 @@ ENGINE_INCLUDE="RunPlayEngineCpp/include"
 ENGINE_SRC="RunPlayEngineCpp/Sources/RunPlayEngine.cpp"
 TEST_SRC="RunPlayEngineCpp/Tests/EngineInfoTests.cpp"
 
-# Prefer the active Swift toolchain's clang++ so macOS and Linux CI stay aligned.
+# Prefer the active toolchain's clang++ so macOS and Linux CI stay aligned.
 if command -v clang++ >/dev/null 2>&1; then
   CXX_COMPILER=(clang++)
 elif command -v c++ >/dev/null 2>&1; then
@@ -46,51 +48,47 @@ WARNING_FLAGS=(
   -Werror
 )
 
+OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/runplay-engine-tests.XXXXXX")"
+OUT_BIN="${OUT_DIR}/RunPlayEngineCppTests"
+cleanup() { rm -rf "$OUT_DIR"; }
+trap cleanup EXIT
+
+build_args=(
+  "$CXX_STD_FLAG"
+  "${WARNING_FLAGS[@]}"
+  -g
+  -I "$ENGINE_INCLUDE"
+  "$ENGINE_SRC"
+  "$TEST_SRC"
+  -o "$OUT_BIN"
+)
+
 if [[ "$SANITIZE" -eq 1 ]]; then
   echo "Building RunPlayEngineCppTests with AddressSanitizer + UndefinedBehaviorSanitizer..."
-  echo "Compiler: $(${CXX_COMPILER[@]} --version | head -1)"
-  OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/runplay-engine-asan.XXXXXX")"
-  OUT_BIN="${OUT_DIR}/RunPlayEngineCppTests"
-  cleanup() { rm -rf "$OUT_DIR"; }
-  trap cleanup EXIT
-
+  build_args+=(
+    -fsanitize=address
+    -fsanitize=undefined
+    -fno-omit-frame-pointer
+    -O1
+  )
   export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1}"
   export UBSAN_OPTIONS="${UBSAN_OPTIONS:-halt_on_error=1:print_stacktrace=1}"
-
-  # On Apple platforms, leak detection via ASan is not always supported the same
-  # way as on Linux; allow detect_leaks=0 if the runtime rejects it.
+  # ASan leak detection is not uniformly available on Apple platforms.
   if [[ "$(uname -s)" == "Darwin" ]]; then
     export ASAN_OPTIONS="${ASAN_OPTIONS/detect_leaks=1/detect_leaks=0}"
   fi
+else
+  echo "Building RunPlayEngineCppTests with clang++..."
+  build_args+=(-O0)
+fi
 
-  "${CXX_COMPILER[@]}" \
-    "$CXX_STD_FLAG" \
-    "${WARNING_FLAGS[@]}" \
-    -fsanitize=address \
-    -fsanitize=undefined \
-    -fno-omit-frame-pointer \
-    -g \
-    -O1 \
-    -I "$ENGINE_INCLUDE" \
-    "$ENGINE_SRC" \
-    "$TEST_SRC" \
-    -o "$OUT_BIN"
+echo "Compiler: $(${CXX_COMPILER[@]} --version | head -1)"
+"${CXX_COMPILER[@]}" "${build_args[@]}"
 
-  echo "Running $OUT_BIN (ASan + UBSan)"
-  "$OUT_BIN"
+echo "Running $OUT_BIN"
+"$OUT_BIN"
+if [[ "$SANITIZE" -eq 1 ]]; then
   echo "RunPlayEngineCppTests (sanitized) completed successfully"
-  exit 0
+else
+  echo "RunPlayEngineCppTests completed successfully"
 fi
-
-echo "Building RunPlayEngineCppTests via SwiftPM..."
-swift build --product RunPlayEngineCppTests
-
-BIN="$(swift build --show-bin-path --product RunPlayEngineCppTests)/RunPlayEngineCppTests"
-if [[ ! -x "$BIN" ]]; then
-  echo "error: expected executable at $BIN" >&2
-  exit 1
-fi
-
-echo "Running $BIN"
-"$BIN"
-echo "RunPlayEngineCppTests completed successfully"
