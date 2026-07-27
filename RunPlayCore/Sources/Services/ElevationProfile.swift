@@ -541,19 +541,28 @@ public struct ElevationProfile: Sendable {
         }
 
         let meaningful = (reliableIntervals.last ?? 0) > 0
+        // ⚡ Bolt: Inline array building avoids multiple O(N) array allocations from .map(\.property).
         var samples: [ElevationProfileSample] = []
+        var distances: [Double] = []
+        var segmentIndexes: [Int] = []
         samples.reserveCapacity(count)
+        distances.reserveCapacity(count)
+        segmentIndexes.reserveCapacity(count)
+
         for index in routePoints.indices {
             try checkCancellation(index: index, policy: policy, isCancelled: isCancelled)
+            let point = routePoints[index]
             samples.append(ElevationProfileSample(
-                routePointID: routePoints[index].id,
-                distanceFromStartMeters: routePoints[index].distanceFromStartMeters,
-                routeSegmentIndex: routePoints[index].routeSegmentIndex,
+                routePointID: point.id,
+                distanceFromStartMeters: point.distanceFromStartMeters,
+                routeSegmentIndex: point.routeSegmentIndex,
                 correctedAltitudeMeters: corrected[index],
                 sourceAltitudeWasRejected: rejected[index],
                 cumulativeAscentMeters: cumulativeAscent[index],
                 cumulativeDescentMeters: cumulativeDescent[index]
             ))
+            distances.append(point.distanceFromStartMeters)
+            segmentIndexes.append(point.routeSegmentIndex)
         }
 
         let profile = ElevationProfile(
@@ -561,8 +570,8 @@ public struct ElevationProfile: Sendable {
             hasMeaningfulElevation: meaningful,
             totalAscentMeters: meaningful ? cumulativeAscent.last : nil,
             totalDescentMeters: meaningful ? cumulativeDescent.last : nil,
-            distances: routePoints.map(\.distanceFromStartMeters),
-            segmentIndexes: routePoints.map(\.routeSegmentIndex),
+            distances: distances,
+            segmentIndexes: segmentIndexes,
             correctedAltitudes: corrected,
             cumulativeAscent: cumulativeAscent,
             cumulativeDescent: cumulativeDescent,
@@ -606,23 +615,35 @@ public struct ElevationProfile: Sendable {
 
     private static func empty(alignedWith points: [RoutePoint]) -> ElevationProfile {
         let count = points.count
+        // ⚡ Bolt: Inline array building avoids multiple O(N) array allocations from .map(\.property).
+        var samples: [ElevationProfileSample] = []
+        var distances: [Double] = []
+        var segmentIndexes: [Int] = []
+        samples.reserveCapacity(count)
+        distances.reserveCapacity(count)
+        segmentIndexes.reserveCapacity(count)
+
+        for point in points {
+            samples.append(ElevationProfileSample(
+                routePointID: point.id,
+                distanceFromStartMeters: point.distanceFromStartMeters,
+                routeSegmentIndex: point.routeSegmentIndex,
+                correctedAltitudeMeters: nil,
+                sourceAltitudeWasRejected: false,
+                cumulativeAscentMeters: 0,
+                cumulativeDescentMeters: 0
+            ))
+            distances.append(point.distanceFromStartMeters)
+            segmentIndexes.append(point.routeSegmentIndex)
+        }
+
         return ElevationProfile(
-            samples: points.map {
-                ElevationProfileSample(
-                    routePointID: $0.id,
-                    distanceFromStartMeters: $0.distanceFromStartMeters,
-                    routeSegmentIndex: $0.routeSegmentIndex,
-                    correctedAltitudeMeters: nil,
-                    sourceAltitudeWasRejected: false,
-                    cumulativeAscentMeters: 0,
-                    cumulativeDescentMeters: 0
-                )
-            },
+            samples: samples,
             hasMeaningfulElevation: false,
             totalAscentMeters: nil,
             totalDescentMeters: nil,
-            distances: points.map(\.distanceFromStartMeters),
-            segmentIndexes: points.map(\.routeSegmentIndex),
+            distances: distances,
+            segmentIndexes: segmentIndexes,
             correctedAltitudes: Array(repeating: nil, count: count),
             cumulativeAscent: Array(repeating: 0, count: count),
             cumulativeDescent: Array(repeating: 0, count: count),
