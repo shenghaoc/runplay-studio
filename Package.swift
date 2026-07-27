@@ -30,6 +30,11 @@ let cxxInteropSettings: [SwiftSetting] = [
 var targets: [Target] = [
     // Portable C++23 computational engine foundation (smoke API only).
     // No Apple frameworks, Foundation, Objective-C, or third-party deps.
+    // Native C++ smoke tests live under RunPlayEngineCpp/Tests/ and are built by
+    // ./scripts/run-cpp-engine-tests.sh (clang++), not as an SPM executable.
+    // An SPM C++ executable that includes modular public headers fails on Linux
+    // ("module 'RunPlayEngineCpp' is needed but has not been provided") and is
+    // still pulled into `swift test` when registered as a product/target.
     .target(
         name: "RunPlayEngineCpp",
         path: "RunPlayEngineCpp",
@@ -37,19 +42,6 @@ var targets: [Target] = [
         sources: ["Sources"],
         publicHeadersPath: "include",
         cxxSettings: engineCppSettings
-    ),
-    // Native C++ test executable (no GoogleTest/Catch2). Exit status is the result.
-    // Prefer `./scripts/run-cpp-engine-tests.sh` in CI: SPM + modular headers can
-    // fail on Linux with "module 'RunPlayEngineCpp' is needed but has not been
-    // provided". -fno-modules lets this target still build via `swift build`
-    // when the module map is present but implicit modules are disabled.
-    .executableTarget(
-        name: "RunPlayEngineCppTests",
-        dependencies: ["RunPlayEngineCpp"],
-        path: "RunPlayEngineCpp/Tests",
-        cxxSettings: engineCppSettings + [
-            .unsafeFlags(["-fno-modules", "-fno-implicit-modules"])
-        ]
     ),
     // Cross-platform core: Foundation (and conditional FoundationXML) only.
     // This target and its tests are the complete Swift-facing package graph on Linux.
@@ -77,8 +69,6 @@ var targets: [Target] = [
 
 var products: [Product] = [
     .library(name: "RunPlayCore", targets: ["RunPlayCore"]),
-    // Native C++ test host (not a library product).
-    .executable(name: "RunPlayEngineCppTests", targets: ["RunPlayEngineCppTests"]),
 ]
 
 // macOS-only layers are absent from the Linux package graph.
