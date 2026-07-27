@@ -148,6 +148,8 @@ policy in an agent configuration.
 `palette.md` for accessibility, `sentinel.md` for security. Add a concise
 dated entry only for a concrete reusable finding and its preventive action.
 Do not use these files for task status, speculative advice, or copied policy.
+Jules must use the lowercase `.jules/` directory only; never create or write
+to a case-variant such as `.Jules/`.
 
 ## Validation
 

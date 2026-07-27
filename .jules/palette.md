@@ -24,6 +24,7 @@
 ## 2026-07-21 - SwiftUI Label Provides Built-in Accessibility
 **Learning:** SwiftUI `Label("Title", systemImage:)` automatically exposes its title text as the accessibility label for VoiceOver, even when used with icon-only label styles. Adding an explicit `.accessibilityLabel()` with the same text is redundant. Only pure `Image(systemName:)` views used directly as button content (without a `Label` wrapper) require an explicit `.accessibilityLabel()`.
 **Action:** Do not add `.accessibilityLabel()` to `Label`-based buttons when the label title already conveys the intended meaning. Reserve explicit accessibility labels for buttons that use bare `Image(systemName:)` or other non-text content.
+
 ## 2026-07-26 - Empty State Accessibility
-**Learning:** Buttons in overlay and empty states are standalone CTAs encountered without surrounding visual context. While `Button("Label")` provides the label text as the default accessibility label, tooltips are not automatically derived and read-out labels can benefit from additional context about what the action will do.
-**Action:** Add `.help()` and `.accessibilityLabel()` to buttons in overlay and empty states so that tooltips and VoiceOver convey the same actionable context that sighted users infer from the surrounding explanatory text.
+**Learning:** Buttons in overlays and empty states—including text actions such as "Import", "All Time", and "Reset Filters"—are standalone CTAs that may be encountered without their surrounding visual context. Although `Button("Label")` supplies a default accessibility label, tooltips are not automatically derived and the visible label alone may not explain what the action will do.
+**Action:** Add contextual `.help()` and `.accessibilityLabel()` text to buttons in overlays and empty states so tooltips and VoiceOver communicate the actionable context that sighted users infer from the surrounding explanation.
