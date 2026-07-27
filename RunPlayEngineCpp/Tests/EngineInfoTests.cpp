@@ -1,7 +1,8 @@
 // Native C++ tests for the RunPlayEngineCpp smoke API.
 //
 // No external test framework: assert and process exit status only.
-// Built as the RunPlayEngineCppTests executable target.
+// Built as the RunPlayEngineCppTests native executable by the SwiftPM harness
+// and by scripts/run-cpp-engine-tests.sh directly.
 
 #include "RunPlayEngineCpp/RunPlayEngine.hpp"
 

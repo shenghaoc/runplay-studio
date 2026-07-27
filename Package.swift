@@ -31,17 +31,24 @@ var targets: [Target] = [
     // Portable C++23 computational engine foundation (smoke API only).
     // No Apple frameworks, Foundation, Objective-C, or third-party deps.
     // Native C++ smoke tests live under RunPlayEngineCpp/Tests/ and are built by
-    // ./scripts/run-cpp-engine-tests.sh (clang++), not as an SPM executable.
-    // An SPM C++ executable that includes modular public headers fails on Linux
-    // ("module 'RunPlayEngineCpp' is needed but has not been provided") and is
-    // still pulled into `swift test` when registered as a product/target.
+    // ./scripts/run-cpp-engine-tests.sh (clang++). The SwiftPM test target below
+    // invokes that runner because a dependent C++ executable target fails under
+    // SwiftPM's explicit-module build on Linux.
     .target(
         name: "RunPlayEngineCpp",
         path: "RunPlayEngineCpp",
-        exclude: ["Tests"],
+        exclude: ["SwiftPMTests", "Tests"],
         sources: ["Sources"],
         publicHeadersPath: "include",
         cxxSettings: engineCppSettings
+    ),
+    // Cross-platform SwiftPM harness for the independent native C++ executable.
+    // The assertions remain in EngineInfoTests.cpp; this target makes the real
+    // native build/run available through `swift test --filter
+    // RunPlayEngineCppTests` on both Linux and macOS.
+    .testTarget(
+        name: "RunPlayEngineCppTests",
+        path: "RunPlayEngineCpp/SwiftPMTests"
     ),
     // Cross-platform core: Foundation (and conditional FoundationXML) only.
     // This target and its tests are the complete Swift-facing package graph on Linux.

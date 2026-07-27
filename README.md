@@ -126,7 +126,10 @@ The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI fr
 # Build portable C++ engine foundation
 swift build --target RunPlayEngineCpp
 
-# Run native C++ engine tests (executable, not XCTest)
+# Run native C++ engine tests through the portable SwiftPM harness
+swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+
+# Run the same native C++ executable directly
 ./scripts/run-cpp-engine-tests.sh
 
 # ASan + UBSan on the native C++ test binary

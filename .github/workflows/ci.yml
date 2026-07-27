@@ -29,7 +29,7 @@ jobs:
       - name: Build RunPlayEngineCpp
         run: swift build --target RunPlayEngineCpp
       - name: Run native C++ engine tests
-        run: ./scripts/run-cpp-engine-tests.sh
+        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify RunPlayCore
         run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
 
@@ -63,6 +63,6 @@ jobs:
       - name: Build RunPlayEngineCpp
         run: swift build --target RunPlayEngineCpp
       - name: Run native C++ engine tests
-        run: ./scripts/run-cpp-engine-tests.sh
+        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify full package
         run: swift test -Xswiftc -warnings-as-errors

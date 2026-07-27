@@ -96,7 +96,9 @@ filesystem persistence, schema migration, and Swift↔C++ value translation.
 | Forbidden at Swift boundary | uncaught exceptions, temporary borrowed views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public APIs, callbacks into Swift, per-element cross-language calls |
 
 Boundary checks: `./scripts/validate-cpp-boundaries.sh`.
-Native C++ tests: `./scripts/run-cpp-engine-tests.sh` (add `--sanitize` for ASan+UBSan).
+Native C++ tests: `swift test --filter RunPlayEngineCppTests
+-Xswiftc -warnings-as-errors` through the portable SwiftPM harness, or
+`./scripts/run-cpp-engine-tests.sh` directly (add `--sanitize` for ASan+UBSan).
 
 #### Swift/C++ interoperability note
 
