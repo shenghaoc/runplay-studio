@@ -186,11 +186,14 @@ Use the same warning-clean SwiftPM commands enforced by CI:
 
 ```bash
 ./scripts/validate-cpp-boundaries.sh
-swift build --target RunPlayEngineCpp
+swift build --target RunPlayEngineCpp \
+  -Xcxx -Wall -Xcxx -Wextra -Xcxx -Wpedantic \
+  -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
 swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
 ./scripts/run-cpp-engine-tests.sh
 ./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan on native C++ tests
 swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
 swift test -Xswiftc -warnings-as-errors                               # macOS full stack
 git diff --check

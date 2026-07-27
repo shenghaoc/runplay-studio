@@ -1,24 +1,30 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 
 namespace runplay {
+
+/// Language level used to compile the portable engine.
+enum class LanguageStandard : std::uint8_t {
+    cpp23,
+};
 
 /// Portable engine build / ABI identity for the C++ computational core.
 ///
 /// This smoke type exists only to prove public-header discovery, C++23
-/// compilation, standard-library interoperability, and a noexcept Swift
-/// boundary. Production algorithms are not present yet.
+/// compilation, value interoperability, and a noexcept Swift boundary.
+/// It is allocation-free so constructing it cannot terminate because of an
+/// allocation failure inside the noexcept boundary.
 struct EngineInfo final {
     std::uint32_t abi_version;
-    std::string language_standard;
+    LanguageStandard language_standard;
+    std::uint64_t cpp_language_value;
 };
 
 /// Returns deterministic engine identity for the current build.
 ///
-/// Always reports ABI version 1 and the C++23 language-standard identifier.
-/// Never throws.
+/// Always reports ABI version 1, the C++23 identifier, and the compiler's
+/// `__cplusplus` value. Never throws or allocates.
 [[nodiscard]]
 EngineInfo engine_info() noexcept;
 

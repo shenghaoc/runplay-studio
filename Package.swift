@@ -1,20 +1,7 @@
 // swift-tools-version:6.3
 import PackageDescription
 
-/// Strict but maintainable warning set for the portable C++ engine.
-/// Typed SPM settings do not yet express these group flags, so they are
-/// applied as target-scoped cxxSettings only (never to Swift targets).
-let engineCppWarningFlags: [String] = [
-    "-Wall",
-    "-Wextra",
-    "-Wpedantic",
-    "-Wconversion",
-    "-Wsign-conversion",
-    "-Wshadow",
-]
-
 let engineCppSettings: [CXXSetting] = [
-    .unsafeFlags(engineCppWarningFlags),
     .treatAllWarnings(as: .error),
 ]
 

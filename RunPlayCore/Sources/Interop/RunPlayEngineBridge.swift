@@ -1,5 +1,6 @@
-// Keep the C++ module out of RunPlayCore's public interface so Platform,
-// Studio, and tests do not need C++ interoperability enabled.
+// Keep C++ declarations out of RunPlayCore's public Swift API.
+// Current SwiftPM constraints still require transitive Swift targets to
+// compile with C++ interoperability enabled.
 internal import RunPlayEngineCpp
 
 /// Swift projection of the portable C++ engine identity smoke API.
@@ -18,9 +19,15 @@ enum RunPlayEngineBridge {
     /// Returns deterministic engine identity from the C++ smoke API.
     static func engineInfo() -> RunPlayEngineInfo {
         let info = runplay.engine_info()
+        let languageStandard = switch info.language_standard {
+        case .cpp23:
+            "C++23"
+        default:
+            "Unknown"
+        }
         return RunPlayEngineInfo(
             abiVersion: info.abi_version,
-            languageStandard: String(info.language_standard)
+            languageStandard: languageStandard
         )
     }
 }

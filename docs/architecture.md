@@ -99,6 +99,8 @@ Boundary checks: `./scripts/validate-cpp-boundaries.sh`.
 Native C++ tests: `swift test --filter RunPlayEngineCppTests
 -Xswiftc -warnings-as-errors` through the portable SwiftPM harness, or
 `./scripts/run-cpp-engine-tests.sh` directly (add `--sanitize` for ASan+UBSan).
+External package consumption:
+`swift build --package-path Tests/PackageConsumerSmoke`.
 
 #### Swift/C++ interoperability note
 

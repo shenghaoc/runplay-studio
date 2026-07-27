@@ -124,7 +124,9 @@ The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI fr
 
 ```bash
 # Build portable C++ engine foundation
-swift build --target RunPlayEngineCpp
+swift build --target RunPlayEngineCpp \
+  -Xcxx -Wall -Xcxx -Wextra -Xcxx -Wpedantic \
+  -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
 
 # Run native C++ engine tests through the portable SwiftPM harness
 swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
@@ -137,6 +139,9 @@ swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
 
 # Architecture-boundary validation for the C++ engine
 ./scripts/validate-cpp-boundaries.sh
+
+# Verify RunPlayCore can be consumed by an external Swift package
+swift build --package-path Tests/PackageConsumerSmoke
 
 # Build core library (includes Swift/C++ interop adapter)
 swift build --target RunPlayCore

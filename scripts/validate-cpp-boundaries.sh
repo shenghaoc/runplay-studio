@@ -155,12 +155,13 @@ if [[ ${#SWIFT_IMPORTS[@]} -eq 0 ]]; then
   fail "no Swift file imports RunPlayEngineCpp (expected Interop adapter)"
 fi
 
-# Platform / Studio must not depend on the engine target in Package.swift
-# beyond the documented Core → Engine edge.
-if grep -n 'RunPlayEngineCpp' Package.swift | grep -E 'name:[[:space:]]*"(RunPlayPlatform|RunPlayStudio)"' >/dev/null 2>&1; then
-  fail "Package.swift appears to attach RunPlayEngineCpp to Platform/Studio"
+# Inspect SwiftPM's parsed dependency graph rather than line-oriented manifest
+# text, where target names and dependency entries naturally occur on different
+# lines.
+if swift package dump-package | python3 scripts/validate-cpp-package-graph.py; then
+  pass "SwiftPM target dependency graph preserves Core → EngineCpp"
 else
-  pass "Package.swift does not attach RunPlayEngineCpp to Platform/Studio"
+  fail "SwiftPM target dependency graph violates the EngineCpp boundary"
 fi
 
 # Grep Platform and Studio sources for any engine import (belt and suspenders).

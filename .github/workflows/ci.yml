@@ -27,11 +27,20 @@ jobs:
       - name: Validate C++ architecture boundaries
         run: ./scripts/validate-cpp-boundaries.sh
       - name: Build RunPlayEngineCpp
-        run: swift build --target RunPlayEngineCpp
+        run: >-
+          swift build --target RunPlayEngineCpp
+          -Xcxx -Wall
+          -Xcxx -Wextra
+          -Xcxx -Wpedantic
+          -Xcxx -Wconversion
+          -Xcxx -Wsign-conversion
+          -Xcxx -Wshadow
       - name: Run native C++ engine tests
         run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify RunPlayCore
         run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+      - name: Verify external RunPlayCore consumer
+        run: swift build --package-path Tests/PackageConsumerSmoke
 
   # AddressSanitizer + UndefinedBehaviorSanitizer on the native C++ test binary
   core-linux-sanitizers:
@@ -61,7 +70,14 @@ jobs:
       - name: Validate C++ architecture boundaries
         run: ./scripts/validate-cpp-boundaries.sh
       - name: Build RunPlayEngineCpp
-        run: swift build --target RunPlayEngineCpp
+        run: >-
+          swift build --target RunPlayEngineCpp
+          -Xcxx -Wall
+          -Xcxx -Wextra
+          -Xcxx -Wpedantic
+          -Xcxx -Wconversion
+          -Xcxx -Wsign-conversion
+          -Xcxx -Wshadow
       - name: Run native C++ engine tests
         run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify full package
