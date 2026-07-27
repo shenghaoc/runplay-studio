@@ -75,12 +75,28 @@ Before editing:
 
 ## Architecture Boundaries
 
-Dependency direction is `RunPlayStudio → RunPlayPlatform → RunPlayCore`.
-Reverse dependencies are forbidden.
+Dependency direction is:
 
-- **RunPlayCore** is cross-platform Foundation logic with conditional
-  `FoundationXML`; it must not import UI, map, graphics, Core Location, or
-  Combine frameworks. Use `GeoDistance`, not `CLLocation`, for core distance.
+```text
+RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
+```
+
+Reverse dependencies are forbidden. `RunPlayPlatform` and `RunPlayStudio` must
+not import `RunPlayEngineCpp` directly.
+
+- **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
+  the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
+  third-party deps). The current phase is a foundation smoke API only — no
+  production RunPlay algorithm has migrated yet.
+- **RunPlayCore** is the stable Swift-facing core facade: domain models,
+  `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
+  adaptation, filesystem persistence, schema migration, and translation
+  between Swift models and C++ engine values. It depends on
+  `RunPlayEngineCpp` via an internal Interop adapter. C++ types must not
+  appear in public `RunPlayCore` APIs. Core remains cross-platform Foundation
+  logic with conditional `FoundationXML`; it must not import UI, map,
+  graphics, Core Location, or Combine. Use `GeoDistance`, not `CLLocation`,
+  for core distance.
 - **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
   MapKit, and non-UI Combine. It must not depend on `RunPlayStudio`.
 - **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
@@ -88,6 +104,21 @@ Reverse dependencies are forbidden.
 
 See [docs/architecture.md](docs/architecture.md) and
 [Package.swift](Package.swift) for the live architecture and package graph.
+
+### C++ engine policy (defaults)
+
+Allowed and encouraged in `RunPlayEngineCpp`: value semantics, RAII,
+`std::vector`, `std::span`, `std::array`, `std::optional`, `std::expected`
+internally, `std::unique_ptr` where ownership cannot be a value, `enum class`,
+`std::chrono`, ranges and algorithms, concepts where they simplify constraints.
+
+Requires explicit justification: `std::shared_ptr`, raw non-owning pointers,
+`reinterpret_cast`, mutable global state, exceptions in engine logic, manual
+memory management.
+
+Forbidden across the Swift boundary: uncaught exceptions, temporary borrowed
+views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public
+APIs, callbacks into Swift, per-element cross-language calls.
 
 ## Project Invariants
 
@@ -154,6 +185,10 @@ Do not use these files for task status, speculative advice, or copied policy.
 Use the same warning-clean SwiftPM commands enforced by CI:
 
 ```bash
+./scripts/validate-cpp-boundaries.sh
+swift build --target RunPlayEngineCpp
+./scripts/run-cpp-engine-tests.sh
+./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan on native C++ tests
 swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
 swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
 swift test -Xswiftc -warnings-as-errors                               # macOS full stack

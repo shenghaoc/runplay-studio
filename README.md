@@ -120,13 +120,25 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 
 ### Core Testability
 
-The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies:
+The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23 foundation target (smoke API only; no production algorithms migrated yet):
 
 ```bash
-# Build core library only
+# Build portable C++ engine foundation
+swift build --target RunPlayEngineCpp
+
+# Run native C++ engine tests (executable, not XCTest)
+./scripts/run-cpp-engine-tests.sh
+
+# ASan + UBSan on the native C++ test binary
+./scripts/run-cpp-engine-tests.sh --sanitize
+
+# Architecture-boundary validation for the C++ engine
+./scripts/validate-cpp-boundaries.sh
+
+# Build core library (includes Swift/C++ interop adapter)
 swift build --target RunPlayCore
 
-# Run core tests only (no macOS UI frameworks required)
+# Run core tests only (includes Swift integration tests for the engine adapter)
 swift test --filter RunPlayCoreTests
 ```
 
@@ -193,8 +205,9 @@ Both approaches use the same source code. There is no separate Xcode project fil
 
 Every push to `main` and every pull request runs:
 
-- **macOS** — `swift build` + `swift test` (full app)
-- **Linux** — `swift build --target RunPlayCore` + `swift test --filter RunPlayCoreTests` (platform-neutral core only)
+- **macOS** — C++ engine build + native C++ tests + boundary validation + full `swift test`
+- **Linux** — C++ engine build + native C++ tests + boundary validation + `swift test --filter RunPlayCoreTests`
+- **Linux sanitizers** — native C++ tests under AddressSanitizer and UndefinedBehaviorSanitizer
 
 Test counts are reported in the GitHub Actions step summary.
 
