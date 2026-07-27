@@ -171,6 +171,9 @@ public final class Archive: Sequence {
     ///   - The file URL _must_ point to a non-existing file for `AccessMode.create`.
     ///   - The file URL _must_ point to an existing file for `AccessMode.update`.
     public init(url: URL, accessMode mode: AccessMode, pathEncoding: String.Encoding? = nil) throws {
+        guard url.isFileURL else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
         self.url = url
         self.accessMode = mode
         self.pathEncoding = pathEncoding
