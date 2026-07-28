@@ -37,7 +37,7 @@ RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
 
 ```
 RunPlayEngineCpp/              # Portable C++23 computational engine
-├── include/RunPlayEngineCpp/  # Engine identity + route input/inspection values
+├── include/RunPlayEngineCpp/  # Engine identity, route values, geodesy primitives
 ├── Sources/                   # C++ implementation
 └── Tests/                     # Native C++ test executable sources
 
@@ -67,11 +67,11 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
 
-### C++ route-value boundary (current phase)
+### C++ route-value boundary and geodesy primitives (current phase)
 
 `RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
-engine identity (`runplay::engine_info`) plus a route value and inspection
-contract:
+engine identity (`runplay::engine_info`), a route value and inspection
+contract, and parity-tested geodesy primitives:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -103,10 +103,46 @@ Boundary ownership is explicit:
 - the Core adapter converts that value to pure Swift before imported C++ values
   are destroyed.
 
-**No production RunPlay algorithm has migrated.** Geodesic primitives, route
-quality, elevation, timelines, splits, DTW, heatmap aggregation, and file
+#### C++23 geodesy primitives
+
+`Geodesy.hpp` adds allocation-free primitives equivalent to the Swift
+`GeoDistance` implementation:
+
+```cpp
+inline constexpr double earth_radius_meters = 6'371'000.0;
+struct LocalMeters final { double x_meters; double z_meters; };
+
+[[nodiscard]] bool is_valid_coordinate(double, double) noexcept;
+[[nodiscard]] double haversine_distance_meters(double, double, double, double) noexcept;
+[[nodiscard]] LocalMeters project_lat_lon_to_local_meters(double, double, double, double) noexcept;
+```
+
+These are a literal migration, not an accuracy redesign. The Earth radius,
+Haversine formula, projection coefficients, and operation order are unchanged,
+including `degrees * pi / 180` evaluated left to right. There is no longitude
+wrapping, ellipsoid, clamping, or third-party geodesic library. Existing
+limitations are preserved: the projection does not validate, clamp, or wrap its
+inputs and propagates non-finite values, and some exactly antipodal pairs round
+the haversine term above 1 so the distance is NaN in both implementations.
+
+Clang defaults to `-ffp-contract=on` while Swift never contracts, so the C++
+implementation splits accumulations such that no statement holds both a
+multiply and an add. The two implementations therefore agree bit for bit on one
+platform; parity-test tolerance exists only for macOS/Linux libm differences.
+
+**Swift `GeoDistance` remains the production implementation.** The internal
+`RunPlayGeodesyBridge` adapter is parity-only and is called by tests alone.
+Cutting production over would not be a simplification: every `GeoDistance`
+caller runs inside a per-point loop, so scalar delegation would create one
+Swift-to-C++ call per point — precisely the per-element crossing forbidden
+below. The next route-pipeline PR will instead consume these primitives
+*inside* C++ after one bulk route call crosses the boundary.
+`scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
+
+**No production RunPlay algorithm has migrated.** Route quality, elevation,
+timelines, splits, DTW, heatmap aggregation, projection services, and file
 parsers remain in Swift `RunPlayCore` until later migration PRs. The app does
-not call the C++ adapter in production paths; integration is proven by tests
+not call the C++ adapters in production paths; integration is proven by tests
 only. C++ types never appear in public `RunPlayCore` APIs.
 
 `RunPlayCore` remains the only Swift-facing core API and continues to own
@@ -124,7 +160,7 @@ infrastructure and makes no performance-improvement claim.
 | --- | --- |
 | Encouraged | value semantics, RAII, `std::vector` / `std::span` / `std::array`, `std::optional`, `std::expected` internally, `std::unique_ptr` when needed, `enum class`, `std::chrono`, ranges/algorithms, concepts |
 | Needs justification | `std::shared_ptr`, raw non-owning pointers, `reinterpret_cast`, mutable globals, exceptions in engine logic, manual memory management |
-| Forbidden at Swift boundary | uncaught exceptions, temporary borrowed views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public APIs, callbacks into Swift, per-element cross-language calls |
+| Forbidden at Swift boundary | uncaught exceptions, temporary borrowed views, ownership ambiguity, `std::pair`, `std::tuple`, `std::variant`, template-heavy public APIs, callbacks into Swift, per-element cross-language calls |
 
 Boundary checks: `./scripts/validate-cpp-boundaries.sh`.
 Native C++ tests: `swift test --filter RunPlayEngineCppTests

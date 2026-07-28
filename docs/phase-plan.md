@@ -116,6 +116,18 @@
 - [x] Multi-session FIT batch import
 - [ ] iPhone companion exporter (future)
 
+### Phase: Portable C++23 Engine Migration
+- [x] `RunPlayEngineCpp` C++23 foundation, native tests, ASan/UBSan, boundary validation
+- [x] `RouteInputSample` bulk route-value boundary with Swift/C++ field parity
+- [x] C++23 geodesy primitives (coordinate validation, Haversine distance, local-metre projection) with Swift parity coverage
+- [ ] Migrate a complete route-processing slice into C++ behind one bulk call, consuming the geodesy primitives internally
+- [ ] Migrate route quality, projection, comparison, and heatmap aggregation once bulk boundaries exist
+
+Swift `GeoDistance` remains the production implementation and the parity
+oracle. No production route loop performs per-point Swift/C++ calls, and no
+production algorithm, persisted schema, analysis version, or UI behaviour has
+changed. The engine work makes no performance claim.
+
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs
 - [x] Route coloring by pace or HR on map polyline (native MapKit; relative workout scale; corrected elevation)

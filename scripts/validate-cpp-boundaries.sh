@@ -303,6 +303,52 @@ else
   done
 fi
 
+# --- Parity-only geodesy adapter stays out of production paths ---------------
+
+# The C++ geodesy primitives are validated but not cut over. Every production
+# GeoDistance caller runs inside a per-point loop, so routing production through
+# the scalar adapter would create the per-element cross-language calls this
+# repository forbids. Enforce that mechanically instead of by comment.
+GEODESY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayGeodesyBridge.swift"
+GEO_DISTANCE_SOURCE="RunPlayCore/Sources/Services/GeoDistance.swift"
+
+if [[ ! -f "$GEODESY_BRIDGE_SOURCE" ]]; then
+  fail "missing parity-only geodesy adapter $GEODESY_BRIDGE_SOURCE"
+fi
+if [[ ! -f "$GEO_DISTANCE_SOURCE" ]]; then
+  fail "missing production Swift geodesy reference $GEO_DISTANCE_SOURCE"
+fi
+
+geodesy_bridge_symbol_re='(^|[^[:alnum:]_])(RunPlayGeodesyBridge|RunPlayLocalMeters)([^[:alnum:]_]|$)'
+geodesy_bridge_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$GEODESY_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && geodesy_bridge_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$geodesy_bridge_symbol_re" || true)
+done
+
+if [[ ${#geodesy_bridge_leaks[@]} -eq 0 ]]; then
+  pass "parity-only geodesy adapter is used only by its own file and tests"
+else
+  for leak in "${geodesy_bridge_leaks[@]}"; do
+    fail "production Swift code uses the parity-only geodesy adapter: $leak"
+  done
+fi
+
+if [[ -f "$GEO_DISTANCE_SOURCE" ]]; then
+  if strip_comments "$GEO_DISTANCE_SOURCE" \
+    | grep -Eq "$geodesy_bridge_symbol_re"; then
+    fail "$GEO_DISTANCE_SOURCE must remain the Swift parity oracle, not a C++ caller"
+  else
+    pass "GeoDistance.swift remains an independent Swift implementation"
+  fi
+fi
+
 # Inspect SwiftPM's parsed dependency graph rather than line-oriented manifest
 # text, where target names and dependency entries naturally occur on different
 # lines.

@@ -50,6 +50,13 @@ VECTOR_TYPE_RE = re.compile(
     r"(^|[^A-Za-z0-9_:])"
     r"(?:(?:[A-Za-z_][A-Za-z0-9_]*)::)*vector\s*<"
 )
+# Positional and sum types must not cross the Swift boundary. A value-returning
+# engine function has to name its fields, the way `LocalMeters` does, so Swift
+# reads documented members instead of tuple element positions.
+POSITIONAL_TYPE_RE = re.compile(
+    r"(^|[^A-Za-z0-9_:])"
+    r"(?:(?:[A-Za-z_][A-Za-z0-9_]*)::)*(?:pair|tuple|variant)\s*<"
+)
 
 
 def declaration_kind(line: str) -> str | None:
@@ -206,6 +213,12 @@ def validate_ast(ast_text: str) -> list[str]:
         if any(VECTOR_TYPE_RE.search(value) for value in types):
             errors.append(f"public declaration exposes std::vector: {line}")
 
+        if any(POSITIONAL_TYPE_RE.search(value) for value in types):
+            errors.append(
+                f"public declaration exposes std::pair, std::tuple, or "
+                f"std::variant: {line}"
+            )
+
         if (
             kind in CALLABLE_DECLARATION_KINDS
             and not is_implicit_declaration(line)
@@ -266,6 +279,19 @@ def run_self_test() -> int:
                 f"'{ALLOWED_FUNCTION_TYPE}'"
             ),
             f"ParmVarDecl samples '{ALLOWED_PARAMETER_TYPE}'",
+            "VarDecl earth_radius_meters 'const double'",
+            "CXXRecordDecl struct LocalMeters definition",
+            "FieldDecl x_meters 'double'",
+            "FieldDecl z_meters 'double'",
+            "FunctionDecl is_valid_coordinate 'bool (double, double) noexcept'",
+            (
+                "FunctionDecl haversine_distance_meters "
+                "'double (double, double, double, double) noexcept'"
+            ),
+            (
+                "FunctionDecl project_lat_lon_to_local_meters "
+                "'LocalMeters (double, double, double, double) noexcept'"
+            ),
         ]
     )
     adversarial_cases = {
@@ -311,6 +337,35 @@ def run_self_test() -> int:
                 "TemplateArgument type 'RouteInputSample *'",
             ]
         ),
+        "throwing geodesy function": (
+            "FunctionDecl haversine_distance_meters "
+            "'double (double, double, double, double)'"
+        ),
+        "geodesy pointer out-parameter": "\n".join(
+            [
+                (
+                    "FunctionDecl project_lat_lon_to_local_meters "
+                    "'void (double, double, LocalMeters *) noexcept'"
+                ),
+                "ParmVarDecl out_value 'LocalMeters *'",
+            ]
+        ),
+        "geodesy std::pair return": (
+            "FunctionDecl project_lat_lon_to_local_meters "
+            "'std::pair<double, double> (double, double) noexcept'"
+        ),
+        "geodesy std::tuple return": (
+            "FunctionDecl project_lat_lon_to_local_meters "
+            "'std::tuple<double, double> (double, double) noexcept'"
+        ),
+        "geodesy std::variant return": (
+            "FunctionDecl haversine_distance_meters "
+            "'std::variant<double, int> (double, double) noexcept'"
+        ),
+        "geodesy std::vector return": (
+            "FunctionDecl project_route "
+            "'std::vector<LocalMeters> (double, double) noexcept'"
+        ),
     }
 
     if validate_ast(valid_ast):
@@ -335,6 +390,11 @@ def run_self_test() -> int:
         "public template declaration": (
             "namespace runplay { "
             "template<typename T> using Hidden = std::add_pointer_t<T>; "
+            "}\n"
+        ),
+        "public geodesy function template": (
+            "namespace runplay { "
+            "template<typename T> T haversine_distance_meters(T, T, T, T) noexcept; "
             "}\n"
         ),
     }
