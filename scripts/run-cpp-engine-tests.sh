@@ -16,14 +16,38 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SANITIZE=0
-if [[ "${1:-}" == "--sanitize" ]]; then
-  SANITIZE=1
-fi
+case "$#" in
+  0)
+    SANITIZE=0
+    ;;
+  1)
+    if [[ "$1" != "--sanitize" ]]; then
+      echo "error: unknown argument '$1' (expected --sanitize)" >&2
+      exit 2
+    fi
+    SANITIZE=1
+    ;;
+  *)
+    echo "error: expected no arguments or exactly --sanitize" >&2
+    exit 2
+    ;;
+esac
 
 ENGINE_INCLUDE="RunPlayEngineCpp/include"
-ENGINE_SRC="RunPlayEngineCpp/Sources/RunPlayEngine.cpp"
-TEST_SRC="RunPlayEngineCpp/Tests/EngineInfoTests.cpp"
+ENGINE_SOURCES=()
+while IFS= read -r source; do
+  ENGINE_SOURCES+=("$source")
+done < <(find RunPlayEngineCpp/Sources -type f -name '*.cpp' -print | LC_ALL=C sort)
+
+TEST_SOURCES=()
+while IFS= read -r source; do
+  TEST_SOURCES+=("$source")
+done < <(find RunPlayEngineCpp/Tests -type f -name '*.cpp' -print | LC_ALL=C sort)
+
+if [[ ${#ENGINE_SOURCES[@]} -eq 0 || ${#TEST_SOURCES[@]} -eq 0 ]]; then
+  echo "error: engine and native test source lists must both be non-empty" >&2
+  exit 1
+fi
 
 # Prefer the active toolchain's clang++ so macOS and Linux CI stay aligned.
 if command -v clang++ >/dev/null 2>&1; then
@@ -58,8 +82,9 @@ build_args=(
   "${WARNING_FLAGS[@]}"
   -g
   -I "$ENGINE_INCLUDE"
-  "$ENGINE_SRC"
-  "$TEST_SRC"
+  -I "RunPlayEngineCpp/Tests"
+  "${ENGINE_SOURCES[@]}"
+  "${TEST_SOURCES[@]}"
   -o "$OUT_BIN"
 )
 

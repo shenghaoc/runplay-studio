@@ -120,7 +120,29 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 
 ### Core Testability
 
-The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23 foundation target (smoke API only; no production algorithms migrated yet):
+The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI
+framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
+foundation target. The engine currently provides identity plus route input
+values and a parity-only bulk inspection boundary; no production algorithm has
+migrated.
+
+```text
+Swift [RoutePoint]
+    → Swift-owned contiguous RouteInputSample buffer
+    → one synchronous C++ inspection call
+    → compact pure-Swift result
+```
+
+C++ receives each point's original array offset as `source_index`; the Swift
+`UUID` remains authoritative. Timestamps are copied exactly from
+`Date.timeIntervalSinceReferenceDate` without rounding, optional metrics remain
+`std::optional<double>`, and C++ retains no pointer after the call. This
+inspection exists to prove field and lifetime fidelity. It does not change app
+behaviour or claim a performance improvement. Future route operations must use
+one bulk engine call rather than per-point calls, and Platform/Studio must not
+traverse C++ containers directly.
+
+The package checks this boundary with:
 
 ```bash
 # Build portable C++ engine foundation

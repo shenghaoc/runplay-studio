@@ -134,6 +134,44 @@ discarded. A poor finite accuracy value can support an isolated-coordinate
 decision only when the neighbouring trajectory has better accuracy; it is
 never sufficient evidence by itself.
 
+### Non-persisted C++ route projection
+
+The internal Core interoperability layer can project a complete Swift route
+into this C++23 value without changing `RoutePoint` or its `Codable` shape:
+
+```cpp
+struct RouteInputSample {
+    std::uint64_t source_index;
+    double timestamp_seconds_since_reference_date;
+    double latitude;
+    double longitude;
+    std::optional<double> altitude_meters;
+    double distance_from_start_meters;
+    double elapsed_seconds;
+    std::optional<double> speed_meters_per_second;
+    std::optional<double> pace_seconds_per_kilometer;
+    std::optional<double> heart_rate_bpm;
+    std::optional<double> cadence;
+    std::optional<double> horizontal_accuracy;
+    std::int64_t route_segment_index;
+};
+```
+
+`source_index` is the original Swift array offset, not the point UUID. Swift
+retains authoritative identity and can map a future native result back through
+that offset. The timestamp is exactly
+`RoutePoint.timestamp.timeIntervalSinceReferenceDate`; this boundary performs
+no rounding or epoch conversion. Each optional uses `std::optional<double>` so
+absence remains distinct from every numeric bit pattern, including zero and
+non-finite values. The segment index converts exactly to `Int64` and never
+truncates.
+
+Swift owns one contiguous temporary buffer. C++ borrows it for one synchronous
+inspection call, retains nothing, and returns a compact value that Core converts
+back to pure Swift. The projection is test/parity infrastructure only: it is
+not persisted, does not change any schema or version, and is not called by
+production route analysis.
+
 ### Route quality diagnostics and distance provenance
 
 ```swift

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "RunPlayEngineCpp/RouteInterop.hpp"
+
 namespace runplay {
 
 /// Language level used to compile the portable engine.

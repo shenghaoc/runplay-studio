@@ -43,6 +43,20 @@ else
   pass "public smoke header present"
 fi
 
+ROUTE_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/RouteInterop.hpp"
+if [[ ! -f "$ROUTE_HEADER" ]]; then
+  fail "missing public route header RouteInterop.hpp"
+else
+  pass "public route interop header present"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
+  pass "umbrella header includes RouteInterop.hpp"
+else
+  fail "RunPlayEngine.hpp must include RouteInterop.hpp"
+fi
+
 # --- Public C++ headers: prohibited constructs --------------------------------
 
 PUBLIC_HEADERS=()
@@ -64,6 +78,9 @@ for header in "${PUBLIC_HEADERS[@]}"; do
   if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::variant([^[:alnum:]_]|$)'; then
     fail "$header exposes std::variant in public API"
   fi
+  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::vector[[:space:]]*<'; then
+    fail "$header exposes std::vector in public API"
+  fi
 
   # throw expressions / throw specifications (not the word in a string literal heuristic).
   if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])throw[[:space:]]'; then
@@ -84,6 +101,104 @@ done
 
 if [[ $failures -eq 0 ]]; then
   pass "public C++ headers free of prohibited boundary types"
+fi
+
+# --- Route bulk-call shape and public AST contract ----------------------------
+
+if [[ -f "$ROUTE_HEADER" ]]; then
+  route_body="$(strip_comments "$ROUTE_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  route_signature_re='RouteBatchInspection[[:space:]]+inspect_route_batch[[:space:]]*\([[:space:]]*const[[:space:]]+RouteInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$route_body" =~ $route_signature_re ]]; then
+    pass "route boundary is one const pointer-plus-count noexcept call"
+  else
+    fail "inspect_route_batch must use const RouteInputSample* plus size_t and noexcept"
+  fi
+fi
+
+if python3 scripts/validate-cpp-public-ast.py --self-test; then
+  pass "public C++ AST validator adversarial fixtures"
+else
+  fail "public C++ AST validator self-test failed"
+fi
+
+if ! command -v clang++ >/dev/null 2>&1; then
+  fail "clang++ is required for syntax-aware public C++ boundary validation"
+else
+  AST_INCLUDE_ARGS=()
+  for header in "${PUBLIC_HEADERS[@]}"; do
+    AST_INCLUDE_ARGS+=(-include "${header#RunPlayEngineCpp/include/}")
+  done
+
+  if public_dependencies="$(
+    clang++ \
+      -std=c++2b \
+      -I RunPlayEngineCpp/include \
+      "${AST_INCLUDE_ARGS[@]}" \
+      -MM \
+      -MT dependencies \
+      -x c++ \
+      /dev/null
+  )"; then
+    public_dependencies="${public_dependencies//\\/ }"
+    unexpected_public_dependency=0
+    for dependency in $public_dependencies; do
+      case "$dependency" in
+        dependencies:|/dev/null|*/SDKs/*.sdk/SDKSettings.json)
+          continue
+          ;;
+      esac
+
+      if [[ "$dependency" == "$ROOT/"* ]]; then
+        dependency="${dependency#"$ROOT/"}"
+      elif [[ "$dependency" == /* ]]; then
+        fail "public C++ headers include external non-system file: $dependency"
+        unexpected_public_dependency=1
+        continue
+      else
+        dependency="${dependency#./}"
+      fi
+
+      dependency_is_public=0
+      for public_header in "${PUBLIC_HEADERS[@]}"; do
+        if [[ "$dependency" == "$public_header" ]]; then
+          dependency_is_public=1
+          break
+        fi
+      done
+      if [[ $dependency_is_public -eq 0 ]]; then
+        fail "public C++ headers include non-public project file: $dependency"
+        unexpected_public_dependency=1
+      fi
+    done
+    if [[ $unexpected_public_dependency -eq 0 ]]; then
+      pass "public C++ headers depend only on validated public project headers"
+    fi
+  else
+    fail "clang++ could not enumerate public C++ header dependencies"
+  fi
+
+  if public_ast="$(
+    clang++ \
+      -std=c++2b \
+      -I RunPlayEngineCpp/include \
+      "${AST_INCLUDE_ARGS[@]}" \
+      -Xclang -ast-dump \
+      -Xclang -ast-dump-filter \
+      -Xclang runplay \
+      -fsyntax-only \
+      -x c++ \
+      /dev/null
+  )"; then
+    if printf '%s\n' "$public_ast" \
+      | python3 scripts/validate-cpp-public-ast.py \
+          --headers "${PUBLIC_HEADERS[@]}"; then
+      pass "public C++ AST permits only the noexcept route buffer pointer"
+    else
+      fail "public C++ AST violates pointer, vector, or noexcept rules"
+    fi
+  else
+    fail "clang++ could not parse the public C++ headers for boundary validation"
+  fi
 fi
 
 # --- Engine sources: no Apple frameworks -------------------------------------
@@ -126,33 +241,66 @@ done
 
 # --- Only the intended Swift adapter imports RunPlayEngineCpp -----------------
 
-# Direct Swift imports of RunPlayEngineCpp outside the Interop adapter (and
-# outside the engine's own non-Swift tree) are forbidden.
-SWIFT_IMPORTS=()
-while IFS= read -r line; do
-  SWIFT_IMPORTS+=("$line")
-done < <(grep -RIn --include='*.swift' -E '^[[:space:]]*(internal[[:space:]]+|private[[:space:]]+|public[[:space:]]+|@_implementationOnly[[:space:]]+)?import[[:space:]]+RunPlayEngineCpp\b' . 2>/dev/null || true)
+# Reconcile Swift frontend parse trees with complete token streams. The parser
+# rejects expression/string/regex decoys; the lexer also inspects inactive
+# conditional-compilation branches for attributed, scoped, or multiline imports.
+SWIFT_FILES=()
+while IFS= read -r swift_file; do
+  SWIFT_FILES+=("$swift_file")
+done < <(
+  find . \
+    \( \
+      -path './.git' \
+      -o -path './.build' \
+      -o -path './.swiftpm' \
+      -o -path './local-workouts' \
+      -o -path './private-workouts' \
+    \) -prune \
+    -o -type f -name '*.swift' -print 2>/dev/null \
+    | LC_ALL=C sort
+)
 
-allowed_import_regex='^\./RunPlayCore/Sources/Interop/'
+if python3 scripts/validate-swift-engine-imports.py --self-test; then
+  pass "Swift engine import lexer adversarial fixtures"
+else
+  fail "Swift engine import lexer self-test failed"
+fi
 
-for entry in "${SWIFT_IMPORTS[@]+"${SWIFT_IMPORTS[@]}"}"; do
-  [[ -z "${entry:-}" ]] && continue
-  file="${entry%%:*}"
-  # Normalize to ./relative
-  case "$file" in
-    ./*) rel="$file" ;;
-    /*) rel=".${file#"$ROOT"}" ;;
-    *) rel="./$file" ;;
-  esac
-  if [[ "$rel" =~ $allowed_import_regex ]]; then
-    pass "allowed engine import: $rel"
-  else
-    fail "unexpected import of RunPlayEngineCpp in $rel (only RunPlayCore/Sources/Interop/ may import it)"
-  fi
+swift_import_validation_ok=0
+if swift_import_output="$(
+  python3 scripts/validate-swift-engine-imports.py \
+    --allowed-prefix RunPlayCore/Sources/Interop \
+    "${SWIFT_FILES[@]}"
+)"; then
+  swift_import_validation_ok=1
+  while IFS= read -r allowed_import; do
+    [[ -n "$allowed_import" ]] \
+      && pass "allowed internal engine import: ./$allowed_import"
+  done <<< "$swift_import_output"
+else
+  fail "Swift engine imports violate path, access, attribute, or scope rules"
+fi
+
+# Internal imports are compiler-enforced against use in public declarations.
+# Also reject same-line public declarations that name the imported route types
+# so source review receives a direct, concrete diagnostic.
+public_route_type_re='^[[:space:]]*(public|open|package)[^/]*(runplay\.(RouteInputSample|RouteBatchInspection|RouteInteropStatus)|RouteOptional(Double|SourceIndex))'
+public_route_type_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && public_route_type_leaks+=("$swift_file:$leak")
+  done < <(
+    perl -0777 -pe 's{/\*.*?\*/}{}gs; s{//[^\n]*}{}g' "$swift_file" \
+      | grep -En "$public_route_type_re" || true
+  )
 done
 
-if [[ ${#SWIFT_IMPORTS[@]} -eq 0 ]]; then
-  fail "no Swift file imports RunPlayEngineCpp (expected Interop adapter)"
+if [[ ${#public_route_type_leaks[@]} -eq 0 ]]; then
+  pass "public Swift declarations remain free of C++ route types"
+else
+  for leak in "${public_route_type_leaks[@]}"; do
+    fail "public Swift declaration exposes C++ route type: $leak"
+  done
 fi
 
 # Inspect SwiftPM's parsed dependency graph rather than line-oriented manifest
@@ -164,15 +312,10 @@ else
   fail "SwiftPM target dependency graph violates the EngineCpp boundary"
 fi
 
-# Grep Platform and Studio sources for any engine import (belt and suspenders).
-import_engine_re='^[[:space:]]*(internal[[:space:]]+|private[[:space:]]+|public[[:space:]]+|@_implementationOnly[[:space:]]+)?import[[:space:]]+RunPlayEngineCpp\b'
+# The token-aware scan above includes both upper layers.
 for layer in RunPlayPlatform/Sources RunPlayStudio/Sources; do
-  if [[ -d "$layer" ]]; then
-    if grep -RIn --include='*.swift' -E "$import_engine_re" "$layer" >/dev/null 2>&1; then
-      fail "$layer imports RunPlayEngineCpp (must go through RunPlayCore only)"
-    else
-      pass "$layer does not import RunPlayEngineCpp"
-    fi
+  if [[ -d "$layer" && $swift_import_validation_ok -eq 1 ]]; then
+    pass "$layer does not import RunPlayEngineCpp"
   fi
 done
 

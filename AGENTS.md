@@ -86,8 +86,10 @@ not import `RunPlayEngineCpp` directly.
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
-  third-party deps). The current phase is a foundation smoke API only — no
-  production RunPlay algorithm has migrated yet.
+  third-party deps). It currently exposes engine identity, route input values,
+  and one synchronous route-batch inspection boundary. That inspection proves
+  value and lifetime fidelity only — no production RunPlay algorithm has
+  migrated yet.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -119,6 +121,11 @@ memory management.
 Forbidden across the Swift boundary: uncaught exceptions, temporary borrowed
 views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public
 APIs, callbacks into Swift, per-element cross-language calls.
+
+Public Swift-facing C++ headers must not expose `std::vector`. The sole current
+raw-pointer exception is `const RouteInputSample*` plus a count for one
+`noexcept` bulk call. Swift owns the contiguous buffer, C++ borrows it only for
+that synchronous call, and C++ retains nothing.
 
 ## Project Invariants
 

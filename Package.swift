@@ -15,9 +15,11 @@ let cxxInteropSettings: [SwiftSetting] = [
 ]
 
 var targets: [Target] = [
-    // Portable C++23 computational engine foundation (smoke API only).
+    // Portable C++23 computational engine foundation. It currently provides
+    // engine identity plus route input values and a parity-only bulk inspection
+    // boundary; no production route algorithm has migrated.
     // No Apple frameworks, Foundation, Objective-C, or third-party deps.
-    // Native C++ smoke tests live under RunPlayEngineCpp/Tests/ and are built by
+    // Native C++ tests live under RunPlayEngineCpp/Tests/ and are built by
     // ./scripts/run-cpp-engine-tests.sh (clang++). The SwiftPM test target below
     // invokes that runner because a dependent C++ executable target fails under
     // SwiftPM's explicit-module build on Linux.
@@ -30,8 +32,8 @@ var targets: [Target] = [
         cxxSettings: engineCppSettings
     ),
     // Cross-platform SwiftPM harness for the independent native C++ executable.
-    // The assertions remain in EngineInfoTests.cpp; this target makes the real
-    // native build/run available through `swift test --filter
+    // The assertions remain in the native test sources; this target makes the
+    // real native build/run available through `swift test --filter
     // RunPlayEngineCppTests` on both Linux and macOS.
     .testTarget(
         name: "RunPlayEngineCppTests",
