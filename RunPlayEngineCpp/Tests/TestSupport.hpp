@@ -12,3 +12,4 @@ inline void expect(bool condition, const char* message) {
 
 void run_engine_info_tests();
 void run_route_interop_tests();
+void run_geodesy_tests();

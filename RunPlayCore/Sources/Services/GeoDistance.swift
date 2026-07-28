@@ -6,7 +6,7 @@ import Foundation
 /// platform-neutral RunPlayCore target.
 public enum GeoDistance {
 
-    /// Earth's mean radius in meters (WGS-84).
+    /// Earth's approximate spherical mean radius in meters.
     public static let earthRadiusMeters: Double = 6_371_000.0
 
     /// Valid heart rate range for filtering outliers (30-230 bpm).

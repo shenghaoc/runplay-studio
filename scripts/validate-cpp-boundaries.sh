@@ -192,9 +192,9 @@ else
     if printf '%s\n' "$public_ast" \
       | python3 scripts/validate-cpp-public-ast.py \
           --headers "${PUBLIC_HEADERS[@]}"; then
-      pass "public C++ AST permits only the noexcept route buffer pointer"
+      pass "public C++ AST permits only the documented noexcept route buffer pointer"
     else
-      fail "public C++ AST violates pointer, vector, or noexcept rules"
+      fail "public C++ AST violates pointer, boundary-type, or noexcept rules"
     fi
   else
     fail "clang++ could not parse the public C++ headers for boundary validation"
@@ -301,6 +301,80 @@ else
   for leak in "${public_route_type_leaks[@]}"; do
     fail "public Swift declaration exposes C++ route type: $leak"
   done
+fi
+
+# --- Parity-only geodesy adapter stays out of production paths ---------------
+
+# The C++ geodesy primitives are validated but not cut over. Every production
+# GeoDistance caller runs inside a per-point loop, so routing production through
+# the scalar adapter would create the per-element cross-language calls this
+# repository forbids. Enforce that mechanically instead of by comment.
+GEODESY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayGeodesyBridge.swift"
+GEO_DISTANCE_SOURCE="RunPlayCore/Sources/Services/GeoDistance.swift"
+
+if [[ ! -f "$GEODESY_BRIDGE_SOURCE" ]]; then
+  fail "missing parity-only geodesy adapter $GEODESY_BRIDGE_SOURCE"
+fi
+if [[ ! -f "$GEO_DISTANCE_SOURCE" ]]; then
+  fail "missing production Swift geodesy reference $GEO_DISTANCE_SOURCE"
+fi
+
+geodesy_reference_re='(^|[^[:alnum:]_])((RunPlayGeodesyBridge|RunPlayLocalMeters)|runplay[[:space:]]*\.[[:space:]]*(earth_radius_meters|LocalMeters|is_valid_coordinate|haversine_distance_meters|project_lat_lon_to_local_meters))([^[:alnum:]_]|$)'
+
+geodesy_reference_positive_fixtures=(
+  'RunPlayGeodesyBridge.distanceMeters(latitude1: 0, longitude1: 0, latitude2: 0, longitude2: 0)'
+  'let projected: runplay.LocalMeters = runplay.project_lat_lon_to_local_meters(0, 0, 0, 0)'
+  'let radius = runplay . earth_radius_meters'
+)
+geodesy_reference_negative_fixtures=(
+  'RunPlayGeoDistance.distanceMeters(0, 0)'
+  'runplay.inspect_route_batch(buffer.baseAddress, buffer.count)'
+  'let LocalMetersPerSecond = 1.0'
+)
+geodesy_reference_matcher_ok=1
+for fixture in "${geodesy_reference_positive_fixtures[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$geodesy_reference_re"; then
+    geodesy_reference_matcher_ok=0
+  fi
+done
+for fixture in "${geodesy_reference_negative_fixtures[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$geodesy_reference_re"; then
+    geodesy_reference_matcher_ok=0
+  fi
+done
+if [[ $geodesy_reference_matcher_ok -eq 1 ]]; then
+  pass "parity-only geodesy reference matcher adversarial fixtures"
+else
+  fail "parity-only geodesy reference matcher failed its adversarial fixtures"
+fi
+
+geodesy_reference_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$GEODESY_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && geodesy_reference_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$geodesy_reference_re" || true)
+done
+
+if [[ ${#geodesy_reference_leaks[@]} -eq 0 ]]; then
+  pass "parity-only geodesy APIs are referenced only by their bridge and tests"
+else
+  for leak in "${geodesy_reference_leaks[@]}"; do
+    fail "production Swift code uses a parity-only geodesy API: $leak"
+  done
+fi
+
+if [[ -f "$GEO_DISTANCE_SOURCE" ]]; then
+  if strip_comments "$GEO_DISTANCE_SOURCE" \
+    | grep -Eq "$geodesy_reference_re"; then
+    fail "$GEO_DISTANCE_SOURCE must remain the Swift parity oracle, not a C++ caller"
+  else
+    pass "GeoDistance.swift remains an independent Swift implementation"
+  fi
 fi
 
 # Inspect SwiftPM's parsed dependency graph rather than line-oriented manifest

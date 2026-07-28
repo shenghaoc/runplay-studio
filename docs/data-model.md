@@ -172,6 +172,28 @@ back to pure Swift. The projection is test/parity infrastructure only: it is
 not persisted, does not change any schema or version, and is not called by
 production route analysis.
 
+### Non-persisted C++ local-metre value
+
+The geodesy primitives return planar offsets through a named aggregate rather
+than a positional pair:
+
+```cpp
+struct LocalMeters {
+    double x_meters;
+    double z_meters;
+};
+```
+
+This mirrors the `(x, z)` tuple returned by
+`GeoDistance.latLonToMeters(lat:lon:centerLat:centerLon:)`, using the identical
+equirectangular coefficients and operation order. The Core adapter converts it
+immediately into a pure Swift `RunPlayLocalMeters`, so no C++ type reaches a
+`RunPlayCore` signature.
+
+Like the route projection above, this value is parity infrastructure: it is
+never persisted, changes no schema or version, and production route projection
+continues to use `GeoDistance`.
+
 ### Route quality diagnostics and distance provenance
 
 ```swift

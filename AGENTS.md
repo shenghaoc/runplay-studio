@@ -87,9 +87,11 @@ not import `RunPlayEngineCpp` directly.
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
   third-party deps). It currently exposes engine identity, route input values,
-  and one synchronous route-batch inspection boundary. That inspection proves
-  value and lifetime fidelity only — no production RunPlay algorithm has
-  migrated yet.
+  one synchronous route-batch inspection boundary, and parity-tested geodesy
+  primitives (coordinate validation, Haversine distance, local-metre
+  projection). Those primitives are engine building blocks for a future C++
+  route algorithm — no production RunPlay algorithm has migrated yet, and Swift
+  `GeoDistance` remains the production implementation.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -122,10 +124,19 @@ Forbidden across the Swift boundary: uncaught exceptions, temporary borrowed
 views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public
 APIs, callbacks into Swift, per-element cross-language calls.
 
-Public Swift-facing C++ headers must not expose `std::vector`. The sole current
-raw-pointer exception is `const RouteInputSample*` plus a count for one
-`noexcept` bulk call. Swift owns the contiguous buffer, C++ borrows it only for
-that synchronous call, and C++ retains nothing.
+Public Swift-facing C++ headers must not expose `std::vector`, `std::pair`,
+`std::tuple`, or `std::variant`. A value-returning engine function must name its
+fields through a standard-layout aggregate, as `LocalMeters` does, so Swift
+reads documented members rather than positional elements.
+
+The sole current raw-pointer exception is `const RouteInputSample*` plus a count
+for one `noexcept` bulk call. Swift owns the contiguous buffer, C++ borrows it
+only for that synchronous call, and C++ retains nothing.
+
+Migrated numerical code is a literal translation until a change of behaviour is
+explicitly decided. Preserve constants, operation order, and existing
+limitations, and split statements where needed so `-ffp-contract` cannot fuse a
+multiply-add that Swift performs as two rounded operations.
 
 ## Project Invariants
 
