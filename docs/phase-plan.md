@@ -120,13 +120,16 @@
 - [x] `RunPlayEngineCpp` C++23 foundation, native tests, ASan/UBSan, boundary validation
 - [x] `RouteInputSample` bulk route-value boundary with Swift/C++ field parity
 - [x] C++23 geodesy primitives (coordinate validation, Haversine distance, local-metre projection) with Swift parity coverage
-- [ ] Migrate a complete route-processing slice into C++ behind one bulk call, consuming the geodesy primitives internally
-- [ ] Migrate route quality, projection, comparison, and heatmap aggregation once bulk boundaries exist
+- [x] Migrate coordinate-derived route step distances into C++ behind one bulk call (first production cutover)
+- [ ] Migrate remaining route-quality geometry stages (outlier evidence, gap inference, segment-aware policy) into one larger C++ pipeline operation
+- [ ] Migrate projection, comparison, and heatmap aggregation once bulk boundaries exist
 
-Swift `GeoDistance` remains the production implementation and the parity
-oracle. No production route loop performs per-point Swift/C++ calls, and no
-production algorithm, persisted schema, analysis version, or UI behaviour has
-changed. The engine work makes no performance claim.
+C++23 now performs production coordinate-derived route step-distance
+calculation through one bulk call. Swift continues to own route-quality
+policies, cumulative distance mutation, provenance, cancellation, diagnostics,
+and public models. Earlier route-quality stages still use Swift geodesy. No
+scalar per-point Swift/C++ production calls are allowed. No persisted schema,
+analysis version, UI, or importer behaviour changes in this cutover.
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs

@@ -9,6 +9,7 @@ int main() {
     run_engine_info_tests();
     run_route_interop_tests();
     run_geodesy_tests();
+    run_route_geometry_tests();
     std::cout << "RunPlayEngineCppTests: all checks passed\n";
     return EXIT_SUCCESS;
 }

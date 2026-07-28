@@ -516,6 +516,20 @@ public struct RouteQualityProcessor: Sendable {
             }
         }
 
+        // Coordinate-derived segments share one bulk C++ step-distance series.
+        // Fully supplied routes skip the native call entirely. Earlier quality
+        // stages continue to use Swift GeoDistance for per-point evidence.
+        let needsCoordinateDerivedSteps = useSupplied.contains(where: { !$0 })
+        let nativeStepDistances: ContiguousArray<Double>
+        if needsCoordinateDerivedSteps {
+            try checkCancellation(index: 0, isCancelled: isCancelled)
+            let stepResult = try RunPlayRouteStepDistanceBridge.compute(points)
+            try checkCancellation(index: 0, isCancelled: isCancelled)
+            nativeStepDistances = stepResult.stepDistancesMeters
+        } else {
+            nativeStepDistances = []
+        }
+
         var normalized = points
         var cumulativeDistance = 0.0
         for (rangeIndex, range) in segmentRanges.enumerated() {
@@ -533,7 +547,7 @@ public struct RouteQualityProcessor: Sendable {
                             cumulativeDistance + relative
                         )
                     } else {
-                        let step = distance(from: points[index - 1], to: points[index])
+                        let step = nativeStepDistances[index]
                         normalized[index].distanceFromStartMeters = normalized[index - 1].distanceFromStartMeters
                             + (step.isFinite ? max(0, step) : 0)
                     }

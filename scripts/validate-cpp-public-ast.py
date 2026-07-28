@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import sys
@@ -40,11 +41,6 @@ DISALLOWED_USING_DECLARATION_KINDS = {
     "UsingEnumDecl",
     "UsingShadowDecl",
 }
-ALLOWED_FUNCTION_TYPE = (
-    "RouteBatchInspection "
-    "(const RouteInputSample *, std::size_t) noexcept"
-)
-ALLOWED_PARAMETER_TYPE = "const RouteInputSample *"
 CPP_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|::|[{};]")
 VECTOR_TYPE_RE = re.compile(
     r"(^|[^A-Za-z0-9_:])"
@@ -56,6 +52,59 @@ VECTOR_TYPE_RE = re.compile(
 POSITIONAL_TYPE_RE = re.compile(
     r"(^|[^A-Za-z0-9_:])"
     r"(?:(?:[A-Za-z_][A-Za-z0-9_]*)::)*(?:pair|tuple|variant)\s*<"
+)
+
+
+@dataclass(frozen=True)
+class ApprovedPointerParameter:
+    name: str
+    type_text: str
+    mutable_output: bool = False
+
+
+@dataclass(frozen=True)
+class ApprovedPointerFunction:
+    name: str
+    type_text: str
+    parameters: tuple[ApprovedPointerParameter, ...]
+
+
+# Declarative allow-list of public pointer-bearing free functions. Only these
+# exact names, return types, parameter names, pointer constness, and noexcept
+# contracts may appear in the public AST.
+APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
+    ApprovedPointerFunction(
+        name="inspect_route_batch",
+        type_text=(
+            "RouteBatchInspection "
+            "(const RouteInputSample *, std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const RouteInputSample *",
+            ),
+        ),
+    ),
+    ApprovedPointerFunction(
+        name="compute_route_step_distances",
+        type_text=(
+            "RouteStepDistanceSummary "
+            "(const RouteInputSample *, std::size_t, double *, std::size_t) "
+            "noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const RouteInputSample *",
+            ),
+            ApprovedPointerParameter(
+                name="step_distances_meters",
+                type_text="double *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -191,10 +240,49 @@ def validate_namespace_envelope(path: Path) -> list[str]:
     return errors
 
 
+def match_approved_function(
+    line: str,
+    types: list[str],
+) -> ApprovedPointerFunction | None:
+    if not types:
+        return None
+    for approved in APPROVED_POINTER_FUNCTIONS:
+        if (
+            re.search(rf"\b{re.escape(approved.name)}\b", line) is not None
+            and types[0] == approved.type_text
+        ):
+            return approved
+    return None
+
+
+def match_approved_parameter(
+    line: str,
+    types: list[str],
+) -> ApprovedPointerParameter | None:
+    if not types:
+        return None
+    for approved in APPROVED_POINTER_FUNCTIONS:
+        for parameter in approved.parameters:
+            if (
+                re.search(rf"\b{re.escape(parameter.name)}\b", line) is not None
+                and types[0] == parameter.type_text
+            ):
+                return parameter
+    return None
+
+
 def validate_ast(ast_text: str) -> list[str]:
     errors: list[str] = []
-    allowed_function_count = 0
-    allowed_parameter_count = 0
+    function_counts = {function.name: 0 for function in APPROVED_POINTER_FUNCTIONS}
+    parameter_counts: dict[tuple[str, str], int] = {
+        (function.name, parameter.name): 0
+        for function in APPROVED_POINTER_FUNCTIONS
+        for parameter in function.parameters
+    }
+    mutable_output_count = 0
+    # Track the nearest enclosing approved function so parameters are counted
+    # against the correct declaration when multiple pointer APIs exist.
+    current_function: str | None = None
 
     for raw_line in ast_text.splitlines():
         line = raw_line.strip()
@@ -233,33 +321,74 @@ def validate_ast(ast_text: str) -> list[str]:
         if not is_pointer_surface or not any("*" in value for value in types):
             continue
 
-        is_allowed_function = (
-            kind == "FunctionDecl"
-            and re.search(r"\binspect_route_batch\b", line) is not None
-            and types[0] == ALLOWED_FUNCTION_TYPE
-        )
-        is_allowed_parameter = (
-            kind == "ParmVarDecl"
-            and re.search(r"\bsamples\b", line) is not None
-            and types[0] == ALLOWED_PARAMETER_TYPE
-        )
+        if kind == "FunctionDecl":
+            approved_function = match_approved_function(line, types)
+            if approved_function is None:
+                errors.append(
+                    f"unsupported public raw pointer declaration: {line}"
+                )
+                current_function = None
+                continue
+            function_counts[approved_function.name] += 1
+            current_function = approved_function.name
+            continue
 
-        if is_allowed_function:
-            allowed_function_count += 1
-        elif is_allowed_parameter:
-            allowed_parameter_count += 1
-        else:
-            errors.append(f"unsupported public raw pointer declaration: {line}")
+        if kind == "ParmVarDecl":
+            approved_parameter = match_approved_parameter(line, types)
+            if approved_parameter is None or current_function is None:
+                errors.append(
+                    f"unsupported public raw pointer declaration: {line}"
+                )
+                continue
+            # Confirm the parameter belongs to the approved function currently
+            # being parsed by requiring the parameter name+type on that API.
+            owned = any(
+                parameter.name == approved_parameter.name
+                and parameter.type_text == approved_parameter.type_text
+                for function in APPROVED_POINTER_FUNCTIONS
+                if function.name == current_function
+                for parameter in function.parameters
+            )
+            if not owned:
+                errors.append(
+                    f"unsupported public raw pointer declaration: {line}"
+                )
+                continue
+            key = (current_function, approved_parameter.name)
+            parameter_counts[key] = parameter_counts.get(key, 0) + 1
+            if approved_parameter.mutable_output:
+                mutable_output_count += 1
+            continue
 
-    if allowed_function_count != 1:
+        errors.append(f"unsupported public raw pointer declaration: {line}")
+
+    for function in APPROVED_POINTER_FUNCTIONS:
+        count = function_counts[function.name]
+        if count != 1:
+            errors.append(
+                f"expected exactly one pointer-bearing {function.name} "
+                f"declaration, found {count}"
+            )
+        for parameter in function.parameters:
+            key = (function.name, parameter.name)
+            count = parameter_counts.get(key, 0)
+            if count != 1:
+                errors.append(
+                    f"expected exactly one {parameter.type_text} "
+                    f"{parameter.name} parameter on {function.name}, "
+                    f"found {count}"
+                )
+
+    approved_mutable_outputs = sum(
+        1
+        for function in APPROVED_POINTER_FUNCTIONS
+        for parameter in function.parameters
+        if parameter.mutable_output
+    )
+    if mutable_output_count != approved_mutable_outputs:
         errors.append(
-            "expected exactly one pointer-bearing inspect_route_batch declaration, "
-            f"found {allowed_function_count}"
-        )
-    if allowed_parameter_count != 1:
-        errors.append(
-            "expected exactly one const RouteInputSample* samples parameter, "
-            f"found {allowed_parameter_count}"
+            "expected exactly one approved mutable output pointer, "
+            f"found {mutable_output_count}"
         )
 
     return errors
@@ -276,9 +405,18 @@ def run_self_test() -> int:
             ),
             (
                 "FunctionDecl inspect_route_batch "
-                f"'{ALLOWED_FUNCTION_TYPE}'"
+                "'RouteBatchInspection "
+                "(const RouteInputSample *, std::size_t) noexcept'"
             ),
-            f"ParmVarDecl samples '{ALLOWED_PARAMETER_TYPE}'",
+            "ParmVarDecl samples 'const RouteInputSample *'",
+            (
+                "FunctionDecl compute_route_step_distances "
+                "'RouteStepDistanceSummary "
+                "(const RouteInputSample *, std::size_t, double *, std::size_t) "
+                "noexcept'"
+            ),
+            "ParmVarDecl samples 'const RouteInputSample *'",
+            "ParmVarDecl step_distances_meters 'double *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -365,6 +503,83 @@ def run_self_test() -> int:
         "geodesy std::vector return": (
             "FunctionDecl project_route "
             "'std::vector<LocalMeters> (double, double) noexcept'"
+        ),
+        "writable input pointer": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_route_step_distances "
+                    "'RouteStepDistanceSummary "
+                    "(RouteInputSample *, std::size_t, double *, std::size_t) "
+                    "noexcept'"
+                ),
+                "ParmVarDecl samples 'RouteInputSample *'",
+                "ParmVarDecl step_distances_meters 'double *'",
+            ]
+        ),
+        "const output pointer": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_route_step_distances "
+                    "'RouteStepDistanceSummary "
+                    "(const RouteInputSample *, std::size_t, const double *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl step_distances_meters 'const double *'",
+            ]
+        ),
+        "output pointer with wrong element type": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_route_step_distances "
+                    "'RouteStepDistanceSummary "
+                    "(const RouteInputSample *, std::size_t, float *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl step_distances_meters 'float *'",
+            ]
+        ),
+        "missing output capacity": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_route_step_distances "
+                    "'RouteStepDistanceSummary "
+                    "(const RouteInputSample *, std::size_t, double *) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl step_distances_meters 'double *'",
+            ]
+        ),
+        "extra pointer parameter": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_route_step_distances "
+                    "'RouteStepDistanceSummary "
+                    "(const RouteInputSample *, std::size_t, double *, "
+                    "std::size_t, int *) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl step_distances_meters 'double *'",
+                "ParmVarDecl scratch 'int *'",
+            ]
+        ),
+        "renamed unapproved pointer function": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_route_steps "
+                    "'RouteStepDistanceSummary "
+                    "(const RouteInputSample *, std::size_t, double *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl step_distances_meters 'double *'",
+            ]
+        ),
+        "throwing step-distance function": (
+            "FunctionDecl compute_route_step_distances "
+            "'RouteStepDistanceSummary "
+            "(const RouteInputSample *, std::size_t, double *, std::size_t)'"
         ),
     }
 

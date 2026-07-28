@@ -87,11 +87,12 @@ not import `RunPlayEngineCpp` directly.
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
   third-party deps). It currently exposes engine identity, route input values,
-  one synchronous route-batch inspection boundary, and parity-tested geodesy
+  one synchronous route-batch inspection boundary, allocation-free geodesy
   primitives (coordinate validation, Haversine distance, local-metre
-  projection). Those primitives are engine building blocks for a future C++
-  route algorithm — no production RunPlay algorithm has migrated yet, and Swift
-  `GeoDistance` remains the production implementation.
+  projection), and a production bulk route step-distance kernel. C++23 now
+  performs production coordinate-derived route step-distance calculation
+  through one bulk call. Earlier route-quality stages still use Swift geodesy;
+  no scalar per-point Swift/C++ production calls are allowed.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -99,8 +100,10 @@ not import `RunPlayEngineCpp` directly.
   `RunPlayEngineCpp` via an internal Interop adapter. C++ types must not
   appear in public `RunPlayCore` APIs. Core remains cross-platform Foundation
   logic with conditional `FoundationXML`; it must not import UI, map,
-  graphics, Core Location, or Combine. Use `GeoDistance`, not `CLLocation`,
-  for core distance.
+  graphics, Core Location, or Combine. Swift continues to own route-quality
+  policies, cumulative distance mutation, provenance, cancellation,
+  diagnostics, and public models. Use `GeoDistance` for remaining Swift
+  geodesy stages, not `CLLocation`.
 - **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
   MapKit, and non-UI Combine. It must not depend on `RunPlayStudio`.
 - **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
@@ -129,9 +132,15 @@ Public Swift-facing C++ headers must not expose `std::vector`, `std::pair`,
 fields through a standard-layout aggregate, as `LocalMeters` does, so Swift
 reads documented members rather than positional elements.
 
-The sole current raw-pointer exception is `const RouteInputSample*` plus a count
-for one `noexcept` bulk call. Swift owns the contiguous buffer, C++ borrows it
-only for that synchronous call, and C++ retains nothing.
+Approved pointer boundaries:
+
+- `const RouteInputSample*` input for route inspection
+- `const RouteInputSample*` input plus `double*` caller-owned output for route
+  step-distance calculation
+
+Swift owns both buffers. C++ borrows them synchronously. C++ retains nothing.
+C++ writes exactly `sample_count` output entries on success and writes nothing
+on error.
 
 Migrated numerical code is a literal translation until a change of behaviour is
 explicitly decided. Preserve constants, operation order, and existing

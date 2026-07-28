@@ -50,11 +50,25 @@ else
   pass "public route interop header present"
 fi
 
+GEOMETRY_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/RouteGeometry.hpp"
+if [[ ! -f "$GEOMETRY_HEADER" ]]; then
+  fail "missing public route geometry header RouteGeometry.hpp"
+else
+  pass "public route geometry header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteInterop.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteGeometry\.hpp"'; then
+  pass "umbrella header includes RouteGeometry.hpp"
+else
+  fail "RunPlayEngine.hpp must include RouteGeometry.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -112,6 +126,16 @@ if [[ -f "$ROUTE_HEADER" ]]; then
     pass "route boundary is one const pointer-plus-count noexcept call"
   else
     fail "inspect_route_batch must use const RouteInputSample* plus size_t and noexcept"
+  fi
+fi
+
+if [[ -f "$GEOMETRY_HEADER" ]]; then
+  geometry_body="$(strip_comments "$GEOMETRY_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  geometry_signature_re='RouteStepDistanceSummary[[:space:]]+compute_route_step_distances[[:space:]]*\([[:space:]]*const[[:space:]]+RouteInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*double[[:space:]]*\*[[:space:]]*step_distances_meters[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+step_distance_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$geometry_body" =~ $geometry_signature_re ]]; then
+    pass "step-distance boundary is one bulk input/output noexcept call"
+  else
+    fail "compute_route_step_distances must use const input*, size_t, double* output, capacity, and noexcept"
   fi
 fi
 
@@ -192,7 +216,7 @@ else
     if printf '%s\n' "$public_ast" \
       | python3 scripts/validate-cpp-public-ast.py \
           --headers "${PUBLIC_HEADERS[@]}"; then
-      pass "public C++ AST permits only the documented noexcept route buffer pointer"
+      pass "public C++ AST permits only the documented noexcept route buffer pointers"
     else
       fail "public C++ AST violates pointer, boundary-type, or noexcept rules"
     fi
@@ -303,20 +327,30 @@ else
   done
 fi
 
-# --- Parity-only geodesy adapter stays out of production paths ---------------
+# --- Scalar geodesy stays parity-only; bulk step-distance is production ------
 
-# The C++ geodesy primitives are validated but not cut over. Every production
-# GeoDistance caller runs inside a per-point loop, so routing production through
-# the scalar adapter would create the per-element cross-language calls this
-# repository forbids. Enforce that mechanically instead of by comment.
+# Scalar C++ geodesy symbols remain parity-only. Production coordinate-derived
+# step distances must go through the bulk bridge, never one call per point.
 GEODESY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayGeodesyBridge.swift"
 GEO_DISTANCE_SOURCE="RunPlayCore/Sources/Services/GeoDistance.swift"
+STEP_DISTANCE_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteStepDistanceBridge.swift"
+ROUTE_QUALITY_PROCESSOR_SOURCE="RunPlayCore/Sources/Services/RouteQualityProcessor.swift"
+ROUTE_INPUT_BUFFER_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteInputBuffer.swift"
 
 if [[ ! -f "$GEODESY_BRIDGE_SOURCE" ]]; then
   fail "missing parity-only geodesy adapter $GEODESY_BRIDGE_SOURCE"
 fi
 if [[ ! -f "$GEO_DISTANCE_SOURCE" ]]; then
   fail "missing production Swift geodesy reference $GEO_DISTANCE_SOURCE"
+fi
+if [[ ! -f "$STEP_DISTANCE_BRIDGE_SOURCE" ]]; then
+  fail "missing production step-distance bridge $STEP_DISTANCE_BRIDGE_SOURCE"
+fi
+if [[ ! -f "$ROUTE_INPUT_BUFFER_SOURCE" ]]; then
+  fail "missing shared native route-input builder $ROUTE_INPUT_BUFFER_SOURCE"
+fi
+if [[ ! -f "$ROUTE_QUALITY_PROCESSOR_SOURCE" ]]; then
+  fail "missing production RouteQualityProcessor $ROUTE_QUALITY_PROCESSOR_SOURCE"
 fi
 
 geodesy_reference_re='(^|[^[:alnum:]_])((RunPlayGeodesyBridge|RunPlayLocalMeters)|runplay[[:space:]]*\.[[:space:]]*(earth_radius_meters|LocalMeters|is_valid_coordinate|haversine_distance_meters|project_lat_lon_to_local_meters))([^[:alnum:]_]|$)'
@@ -329,6 +363,7 @@ geodesy_reference_positive_fixtures=(
 geodesy_reference_negative_fixtures=(
   'RunPlayGeoDistance.distanceMeters(0, 0)'
   'runplay.inspect_route_batch(buffer.baseAddress, buffer.count)'
+  'runplay.compute_route_step_distances(input, count, output, capacity)'
   'let LocalMetersPerSecond = 1.0'
 )
 geodesy_reference_matcher_ok=1
@@ -361,10 +396,10 @@ for swift_file in "${SWIFT_FILES[@]}"; do
 done
 
 if [[ ${#geodesy_reference_leaks[@]} -eq 0 ]]; then
-  pass "parity-only geodesy APIs are referenced only by their bridge and tests"
+  pass "parity-only scalar geodesy APIs are referenced only by their bridge and tests"
 else
   for leak in "${geodesy_reference_leaks[@]}"; do
-    fail "production Swift code uses a parity-only geodesy API: $leak"
+    fail "production Swift code uses a parity-only scalar geodesy API: $leak"
   done
 fi
 
@@ -375,6 +410,87 @@ if [[ -f "$GEO_DISTANCE_SOURCE" ]]; then
   else
     pass "GeoDistance.swift remains an independent Swift implementation"
   fi
+fi
+
+# Only the step-distance bridge may invoke the C++ bulk symbol. Comments and
+# string literals are stripped first so documentation cannot create false
+# positives, and tests remain free to mention the symbol by name.
+step_distance_symbol_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_route_step_distances([^[:alnum:]_]|$)'
+step_distance_symbol_positive=(
+  'runplay.compute_route_step_distances(input.baseAddress, input.count, output.baseAddress, output.count)'
+  'let summary = runplay . compute_route_step_distances(a, b, c, d)'
+)
+step_distance_symbol_negative=(
+  'RunPlayRouteStepDistanceBridge.compute(points)'
+  'let text = "compute_route_step_distances"'
+  'func compute_route_step_distances_helper() {}'
+)
+step_distance_symbol_matcher_ok=1
+for fixture in "${step_distance_symbol_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$step_distance_symbol_re"; then
+    step_distance_symbol_matcher_ok=0
+  fi
+done
+for fixture in "${step_distance_symbol_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$step_distance_symbol_re"; then
+    step_distance_symbol_matcher_ok=0
+  fi
+done
+if [[ $step_distance_symbol_matcher_ok -eq 1 ]]; then
+  pass "bulk step-distance symbol matcher adversarial fixtures"
+else
+  fail "bulk step-distance symbol matcher failed its adversarial fixtures"
+fi
+
+step_distance_symbol_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$STEP_DISTANCE_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && step_distance_symbol_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$step_distance_symbol_re" || true)
+done
+
+if [[ ${#step_distance_symbol_leaks[@]} -eq 0 ]]; then
+  pass "compute_route_step_distances is invoked only from the production bridge"
+else
+  for leak in "${step_distance_symbol_leaks[@]}"; do
+    fail "compute_route_step_distances used outside the bridge: $leak"
+  done
+fi
+
+# RouteQualityProcessor must call the pure Swift bridge, not C++ symbols.
+if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+  fail "RouteQualityProcessor must not reference C++ runplay symbols directly"
+else
+  pass "RouteQualityProcessor stays free of direct C++ symbols"
+fi
+
+if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])RunPlayRouteStepDistanceBridge([^[:alnum:]_]|$)'; then
+  pass "RouteQualityProcessor consumes the pure Swift step-distance bridge"
+else
+  fail "RouteQualityProcessor must call RunPlayRouteStepDistanceBridge"
+fi
+
+if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])(RunPlayGeodesyBridge|haversine_distance_meters|is_valid_coordinate|project_lat_lon_to_local_meters)([^[:alnum:]_]|$)' \
+  || strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
+    | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*'; then
+  fail "RouteQualityProcessor must not call scalar C++ geodesy"
+else
+  pass "RouteQualityProcessor does not call scalar C++ geodesy"
+fi
+
+# Shared native input builder must remain under Interop.
+if [[ "$ROUTE_INPUT_BUFFER_SOURCE" == RunPlayCore/Sources/Interop/* ]]; then
+  pass "shared native route-input builder remains under Interop"
+else
+  fail "shared native route-input builder left Interop"
 fi
 
 # Inspect SwiftPM's parsed dependency graph rather than line-oriented manifest

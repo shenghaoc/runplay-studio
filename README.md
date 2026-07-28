@@ -122,25 +122,24 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 
 The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI
 framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
-foundation target. The engine currently provides identity, route input values
-and a parity-only bulk inspection boundary, and parity-tested geodesy
-primitives; no production algorithm has migrated.
+foundation target. The engine provides identity, route input values, a bulk
+inspection boundary, allocation-free geodesy primitives, and the production
+route step-distance kernel.
 
 ```text
 Swift [RoutePoint]
     → Swift-owned contiguous RouteInputSample buffer
-    → one synchronous C++ inspection call
-    → compact pure-Swift result
+      + Swift-owned Double step-distance output buffer
+    → one synchronous compute_route_step_distances call
+    → pure-Swift cumulative normalization / policy / provenance
 ```
 
 C++ receives each point's original array offset as `source_index`; the Swift
 `UUID` remains authoritative. Timestamps are copied exactly from
 `Date.timeIntervalSinceReferenceDate` without rounding, optional metrics remain
-`std::optional<double>`, and C++ retains no pointer after the call. This
-inspection exists to prove field and lifetime fidelity. It does not change app
-behaviour or claim a performance improvement. Future route operations must use
-one bulk engine call rather than per-point calls, and Platform/Studio must not
-traverse C++ containers directly.
+`std::optional<double>`, and C++ retains no pointer after the call. Route
+operations must use one bulk engine call rather than per-point calls, and
+Platform/Studio must not traverse C++ containers directly.
 
 The engine also provides allocation-free C++23 geodesy primitives —
 `is_valid_coordinate`, `haversine_distance_meters`, and
@@ -149,11 +148,11 @@ over deterministic fixtures. They are a literal migration: the 6,371,000 m
 Earth radius, Haversine formula, projection coefficients, operation order, and
 existing limitations are all unchanged.
 
-**Swift `GeoDistance` remains the production implementation.** Every production
-caller runs inside a per-point loop, so delegating to scalar C++ would create
-one language-boundary crossing per point. These primitives are instead intended
-for use inside C++ once a complete route operation migrates behind one bulk
-call. No production numerical cutover and no performance claim is made here.
+**C++23 now performs production coordinate-derived route step-distance
+calculation through one bulk call.** Swift continues to own route-quality
+policies, cumulative distance mutation, provenance, cancellation, diagnostics,
+and public models. Earlier route-quality stages still use Swift `GeoDistance`.
+No scalar per-point Swift/C++ production calls are allowed.
 
 The package checks this boundary with:
 
