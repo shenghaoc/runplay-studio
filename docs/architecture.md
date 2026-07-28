@@ -29,15 +29,27 @@ Import File → Importer → RouteQualityProcessor → Normalized Route + Diagno
 
 ## Module Structure
 
+Dependency direction:
+
+```text
+RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
 ```
-RunPlayCore/                   # Platform-neutral library (no UI frameworks)
+
+```
+RunPlayEngineCpp/              # Portable C++23 computational engine (foundation phase)
+├── include/RunPlayEngineCpp/  # Public C++ headers (smoke API only today)
+├── Sources/                   # C++ implementation
+└── Tests/                     # Native C++ test executable sources
+
+RunPlayCore/                   # Platform-neutral Swift facade (no UI frameworks)
 ├── Sources/
 │   ├── Models/                # Data structures (RunWorkout, RoutePoint, etc.)
 │   ├── Accessibility/         # Pure spoken summaries and chart accessibility models
 │   ├── Importers/             # File format parsers (JSON, GPX, TCX, FIT)
+│   ├── Interop/               # Internal Swift adapter over RunPlayEngineCpp
 │   └── Services/              # Analysis, splits, segments, comparison, projection, export
 └── Tests/
-    └── RunPlayCoreTests/      # Platform-neutral tests
+    └── RunPlayCoreTests/      # Platform-neutral tests (includes engine bridge tests)
 
 RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit values)
 ├── Sources/                   # Route/map data and rendering services
@@ -54,6 +66,51 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 └── Tests/
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
+
+### C++ engine foundation (current phase)
+
+`RunPlayEngineCpp` is a C++23 foundation target. It currently exposes only a
+deterministic smoke API (`runplay::engine_info`) that proves:
+
+- public-header discovery and C++23 compilation on macOS and Linux;
+- Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
+- native C++ tests and Swift integration tests;
+- strict warnings, ASan/UBSan CI, and architecture-boundary validation.
+
+**No production RunPlay algorithm has migrated.** Geodesic primitives, route
+quality, elevation, timelines, splits, DTW, heatmap aggregation, and file
+parsers remain in Swift `RunPlayCore` until later migration PRs. The app does
+not call the C++ adapter in production paths; integration is proven by tests
+only. C++ types never appear in public `RunPlayCore` APIs.
+
+`RunPlayCore` remains the only Swift-facing core API and continues to own
+app-facing models, `Codable` compatibility, errors/diagnostics, actors,
+filesystem persistence, schema migration, and Swift↔C++ value translation.
+
+#### C++ policy defaults
+
+| Class | Guidance |
+| --- | --- |
+| Encouraged | value semantics, RAII, `std::vector` / `std::span` / `std::array`, `std::optional`, `std::expected` internally, `std::unique_ptr` when needed, `enum class`, `std::chrono`, ranges/algorithms, concepts |
+| Needs justification | `std::shared_ptr`, raw non-owning pointers, `reinterpret_cast`, mutable globals, exceptions in engine logic, manual memory management |
+| Forbidden at Swift boundary | uncaught exceptions, temporary borrowed views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public APIs, callbacks into Swift, per-element cross-language calls |
+
+Boundary checks: `./scripts/validate-cpp-boundaries.sh`.
+Native C++ tests: `swift test --filter RunPlayEngineCppTests
+-Xswiftc -warnings-as-errors` through the portable SwiftPM harness, or
+`./scripts/run-cpp-engine-tests.sh` directly (add `--sanitize` for ASan+UBSan).
+External package consumption:
+`swift build --package-path Tests/PackageConsumerSmoke`.
+
+#### Swift/C++ interoperability note
+
+SwiftPM attaches C++ target module maps to every transitive Swift dependent of
+`RunPlayCore`. Those dependents must compile with
+`.interoperabilityMode(.Cxx)` so the clang importer can parse C++ standard
+headers. That build-setting requirement does **not** authorize
+`import RunPlayEngineCpp` outside `RunPlayCore/Sources/Interop/`. Platform and
+Studio keep pure Swift public APIs; the engine module remains an implementation
+detail of Core.
 
 ### Commands and accessibility
 

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  # RunPlayCore: Pure Swift domain logic — test on Linux for cross-platform validation
+  # RunPlayCore + portable C++ engine — test on Linux for cross-platform validation
   core-linux:
     name: RunPlayCore (Linux)
     runs-on: ubuntu-24.04
@@ -20,10 +20,42 @@ jobs:
         run: |
           swift --version
           swift --version | grep -q 'Swift version 6.3'
+      - name: Print Clang version
+        run: |
+          clang --version || true
+          clang++ --version || true
+      - name: Validate C++ architecture boundaries
+        run: ./scripts/validate-cpp-boundaries.sh
+      - name: Build RunPlayEngineCpp
+        run: >-
+          swift build --target RunPlayEngineCpp
+          -Xcxx -Wall
+          -Xcxx -Wextra
+          -Xcxx -Wpedantic
+          -Xcxx -Wconversion
+          -Xcxx -Wsign-conversion
+          -Xcxx -Wshadow
+      - name: Run native C++ engine tests
+        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify RunPlayCore
         run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+      - name: Verify external RunPlayCore consumer
+        run: swift build --package-path Tests/PackageConsumerSmoke
 
-  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio)
+  # AddressSanitizer + UndefinedBehaviorSanitizer on the native C++ test binary
+  core-linux-sanitizers:
+    name: RunPlayEngineCpp Sanitizers (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify Swift 6.3
+        run: |
+          swift --version
+          swift --version | grep -q 'Swift version 6.3'
+      - name: Native C++ tests under ASan + UBSan
+        run: ./scripts/run-cpp-engine-tests.sh --sanitize
+
+  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++ engine
   macos:
     name: macOS (Full Stack)
     runs-on: macos-26
@@ -35,5 +67,18 @@ jobs:
         run: |
           swift --version
           swift --version | grep -q 'Swift version 6.3'
+      - name: Validate C++ architecture boundaries
+        run: ./scripts/validate-cpp-boundaries.sh
+      - name: Build RunPlayEngineCpp
+        run: >-
+          swift build --target RunPlayEngineCpp
+          -Xcxx -Wall
+          -Xcxx -Wextra
+          -Xcxx -Wpedantic
+          -Xcxx -Wconversion
+          -Xcxx -Wsign-conversion
+          -Xcxx -Wshadow
+      - name: Run native C++ engine tests
+        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify full package
         run: swift test -Xswiftc -warnings-as-errors
