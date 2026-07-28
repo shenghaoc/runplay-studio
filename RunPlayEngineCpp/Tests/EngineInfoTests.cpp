@@ -1,18 +1,7 @@
-// Native C++ tests for the RunPlayEngineCpp smoke API.
-//
-// No external test framework: assert and process exit status only.
-// Built as the RunPlayEngineCppTests native executable by the SwiftPM harness
-// and by scripts/run-cpp-engine-tests.sh directly.
-
 #include "RunPlayEngineCpp/RunPlayEngine.hpp"
+#include "TestSupport.hpp"
 
-#include <cstdlib>
-#include <iostream>
 #include <type_traits>
-
-// C++23: ISO value is 202302L. Apple Clang / libc++ report this for both
-// -std=c++23 and the SPM-typed cxx2b mode (-std=c++2b).
-static_assert(__cplusplus >= 202302L, "RunPlayEngineCpp must compile as C++23");
 
 static_assert(
     noexcept(runplay::engine_info()),
@@ -21,18 +10,7 @@ static_assert(
     std::is_trivially_copyable_v<runplay::EngineInfo>,
     "EngineInfo must remain allocation-free and trivially copyable");
 
-namespace {
-
-void expect(bool condition, const char *message) {
-    if (!condition) {
-        std::cerr << "FAIL: " << message << '\n';
-        std::exit(EXIT_FAILURE);
-    }
-}
-
-}  // namespace
-
-int main() {
+void run_engine_info_tests() {
     const runplay::EngineInfo first = runplay::engine_info();
     expect(first.abi_version == 1u, "abi_version must be 1");
     expect(
@@ -56,10 +34,4 @@ int main() {
     expect(
         noexcept(runplay::engine_info()),
         "engine_info must remain noexcept at the call site");
-
-    std::cout << "RunPlayEngineCppTests: all checks passed "
-              << "(abi=" << first.abi_version
-              << ", std=C++23"
-              << ", __cplusplus=" << __cplusplus << ")\n";
-    return EXIT_SUCCESS;
 }

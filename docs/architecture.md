@@ -36,8 +36,8 @@ RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
 ```
 
 ```
-RunPlayEngineCpp/              # Portable C++23 computational engine (foundation phase)
-├── include/RunPlayEngineCpp/  # Public C++ headers (smoke API only today)
+RunPlayEngineCpp/              # Portable C++23 computational engine
+├── include/RunPlayEngineCpp/  # Engine identity + route input/inspection values
 ├── Sources/                   # C++ implementation
 └── Tests/                     # Native C++ test executable sources
 
@@ -67,15 +67,41 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
 
-### C++ engine foundation (current phase)
+### C++ route-value boundary (current phase)
 
-`RunPlayEngineCpp` is a C++23 foundation target. It currently exposes only a
-deterministic smoke API (`runplay::engine_info`) that proves:
+`RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
+engine identity (`runplay::engine_info`) plus a route value and inspection
+contract:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
 - native C++ tests and Swift integration tests;
-- strict warnings, ASan/UBSan CI, and architecture-boundary validation.
+- strict warnings, ASan/UBSan CI, and architecture-boundary validation;
+- exact preservation of every `RoutePoint` field through a deterministic
+  digest independently implemented in Swift and C++;
+- bounded handling of empty, malformed-numeric, segmented, and large batches.
+
+```text
+Swift [RoutePoint]
+    → contiguous RouteInputSample buffer
+    → inspect_route_batch(const RouteInputSample*, size_t) noexcept
+    → compact RouteBatchInspection
+    → pure-Swift RunPlayRouteBatchInspection
+```
+
+Swift enumerates points in source order and uses the array offset as
+`source_index`; point UUID ownership stays in Swift. Timestamp values are
+exactly `Date.timeIntervalSinceReferenceDate` with no rounding. Optional values
+use `std::optional<double>` and never use numeric sentinels.
+
+Boundary ownership is explicit:
+
+- Swift owns and keeps the contiguous input buffer alive;
+- C++ borrows it for one synchronous call through `std::span`;
+- C++ never stores the pointer and allocates nothing proportional to the route;
+- C++ returns one compact value;
+- the Core adapter converts that value to pure Swift before imported C++ values
+  are destroyed.
 
 **No production RunPlay algorithm has migrated.** Geodesic primitives, route
 quality, elevation, timelines, splits, DTW, heatmap aggregation, and file
@@ -86,6 +112,11 @@ only. C++ types never appear in public `RunPlayCore` APIs.
 `RunPlayCore` remains the only Swift-facing core API and continues to own
 app-facing models, `Codable` compatibility, errors/diagnostics, actors,
 filesystem persistence, schema migration, and Swift↔C++ value translation.
+
+Each future route operation must cross the engine boundary in one bulk call,
+never one call per point. Platform and Studio must not traverse C++ containers
+or import the engine directly. The inspection boundary is parity
+infrastructure and makes no performance-improvement claim.
 
 #### C++ policy defaults
 
