@@ -62,6 +62,6 @@
 **Learning:** Initializing objects with multiple properties derived from the same large array using `.map { ... }` (e.g. `distances: points.map(\.distance), segments: points.map(\.segment)`) creates several redundant intermediate O(N) array allocations and requires iterating the collection multiple times, causing unnecessary ARC overhead.
 **Action:** When extracting multiple property arrays from a source collection, use a single inline `for` loop to build all target arrays simultaneously, avoiding multiple full passes and temporary mappings.
 
-## 2026-07-31 - Array Allocation in CSV Export Logic
+## 2026-07-28 - Array Allocation in CSV Export Logic
 **Learning:** `CSVRow.joined` used `fields.map { escape($0) }.joined(separator: ",")` which creates an intermediate `O(N)` array of strings for every single row in the CSV export. Because exports can be thousands of rows, this resulted in massive object churn and ARC overhead.
 **Action:** Replace `map.joined()` chains inside large string building processes with an inline `for` loop that iterates over elements and directly appends to the target string.
