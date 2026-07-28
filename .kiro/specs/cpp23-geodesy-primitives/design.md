@@ -114,8 +114,10 @@ returns, and a public geodesy function template.
 
 `scripts/validate-cpp-boundaries.sh` gains a scan proving no Swift file outside
 `RunPlayGeodesyBridge.swift` and the test targets references
-`RunPlayGeodesyBridge` or `RunPlayLocalMeters`, plus an explicit check that
-`GeoDistance.swift` remains an independent Swift implementation.
+`RunPlayGeodesyBridge`, `RunPlayLocalMeters`, or the raw imported C++ geodesy
+symbols. Adversarial matcher fixtures guard both positive and decoy cases, and
+an explicit check keeps `GeoDistance.swift` as an independent Swift
+implementation.
 
 The existing route pointer exception, vector rejection, template rejection,
 namespace-envelope checks, Swift import confinement, and package-graph
