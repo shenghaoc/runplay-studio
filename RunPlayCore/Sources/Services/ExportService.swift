@@ -319,7 +319,15 @@ public enum CSVRow {
 
     /// Join fields into a CSV row.
     public static func joined(_ fields: [String]) -> String {
-        fields.map { escape($0) }.joined(separator: ",")
+        // ⚡ Bolt: Inline string construction avoids creating an intermediate O(N) array from .map
+        var result = ""
+        for (index, field) in fields.enumerated() {
+            if index > 0 {
+                result.append(",")
+            }
+            result.append(escape(field))
+        }
+        return result
     }
 }
 
