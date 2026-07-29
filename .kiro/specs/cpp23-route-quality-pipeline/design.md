@@ -48,6 +48,22 @@ No route-length heap allocation in the kernel. The one-to-one output buffer is
 working state for candidate, retention, boundary, segment, distance, and source
 fields. Small fixed locals are allowed.
 
+## Complexity
+
+Every stage is linear in the sample count. Segment compaction assigns
+normalized indexes in ascending order while walking forward, so the retained
+points of one normalized segment always form a contiguous run; distance
+normalization therefore walks each segment's own extent instead of rescanning
+the whole route per segment. This matters because the native call is
+uninterruptible — Swift cannot cancel inside it — so a per-segment full rescan
+would turn a route with many pauses into a multi-minute unresponsive call at
+the product limit.
+
+Adjacent-candidate conservatism decides retention from the unmodified candidate
+flags and only clears ambiguous flags in a second pass. Clearing while deciding
+would hide a flag from the next index's lookback and wrongly reject the
+trailing member of every adjacent run.
+
 ## Error model
 
 Validate buffers, capacity, resource limit, input contract, policy, and

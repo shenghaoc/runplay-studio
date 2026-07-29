@@ -322,6 +322,9 @@ void mark_outlier_candidates(
         }
     }
 
+    // Decide retention first, reading only the candidate flags written above.
+    // Clearing an ambiguous flag inside this loop would hide it from the next
+    // index's lookback and wrongly reject the trailing member of every run.
     for (std::size_t index = 1u; index + 1u < samples.size(); ++index) {
         if (output[index].rejected_coordinate_outlier == 0u) {
             continue;
@@ -329,12 +332,18 @@ void mark_outlier_candidates(
         const bool adjacent_candidate =
             output[index - 1u].rejected_coordinate_outlier != 0u
             || output[index + 1u].rejected_coordinate_outlier != 0u;
-        if (adjacent_candidate) {
-            // Ambiguous adjacent run: keep the point.
-            output[index].rejected_coordinate_outlier = 0u;
-            continue;
+        if (!adjacent_candidate) {
+            output[index].retained = 0u;
         }
-        output[index].retained = 0u;
+    }
+
+    // Every candidate still retained was ambiguous rather than isolated, so it
+    // is not reported as a rejected coordinate outlier.
+    for (std::size_t index = 1u; index + 1u < samples.size(); ++index) {
+        if (output[index].rejected_coordinate_outlier != 0u
+            && output[index].retained != 0u) {
+            output[index].rejected_coordinate_outlier = 0u;
+        }
     }
 }
 
@@ -542,29 +551,85 @@ void compact_segments(
     }
 }
 
+/// Extent of one normalized segment plus its supplied-series validity.
+struct SegmentScan final {
+    std::size_t end{0};
+    bool supplied_valid{false};
+};
+
+/// `compact_segments` assigns normalized indexes in ascending order while
+/// walking forward, so the retained points of one segment always form a
+/// contiguous run. Scanning from the segment's first retained point therefore
+/// visits each sample once per pass instead of rescanning the whole route for
+/// every segment.
 [[nodiscard]]
-bool supplied_distance_series_is_valid(
+SegmentScan scan_segment(
     std::span<const RouteInputSample> samples,
     std::span<const RouteQualityOutputSample> output,
+    std::size_t start,
     std::int64_t segment_index
 ) noexcept {
     double previous = -std::numeric_limits<double>::infinity();
+    bool valid = true;
     bool any = false;
-    for (std::size_t index = 0u; index < samples.size(); ++index) {
+    std::size_t end = start;
+
+    for (std::size_t index = start; index < samples.size(); ++index) {
         if (output[index].retained == 0u) {
             continue;
         }
         if (output[index].normalized_segment_index != segment_index) {
+            break;
+        }
+        end = index + 1u;
+        any = true;
+        if (!valid) {
             continue;
         }
-        any = true;
         const double distance = samples[index].distance_from_start_meters;
         if (!std::isfinite(distance) || distance < 0.0 || distance < previous) {
-            return false;
+            valid = false;
+            continue;
         }
         previous = distance;
     }
-    return any;
+    return SegmentScan{end, valid && any};
+}
+
+/// Index of the next retained sample at or after `from`, or `samples.size()`.
+[[nodiscard]]
+std::size_t next_retained(
+    std::span<const RouteQualityOutputSample> output,
+    std::size_t from
+) noexcept {
+    for (std::size_t index = from; index < output.size(); ++index) {
+        if (output[index].retained != 0u) {
+            return index;
+        }
+    }
+    return output.size();
+}
+
+/// True when every normalized segment carries a usable supplied-distance
+/// series. Linear: each segment is scanned over its own extent only.
+[[nodiscard]]
+bool every_segment_supplied_series_is_valid(
+    std::span<const RouteInputSample> samples,
+    std::span<const RouteQualityOutputSample> output
+) noexcept {
+    std::size_t index = next_retained(output, 0u);
+    while (index < samples.size()) {
+        const SegmentScan scan = scan_segment(
+            samples,
+            output,
+            index,
+            output[index].normalized_segment_index);
+        if (!scan.supplied_valid) {
+            return false;
+        }
+        index = next_retained(output, scan.end);
+    }
+    return true;
 }
 
 [[nodiscard]]
@@ -602,53 +667,33 @@ void normalize_distances(
         return;
     }
 
-    // Per-segment validity and selection are evaluated by scanning retained
-    // points; no route-length heap storage is allocated.
+    // Per-segment validity and selection are evaluated by walking each
+    // segment's own extent; no route-length heap storage is allocated and no
+    // segment rescans the whole route.
     std::uint64_t supplied_segment_count = 0u;
     double cumulative_distance = 0.0;
 
-    bool all_segments_valid = true;
-    for (std::uint64_t segment = 0u; segment < normalized_segment_count; ++segment) {
-        if (!supplied_distance_series_is_valid(
-                samples,
-                output,
-                static_cast<std::int64_t>(segment))) {
-            all_segments_valid = false;
-            break;
-        }
-    }
+    // Only this policy needs whole-route validity, so the extra pass is skipped
+    // otherwise.
+    const bool all_segments_valid =
+        distance_policy == RouteQualityDistancePolicy::use_supplied_when_all_valid
+        && every_segment_supplied_series_is_valid(samples, output);
 
-    for (std::uint64_t segment = 0u; segment < normalized_segment_count; ++segment) {
-        const std::int64_t segment_index = static_cast<std::int64_t>(segment);
-        const bool valid = supplied_distance_series_is_valid(
+    std::size_t first_retained = next_retained(output, 0u);
+    while (first_retained < samples.size()) {
+        const std::int64_t segment_index =
+            output[first_retained].normalized_segment_index;
+        const SegmentScan scan = scan_segment(
             samples,
             output,
+            first_retained,
             segment_index);
 
-        bool source_selected = false;
-        std::size_t first_retained = samples.size();
-        std::size_t previous_retained = samples.size();
-        for (std::size_t index = 0u; index < samples.size(); ++index) {
-            if (output[index].retained == 0u) {
-                continue;
-            }
-            if (output[index].normalized_segment_index != segment_index) {
-                continue;
-            }
-            if (first_retained >= samples.size()) {
-                first_retained = index;
-                if (selection != nullptr) {
-                    source_selected = selection[index] != 0u;
-                }
-            }
-        }
-        if (first_retained >= samples.size()) {
-            continue;
-        }
-
+        const bool source_selected =
+            selection != nullptr && selection[first_retained] != 0u;
         const bool use_supplied = segment_uses_supplied(
             distance_policy,
-            valid,
+            scan.supplied_valid,
             all_segments_valid,
             source_selected);
         if (use_supplied) {
@@ -661,12 +706,9 @@ void normalize_distances(
         const double supplied_base =
             samples[first_retained].distance_from_start_meters;
 
-        previous_retained = samples.size();
-        for (std::size_t index = 0u; index < samples.size(); ++index) {
+        std::size_t previous_retained = samples.size();
+        for (std::size_t index = first_retained; index < scan.end; ++index) {
             if (output[index].retained == 0u) {
-                continue;
-            }
-            if (output[index].normalized_segment_index != segment_index) {
                 continue;
             }
 
@@ -705,6 +747,7 @@ void normalize_distances(
             cumulative_distance =
                 output[previous_retained].normalized_distance_from_start_meters;
         }
+        first_retained = next_retained(output, scan.end);
     }
 
     total_distance_meters = cumulative_distance;

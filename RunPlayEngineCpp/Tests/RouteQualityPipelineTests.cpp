@@ -366,35 +366,112 @@ void test_ordinary_route_and_teleport() {
     expect(output[3].retained == 1u && output[4].retained == 1u, "resume kept");
 }
 
-void test_adjacent_candidates_and_endpoints() {
-    // Construct two adjacent interior teleports so both candidates stay.
+// Builds an oscillating track whose interior points alternate between the
+// baseline and `spike_metres`. Every oscillating point is an outlier candidate
+// because each neighbour pair straddles it while the bridge across it is short.
+[[nodiscard]]
+std::vector<RouteInputSample> make_oscillating_route(
+    const std::vector<double>& metres
+) {
     std::vector<RouteInputSample> samples;
-    samples.push_back(make_sample(0, 0.0, 0.0, 0.0, 0.0, 0.0, 0));
-    samples.push_back(make_sample(
-        1, lat_step_for_metres(10.0), 0.0, 1.0, 1.0, 0.0, 0));
-    samples.push_back(make_sample(
-        2, lat_step_for_metres(5'000.0), 0.0, 2.0, 2.0, 0.0, 0));
-    samples.push_back(make_sample(
-        3, lat_step_for_metres(5'100.0), 0.0, 3.0, 3.0, 0.0, 0));
-    samples.push_back(make_sample(
-        4, lat_step_for_metres(20.0), 0.0, 4.0, 4.0, 0.0, 0));
-    samples.push_back(make_sample(
-        5, lat_step_for_metres(30.0), 0.0, 5.0, 5.0, 0.0, 0));
-    std::vector<RouteQualityOutputSample> output(samples.size());
-    const RouteQualityPipelineSummary summary = process_route_quality_geometry(
-        samples.data(),
-        samples.size(),
-        default_policy(),
-        RouteQualityDistancePolicy::compute_from_coordinates,
-        nullptr,
-        0u,
-        output.data(),
-        output.size());
-    expect(summary.status == RouteQualityPipelineStatus::success, "adjacent ok");
-    // Adjacent candidate conservatism retains both ambiguous points.
-    expect(output[2].retained == 1u, "adjacent candidate retained");
-    expect(output[3].retained == 1u, "adjacent peer retained");
-    expect(summary.discarded_coordinate_point_count == 0u, "no isolated discard");
+    samples.reserve(metres.size());
+    for (std::size_t index = 0u; index < metres.size(); ++index) {
+        const double ordinal = static_cast<double>(index);
+        samples.push_back(make_sample(
+            index,
+            lat_step_for_metres(metres[index]),
+            0.0,
+            ordinal,
+            ordinal,
+            0.0,
+            0));
+    }
+    return samples;
+}
+
+void test_adjacent_candidates_and_endpoints() {
+    // Exactly two adjacent candidates (indexes 2 and 3). Index 1 has a zero
+    // inbound step and index 4 a zero outbound step, so neither qualifies.
+    {
+        const std::vector<RouteInputSample> samples =
+            make_oscillating_route({0.0, 0.0, 5'000.0, 0.0, 5'000.0, 5'000.0});
+        std::vector<RouteQualityOutputSample> output(samples.size());
+        const RouteQualityPipelineSummary summary = process_route_quality_geometry(
+            samples.data(),
+            samples.size(),
+            default_policy(),
+            RouteQualityDistancePolicy::compute_from_coordinates,
+            nullptr,
+            0u,
+            output.data(),
+            output.size());
+        expect(summary.status == RouteQualityPipelineStatus::success, "adjacent ok");
+        // Adjacent candidate conservatism retains both ambiguous points.
+        expect(output[2].retained == 1u, "adjacent candidate retained");
+        expect(output[3].retained == 1u, "adjacent peer retained");
+        expect(
+            output[2].rejected_coordinate_outlier == 0u,
+            "adjacent candidate not flagged");
+        expect(
+            output[3].rejected_coordinate_outlier == 0u,
+            "adjacent peer not flagged");
+        expect(summary.retained_sample_count == samples.size(), "all retained");
+        expect(
+            summary.discarded_coordinate_point_count == 0u,
+            "no isolated discard");
+    }
+
+    // A run of three adjacent candidates (indexes 2, 3 and 4). The trailing
+    // member of the run must not be rejected either.
+    {
+        const std::vector<RouteInputSample> samples = make_oscillating_route(
+            {0.0, 0.0, 5'000.0, 0.0, 5'000.0, 0.0, 0.0});
+        std::vector<RouteQualityOutputSample> output(samples.size());
+        const RouteQualityPipelineSummary summary = process_route_quality_geometry(
+            samples.data(),
+            samples.size(),
+            default_policy(),
+            RouteQualityDistancePolicy::compute_from_coordinates,
+            nullptr,
+            0u,
+            output.data(),
+            output.size());
+        expect(summary.status == RouteQualityPipelineStatus::success, "run ok");
+        for (std::size_t index = 2u; index <= 4u; ++index) {
+            expect(output[index].retained == 1u, "adjacent run retained");
+            expect(
+                output[index].rejected_coordinate_outlier == 0u,
+                "adjacent run not flagged");
+        }
+        expect(summary.retained_sample_count == samples.size(), "run all retained");
+        expect(
+            summary.discarded_coordinate_point_count == 0u,
+            "no discard in run");
+    }
+
+    // An isolated candidate is still rejected when its neighbours are clean.
+    {
+        const std::vector<RouteInputSample> samples = make_oscillating_route(
+            {0.0, 0.0, 5'000.0, 0.0, 0.0, 0.0});
+        std::vector<RouteQualityOutputSample> output(samples.size());
+        const RouteQualityPipelineSummary summary = process_route_quality_geometry(
+            samples.data(),
+            samples.size(),
+            default_policy(),
+            RouteQualityDistancePolicy::compute_from_coordinates,
+            nullptr,
+            0u,
+            output.data(),
+            output.size());
+        expect(summary.status == RouteQualityPipelineStatus::success, "isolated ok");
+        expect(output[2].retained == 0u, "isolated candidate rejected");
+        expect(
+            output[2].rejected_coordinate_outlier == 1u,
+            "isolated candidate flagged");
+        expect(
+            summary.discarded_coordinate_point_count == 1u,
+            "one isolated discard");
+    }
 }
 
 void test_gap_inference_and_segments() {
@@ -689,6 +766,78 @@ void test_large_route() {
         "large total nonneg");
 }
 
+// Many short segments. Distance normalization must stay linear in the sample
+// count: scanning the whole route once per segment would make this quadratic,
+// so a regression here shows up as a large slowdown as well as by assertion.
+void test_many_segments() {
+    constexpr std::size_t count = 100'000;
+    constexpr std::size_t segment_length = 100;
+    constexpr std::size_t segment_count = count / segment_length;
+
+    std::vector<RouteInputSample> samples;
+    samples.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const double metres = static_cast<double>(i);
+        samples.push_back(make_sample(
+            static_cast<std::uint64_t>(i),
+            lat_step_for_metres(metres),
+            0.0,
+            static_cast<double>(i),
+            static_cast<double>(i),
+            // Supplied distances restart at zero on every source segment.
+            static_cast<double>(i % segment_length),
+            static_cast<std::int64_t>(i / segment_length)));
+    }
+
+    for (const RouteQualityDistancePolicy policy : {
+             RouteQualityDistancePolicy::compute_from_coordinates,
+             RouteQualityDistancePolicy::use_supplied_per_segment,
+             RouteQualityDistancePolicy::use_supplied_when_all_valid,
+         }) {
+        std::vector<RouteQualityOutputSample> output(count);
+        const RouteQualityPipelineSummary summary = process_route_quality_geometry(
+            samples.data(),
+            samples.size(),
+            default_policy(),
+            policy,
+            nullptr,
+            0u,
+            output.data(),
+            output.size());
+        expect(summary.status == RouteQualityPipelineStatus::success, "many ok");
+        expect(summary.retained_sample_count == count, "many retained");
+        expect(
+            summary.normalized_segment_count == segment_count,
+            "many segment count");
+        expect(
+            output[count - 1].normalized_segment_index
+                == static_cast<std::int64_t>(segment_count) - 1,
+            "many last segment");
+
+        // Cumulative distance never decreases and never jumps across a
+        // segment boundary.
+        double previous = -1.0;
+        for (std::size_t i = 0; i < count; ++i) {
+            const double value =
+                output[i].normalized_distance_from_start_meters;
+            expect(value >= previous, "many monotonic");
+            previous = value;
+        }
+        expect(
+            output[0].normalized_distance_from_start_meters == 0.0,
+            "many starts at zero");
+
+        const bool supplied =
+            policy != RouteQualityDistancePolicy::compute_from_coordinates;
+        expect(
+            summary.distance_source
+                == (supplied
+                        ? RouteQualityDistanceSource::device_supplied
+                        : RouteQualityDistanceSource::coordinate_derived),
+            "many distance source");
+    }
+}
+
 }  // namespace
 
 void run_route_quality_pipeline_tests() {
@@ -699,4 +848,5 @@ void run_route_quality_pipeline_tests() {
     test_supplied_distance_policies();
     test_segment_contract_and_identity();
     test_large_route();
+    test_many_segments();
 }

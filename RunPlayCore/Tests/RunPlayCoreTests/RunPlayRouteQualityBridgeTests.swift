@@ -40,6 +40,48 @@ final class RunPlayRouteQualityBridgeTests: XCTestCase {
         try assertBridgeMatchesOracle(points)
     }
 
+    /// Adjacent outlier candidates are ambiguous rather than isolated, so every
+    /// member of a run is retained — including the trailing one.
+    func testAdjacentCandidatesMatchOracle() throws {
+        // Two adjacent candidates (indexes 2 and 3).
+        let pair = makeOscillatingRoute([0, 0, 5_000, 0, 5_000, 5_000])
+        try assertBridgeMatchesOracle(pair)
+
+        // A run of three adjacent candidates (indexes 2, 3 and 4).
+        let run = makeOscillatingRoute([0, 0, 5_000, 0, 5_000, 0, 0])
+        try assertBridgeMatchesOracle(run)
+
+        // Parity alone would pass if both sides regressed together, so pin the
+        // expected production behaviour directly.
+        for points in [pair, run] {
+            let bridge = try RunPlayRouteQualityBridge.process(
+                points,
+                policy: .runningDefault,
+                distancePolicy: .computeFromCoordinates,
+                cancellationCheckStride: RouteQualityPolicy.runningDefault
+                    .cancellationCheckStride,
+                isCancelled: { false }
+            )
+            XCTAssertEqual(bridge.discardedCoordinatePointCount, 0)
+            XCTAssertEqual(bridge.routePoints.count, points.count)
+            XCTAssertEqual(bridge.routePoints.map(\.id), points.map(\.id))
+        }
+
+        // An isolated candidate is still rejected.
+        let isolated = makeOscillatingRoute([0, 0, 5_000, 0, 0, 0])
+        try assertBridgeMatchesOracle(isolated)
+        let isolatedResult = try RunPlayRouteQualityBridge.process(
+            isolated,
+            policy: .runningDefault,
+            distancePolicy: .computeFromCoordinates,
+            cancellationCheckStride: RouteQualityPolicy.runningDefault
+                .cancellationCheckStride,
+            isCancelled: { false }
+        )
+        XCTAssertEqual(isolatedResult.discardedCoordinatePointCount, 1)
+        XCTAssertEqual(isolatedResult.routePoints.count, isolated.count - 1)
+    }
+
     func testInferredGapMatchesOracle() throws {
         var points = makeStraightRoute(count: 8, stepMeters: 10)
         let jump = 1_000.0 / 111_132.0
@@ -306,6 +348,22 @@ final class RunPlayRouteQualityBridgeTests: XCTestCase {
                 latitude: metres / 111_132.0,
                 longitude: 0,
                 distanceFromStartMeters: suppliedDistance ? metres : 0,
+                elapsedSeconds: Double(index),
+                routeSegmentIndex: 0
+            )
+        }
+    }
+
+    /// Track that alternates between the baseline and the supplied offsets, so
+    /// each interior point is straddled by neighbours while the bridge across
+    /// it stays short — the shape that produces adjacent outlier candidates.
+    private func makeOscillatingRoute(_ metres: [Double]) -> [RoutePoint] {
+        metres.enumerated().map { index, offset in
+            RoutePoint(
+                timestamp: Date(timeIntervalSinceReferenceDate: Double(index)),
+                latitude: offset / 111_132.0,
+                longitude: 0,
+                distanceFromStartMeters: 0,
                 elapsedSeconds: Double(index),
                 routeSegmentIndex: 0
             )

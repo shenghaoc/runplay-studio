@@ -192,7 +192,10 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
         String(format: "%.3f", milliseconds)
     }
 
+    /// Peak resident size via the Mach task API. RunPlayCore is cross-platform,
+    /// so the probe reports `nil` where that API does not exist.
     private static func peakResidentMemoryBytes() -> UInt64? {
+        #if canImport(Darwin)
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
         let result = withUnsafeMutablePointer(to: &info) {
@@ -202,5 +205,8 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
         }
         guard result == KERN_SUCCESS else { return nil }
         return info.resident_size
+        #else
+        return nil
+        #endif
     }
 }
