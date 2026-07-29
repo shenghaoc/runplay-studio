@@ -32,6 +32,51 @@ extension WorkoutImporting {
             throw WorkoutImportError.fileNotFound(url)
         }
     }
+
+    /// Reads a local activity file, consuming at most
+    /// `WorkoutImportResourceLimits.maxSourceFileBytes + 1` bytes.
+    ///
+    /// Use this instead of `Data(contentsOf:)`. Reading one byte past the limit
+    /// is what proves the file is oversized, and stopping there means a
+    /// malformed or hostile file cannot exhaust memory before the size check
+    /// runs. Declared file metadata is never trusted in place of the read.
+    public func readBoundedSourceData(
+        at url: URL,
+        limit: Int = WorkoutImportResourceLimits.maxSourceFileBytes
+    ) throws -> Data {
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forReadingFrom: url)
+        } catch {
+            throw WorkoutImportError.fileNotFound(url)
+        }
+        defer { try? handle.close() }
+
+        let chunkSize = 1 << 20
+        var data = Data()
+        data.reserveCapacity(min(limit + 1, chunkSize))
+
+        while data.count <= limit {
+            let remaining = limit + 1 - data.count
+            let chunk: Data?
+            do {
+                chunk = try handle.read(upToCount: min(remaining, chunkSize))
+            } catch {
+                throw WorkoutImportError.parsingError(
+                    "This file could not be read: \(error.localizedDescription)"
+                )
+            }
+            guard let chunk, !chunk.isEmpty else { break }
+            data.append(chunk)
+        }
+
+        guard data.count <= limit else {
+            throw WorkoutResourceLimitError.sourceFileTooLarge(
+                limitBytes: WorkoutImportResourceLimits.maxSourceFileBytes
+            )
+        }
+        return data
+    }
 }
 
 /// Errors that can occur during workout import.

@@ -120,7 +120,8 @@ public struct FITParser {
     static let invalidUint8: UInt8 = 0xFF
 
     // Resource limits
-    static let maxFileSize: Int = 100 * 1024 * 1024 // 100 MB
+    /// Derived from the shared product limit so no format restates the value.
+    static let maxFileSize: Int = WorkoutImportResourceLimits.maxSourceFileBytes
     static let maxDefinitions: Int = 256
     static let maxFieldCount: Int = 256
     static let maxFieldSize: Int = 255

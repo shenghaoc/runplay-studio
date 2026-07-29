@@ -21,7 +21,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
-        let data = try Data(contentsOf: url)
+        let data = try readBoundedSourceData(at: url)
         return try importWorkout(
             data: data,
             suggestedName: url.deletingPathExtension().lastPathComponent
@@ -29,6 +29,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     }
 
     public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        try WorkoutImportResourceLimits.validateSourceByteCount(input.data.count)
         return try importWorkout(
             data: input.data,
             suggestedName: input.suggestedName.isEmpty
@@ -45,8 +46,12 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         )
     }
 
-    func importWorkout(data: Data, suggestedName: String) throws -> RunWorkout {
-        let rawActivities = try parseTCXData(data)
+    func importWorkout(
+        data: Data,
+        suggestedName: String,
+        maxRoutePointCount: Int = WorkoutImportResourceLimits.maxRoutePointCount
+    ) throws -> RunWorkout {
+        let rawActivities = try parseTCXData(data, maxRoutePointCount: maxRoutePointCount)
 
         guard !rawActivities.isEmpty else {
             throw WorkoutImportError.missingData("No activities found in TCX file")
@@ -72,6 +77,21 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         let activity = gpsActivities[0]
+
+        // Authoritative check: the limit applies to the selected activity's
+        // trackpoints. The parser also aborts mid-stream (see TCXXMLParser) so
+        // an oversized activity is not fully materialized first; this repeats
+        // the comparison against the activity actually chosen.
+        let selectedTrackpointCount = activity.laps.reduce(into: 0) { count, lap in
+            for track in lap.tracks { count += track.points.count }
+        }
+        if selectedTrackpointCount > maxRoutePointCount {
+            throw WorkoutResourceLimitError.routePointLimitExceeded(
+                count: selectedTrackpointCount,
+                limit: maxRoutePointCount
+            )
+        }
+
         let invalidCoordinatePointCount = activity.laps.reduce(into: 0) { count, lap in
             for track in lap.tracks {
                 count += track.points.reduce(into: 0) { trackCount, point in
@@ -394,6 +414,15 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     // Current track points accumulator
     private var currentTrackPoints: [RawTCXTrackpoint] = []
 
+    // Running `<Trackpoint>` total for the activity being parsed, reset at each
+    // `<Activity>`. Counting per activity rather than per document keeps a
+    // large non-selected activity from rejecting a file whose selected activity
+    // is within the limit. `importWorkout` repeats the check authoritatively
+    // once the activity is chosen.
+    private var activityTrackpointCount = 0
+    private var limitError: WorkoutResourceLimitError?
+    private let maxRoutePointCount: Int
+
     // Current trackpoint state
     private var currentTime: Date?
     private var currentLat: Double?
@@ -406,8 +435,9 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     // Character accumulation
     private var currentText: String = ""
 
-    init(data: Data) {
+    init(data: Data, maxRoutePointCount: Int) {
         self.data = data
+        self.maxRoutePointCount = maxRoutePointCount
     }
 
     func parse() throws -> [RawTCXActivity] {
@@ -417,7 +447,11 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         parser.shouldReportNamespacePrefixes = false
         parser.shouldResolveExternalEntities = false
 
-        guard parser.parse() else {
+        let parsed = parser.parse()
+        if let limitError {
+            throw limitError
+        }
+        guard parsed else {
             throw WorkoutImportError.parsingError("This TCX file could not be read. Try re-exporting it.")
         }
 
@@ -442,6 +476,7 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             currentSport = attributes["Sport"]?.lowercased()
             currentActivityId = nil
             currentActivityLaps = []
+            activityTrackpointCount = 0
         case "Lap":
             inLap = true
             currentLapTracks = []
@@ -570,6 +605,15 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             inPosition = false
         case "Trackpoint":
             if inTrackpoint, let lat = currentLat, let lon = currentLon {
+                activityTrackpointCount += 1
+                if activityTrackpointCount > maxRoutePointCount {
+                    limitError = .routePointLimitExceeded(
+                        count: activityTrackpointCount,
+                        limit: maxRoutePointCount
+                    )
+                    parser.abortParsing()
+                    return
+                }
                 currentTrackPoints.append(RawTCXTrackpoint(
                     time: currentTime,
                     latitude: lat,
@@ -656,7 +700,10 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
 
 // MARK: - Data-based parsing entry point
 
-private func parseTCXData(_ data: Data) throws -> [RawTCXActivity] {
-    let parser = TCXXMLParser(data: data)
+private func parseTCXData(
+    _ data: Data,
+    maxRoutePointCount: Int
+) throws -> [RawTCXActivity] {
+    let parser = TCXXMLParser(data: data, maxRoutePointCount: maxRoutePointCount)
     return try parser.parse()
 }

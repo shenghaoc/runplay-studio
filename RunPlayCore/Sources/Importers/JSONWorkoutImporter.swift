@@ -17,7 +17,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
-        let data = try Data(contentsOf: url)
+        let data = try readBoundedSourceData(at: url)
         return try importWorkout(from: data)
     }
 
@@ -30,10 +30,27 @@ public struct JSONWorkoutImporter: WorkoutImporting {
     }
 
     public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        try importWorkout(from: input, maxRoutePointCount: WorkoutImportResourceLimits.maxRoutePointCount)
+    }
+
+    func importWorkout(
+        from input: WorkoutImportInput,
+        maxRoutePointCount: Int
+    ) throws -> RunWorkout {
+        try WorkoutImportResourceLimits.validateSourceByteCount(input.data.count)
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
         let raw = try decoder.decode(RawWorkout.self, from: input.data)
+        // JSONDecoder is not streaming, so the byte limit above is what bounds
+        // decoding; this rejects the decoded route before it is converted.
+        if raw.routePoints.count > maxRoutePointCount {
+            throw WorkoutResourceLimitError.routePointLimitExceeded(
+                count: raw.routePoints.count,
+                limit: maxRoutePointCount
+            )
+        }
         var workout = try convertToWorkout(raw)
         if (workout.metadata.name == nil || workout.metadata.name?.isEmpty == true),
            !input.suggestedName.isEmpty {

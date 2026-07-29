@@ -13,6 +13,38 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
+## Workout size limits
+
+Every format shares one set of product limits, defined once in
+`WorkoutImportResourceLimits` and applied by each importer and by
+`RouteQualityProcessor`:
+
+| Limit | Value | Applied to |
+| --- | --- | --- |
+| Route points per workout | 1,000,000 | Total `<trkpt>` in a GPX file; trackpoints in the selected TCX activity; decoded `routePoints` in a JSON file; route points in each resulting FIT session. Archive entries inherit their format importer's limit. |
+| Source payload | 100 MB | Every activity file, read through a bounded reader that stops at one byte past the limit rather than trusting file metadata. Archive entries keep their own smaller ceilings (50 MB compressed, 100 MB uncompressed). |
+
+One million route points is roughly 278 hours of continuous one-second
+recording, well beyond any single run.
+
+Behaviour when a limit is exceeded:
+
+- The whole workout is rejected. RunPlay Studio never truncates or partially
+  imports an oversized route, because a silently shortened workout is worse
+  than a refused one.
+- GPX and TCX stop parsing at the first point past the limit, so an oversized
+  route is never fully constructed.
+- The error names the limit and states that the workout was not imported.
+- In batch or archive import only that candidate fails; the rest of the
+  transaction is unaffected.
+- Existing persisted workouts above the limit are never deleted or rewritten.
+  They stay visible with the usual route-quality upgrade warning.
+
+The C++ engine carries a separate internal ceiling of 1,250,000 samples
+(`max_route_input_samples`). That is a safety margin 25% above the product
+limit, not a second product limit — a route the app accepts can never be
+rejected at the engine boundary.
+
 ## Multi-session FIT import
 
 **Import File…** is the only entry point. A user never has to know in advance
@@ -209,7 +241,7 @@ report. Nested batch review inside archive import is out of scope.
 - TCX seamless manual/auto laps remain in one route segment. Multiple tracks use `TCXRouteContinuityResolver` (time/distance thresholds) so genuine pauses stay gaps while continuous tracks do not invent a pause.
 - TCX `TriggerMethod` values map to documented triggers (`Manual`, `Distance`, `Time`, `Location`); unknown text is retained as unknown rather than guessed. FIT `lap_trigger` maps official profile codes; unknown codes keep the raw value.
 - Old persisted FIT/TCX library snapshots that discarded source laps stay empty until the original file is reimported. GPX never invents laps.
-- FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages.
+- FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages. The 100 MB ceiling and the 1,000,000 route-point limit are the shared values in `WorkoutImportResourceLimits`; the per-session route-point limit is enforced explicitly rather than inferred from the decoded-message ceiling.
 - FIT signed coordinate decoding uses bit-pattern semantics for western and
   southern hemisphere coordinates.
 - Quality diagnostics count invalid coordinates, discarded isolated coordinate

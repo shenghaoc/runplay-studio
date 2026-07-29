@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "RunPlayEngineCpp/Geodesy.hpp"
+#include "RunPlayEngineCpp/RouteGeometry.hpp"
 #include "RunPlayEngineCpp/RouteInterop.hpp"
 
 namespace runplay {

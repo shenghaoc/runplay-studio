@@ -469,6 +469,257 @@ final class RouteQualityProcessorTests: XCTestCase {
         XCTAssertLessThan(duration, .seconds(20), "100,000-point processing took \(duration)")
     }
 
+    // MARK: - C++ step-distance production cutover
+
+    func testCoordinateDerivedRouteUsesBulkNativeSteps() throws {
+        let points = (0..<5).map { index in
+            point(northMeters: Double(index) * 25, time: Double(index) * 10)
+        }
+        let result = try processor.process(
+            points,
+            distancePolicy: .computeFromCoordinates,
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.routePoints.map(\.id), points.map(\.id))
+        XCTAssertEqual(result.distanceSource, .coordinateDerived)
+        XCTAssertEqual(
+            result.distanceProvenance.segmentSources,
+            [.coordinateDerived]
+        )
+        var expected = 0.0
+        for index in 1..<points.count {
+            expected += GeoDistance.distanceMeters(
+                fromLat: points[index - 1].latitude,
+                lon: points[index - 1].longitude,
+                toLat: points[index].latitude,
+                lon: points[index].longitude
+            )
+            XCTAssertEqual(
+                result.routePoints[index].distanceFromStartMeters,
+                expected,
+                accuracy: max(1e-6, abs(expected) * 1e-12)
+            )
+        }
+    }
+
+    func testMultipleCoordinateDerivedSegmentsResetAtBoundaries() throws {
+        let points = [
+            point(northMeters: 0, time: 0, segment: 0),
+            point(northMeters: 40, time: 10, segment: 0),
+            point(northMeters: 200, time: 20, segment: 1),
+            point(northMeters: 250, time: 30, segment: 1),
+        ]
+        let result = try processor.process(
+            points,
+            distancePolicy: .computeFromCoordinates,
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.routePoints.map(\.routeSegmentIndex), [0, 0, 1, 1])
+        XCTAssertEqual(
+            result.routePoints[2].distanceFromStartMeters,
+            result.routePoints[1].distanceFromStartMeters,
+            accuracy: 0.001
+        )
+        let secondSegmentStep = GeoDistance.distanceMeters(
+            fromLat: points[2].latitude,
+            lon: points[2].longitude,
+            toLat: points[3].latitude,
+            lon: points[3].longitude
+        )
+        XCTAssertEqual(
+            result.routePoints[3].distanceFromStartMeters,
+            result.routePoints[2].distanceFromStartMeters + secondSegmentStep,
+            accuracy: max(1e-6, abs(secondSegmentStep) * 1e-12)
+        )
+        XCTAssertEqual(result.distanceSource, .coordinateDerived)
+    }
+
+    func testFullySuppliedDistanceRouteSkipsNativeStepDependency() throws {
+        let points = (0..<4).map { index in
+            point(
+                northMeters: Double(index) * 100,
+                time: Double(index) * 10,
+                suppliedDistance: Double(index) * 50
+            )
+        }
+        let result = try processor.process(
+            points,
+            distancePolicy: .useSuppliedDistancesWhenValid,
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.distanceSource, .deviceSupplied)
+        XCTAssertEqual(
+            result.distanceProvenance.segmentSources,
+            [.deviceSupplied]
+        )
+        XCTAssertEqual(result.routePoints.map(\.distanceFromStartMeters), [0, 50, 100, 150])
+    }
+
+    func testMixedSuppliedAndCoordinateDerivedSegments() throws {
+        let points = [
+            point(northMeters: 0, time: 0, suppliedDistance: 0, segment: 0),
+            point(northMeters: 30, time: 10, suppliedDistance: 30, segment: 0),
+            point(northMeters: 100, time: 20, suppliedDistance: 1_000, segment: 1),
+            point(northMeters: 160, time: 30, suppliedDistance: 1_100, segment: 1),
+        ]
+        let result = try processor.process(
+            points,
+            distancePolicy: .useSuppliedDistancesForSegments([1]),
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.distanceSource, .mixed)
+        XCTAssertEqual(
+            result.distanceProvenance.segmentSources,
+            [.coordinateDerived, .deviceSupplied]
+        )
+        let firstSegment = GeoDistance.distanceMeters(
+            fromLat: points[0].latitude,
+            lon: points[0].longitude,
+            toLat: points[1].latitude,
+            lon: points[1].longitude
+        )
+        XCTAssertEqual(
+            result.routePoints[1].distanceFromStartMeters,
+            firstSegment,
+            accuracy: max(1e-6, abs(firstSegment) * 1e-12)
+        )
+        XCTAssertEqual(
+            result.routePoints[2].distanceFromStartMeters,
+            result.routePoints[1].distanceFromStartMeters,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            result.routePoints[3].distanceFromStartMeters,
+            result.routePoints[2].distanceFromStartMeters + 100,
+            accuracy: 0.001
+        )
+    }
+
+    func testDuplicateCoordinatesProduceZeroStepDistance() throws {
+        let points = [
+            point(northMeters: 0, time: 0),
+            point(northMeters: 0, time: 10),
+            point(northMeters: 25, time: 20),
+        ]
+        let result = try processor.process(
+            points,
+            distancePolicy: .computeFromCoordinates,
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.routePoints[1].distanceFromStartMeters, 0, accuracy: 1e-9)
+        XCTAssertEqual(
+            result.routePoints[2].distanceFromStartMeters,
+            GeoDistance.distanceMeters(
+                fromLat: points[1].latitude,
+                lon: points[1].longitude,
+                toLat: points[2].latitude,
+                lon: points[2].longitude
+            ),
+            accuracy: 1e-6
+        )
+    }
+
+    func testInferredGapStillUsesCoordinateDerivedNativeSteps() throws {
+        let points = [
+            point(northMeters: 0, time: 0),
+            point(northMeters: 20, time: 10),
+            point(northMeters: 520, time: 20),
+            point(northMeters: 540, time: 30),
+            point(northMeters: 560, time: 40),
+        ]
+        let result = try processor.process(
+            points,
+            distancePolicy: .computeFromCoordinates,
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.diagnostics.inferredRouteGapCount, 1)
+        XCTAssertEqual(result.routePoints.map(\.routeSegmentIndex), [0, 0, 1, 1, 1])
+        XCTAssertEqual(
+            result.routePoints[2].distanceFromStartMeters,
+            result.routePoints[1].distanceFromStartMeters,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(result.distanceSource, .coordinateDerived)
+    }
+
+    func testInvalidCoordinatesRemovedBeforeDistanceNormalization() throws {
+        var points = (0..<4).map { index in
+            point(northMeters: Double(index) * 20, time: Double(index) * 10)
+        }
+        points.insert(
+            RoutePoint(
+                timestamp: Date(timeIntervalSince1970: 1_700_000_005),
+                latitude: .nan,
+                longitude: 103,
+                altitudeMeters: nil,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 5,
+                routeSegmentIndex: 0
+            ),
+            at: 1
+        )
+
+        let result = try processor.process(
+            points,
+            distancePolicy: .computeFromCoordinates,
+            sortByTimestamp: false
+        )
+
+        XCTAssertEqual(result.diagnostics.invalidCoordinatePointCount, 1)
+        XCTAssertEqual(result.routePoints.count, 4)
+        XCTAssertEqual(result.distanceSource, .coordinateDerived)
+        XCTAssertGreaterThan(result.routePoints.last?.distanceFromStartMeters ?? 0, 0)
+    }
+
+    func testSourceSpeedValidationStillUsesNormalizedDistances() throws {
+        let points = [
+            point(
+                northMeters: 0,
+                time: 0,
+                speedMetersPerSecond: 25,
+                paceSecondsPerKilometer: 40
+            ),
+            point(
+                northMeters: 140,
+                time: 10,
+                speedMetersPerSecond: 14,
+                paceSecondsPerKilometer: 1_000 / 14
+            ),
+        ]
+        let result = try processor.process(points, sortByTimestamp: false)
+        XCTAssertNil(result.routePoints[0].speedMetersPerSecond)
+        XCTAssertEqual(result.routePoints[1].speedMetersPerSecond ?? -1, 14, accuracy: 0.001)
+    }
+
+    func testCancellationDuringNativeDistancePassPropagates() throws {
+        let policy = RouteQualityPolicy(cancellationCheckStride: 1)
+        let points = (0..<200).map { index in
+            point(northMeters: Double(index) * 2, time: Double(index))
+        }
+        // Cancel on the first cancellation probe of the native step-distance pass.
+        // Earlier stages still check cancellation; a low threshold is enough to
+        // prove CancellationError still propagates for coordinate-derived routes.
+        let probe = CancellationProbe(cancelAfterCheckCount: 5)
+
+        XCTAssertThrowsError(
+            try RouteQualityProcessor(policy: policy).process(
+                points,
+                distancePolicy: .computeFromCoordinates,
+                sortByTimestamp: false,
+                isCancelled: probe.shouldCancel
+            )
+        ) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertGreaterThan(probe.checkCount, 5)
+    }
+
     private func isolatedTeleportPoints(spikeAccuracy: Double?) -> [RoutePoint] {
         [
             point(northMeters: 0, time: 0, horizontalAccuracy: spikeAccuracy == nil ? nil : 5),

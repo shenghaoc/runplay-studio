@@ -37,7 +37,7 @@ RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
 
 ```
 RunPlayEngineCpp/              # Portable C++23 computational engine
-├── include/RunPlayEngineCpp/  # Engine identity, route values, geodesy primitives
+├── include/RunPlayEngineCpp/  # Engine identity, route values, geodesy, step distances
 ├── Sources/                   # C++ implementation
 └── Tests/                     # Native C++ test executable sources
 
@@ -67,11 +67,12 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
 
-### C++ route-value boundary and geodesy primitives (current phase)
+### C++ route geometry and production step distances (current phase)
 
 `RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
 engine identity (`runplay::engine_info`), a route value and inspection
-contract, and parity-tested geodesy primitives:
+contract, allocation-free geodesy primitives, and the first production bulk
+route algorithm:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -79,7 +80,17 @@ contract, and parity-tested geodesy primitives:
 - strict warnings, ASan/UBSan CI, and architecture-boundary validation;
 - exact preservation of every `RoutePoint` field through a deterministic
   digest independently implemented in Swift and C++;
-- bounded handling of empty, malformed-numeric, segmented, and large batches.
+- production coordinate-derived step distances filled into a Swift-owned
+  output buffer through one bulk call.
+
+```text
+Swift [RoutePoint]
+    → contiguous RouteInputSample buffer + Double output buffer
+    → compute_route_step_distances(...) noexcept
+    → pure-Swift cumulative normalization / policy / provenance
+```
+
+Inspection remains available for field-fidelity tests:
 
 ```text
 Swift [RoutePoint]
@@ -96,16 +107,17 @@ use `std::optional<double>` and never use numeric sentinels.
 
 Boundary ownership is explicit:
 
-- Swift owns and keeps the contiguous input buffer alive;
-- C++ borrows it for one synchronous call through `std::span`;
-- C++ never stores the pointer and allocates nothing proportional to the route;
-- C++ returns one compact value;
-- the Core adapter converts that value to pure Swift before imported C++ values
-  are destroyed.
+- Swift owns and keeps the contiguous input buffer and output buffer alive;
+- C++ borrows both for one synchronous call through `std::span` internally;
+- C++ never stores either pointer and allocates nothing proportional to the route;
+- C++ writes exactly `sample_count` step-distance entries on success and writes
+  nothing on error;
+- the Core adapter converts compact C++ summaries to pure Swift before imported
+  C++ values are destroyed.
 
 #### C++23 geodesy primitives
 
-`Geodesy.hpp` adds allocation-free primitives equivalent to the Swift
+`Geodesy.hpp` provides allocation-free primitives equivalent to the Swift
 `GeoDistance` implementation:
 
 ```cpp
@@ -130,29 +142,65 @@ implementation splits accumulations such that no statement holds both a
 multiply and an add. The two implementations therefore agree bit for bit on one
 platform; parity-test tolerance exists only for macOS/Linux libm differences.
 
-**Swift `GeoDistance` remains the production implementation.** The internal
-`RunPlayGeodesyBridge` adapter is parity-only and is called by tests alone.
-Cutting production over would not be a simplification: every `GeoDistance`
-caller runs inside a per-point loop, so scalar delegation would create one
-Swift-to-C++ call per point — precisely the per-element crossing forbidden
-below. The next route-pipeline PR will instead consume these primitives
-*inside* C++ after one bulk route call crosses the boundary.
-`scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
+#### Production route step distances
 
-**No production RunPlay algorithm has migrated.** Route quality, elevation,
-timelines, splits, DTW, heatmap aggregation, projection services, and file
-parsers remain in Swift `RunPlayCore` until later migration PRs. The app does
-not call the C++ adapters in production paths; integration is proven by tests
-only. C++ types never appear in public `RunPlayCore` APIs.
+`RouteGeometry.hpp` exposes one bulk kernel:
+
+```cpp
+[[nodiscard]]
+RouteStepDistanceSummary compute_route_step_distances(
+    const RouteInputSample* samples,
+    std::size_t sample_count,
+    double* step_distances_meters,
+    std::size_t step_distance_capacity
+) noexcept;
+```
+
+Route size is bounded in Swift, not at the engine boundary.
+`WorkoutImportResourceLimits.maxRoutePointCount` (1,000,000) is the product
+limit, enforced by every importer and by a preflight in
+`RouteQualityProcessor.process` before the native input buffer is built.
+`max_route_input_samples` (1,250,000) is an internal safety ceiling 25% above
+it, so `resource_limit` at the boundary means a Swift-side limit failed to run
+rather than that a user's workout is too long.
+
+Semantics:
+
+- output index matches input index;
+- first step is zero;
+- segment-boundary steps are zero;
+- invalid same-segment coordinate pairs produce zero;
+- valid pairs use `haversine_distance_meters` internally;
+- total is summed left-to-right;
+- existing antipodal NaN behavior is preserved.
+
+**C++23 now performs production coordinate-derived route step-distance
+calculation through one bulk call.**
+`RouteQualityProcessor.normalizeDistances` consumes that series for
+coordinate-derived segments. Fully supplied-distance routes skip the native
+call. Swift continues to own route-quality policies, cumulative distance
+mutation, provenance, cancellation, diagnostics, and public models. Earlier
+route-quality stages still use Swift geodesy. No scalar per-point Swift/C++
+production calls are allowed. `scripts/validate-cpp-boundaries.sh` enforces
+that isolation mechanically.
+
+Elevation, timelines, splits, DTW, heatmap aggregation, projection services,
+and file parsers remain in Swift `RunPlayCore` until later migration PRs. C++
+types never appear in public `RunPlayCore` APIs.
 
 `RunPlayCore` remains the only Swift-facing core API and continues to own
 app-facing models, `Codable` compatibility, errors/diagnostics, actors,
 filesystem persistence, schema migration, and Swift↔C++ value translation.
 
-Each future route operation must cross the engine boundary in one bulk call,
-never one call per point. Platform and Studio must not traverse C++ containers
-or import the engine directly. The inspection boundary is parity
-infrastructure and makes no performance-improvement claim.
+Each route operation must cross the engine boundary in one bulk call, never one
+call per point. Platform and Studio must not traverse C++ containers or import
+the engine directly.
+
+Approved pointer boundaries:
+
+- `const RouteInputSample*` input for route inspection
+- `const RouteInputSample*` input plus `double*` caller-owned output for route
+  step-distance calculation
 
 #### C++ policy defaults
 
