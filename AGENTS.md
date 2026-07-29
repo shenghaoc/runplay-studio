@@ -89,13 +89,19 @@ not import `RunPlayEngineCpp` directly.
   third-party deps). It currently exposes engine identity, route input values,
   one synchronous route-batch inspection boundary, allocation-free geodesy
   primitives (coordinate validation, Haversine distance, local-metre
-  projection), a transitional bulk route step-distance boundary, and the
-  production combined route-quality geometry kernel. C++23 performs production
+  projection), a transitional bulk route step-distance boundary, the
+  production combined route-quality geometry kernel, and the production
+  per-workout personal heatmap coverage kernel. C++23 performs production
   outlier evidence, isolated-point rejection, implicit gap inference, final
   segment compaction, supplied-distance policy, and normalized cumulative
   distances through one bulk call. Swift still owns stage-1 validation,
-  source-speed checks, and elevation. No scalar per-point Swift/C++ production
-  calls are allowed.
+  source-speed checks, and elevation. For the personal heatmap, C++23 performs
+  Web Mercator projection, grid-cell quantization, effective-segment gap
+  breaking, supercover interval traversal, per-workout cell de-duplication, and
+  deterministic cell ordering through one bulk call per workout; Swift still
+  owns date filtering, the adaptive resolution loop, cross-workout aggregation,
+  the minimum-workout-count filter, and snapshot finalization. No scalar
+  per-point Swift/C++ production calls are allowed.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -147,9 +153,20 @@ Approved pointer boundaries:
   * optional `const std::uint8_t*` selection buffer
   * `RouteQualityOutputSample*` caller-owned output
 
+- per-workout personal heatmap coverage:
+
+  * `const PersonalHeatmapRouteSample*` input samples
+  * `PersonalHeatmapCellIndex*` caller-owned output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
-and performs no callback. C++ writes exactly `sample_count` output entries on
-success and writes nothing on error.
+and performs no callback.
+
+Per-sample boundaries write exactly `sample_count` output entries on success
+and write nothing on error. The personal heatmap coverage boundary is instead
+capacity-negotiated: its output is a de-duplicated cell set whose size is not
+known in advance, so it writes exactly `required_cell_count` entries on
+success, and on `insufficient_output_capacity` it writes nothing while
+reporting `required_cell_count` so Swift can reallocate and retry.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route

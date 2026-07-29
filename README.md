@@ -124,8 +124,8 @@ The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI
 framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
 foundation target. The engine provides identity, route input values, a bulk
 inspection boundary, allocation-free geodesy primitives, a transitional
-step-distance boundary, and the production combined route-quality geometry
-kernel.
+step-distance boundary, the production combined route-quality geometry
+kernel, and the production per-workout personal heatmap coverage kernel.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
