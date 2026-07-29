@@ -12,7 +12,7 @@ public struct FITImporter: WorkoutImporting {
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
-        let data = try Data(contentsOf: url)
+        let data = try readBoundedSourceData(at: url)
         return try importWorkout(
             data: data,
             suggestedName: url.deletingPathExtension().lastPathComponent
@@ -20,6 +20,7 @@ public struct FITImporter: WorkoutImporting {
     }
 
     public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        try WorkoutImportResourceLimits.validateSourceByteCount(input.data.count)
         return try importWorkout(
             data: input.data,
             suggestedName: input.suggestedName.isEmpty
@@ -91,7 +92,8 @@ public struct FITImporter: WorkoutImporting {
         index: FITSessionMessageIndex,
         sessionIndex: Int?,
         suggestedName: String,
-        provenance: WorkoutImportProvenance?
+        provenance: WorkoutImportProvenance?,
+        maxRoutePointCount: Int = WorkoutImportResourceLimits.maxRoutePointCount
     ) throws -> RunWorkout {
         let decodedFile = index.decodedFile
         let decodedRoute: FITDecodedRouteResult
@@ -104,6 +106,16 @@ public struct FITImporter: WorkoutImporting {
 
         guard !routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
+        }
+
+        // Explicit per-session limit. The decoded-message ceiling bounds the
+        // container, not any single resulting session, so it is not relied on
+        // to guarantee this. Both single-file and batch FIT import reach here.
+        if routePoints.count > maxRoutePointCount {
+            throw WorkoutResourceLimitError.routePointLimitExceeded(
+                count: routePoints.count,
+                limit: maxRoutePointCount
+            )
         }
 
         // Build metadata from selected session and device info

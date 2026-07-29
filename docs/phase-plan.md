@@ -159,8 +159,14 @@ quality stages — not native-kernel speed in isolation.
 
 The `max_route_input_samples` ceiling is a property of the `RouteInputSample`
 batch boundary, not of any one kernel, so the combined pipeline inherits it
-unchanged. Resolve the supported-route-size question once at that boundary
-rather than per kernel.
+unchanged. That question is now settled at the boundary rather than per kernel:
+Swift bounds every import at 1,000,000 route points
+(`WorkoutImportResourceLimits`), and the engine ceiling sits 25% above at
+1,250,000. The combined pipeline needs no new size handling.
+
+`scripts/run-step-distance-benchmark.sh` reproduces the three measurements in
+release. The gate for a production cutover is the complete operation being
+replaced — `RouteQualityProcessor.process` — not native-kernel speed.
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs

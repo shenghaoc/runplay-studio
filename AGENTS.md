@@ -142,6 +142,16 @@ Swift owns both buffers. C++ borrows them synchronously. C++ retains nothing.
 C++ writes exactly `sample_count` output entries on success and writes nothing
 on error.
 
+Supported workout size is bounded in Swift, never at the engine boundary.
+`WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route
+points per resulting workout and a 100 MB source payload — and every importer
+plus the `RouteQualityProcessor` preflight reads them from there. The engine's
+`max_route_input_samples` is an internal safety ceiling 25% above the product
+limit, so a route the app accepts can never be rejected by the engine. Raising
+the product limit requires raising that ceiling to preserve the margin; a
+parity test enforces the relationship. Do not add a second copy of either
+number to an importer.
+
 Migrated numerical code is a literal translation until a change of behaviour is
 explicitly decided. Preserve constants, operation order, and existing
 limitations, and split statements where needed so `-ffp-contract` cannot fuse a

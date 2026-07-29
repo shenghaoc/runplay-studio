@@ -77,5 +77,29 @@ Checked task boxes do not replace test and CI evidence.
 
 ### R8. Route size
 
-- The production bridge must accept every route size currently supported by
-  the app. Do not silently reduce supported workout size.
+- The production bridge must accept every route size the app supports. Before
+  this PR the GPX, TCX, and JSON importers had no route-point or payload cap,
+  so "supported size" was unbounded and the engine ceiling could have rejected
+  an accepted workout.
+- The app's supported size is therefore bounded explicitly rather than left
+  implicit: `WorkoutImportResourceLimits.maxRoutePointCount` is 1,000,000 route
+  points per resulting workout and `maxSourceFileBytes` is the existing 100 MB
+  FIT container value, reused so no format restates it.
+- The limit is applied per resulting workout — total GPX `<trkpt>`, trackpoints
+  in the selected TCX activity, decoded JSON `routePoints`, and route points in
+  each resulting FIT session, which is checked explicitly rather than inferred
+  from the decoded-message ceiling. Archive entries inherit their format
+  importer's limit.
+- The payload limit is applied through a bounded reader that consumes at most
+  `limit + 1` bytes instead of an unbounded `Data(contentsOf:)`.
+- GPX and TCX stop parsing at the first point past the limit.
+- `max_route_input_samples` is raised to 1,250,000 — an internal safety ceiling
+  25% above the product limit, not a second product limit. R5's single native
+  call is preserved: no chunking or streaming redesign is required, because an
+  accepted route can never reach the ceiling.
+- Exceeding a limit rejects the whole workout with a user-visible error naming
+  the limit. Nothing is truncated or partially imported. Batch import fails
+  only that candidate. Existing persisted oversized workouts are neither
+  deleted nor rewritten.
+- `RouteQualityProcessor.process` preflights the same limit so programmatic
+  callers fail before the native input buffer is built.

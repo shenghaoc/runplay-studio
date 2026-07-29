@@ -7,11 +7,19 @@
 
 namespace runplay {
 
-/// Maximum batch accepted by the route inspection boundary.
+/// Internal safety ceiling for every batch crossing the route boundary.
 ///
-/// This cap proves bounded native input handling. It does not define the
-/// maximum workout length supported by RunPlay Studio.
-inline constexpr std::size_t max_route_input_samples = 1'000'000;
+/// This is not the product limit. RunPlay Studio's maximum supported workout
+/// length is 1,000,000 route points, enforced in Swift by
+/// `WorkoutImportResourceLimits.maxRoutePointCount` at every importer and by a
+/// preflight in `RouteQualityProcessor`. This ceiling sits 25% above that so a
+/// route the app accepts can never reach the engine boundary and be rejected
+/// here; hitting `resource_limit` means a Swift-side limit failed to run, not
+/// that the user's workout is too long.
+///
+/// Raising the product limit requires raising this value to preserve the
+/// margin. `WorkoutImportResourceLimitsTests` asserts the relationship.
+inline constexpr std::size_t max_route_input_samples = 1'250'000;
 
 /// Concrete aliases keep supported `std::optional` specializations nameable
 /// from Swift 6.3, where unspecialized C++ class templates are unavailable.

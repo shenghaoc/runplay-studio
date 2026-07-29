@@ -15,7 +15,7 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
 
     public func importWorkout(from url: URL) throws -> RunWorkout {
         try validateLocalFile(url)
-        let data = try Data(contentsOf: url)
+        let data = try readBoundedSourceData(at: url)
         return try importWorkout(
             data: data,
             suggestedName: url.deletingPathExtension().lastPathComponent
@@ -23,6 +23,7 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
     }
 
     public func importWorkout(from input: WorkoutImportInput) throws -> RunWorkout {
+        try WorkoutImportResourceLimits.validateSourceByteCount(input.data.count)
         return try importWorkout(
             data: input.data,
             suggestedName: input.suggestedName.isEmpty
@@ -39,8 +40,12 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         )
     }
 
-    func importWorkout(data: Data, suggestedName: String) throws -> RunWorkout {
-        let rawSegments = try parseGPXData(data)
+    func importWorkout(
+        data: Data,
+        suggestedName: String,
+        maxRoutePointCount: Int = WorkoutImportResourceLimits.maxRoutePointCount
+    ) throws -> RunWorkout {
+        let rawSegments = try parseGPXData(data, maxRoutePointCount: maxRoutePointCount)
 
         let allRawPoints = rawSegments.flatMap(\.points)
         guard !allRawPoints.isEmpty else {
@@ -177,8 +182,16 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
     // Character accumulation
     private var currentText: String = ""
 
-    init(data: Data) {
+    // Running `<trkpt>` total across every `<trkseg>`. The parse aborts on the
+    // first point past the limit so an oversized route is never fully built.
+    private var trackpointCount = 0
+    private var limitError: WorkoutResourceLimitError?
+
+    private let maxRoutePointCount: Int
+
+    init(data: Data, maxRoutePointCount: Int) {
         self.data = data
+        self.maxRoutePointCount = maxRoutePointCount
     }
 
     func parse() throws -> [RawGPXSegment] {
@@ -188,7 +201,11 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
         parser.shouldReportNamespacePrefixes = false
         parser.shouldResolveExternalEntities = false
 
-        guard parser.parse() else {
+        let parsed = parser.parse()
+        if let limitError {
+            throw limitError
+        }
+        guard parsed else {
             throw WorkoutImportError.parsingError("This GPX file could not be read. Try re-exporting it.")
         }
 
@@ -257,6 +274,15 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
                 currentCad = Double(text)
             case "trkpt":
                 if let lat = currentLat, let lon = currentLon {
+                    trackpointCount += 1
+                    if trackpointCount > maxRoutePointCount {
+                        limitError = .routePointLimitExceeded(
+                            count: trackpointCount,
+                            limit: maxRoutePointCount
+                        )
+                        parser.abortParsing()
+                        return
+                    }
                     currentSegmentPoints.append(RawGPXPoint(
                         lat: lat,
                         lon: lon,
@@ -313,7 +339,10 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
 
 // MARK: - Data-based parsing entry point
 
-private func parseGPXData(_ data: Data) throws -> [RawGPXSegment] {
-    let parser = GPXXMLParser(data: data)
+private func parseGPXData(
+    _ data: Data,
+    maxRoutePointCount: Int
+) throws -> [RawGPXSegment] {
+    let parser = GPXXMLParser(data: data, maxRoutePointCount: maxRoutePointCount)
     return try parser.parse()
 }

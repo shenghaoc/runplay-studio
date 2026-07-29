@@ -156,6 +156,14 @@ RouteStepDistanceSummary compute_route_step_distances(
 ) noexcept;
 ```
 
+Route size is bounded in Swift, not at the engine boundary.
+`WorkoutImportResourceLimits.maxRoutePointCount` (1,000,000) is the product
+limit, enforced by every importer and by a preflight in
+`RouteQualityProcessor.process` before the native input buffer is built.
+`max_route_input_samples` (1,250,000) is an internal safety ceiling 25% above
+it, so `resource_limit` at the boundary means a Swift-side limit failed to run
+rather than that a user's workout is too long.
+
 Semantics:
 
 - output index matches input index;

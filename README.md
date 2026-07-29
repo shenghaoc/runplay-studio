@@ -154,6 +154,13 @@ policies, cumulative distance mutation, provenance, cancellation, diagnostics,
 and public models. Earlier route-quality stages still use Swift `GeoDistance`.
 No scalar per-point Swift/C++ production calls are allowed.
 
+Supported workout size is bounded in Swift by `WorkoutImportResourceLimits`
+(1,000,000 route points per workout, 100 MB source payload). The engine's
+`max_route_input_samples` sits 25% above that as an internal safety ceiling.
+`scripts/run-step-distance-benchmark.sh` reproduces the cutover measurements in
+release; the gate is the complete `RouteQualityProcessor.process` operation,
+not native-kernel speed.
+
 The package checks this boundary with:
 
 ```bash

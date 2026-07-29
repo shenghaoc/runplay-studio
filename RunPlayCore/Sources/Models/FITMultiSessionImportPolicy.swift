@@ -8,7 +8,8 @@ import Foundation
 public struct FITMultiSessionImportPolicy: Hashable, Sendable {
 
     /// Maximum size of the original `.fit` container, in bytes.
-    /// Mirrors `FITParser.maxFileSize`; do not raise one without the other.
+    /// Derived from `WorkoutImportResourceLimits.maxSourceFileBytes`, the same
+    /// constant `FITParser.maxFileSize` uses, so the two can never disagree.
     public var maxContainerBytes: Int
 
     /// Maximum session messages considered during a scan.
@@ -33,10 +34,10 @@ public struct FITMultiSessionImportPolicy: Hashable, Sendable {
     public var maxDisplayNameLength: Int
 
     public init(
-        maxContainerBytes: Int = 100 * 1024 * 1024,
+        maxContainerBytes: Int = WorkoutImportResourceLimits.maxSourceFileBytes,
         maxScannedSessions: Int = 256,
         maxSelectedSessions: Int = 100,
-        maxRecords: Int = 1_000_000,
+        maxRecords: Int = WorkoutImportResourceLimits.maxRoutePointCount,
         maxEvents: Int = 200_000,
         maxLaps: Int = 50_000,
         cancellationCheckStride: Int = 1_000,

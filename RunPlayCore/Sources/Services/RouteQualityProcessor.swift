@@ -44,6 +44,12 @@ public struct RouteQualityProcessor: Sendable {
             withUnsafeCurrentTask { $0?.isCancelled ?? false }
         }
     ) throws -> RouteQualityResult {
+        // Central preflight. Importers reject oversized routes at their own
+        // boundaries, but programmatic callers reach this directly — fail here
+        // before building the 152-byte-per-point native buffer rather than at
+        // the engine's higher internal ceiling.
+        try WorkoutImportResourceLimits.validateRoutePointCount(sourcePoints.count)
+
         var diagnostics = RouteQualityDiagnostics(
             invalidCoordinatePointCount: sourceInvalidCoordinatePointCount
         )
