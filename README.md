@@ -123,15 +123,18 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI
 framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
 foundation target. The engine provides identity, route input values, a bulk
-inspection boundary, allocation-free geodesy primitives, and the production
-route step-distance kernel.
+inspection boundary, allocation-free geodesy primitives, a transitional
+step-distance boundary, and the production combined route-quality geometry
+kernel.
 
 ```text
-Swift [RoutePoint]
+Swift stage-1 ordered [RoutePoint]
     → Swift-owned contiguous RouteInputSample buffer
-      + Swift-owned Double step-distance output buffer
-    → one synchronous compute_route_step_distances call
-    → pure-Swift cumulative normalization / policy / provenance
+      + optional selection byte buffer
+      + Swift-owned RouteQualityOutputSample buffer
+    → one synchronous process_route_quality_geometry call
+    → pure-Swift retained points / provenance / diagnostics
+    → Swift source-speed validation and elevation
 ```
 
 C++ receives each point's original array offset as `source_index`; the Swift
@@ -148,18 +151,21 @@ over deterministic fixtures. They are a literal migration: the 6,371,000 m
 Earth radius, Haversine formula, projection coefficients, operation order, and
 existing limitations are all unchanged.
 
-**C++23 now performs production coordinate-derived route step-distance
-calculation through one bulk call.** Swift continues to own route-quality
-policies, cumulative distance mutation, provenance, cancellation, diagnostics,
-and public models. Earlier route-quality stages still use Swift `GeoDistance`.
-No scalar per-point Swift/C++ production calls are allowed.
+**Swift performs route-size validation, basic field sanitization, sorting,
+initial source-segment compaction, source-speed validation, elevation,
+diagnostics translation, public models, and persistence.**
+
+**C++ performs production outlier evidence, isolated-point rejection, implicit
+gap inference, final segment compaction, supplied-distance policy, and
+normalized cumulative distances through one bulk call.** The standalone
+step-distance boundary remains transitional/test-focused. No scalar per-point
+Swift/C++ production calls are allowed.
 
 Supported workout size is bounded in Swift by `WorkoutImportResourceLimits`
 (1,000,000 route points per workout, 100 MB source payload). The engine's
 `max_route_input_samples` sits 25% above that as an internal safety ceiling.
-`scripts/run-step-distance-benchmark.sh` reproduces the cutover measurements in
-release; the gate is the complete `RouteQualityProcessor.process` operation,
-not native-kernel speed.
+`scripts/run-route-quality-benchmark.sh` compares complete Swift stages 2–4
+against the complete combined bridge in release.
 
 The package checks this boundary with:
 

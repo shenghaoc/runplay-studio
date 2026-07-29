@@ -1,6 +1,6 @@
 #include "RunPlayEngineCpp/RouteGeometry.hpp"
 
-#include "RunPlayEngineCpp/Geodesy.hpp"
+#include "Internal/RouteGeometryInternal.hpp"
 
 #include <cstddef>
 #include <span>
@@ -72,11 +72,9 @@ RouteStepDistanceSummary compute_route_step_distances(
             steps[index] = 0.0;
             ++result.invalid_coordinate_pair_count;
         } else {
-            steps[index] = haversine_distance_meters(
-                previous.latitude,
-                previous.longitude,
-                current.latitude,
-                current.longitude);
+            steps[index] = internal::pairwise_coordinate_step_meters(
+                previous,
+                current);
         }
 
         total_distance_meters += steps[index];

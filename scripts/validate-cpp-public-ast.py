@@ -105,6 +105,30 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="process_route_quality_geometry",
+        type_text=(
+            "RouteQualityPipelineSummary "
+            "(const RouteInputSample *, std::size_t, RouteQualityGeometryPolicy, "
+            "RouteQualityDistancePolicy, const std::uint8_t *, std::size_t, "
+            "RouteQualityOutputSample *, std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const RouteInputSample *",
+            ),
+            ApprovedPointerParameter(
+                name="supplied_selection_by_sample",
+                type_text="const std::uint8_t *",
+            ),
+            ApprovedPointerParameter(
+                name="output_samples",
+                type_text="RouteQualityOutputSample *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -387,7 +411,8 @@ def validate_ast(ast_text: str) -> list[str]:
     )
     if mutable_output_count != approved_mutable_outputs:
         errors.append(
-            "expected exactly one approved mutable output pointer, "
+            "expected exactly "
+            f"{approved_mutable_outputs} approved mutable output pointer(s), "
             f"found {mutable_output_count}"
         )
 
@@ -417,6 +442,16 @@ def run_self_test() -> int:
             ),
             "ParmVarDecl samples 'const RouteInputSample *'",
             "ParmVarDecl step_distances_meters 'double *'",
+            (
+                "FunctionDecl process_route_quality_geometry "
+                "'RouteQualityPipelineSummary "
+                "(const RouteInputSample *, std::size_t, RouteQualityGeometryPolicy, "
+                "RouteQualityDistancePolicy, const std::uint8_t *, std::size_t, "
+                "RouteQualityOutputSample *, std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const RouteInputSample *'",
+            "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+            "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -580,6 +615,171 @@ def run_self_test() -> int:
             "FunctionDecl compute_route_step_distances "
             "'RouteStepDistanceSummary "
             "(const RouteInputSample *, std::size_t, double *, std::size_t)'"
+        ),
+        "writable route input": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(RouteInputSample *, std::size_t, RouteQualityGeometryPolicy, "
+                    "RouteQualityDistancePolicy, const std::uint8_t *, std::size_t, "
+                    "RouteQualityOutputSample *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "writable selection input": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "std::uint8_t *, std::size_t, RouteQualityOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "const output buffer": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const std::uint8_t *, std::size_t, "
+                    "const RouteQualityOutputSample *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'const RouteQualityOutputSample *'",
+            ]
+        ),
+        "wrong selection element type": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const int *, std::size_t, RouteQualityOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const int *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "missing selection count": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const std::uint8_t *, RouteQualityOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "missing pipeline output capacity": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const std::uint8_t *, std::size_t, "
+                    "RouteQualityOutputSample *) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "extra pointer": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const std::uint8_t *, std::size_t, "
+                    "RouteQualityOutputSample *, std::size_t, int *) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+                "ParmVarDecl scratch 'int *'",
+            ]
+        ),
+        "pointer return": (
+            "FunctionDecl process_route_quality_geometry "
+            "'RouteQualityOutputSample * (const RouteInputSample *, std::size_t) "
+            "noexcept'"
+        ),
+        "renamed unapproved pipeline function": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const std::uint8_t *, std::size_t, "
+                    "RouteQualityOutputSample *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "throwing pipeline function": (
+            "FunctionDecl process_route_quality_geometry "
+            "'RouteQualityPipelineSummary "
+            "(const RouteInputSample *, std::size_t, RouteQualityGeometryPolicy, "
+            "RouteQualityDistancePolicy, const std::uint8_t *, std::size_t, "
+            "RouteQualityOutputSample *, std::size_t)'"
+        ),
+        "public policy pointer": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "const RouteQualityGeometryPolicy *, "
+                    "RouteQualityDistancePolicy, const std::uint8_t *, std::size_t, "
+                    "RouteQualityOutputSample *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl policy 'const RouteQualityGeometryPolicy *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            ]
+        ),
+        "callback parameter": "\n".join(
+            [
+                (
+                    "FunctionDecl process_route_quality_geometry "
+                    "'RouteQualityPipelineSummary "
+                    "(const RouteInputSample *, std::size_t, "
+                    "RouteQualityGeometryPolicy, RouteQualityDistancePolicy, "
+                    "const std::uint8_t *, std::size_t, "
+                    "RouteQualityOutputSample *, std::size_t, "
+                    "void (*)()) noexcept'"
+                ),
+                "ParmVarDecl samples 'const RouteInputSample *'",
+                "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
+                "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+                "ParmVarDecl on_progress 'void (*)()'",
+            ]
         ),
     }
 
