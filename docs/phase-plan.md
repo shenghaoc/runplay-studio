@@ -122,7 +122,8 @@
 - [x] C++23 geodesy primitives (coordinate validation, Haversine distance, local-metre projection) with Swift parity coverage
 - [x] Migrate coordinate-derived route step distances into C++ behind one bulk call (first production cutover)
 - [x] Migrate route-quality geometry into **one** combined C++ kernel: distance relationships, isolated coordinate-outlier evidence, implicit-gap inference, segment compaction, supplied-distance validity, per-segment distance-source selection, and cumulative normalized distances
-- [ ] Migrate projection, comparison, and heatmap aggregation once bulk boundaries exist
+- [x] Migrate per-workout personal heatmap route coverage into one bulk C++ kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, supercover traversal, per-workout de-duplication, and deterministic cell ordering
+- [ ] Migrate route projection services, comparison, and cross-workout heatmap aggregation once bulk boundaries exist
 
 Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation, elevation,

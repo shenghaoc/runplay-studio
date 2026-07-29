@@ -72,8 +72,8 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 `RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
 engine identity (`runplay::engine_info`), a route value and inspection
 contract, allocation-free geodesy primitives, a transitional bulk
-step-distance boundary, and the production combined route-quality geometry
-kernel:
+step-distance boundary, the production combined route-quality geometry
+kernel, and the production per-workout personal heatmap coverage kernel:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -195,9 +195,11 @@ The standalone step-distance boundary remains transitional/test-focused.
 per-point Swift/C++ production calls are allowed.
 `scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
 
-Elevation, timelines, splits, DTW, heatmap aggregation, projection services,
-and file parsers remain in Swift `RunPlayCore` until later migration PRs. C++
-types never appear in public `RunPlayCore` APIs.
+Elevation, timelines, splits, DTW, cross-workout heatmap aggregation,
+projection services, and file parsers remain in Swift `RunPlayCore` until later
+migration PRs. Per-workout personal heatmap route coverage is already native;
+see [Personal Heatmap](#personal-heatmap). C++ types never appear in public
+`RunPlayCore` APIs.
 
 `RunPlayCore` remains the only Swift-facing core API and continues to own
 app-facing models, `Codable` compatibility, errors/diagnostics, actors,
@@ -214,6 +216,11 @@ Approved pointer boundaries:
   transitional route step-distance calculation
 - combined route-quality geometry: const input samples, optional const
   selection bytes, and caller-owned `RouteQualityOutputSample*` output
+- per-workout personal heatmap coverage: `const PersonalHeatmapRouteSample*`
+  input samples and caller-owned `PersonalHeatmapCellIndex*` output. Unlike the
+  per-sample boundaries, this one is capacity-negotiated: it writes
+  `required_cell_count` de-duplicated cells on success, and writes nothing on
+  `insufficient_output_capacity` so Swift can reallocate and retry.
 
 #### C++ policy defaults
 
@@ -274,7 +281,8 @@ library manifest versions.
 
 | Layer | Responsibility |
 | --- | --- |
-| **RunPlayCore** | `PersonalHeatmap*` models, Web Mercator metric grid, Amanatides–Woo-style line rasterization, `PersonalHeatmapBuilder` aggregation |
+| **RunPlayEngineCpp** | Per-workout coverage kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, Amanatides–Woo supercover traversal, per-workout de-duplication, deterministic cell ordering |
+| **RunPlayCore** | `PersonalHeatmap*` models, `RunPlayPersonalHeatmapCoverageBridge` interop, `PersonalHeatmapBuilder` date filtering, adaptive resolution, cross-workout aggregation, and snapshot finalization. `PersonalHeatmapProjection` / `PersonalHeatmapGridTraversal` remain as the public Swift reference implementation and parity oracle |
 | **RunPlayPlatform** | `RouteMapArea` polygons and map-rect fitting for areas |
 | **RunPlayStudio** | `PersonalHeatmapViewModel`, workspace mode, sidebar/menu entry, SwiftUI map fills |
 

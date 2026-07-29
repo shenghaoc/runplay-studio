@@ -64,6 +64,13 @@ else
   pass "public route quality pipeline header present"
 fi
 
+HEATMAP_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/PersonalHeatmapCoverage.hpp"
+if [[ ! -f "$HEATMAP_HEADER" ]]; then
+  fail "missing public personal heatmap coverage header PersonalHeatmapCoverage.hpp"
+else
+  pass "public personal heatmap coverage header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
@@ -83,6 +90,13 @@ if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   pass "umbrella header includes RouteQualityPipeline.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteQualityPipeline.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/PersonalHeatmapCoverage\.hpp"'; then
+  pass "umbrella header includes PersonalHeatmapCoverage.hpp"
+else
+  fail "RunPlayEngine.hpp must include PersonalHeatmapCoverage.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -537,6 +551,52 @@ else
   for leak in "${quality_symbol_leaks[@]}"; do
     fail "process_route_quality_geometry used outside the quality bridge: $leak"
   done
+fi
+
+# Only the heatmap coverage bridge may invoke the coverage symbol.
+HEATMAP_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayPersonalHeatmapCoverageBridge.swift"
+HEATMAP_BUILDER_SOURCE="RunPlayCore/Sources/Services/PersonalHeatmapBuilder.swift"
+
+if [[ ! -f "$HEATMAP_BRIDGE_SOURCE" ]]; then
+  fail "missing production personal heatmap coverage bridge $HEATMAP_BRIDGE_SOURCE"
+fi
+if [[ ! -f "$HEATMAP_BUILDER_SOURCE" ]]; then
+  fail "missing production PersonalHeatmapBuilder $HEATMAP_BUILDER_SOURCE"
+fi
+
+heatmap_symbol_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_personal_heatmap_workout_coverage([^[:alnum:]_]|$)'
+heatmap_symbol_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$HEATMAP_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && heatmap_symbol_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$heatmap_symbol_re" || true)
+done
+
+if [[ ${#heatmap_symbol_leaks[@]} -eq 0 ]]; then
+  pass "compute_personal_heatmap_workout_coverage is invoked only from the heatmap coverage bridge"
+else
+  for leak in "${heatmap_symbol_leaks[@]}"; do
+    fail "compute_personal_heatmap_workout_coverage used outside the heatmap coverage bridge: $leak"
+  done
+fi
+
+if strip_comments "$HEATMAP_BUILDER_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+  fail "PersonalHeatmapBuilder must not reference C++ runplay symbols directly"
+else
+  pass "PersonalHeatmapBuilder stays free of direct C++ symbols"
+fi
+
+if strip_comments "$HEATMAP_BUILDER_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])RunPlayPersonalHeatmapCoverageBridge([^[:alnum:]_]|$)'; then
+  pass "PersonalHeatmapBuilder consumes the pure Swift personal heatmap coverage bridge"
+else
+  fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
 fi
 
 # RouteQualityProcessor must call the pure Swift quality bridge, not C++ symbols
