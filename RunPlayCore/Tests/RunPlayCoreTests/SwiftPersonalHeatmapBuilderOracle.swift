@@ -1,45 +1,12 @@
 import Foundation
+@testable import RunPlayCore
 
-/// Errors produced by personal heatmap aggregation (excluding cancellation).
-public enum PersonalHeatmapError: Error, Sendable, Equatable {
-    case invalidConfiguration
-}
+/// Test-only oracle that reproduces the exact pre-migration pure-Swift
+/// PersonalHeatmapBuilder implementation for parity comparison.
+struct SwiftPersonalHeatmapBuilderOracle: Sendable {
+    init() {}
 
-/// Platform-neutral builder that aggregates distinct-workout route coverage
-/// into a personal heatmap snapshot.
-///
-/// ## Intensity semantics
-///
-/// Primary heat for each cell is the number of **distinct included workouts**
-/// whose route traverses that cell. Within one workout, revisiting a cell
-/// (loops, traffic lights, dense GPS) contributes at most once.
-///
-/// ## Gap safety
-///
-/// Intervals are rasterized only between adjacent points that share the same
-/// `routeSegmentIndex`. Recording pauses, track boundaries, and inferred gaps
-/// never create a fake hot corridor.
-///
-/// ## Adaptive resolution
-///
-/// When the number of rendered cells (after the minimum-repeat filter) exceeds
-/// `maximumRenderedCellCount`, the builder doubles the cell size and retries
-/// until the budget is met or a hard iteration limit is reached. All included
-/// workouts are preserved; cells are never randomly dropped.
-public struct PersonalHeatmapBuilder: Sendable {
-
-    public init() {}
-
-    /// Build a heatmap snapshot from the current library snapshot.
-    ///
-    /// - Parameters:
-    ///   - workouts: Library workouts (not modified).
-    ///   - configuration: Requested filters and resolution.
-    ///   - isCancelled: Cooperative cancellation checked between workouts and
-    ///     during long rasterization / adaptive retries.
-    /// - Throws: `CancellationError` when cancelled; never wraps cancellation
-    ///   as a generic failure.
-    public func build(
+    func build(
         workouts: [RunWorkout],
         configuration: PersonalHeatmapConfiguration,
         isCancelled: @Sendable () -> Bool = { false }
@@ -55,17 +22,7 @@ public struct PersonalHeatmapBuilder: Sendable {
 
         if isCancelled() { throw CancellationError() }
 
-        // Pre-filter date policy once so adaptive retries do not re-evaluate date policy.
-        let dateFiltered = try filterDateEligibleWorkouts(
-            workouts,
-            configuration: configuration,
-            isCancelled: isCancelled
-        )
-
-        let preparedBatch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
-            workoutRoutes: dateFiltered.workouts.map { $0.routePoints },
-            isCancelled: isCancelled
-        )
+        let prepared = try prepareWorkouts(workouts, configuration: configuration, isCancelled: isCancelled)
 
         var cellSize = configuration.cellSizeMeters
         var adaptiveRetries = 0
@@ -74,9 +31,8 @@ public struct PersonalHeatmapBuilder: Sendable {
         while true {
             if isCancelled() { throw CancellationError() }
 
-            let pass = try aggregatePass(
-                workouts: dateFiltered.workouts,
-                preparedBatch: preparedBatch,
+            let pass = try aggregate(
+                prepared: prepared,
                 cellSizeMeters: cellSize,
                 maximumIntervalMeters: configuration.maximumIntervalMeters,
                 isCancelled: isCancelled
@@ -88,11 +44,7 @@ public struct PersonalHeatmapBuilder: Sendable {
                 return finalizeSnapshot(
                     counts: pass.counts,
                     filteredCounts: filteredCounts,
-                    totalCandidates: workouts.count,
-                    includedWorkouts: pass.includedWorkoutCount,
-                    totalDistanceMeters: pass.totalDistanceMeters,
-                    excludedUndated: dateFiltered.excludedUndated,
-                    excludedNoRoute: dateFiltered.workouts.count - pass.includedWorkoutCount,
+                    prepared: prepared,
                     requestedCellSize: configuration.cellSizeMeters,
                     effectiveCellSize: cellSize,
                     adaptiveRetries: adaptiveRetries,
@@ -101,34 +53,39 @@ public struct PersonalHeatmapBuilder: Sendable {
                 )
             }
 
-            // Coarsen: double cell size and retry. Preserve all workouts.
             adaptiveRetries += 1
             cellSize *= 2
         }
     }
 
-    // MARK: - Preparation
-
-    private struct DateFilterResult: Sendable {
-        let workouts: [RunWorkout]
-        let excludedUndated: Int
+    private struct PreparedWorkout: Sendable {
+        let id: UUID
+        let distanceMeters: Double
+        let projectedPoints: [(x: Double, y: Double, segment: Int)]
     }
 
-    private func filterDateEligibleWorkouts(
+    private struct PreparationResult: Sendable {
+        let workouts: [PreparedWorkout]
+        let totalCandidates: Int
+        let excludedUndated: Int
+        let excludedNoRoute: Int
+    }
+
+    private func prepareWorkouts(
         _ workouts: [RunWorkout],
         configuration: PersonalHeatmapConfiguration,
         isCancelled: @Sendable () -> Bool
-    ) throws -> DateFilterResult {
-        var eligible: [RunWorkout] = []
-        eligible.reserveCapacity(workouts.count)
+    ) throws -> PreparationResult {
+        var prepared: [PreparedWorkout] = []
+        prepared.reserveCapacity(workouts.count)
         var excludedUndated = 0
+        var excludedNoRoute = 0
 
         for (index, workout) in workouts.enumerated() {
             if index % 32 == 0, isCancelled() {
                 throw CancellationError()
             }
 
-            // Date policy.
             let date = trustworthyDate(for: workout)
             switch configuration.dateFilter {
             case .allTime:
@@ -143,17 +100,52 @@ public struct PersonalHeatmapBuilder: Sendable {
                 }
             }
 
-            eligible.append(workout)
+            var projected: [(x: Double, y: Double, segment: Int)] = []
+            projected.reserveCapacity(workout.routePoints.count)
+            var effectiveSegment = 0
+            var previousSourceSegment: Int?
+            var requiresNewSegment = true
+            for point in workout.routePoints {
+                guard GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude),
+                      let xy = PersonalHeatmapProjection.project(
+                        latitude: point.latitude,
+                        longitude: point.longitude
+                      )
+                else {
+                    requiresNewSegment = true
+                    continue
+                }
+                if requiresNewSegment || previousSourceSegment != point.routeSegmentIndex {
+                    effectiveSegment += 1
+                }
+                projected.append((xy.x, xy.y, effectiveSegment))
+                previousSourceSegment = point.routeSegmentIndex
+                requiresNewSegment = false
+            }
+
+            guard !projected.isEmpty else {
+                excludedNoRoute += 1
+                continue
+            }
+
+            let distance = workout.summary.totalDistanceMeters
+            let safeDistance = distance.isFinite && distance >= 0 ? distance : 0
+
+            prepared.append(PreparedWorkout(
+                id: workout.id,
+                distanceMeters: safeDistance,
+                projectedPoints: projected
+            ))
         }
 
-        return DateFilterResult(
-            workouts: eligible,
-            excludedUndated: excludedUndated
+        return PreparationResult(
+            workouts: prepared,
+            totalCandidates: workouts.count,
+            excludedUndated: excludedUndated,
+            excludedNoRoute: excludedNoRoute
         )
     }
 
-    /// Prefer metadata.startDate; fall back to first route-point timestamp.
-    /// Returns nil when neither is trustworthy (missing / distant epoch sentinel).
     private func trustworthyDate(for workout: RunWorkout) -> Date? {
         if let start = workout.metadata.startDate {
             return start
@@ -161,70 +153,85 @@ public struct PersonalHeatmapBuilder: Sendable {
         return workout.routePoints.first?.timestamp
     }
 
-    // MARK: - Aggregation
-
-    private struct AggregatePassResult: Sendable {
+    private struct AggregatePass: Sendable {
         let counts: [PersonalHeatmapCellID: Int]
-        let includedWorkoutCount: Int
-        let totalDistanceMeters: Double
         let invalidIntervals: Int
     }
 
-    private func aggregatePass(
-        workouts: [RunWorkout],
-        preparedBatch: RunPlayPersonalHeatmapPreparedBatch,
+    private func aggregate(
+        prepared: PreparationResult,
         cellSizeMeters: Double,
         maximumIntervalMeters: Double,
         isCancelled: @Sendable () -> Bool
-    ) throws -> AggregatePassResult {
+    ) throws -> AggregatePass {
         var counts: [PersonalHeatmapCellID: Int] = [:]
         var invalidIntervals = 0
-        var includedWorkoutCount = 0
-        var totalDistanceMeters = 0.0
 
-        for (index, workout) in workouts.enumerated() {
+        for (index, workout) in prepared.workouts.enumerated() {
             if isCancelled() { throw CancellationError() }
+            if index % 8 == 0, isCancelled() { throw CancellationError() }
 
-            let coverage = try preparedBatch.coverage(
-                workoutIndex: index,
-                cellSizeMeters: cellSizeMeters,
-                maximumIntervalMeters: maximumIntervalMeters,
-                maximumCellsPerInterval: PersonalHeatmapGridTraversal.defaultMaximumCellsPerInterval,
-                isCancelled: isCancelled
-            )
+            var visited = Set<PersonalHeatmapCellID>()
+            visited.reserveCapacity(min(workout.projectedPoints.count * 2, 4_096))
 
-            if coverage.cells.isEmpty {
-                continue
+            let points = workout.projectedPoints
+            for point in points {
+                if let x = PersonalHeatmapProjection.cellIndex(projected: point.x, cellSizeMeters: cellSizeMeters),
+                   let y = PersonalHeatmapProjection.cellIndex(projected: point.y, cellSizeMeters: cellSizeMeters) {
+                    visited.insert(PersonalHeatmapCellID(x: x, y: y))
+                }
             }
 
-            includedWorkoutCount += 1
-            let distance = workout.summary.totalDistanceMeters
-            totalDistanceMeters += (distance.isFinite && distance >= 0 ? distance : 0)
-            invalidIntervals += coverage.invalidIntervalCount
+            if points.count > 1 {
+                for i in 0..<(points.count - 1) {
+                    if i % 512 == 0, isCancelled() { throw CancellationError() }
 
-            for cell in coverage.cells {
+                    let a = points[i]
+                    let b = points[i + 1]
+
+                    guard a.segment == b.segment else { continue }
+
+                    let dx = b.x - a.x
+                    let dy = b.y - a.y
+                    let length = (dx * dx + dy * dy).squareRoot()
+
+                    if length == 0 {
+                        if let x = PersonalHeatmapProjection.cellIndex(projected: a.x, cellSizeMeters: cellSizeMeters),
+                           let y = PersonalHeatmapProjection.cellIndex(projected: a.y, cellSizeMeters: cellSizeMeters) {
+                            visited.insert(PersonalHeatmapCellID(x: x, y: y))
+                        }
+                        continue
+                    }
+
+                    if length > maximumIntervalMeters {
+                        invalidIntervals += 1
+                        continue
+                    }
+
+                    let intervalCells = try PersonalHeatmapGridTraversal.cells(
+                        from: (a.x, a.y),
+                        to: (b.x, b.y),
+                        cellSizeMeters: cellSizeMeters,
+                        isCancelled: isCancelled
+                    )
+                    for cell in intervalCells {
+                        visited.insert(cell)
+                    }
+                }
+            }
+
+            for cell in visited {
                 counts[cell, default: 0] += 1
             }
         }
 
-        return AggregatePassResult(
-            counts: counts,
-            includedWorkoutCount: includedWorkoutCount,
-            totalDistanceMeters: totalDistanceMeters,
-            invalidIntervals: invalidIntervals
-        )
+        return AggregatePass(counts: counts, invalidIntervals: invalidIntervals)
     }
-
-    // MARK: - Finalize
 
     private func finalizeSnapshot(
         counts: [PersonalHeatmapCellID: Int],
         filteredCounts: [PersonalHeatmapCellID: Int],
-        totalCandidates: Int,
-        includedWorkouts: Int,
-        totalDistanceMeters: Double,
-        excludedUndated: Int,
-        excludedNoRoute: Int,
+        prepared: PreparationResult,
         requestedCellSize: Double,
         effectiveCellSize: Double,
         adaptiveRetries: Int,
@@ -242,7 +249,6 @@ public struct PersonalHeatmapBuilder: Sendable {
         var minLon = Double.infinity
         var maxLon = -Double.infinity
 
-        // Deterministic order by cell ID.
         let sortedIDs = filteredCounts.keys.sorted()
         for id in sortedIDs {
             guard let workoutCount = filteredCounts[id],
@@ -270,6 +276,7 @@ public struct PersonalHeatmapBuilder: Sendable {
             maxLon = max(maxLon, bounds.maxLongitude)
         }
 
+        let totalDistance = prepared.workouts.reduce(0.0) { $0 + $1.distanceMeters }
         let heatmapBounds: PersonalHeatmapBounds?
         if cells.isEmpty {
             heatmapBounds = nil
@@ -291,21 +298,21 @@ public struct PersonalHeatmapBuilder: Sendable {
         )
 
         let statistics = PersonalHeatmapStatistics(
-            includedWorkoutCount: includedWorkouts,
-            totalDistanceMeters: totalDistanceMeters,
+            includedWorkoutCount: prepared.workouts.count,
+            totalDistanceMeters: totalDistance,
             maximumOverlap: maximumOverlap,
             requestedCellSizeMeters: requestedCellSize,
             effectiveCellSizeMeters: effectiveCellSize,
             resolutionWasAdjusted: adaptiveRetries > 0,
-            excludedUndatedWorkoutCount: excludedUndated,
-            excludedNoRouteWorkoutCount: excludedNoRoute
+            excludedUndatedWorkoutCount: prepared.excludedUndated,
+            excludedNoRouteWorkoutCount: prepared.excludedNoRoute
         )
 
         let diagnostics = PersonalHeatmapDiagnostics(
-            totalCandidateWorkouts: totalCandidates,
-            includedWorkouts: includedWorkouts,
-            excludedUndatedWorkouts: excludedUndated,
-            excludedNoRouteWorkouts: excludedNoRoute,
+            totalCandidateWorkouts: prepared.totalCandidates,
+            includedWorkouts: prepared.workouts.count,
+            excludedUndatedWorkouts: prepared.excludedUndated,
+            excludedNoRouteWorkouts: prepared.excludedNoRoute,
             invalidRouteIntervalsSkipped: invalidIntervals,
             adaptiveResolutionRetries: adaptiveRetries,
             requestedCellSizeMeters: requestedCellSize,

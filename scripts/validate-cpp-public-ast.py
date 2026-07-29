@@ -129,6 +129,26 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="compute_personal_heatmap_workout_coverage",
+        type_text=(
+            "PersonalHeatmapCoverageSummary "
+            "(const PersonalHeatmapRouteSample *, std::size_t, double, "
+            "double, std::size_t, PersonalHeatmapCellIndex *, "
+            "std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const PersonalHeatmapRouteSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_cells",
+                type_text="PersonalHeatmapCellIndex *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -452,6 +472,15 @@ def run_self_test() -> int:
             "ParmVarDecl samples 'const RouteInputSample *'",
             "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
             "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
+            (
+                "FunctionDecl compute_personal_heatmap_workout_coverage "
+                "'PersonalHeatmapCoverageSummary "
+                "(const PersonalHeatmapRouteSample *, std::size_t, double, "
+                "double, std::size_t, PersonalHeatmapCellIndex *, "
+                "std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const PersonalHeatmapRouteSample *'",
+            "ParmVarDecl output_cells 'PersonalHeatmapCellIndex *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
