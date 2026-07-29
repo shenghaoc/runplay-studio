@@ -1668,6 +1668,72 @@ void test_paths() {
     }
 }
 
+void test_step_penalty() {
+    // A non-diagonal transition pays the full penalty exactly once.
+    {
+        auto policy = tight_policy();
+        policy.non_diagonal_step_penalty = 0.4;
+        const auto primary = line({0.0, 10.0, 10.0, 20.0, 30.0, 40.0});
+        const auto comparison = line({0.0, 10.0, 20.0, 30.0, 40.0});
+        std::vector<RouteAlignmentDtwPathCell> output = make_output(6, 5);
+        const auto summary =
+            solve(primary, comparison, 1000.0, 1000.0, 20.0, policy, output);
+        expect_valid_path(summary, output, 6, 5, "the penalised warp fixture solves");
+        expect_exact_path(
+            summary,
+            output,
+            {
+                {0, 0, RouteAlignmentDtwStepKind::diagonal},
+                {1, 1, RouteAlignmentDtwStepKind::diagonal},
+                {2, 1, RouteAlignmentDtwStepKind::primary_only},
+                {3, 2, RouteAlignmentDtwStepKind::diagonal},
+                {4, 3, RouteAlignmentDtwStepKind::diagonal},
+            },
+            "a penalised warp keeps the same path");
+        expect(
+            nearly_equal(summary.best_end_cost, 0.4, 1e-12),
+            "one warp transition pays the full non-diagonal penalty once");
+    }
+
+    // Open-beginning seeds along row 0 pay a quarter of the penalty each.
+    {
+        auto policy = tight_policy();
+        policy.maximum_unmatched_prefix_suffix_meters = 100.0;
+        policy.maximum_unmatched_prefix_suffix_fraction = 1.0;
+        policy.non_diagonal_step_penalty = 0.4;
+        const auto primary = line({0.0, 25.0, 50.0, 75.0, 100.0, 125.0});
+        const auto comparison =
+            line({-1000.0, -1001.0, 0.0, 25.0, 50.0, 75.0, 100.0, 125.0});
+        std::vector<RouteAlignmentDtwPathCell> output = make_output(6, 8);
+        const auto summary =
+            solve(primary, comparison, 100.0, 100.0, 25.0, policy, output);
+        expect_valid_path(summary, output, 6, 8, "the penalised prefix fixture solves");
+        expect(summary.required_path_count == 4, "the penalised prefix keeps four cells");
+        // 1000 + 1001 metres of separation plus two quarter penalties of 0.4.
+        expect(
+            nearly_equal(summary.best_end_cost, 2001.2, 1e-9),
+            "each comparison-prefix seed pays a quarter of the penalty");
+    }
+
+    // The open-beginning seed down column 0 pays the same quarter penalty.
+    {
+        auto policy = tight_policy();
+        policy.non_diagonal_step_penalty = 0.4;
+        policy.maximum_consecutive_warp_steps = 0;
+        const auto primary = line({0.0, 10.0, 10.0, 20.0, 30.0, 40.0});
+        const auto comparison = line({0.0, 10.0, 20.0, 30.0, 40.0, 50.0});
+        std::vector<RouteAlignmentDtwPathCell> output = make_output(6, 6);
+        const auto summary =
+            solve(primary, comparison, 1000.0, 1000.0, 20.0, policy, output);
+        expect_valid_path(summary, output, 6, 6, "the penalised column seed fixture solves");
+        expect(summary.required_path_count == 6, "the penalised column seed keeps six cells");
+        // 10 metres of separation plus one quarter penalty of 0.4.
+        expect(
+            nearly_equal(summary.best_end_cost, 10.1, 1e-9),
+            "the primary-prefix seed pays a quarter of the penalty");
+    }
+}
+
 void test_band_geometry() {
     // Narrow band: 100 x 100 at a 0.02 fraction is a radius of two.
     {
@@ -1953,6 +2019,7 @@ void run_route_alignment_dtw_tests() {
     test_warp_limits();
     test_point_cost();
     test_paths();
+    test_step_penalty();
     test_band_geometry();
     test_large_shapes();
 }
