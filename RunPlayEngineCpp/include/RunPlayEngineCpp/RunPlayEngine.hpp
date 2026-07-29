@@ -5,6 +5,7 @@
 #include "RunPlayEngineCpp/Geodesy.hpp"
 #include "RunPlayEngineCpp/RouteGeometry.hpp"
 #include "RunPlayEngineCpp/RouteInterop.hpp"
+#include "RunPlayEngineCpp/RouteQualityPipeline.hpp"
 
 namespace runplay {
 

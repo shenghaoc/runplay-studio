@@ -14,3 +14,4 @@ void run_engine_info_tests();
 void run_route_interop_tests();
 void run_geodesy_tests();
 void run_route_geometry_tests();
+void run_route_quality_pipeline_tests();

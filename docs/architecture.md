@@ -67,12 +67,13 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
 
-### C++ route geometry and production step distances (current phase)
+### C++ route geometry and production quality pipeline (current phase)
 
 `RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
 engine identity (`runplay::engine_info`), a route value and inspection
-contract, allocation-free geodesy primitives, and the first production bulk
-route algorithm:
+contract, allocation-free geodesy primitives, a transitional bulk
+step-distance boundary, and the production combined route-quality geometry
+kernel:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -80,14 +81,16 @@ route algorithm:
 - strict warnings, ASan/UBSan CI, and architecture-boundary validation;
 - exact preservation of every `RoutePoint` field through a deterministic
   digest independently implemented in Swift and C++;
-- production coordinate-derived step distances filled into a Swift-owned
-  output buffer through one bulk call.
+- production stages 2–4 of route quality through one bulk call.
 
 ```text
-Swift [RoutePoint]
-    → contiguous RouteInputSample buffer + Double output buffer
-    → compute_route_step_distances(...) noexcept
-    → pure-Swift cumulative normalization / policy / provenance
+Swift stage-1 ordered [RoutePoint]
+    → contiguous RouteInputSample buffer
+    + optional selection byte buffer
+    + RouteQualityOutputSample output buffer
+    → process_route_quality_geometry(...) noexcept
+    → pure-Swift retained points / diagnostics / provenance
+    → Swift source-speed validation and elevation
 ```
 
 Inspection remains available for field-fidelity tests:
@@ -107,10 +110,10 @@ use `std::optional<double>` and never use numeric sentinels.
 
 Boundary ownership is explicit:
 
-- Swift owns and keeps the contiguous input buffer and output buffer alive;
-- C++ borrows both for one synchronous call through `std::span` internally;
+- Swift owns and keeps every contiguous buffer alive;
+- C++ borrows buffers for one synchronous call through `std::span` internally;
 - C++ never stores either pointer and allocates nothing proportional to the route;
-- C++ writes exactly `sample_count` step-distance entries on success and writes
+- C++ writes exactly `sample_count` output entries on success and writes
   nothing on error;
 - the Core adapter converts compact C++ summaries to pure Swift before imported
   C++ values are destroyed.
@@ -142,17 +145,21 @@ implementation splits accumulations such that no statement holds both a
 multiply and an add. The two implementations therefore agree bit for bit on one
 platform; parity-test tolerance exists only for macOS/Linux libm differences.
 
-#### Production route step distances
+#### Production combined route-quality geometry
 
-`RouteGeometry.hpp` exposes one bulk kernel:
+`RouteQualityPipeline.hpp` exposes one bulk kernel for stages 2–4:
 
 ```cpp
 [[nodiscard]]
-RouteStepDistanceSummary compute_route_step_distances(
+RouteQualityPipelineSummary process_route_quality_geometry(
     const RouteInputSample* samples,
     std::size_t sample_count,
-    double* step_distances_meters,
-    std::size_t step_distance_capacity
+    RouteQualityGeometryPolicy policy,
+    RouteQualityDistancePolicy distance_policy,
+    const std::uint8_t* supplied_selection_by_sample,
+    std::size_t supplied_selection_count,
+    RouteQualityOutputSample* output_samples,
+    std::size_t output_capacity
 ) noexcept;
 ```
 
@@ -167,22 +174,26 @@ rather than that a user's workout is too long.
 Semantics:
 
 - output index matches input index;
-- first step is zero;
-- segment-boundary steps are zero;
-- invalid same-segment coordinate pairs produce zero;
-- valid pairs use `haversine_distance_meters` internally;
-- total is summed left-to-right;
-- existing antipodal NaN behavior is preserved.
+- isolated coordinate outliers are rejected; adjacent candidates are retained;
+- implicit gaps and explicit source segments form contiguous final segments;
+- supplied-distance validity resets per final segment;
+- coordinate-derived steps reuse internal geodesy helpers (not the public
+  step-distance boundary);
+- no distance is added across explicit or inferred boundaries;
+- point identity and order are preserved.
 
-**C++23 now performs production coordinate-derived route step-distance
-calculation through one bulk call.**
-`RouteQualityProcessor.normalizeDistances` consumes that series for
-coordinate-derived segments. Fully supplied-distance routes skip the native
-call. Swift continues to own route-quality policies, cumulative distance
-mutation, provenance, cancellation, diagnostics, and public models. Earlier
-route-quality stages still use Swift geodesy. No scalar per-point Swift/C++
-production calls are allowed. `scripts/validate-cpp-boundaries.sh` enforces
-that isolation mechanically.
+**Swift performs route-size validation, basic field sanitization, sorting,
+initial source-segment compaction, source-speed validation, elevation,
+diagnostics translation, public models, and persistence.**
+
+**C++ performs production outlier evidence, isolated-point rejection, implicit
+gap inference, final segment compaction, supplied-distance policy, and
+normalized cumulative distances through one bulk call.**
+
+The standalone step-distance boundary remains transitional/test-focused.
+`RouteQualityProcessor` calls only `RunPlayRouteQualityBridge`. No scalar
+per-point Swift/C++ production calls are allowed.
+`scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
 
 Elevation, timelines, splits, DTW, heatmap aggregation, projection services,
 and file parsers remain in Swift `RunPlayCore` until later migration PRs. C++
@@ -199,8 +210,10 @@ the engine directly.
 Approved pointer boundaries:
 
 - `const RouteInputSample*` input for route inspection
-- `const RouteInputSample*` input plus `double*` caller-owned output for route
-  step-distance calculation
+- `const RouteInputSample*` input plus `double*` caller-owned output for the
+  transitional route step-distance calculation
+- combined route-quality geometry: const input samples, optional const
+  selection bytes, and caller-owned `RouteQualityOutputSample*` output
 
 #### C++ policy defaults
 

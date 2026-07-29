@@ -121,52 +121,36 @@
 - [x] `RouteInputSample` bulk route-value boundary with Swift/C++ field parity
 - [x] C++23 geodesy primitives (coordinate validation, Haversine distance, local-metre projection) with Swift parity coverage
 - [x] Migrate coordinate-derived route step distances into C++ behind one bulk call (first production cutover)
-- [ ] Migrate route-quality geometry into **one** combined C++ kernel: distance relationships, isolated coordinate-outlier evidence, implicit-gap inference, segment compaction, supplied-distance validity, per-segment distance-source selection, and cumulative normalized distances
+- [x] Migrate route-quality geometry into **one** combined C++ kernel: distance relationships, isolated coordinate-outlier evidence, implicit-gap inference, segment compaction, supplied-distance validity, per-segment distance-source selection, and cumulative normalized distances
 - [ ] Migrate projection, comparison, and heatmap aggregation once bulk boundaries exist
 
-C++23 now performs production coordinate-derived route step-distance
-calculation through one bulk call. Swift continues to own route-quality
-policies, cumulative distance mutation, provenance, cancellation, diagnostics,
-and public models. Earlier route-quality stages still use Swift geodesy. No
+Swift performs route-size validation, basic field sanitization, sorting,
+initial source-segment compaction, source-speed validation, elevation,
+diagnostics translation, public models, and persistence.
+
+C++ performs production outlier evidence, isolated-point rejection, implicit
+gap inference, final segment compaction, supplied-distance policy, and
+normalized cumulative distances through one bulk call.
+
+The standalone step-distance boundary remains transitional/test-focused. No
 scalar per-point Swift/C++ production calls are allowed. No persisted schema,
 analysis version, UI, or importer behaviour changes in this cutover.
 
-#### Why the remaining geometry stages migrate as one phase
+#### Why geometry stages migrated as one phase
 
 Each crossing of the engine boundary pays a fixed conversion tax — building the
 `RouteInputSample` batch and converting the result back — that does not scale
 with how much work happens after conversion. On a 100,000-point fixture that
-tax is roughly 0.9 ms of a 2.588 ms step-distance bridge call. Migrating each
-geometric stage in its own PR would pay it repeatedly; migrating them together
-pays it once. This consolidates what were previously planned as separate
-outlier-evidence, gap-inference, and segment-aware-normalization phases into
-one, reducing the remaining plan by about one PR.
+tax was roughly 0.9 ms of a step-distance bridge call. Migrating each geometric
+stage separately would pay it repeatedly; migrating them together pays it once.
 
-Swift keeps initial sorting and `RoutePoint` identity, public policy and result
-models, diagnostics and warning translation, cancellation before and after the
-native operation, elevation processing until its own migration, and persistence
-and analysis-version decisions.
+The combined kernel reuses internal pairwise step logic rather than invoking
+the public step-distance boundary. Product limit (1,000,000 points) and engine
+ceiling (1,250,000 samples) are unchanged.
 
-The combined phase must call the step-distance kernel logic **internally**
-rather than invoking the public step-distance boundary, which would pay a
-second conversion. That standalone boundary is a transitional first production
-proof: once the combined pipeline lands it can stay for tests, become internal,
-or be removed.
-
-The benchmark gate for that phase compares complete end-to-end processing —
-conversion plus the C++ quality pipeline against the complete existing Swift
-quality stages — not native-kernel speed in isolation.
-
-The `max_route_input_samples` ceiling is a property of the `RouteInputSample`
-batch boundary, not of any one kernel, so the combined pipeline inherits it
-unchanged. That question is now settled at the boundary rather than per kernel:
-Swift bounds every import at 1,000,000 route points
-(`WorkoutImportResourceLimits`), and the engine ceiling sits 25% above at
-1,250,000. The combined pipeline needs no new size handling.
-
-`scripts/run-step-distance-benchmark.sh` reproduces the three measurements in
-release. The gate for a production cutover is the complete operation being
-replaced — `RouteQualityProcessor.process` — not native-kernel speed.
+`scripts/run-route-quality-benchmark.sh` compares complete Swift stages 2–4
+against the complete combined bridge (including conversion). The historical
+step-distance script remains available for the transitional boundary.
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs

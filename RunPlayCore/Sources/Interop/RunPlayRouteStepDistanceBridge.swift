@@ -18,11 +18,15 @@ struct RunPlayRouteStepDistanceResult: Sendable {
     let invalidCoordinatePairCount: UInt64
 }
 
-/// Production adapter for bulk coordinate-derived route step distances.
+/// Transitional / test-focused adapter for bulk coordinate-derived route
+/// step distances.
 ///
-/// Builds one shared native input buffer and one Swift-owned output buffer,
-/// then invokes `compute_route_step_distances` exactly once. C++ retains
-/// neither pointer. Scalar per-point C++ calls are forbidden here.
+/// Production route-quality stages 2–4 now use
+/// `RunPlayRouteQualityBridge` and its combined C++ kernel. This bridge
+/// remains for focused parity tests and the historical step-distance
+/// benchmark. Builds one shared native input buffer and one Swift-owned
+/// output buffer, then invokes `compute_route_step_distances` exactly once.
+/// C++ retains neither pointer. Scalar per-point C++ calls are forbidden.
 enum RunPlayRouteStepDistanceBridge {
     static func compute(
         _ points: [RoutePoint]
