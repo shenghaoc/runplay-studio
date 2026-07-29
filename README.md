@@ -125,7 +125,8 @@ framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
 foundation target. The engine provides identity, route input values, a bulk
 inspection boundary, allocation-free geodesy primitives, a transitional
 step-distance boundary, the production combined route-quality geometry
-kernel, and the production per-workout personal heatmap coverage kernel.
+kernel, the production per-workout personal heatmap coverage kernel, and the
+production constrained-DTW path solver for Route-Aware comparison.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -160,6 +161,19 @@ gap inference, final segment compaction, supplied-distance policy, and
 normalized cumulative distances through one bulk call.** The standalone
 step-distance boundary remains transitional/test-focused. No scalar per-point
 Swift/C++ production calls are allowed.
+
+**For Route-Aware comparison, C++ performs the bounded band-packed
+constrained-DTW path solve through one bulk call.** Swift continues to build
+the compact alignment samples, detect route direction, construct alignment
+blocks, calculate diagnostics and quality, maintain the in-memory cache and
+task lifecycle, and publish the public alignment models. Alignment is bounded
+in Swift at 2,000 samples per route and in the policy at 4,000,000 band cells.
+One native call occurs per alignment attempt; none occurs per
+dynamic-programming row or cell. Both inputs and the path output are
+Swift-owned buffers that C++ borrows synchronously without retaining a pointer
+or calling back, and on any failure status the output buffer is left completely
+unchanged. Cancellation is checked before and after the native call and during
+conversion and output translation, never inside it.
 
 Supported workout size is bounded in Swift by `WorkoutImportResourceLimits`
 (1,000,000 route points per workout, 100 MB source payload). The engine's

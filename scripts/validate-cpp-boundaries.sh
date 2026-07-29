@@ -71,6 +71,13 @@ else
   pass "public personal heatmap coverage header present"
 fi
 
+DTW_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/RouteAlignmentDtw.hpp"
+if [[ ! -f "$DTW_HEADER" ]]; then
+  fail "missing public route alignment DTW header RouteAlignmentDtw.hpp"
+else
+  pass "public route alignment DTW header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
@@ -97,6 +104,13 @@ if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   pass "umbrella header includes PersonalHeatmapCoverage.hpp"
 else
   fail "RunPlayEngine.hpp must include PersonalHeatmapCoverage.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteAlignmentDtw\.hpp"'; then
+  pass "umbrella header includes RouteAlignmentDtw.hpp"
+else
+  fail "RunPlayEngine.hpp must include RouteAlignmentDtw.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -174,6 +188,16 @@ if [[ -f "$QUALITY_HEADER" ]]; then
     pass "route-quality geometry boundary is one bulk input/selection/output noexcept call"
   else
     fail "process_route_quality_geometry must use const input*, selection*, output*, counts/capacities, and noexcept"
+  fi
+fi
+
+if [[ -f "$DTW_HEADER" ]]; then
+  dtw_body="$(strip_comments "$DTW_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  dtw_signature_re='RouteAlignmentDtwSummary[[:space:]]+compute_constrained_dtw_path[[:space:]]*\([[:space:]]*const[[:space:]]+RouteAlignmentCostSample[[:space:]]*\*[[:space:]]*primary_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+primary_sample_count[[:space:]]*,[[:space:]]*const[[:space:]]+RouteAlignmentCostSample[[:space:]]*\*[[:space:]]*comparison_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+comparison_sample_count[[:space:]]*,[[:space:]]*double[[:space:]]+primary_route_distance_meters[[:space:]]*,[[:space:]]*double[[:space:]]+comparison_route_distance_meters[[:space:]]*,[[:space:]]*double[[:space:]]+effective_sample_interval_meters[[:space:]]*,[[:space:]]*RouteAlignmentDtwPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*RouteAlignmentDtwPathCell[[:space:]]*\*[[:space:]]*output_path[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$dtw_body" =~ $dtw_signature_re ]]; then
+    pass "constrained-DTW boundary is one bulk two-input/one-output noexcept call"
+  else
+    fail "compute_constrained_dtw_path must use two const input*+size_t pairs, three doubles, a by-value policy, a mutable output*+capacity, and noexcept"
   fi
 fi
 
@@ -597,6 +621,149 @@ if strip_comments "$HEATMAP_BUILDER_SOURCE" \
   pass "PersonalHeatmapBuilder consumes the pure Swift personal heatmap coverage bridge"
 else
   fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
+fi
+
+# Only the constrained-DTW bridge may invoke the path-solver symbol.
+DTW_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteAlignmentDtwBridge.swift"
+DTW_ALIGNER_SOURCE="RunPlayCore/Sources/Services/RouteAlignment/ConstrainedDynamicTimeWarpingAligner.swift"
+
+if [[ ! -f "$DTW_BRIDGE_SOURCE" ]]; then
+  fail "missing production constrained-DTW bridge $DTW_BRIDGE_SOURCE"
+fi
+if [[ ! -f "$DTW_ALIGNER_SOURCE" ]]; then
+  fail "missing production aligner $DTW_ALIGNER_SOURCE"
+fi
+
+dtw_symbol_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_constrained_dtw_path([^[:alnum:]_]|$)'
+dtw_symbol_positive=(
+  'runplay.compute_constrained_dtw_path(primary.baseAddress, primary.count, comparison.baseAddress, comparison.count, a, b, c, policy, output.baseAddress, output.count)'
+  'let summary = runplay . compute_constrained_dtw_path(a, b, c, d, e, f, g, h, i, j)'
+)
+dtw_symbol_negative=(
+  'RunPlayRouteAlignmentDtwBridge.solve(primary: primary, comparison: comparison)'
+  'let text = "compute_constrained_dtw_path"'
+  'func compute_constrained_dtw_path_helper() {}'
+  'runplay.compute_personal_heatmap_workout_coverage(a, b, c, d, e, f, g)'
+)
+dtw_symbol_matcher_ok=1
+for fixture in "${dtw_symbol_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$dtw_symbol_re"; then
+    dtw_symbol_matcher_ok=0
+  fi
+done
+for fixture in "${dtw_symbol_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$dtw_symbol_re"; then
+    dtw_symbol_matcher_ok=0
+  fi
+done
+
+# Commented-out calls must not count as invocations. Exercise the real
+# comment-stripping path rather than asserting it by inspection.
+dtw_comment_fixture="$(mktemp "${TMPDIR:-/tmp}/runplay-dtw-comment.XXXXXX")"
+{
+  printf '// runplay.compute_constrained_dtw_path(a, b, c, d)\n'
+  printf '/* runplay.compute_constrained_dtw_path(a, b, c, d) */\n'
+  printf 'let solved = RunPlayRouteAlignmentDtwBridge.solve()\n'
+} > "$dtw_comment_fixture"
+if strip_comments "$dtw_comment_fixture" | grep -Eq "$dtw_symbol_re"; then
+  dtw_symbol_matcher_ok=0
+fi
+rm -f "$dtw_comment_fixture"
+
+if [[ $dtw_symbol_matcher_ok -eq 1 ]]; then
+  pass "constrained-DTW symbol matcher adversarial fixtures"
+else
+  fail "constrained-DTW symbol matcher failed its adversarial fixtures"
+fi
+
+dtw_symbol_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$DTW_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && dtw_symbol_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$dtw_symbol_re" || true)
+done
+
+if [[ ${#dtw_symbol_leaks[@]} -eq 0 ]]; then
+  pass "compute_constrained_dtw_path is invoked only from the constrained-DTW bridge"
+else
+  for leak in "${dtw_symbol_leaks[@]}"; do
+    fail "compute_constrained_dtw_path used outside the constrained-DTW bridge: $leak"
+  done
+fi
+
+# The aligner owns policy, sampling, blocks, and diagnostics; the native solve
+# reaches it only through the pure Swift bridge.
+if [[ -f "$DTW_ALIGNER_SOURCE" ]]; then
+  if strip_comments "$DTW_ALIGNER_SOURCE" \
+    | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+    fail "ConstrainedDynamicTimeWarpingAligner must not reference C++ runplay symbols directly"
+  else
+    pass "ConstrainedDynamicTimeWarpingAligner stays free of direct C++ symbols"
+  fi
+
+  if strip_comments "$DTW_ALIGNER_SOURCE" \
+    | grep -Eq '(^|[^[:alnum:]_])RunPlayRouteAlignmentDtwBridge([^[:alnum:]_]|$)'; then
+    pass "ConstrainedDynamicTimeWarpingAligner consumes the pure Swift constrained-DTW bridge"
+  else
+    fail "ConstrainedDynamicTimeWarpingAligner must call RunPlayRouteAlignmentDtwBridge"
+  fi
+fi
+
+# The band-packed dynamic-programming solve now lives only in C++. These are
+# the identifiers the removed Swift implementation used for its packed row
+# layout, warp-run tracking, endpoint search, and reconstruction guard. Tests
+# keep a Swift path oracle, so this check is scoped to the production aligner.
+removed_dp_marker_re='(^|[^[:alnum:]_])(rowStarts|rowEnds|warpRuns|bestEndCost|guardCounter|totalCells)([^[:alnum:]_]|$)'
+removed_dp_marker_positive=(
+  'var rowStarts = [Int](repeating: 0, count: n)'
+  'rowEnds[i] = end'
+  'var warpRuns = [UInt8](repeating: 0, count: totalCells)'
+  'var bestEndCost = infinity'
+  'guardCounter += 1'
+  'totalCells += max(0, end - start + 1)'
+)
+removed_dp_marker_negative=(
+  'maxWarpRun = max(maxWarpRun, currentWarpRun)'
+  'diagnostics.maximumConsecutiveWarpRun > policy.maximumConsecutiveWarpSteps'
+  'let totalCellsWritten = 0'
+  'let rowStartsIndex = 0'
+  'blocks.append(RouteAlignmentBlock(id: blocks.count, anchors: currentAnchors))'
+)
+removed_dp_marker_matcher_ok=1
+for fixture in "${removed_dp_marker_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$removed_dp_marker_re"; then
+    removed_dp_marker_matcher_ok=0
+  fi
+done
+for fixture in "${removed_dp_marker_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$removed_dp_marker_re"; then
+    removed_dp_marker_matcher_ok=0
+  fi
+done
+if [[ $removed_dp_marker_matcher_ok -eq 1 ]]; then
+  pass "removed band-packed DP marker matcher adversarial fixtures"
+else
+  fail "removed band-packed DP marker matcher failed its adversarial fixtures"
+fi
+
+if [[ -f "$DTW_ALIGNER_SOURCE" ]]; then
+  removed_dp_leaks=()
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && removed_dp_leaks+=("$leak")
+  done < <(strip_comments "$DTW_ALIGNER_SOURCE" | grep -En "$removed_dp_marker_re" || true)
+
+  if [[ ${#removed_dp_leaks[@]} -eq 0 ]]; then
+    pass "production Swift no longer implements the band-packed DP solve"
+  else
+    for leak in "${removed_dp_leaks[@]}"; do
+      fail "band-packed DP remnant in $DTW_ALIGNER_SOURCE: $leak"
+    done
+  fi
 fi
 
 # RouteQualityProcessor must call the pure Swift quality bridge, not C++ symbols

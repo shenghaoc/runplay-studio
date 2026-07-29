@@ -149,6 +149,31 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="compute_constrained_dtw_path",
+        type_text=(
+            "RouteAlignmentDtwSummary "
+            "(const RouteAlignmentCostSample *, std::size_t, "
+            "const RouteAlignmentCostSample *, std::size_t, double, double, "
+            "double, RouteAlignmentDtwPolicy, RouteAlignmentDtwPathCell *, "
+            "std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="primary_samples",
+                type_text="const RouteAlignmentCostSample *",
+            ),
+            ApprovedPointerParameter(
+                name="comparison_samples",
+                type_text="const RouteAlignmentCostSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_path",
+                type_text="RouteAlignmentDtwPathCell *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -481,6 +506,17 @@ def run_self_test() -> int:
             ),
             "ParmVarDecl samples 'const PersonalHeatmapRouteSample *'",
             "ParmVarDecl output_cells 'PersonalHeatmapCellIndex *'",
+            (
+                "FunctionDecl compute_constrained_dtw_path "
+                "'RouteAlignmentDtwSummary "
+                "(const RouteAlignmentCostSample *, std::size_t, "
+                "const RouteAlignmentCostSample *, std::size_t, double, double, "
+                "double, RouteAlignmentDtwPolicy, RouteAlignmentDtwPathCell *, "
+                "std::size_t) noexcept'"
+            ),
+            "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+            "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+            "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -808,6 +844,180 @@ def run_self_test() -> int:
                 "ParmVarDecl supplied_selection_by_sample 'const std::uint8_t *'",
                 "ParmVarDecl output_samples 'RouteQualityOutputSample *'",
                 "ParmVarDecl on_progress 'void (*)()'",
+            ]
+        ),
+        "dtw writable primary input": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "dtw writable comparison input": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "RouteAlignmentCostSample *, std::size_t, double, double, "
+                    "double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "dtw const output path": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "const RouteAlignmentDtwPathCell *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'const RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "dtw wrong input element type": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentSample *, std::size_t, "
+                    "const RouteAlignmentSample *, std::size_t, double, double, "
+                    "double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "dtw wrong output element type": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentCostSample *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentCostSample *'",
+            ]
+        ),
+        "dtw missing comparison count": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, double, double, "
+                    "double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "dtw missing output capacity": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "dtw extra pointer parameter": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t, double *) "
+                    "noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+                "ParmVarDecl scratch_costs 'double *'",
+            ]
+        ),
+        "dtw callback parameter": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t, "
+                    "bool (*)()) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+                "ParmVarDecl is_cancelled 'bool (*)()'",
+            ]
+        ),
+        "dtw pointer return": (
+            "FunctionDecl compute_constrained_dtw_path "
+            "'RouteAlignmentDtwPathCell * "
+            "(const RouteAlignmentCostSample *, std::size_t, "
+            "const RouteAlignmentCostSample *, std::size_t) noexcept'"
+        ),
+        "dtw std::vector return": (
+            "FunctionDecl compute_constrained_dtw_path "
+            "'std::vector<RouteAlignmentDtwPathCell> "
+            "(const RouteAlignmentCostSample *, std::size_t, "
+            "const RouteAlignmentCostSample *, std::size_t) noexcept'"
+        ),
+        "throwing constrained dtw function": (
+            "FunctionDecl compute_constrained_dtw_path "
+            "'RouteAlignmentDtwSummary "
+            "(const RouteAlignmentCostSample *, std::size_t, "
+            "const RouteAlignmentCostSample *, std::size_t, double, double, "
+            "double, RouteAlignmentDtwPolicy, RouteAlignmentDtwPathCell *, "
+            "std::size_t)'"
+        ),
+        "renamed unapproved constrained dtw function": "\n".join(
+            [
+                (
+                    "FunctionDecl solve_constrained_dtw_path "
+                    "'RouteAlignmentDtwSummary "
+                    "(const RouteAlignmentCostSample *, std::size_t, "
+                    "const RouteAlignmentCostSample *, std::size_t, double, "
+                    "double, double, RouteAlignmentDtwPolicy, "
+                    "RouteAlignmentDtwPathCell *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
+                "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
             ]
         ),
     }

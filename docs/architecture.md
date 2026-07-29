@@ -73,7 +73,8 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 engine identity (`runplay::engine_info`), a route value and inspection
 contract, allocation-free geodesy primitives, a transitional bulk
 step-distance boundary, the production combined route-quality geometry
-kernel, and the production per-workout personal heatmap coverage kernel:
+kernel, the production per-workout personal heatmap coverage kernel, and the
+production constrained-DTW path solver for Route-Aware comparison:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -81,7 +82,9 @@ kernel, and the production per-workout personal heatmap coverage kernel:
 - strict warnings, ASan/UBSan CI, and architecture-boundary validation;
 - exact preservation of every `RoutePoint` field through a deterministic
   digest independently implemented in Swift and C++;
-- production stages 2–4 of route quality through one bulk call.
+- production stages 2–4 of route quality through one bulk call;
+- the production Route-Aware constrained-DTW path solve through one bulk call
+  per alignment attempt.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -195,11 +198,14 @@ The standalone step-distance boundary remains transitional/test-focused.
 per-point Swift/C++ production calls are allowed.
 `scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
 
-Elevation, timelines, splits, DTW, cross-workout heatmap aggregation,
-projection services, and file parsers remain in Swift `RunPlayCore` until later
-migration PRs. Per-workout personal heatmap route coverage is already native;
-see [Personal Heatmap](#personal-heatmap). C++ types never appear in public
-`RunPlayCore` APIs.
+Elevation, timelines, splits, cross-workout heatmap aggregation, projection
+services, and file parsers remain in Swift `RunPlayCore` until later migration
+PRs. Per-workout personal heatmap route coverage is already native; see
+[Personal Heatmap](#personal-heatmap). The Route-Aware constrained-DTW path
+solve is already native, while alignment sample construction, direction
+detection, blocks, diagnostics, quality, and aligned metrics remain Swift; see
+[WorkoutComparisonService](#workoutcomparisonservice). C++ types never appear
+in public `RunPlayCore` APIs.
 
 `RunPlayCore` remains the only Swift-facing core API and continues to own
 app-facing models, `Codable` compatibility, errors/diagnostics, actors,
@@ -221,6 +227,14 @@ Approved pointer boundaries:
   per-sample boundaries, this one is capacity-negotiated: it writes
   `required_cell_count` de-duplicated cells on success, and writes nothing on
   `insufficient_output_capacity` so Swift can reallocate and retry.
+- constrained-DTW path solving: `const RouteAlignmentCostSample*` primary and
+  comparison inputs plus a caller-owned `RouteAlignmentDtwPathCell*` output.
+  This is the only boundary that borrows two const input buffers in one call.
+  It is not capacity-negotiated: a valid path never exceeds
+  `primary_sample_count + comparison_sample_count + 1` cells, so Swift allocates
+  that proven bound and an insufficient-capacity response is an engine contract
+  violation. On any failure status the output buffer is left completely
+  unchanged.
 
 #### C++ policy defaults
 
@@ -705,6 +719,30 @@ presented as route-aligned intervals.
 - quality: Excellent / Good / Limited / structured unavailable reasons
 - complexity O(samples × bandWidth); slider lookup does not recompute DTW
 - in-memory cache only; alignment paths are never written to disk
+
+The path solve itself is native. The split is:
+
+| Layer | Responsibility |
+| --- | --- |
+| **RunPlayEngineCpp** | Bounded band-packed constrained-DTW path solve: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed diagonal → primary-only → comparison-only tie priority, consecutive-warp capping, open-suffix endpoint selection, deterministic path reconstruction |
+| **RunPlayCore** | `RouteAlignmentSampleBuilder` compact alignment samples, route-direction detection, `RunPlayRouteAlignmentDtwBridge` interop and path validation, alignment blocks and anchors, diagnostics and quality classification, public alignment models |
+| **RunPlayStudio** | `ComparisonViewModel` cache, task lifecycle, request-generation stale-result suppression, Compare/Map/Chart UI |
+
+Bounds and boundary semantics:
+
+- at most **2,000 samples per route** (`RouteAlignmentPolicy.maximumSamplesPerRoute`)
+  and at most **4,000,000 band cells** (`maximumBandCells`), the latter checked
+  as an estimate before allocation and exactly after the packed layout is built;
+- **one native call per alignment attempt**; no call per dynamic-programming row
+  or cell, and no callback into Swift;
+- both inputs and the path output are Swift-owned buffers borrowed
+  synchronously; C++ retains no pointer;
+- **on any failure status the output buffer is left completely unchanged**;
+- cancellation is checked before and after the native call and during conversion
+  and output translation, never inside the native call;
+- `resource_limit` surfaces as `.unavailable(.resourceLimit)` and `no_path` as
+  `.unavailable(.routesTooFarApart)`; contract violations surface as
+  `.unavailable(.algorithmFailure)`.
 
 Whole-workout summary cards, kilometre splits, and recorded laps remain
 independent of alignment mode.

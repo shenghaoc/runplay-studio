@@ -90,8 +90,9 @@ not import `RunPlayEngineCpp` directly.
   one synchronous route-batch inspection boundary, allocation-free geodesy
   primitives (coordinate validation, Haversine distance, local-metre
   projection), a transitional bulk route step-distance boundary, the
-  production combined route-quality geometry kernel, and the production
-  per-workout personal heatmap coverage kernel. C++23 performs production
+  production combined route-quality geometry kernel, the production
+  per-workout personal heatmap coverage kernel, and the production
+  constrained-DTW path solver for Route-Aware comparison. C++23 performs production
   outlier evidence, isolated-point rejection, implicit gap inference, final
   segment compaction, supplied-distance policy, and normalized cumulative
   distances through one bulk call. Swift still owns stage-1 validation,
@@ -100,7 +101,12 @@ not import `RunPlayEngineCpp` directly.
   breaking, supercover interval traversal, per-workout cell de-duplication, and
   deterministic cell ordering through one bulk call per workout; Swift still
   owns date filtering, the adaptive resolution loop, cross-workout aggregation,
-  the minimum-workout-count filter, and snapshot finalization. No scalar
+  the minimum-workout-count filter, and snapshot finalization. For Route-Aware
+  comparison, C++23 performs the bounded band-packed constrained-DTW path solve
+  — band radius, packed row layout, band-cell budget validation, geometry-only
+  point cost, open prefix/suffix seeding, constrained transitions with fixed tie
+  priority, consecutive-warp capping, endpoint selection, and path
+  reconstruction — through one bulk call per alignment attempt. No scalar
   per-point Swift/C++ production calls are allowed.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
@@ -112,8 +118,12 @@ not import `RunPlayEngineCpp` directly.
   graphics, Core Location, or Combine. Swift continues to own route-size
   validation, basic field sanitization, sorting, initial source-segment
   compaction, source-speed validation, elevation, diagnostics translation,
-  public models, and persistence. Use `GeoDistance` for remaining Swift
-  geodesy stages, not `CLLocation`.
+  public models, and persistence. For Route-Aware comparison, Swift continues
+  to build the compact alignment samples (at most 2,000 per route), detect
+  route direction, construct alignment blocks from the returned index path,
+  calculate diagnostics and quality, maintain the in-memory cache and task
+  lifecycle, and publish the public alignment models. Use `GeoDistance` for
+  remaining Swift geodesy stages, not `CLLocation`.
 - **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
   MapKit, and non-UI Combine. It must not depend on `RunPlayStudio`.
 - **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
@@ -158,6 +168,11 @@ Approved pointer boundaries:
   * `const PersonalHeatmapRouteSample*` input samples
   * `PersonalHeatmapCellIndex*` caller-owned output
 
+- constrained-DTW path solving:
+
+  * `const RouteAlignmentCostSample*` primary and comparison inputs plus a
+    caller-owned `RouteAlignmentDtwPathCell*` output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -167,6 +182,19 @@ capacity-negotiated: its output is a de-duplicated cell set whose size is not
 known in advance, so it writes exactly `required_cell_count` entries on
 success, and on `insufficient_output_capacity` it writes nothing while
 reporting `required_cell_count` so Swift can reallocate and retry.
+
+The constrained-DTW path boundary writes exactly `written_path_count` entries
+on success. It is not capacity-negotiated: a valid path never exceeds
+`primary_sample_count + comparison_sample_count + 1` cells, so Swift allocates
+that proven upper bound and an insufficient-capacity response is an engine
+contract violation rather than a retry signal. On any failure status the output
+buffer is left completely unchanged. Alignment sample count is bounded in Swift
+(`RouteAlignmentPolicy.maximumSamplesPerRoute`, 2,000 per route) and the solve
+is bounded by `maximumBandCells` (4,000,000), checked both as an estimate before
+allocation and exactly after the packed row layout is built. One native call
+occurs per alignment attempt; none occurs per dynamic-programming row or cell.
+Cancellation is cooperative Swift work checked before and after the native call
+and during conversion and output translation, never inside the native call.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route
