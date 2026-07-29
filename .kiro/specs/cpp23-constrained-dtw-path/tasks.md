@@ -17,13 +17,14 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 - [x] Cut `ConstrainedDynamicTimeWarpingAligner` over to the bridge while
       keeping Swift sample construction, direction detection, blocks,
       diagnostics, quality, and public models
-- [ ] Add native C++ tests for buffer contracts, policy and input-contract
+- [x] Add native C++ tests for buffer contracts, policy and input-contract
       rejection, band-budget rejection, no-path, tie-breaking, warp capping,
       endpoint selection, and no-write-on-failure
-- [ ] Add the Swift path oracle and parity tests over deterministic fixtures
-- [ ] Update the public AST validator and `scripts/validate-cpp-boundaries.sh`
+- [x] Add the Swift path oracle and parity tests over deterministic fixtures
+- [x] Add the end-to-end pre-migration aligner oracle and snapshot parity tests
+- [x] Update the public AST validator and `scripts/validate-cpp-boundaries.sh`
       for the new entry point and bridge isolation
-- [ ] Add the opt-in release benchmark for the alignment path
+- [x] Add the opt-in release benchmark for the alignment path
 - [x] Write this spec and update durable docs (`AGENTS.md`, `README.md`,
       `docs/architecture.md`, `docs/phase-plan.md`)
 
@@ -31,17 +32,18 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 
 Checked boxes record intended work. Tests and CI are the completion evidence.
 
-- [ ] `./scripts/validate-cpp-boundaries.sh`
-- [ ] public AST self-test and live header scan
-- [ ] `swift build --target RunPlayEngineCpp` with strict warnings
-- [ ] native tests (normal + `--sanitize`)
-- [ ] `swift test --filter RunPlayEngineCppTests`
-- [ ] `swift test --filter RunPlayRouteAlignmentDtwBridgeTests`
-- [ ] `swift test --filter RouteAlignmentTests`
-- [ ] `swift test --filter RunPlayCoreTests`
-- [ ] package-consumer smoke build
-- [ ] full `swift test` on macOS
+- [x] `./scripts/validate-cpp-boundaries.sh`
+- [x] public AST self-test and live header scan
+- [x] `swift build --target RunPlayEngineCpp` with strict warnings
+- [x] native tests (normal + `--sanitize`)
+- [x] native harness through `swift test` (`NativeEngineTests`)
+- [x] `swift test --filter RunPlayRouteAlignmentDtwBridgeTests`
+- [x] `swift test --filter DynamicTimeWarpingRouteAlignerTests`
+- [x] `swift test --filter RunPlayCoreTests`
+- [x] package-consumer smoke build
+- [x] full `swift test` on macOS and `xcodebuild test`
 - [ ] Route-Aware comparison GUI check from `docs/manual-testing.md`
+      (manual; not yet performed)
 
 ## Notes
 
