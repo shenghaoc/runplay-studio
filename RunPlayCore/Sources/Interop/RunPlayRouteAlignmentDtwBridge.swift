@@ -316,3 +316,136 @@ enum RunPlayRouteAlignmentDtwBridge {
         return path
     }
 }
+
+// MARK: - Benchmark-only diagnostics
+
+/// Benchmark-only projection of one native constrained-DTW solve.
+///
+/// Deliberately narrower than `RunPlayRouteAlignmentDtwResult`: it reports the
+/// engine's own counters without reconstructing or validating a Swift path, so
+/// a release benchmark can attribute time to the native solve alone. Production
+/// always goes through `RunPlayRouteAlignmentDtwBridge.solve`.
+struct RunPlayRouteAlignmentDtwNativeBenchmarkReport: Equatable, Sendable {
+    /// `true` only for engine `success`; `resource_limit` and `no_path` are
+    /// reported as `false` rather than thrown, matching `solve`'s treatment of
+    /// them as ordinary outcomes.
+    let succeeded: Bool
+    let bandRadius: Int
+    let bandCellCount: Int
+    let writtenPathCount: Int
+    let bestEndCost: Double
+}
+
+/// Benchmark-only handle holding one already-converted native input pair plus
+/// the Swift-owned output buffer sized to the proven `n + m + 1` path bound.
+///
+/// Exists so a release benchmark can time the native solve without the sample
+/// conversion and path validation that the production path always performs.
+/// Nothing in production constructs or reads this type.
+///
+/// Buffer ownership is unchanged: Swift owns every buffer, C++ borrows them
+/// synchronously inside one call and retains nothing.
+final class RunPlayRouteAlignmentDtwPreparedBenchmarkInput {
+    fileprivate let nativePrimary: ContiguousArray<runplay.RouteAlignmentCostSample>
+    fileprivate let nativeComparison: ContiguousArray<runplay.RouteAlignmentCostSample>
+    fileprivate var outputBuffer: ContiguousArray<runplay.RouteAlignmentDtwPathCell>
+    fileprivate let pathCapacity: Int
+
+    fileprivate init(
+        nativePrimary: ContiguousArray<runplay.RouteAlignmentCostSample>,
+        nativeComparison: ContiguousArray<runplay.RouteAlignmentCostSample>,
+        pathCapacity: Int
+    ) {
+        self.nativePrimary = nativePrimary
+        self.nativeComparison = nativeComparison
+        self.outputBuffer = ContiguousArray<runplay.RouteAlignmentDtwPathCell>(
+            repeating: runplay.RouteAlignmentDtwPathCell(),
+            count: pathCapacity
+        )
+        self.pathCapacity = pathCapacity
+    }
+}
+
+extension RunPlayRouteAlignmentDtwBridge {
+    /// Diagnostic-only: perform the conversion half of `solve` up front so a
+    /// benchmark can time the native solve on its own. Not a production path.
+    ///
+    /// Uses the same `makeCostSamples` conversion as production with
+    /// cancellation disabled, and the same proven `n + m + 1` output bound, so
+    /// the prepared state is byte-identical to what `solve` would build.
+    static func prepareNativeInputForBenchmark(
+        primary: [RouteAlignmentSample],
+        comparison: [RouteAlignmentSample]
+    ) throws -> RunPlayRouteAlignmentDtwPreparedBenchmarkInput {
+        guard !primary.isEmpty, !comparison.isEmpty else {
+            throw RunPlayRouteAlignmentDtwBridgeError.invalidInputContract
+        }
+
+        let (sampleSum, sumOverflow) = primary.count.addingReportingOverflow(comparison.count)
+        let (pathCapacity, boundOverflow) = sampleSum.addingReportingOverflow(1)
+        guard !sumOverflow, !boundOverflow, pathCapacity > 0 else {
+            throw RunPlayRouteAlignmentDtwBridgeError.invalidInputContract
+        }
+
+        let nativePrimary = try makeCostSamples(primary, stride: 1, isCancelled: { false })
+        let nativeComparison = try makeCostSamples(comparison, stride: 1, isCancelled: { false })
+
+        return RunPlayRouteAlignmentDtwPreparedBenchmarkInput(
+            nativePrimary: nativePrimary,
+            nativeComparison: nativeComparison,
+            pathCapacity: pathCapacity
+        )
+    }
+
+    /// Diagnostic-only: invoke the native kernel on already-converted inputs.
+    ///
+    /// Performs no Swift-side sample conversion and no output validation, so
+    /// the measured interval is the engine call itself. Used by release
+    /// benchmarks; not a production path.
+    @discardableResult
+    static func invokeNativeKernelForBenchmark(
+        _ prepared: RunPlayRouteAlignmentDtwPreparedBenchmarkInput,
+        primaryRouteDistanceMeters: Double,
+        comparisonRouteDistanceMeters: Double,
+        effectiveSampleIntervalMeters: Double,
+        policy: RouteAlignmentPolicy
+    ) throws -> RunPlayRouteAlignmentDtwNativeBenchmarkReport {
+        let summary = invokeNative(
+            primary: prepared.nativePrimary,
+            comparison: prepared.nativeComparison,
+            primaryRouteDistanceMeters: primaryRouteDistanceMeters,
+            comparisonRouteDistanceMeters: comparisonRouteDistanceMeters,
+            effectiveSampleIntervalMeters: effectiveSampleIntervalMeters,
+            policy: policy,
+            outputBuffer: &prepared.outputBuffer,
+            capacity: prepared.pathCapacity
+        )
+
+        switch summary.status {
+        case .success:
+            return RunPlayRouteAlignmentDtwNativeBenchmarkReport(
+                succeeded: true,
+                bandRadius: Int(clamping: summary.band_radius),
+                bandCellCount: Int(clamping: summary.band_cell_count),
+                writtenPathCount: Int(clamping: summary.written_path_count),
+                bestEndCost: summary.best_end_cost
+            )
+        case .resource_limit, .no_path:
+            return RunPlayRouteAlignmentDtwNativeBenchmarkReport(
+                succeeded: false,
+                bandRadius: Int(clamping: summary.band_radius),
+                bandCellCount: Int(clamping: summary.band_cell_count),
+                writtenPathCount: 0,
+                bestEndCost: 0
+            )
+        case .invalid_policy:
+            throw RunPlayRouteAlignmentDtwBridgeError.invalidPolicy
+        case .invalid_input_contract:
+            throw RunPlayRouteAlignmentDtwBridgeError.invalidInputContract
+        case .allocation_failure:
+            throw RunPlayRouteAlignmentDtwBridgeError.allocationFailure
+        default:
+            throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation
+        }
+    }
+}
