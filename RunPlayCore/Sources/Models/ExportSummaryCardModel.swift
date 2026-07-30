@@ -54,15 +54,6 @@ public struct ExportSummaryCardModel: Sendable {
         public var duration: String { elapsed }
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.autoupdatingCurrent
-        formatter.timeZone = TimeZone.autoupdatingCurrent
-        formatter.dateStyle = .long
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
     public static let metricsOnlyPrivacyNote =
         "Generated locally by RunPlay Studio • No cloud upload • No account required"
 
@@ -78,7 +69,7 @@ public struct ExportSummaryCardModel: Sendable {
         appBranding = "RunPlay Studio"
         workoutTitle = workout.displayName
         sourceText = workout.source.displayName
-        dateText = workout.metadata.startDate.map(Self.dateFormatter.string) ?? "Unknown date"
+        dateText = workout.metadata.startDate?.formatted(date: .long, time: .shortened) ?? "Unknown date"
         self.layout = layout
         self.includesMapImagery = includesMapImagery
 

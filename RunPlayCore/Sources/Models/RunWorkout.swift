@@ -110,23 +110,13 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.importProvenance = importProvenance
     }
 
-    // ⚡ Bolt: Cache date formatter to avoid expensive initialization on property access
-    private static let displayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.autoupdatingCurrent
-        formatter.timeZone = TimeZone.autoupdatingCurrent
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
     /// Display name for the workout.
     public var displayName: String {
         if let name = metadata.name, !name.isEmpty {
             return name
         }
         if let date = metadata.startDate {
-            return RunWorkout.displayFormatter.string(from: date)
+            return date.formatted(date: .medium, time: .shortened)
         }
         return "Untitled Run"
     }
