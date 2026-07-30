@@ -73,7 +73,10 @@ sorting, cell materialization, and snapshot assembly. Native execution, output
 allocation, and cell translation are nested inside the coverage bridge and are
 reported as *of which* rows, never summed again. Intra-pass loop overhead and
 configuration validation fall outside every timed region and land in the
-reported unaccounted residue.
+reported unaccounted residue. When that residue exceeds 5% of the profiled wall
+clock for a fixture, the harness still reports Mode A/B medians, parity, and the
+unaccounted percentage, but it suppresses that fixture's phase-attribution
+tables and fails the fixture so an untrustworthy breakdown cannot be published.
 
 ## Internal coverage diagnostic
 

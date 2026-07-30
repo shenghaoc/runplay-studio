@@ -12,7 +12,7 @@ Checked boxes do not prove completion. Benchmark evidence, tests, and CI do.
 - [x] 2. Phase decomposition
   - [x] 2.1 Time date filtering, native preparation, coverage bridge, cross-workout counting, minimum-repeat filtering, adaptive decision, sorting, cell materialization, and snapshot assembly separately.
   - [x] 2.2 Retain one row per adaptive-resolution pass rather than reporting only the final effective resolution.
-  - [x] 2.3 Report the sum of measured phases against the profiled wall clock with the unaccounted difference and its percentage.
+  - [x] 2.3 Report the sum of measured phases against the profiled wall clock with the unaccounted difference and its percentage; suppress phase-attribution tables and fail the fixture when unaccounted exceeds 5%.
 
 - [x] 3. Internal coverage diagnostic
   - [x] 3.1 Add `RunPlayPersonalHeatmapCoverageProfile` (pure Swift, no imported C++ type) and `profiledCoverage(...)` to `RunPlayPersonalHeatmapCoverageBridge.swift`.

@@ -30,6 +30,10 @@ import XCTest
 /// `scripts/run-personal-heatmap-profile.sh`, never in ordinary CI.
 final class PersonalHeatmapPipelineProfile: XCTestCase {
 
+    /// Requirement 2.4: phase attribution tables are only published when the
+    /// unaccounted residue is at most this percentage of the profiled wall clock.
+    private static let maximumUnaccountedPercent: Double = 5
+
     // MARK: - Entry point
 
     func testPersonalHeatmapPipelineProfile() throws {
@@ -180,6 +184,9 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         let accounted = measurement.accountedNanoseconds
         let unaccounted = Double(measurement.wallClockNanoseconds) - Double(accounted)
         let unaccountedPercent = 100 * unaccounted / max(Double(measurement.wallClockNanoseconds), 1)
+        // Requirement 2.4: phase attribution is only trustworthy when the
+        // unaccounted residue is within 5% of the profiled wall clock.
+        let attributionIsTrustworthy = unaccountedPercent <= Self.maximumUnaccountedPercent
 
         let matrixRow = "| \(fixture.key) \(fixture.name) "
             + "| \(measurement.inputWorkoutCount) "
@@ -210,16 +217,27 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             measurement.snapshotAssemblyNanoseconds
         ]
 
-        let phaseMillisecondRow = "| \(fixture.key) "
-            + phaseNanoseconds.map { "| \(Self.format(Self.ms($0))) " }.joined()
-            + "| \(Self.format(unaccounted / 1_000_000)) "
-            + "| \(Self.format(Self.ms(measurement.wallClockNanoseconds))) |"
-
-        let phasePercentRow = "| \(fixture.key) "
-            + phaseNanoseconds
-                .map { "| \(String(format: "%.2f", 100 * Double($0) / max(wall, 1))) " }
-                .joined()
-            + "| \(String(format: "%.2f", unaccountedPercent)) |"
+        // Publish phase tables only when attribution is trustworthy. Mode A/B
+        // medians, parity, and the unaccounted percentage still always report.
+        let phaseMillisecondRow: String
+        let phasePercentRow: String
+        if attributionIsTrustworthy {
+            phaseMillisecondRow = "| \(fixture.key) "
+                + phaseNanoseconds.map { "| \(Self.format(Self.ms($0))) " }.joined()
+                + "| \(Self.format(unaccounted / 1_000_000)) "
+                + "| \(Self.format(Self.ms(measurement.wallClockNanoseconds))) |"
+            phasePercentRow = "| \(fixture.key) "
+                + phaseNanoseconds
+                    .map { "| \(String(format: "%.2f", 100 * Double($0) / max(wall, 1))) " }
+                    .joined()
+                + "| \(String(format: "%.2f", unaccountedPercent)) |"
+        } else {
+            phaseMillisecondRow = "| \(fixture.key) | — | — | — | — | — | — | — | — | — | — | — | — | attribution suppressed (unaccounted \(String(format: "%.2f", unaccountedPercent))% > \(Self.format(Self.maximumUnaccountedPercent))%) | — |"
+            phasePercentRow = "| \(fixture.key) | — | — | — | — | — | — | — | — | — | — | — | — | attribution suppressed |"
+            XCTFail(
+                "\(fixture.key): unaccounted phase residue is \(String(format: "%.2f", unaccountedPercent))% of the profiled wall clock (limit \(Self.format(Self.maximumUnaccountedPercent))%). Phase attribution tables are suppressed."
+            )
+        }
 
         var detail: [String] = []
         detail.append("### Primary fixture detail — \(fixture.key) \(fixture.name)")
@@ -246,68 +264,77 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         detail.append("")
         detail.append("- profiling overhead (Mode B / Mode A): `\(String(format: "%.3f", overheadRatio))×` (target ≤ 1.15×)")
         detail.append("")
-        detail.append("#### Additive phase breakdown (last measured Mode B iteration)")
-        detail.append("")
-        detail.append("Rows marked *of which* are nested inside the coverage bridge row and are not summed again.")
-        detail.append("")
-        detail.append("| Phase | Median | Percent |")
-        detail.append("|---|---:|---:|")
-
-        func phaseRow(_ label: String, _ nanos: UInt64) -> String {
-            let ms = Self.ms(nanos)
-            let percent = 100 * Double(nanos) / max(wall, 1)
-            return "| \(label) | \(Self.format(ms)) ms | \(String(format: "%.2f", percent))% |"
-        }
-
-        detail.append(phaseRow("Date filtering", measurement.dateFilterNanoseconds))
-        detail.append(phaseRow("Native preparation", measurement.preparationNanoseconds))
-        detail.append(phaseRow("Coverage bridge across all passes", measurement.totalCoverageBridgeNanoseconds))
-        detail.append(phaseRow("— of which native C++ execution", measurement.totalNativeNanoseconds))
-        detail.append(phaseRow("— of which output allocation / retries", measurement.totalAllocationNanoseconds))
-        detail.append(phaseRow("— of which C++ → Swift cell translation", measurement.totalTranslationNanoseconds))
-        detail.append(phaseRow("Cross-workout counting", measurement.totalCountInsertionNanoseconds))
-        detail.append(phaseRow("Minimum-repeat filtering", measurement.totalFilterNanoseconds))
-        detail.append(phaseRow("Adaptive decision", measurement.totalAdaptiveDecisionNanoseconds))
-        detail.append(phaseRow("Sorting", measurement.sortNanoseconds))
-        detail.append(phaseRow("Bounds / intensity / cells", measurement.materializationNanoseconds))
-        detail.append(phaseRow("Snapshot assembly", measurement.snapshotAssemblyNanoseconds))
-        detail.append("| Unaccounted | \(Self.format(unaccounted / 1_000_000)) ms | \(String(format: "%.2f", unaccountedPercent))% |")
-        detail.append("| **Profiled wall-clock total** | **\(Self.format(Self.ms(measurement.wallClockNanoseconds))) ms** | **100.00%** |")
-        detail.append("")
         detail.append("- sum of measured phases: `\(Self.format(Self.ms(accounted)))` ms")
         detail.append("- profiled wall-clock total: `\(Self.format(Self.ms(measurement.wallClockNanoseconds)))` ms")
-        detail.append("- difference: `\(Self.format(unaccounted / 1_000_000))` ms (`\(String(format: "%.2f", unaccountedPercent))%`, target ≤ 5%)")
+        detail.append("- difference: `\(Self.format(unaccounted / 1_000_000))` ms (`\(String(format: "%.2f", unaccountedPercent))%`, limit \(Self.format(Self.maximumUnaccountedPercent))%)")
         detail.append("")
-        detail.append("#### Per adaptive pass")
-        detail.append("")
-        detail.append("| Pass | Cell size | Eligible | With coverage | Without | Cells returned | Invalid intervals | Aggregated | Passing filter | Dict updates | Coverage bridge | Native | Alloc | Translate | Counting | Filter | Decision | Pass total | Capacity retries |")
-        detail.append("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-        for pass in measurement.passes {
-            detail.append(
-                "| \(pass.index) "
-                + "| \(Self.format(pass.cellSizeMeters)) m "
-                + "| \(pass.eligibleWorkouts) "
-                + "| \(pass.workoutsWithCoverage) "
-                + "| \(pass.workoutsWithoutCoverage) "
-                + "| \(pass.coverageCellsReturned) "
-                + "| \(pass.invalidIntervals) "
-                + "| \(pass.aggregatedUniqueCells) "
-                + "| \(pass.cellsPassingMinimumFilter) "
-                + "| \(pass.dictionaryUpdates) "
-                + "| \(Self.format(Self.ms(pass.coverageBridgeNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.nativeNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.allocationNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.translationNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.countInsertionNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.filterNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.adaptiveDecisionNanoseconds))) "
-                + "| \(Self.format(Self.ms(pass.totalNanoseconds))) "
-                + "| \(pass.capacityRetries) |"
-            )
+
+        if attributionIsTrustworthy {
+            detail.append("#### Additive phase breakdown (last measured Mode B iteration)")
+            detail.append("")
+            detail.append("Rows marked *of which* are nested inside the coverage bridge row and are not summed again.")
+            detail.append("")
+            detail.append("| Phase | Median | Percent |")
+            detail.append("|---|---:|---:|")
+
+            func phaseRow(_ label: String, _ nanos: UInt64) -> String {
+                let ms = Self.ms(nanos)
+                let percent = 100 * Double(nanos) / max(wall, 1)
+                return "| \(label) | \(Self.format(ms)) ms | \(String(format: "%.2f", percent))% |"
+            }
+
+            detail.append(phaseRow("Date filtering", measurement.dateFilterNanoseconds))
+            detail.append(phaseRow("Native preparation", measurement.preparationNanoseconds))
+            detail.append(phaseRow("Coverage bridge across all passes", measurement.totalCoverageBridgeNanoseconds))
+            detail.append(phaseRow("— of which native C++ execution", measurement.totalNativeNanoseconds))
+            detail.append(phaseRow("— of which output allocation / retries", measurement.totalAllocationNanoseconds))
+            detail.append(phaseRow("— of which C++ → Swift cell translation", measurement.totalTranslationNanoseconds))
+            detail.append(phaseRow("Cross-workout counting", measurement.totalCountInsertionNanoseconds))
+            detail.append(phaseRow("Minimum-repeat filtering", measurement.totalFilterNanoseconds))
+            detail.append(phaseRow("Adaptive decision", measurement.totalAdaptiveDecisionNanoseconds))
+            detail.append(phaseRow("Sorting", measurement.sortNanoseconds))
+            detail.append(phaseRow("Bounds / intensity / cells", measurement.materializationNanoseconds))
+            detail.append(phaseRow("Snapshot assembly", measurement.snapshotAssemblyNanoseconds))
+            detail.append("| Unaccounted | \(Self.format(unaccounted / 1_000_000)) ms | \(String(format: "%.2f", unaccountedPercent))% |")
+            detail.append("| **Profiled wall-clock total** | **\(Self.format(Self.ms(measurement.wallClockNanoseconds))) ms** | **100.00%** |")
+            detail.append("")
+            detail.append("#### Per adaptive pass")
+            detail.append("")
+            detail.append("| Pass | Cell size | Eligible | With coverage | Without | Cells returned | Invalid intervals | Aggregated | Passing filter | Dict updates | Coverage bridge | Native | Alloc | Translate | Counting | Filter | Decision | Pass total | Capacity retries |")
+            detail.append("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+            for pass in measurement.passes {
+                detail.append(
+                    "| \(pass.index) "
+                    + "| \(Self.format(pass.cellSizeMeters)) m "
+                    + "| \(pass.eligibleWorkouts) "
+                    + "| \(pass.workoutsWithCoverage) "
+                    + "| \(pass.workoutsWithoutCoverage) "
+                    + "| \(pass.coverageCellsReturned) "
+                    + "| \(pass.invalidIntervals) "
+                    + "| \(pass.aggregatedUniqueCells) "
+                    + "| \(pass.cellsPassingMinimumFilter) "
+                    + "| \(pass.dictionaryUpdates) "
+                    + "| \(Self.format(Self.ms(pass.coverageBridgeNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.nativeNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.allocationNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.translationNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.countInsertionNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.filterNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.adaptiveDecisionNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.totalNanoseconds))) "
+                    + "| \(pass.capacityRetries) |"
+                )
+            }
+            detail.append("")
+            detail.append("All milliseconds. Native / Alloc / Translate are nested inside Coverage bridge.")
+            detail.append("")
+        } else {
+            detail.append("#### Additive phase breakdown")
+            detail.append("")
+            detail.append("**Suppressed.** Unaccounted residue exceeded \(Self.format(Self.maximumUnaccountedPercent))% of the profiled wall clock, so phase attribution tables are not published (requirement 2.4).")
+            detail.append("")
         }
-        detail.append("")
-        detail.append("All milliseconds. Native / Alloc / Translate are nested inside Coverage bridge.")
-        detail.append("")
+
         detail.append("#### Memory")
         detail.append("")
         detail.append("- peak resident (task max): `\(Self.bytes(measurement.peakResidentBytes))`")
