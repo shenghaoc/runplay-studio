@@ -54,6 +54,11 @@ public struct ExportSummaryCardModel: Sendable {
         public var duration: String { elapsed }
     }
 
+    /// Cached long-date/short-time formatter for the export card's date line.
+    ///
+    /// Kept as a cached `DateFormatter` for the same reason as
+    /// `RunWorkout.displayFormatter`: `Date.formatted(date:time:)` measures slower and
+    /// buys nothing here. See the 2026-07-30 entry in `.jules/bolt.md`.
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.autoupdatingCurrent

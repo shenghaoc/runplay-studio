@@ -110,7 +110,13 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.importProvenance = importProvenance
     }
 
-    // ⚡ Bolt: Cache date formatter to avoid expensive initialization on property access
+    /// Cached medium-date/short-time formatter for the unnamed-workout fallback.
+    ///
+    /// Deliberately a cached `DateFormatter` rather than `Date.formatted(date:time:)`:
+    /// `Date.FormatStyle` has no `.medium` date style, so `.abbreviated` would change
+    /// the rendered string in locales such as `de_DE`, `ja_JP`, and `zh_Hans_CN`, and it
+    /// measures slower than the cached formatter it would replace. See the 2026-07-30
+    /// entry in `.jules/bolt.md`.
     private static let displayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.autoupdatingCurrent
