@@ -623,6 +623,186 @@ else
   fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
 fi
 
+# --- Heatmap coverage profiling diagnostic stays test-only ---------------------
+
+# The bridge exposes a profiling variant of the coverage call that reuses the
+# same implementation. It must never be reachable from production code, must
+# stay internal, and must not add logging or signposts to shipping builds.
+HEATMAP_PROFILE_TEST="RunPlayCore/Tests/RunPlayCoreTests/PersonalHeatmapPipelineProfile.swift"
+HEATMAP_PROFILE_SCRIPT="scripts/run-personal-heatmap-profile.sh"
+
+if [[ ! -f "$HEATMAP_PROFILE_TEST" ]]; then
+  fail "missing heatmap pipeline profiling harness $HEATMAP_PROFILE_TEST"
+else
+  pass "heatmap pipeline profiling harness present"
+fi
+if [[ ! -x "$HEATMAP_PROFILE_SCRIPT" ]]; then
+  fail "missing or non-executable heatmap profile runner $HEATMAP_PROFILE_SCRIPT"
+else
+  pass "heatmap profile runner present and executable"
+fi
+
+# Ordinary CI runs `swift test` without the profile variable, so the harness
+# must gate itself on RUNPLAY_HEATMAP_PROFILE rather than relying on filters.
+if [[ -f "$HEATMAP_PROFILE_TEST" ]]; then
+  # The guard spans several lines, so flatten whitespace before matching.
+  heatmap_profile_body="$(
+    strip_comments "$HEATMAP_PROFILE_TEST" | tr '\n' ' ' | tr -s '[:space:]' ' '
+  )"
+  if printf '%s' "$heatmap_profile_body" \
+    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_PROFILE'; then
+    pass "heatmap pipeline profile skips unless RUNPLAY_HEATMAP_PROFILE=1"
+  else
+    fail "$HEATMAP_PROFILE_TEST must skip unless RUNPLAY_HEATMAP_PROFILE=1"
+  fi
+fi
+
+heatmap_profile_api_re='(^|[^[:alnum:]_])(profiledCoverage|RunPlayPersonalHeatmapCoverageProfile)([^[:alnum:]_]|$)'
+heatmap_profile_api_positive=(
+  'let result = try preparedBatch.profiledCoverage(workoutIndex: 0)'
+  'func f() -> RunPlayPersonalHeatmapCoverageProfile { }'
+)
+heatmap_profile_api_negative=(
+  'let coverage = try preparedBatch.coverage(workoutIndex: 0)'
+  'let name = "profiledCoverageDisabled"'
+  'func profiledCoverageHelper() {}'
+)
+heatmap_profile_api_matcher_ok=1
+for fixture in "${heatmap_profile_api_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$heatmap_profile_api_re"; then
+    heatmap_profile_api_matcher_ok=0
+  fi
+done
+for fixture in "${heatmap_profile_api_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$heatmap_profile_api_re"; then
+    heatmap_profile_api_matcher_ok=0
+  fi
+done
+if [[ $heatmap_profile_api_matcher_ok -eq 1 ]]; then
+  pass "heatmap profiling API matcher adversarial fixtures"
+else
+  fail "heatmap profiling API matcher failed its adversarial fixtures"
+fi
+
+# Only the bridge that declares it, and tests, may name the profiling API.
+heatmap_profile_api_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$HEATMAP_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && heatmap_profile_api_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$heatmap_profile_api_re" || true)
+done
+
+if [[ ${#heatmap_profile_api_leaks[@]} -eq 0 ]]; then
+  pass "heatmap coverage profiling API is referenced only by its bridge and tests"
+else
+  for leak in "${heatmap_profile_api_leaks[@]}"; do
+    fail "production Swift references the test-only heatmap profiling API: $leak"
+  done
+fi
+
+if strip_comments "$HEATMAP_BUILDER_SOURCE" \
+  | grep -Eq "$heatmap_profile_api_re"; then
+  fail "PersonalHeatmapBuilder must not call the test-only heatmap profiling API"
+else
+  pass "PersonalHeatmapBuilder does not call the heatmap profiling API"
+fi
+
+# The diagnostic must not widen the public surface of RunPlayCore.
+if [[ -f "$HEATMAP_BRIDGE_SOURCE" ]]; then
+  if strip_comments "$HEATMAP_BRIDGE_SOURCE" \
+    | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(profiledCoverage|RunPlayPersonalHeatmapCoverageProfile)'; then
+    fail "heatmap profiling diagnostic must stay internal, not public/package"
+  else
+    pass "heatmap profiling diagnostic stays internal to RunPlayCore"
+  fi
+fi
+
+# Shipping builds must carry no profiling logging or signpost instrumentation.
+# Two shapes are rejected: signpost/logger symbol use, and a Swift import of the
+# `os` / `OSLog` module. Imports are anchored to statement position so a string
+# literal mentioning "import os" cannot trip the check.
+profiling_instrumentation_re='(^|[^[:alnum:]_])(os_signpost|OSSignposter|OSSignpostID|kdebug_signpost|OSLog)([^[:alnum:]_]|$)|^[[:space:]]*([[:alnum:]_@]+[[:space:]]+)*import[[:space:]]+(os|OSLog)([^[:alnum:]_]|$)'
+profiling_instrumentation_positive=(
+  'import OSLog'
+  'internal import OSLog'
+  '@preconcurrency import os'
+  'import os.signpost'
+  '        os_signpost(.begin, log: log, name: "aggregate")'
+  '    let signposter = OSSignposter()'
+)
+profiling_instrumentation_negative=(
+  'import Foundation'
+  'import RunPlayEngineCpp'
+  '        let message = "no import os here"'
+  '        let osmosis = 1'
+  '        logger.debug("aggregate")'
+)
+profiling_instrumentation_matcher_ok=1
+for fixture in "${profiling_instrumentation_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$profiling_instrumentation_re"; then
+    profiling_instrumentation_matcher_ok=0
+  fi
+done
+for fixture in "${profiling_instrumentation_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$profiling_instrumentation_re"; then
+    profiling_instrumentation_matcher_ok=0
+  fi
+done
+if [[ $profiling_instrumentation_matcher_ok -eq 1 ]]; then
+  pass "profiling instrumentation matcher adversarial fixtures"
+else
+  fail "profiling instrumentation matcher failed its adversarial fixtures"
+fi
+
+profiling_instrumentation_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    RunPlayCore/Sources/*|RunPlayPlatform/Sources/*|RunPlayStudio/Sources/*) ;;
+    *) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && profiling_instrumentation_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$profiling_instrumentation_re" || true)
+done
+
+if [[ ${#profiling_instrumentation_leaks[@]} -eq 0 ]]; then
+  pass "production Swift sources carry no profiling logging or signposts"
+else
+  for leak in "${profiling_instrumentation_leaks[@]}"; do
+    fail "production Swift source contains profiling instrumentation: $leak"
+  done
+fi
+
+# The public heatmap surface is unchanged by the profiling phase: these
+# declarations must remain public in their documented locations.
+HEATMAP_MODELS_SOURCE="RunPlayCore/Sources/Models/PersonalHeatmap.swift"
+HEATMAP_PROJECTION_SOURCE="RunPlayCore/Sources/Services/PersonalHeatmapProjection.swift"
+heatmap_public_api_missing=0
+for declaration in \
+  "$HEATMAP_MODELS_SOURCE:public struct PersonalHeatmapCellID" \
+  "$HEATMAP_MODELS_SOURCE:public struct PersonalHeatmapSnapshot" \
+  "$HEATMAP_MODELS_SOURCE:public struct PersonalHeatmapConfiguration" \
+  "$HEATMAP_PROJECTION_SOURCE:public enum PersonalHeatmapProjection" \
+  "$HEATMAP_PROJECTION_SOURCE:public enum PersonalHeatmapGridTraversal" \
+  "$HEATMAP_BUILDER_SOURCE:public struct PersonalHeatmapBuilder"; do
+  declaration_file="${declaration%%:*}"
+  declaration_text="${declaration#*:}"
+  if [[ ! -f "$declaration_file" ]] \
+    || ! grep -Fq "$declaration_text" "$declaration_file"; then
+    fail "public heatmap declaration missing or changed: $declaration_text in $declaration_file"
+    heatmap_public_api_missing=1
+  fi
+done
+if [[ $heatmap_public_api_missing -eq 0 ]]; then
+  pass "public personal heatmap API surface is unchanged"
+fi
+
 # Only the constrained-DTW bridge may invoke the path-solver symbol.
 DTW_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteAlignmentDtwBridge.swift"
 DTW_ALIGNER_SOURCE="RunPlayCore/Sources/Services/RouteAlignment/ConstrainedDynamicTimeWarpingAligner.swift"

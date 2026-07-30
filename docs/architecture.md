@@ -198,9 +198,10 @@ The standalone step-distance boundary remains transitional/test-focused.
 per-point Swift/C++ production calls are allowed.
 `scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
 
-Elevation, timelines, splits, cross-workout heatmap aggregation, projection
-services, and file parsers remain in Swift `RunPlayCore` until later migration
-PRs. Per-workout personal heatmap route coverage is already native; see
+Elevation, timelines, splits, projection services, and file parsers remain in
+Swift `RunPlayCore` until later migration PRs. Per-workout personal heatmap
+route coverage is already native, and cross-workout heatmap aggregation stays
+Swift by an explicit profiling-driven decision; see
 [Personal Heatmap](#personal-heatmap). The Route-Aware constrained-DTW path
 solve is already native, while alignment sample construction, direction
 detection, blocks, diagnostics, quality, and aligned metrics remain Swift; see
@@ -319,6 +320,38 @@ Default rendered-cell budget is **5,000** polygons. When the filtered cell count
 exceeds the budget, the builder doubles cell size until the result fits. All
 included workouts are preserved; cells are not randomly dropped. Effective cell
 size is exposed in the snapshot and UI.
+
+`PersonalHeatmapViewModel` always requests
+`PersonalHeatmapConfiguration.defaultMaximumRenderedCellCount`, so the adaptive
+loop bounds deterministic sorting and cell materialization to that budget in
+every shipping configuration.
+
+### Aggregation ownership
+
+Cross-workout aggregation stays in Swift. A profiling phase decomposed one
+production-equivalent build with
+`scripts/run-personal-heatmap-profile.sh` and concluded that the remaining Swift
+stages do not justify another engine boundary:
+
+- the already-native per-workout coverage kernel dominates every
+  production-reachable configuration;
+- cross-workout counting is the largest remaining Swift cost, and that cost is
+  Swift `Hasher` work plus dictionary growth rather than algorithmic work;
+- coverage-output translation and caller-owned output allocation, including
+  every capacity retry, are too small to justify a new boundary;
+- sorting and materialization are capped by the rendered-cell budget.
+
+A whole-pass native aggregation call would require a new arbitrary
+whole-library route-point limit — `WorkoutImportResourceLimits` bounds a single
+workout, not a library — and would run uninterruptibly across the whole library,
+losing per-workout cancellation. A per-workout call would require either a
+retained native accumulator, which contradicts the contract that C++ retains
+nothing between calls, or a Swift-owned open-addressed table plus a rehash
+boundary. The next heatmap phase is therefore a Swift optimization, not a
+migration; see [phase-plan.md](phase-plan.md).
+
+Timings are machine-specific and live in benchmark and profile output, not in
+this document.
 
 ### Workspace navigation
 

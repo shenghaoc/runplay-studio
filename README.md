@@ -181,6 +181,15 @@ Supported workout size is bounded in Swift by `WorkoutImportResourceLimits`
 `scripts/run-route-quality-benchmark.sh` compares complete Swift stages 2–4
 against the complete combined bridge in release.
 
+`scripts/run-personal-heatmap-benchmark.sh` is the heatmap merge gate: complete
+production builder against complete Swift builder oracle. The extra subtimings
+it prints are independent diagnostics, not additive components of that total.
+`scripts/run-personal-heatmap-profile.sh` is the additive phase profiler: it
+decomposes one production-equivalent heatmap build across every adaptive pass and
+splits the coverage boundary into native execution, caller-owned output
+allocation with capacity retries, and C++-to-Swift cell translation. It is a
+local release tool guarded by `RUNPLAY_HEATMAP_PROFILE=1` and never runs in CI.
+
 The package checks this boundary with:
 
 ```bash
