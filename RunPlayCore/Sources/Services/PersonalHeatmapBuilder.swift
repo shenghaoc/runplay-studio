@@ -5,6 +5,79 @@ public enum PersonalHeatmapError: Error, Sendable, Equatable {
     case invalidConfiguration
 }
 
+/// Bounded allocation hints for the Swift cross-workout counts dictionary.
+///
+/// These values influence reservation only. They never constrain aggregation,
+/// rendered output, or any public product limit.
+enum PersonalHeatmapAggregationCapacityPolicy {
+    static let minimumHint = 64
+    static let maximumHint = 262_144
+    static let renderedCellScale = 64
+
+    static func cappedRoutePointCount(in workouts: [RunWorkout]) -> Int {
+        cappedRoutePointCount(
+            routePointCounts: workouts.lazy.map { $0.routePoints.count }
+        )
+    }
+
+    static func cappedRoutePointCount<Counts: Sequence>(
+        routePointCounts: Counts
+    ) -> Int where Counts.Element == Int {
+        var total = 0
+        for count in routePointCounts {
+            let nonnegativeCount = max(0, count)
+            let remaining = maximumHint - total
+            if nonnegativeCount >= remaining {
+                return maximumHint
+            }
+            total += nonnegativeCount
+        }
+        return total
+    }
+
+    static func renderedBudgetBound(maximumRenderedCellCount: Int) -> Int {
+        guard maximumRenderedCellCount > 0 else {
+            return minimumHint
+        }
+        if maximumRenderedCellCount >= maximumHint / renderedCellScale {
+            return maximumHint
+        }
+        return max(minimumHint, maximumRenderedCellCount * renderedCellScale)
+    }
+
+    static func initialHint(
+        cappedTotalRoutePointCount: Int,
+        maximumRenderedCellCount: Int
+    ) -> Int {
+        boundedHint(
+            candidate: max(0, cappedTotalRoutePointCount),
+            maximumRenderedCellCount: maximumRenderedCellCount
+        )
+    }
+
+    static func laterPassHint(
+        previousAggregatedCellCount: Int,
+        maximumRenderedCellCount: Int
+    ) -> Int {
+        let nonnegativeCount = max(0, previousAggregatedCellCount)
+        let roundedUpHalf = nonnegativeCount / 2 + nonnegativeCount % 2
+        return boundedHint(
+            candidate: roundedUpHalf,
+            maximumRenderedCellCount: maximumRenderedCellCount
+        )
+    }
+
+    private static func boundedHint(
+        candidate: Int,
+        maximumRenderedCellCount: Int
+    ) -> Int {
+        let budgetBound = renderedBudgetBound(
+            maximumRenderedCellCount: maximumRenderedCellCount
+        )
+        return min(maximumHint, max(minimumHint, min(candidate, budgetBound)))
+    }
+}
+
 /// Platform-neutral builder that aggregates distinct-workout route coverage
 /// into a personal heatmap snapshot.
 ///
@@ -70,6 +143,12 @@ public struct PersonalHeatmapBuilder: Sendable {
         var cellSize = configuration.cellSizeMeters
         var adaptiveRetries = 0
         let maxRetries = 16
+        var capacityHint = PersonalHeatmapAggregationCapacityPolicy.initialHint(
+            cappedTotalRoutePointCount: PersonalHeatmapAggregationCapacityPolicy.cappedRoutePointCount(
+                in: dateFiltered.workouts
+            ),
+            maximumRenderedCellCount: configuration.maximumRenderedCellCount
+        )
 
         while true {
             if isCancelled() { throw CancellationError() }
@@ -79,6 +158,7 @@ public struct PersonalHeatmapBuilder: Sendable {
                 preparedBatch: preparedBatch,
                 cellSizeMeters: cellSize,
                 maximumIntervalMeters: configuration.maximumIntervalMeters,
+                capacityHint: capacityHint,
                 isCancelled: isCancelled
             )
 
@@ -103,6 +183,10 @@ public struct PersonalHeatmapBuilder: Sendable {
 
             // Coarsen: double cell size and retry. Preserve all workouts.
             adaptiveRetries += 1
+            capacityHint = PersonalHeatmapAggregationCapacityPolicy.laterPassHint(
+                previousAggregatedCellCount: pass.counts.count,
+                maximumRenderedCellCount: configuration.maximumRenderedCellCount
+            )
             cellSize *= 2
         }
     }
@@ -175,9 +259,11 @@ public struct PersonalHeatmapBuilder: Sendable {
         preparedBatch: RunPlayPersonalHeatmapPreparedBatch,
         cellSizeMeters: Double,
         maximumIntervalMeters: Double,
+        capacityHint: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> AggregatePassResult {
         var counts: [PersonalHeatmapCellID: Int] = [:]
+        counts.reserveCapacity(capacityHint)
         var invalidIntervals = 0
         var includedWorkoutCount = 0
         var totalDistanceMeters = 0.0
@@ -185,26 +271,23 @@ public struct PersonalHeatmapBuilder: Sendable {
         for (index, workout) in workouts.enumerated() {
             if isCancelled() { throw CancellationError() }
 
-            let coverage = try preparedBatch.coverage(
+            let metadata = try preparedBatch.accumulateCoverage(
                 workoutIndex: index,
                 cellSizeMeters: cellSizeMeters,
                 maximumIntervalMeters: maximumIntervalMeters,
                 maximumCellsPerInterval: PersonalHeatmapGridTraversal.defaultMaximumCellsPerInterval,
+                into: &counts,
                 isCancelled: isCancelled
             )
 
-            if coverage.cells.isEmpty {
+            if metadata.cellCount == 0 {
                 continue
             }
 
             includedWorkoutCount += 1
             let distance = workout.summary.totalDistanceMeters
             totalDistanceMeters += (distance.isFinite && distance >= 0 ? distance : 0)
-            invalidIntervals += coverage.invalidIntervalCount
-
-            for cell in coverage.cells {
-                counts[cell, default: 0] += 1
-            }
+            invalidIntervals += metadata.invalidIntervalCount
         }
 
         return AggregatePassResult(

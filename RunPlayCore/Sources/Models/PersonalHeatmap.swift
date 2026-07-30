@@ -137,6 +137,23 @@ public struct PersonalHeatmapCellID: Hashable, Codable, Sendable, Comparable {
         self.y = y
     }
 
+    @inline(__always)
+    private static func mixedHashWord(x: Int64, y: Int64) -> UInt64 {
+        let xBits = UInt64(bitPattern: x)
+        let yBits = UInt64(bitPattern: y)
+        var mixed = xBits &* 0x9E37_79B1_85EB_CA87
+        mixed ^= yBits &* 0xC2B2_AE3D_27D4_EB4F
+        mixed ^= mixed >> 29
+        mixed &*= 0x1656_67B1_9E37_79F9
+        mixed ^= mixed >> 32
+        return mixed
+    }
+
+    @inline(__always)
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(Self.mixedHashWord(x: x, y: y))
+    }
+
     public static func < (lhs: PersonalHeatmapCellID, rhs: PersonalHeatmapCellID) -> Bool {
         if lhs.y != rhs.y { return lhs.y < rhs.y }
         return lhs.x < rhs.x

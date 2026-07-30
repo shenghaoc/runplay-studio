@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Reproducible release phase-level profile of the Personal Heatmap pipeline.
+# Reproducible release phase-level profile of the Personal Heatmap pipeline,
+# including direct native-buffer cell consumption and Swift dictionary counting.
 #
 # Prints a Markdown-compatible report and exits nonzero when the profile's
 # snapshot parity assertions or the build itself fail. This is a local
@@ -29,7 +30,8 @@ RUNPLAY_HEATMAP_PROFILE=1 swift test \
 if ! grep -q 'BEGIN RUNPLAY HEATMAP PROFILE' "$log"; then
   echo "run-personal-heatmap-profile: no profile report was emitted." >&2
   tail -80 "$log" >&2
-  exit "${status:-1}"
+  [[ $status -eq 0 ]] && status=1
+  exit "$status"
 fi
 
 sed -n '/BEGIN RUNPLAY HEATMAP PROFILE/,/END RUNPLAY HEATMAP PROFILE/p' "$log" \

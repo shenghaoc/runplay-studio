@@ -3,6 +3,14 @@ import Foundation
 internal import CxxStdlib
 internal import RunPlayEngineCpp
 
+/// Pure-Swift summary of one native per-workout coverage operation.
+struct RunPlayPersonalHeatmapCoverageMetadata: Equatable, Sendable {
+    let cellCount: Int
+    let validProjectedPointCount: Int
+    let effectiveSegmentCount: Int
+    let invalidIntervalCount: Int
+}
+
 /// Pure-Swift coverage result for a single workout at a given cell size.
 struct RunPlayPersonalHeatmapWorkoutCoverage: Sendable {
     let cells: [PersonalHeatmapCellID]
@@ -42,6 +50,32 @@ struct RunPlayPersonalHeatmapCoverageProfile: Sendable {
     let translationNanoseconds: UInt64
 }
 
+/// Pure-Swift timing decomposition of one direct accumulation bridge call.
+///
+/// Like `RunPlayPersonalHeatmapCoverageProfile`, this is diagnostic-only. The
+/// production accumulation entry point reads no profiling clock.
+struct RunPlayPersonalHeatmapAccumulationProfile: Sendable {
+    /// De-duplicated cell count the engine reported for this workout.
+    let cellCount: Int
+    /// Native invocations performed (1 normally, 2 after a capacity retry).
+    let nativeCallCount: Int
+    /// Times the initial output capacity was too small.
+    let capacityRetryCount: Int
+    /// Time spent allocating caller-owned output buffers.
+    let outputAllocationNanoseconds: UInt64
+    /// Time spent inside `compute_personal_heatmap_workout_coverage`.
+    let nativeNanoseconds: UInt64
+    /// Time spent consuming native cells and updating the Swift dictionary.
+    let directCellConsumptionAndCountingNanoseconds: UInt64
+}
+
+private struct RunPlayPersonalHeatmapNativeCoverageProfile {
+    let nativeCallCount: Int
+    let capacityRetryCount: Int
+    let outputAllocationNanoseconds: UInt64
+    let nativeNanoseconds: UInt64
+}
+
 /// Monotonic nanosecond accounting for the profiling path.
 ///
 /// Uses `ContinuousClock` rather than `DispatchTime` so `RunPlayCore` sources
@@ -77,7 +111,7 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         self.nativeSamples = nativeSamples
         self.workoutRanges = workoutRanges
         self.capacityHints = workoutRanges.map { range in
-            max(64, min(262_144, range.count * 2))
+            Self.minimumInitialCapacity(for: range.count)
         }
     }
 
@@ -85,7 +119,8 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         workoutRanges.count
     }
 
-    /// Production coverage call. Collects no timing.
+    /// Production compatibility call. Collects no timing and materializes the
+    /// cell array only for test-focused callers.
     func coverage(
         workoutIndex: Int,
         cellSizeMeters: Double,
@@ -103,14 +138,29 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         ).coverage
     }
 
-    /// Diagnostic coverage call used only by the profiling harness.
-    ///
-    /// Runs the same implementation as `coverage(...)` — there is no second
-    /// boundary implementation — and additionally reports how the call's time
-    /// split between output allocation, native execution, and cell translation.
-    ///
-    /// `scripts/validate-cpp-boundaries.sh` enforces that no production source
-    /// references this method or `RunPlayPersonalHeatmapCoverageProfile`.
+    /// Production aggregation call. Native cells are consumed while the
+    /// caller-owned output buffer is alive; no per-workout Swift cell array is
+    /// created.
+    func accumulateCoverage(
+        workoutIndex: Int,
+        cellSizeMeters: Double,
+        maximumIntervalMeters: Double,
+        maximumCellsPerInterval: Int,
+        into counts: inout [PersonalHeatmapCellID: Int],
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RunPlayPersonalHeatmapCoverageMetadata {
+        try computeAccumulatedCoverage(
+            workoutIndex: workoutIndex,
+            cellSizeMeters: cellSizeMeters,
+            maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: maximumCellsPerInterval,
+            into: &counts,
+            collectProfile: false,
+            isCancelled: isCancelled
+        ).metadata
+    }
+
+    /// Diagnostic array-materializing call used only by test profiling.
     func profiledCoverage(
         workoutIndex: Int,
         cellSizeMeters: Double,
@@ -135,10 +185,33 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         return (result.coverage, profile)
     }
 
-    /// Single shared implementation of the coverage boundary.
-    ///
-    /// When `collectProfile` is `false` no clock is read, so ordinary
-    /// production calls pay nothing beyond one branch per timed region.
+    /// Diagnostic direct-accumulation call used only by test profiling.
+    func profiledAccumulateCoverage(
+        workoutIndex: Int,
+        cellSizeMeters: Double,
+        maximumIntervalMeters: Double,
+        maximumCellsPerInterval: Int,
+        into counts: inout [PersonalHeatmapCellID: Int],
+        isCancelled: @Sendable () -> Bool
+    ) throws -> (
+        metadata: RunPlayPersonalHeatmapCoverageMetadata,
+        profile: RunPlayPersonalHeatmapAccumulationProfile
+    ) {
+        let result = try computeAccumulatedCoverage(
+            workoutIndex: workoutIndex,
+            cellSizeMeters: cellSizeMeters,
+            maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: maximumCellsPerInterval,
+            into: &counts,
+            collectProfile: true,
+            isCancelled: isCancelled
+        )
+        guard let profile = result.profile else {
+            throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
+        }
+        return (result.metadata, profile)
+    }
+
     private func computeCoverage(
         workoutIndex: Int,
         cellSizeMeters: Double,
@@ -150,47 +223,213 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         coverage: RunPlayPersonalHeatmapWorkoutCoverage,
         profile: RunPlayPersonalHeatmapCoverageProfile?
     ) {
-        var allocationNanoseconds: UInt64 = 0
-        var nativeNanoseconds: UInt64 = 0
         var translationNanoseconds: UInt64 = 0
-        var nativeCallCount = 0
-        var capacityRetryCount = 0
+        let operation = try withNativeCoverageOutput(
+            workoutIndex: workoutIndex,
+            cellSizeMeters: cellSizeMeters,
+            maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: maximumCellsPerInterval,
+            collectProfile: collectProfile,
+            isCancelled: isCancelled
+        ) { output, metadata in
+            let translationStart = collectProfile ? ContinuousClock.now : nil
+            let cells = try translateNativeCells(
+                output,
+                isCancelled: isCancelled
+            )
+            if let translationStart {
+                translationNanoseconds = RunPlayCoverageProfileClock.nanoseconds(
+                    from: translationStart,
+                    to: ContinuousClock.now
+                )
+            }
 
+            return RunPlayPersonalHeatmapWorkoutCoverage(
+                cells: cells,
+                validProjectedPointCount: metadata.validProjectedPointCount,
+                effectiveSegmentCount: metadata.effectiveSegmentCount,
+                invalidIntervalCount: metadata.invalidIntervalCount
+            )
+        }
+
+        let profile = operation.profile.map {
+            RunPlayPersonalHeatmapCoverageProfile(
+                requiredCellCount: operation.result.cells.count,
+                nativeCallCount: $0.nativeCallCount,
+                capacityRetryCount: $0.capacityRetryCount,
+                outputAllocationNanoseconds: $0.outputAllocationNanoseconds,
+                nativeNanoseconds: $0.nativeNanoseconds,
+                translationNanoseconds: translationNanoseconds
+            )
+        }
+        return (operation.result, profile)
+    }
+
+    private func computeAccumulatedCoverage(
+        workoutIndex: Int,
+        cellSizeMeters: Double,
+        maximumIntervalMeters: Double,
+        maximumCellsPerInterval: Int,
+        into counts: inout [PersonalHeatmapCellID: Int],
+        collectProfile: Bool,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> (
+        metadata: RunPlayPersonalHeatmapCoverageMetadata,
+        profile: RunPlayPersonalHeatmapAccumulationProfile?
+    ) {
+        var consumptionNanoseconds: UInt64 = 0
+        let operation = try withNativeCoverageOutput(
+            workoutIndex: workoutIndex,
+            cellSizeMeters: cellSizeMeters,
+            maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: maximumCellsPerInterval,
+            collectProfile: collectProfile,
+            isCancelled: isCancelled
+        ) { output, metadata in
+            let consumptionStart = collectProfile ? ContinuousClock.now : nil
+            try accumulateNativeCells(
+                output,
+                into: &counts,
+                isCancelled: isCancelled
+            )
+            if let consumptionStart {
+                consumptionNanoseconds = RunPlayCoverageProfileClock.nanoseconds(
+                    from: consumptionStart,
+                    to: ContinuousClock.now
+                )
+            }
+            return metadata
+        }
+
+        let profile = operation.profile.map {
+            RunPlayPersonalHeatmapAccumulationProfile(
+                cellCount: operation.result.cellCount,
+                nativeCallCount: $0.nativeCallCount,
+                capacityRetryCount: $0.capacityRetryCount,
+                outputAllocationNanoseconds: $0.outputAllocationNanoseconds,
+                nativeNanoseconds: $0.nativeNanoseconds,
+                directCellConsumptionAndCountingNanoseconds: consumptionNanoseconds
+            )
+        }
+        return (operation.result, profile)
+    }
+
+    @inline(__always)
+    private func translateNativeCells(
+        _ output: UnsafeBufferPointer<runplay.PersonalHeatmapCellIndex>,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [PersonalHeatmapCellID] {
+        var cells: [PersonalHeatmapCellID] = []
+        cells.reserveCapacity(output.count)
+        guard var pointer = output.baseAddress else {
+            return cells
+        }
+
+        var index = 0
+        while index < output.count {
+            if isCancelled() {
+                throw CancellationError()
+            }
+            let remaining = output.count - index
+            let chunkCount = min(2_048, remaining)
+            for _ in 0..<chunkCount {
+                let nativeCell = pointer.pointee
+                cells.append(PersonalHeatmapCellID(x: nativeCell.x, y: nativeCell.y))
+                pointer = pointer.advanced(by: 1)
+            }
+            index += chunkCount
+        }
+        return cells
+    }
+
+    @inline(__always)
+    private func accumulateNativeCells(
+        _ output: UnsafeBufferPointer<runplay.PersonalHeatmapCellIndex>,
+        into counts: inout [PersonalHeatmapCellID: Int],
+        isCancelled: @Sendable () -> Bool
+    ) throws {
+        guard var pointer = output.baseAddress else {
+            return
+        }
+
+        var index = 0
+        while index < output.count {
+            if isCancelled() {
+                throw CancellationError()
+            }
+            let remaining = output.count - index
+            let chunkCount = min(2_048, remaining)
+            for _ in 0..<chunkCount {
+                let nativeCell = pointer.pointee
+                let id = PersonalHeatmapCellID(x: nativeCell.x, y: nativeCell.y)
+                counts[id, default: 0] += 1
+                pointer = pointer.advanced(by: 1)
+            }
+            index += chunkCount
+        }
+    }
+
+    /// Owns the caller-allocated output for one native operation and exposes a
+    /// read-only view only to the nonescaping body. No pointer or native value
+    /// leaves Interop.
+    private func withNativeCoverageOutput<Result>(
+        workoutIndex: Int,
+        cellSizeMeters: Double,
+        maximumIntervalMeters: Double,
+        maximumCellsPerInterval: Int,
+        collectProfile: Bool,
+        isCancelled: @Sendable () -> Bool,
+        _ body: (
+            UnsafeBufferPointer<runplay.PersonalHeatmapCellIndex>,
+            RunPlayPersonalHeatmapCoverageMetadata
+        ) throws -> Result
+    ) throws -> (
+        result: Result,
+        profile: RunPlayPersonalHeatmapNativeCoverageProfile?
+    ) {
         guard workoutIndex >= 0 && workoutIndex < workoutRanges.count else {
             throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
         }
-
         if isCancelled() {
             throw CancellationError()
         }
 
         let range = workoutRanges[workoutIndex]
         if range.isEmpty {
-            return (
-                RunPlayPersonalHeatmapWorkoutCoverage(
-                    cells: [],
-                    validProjectedPointCount: 0,
-                    effectiveSegmentCount: 0,
-                    invalidIntervalCount: 0
-                ),
-                collectProfile
-                    ? RunPlayPersonalHeatmapCoverageProfile(
-                        requiredCellCount: 0,
-                        nativeCallCount: 0,
-                        capacityRetryCount: 0,
-                        outputAllocationNanoseconds: 0,
-                        nativeNanoseconds: 0,
-                        translationNanoseconds: 0
-                    )
-                    : nil
+            let metadata = RunPlayPersonalHeatmapCoverageMetadata(
+                cellCount: 0,
+                validProjectedPointCount: 0,
+                effectiveSegmentCount: 0,
+                invalidIntervalCount: 0
             )
+            let empty = UnsafeBufferPointer<runplay.PersonalHeatmapCellIndex>(
+                start: nil,
+                count: 0
+            )
+            let result = try body(empty, metadata)
+            let profile = collectProfile
+                ? RunPlayPersonalHeatmapNativeCoverageProfile(
+                    nativeCallCount: 0,
+                    capacityRetryCount: 0,
+                    outputAllocationNanoseconds: 0,
+                    nativeNanoseconds: 0
+                )
+                : nil
+            return (result, profile)
         }
 
         lock.lock()
-        let initialHint = capacityHints[workoutIndex]
+        let cachedHint = capacityHints[workoutIndex]
         lock.unlock()
 
-        let initialCapacity = max(initialHint, max(64, min(262_144, range.count * 2)))
+        let initialCapacity = max(
+            cachedHint,
+            Self.minimumInitialCapacity(for: range.count)
+        )
+        var allocationNanoseconds: UInt64 = 0
+        var nativeNanoseconds: UInt64 = 0
+        var nativeCallCount = 0
+        var capacityRetryCount = 0
 
         let allocationStart = collectProfile ? ContinuousClock.now : nil
         var outputBuffer = ContiguousArray<runplay.PersonalHeatmapCellIndex>(
@@ -223,8 +462,8 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
 
         if summary.status == .insufficient_output_capacity {
             capacityRetryCount += 1
-            let requiredCapacity = Int(summary.required_cell_count)
-            guard requiredCapacity > 0 else {
+            guard let requiredCapacity = Int(exactly: summary.required_cell_count),
+                  requiredCapacity > 0 else {
                 throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
             }
 
@@ -257,7 +496,7 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
             }
             nativeCallCount += 1
 
-            if summary.status != .success {
+            guard summary.status == .success else {
                 throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
             }
         }
@@ -265,8 +504,50 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         if isCancelled() {
             throw CancellationError()
         }
+        try validateSuccessfulStatus(summary.status)
 
-        switch summary.status {
+        guard let cellCount = Int(exactly: summary.written_cell_count),
+              let requiredCellCount = Int(exactly: summary.required_cell_count),
+              let validProjectedPointCount = Int(exactly: summary.valid_projected_point_count),
+              let effectiveSegmentCount = Int(exactly: summary.effective_segment_count),
+              let invalidIntervalCount = Int(exactly: summary.invalid_interval_count),
+              cellCount == requiredCellCount,
+              cellCount >= 0,
+              cellCount <= outputBuffer.count else {
+            throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
+        }
+
+        lock.lock()
+        capacityHints[workoutIndex] = cellCount
+        lock.unlock()
+
+        let metadata = RunPlayPersonalHeatmapCoverageMetadata(
+            cellCount: cellCount,
+            validProjectedPointCount: validProjectedPointCount,
+            effectiveSegmentCount: effectiveSegmentCount,
+            invalidIntervalCount: invalidIntervalCount
+        )
+        let result = try outputBuffer.withUnsafeBufferPointer { output in
+            let writtenOutput = UnsafeBufferPointer(
+                rebasing: output.prefix(cellCount)
+            )
+            return try body(writtenOutput, metadata)
+        }
+        let profile = collectProfile
+            ? RunPlayPersonalHeatmapNativeCoverageProfile(
+                nativeCallCount: nativeCallCount,
+                capacityRetryCount: capacityRetryCount,
+                outputAllocationNanoseconds: allocationNanoseconds,
+                nativeNanoseconds: nativeNanoseconds
+            )
+            : nil
+        return (result, profile)
+    }
+
+    private func validateSuccessfulStatus(
+        _ status: runplay.PersonalHeatmapCoverageStatus
+    ) throws {
+        switch status {
         case .success:
             break
         case .invalid_configuration:
@@ -282,52 +563,11 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         @unknown default:
             throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
         }
+    }
 
-        let cellCount = Int(summary.written_cell_count)
-        guard cellCount == Int(summary.required_cell_count) else {
-            throw RunPlayPersonalHeatmapCoverageBridgeError.engineContractViolation
-        }
-
-        lock.lock()
-        capacityHints[workoutIndex] = cellCount
-        lock.unlock()
-
-        let translationStart = collectProfile ? ContinuousClock.now : nil
-        var cells: [PersonalHeatmapCellID] = []
-        cells.reserveCapacity(cellCount)
-
-        for i in 0..<cellCount {
-            if i.isMultiple(of: 2_048), isCancelled() {
-                throw CancellationError()
-            }
-            let nativeCell = outputBuffer[i]
-            cells.append(PersonalHeatmapCellID(x: nativeCell.x, y: nativeCell.y))
-        }
-        if let translationStart {
-            translationNanoseconds += RunPlayCoverageProfileClock.nanoseconds(
-                from: translationStart,
-                to: ContinuousClock.now
-            )
-        }
-
-        return (
-            RunPlayPersonalHeatmapWorkoutCoverage(
-                cells: cells,
-                validProjectedPointCount: Int(summary.valid_projected_point_count),
-                effectiveSegmentCount: Int(summary.effective_segment_count),
-                invalidIntervalCount: Int(summary.invalid_interval_count)
-            ),
-            collectProfile
-                ? RunPlayPersonalHeatmapCoverageProfile(
-                    requiredCellCount: cellCount,
-                    nativeCallCount: nativeCallCount,
-                    capacityRetryCount: capacityRetryCount,
-                    outputAllocationNanoseconds: allocationNanoseconds,
-                    nativeNanoseconds: nativeNanoseconds,
-                    translationNanoseconds: translationNanoseconds
-                )
-                : nil
-        )
+    private static func minimumInitialCapacity(for inputCount: Int) -> Int {
+        let cappedInputCount = min(max(0, inputCount), 131_072)
+        return max(64, min(262_144, cappedInputCount * 2))
     }
 
     private func invokeNativeCoverage(

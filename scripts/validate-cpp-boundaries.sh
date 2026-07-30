@@ -623,6 +623,65 @@ else
   fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
 fi
 
+heatmap_builder_body="$(strip_comments "$HEATMAP_BUILDER_SOURCE")"
+if printf '%s' "$heatmap_builder_body" \
+  | grep -Eq '\.[[:space:]]*accumulateCoverage[[:space:]]*\('; then
+  pass "PersonalHeatmapBuilder accumulates directly from native coverage output"
+else
+  fail "PersonalHeatmapBuilder must call accumulateCoverage"
+fi
+
+if printf '%s' "$heatmap_builder_body" \
+  | grep -Eq '\.[[:space:]]*coverage[[:space:]]*\('; then
+  fail "PersonalHeatmapBuilder must not call the array-returning coverage method"
+else
+  pass "PersonalHeatmapBuilder does not materialize per-workout coverage arrays"
+fi
+
+heatmap_bridge_symbol_count="$(
+  strip_comments "$HEATMAP_BRIDGE_SOURCE" \
+    | grep -Eo "$heatmap_symbol_re" \
+    | wc -l \
+    | tr -d '[:space:]'
+)"
+if [[ "$heatmap_bridge_symbol_count" == "1" ]]; then
+  pass "heatmap Interop contains exactly one native coverage call site"
+else
+  fail "heatmap Interop must contain exactly one native coverage call site (found $heatmap_bridge_symbol_count)"
+fi
+
+heatmap_header_symbol_count="$(
+  strip_comments "$HEATMAP_HEADER" \
+    | grep -Eo 'compute_personal_heatmap_workout_coverage[[:space:]]*\(' \
+    | wc -l \
+    | tr -d '[:space:]'
+)"
+if [[ "$heatmap_header_symbol_count" == "1" ]]; then
+  pass "public C++ heatmap header retains one coverage API"
+else
+  fail "public C++ heatmap header must declare exactly one coverage API (found $heatmap_header_symbol_count)"
+fi
+
+heatmap_native_buffer_re='(^|[^[:alnum:]_])(runplay[[:space:]]*\.[[:space:]]*PersonalHeatmapCellIndex|Unsafe(Mutable)?BufferPointer[[:space:]]*<[[:space:]]*runplay[[:space:]]*\.[[:space:]]*PersonalHeatmapCellIndex)([^[:alnum:]_]|$)'
+heatmap_native_buffer_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$HEATMAP_BRIDGE_SOURCE") continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && heatmap_native_buffer_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$heatmap_native_buffer_re" || true)
+done
+
+if [[ ${#heatmap_native_buffer_leaks[@]} -eq 0 ]]; then
+  pass "native heatmap output buffers remain contained in Interop"
+else
+  for leak in "${heatmap_native_buffer_leaks[@]}"; do
+    fail "native heatmap output buffer type escaped Interop: $leak"
+  done
+fi
+
 # --- Heatmap coverage profiling diagnostic stays test-only ---------------------
 
 # The bridge exposes a profiling variant of the coverage call that reuses the
@@ -630,6 +689,7 @@ fi
 # stay internal, and must not add logging or signposts to shipping builds.
 HEATMAP_PROFILE_TEST="RunPlayCore/Tests/RunPlayCoreTests/PersonalHeatmapPipelineProfile.swift"
 HEATMAP_PROFILE_SCRIPT="scripts/run-personal-heatmap-profile.sh"
+HEATMAP_AGGREGATION_BENCHMARK_TEST="RunPlayCore/Tests/RunPlayCoreTests/PersonalHeatmapAggregationBenchmark.swift"
 
 if [[ ! -f "$HEATMAP_PROFILE_TEST" ]]; then
   fail "missing heatmap pipeline profiling harness $HEATMAP_PROFILE_TEST"
@@ -657,15 +717,37 @@ if [[ -f "$HEATMAP_PROFILE_TEST" ]]; then
   fi
 fi
 
-heatmap_profile_api_re='(^|[^[:alnum:]_])(profiledCoverage|RunPlayPersonalHeatmapCoverageProfile)([^[:alnum:]_]|$)'
+# The same-binary aggregation benchmark is release-only and must stay dormant
+# during ordinary CI.
+if [[ ! -f "$HEATMAP_AGGREGATION_BENCHMARK_TEST" ]]; then
+  fail "missing heatmap aggregation benchmark $HEATMAP_AGGREGATION_BENCHMARK_TEST"
+else
+  heatmap_aggregation_benchmark_body="$(
+    strip_comments "$HEATMAP_AGGREGATION_BENCHMARK_TEST" \
+      | tr '\n' ' ' \
+      | tr -s '[:space:]' ' '
+  )"
+  if printf '%s' "$heatmap_aggregation_benchmark_body" \
+    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK'; then
+    pass "heatmap aggregation benchmark requires explicit opt-in"
+  else
+    fail "$HEATMAP_AGGREGATION_BENCHMARK_TEST must require RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1"
+  fi
+fi
+
+heatmap_profile_api_re='(^|[^[:alnum:]_])(profiledCoverage|profiledAccumulateCoverage|RunPlayPersonalHeatmapCoverageProfile|RunPlayPersonalHeatmapAccumulationProfile)([^[:alnum:]_]|$)'
 heatmap_profile_api_positive=(
   'let result = try preparedBatch.profiledCoverage(workoutIndex: 0)'
+  'let result = try preparedBatch.profiledAccumulateCoverage(workoutIndex: 0)'
   'func f() -> RunPlayPersonalHeatmapCoverageProfile { }'
+  'func f() -> RunPlayPersonalHeatmapAccumulationProfile { }'
 )
 heatmap_profile_api_negative=(
   'let coverage = try preparedBatch.coverage(workoutIndex: 0)'
+  'let metadata = try preparedBatch.accumulateCoverage(workoutIndex: 0)'
   'let name = "profiledCoverageDisabled"'
   'func profiledCoverageHelper() {}'
+  'func profiledAccumulateCoverageHelper() {}'
 )
 heatmap_profile_api_matcher_ok=1
 for fixture in "${heatmap_profile_api_positive[@]}"; do
@@ -715,7 +797,7 @@ fi
 # The diagnostic must not widen the public surface of RunPlayCore.
 if [[ -f "$HEATMAP_BRIDGE_SOURCE" ]]; then
   if strip_comments "$HEATMAP_BRIDGE_SOURCE" \
-    | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(profiledCoverage|RunPlayPersonalHeatmapCoverageProfile)'; then
+    | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(profiledCoverage|profiledAccumulateCoverage|RunPlayPersonalHeatmapCoverageProfile|RunPlayPersonalHeatmapAccumulationProfile)'; then
     fail "heatmap profiling diagnostic must stay internal, not public/package"
   else
     pass "heatmap profiling diagnostic stays internal to RunPlayCore"
