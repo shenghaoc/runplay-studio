@@ -124,7 +124,8 @@
 - [x] Migrate route-quality geometry into **one** combined C++ kernel: distance relationships, isolated coordinate-outlier evidence, implicit-gap inference, segment compaction, supplied-distance validity, per-segment distance-source selection, and cumulative normalized distances
 - [x] Migrate per-workout personal heatmap route coverage into one bulk C++ kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, supercover traversal, per-workout de-duplication, and deterministic cell ordering
 - [x] Migrate the Route-Aware **constrained DTW path kernel** into one bulk C++ call per alignment attempt: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed tie priority, warp-run capping, endpoint selection, and path reconstruction
-- [ ] Take a **profiling-driven cross-workout heatmap aggregation decision** before migrating library-level aggregation
+- [x] Profile cross-workout heatmap aggregation and record the decision
+- [ ] Optimize cross-workout heatmap aggregation **in Swift**, adding no native aggregation boundary: reserve the global count dictionary per adaptive pass, reduce `PersonalHeatmapCellID` hashing cost, and stop materializing a per-workout cell array
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
 Swift performs route-size validation, basic field sanitization, sorting,
@@ -172,6 +173,43 @@ ceiling (1,250,000 samples) are unchanged.
 `scripts/run-route-quality-benchmark.sh` compares complete Swift stages 2–4
 against the complete combined bridge (including conversion). The historical
 step-distance script remains available for the transitional boundary.
+
+#### Why cross-workout heatmap aggregation stays in Swift
+
+`scripts/run-personal-heatmap-profile.sh` decomposes one production-equivalent
+Personal Heatmap build into additive phases, retaining every adaptive pass and
+splitting the coverage boundary into native execution, caller-owned output
+allocation with capacity retries, and C++-to-Swift cell translation. Run it for
+current numbers; they are machine-specific and are not recorded here.
+
+The profile's durable conclusions are:
+
+- The already-native per-workout coverage kernel dominates every
+  production-reachable configuration.
+- Cross-workout counting is the largest remaining Swift cost, and that cost is
+  Swift `Hasher` work plus dictionary growth rather than algorithmic work.
+- Coverage-output translation and output allocation, including every capacity
+  retry, are too small to justify a new boundary.
+- Sorting and cell materialization are bounded by the rendered-cell budget. The
+  shipping UI always requests
+  `PersonalHeatmapConfiguration.defaultMaximumRenderedCellCount`, so the
+  adaptive loop caps both phases; fixtures that lift that budget measure a
+  regime the app cannot reach.
+
+Migrating aggregation was rejected on feasibility. There is no library-wide
+route-point limit — `WorkoutImportResourceLimits` bounds a single workout — so a
+whole-pass native aggregation call would require a new arbitrary whole-library
+limit and would run uninterruptibly across the entire library, losing
+per-workout cancellation. Keeping the call per-workout would require either a
+retained native accumulator, which contradicts the engine contract that C++
+retains nothing between calls, or a Swift-owned open-addressed table plus a
+rehash boundary — materially more complex than the Swift changes that address
+the same measured cost.
+
+`scripts/run-personal-heatmap-benchmark.sh` remains the merge gate: complete
+production builder against complete Swift builder oracle. The extra subtimings
+it prints are independent diagnostics and are not additive components of that
+total.
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs

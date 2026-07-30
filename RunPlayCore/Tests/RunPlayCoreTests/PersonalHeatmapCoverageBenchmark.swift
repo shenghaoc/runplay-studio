@@ -1,6 +1,22 @@
 import XCTest
 @testable import RunPlayCore
 
+/// Merge gate for the personal heatmap coverage C++23 cutover: the complete
+/// production builder against the complete pre-migration Swift builder oracle.
+///
+/// The two extra timings this benchmark prints are **independent diagnostics**,
+/// not additive components of the measured production build. Input conversion is
+/// timed on a batch prepared separately from the one `PersonalHeatmapBuilder`
+/// builds internally, and the native coverage total is timed once at the final
+/// effective cell size rather than across every adaptive pass. Adding them to
+/// each other, or subtracting them from the production total, produces a
+/// meaningless number.
+///
+/// For an additive phase decomposition taken from one production-equivalent
+/// orchestration — including every adaptive pass, and native execution split
+/// from output allocation and C++-to-Swift translation — use
+/// `PersonalHeatmapPipelineProfile` via
+/// `scripts/run-personal-heatmap-profile.sh`.
 final class PersonalHeatmapCoverageBenchmark: XCTestCase {
     private static let workoutCount = 250
     private static let pointsPerWorkout = 1_000
@@ -38,34 +54,41 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
                 oracleCellCount = snapshot.cells.count
             }
 
-            var conversionElapsed = 0.0
-            var nativeTotalElapsed = 0.0
-
+            // The merge-gate value: the complete public production builder and
+            // nothing else. Diagnostics are timed afterwards, outside this
+            // measurement, so they can never inflate the gated number.
+            var effectiveCellSize = config.cellSizeMeters
             let prodElapsed = try Self.timeThrowing {
-                let startConv = DispatchTime.now().uptimeNanoseconds
-                let prepared = try RunPlayPersonalHeatmapCoverageBridge.prepare(
+                let snapshot = try prodBuilder.build(workouts: workouts, configuration: config)
+                prodCellCount = snapshot.cells.count
+                effectiveCellSize = snapshot.configuration.cellSizeMeters
+            }
+
+            // Independent diagnostic 1: cost of one input conversion, on a
+            // batch prepared separately from the builder's own.
+            var prepared: RunPlayPersonalHeatmapPreparedBatch?
+            let conversionElapsed = try Self.timeThrowing {
+                prepared = try RunPlayPersonalHeatmapCoverageBridge.prepare(
                     workoutRoutes: workouts.map { $0.routePoints },
                     isCancelled: { false }
                 )
-                let endConv = DispatchTime.now().uptimeNanoseconds
-                conversionElapsed = Double(endConv - startConv) / 1_000_000.0
+            }
 
-                let snapshot = try prodBuilder.build(workouts: workouts, configuration: config)
-                prodCellCount = snapshot.cells.count
-
-                // Measure native call total alone
-                let startNative = DispatchTime.now().uptimeNanoseconds
+            // Independent diagnostic 2: one coverage sweep at the final
+            // effective cell size only. The builder performs one sweep per
+            // adaptive pass, so this is a lower bound on its native work, not
+            // the native share of the production total.
+            let nativeTotalElapsed = try Self.timeThrowing {
+                guard let prepared else { return }
                 for i in 0..<prepared.workoutCount {
                     _ = try prepared.coverage(
                         workoutIndex: i,
-                        cellSizeMeters: snapshot.configuration.cellSizeMeters,
+                        cellSizeMeters: effectiveCellSize,
                         maximumIntervalMeters: config.maximumIntervalMeters,
                         maximumCellsPerInterval: PersonalHeatmapGridTraversal.defaultMaximumCellsPerInterval,
                         isCancelled: { false }
                     )
                 }
-                let endNative = DispatchTime.now().uptimeNanoseconds
-                nativeTotalElapsed = Double(endNative - startNative) / 1_000_000.0
             }
 
             guard iteration >= Self.warmupIterations else { continue }
@@ -91,11 +114,14 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
         \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
         complete Swift builder oracle:     \(Self.format(oracleMedian)) ms
         complete C++ production builder:   \(Self.format(prodMedian)) ms
-        input conversion (1 pass):         \(Self.format(conversionMedian)) ms
-        native coverage calls total:       \(Self.format(nativeTotalMedian)) ms
-        peak RSS:                          \(peak.map { "\($0) bytes" } ?? "unavailable")
         production / oracle ratio:         \(String(format: "%.3f", ratio))
         merge gate: complete production builder <= ~1.25× Swift builder oracle
+
+        independent diagnostics -- NOT additive components of the production total
+        one separate input conversion:     \(Self.format(conversionMedian)) ms
+        one coverage sweep, final cell:    \(Self.format(nativeTotalMedian)) ms
+        resident RSS after benchmark:      \(peak.map { "\($0) bytes" } ?? "unavailable")
+        additive phase attribution lives in scripts/run-personal-heatmap-profile.sh
         """)
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
