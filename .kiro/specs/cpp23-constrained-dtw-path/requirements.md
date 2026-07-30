@@ -80,7 +80,9 @@ every structured unavailable reason, attach warnings, and publish
 
 `RouteAlignmentPolicy`, `RouteAlignmentSnapshot`, `RouteAlignmentBlock`,
 `RouteAlignmentAnchor`, `RouteAlignmentDiagnostics`, the `algorithmVersion`,
-the session schema, and the user-facing Route-Aware behaviour are unchanged.
+and the session schema are unchanged. The final gate found and fixed an existing
+restoration wiring defect so the already-documented Route-Aware relaunch
+behaviour now holds; this adds no new control, presentation, or schema.
 
 ### R5. One native call per alignment attempt
 
@@ -140,13 +142,17 @@ the session schema, and the user-facing Route-Aware behaviour are unchanged.
 - Cancellation still surfaces as `.unavailable(.cancelled)` with no change in
   observable behaviour.
 
-### R9. View-model behaviour unchanged
+### R9. View-model and restoration invariants
 
 - **Stale-result suppression remains in `ComparisonViewModel` and is
   unchanged**: the request-generation counter plus the alignment cancellation
   token still guarantee that a superseded pair's result never publishes.
 - The in-memory alignment cache, task lifecycle, cache keying, slider mapping,
   and "slider movement never recomputes DTW" all remain unchanged.
+- A restored matched-route progress value must survive the asynchronous native
+  recomputation and SwiftUI's initial picker/slider reconciliation, then clamp
+  against the recomputed aligned distance. A disabled slider must not replace
+  the pending restored value while its real range is still unavailable.
 - Alignment paths are still never written to disk.
 
 ### R10. Parity and validation
@@ -166,4 +172,6 @@ the session schema, and the user-facing Route-Aware behaviour are unchanged.
 Alignment sample construction, direction detection, aligned metrics, matched
 clocks, chart points, mapping lookup, comparison summaries, splits, laps,
 cross-workout heatmap aggregation, route projection services, importers,
-persisted schema, and UI all remain unchanged and out of scope.
+and the persisted schema remain unchanged and out of scope. No UI is added or
+restyled; the only UI-layer change is the narrow binding guard required to
+preserve existing Route-Aware session-restoration behaviour.

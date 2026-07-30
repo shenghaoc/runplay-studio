@@ -136,6 +136,15 @@ final class ComparisonViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selectedAlignedProgressMeters, 0)
     }
 
+    func testLoadingSliderReconciliationDoesNotOverwriteRestoredProgress() {
+        let vm = ComparisonViewModel()
+        vm.selectedAlignedProgressMeters = 1_000
+
+        vm.setAlignedProgressFromUser(0)
+
+        XCTAssertEqual(vm.selectedAlignedProgressMeters, 1_000)
+    }
+
     func testAppStateDistanceModeParity() {
         let appState = AppState(storeActor: nil, importService: nil)
         let primary = makeWorkout(distanceMeters: 5_000)

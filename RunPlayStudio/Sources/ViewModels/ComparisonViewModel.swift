@@ -107,6 +107,15 @@ final class ComparisonViewModel: ObservableObject {
         max(0, min(selectedAlignedProgressMeters, totalAlignedDistanceMeters))
     }
 
+    /// Preserve a validated restored selection while its alignment range is
+    /// still recomputing. Once a result exists, persist only the clamped value.
+    var persistableAlignedProgressMeters: Double {
+        guard selectedAlignedProgressMeters.isFinite else { return 0 }
+        let nonnegativeProgress = max(0, selectedAlignedProgressMeters)
+        guard routeAlignmentSnapshot != nil else { return nonnegativeProgress }
+        return min(nonnegativeProgress, totalAlignedDistanceMeters)
+    }
+
     var isRouteAwareReady: Bool {
         alignmentMode == .routeAware && routeAlignmentLoadState == .ready
     }
@@ -267,6 +276,15 @@ final class ComparisonViewModel: ObservableObject {
         if selectedAlignedProgressMeters < 0 || !selectedAlignedProgressMeters.isFinite {
             selectedAlignedProgressMeters = 0
         }
+    }
+
+    /// Apply an interactive slider update only after a recomputed alignment
+    /// supplies a real range. SwiftUI can reconcile a disabled slider while the
+    /// range is still loading; that must not overwrite restored progress.
+    func setAlignedProgressFromUser(_ progressMeters: Double) {
+        guard totalAlignedDistanceMeters > 0 else { return }
+        selectedAlignedProgressMeters = progressMeters
+        clampAlignedProgress()
     }
 
     func alignedMetrics(

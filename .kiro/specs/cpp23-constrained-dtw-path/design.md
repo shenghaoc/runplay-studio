@@ -150,16 +150,28 @@ surface as `.unavailable(.cancelled)`.
 Swift additionally rejects a returned path whose counts disagree, whose indexes
 fall out of range, or whose consecutive cells contradict the declared step kind.
 
-## View-model integration
+## View-model integration and restoration
 
-`ComparisonViewModel` is untouched. Its request-generation counter and
-alignment cancellation token still suppress stale results from a superseded
-workout pair, the in-memory cache still avoids recomputation, and slider
-movement still never triggers a solve.
+The request-generation counter and alignment cancellation token still suppress
+stale results from a superseded workout pair, the in-memory cache still avoids
+recomputation, and slider movement still never triggers a solve.
+
+The final manual gate exposed a restoration race outside the native boundary.
+`AppState` restored the scalar matched progress before a recomputed alignment
+had supplied its range, while comparison-distance clamping and SwiftUI's
+disabled-slider reconciliation could both clamp that value against zero. The
+fix restores the scalar after alignment initialization, makes same-peer picker
+writes idempotent, keeps distance and aligned-progress clamping independent,
+and ignores interactive slider writes until a real aligned range exists.
+`ComparisonViewModel.publish` remains the authority that clamps a pending value
+after an asynchronous result arrives. No alignment anchors or paths are
+persisted, and the schema and native boundary are unchanged.
 
 ## Non-goals
 
 Alignment sample construction, direction detection, aligned metrics, matched
 clocks, chart points, mapping lookup, comparison summaries, splits, recorded
 laps, cross-workout heatmap aggregation, route projection services, importers,
-persisted schema, `algorithmVersion`, and UI are all out of scope.
+persisted schema, and `algorithmVersion` are all out of scope. No control or
+visual design changes are included; only the restoration binding guard
+described above is included.

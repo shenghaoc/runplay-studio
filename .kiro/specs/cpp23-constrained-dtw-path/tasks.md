@@ -27,6 +27,10 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 - [x] Add the opt-in release benchmark for the alignment path
 - [x] Write this spec and update durable docs (`AGENTS.md`, `README.md`,
       `docs/architecture.md`, `docs/phase-plan.md`)
+- [x] Fix the final-gate Route-Aware relaunch race so restored matched progress
+      survives native recomputation and initial SwiftUI picker/slider writes
+- [x] Add focused regression coverage for pending-progress restoration,
+      redundant same-peer selection, and loading-slider reconciliation
 
 ## Verification evidence required
 
@@ -42,8 +46,10 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 - [x] `swift test --filter RunPlayCoreTests`
 - [x] package-consumer smoke build
 - [x] full `swift test` on macOS and `xcodebuild test`
-- [ ] Route-Aware comparison GUI check from `docs/manual-testing.md`
-      (manual; not yet performed)
+- [x] Focused Route-Aware comparison GUI check from
+      `docs/manual-testing.md` using the exact temporary release bundle and
+      synthetic fixtures, including unavailable fallback, mapped slider
+      positions, Distance/Route-Aware reuse, and relaunch restoration
 
 ## Notes
 
