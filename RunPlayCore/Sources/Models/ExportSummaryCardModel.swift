@@ -69,7 +69,31 @@ public struct ExportSummaryCardModel: Sendable {
         appBranding = "RunPlay Studio"
         workoutTitle = workout.displayName
         sourceText = workout.source.displayName
-        dateText = workout.metadata.startDate?.formatted(date: .long, time: .shortened) ?? "Unknown date"
+
+        var parsedDateText = "Unknown date"
+        if let date = workout.metadata.startDate {
+            #if canImport(Foundation) && !os(Linux)
+            if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
+                parsedDateText = date.formatted(date: .long, time: .shortened)
+            } else {
+                let formatter = DateFormatter()
+                formatter.locale = Locale.autoupdatingCurrent
+                formatter.timeZone = TimeZone.autoupdatingCurrent
+                formatter.dateStyle = .long
+                formatter.timeStyle = .short
+                parsedDateText = formatter.string(from: date)
+            }
+            #else
+            let formatter = DateFormatter()
+            formatter.locale = Locale.autoupdatingCurrent
+            formatter.timeZone = TimeZone.autoupdatingCurrent
+            formatter.dateStyle = .long
+            formatter.timeStyle = .short
+            parsedDateText = formatter.string(from: date)
+            #endif
+        }
+        dateText = parsedDateText
+
         self.layout = layout
         self.includesMapImagery = includesMapImagery
 

@@ -116,7 +116,18 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             return name
         }
         if let date = metadata.startDate {
-            return date.formatted(date: .medium, time: .shortened)
+            #if canImport(Foundation) && !os(Linux)
+            if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
+                return date.formatted(date: .abbreviated, time: .shortened)
+            }
+            #endif
+
+            let formatter = DateFormatter()
+            formatter.locale = Locale.autoupdatingCurrent
+            formatter.timeZone = TimeZone.autoupdatingCurrent
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            return formatter.string(from: date)
         }
         return "Untitled Run"
     }
