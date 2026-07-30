@@ -3,6 +3,7 @@ import Testing
 @testable import RunPlayCore
 
 struct RunPlayPersonalHeatmapCoverageBridgeTests {
+    private let origin = Date(timeIntervalSince1970: 1_700_000_000)
 
     /// Pure-Swift per-workout coverage oracle for testing parity.
     private struct SwiftWorkoutCoverageOracle {
@@ -93,6 +94,66 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
         }
     }
 
+    private func point(
+        latitude: Double,
+        longitude: Double,
+        index: Int,
+        segment: Int = 0
+    ) -> RoutePoint {
+        RoutePoint(
+            timestamp: origin.addingTimeInterval(Double(index)),
+            latitude: latitude,
+            longitude: longitude,
+            routeSegmentIndex: segment
+        )
+    }
+
+    private func assertAccumulationParity(
+        route: [RoutePoint],
+        cellSizeMeters: Double = 10,
+        maximumIntervalMeters: Double = 50_000,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) throws {
+        let batch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
+            workoutRoutes: [route],
+            isCancelled: { false }
+        )
+        let arrayCoverage = try batch.coverage(
+            workoutIndex: 0,
+            cellSizeMeters: cellSizeMeters,
+            maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: 10_000,
+            isCancelled: { false }
+        )
+        var counts: [PersonalHeatmapCellID: Int] = [:]
+        let metadata = try batch.accumulateCoverage(
+            workoutIndex: 0,
+            cellSizeMeters: cellSizeMeters,
+            maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: 10_000,
+            into: &counts,
+            isCancelled: { false }
+        )
+        let expectedCounts = Dictionary(
+            uniqueKeysWithValues: arrayCoverage.cells.map { ($0, 1) }
+        )
+
+        #expect(counts == expectedCounts, sourceLocation: sourceLocation)
+        #expect(metadata.cellCount == arrayCoverage.cells.count, sourceLocation: sourceLocation)
+        #expect(
+            metadata.validProjectedPointCount == arrayCoverage.validProjectedPointCount,
+            sourceLocation: sourceLocation
+        )
+        #expect(
+            metadata.effectiveSegmentCount == arrayCoverage.effectiveSegmentCount,
+            sourceLocation: sourceLocation
+        )
+        #expect(
+            metadata.invalidIntervalCount == arrayCoverage.invalidIntervalCount,
+            sourceLocation: sourceLocation
+        )
+    }
+
     @Test
     func testEmptyWorkoutRoute() throws {
         let batch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
@@ -110,6 +171,129 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
         #expect(result.validProjectedPointCount == 0)
         #expect(result.effectiveSegmentCount == 0)
         #expect(result.invalidIntervalCount == 0)
+    }
+
+    @Test
+    func testDirectAccumulationMatchesArrayCoverageFixtureMatrix() throws {
+        let single = [point(latitude: 1.30, longitude: 103.80, index: 0)]
+        let repeated = (0..<32).map {
+            point(latitude: 1.30, longitude: 103.80, index: $0)
+        }
+        let loopCoordinates = [
+            (1.3000, 103.8000),
+            (1.3000, 103.8010),
+            (1.3010, 103.8010),
+            (1.3010, 103.8000),
+            (1.3000, 103.8000)
+        ]
+        let loop = loopCoordinates.enumerated().map {
+            point(latitude: $0.element.0, longitude: $0.element.1, index: $0.offset)
+        }
+        let segments = [
+            point(latitude: 1.30, longitude: 103.80, index: 0, segment: 0),
+            point(latitude: 1.30, longitude: 103.801, index: 1, segment: 0),
+            point(latitude: 1.40, longitude: 103.90, index: 2, segment: 1),
+            point(latitude: 1.40, longitude: 103.901, index: 3, segment: 1)
+        ]
+        let invalidGap = [
+            point(latitude: 1.30, longitude: 103.80, index: 0),
+            point(latitude: 200, longitude: 103.81, index: 1),
+            point(latitude: 1.30, longitude: 103.82, index: 2)
+        ]
+        let oversizedInterval = [
+            point(latitude: 1.30, longitude: 103.80, index: 0),
+            point(latitude: 1.40, longitude: 103.90, index: 1)
+        ]
+        let negativeIndexes = [
+            point(latitude: -33.86, longitude: -122.42, index: 0),
+            point(latitude: -33.861, longitude: -122.421, index: 1)
+        ]
+
+        try assertAccumulationParity(route: [])
+        try assertAccumulationParity(route: single)
+        try assertAccumulationParity(route: repeated)
+        try assertAccumulationParity(route: loop)
+        try assertAccumulationParity(route: segments)
+        try assertAccumulationParity(route: invalidGap)
+        try assertAccumulationParity(
+            route: oversizedInterval,
+            maximumIntervalMeters: 100
+        )
+        try assertAccumulationParity(route: negativeIndexes)
+    }
+
+    @Test
+    func testDirectAccumulationTwiceProducesCountTwo() throws {
+        let route = (0..<20).map {
+            point(
+                latitude: 1.30,
+                longitude: 103.80 + Double($0) * 0.000_1,
+                index: $0
+            )
+        }
+        let batch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
+            workoutRoutes: [route],
+            isCancelled: { false }
+        )
+        var counts: [PersonalHeatmapCellID: Int] = [:]
+        let first = try batch.accumulateCoverage(
+            workoutIndex: 0,
+            cellSizeMeters: 10,
+            maximumIntervalMeters: 50_000,
+            maximumCellsPerInterval: 10_000,
+            into: &counts,
+            isCancelled: { false }
+        )
+        let second = try batch.accumulateCoverage(
+            workoutIndex: 0,
+            cellSizeMeters: 10,
+            maximumIntervalMeters: 50_000,
+            maximumCellsPerInterval: 10_000,
+            into: &counts,
+            isCancelled: { false }
+        )
+
+        #expect(first == second)
+        #expect(counts.count == first.cellCount)
+        #expect(counts.values.allSatisfy { $0 == 2 })
+    }
+
+    @Test
+    func testDirectAccumulationCapacityRetryAndCachedReuse() throws {
+        let route = [
+            point(latitude: 0, longitude: 0, index: 0),
+            point(latitude: 0, longitude: 0.03, index: 1)
+        ]
+        let batch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
+            workoutRoutes: [route],
+            isCancelled: { false }
+        )
+        var counts: [PersonalHeatmapCellID: Int] = [:]
+
+        let first = try batch.profiledAccumulateCoverage(
+            workoutIndex: 0,
+            cellSizeMeters: 1,
+            maximumIntervalMeters: 5_000,
+            maximumCellsPerInterval: 10_000,
+            into: &counts,
+            isCancelled: { false }
+        )
+        let second = try batch.profiledAccumulateCoverage(
+            workoutIndex: 0,
+            cellSizeMeters: 1,
+            maximumIntervalMeters: 5_000,
+            maximumCellsPerInterval: 10_000,
+            into: &counts,
+            isCancelled: { false }
+        )
+
+        #expect(first.metadata.cellCount > 64)
+        #expect(first.profile.capacityRetryCount == 1)
+        #expect(first.profile.nativeCallCount == 2)
+        #expect(second.profile.capacityRetryCount == 0)
+        #expect(second.profile.nativeCallCount == 1)
+        #expect(second.metadata == first.metadata)
+        #expect(counts.values.allSatisfy { $0 == 2 })
     }
 
     @Test
@@ -207,15 +391,47 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
             #expect(actual.validProjectedPointCount == expected.validPoints, "Fixture \(i) valid points mismatch")
             #expect(actual.effectiveSegmentCount == expected.effectiveSegments, "Fixture \(i) effective segments mismatch")
             #expect(actual.invalidIntervalCount == expected.invalidIntervals, "Fixture \(i) invalid intervals mismatch")
+
+            var directCounts: [PersonalHeatmapCellID: Int] = [:]
+            let metadata = try batch.accumulateCoverage(
+                workoutIndex: i,
+                cellSizeMeters: cellSize,
+                maximumIntervalMeters: maxInterval,
+                maximumCellsPerInterval: 10_000,
+                into: &directCounts,
+                isCancelled: { false }
+            )
+            #expect(
+                directCounts == Dictionary(
+                    uniqueKeysWithValues: actual.cells.map { ($0, 1) }
+                ),
+                "Fixture \(i) direct accumulation mismatch"
+            )
+            #expect(metadata.cellCount == actual.cells.count, "Fixture \(i) cell metadata mismatch")
+            #expect(
+                metadata.validProjectedPointCount == actual.validProjectedPointCount,
+                "Fixture \(i) valid-point metadata mismatch"
+            )
+            #expect(
+                metadata.effectiveSegmentCount == actual.effectiveSegmentCount,
+                "Fixture \(i) segment metadata mismatch"
+            )
+            #expect(
+                metadata.invalidIntervalCount == actual.invalidIntervalCount,
+                "Fixture \(i) interval metadata mismatch"
+            )
         }
     }
 
     @Test
     func testCancellationSupport() throws {
-        let route = [
-            RoutePoint(timestamp: Date(), latitude: 37.7749, longitude: -122.4194, routeSegmentIndex: 0),
-            RoutePoint(timestamp: Date(), latitude: 37.7750, longitude: -122.4195, routeSegmentIndex: 0)
-        ]
+        let route = (0..<4_096).map {
+            point(
+                latitude: 37.7749,
+                longitude: -122.4194 + Double($0) * 0.000_001,
+                index: $0
+            )
+        }
 
         #expect(throws: CancellationError.self) {
             _ = try RunPlayPersonalHeatmapCoverageBridge.prepare(
@@ -223,6 +439,15 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
                 isCancelled: { true }
             )
         }
+
+        let conversionGate = BridgeCancellationGate(cancelOnCall: 2)
+        #expect(throws: CancellationError.self) {
+            _ = try RunPlayPersonalHeatmapCoverageBridge.prepare(
+                workoutRoutes: [route],
+                isCancelled: { conversionGate.shouldCancel() }
+            )
+        }
+        #expect(conversionGate.callCount == 2)
 
         let batch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
             workoutRoutes: [route],
@@ -238,5 +463,81 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
                 isCancelled: { true }
             )
         }
+
+        var beforeNativeCounts = [
+            PersonalHeatmapCellID(x: 7, y: 9): 3
+        ]
+        #expect(throws: CancellationError.self) {
+            _ = try batch.accumulateCoverage(
+                workoutIndex: 0,
+                cellSizeMeters: 10,
+                maximumIntervalMeters: 500,
+                maximumCellsPerInterval: 10_000,
+                into: &beforeNativeCounts,
+                isCancelled: { true }
+            )
+        }
+        #expect(beforeNativeCounts == [PersonalHeatmapCellID(x: 7, y: 9): 3])
+
+        let afterNativeGate = BridgeCancellationGate(cancelOnCall: 2)
+        var afterNativeCounts: [PersonalHeatmapCellID: Int] = [:]
+        #expect(throws: CancellationError.self) {
+            _ = try batch.accumulateCoverage(
+                workoutIndex: 0,
+                cellSizeMeters: 10,
+                maximumIntervalMeters: 500,
+                maximumCellsPerInterval: 10_000,
+                into: &afterNativeCounts,
+                isCancelled: { afterNativeGate.shouldCancel() }
+            )
+        }
+        #expect(afterNativeCounts.isEmpty)
+        #expect(afterNativeGate.callCount == 2)
+
+        let longIntervalBatch = try RunPlayPersonalHeatmapCoverageBridge.prepare(
+            workoutRoutes: [[
+                point(latitude: 0, longitude: 0, index: 0),
+                point(latitude: 0, longitude: 0.30, index: 1)
+            ]],
+            isCancelled: { false }
+        )
+        let consumptionGate = BridgeCancellationGate(cancelOnCall: 4)
+        var partialLocalCounts: [PersonalHeatmapCellID: Int] = [:]
+        #expect(throws: CancellationError.self) {
+            _ = try longIntervalBatch.accumulateCoverage(
+                workoutIndex: 0,
+                cellSizeMeters: 10,
+                maximumIntervalMeters: 50_000,
+                maximumCellsPerInterval: 10_000,
+                into: &partialLocalCounts,
+                isCancelled: { consumptionGate.shouldCancel() }
+            )
+        }
+        #expect(partialLocalCounts.count == 2_048)
+        #expect(partialLocalCounts.values.allSatisfy { $0 == 1 })
+        #expect(consumptionGate.callCount == 4)
+    }
+}
+
+private final class BridgeCancellationGate: @unchecked Sendable {
+    private let cancelOnCall: Int
+    private let lock = NSLock()
+    private var calls = 0
+
+    init(cancelOnCall: Int) {
+        self.cancelOnCall = cancelOnCall
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func shouldCancel() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        calls += 1
+        return calls >= cancelOnCall
     }
 }

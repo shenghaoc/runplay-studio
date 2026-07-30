@@ -76,17 +76,18 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
 
         report.append("### Phase breakdown across every fixture (ms, last measured Mode B iteration)")
         report.append("")
-        report.append("`Native`, `Alloc`, and `Xlate` are nested inside `Coverage` and are not summed again.")
+        report.append("`Native`, `Alloc`, and `Direct count` are nested inside `Coverage` and are not summed again.")
+        report.append("The historical array-translation path is not part of this production-equivalent profile.")
         report.append("")
-        report.append("| Fixture | Date | Prep | Coverage | ⤷ Native | ⤷ Alloc | ⤷ Xlate | Counting | Filter | Decision | Sort | Cells | Assemble | Unacc. | Total |")
-        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        report.append("| Fixture | Date | Prep | Coverage | ⤷ Native | ⤷ Alloc | ⤷ Direct count | Filter | Decision | Sort | Cells | Assemble | Unacc. | Total |")
+        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         report.append(contentsOf: phaseMillisecondRows)
         report.append("")
 
         report.append("### Phase breakdown across every fixture (percent of profiled wall clock)")
         report.append("")
-        report.append("| Fixture | Date | Prep | Coverage | ⤷ Native | ⤷ Alloc | ⤷ Xlate | Counting | Filter | Decision | Sort | Cells | Assemble | Unacc. |")
-        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        report.append("| Fixture | Date | Prep | Coverage | ⤷ Native | ⤷ Alloc | ⤷ Direct count | Filter | Decision | Sort | Cells | Assemble | Unacc. |")
+        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         report.append(contentsOf: phasePercentRows)
         report.append("")
 
@@ -127,6 +128,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         var productionSamples: [Double] = []
         var reconstructionSamples: [Double] = []
         var oracleSamples: [Double] = []
+        var directConsumptionAndCountingSamples: [Double] = []
         var lastMeasurement: ReconstructionMeasurement?
 
         let totalIterations = fixture.warmups + fixture.iterations
@@ -164,6 +166,9 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             guard iteration >= fixture.warmups else { continue }
             productionSamples.append(productionElapsed)
             reconstructionSamples.append(Self.ms(measurement.wallClockNanoseconds))
+            directConsumptionAndCountingSamples.append(
+                Self.ms(measurement.totalDirectConsumptionAndCountingNanoseconds)
+            )
             if fixture.isPrimary { oracleSamples.append(oracleElapsed) }
             lastMeasurement = measurement
         }
@@ -208,8 +213,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             measurement.totalCoverageBridgeNanoseconds,
             measurement.totalNativeNanoseconds,
             measurement.totalAllocationNanoseconds,
-            measurement.totalTranslationNanoseconds,
-            measurement.totalCountInsertionNanoseconds,
+            measurement.totalDirectConsumptionAndCountingNanoseconds,
             measurement.totalFilterNanoseconds,
             measurement.totalAdaptiveDecisionNanoseconds,
             measurement.sortNanoseconds,
@@ -232,8 +236,8 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                     .joined()
                 + "| \(String(format: "%.2f", unaccountedPercent)) |"
         } else {
-            phaseMillisecondRow = "| \(fixture.key) | — | — | — | — | — | — | — | — | — | — | — | — | attribution suppressed (unaccounted \(String(format: "%.2f", unaccountedPercent))% > \(Self.format(Self.maximumUnaccountedPercent))%) | — |"
-            phasePercentRow = "| \(fixture.key) | — | — | — | — | — | — | — | — | — | — | — | — | attribution suppressed |"
+            phaseMillisecondRow = "| \(fixture.key) | — | — | — | — | — | — | — | — | — | — | — | attribution suppressed (unaccounted \(String(format: "%.2f", unaccountedPercent))% > \(Self.format(Self.maximumUnaccountedPercent))%) | — |"
+            phasePercentRow = "| \(fixture.key) | — | — | — | — | — | — | — | — | — | — | — | attribution suppressed |"
             XCTFail(
                 "\(fixture.key): unaccounted phase residue is \(String(format: "%.2f", unaccountedPercent))% of the profiled wall clock (limit \(Self.format(Self.maximumUnaccountedPercent))%). Phase attribution tables are suppressed."
             )
@@ -261,6 +265,10 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             detail.append(Self.statsRow("Swift builder oracle", oracleSamples))
         }
         detail.append(Self.statsRow("Mode B profiled reconstruction", reconstructionSamples))
+        detail.append(Self.statsRow(
+            "Direct native-buffer consumption / counting",
+            directConsumptionAndCountingSamples
+        ))
         detail.append("")
         detail.append("- profiling overhead (Mode B / Mode A): `\(String(format: "%.3f", overheadRatio))×` (target ≤ 1.15×)")
         detail.append("")
@@ -288,8 +296,10 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             detail.append(phaseRow("Coverage bridge across all passes", measurement.totalCoverageBridgeNanoseconds))
             detail.append(phaseRow("— of which native C++ execution", measurement.totalNativeNanoseconds))
             detail.append(phaseRow("— of which output allocation / retries", measurement.totalAllocationNanoseconds))
-            detail.append(phaseRow("— of which C++ → Swift cell translation", measurement.totalTranslationNanoseconds))
-            detail.append(phaseRow("Cross-workout counting", measurement.totalCountInsertionNanoseconds))
+            detail.append(phaseRow(
+                "— of which direct native-buffer consumption / counting",
+                measurement.totalDirectConsumptionAndCountingNanoseconds
+            ))
             detail.append(phaseRow("Minimum-repeat filtering", measurement.totalFilterNanoseconds))
             detail.append(phaseRow("Adaptive decision", measurement.totalAdaptiveDecisionNanoseconds))
             detail.append(phaseRow("Sorting", measurement.sortNanoseconds))
@@ -300,12 +310,13 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             detail.append("")
             detail.append("#### Per adaptive pass")
             detail.append("")
-            detail.append("| Pass | Cell size | Eligible | With coverage | Without | Cells returned | Invalid intervals | Aggregated | Passing filter | Dict updates | Coverage bridge | Native | Alloc | Translate | Counting | Filter | Decision | Pass total | Capacity retries |")
+            detail.append("| Pass | Cell size | Reserve hint | Eligible | With coverage | Without | Cells returned | Invalid intervals | Aggregated | Passing filter | Dict updates | Coverage bridge | Native | Alloc | Direct count | Filter | Decision | Pass total | Capacity retries |")
             detail.append("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
             for pass in measurement.passes {
                 detail.append(
                     "| \(pass.index) "
                     + "| \(Self.format(pass.cellSizeMeters)) m "
+                    + "| \(pass.capacityHint) "
                     + "| \(pass.eligibleWorkouts) "
                     + "| \(pass.workoutsWithCoverage) "
                     + "| \(pass.workoutsWithoutCoverage) "
@@ -317,8 +328,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                     + "| \(Self.format(Self.ms(pass.coverageBridgeNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.nativeNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.allocationNanoseconds))) "
-                    + "| \(Self.format(Self.ms(pass.translationNanoseconds))) "
-                    + "| \(Self.format(Self.ms(pass.countInsertionNanoseconds))) "
+                    + "| \(Self.format(Self.ms(pass.directConsumptionAndCountingNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.filterNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.adaptiveDecisionNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.totalNanoseconds))) "
@@ -326,7 +336,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                 )
             }
             detail.append("")
-            detail.append("All milliseconds. Native / Alloc / Translate are nested inside Coverage bridge.")
+            detail.append("All milliseconds. Native / Alloc / Direct count are nested inside Coverage bridge.")
             detail.append("")
         } else {
             detail.append("#### Additive phase breakdown")
@@ -342,6 +352,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         detail.append("- resident after largest adaptive pass: `\(Self.bytes(measurement.residentAfterLargestPass))`")
         detail.append("- resident after final snapshot: `\(Self.bytes(measurement.residentAfterSnapshot))`")
         detail.append("- largest prepared native batch: `\(measurement.nativeSampleCount)` samples ≈ `\(measurement.nativeBatchBytes)` bytes")
+        detail.append("- largest bounded counts reservation hint: `\(measurement.largestCapacityHint)` entries")
         detail.append("- largest aggregated dictionary: `\(measurement.largestAggregatedCellCount)` entries")
         detail.append("- largest rendered-cell array: `\(measurement.snapshot.cells.count)` cells")
         detail.append("- cell-bound inverse-projection failures: `\(measurement.boundsFailures)`")
@@ -361,6 +372,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
     private struct PassMeasurement {
         let index: Int
         let cellSizeMeters: Double
+        let capacityHint: Int
         let eligibleWorkouts: Int
         let workoutsWithCoverage: Int
         let workoutsWithoutCoverage: Int
@@ -372,8 +384,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         let coverageBridgeNanoseconds: UInt64
         let nativeNanoseconds: UInt64
         let allocationNanoseconds: UInt64
-        let translationNanoseconds: UInt64
-        let countInsertionNanoseconds: UInt64
+        let directConsumptionAndCountingNanoseconds: UInt64
         let filterNanoseconds: UInt64
         let adaptiveDecisionNanoseconds: UInt64
         let totalNanoseconds: UInt64
@@ -410,8 +421,9 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         var totalCoverageBridgeNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.coverageBridgeNanoseconds } }
         var totalNativeNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.nativeNanoseconds } }
         var totalAllocationNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.allocationNanoseconds } }
-        var totalTranslationNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.translationNanoseconds } }
-        var totalCountInsertionNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.countInsertionNanoseconds } }
+        var totalDirectConsumptionAndCountingNanoseconds: UInt64 {
+            passes.reduce(0) { $0 + $1.directConsumptionAndCountingNanoseconds }
+        }
         var totalFilterNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.filterNanoseconds } }
         var totalAdaptiveDecisionNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.adaptiveDecisionNanoseconds } }
 
@@ -421,7 +433,6 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             dateFilterNanoseconds
                 + preparationNanoseconds
                 + totalCoverageBridgeNanoseconds
-                + totalCountInsertionNanoseconds
                 + totalFilterNanoseconds
                 + totalAdaptiveDecisionNanoseconds
                 + sortNanoseconds
@@ -433,6 +444,10 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             passes
                 .compactMap(\.residentBytesAfterPass)
                 .max()
+        }
+
+        var largestCapacityHint: Int {
+            passes.map(\.capacityHint).max() ?? 0
         }
     }
 
@@ -495,6 +510,12 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         var adaptiveRetries = 0
         let maxRetries = 16
         var largestAggregatedCellCount = 0
+        var capacityHint = PersonalHeatmapAggregationCapacityPolicy.initialHint(
+            cappedTotalRoutePointCount: PersonalHeatmapAggregationCapacityPolicy.cappedRoutePointCount(
+                in: eligible
+            ),
+            maximumRenderedCellCount: configuration.maximumRenderedCellCount
+        )
 
         var finalCounts: [PersonalHeatmapCellID: Int] = [:]
         var finalFilteredCounts: [PersonalHeatmapCellID: Int] = [:]
@@ -505,15 +526,15 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         while true {
             let passStart = ContinuousClock.now
             var counts: [PersonalHeatmapCellID: Int] = [:]
+            counts.reserveCapacity(capacityHint)
             var invalidIntervals = 0
             var includedWorkoutCount = 0
             var totalDistanceMeters = 0.0
 
             var coverageBridgeNanoseconds: UInt64 = 0
-            var countInsertionNanoseconds: UInt64 = 0
             var nativeNanoseconds: UInt64 = 0
             var allocationNanoseconds: UInt64 = 0
-            var translationNanoseconds: UInt64 = 0
+            var directConsumptionAndCountingNanoseconds: UInt64 = 0
             var capacityRetries = 0
             var coverageCellsReturned = 0
             var dictionaryUpdates = 0
@@ -521,22 +542,24 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
 
             for (index, workout) in eligible.enumerated() {
                 let coverageStart = ContinuousClock.now
-                let result = try preparedBatch.profiledCoverage(
+                let result = try preparedBatch.profiledAccumulateCoverage(
                     workoutIndex: index,
                     cellSizeMeters: cellSize,
                     maximumIntervalMeters: configuration.maximumIntervalMeters,
                     maximumCellsPerInterval: PersonalHeatmapGridTraversal.defaultMaximumCellsPerInterval,
+                    into: &counts,
                     isCancelled: { false }
                 )
                 coverageBridgeNanoseconds += nanoseconds(from: coverageStart, to: ContinuousClock.now)
 
                 nativeNanoseconds += result.profile.nativeNanoseconds
                 allocationNanoseconds += result.profile.outputAllocationNanoseconds
-                translationNanoseconds += result.profile.translationNanoseconds
+                directConsumptionAndCountingNanoseconds +=
+                    result.profile.directCellConsumptionAndCountingNanoseconds
                 capacityRetries += result.profile.capacityRetryCount
 
-                let coverage = result.coverage
-                if coverage.cells.isEmpty {
+                let metadata = result.metadata
+                if metadata.cellCount == 0 {
                     workoutsWithoutCoverage += 1
                     continue
                 }
@@ -544,16 +567,9 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                 includedWorkoutCount += 1
                 let distance = workout.summary.totalDistanceMeters
                 totalDistanceMeters += (distance.isFinite && distance >= 0 ? distance : 0)
-                invalidIntervals += coverage.invalidIntervalCount
-                coverageCellsReturned += coverage.cells.count
-
-                // Phase 6: cross-workout counting, isolated from the bridge call.
-                let countStart = ContinuousClock.now
-                for cell in coverage.cells {
-                    counts[cell, default: 0] += 1
-                }
-                countInsertionNanoseconds += nanoseconds(from: countStart, to: ContinuousClock.now)
-                dictionaryUpdates += coverage.cells.count
+                invalidIntervals += metadata.invalidIntervalCount
+                coverageCellsReturned += metadata.cellCount
+                dictionaryUpdates += metadata.cellCount
             }
 
             // Phase 7: minimum-repeat filtering.
@@ -572,6 +588,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             passes.append(PassMeasurement(
                 index: passes.count,
                 cellSizeMeters: cellSize,
+                capacityHint: capacityHint,
                 eligibleWorkouts: eligible.count,
                 workoutsWithCoverage: includedWorkoutCount,
                 workoutsWithoutCoverage: workoutsWithoutCoverage,
@@ -583,8 +600,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                 coverageBridgeNanoseconds: coverageBridgeNanoseconds,
                 nativeNanoseconds: nativeNanoseconds,
                 allocationNanoseconds: allocationNanoseconds,
-                translationNanoseconds: translationNanoseconds,
-                countInsertionNanoseconds: countInsertionNanoseconds,
+                directConsumptionAndCountingNanoseconds: directConsumptionAndCountingNanoseconds,
                 filterNanoseconds: filterNanoseconds,
                 adaptiveDecisionNanoseconds: adaptiveDecisionNanoseconds,
                 totalNanoseconds: passTotalNanoseconds,
@@ -602,6 +618,10 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             }
 
             adaptiveRetries += 1
+            capacityHint = PersonalHeatmapAggregationCapacityPolicy.laterPassHint(
+                previousAggregatedCellCount: counts.count,
+                maximumRenderedCellCount: configuration.maximumRenderedCellCount
+            )
             cellSize *= 2
         }
 

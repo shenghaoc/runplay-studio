@@ -227,7 +227,10 @@ Approved pointer boundaries:
   input samples and caller-owned `PersonalHeatmapCellIndex*` output. Unlike the
   per-sample boundaries, this one is capacity-negotiated: it writes
   `required_cell_count` de-duplicated cells on success, and writes nothing on
-  `insufficient_output_capacity` so Swift can reallocate and retry.
+  `insufficient_output_capacity` so Swift can reallocate and retry. On success,
+  Interop exposes only the written prefix to a private nonescaping closure and
+  production counts directly from it; no pointer, C++ cell value, or per-workout
+  Swift cell array escapes that lifetime.
 - constrained-DTW path solving: `const RouteAlignmentCostSample*` primary and
   comparison inputs plus a caller-owned `RouteAlignmentDtwPathCell*` output.
   This is the only boundary that borrows two const input buffers in one call.
@@ -297,7 +300,7 @@ library manifest versions.
 | Layer | Responsibility |
 | --- | --- |
 | **RunPlayEngineCpp** | Per-workout coverage kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, Amanatides–Woo supercover traversal, per-workout de-duplication, deterministic cell ordering |
-| **RunPlayCore** | `PersonalHeatmap*` models, `RunPlayPersonalHeatmapCoverageBridge` interop, `PersonalHeatmapBuilder` date filtering, adaptive resolution, cross-workout aggregation, and snapshot finalization. `PersonalHeatmapProjection` / `PersonalHeatmapGridTraversal` remain as the public Swift reference implementation and parity oracle |
+| **RunPlayCore** | `PersonalHeatmap*` models, `RunPlayPersonalHeatmapCoverageBridge` interop, `PersonalHeatmapBuilder` date filtering, adaptive resolution, cross-workout aggregation, and snapshot finalization. Interop consumes the caller-owned native output through a nonescaping closure and updates the Swift counts dictionary without a production per-workout cell array. `PersonalHeatmapProjection` / `PersonalHeatmapGridTraversal` remain as the public Swift reference implementation and parity oracle |
 | **RunPlayPlatform** | `RouteMapArea` polygons and map-rect fitting for areas |
 | **RunPlayStudio** | `PersonalHeatmapViewModel`, workspace mode, sidebar/menu entry, SwiftUI map fills |
 
@@ -328,17 +331,28 @@ every shipping configuration.
 
 ### Aggregation ownership
 
-Cross-workout aggregation stays in Swift. A profiling phase decomposed one
-production-equivalent build with
-`scripts/run-personal-heatmap-profile.sh` and concluded that the remaining Swift
-stages do not justify another engine boundary:
+Cross-workout aggregation stays in Swift. The builder reserves its counts
+dictionary with a bounded adaptive hint, consumes each caller-owned native
+coverage buffer while that buffer is alive, and increments the dictionary
+directly. The pointer and imported C++ cell type never escape Interop, and the
+production path creates no per-workout `[PersonalHeatmapCellID]`. The
+array-returning adapter remains available for parity and bridge tests.
+
+`PersonalHeatmapCellID` mixes both signed X/Y coordinates into one 64-bit input
+to Swift `Hasher`. That mixed word is neither persisted nor stable external
+identity: equality, ordering, geographic meaning, and keyed `Codable` continue
+to use the original coordinates. Reservation hints are capped Swift allocation
+advice only; they never truncate aggregation or become a product/library limit.
+
+The production-equivalent profiler at
+`scripts/run-personal-heatmap-profile.sh` supports the ownership decision:
 
 - the already-native per-workout coverage kernel dominates every
   production-reachable configuration;
 - cross-workout counting is the largest remaining Swift cost, and that cost is
   Swift `Hasher` work plus dictionary growth rather than algorithmic work;
-- coverage-output translation and caller-owned output allocation, including
-  every capacity retry, are too small to justify a new boundary;
+- caller-owned output allocation, including every capacity retry, remains too
+  small to justify a new boundary;
 - sorting and materialization are capped by the rendered-cell budget.
 
 A whole-pass native aggregation call would require a new arbitrary
@@ -347,8 +361,10 @@ workout, not a library — and would run uninterruptibly across the whole librar
 losing per-workout cancellation. A per-workout call would require either a
 retained native accumulator, which contradicts the contract that C++ retains
 nothing between calls, or a Swift-owned open-addressed table plus a rehash
-boundary. The next heatmap phase is therefore a Swift optimization, not a
-migration; see [phase-plan.md](phase-plan.md).
+boundary. This bounded Swift phase addresses the measured cost without adding
+any of those contracts. Profile the remaining active production hotspots before
+selecting another migration; legacy SceneKit projection stays low priority
+unless it regains a shipped caller. See [phase-plan.md](phase-plan.md).
 
 Timings are machine-specific and live in benchmark and profile output, not in
 this document.

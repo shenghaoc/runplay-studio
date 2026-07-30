@@ -8,13 +8,14 @@ import XCTest
 /// not additive components of the measured production build. Input conversion is
 /// timed on a batch prepared separately from the one `PersonalHeatmapBuilder`
 /// builds internally, and the native coverage total is timed once at the final
-/// effective cell size rather than across every adaptive pass. Adding them to
-/// each other, or subtracting them from the production total, produces a
-/// meaningless number.
+/// effective cell size rather than across every adaptive pass. That diagnostic
+/// deliberately uses the historical array-returning bridge and is not the
+/// production aggregation path. Adding the diagnostics to each other, or
+/// subtracting them from the production total, produces a meaningless number.
 ///
 /// For an additive phase decomposition taken from one production-equivalent
 /// orchestration — including every adaptive pass, and native execution split
-/// from output allocation and C++-to-Swift translation — use
+/// from output allocation and direct native-buffer counting — use
 /// `PersonalHeatmapPipelineProfile` via
 /// `scripts/run-personal-heatmap-profile.sh`.
 final class PersonalHeatmapCoverageBenchmark: XCTestCase {
@@ -109,6 +110,8 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
 
         print("""
 
+        <!-- BEGIN RUNPLAY HEATMAP COVERAGE BENCHMARK -->
+
         RunPlay personal heatmap route coverage benchmark
         fixture: \(Self.workoutCount) workouts, \(Self.pointsPerWorkout) points/workout
         \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
@@ -119,9 +122,11 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
 
         independent diagnostics -- NOT additive components of the production total
         one separate input conversion:     \(Self.format(conversionMedian)) ms
-        one coverage sweep, final cell:    \(Self.format(nativeTotalMedian)) ms
+        historical array coverage sweep:  \(Self.format(nativeTotalMedian)) ms
         resident RSS after benchmark:      \(peak.map { "\($0) bytes" } ?? "unavailable")
         additive phase attribution lives in scripts/run-personal-heatmap-profile.sh
+
+        <!-- END RUNPLAY HEATMAP COVERAGE BENCHMARK -->
         """)
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {

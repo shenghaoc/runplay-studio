@@ -101,8 +101,13 @@ not import `RunPlayEngineCpp` directly.
   breaking, supercover interval traversal, per-workout cell de-duplication, and
   deterministic cell ordering through one bulk call per workout; Swift still
   owns date filtering, the adaptive resolution loop, cross-workout aggregation,
-  the minimum-workout-count filter, and snapshot finalization. For Route-Aware
-  comparison, C++23 performs the bounded band-packed constrained-DTW path solve
+  the minimum-workout-count filter, and snapshot finalization. Interop consumes
+  the caller-owned native cell buffer through a private nonescaping closure and
+  increments the Swift cross-workout dictionary directly; production creates no
+  per-workout Swift cell array. The dictionary uses bounded reservation hints,
+  not a product limit, and `PersonalHeatmapCellID` equality and `Codable`
+  identity remain the original X/Y pair. For Route-Aware comparison, C++23
+  performs the bounded band-packed constrained-DTW path solve
   — band radius, packed row layout, band-cell budget validation, geometry-only
   point cost, open prefix/suffix seeding, constrained transitions with fixed tie
   priority, consecutive-warp capping, endpoint selection, and path
@@ -182,6 +187,10 @@ capacity-negotiated: its output is a de-duplicated cell set whose size is not
 known in advance, so it writes exactly `required_cell_count` entries on
 success, and on `insufficient_output_capacity` it writes nothing while
 reporting `required_cell_count` so Swift can reallocate and retry.
+After success, Swift consumes only the written prefix while the caller-owned
+buffer is alive; the native pointer never escapes Interop and C++ retains
+nothing. The array-returning Swift adapter is compatibility/test-focused, not
+the production builder path.
 
 The constrained-DTW path boundary writes exactly `written_path_count` entries
 on success. It is not capacity-negotiated: a valid path never exceeds

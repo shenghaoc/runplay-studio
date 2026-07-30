@@ -125,7 +125,7 @@
 - [x] Migrate per-workout personal heatmap route coverage into one bulk C++ kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, supercover traversal, per-workout de-duplication, and deterministic cell ordering
 - [x] Migrate the Route-Aware **constrained DTW path kernel** into one bulk C++ call per alignment attempt: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed tie priority, warp-run capping, endpoint selection, and path reconstruction
 - [x] Profile cross-workout heatmap aggregation and record the decision
-- [ ] Optimize cross-workout heatmap aggregation **in Swift**, adding no native aggregation boundary: reserve the global count dictionary per adaptive pass, reduce `PersonalHeatmapCellID` hashing cost, and stop materializing a per-workout cell array
+- [x] Optimize cross-workout heatmap aggregation **in Swift**, adding no native aggregation boundary: reserve the global count dictionary per adaptive pass, reduce `PersonalHeatmapCellID` hashing cost, and stop materializing a per-workout cell array
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
 Swift performs route-size validation, basic field sanitization, sorting,
@@ -179,8 +179,9 @@ step-distance script remains available for the transitional boundary.
 `scripts/run-personal-heatmap-profile.sh` decomposes one production-equivalent
 Personal Heatmap build into additive phases, retaining every adaptive pass and
 splitting the coverage boundary into native execution, caller-owned output
-allocation with capacity retries, and C++-to-Swift cell translation. Run it for
-current numbers; they are machine-specific and are not recorded here.
+allocation with capacity retries, and direct native-buffer cell
+consumption/counting. Run it for current numbers; they are machine-specific and
+are not recorded here.
 
 The profile's durable conclusions are:
 
@@ -188,8 +189,8 @@ The profile's durable conclusions are:
   production-reachable configuration.
 - Cross-workout counting is the largest remaining Swift cost, and that cost is
   Swift `Hasher` work plus dictionary growth rather than algorithmic work.
-- Coverage-output translation and output allocation, including every capacity
-  retry, are too small to justify a new boundary.
+- Output allocation, including every capacity retry, is too small to justify a
+  new boundary.
 - Sorting and cell materialization are bounded by the rendered-cell budget. The
   shipping UI always requests
   `PersonalHeatmapConfiguration.defaultMaximumRenderedCellCount`, so the
@@ -206,10 +207,18 @@ retains nothing between calls, or a Swift-owned open-addressed table plus a
 rehash boundary — materially more complex than the Swift changes that address
 the same measured cost.
 
+The bounded Swift optimization is complete: it mixes both coordinates into one
+`Hasher` input, reserves each pass with capped adaptive advice, and updates the
+global dictionary from the caller-owned native output through a private
+nonescaping Interop closure. Production creates no per-workout cell array;
+pointer lifetime, public models, equality, persistence, cancellation, and
+native-call count are unchanged.
+
 `scripts/run-personal-heatmap-benchmark.sh` remains the merge gate: complete
 production builder against complete Swift builder oracle. The extra subtimings
 it prints are independent diagnostics and are not additive components of that
-total.
+total. It also runs the opt-in same-binary aggregation comparison. Profile the
+remaining active production hotspots before selecting another C++ migration.
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs

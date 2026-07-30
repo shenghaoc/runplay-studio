@@ -184,11 +184,16 @@ against the complete combined bridge in release.
 `scripts/run-personal-heatmap-benchmark.sh` is the heatmap merge gate: complete
 production builder against complete Swift builder oracle. The extra subtimings
 it prints are independent diagnostics, not additive components of that total.
+The same runner also executes the opt-in same-binary Swift aggregation
+microbenchmark: synthesized two-field hashing with materialized arrays and no
+reservation versus the production hash, bounded reservation policy, and direct
+native-buffer counting.
 `scripts/run-personal-heatmap-profile.sh` is the additive phase profiler: it
 decomposes one production-equivalent heatmap build across every adaptive pass and
 splits the coverage boundary into native execution, caller-owned output
-allocation with capacity retries, and C++-to-Swift cell translation. It is a
-local release tool guarded by `RUNPLAY_HEATMAP_PROFILE=1` and never runs in CI.
+allocation with capacity retries, and direct native-buffer cell
+consumption/counting. It is a local release tool guarded by
+`RUNPLAY_HEATMAP_PROFILE=1` and never runs in CI.
 
 The package checks this boundary with:
 
