@@ -54,6 +54,20 @@ public struct ExportSummaryCardModel: Sendable {
         public var duration: String { elapsed }
     }
 
+    /// Cached long-date/short-time formatter for the export card's date line.
+    ///
+    /// Kept as a cached `DateFormatter` for the same reason as
+    /// `RunWorkout.displayFormatter`: `Date.formatted(date:time:)` measures slower and
+    /// buys nothing here. See the 2026-07-30 entry in `.jules/bolt.md`.
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        formatter.dateStyle = .long
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     public static let metricsOnlyPrivacyNote =
         "Generated locally by RunPlay Studio • No cloud upload • No account required"
 
@@ -69,31 +83,7 @@ public struct ExportSummaryCardModel: Sendable {
         appBranding = "RunPlay Studio"
         workoutTitle = workout.displayName
         sourceText = workout.source.displayName
-
-        var parsedDateText = "Unknown date"
-        if let date = workout.metadata.startDate {
-            #if canImport(Foundation) && !os(Linux)
-            if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
-                parsedDateText = date.formatted(date: .long, time: .shortened)
-            } else {
-                let formatter = DateFormatter()
-                formatter.locale = Locale.autoupdatingCurrent
-                formatter.timeZone = TimeZone.autoupdatingCurrent
-                formatter.dateStyle = .long
-                formatter.timeStyle = .short
-                parsedDateText = formatter.string(from: date)
-            }
-            #else
-            let formatter = DateFormatter()
-            formatter.locale = Locale.autoupdatingCurrent
-            formatter.timeZone = TimeZone.autoupdatingCurrent
-            formatter.dateStyle = .long
-            formatter.timeStyle = .short
-            parsedDateText = formatter.string(from: date)
-            #endif
-        }
-        dateText = parsedDateText
-
+        dateText = workout.metadata.startDate.map(Self.dateFormatter.string) ?? "Unknown date"
         self.layout = layout
         self.includesMapImagery = includesMapImagery
 

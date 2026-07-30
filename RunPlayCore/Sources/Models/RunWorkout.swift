@@ -110,24 +110,29 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.importProvenance = importProvenance
     }
 
+    /// Cached medium-date/short-time formatter for the unnamed-workout fallback.
+    ///
+    /// Deliberately a cached `DateFormatter` rather than `Date.formatted(date:time:)`:
+    /// `Date.FormatStyle` has no `.medium` date style, so `.abbreviated` would change
+    /// the rendered string in locales such as `de_DE`, `ja_JP`, and `zh_Hans_CN`, and it
+    /// measures slower than the cached formatter it would replace. See the 2026-07-30
+    /// entry in `.jules/bolt.md`.
+    private static let displayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.timeZone = TimeZone.autoupdatingCurrent
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     /// Display name for the workout.
     public var displayName: String {
         if let name = metadata.name, !name.isEmpty {
             return name
         }
         if let date = metadata.startDate {
-            #if canImport(Foundation) && !os(Linux)
-            if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
-                return date.formatted(date: .abbreviated, time: .shortened)
-            }
-            #endif
-
-            let formatter = DateFormatter()
-            formatter.locale = Locale.autoupdatingCurrent
-            formatter.timeZone = TimeZone.autoupdatingCurrent
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            return formatter.string(from: date)
+            return RunWorkout.displayFormatter.string(from: date)
         }
         return "Untitled Run"
     }
