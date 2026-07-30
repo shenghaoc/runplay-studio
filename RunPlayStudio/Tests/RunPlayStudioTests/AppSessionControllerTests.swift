@@ -205,6 +205,49 @@ final class AppSessionControllerTests: XCTestCase {
         XCTAssertEqual(appState.replayController.state.playbackState, .paused)
     }
 
+    func testApplySessionSnapshotPreservesRouteAwareProgressUntilAlignmentIsReady() async {
+        let appState = AppState(storeActor: nil, importService: nil)
+        let primary = makeAlignmentWorkout(name: "Primary", elapsedScale: 1)
+        let comparison = makeAlignmentWorkout(name: "Comparison", elapsedScale: 1.2)
+        appState.workouts = [primary, comparison]
+        appState.selectWorkout(primary, persistSelection: false)
+
+        appState.applySessionSnapshot(AppSessionSnapshot(
+            destination: .comparison,
+            comparison: AppSessionComparisonState(
+                peerWorkoutID: comparison.id,
+                alignmentModeRaw: ComparisonAlignmentMode.routeAware.rawValue,
+                alignedProgressMeters: 1_000
+            )
+        ))
+        // SwiftUI's restored comparison picker may immediately write the
+        // already-selected peer while the alignment is still loading.
+        appState.setComparison(comparison)
+
+        XCTAssertEqual(appState.workspaceMode, .comparison)
+        XCTAssertEqual(appState.comparisonViewModel.alignmentMode, .routeAware)
+        XCTAssertEqual(appState.comparisonViewModel.selectedAlignedProgressMeters, 1_000)
+        XCTAssertEqual(
+            appState.makeSessionSnapshot().comparison?.alignedProgressMeters,
+            1_000
+        )
+
+        for _ in 0..<100 {
+            if appState.comparisonViewModel.routeAlignmentLoadState == .ready {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(appState.comparisonViewModel.routeAlignmentLoadState, .ready)
+        XCTAssertEqual(appState.comparisonViewModel.clampedAlignedProgressMeters, 1_000)
+
+        appState.setComparison(comparison)
+
+        XCTAssertEqual(appState.comparisonViewModel.routeAlignmentLoadState, .ready)
+        XCTAssertEqual(appState.comparisonViewModel.clampedAlignedProgressMeters, 1_000)
+    }
+
     private func makeWorkout() -> RunWorkout {
         let start = Date(timeIntervalSince1970: 1_700_000_000)
         var points: [RoutePoint] = []
@@ -227,6 +270,28 @@ final class AppSessionControllerTests: XCTestCase {
             metadata: WorkoutMetadata(name: "Session Test", startDate: start),
             routePoints: points,
             summary: RunSummary(totalDistanceMeters: 400, totalElapsedSeconds: 40)
+        )
+    }
+
+    private func makeAlignmentWorkout(name: String, elapsedScale: Double) -> RunWorkout {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = (0...40).map { index in
+            let offset = Double(index)
+            return RoutePoint(
+                timestamp: start.addingTimeInterval(offset * 10 * elapsedScale),
+                latitude: 1.3 + offset * 0.0005,
+                longitude: 103.8 + offset * 0.0005,
+                distanceFromStartMeters: offset * 100,
+                elapsedSeconds: offset * 10 * elapsedScale
+            )
+        }
+        return RunWorkout(
+            metadata: WorkoutMetadata(name: name, startDate: start),
+            routePoints: points,
+            summary: RunSummary(
+                totalDistanceMeters: 4_000,
+                totalElapsedSeconds: 400 * elapsedScale
+            )
         )
     }
 }

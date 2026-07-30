@@ -372,11 +372,8 @@ struct ComparisonMapView: View {
 
                 Slider(
                     value: Binding(
-                        get: { appState.comparisonViewModel.selectedAlignedProgressMeters },
-                        set: {
-                            appState.comparisonViewModel.selectedAlignedProgressMeters = $0
-                            appState.comparisonViewModel.clampAlignedProgress()
-                        }
+                        get: { appState.comparisonViewModel.clampedAlignedProgressMeters },
+                        set: { appState.comparisonViewModel.setAlignedProgressFromUser($0) }
                     ),
                     in: 0...max(total, 1),
                     step: max(total / 500, 1)

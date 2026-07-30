@@ -17,8 +17,8 @@ let cxxInteropSettings: [SwiftSetting] = [
 var targets: [Target] = [
     // Portable C++23 computational engine foundation. It provides engine
     // identity, route input values, geodesy primitives, a transitional bulk
-    // step-distance boundary, and the production combined route-quality
-    // geometry kernel.
+    // step-distance boundary, and the production route-quality, personal
+    // heatmap coverage, and constrained-DTW path kernels.
     // No Apple frameworks, Foundation, Objective-C, or third-party deps.
     // Native C++ tests live under RunPlayEngineCpp/Tests/ and are built by
     // ./scripts/run-cpp-engine-tests.sh (clang++). The SwiftPM test target below

@@ -123,7 +123,9 @@
 - [x] Migrate coordinate-derived route step distances into C++ behind one bulk call (first production cutover)
 - [x] Migrate route-quality geometry into **one** combined C++ kernel: distance relationships, isolated coordinate-outlier evidence, implicit-gap inference, segment compaction, supplied-distance validity, per-segment distance-source selection, and cumulative normalized distances
 - [x] Migrate per-workout personal heatmap route coverage into one bulk C++ kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, supercover traversal, per-workout de-duplication, and deterministic cell ordering
-- [ ] Migrate route projection services, comparison, and cross-workout heatmap aggregation once bulk boundaries exist
+- [x] Migrate the Route-Aware **constrained DTW path kernel** into one bulk C++ call per alignment attempt: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed tie priority, warp-run capping, endpoint selection, and path reconstruction
+- [ ] Take a **profiling-driven cross-workout heatmap aggregation decision** before migrating library-level aggregation
+- [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
 Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation, elevation,
@@ -136,6 +138,24 @@ normalized cumulative distances through one bulk call.
 The standalone step-distance boundary remains transitional/test-focused. No
 scalar per-point Swift/C++ production calls are allowed. No persisted schema,
 analysis version, UI, or importer behaviour changes in this cutover.
+
+#### Route-Aware comparison ownership after the DTW cutover
+
+C++ performs the bounded band-packed constrained-DTW path solve for Route-Aware
+comparison.
+
+Swift continues to build the compact alignment samples, detect route direction,
+construct alignment blocks, calculate diagnostics and quality, maintain the
+in-memory cache and task lifecycle, and publish the public alignment models.
+
+Bounds are maximum 2,000 samples per route and maximum 4,000,000 band cells.
+One call occurs per alignment attempt; no calls occur per dynamic-programming
+cell or row. Both inputs and the path output are Swift-owned buffers; C++
+retains no pointer and performs no callback, and on any failure status the
+output buffer is left completely unchanged. Cancellation is checked before and
+after the native call and during conversion and output translation, never
+inside the native call. Alignment sample construction, aligned metrics, and the
+remaining comparison logic have not migrated.
 
 #### Why geometry stages migrated as one phase
 

@@ -1,27 +1,48 @@
 import Foundation
+@testable import RunPlayCore
 
-/// Constrained dynamic time warping over route geometry only.
+/// Complete pre-migration `ConstrainedDynamicTimeWarpingAligner`, transcribed
+/// into the test target so end-to-end `RouteAlignmentSnapshot` parity can be
+/// proven against the migrated production aligner.
 ///
-/// Swift builds the compact alignment samples, detects route direction, and
-/// turns the matched index path into blocks, diagnostics, and quality. The
-/// band-packed dynamic-programming solve itself runs in the C++23 engine
-/// through `RunPlayRouteAlignmentDtwBridge`: one native call per alignment
-/// attempt, never one per row, cell, or sample.
+/// Everything outside the dynamic-programming solve — the direction probe,
+/// block construction, monotonic enforcement, diagnostics, quality
+/// classification, warnings, and the `align` entry point with its error
+/// mapping — is a faithful copy of the pre-migration source. It uses the real
+/// `RouteAlignmentSampleBuilder`, exactly as the original did.
 ///
-/// Complexity: O(samples × bandWidth) time and memory for active DP rows /
-/// backpointers. Does not allocate an unrestricted full n×m matrix.
+/// Two deliberate substitutions, and nothing else:
 ///
-/// Alignment cost uses horizontal separation, optional heading disagreement,
-/// normalized progress difference, and non-diagonal transition penalties.
-/// Elapsed time, pace, HR, elevation, and cadence are never cost inputs.
-public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sendable {
+/// 1. The inline band packing, DP sweep, endpoint selection, and path
+///    reconstruction are delegated to `SwiftConstrainedDtwPathOracle`, which is
+///    itself a verbatim transcription of that same pre-migration code. Its
+///    `.resourceLimit` and `.noPath` outcomes map onto the two snapshots the
+///    original produced at those exact return points.
+/// 2. `SwiftConstrainedDtwPathCell` values are converted into the local
+///    `PathCell` shape that the transcribed `buildBlocks` and `makeDiagnostics`
+///    consume.
+///
+/// This type never calls `ConstrainedDynamicTimeWarpingAligner` or
+/// `RunPlayRouteAlignmentDtwBridge`, so a shared-helper regression cannot hide
+/// a snapshot mismatch.
+///
+/// The pre-migration cancellation checks that lived *inside* the DP sweep and
+/// the reconstruction loop are not reproduced, because the delegated solver has
+/// no cancellation hook. Every cancellation check outside the solve is kept, so
+/// an always-cancelled run still matches production. Parity fixtures therefore
+/// use a non-cancelling closure or one that cancels before the solve.
+///
+/// The pre-migration `pointCost` and `maxPrefixSuffixSamples` helpers are not
+/// duplicated here: they were used only by the delegated DP, and
+/// `SwiftConstrainedDtwPathOracle` carries its own verbatim copies.
+struct PreMigrationRouteAlignerOracle: RouteComparisonAligning, Sendable {
     private let sampleBuilder: RouteAlignmentSampleBuilder
 
-    public init(sampleBuilder: RouteAlignmentSampleBuilder = RouteAlignmentSampleBuilder()) {
+    init(sampleBuilder: RouteAlignmentSampleBuilder = RouteAlignmentSampleBuilder()) {
         self.sampleBuilder = sampleBuilder
     }
 
-    public func align(
+    func align(
         primary: RunWorkout,
         comparison: RunWorkout,
         primaryContext: WorkoutAnalysisContext,
@@ -209,6 +230,18 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
 
     // MARK: - DTW
 
+    private enum StepKind: UInt8 {
+        case diagonal = 0
+        case primaryOnly = 1
+        case comparisonOnly = 2
+    }
+
+    private struct PathCell {
+        let i: Int
+        let j: Int
+        let step: StepKind
+    }
+
     private func runDTW(
         samples: RouteAlignmentSamplePair,
         direction: RouteAlignmentDirection,
@@ -231,48 +264,41 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             )
         }
 
-        if isCancelled() {
-            return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
-        }
+        // Substituted solve: identical band packing, DP sweep, endpoint choice,
+        // and reconstruction, transcribed into the independent path oracle.
+        let solved = SwiftConstrainedDtwPathOracle.solve(
+            primary: primary,
+            comparison: comparison,
+            primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
+            comparisonRouteDistanceMeters: samples.comparisonRouteDistanceMeters,
+            effectiveSampleIntervalMeters: samples.effectiveSampleIntervalMeters,
+            policy: policy
+        )
 
-        // Band packing, the dynamic-programming sweep, endpoint selection, and
-        // path reconstruction happen in one bounded C++23 call. There is no
-        // native call per row, cell, or sample, and no callback into Swift.
-        let solved: RunPlayRouteAlignmentDtwResult
-        do {
-            solved = try RunPlayRouteAlignmentDtwBridge.solve(
-                primary: primary,
-                comparison: comparison,
-                primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
-                comparisonRouteDistanceMeters: samples.comparisonRouteDistanceMeters,
-                effectiveSampleIntervalMeters: samples.effectiveSampleIntervalMeters,
-                policy: policy,
-                isCancelled: isCancelled
-            )
-        } catch is CancellationError {
-            throw RouteAlignmentCancellation()
-        }
-
-        if isCancelled() {
-            return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
-        }
-
-        let path: [RunPlayRouteAlignmentDtwPathCell]
+        let path: [PathCell]
         switch solved {
         case .resourceLimit:
+            // Pre-migration returned this snapshot at both band-budget checks.
             return .unavailable(
                 reason: .resourceLimit,
                 diagnostics: diagnostics(samples: samples, direction: direction, policy: policy),
                 policyVersion: policy.algorithmVersion
             )
         case .noPath:
+            // Pre-migration returned this snapshot when no finite endpoint existed.
             return .unavailable(
                 reason: .routesTooFarApart,
                 diagnostics: diagnostics(samples: samples, direction: direction, policy: policy),
                 policyVersion: policy.algorithmVersion
             )
-        case .success(let matched, _, _, _):
-            path = matched
+        case .success(let cells, _, _, _):
+            path = cells.map { cell in
+                PathCell(
+                    i: cell.primaryIndex,
+                    j: cell.comparisonIndex,
+                    step: StepKind(rawValue: cell.step.rawValue) ?? .diagonal
+                )
+            }
         }
 
         // Drop free prefix/suffix warp-only edges that do not contribute geometry.
@@ -292,10 +318,10 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             blocks: built.blocks,
             primaryMatchedDistance: built.primaryMatchedDistance,
             comparisonMatchedDistance: built.comparisonMatchedDistance,
-            primaryUnmatchedPrefix: primary[path.first?.primaryIndex ?? 0].distanceFromStartMeters,
-            comparisonUnmatchedPrefix: comparison[path.first?.comparisonIndex ?? 0].distanceFromStartMeters,
-            primaryUnmatchedSuffix: samples.primaryRouteDistanceMeters - primary[path.last?.primaryIndex ?? (n - 1)].distanceFromStartMeters,
-            comparisonUnmatchedSuffix: samples.comparisonRouteDistanceMeters - comparison[path.last?.comparisonIndex ?? (m - 1)].distanceFromStartMeters
+            primaryUnmatchedPrefix: primary[path.first?.i ?? 0].distanceFromStartMeters,
+            comparisonUnmatchedPrefix: comparison[path.first?.j ?? 0].distanceFromStartMeters,
+            primaryUnmatchedSuffix: samples.primaryRouteDistanceMeters - primary[path.last?.i ?? (n - 1)].distanceFromStartMeters,
+            comparisonUnmatchedSuffix: samples.comparisonRouteDistanceMeters - comparison[path.last?.j ?? (m - 1)].distanceFromStartMeters
         )
 
         let availability = classify(
@@ -335,7 +361,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
     }
 
     private func buildBlocks(
-        path: [RunPlayRouteAlignmentDtwPathCell],
+        path: [PathCell],
         primary: [RouteAlignmentSample],
         comparison: [RouteAlignmentSample],
         policy: RouteAlignmentPolicy
@@ -347,10 +373,10 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         var blocks: [RouteAlignmentBlock] = []
         var currentAnchors: [RouteAlignmentAnchor] = []
         var alignedProgress = 0.0
-        var lastPrimaryDistance = primary[path[0].primaryIndex].distanceFromStartMeters
-        var lastComparisonDistance = comparison[path[0].comparisonIndex].distanceFromStartMeters
-        var lastPrimarySegment = primary[path[0].primaryIndex].routeSegmentIndex
-        var lastComparisonSegment = comparison[path[0].comparisonIndex].routeSegmentIndex
+        var lastPrimaryDistance = primary[path[0].i].distanceFromStartMeters
+        var lastComparisonDistance = comparison[path[0].j].distanceFromStartMeters
+        var lastPrimarySegment = primary[path[0].i].routeSegmentIndex
+        var lastComparisonSegment = comparison[path[0].j].routeSegmentIndex
         var primaryMatched = 0.0
         var comparisonMatched = 0.0
 
@@ -365,8 +391,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         }
 
         for (index, cell) in path.enumerated() {
-            let pSample = primary[cell.primaryIndex]
-            let cSample = comparison[cell.comparisonIndex]
+            let pSample = primary[cell.i]
+            let cSample = comparison[cell.j]
             let segmentBreak = pSample.routeSegmentIndex != lastPrimarySegment
                 || cSample.routeSegmentIndex != lastComparisonSegment
 
@@ -603,7 +629,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         samples: RouteAlignmentSamplePair,
         direction: RouteAlignmentDirection,
         policy: RouteAlignmentPolicy,
-        path: [RunPlayRouteAlignmentDtwPathCell],
+        path: [PathCell],
         blocks: [RouteAlignmentBlock],
         primaryMatchedDistance: Double,
         comparisonMatchedDistance: Double,

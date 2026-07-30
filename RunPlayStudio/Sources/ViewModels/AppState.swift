@@ -321,7 +321,7 @@ class AppState: ObservableObject {
                 peerWorkoutID: peer.id,
                 distanceMeters: clampedComparisonDistanceMeters,
                 alignmentModeRaw: comparisonViewModel.alignmentMode.rawValue,
-                alignedProgressMeters: comparisonViewModel.clampedAlignedProgressMeters
+                alignedProgressMeters: comparisonViewModel.persistableAlignedProgressMeters
             )
         }()
         let replay: AppSessionReplayState? = selectedWorkout.map {
@@ -444,8 +444,7 @@ class AppState: ObservableObject {
                     rawValue: snapshot.comparison?.alignmentModeRaw ?? ComparisonAlignmentMode.distance.rawValue
                 ) ?? .distance
                 comparisonViewModel.restoreAlignmentMode(restoredMode)
-                comparisonViewModel.selectedAlignedProgressMeters =
-                    snapshot.comparison?.alignedProgressMeters ?? 0
+                let restoredAlignedProgress = snapshot.comparison?.alignedProgressMeters ?? 0
                 workspaceMode = .comparison
                 clampComparisonDistance()
                 // Recompute Route-Aware from current workout data; do not trust
@@ -456,6 +455,12 @@ class AppState: ObservableObject {
                         primaryContext: analysisContext(for: pair.primary),
                         comparisonContext: analysisContext(for: pair.comparison)
                     )
+                }
+                // `ensureRouteAlignment` may publish a cached result
+                // synchronously. Restore the scalar selection afterwards, then
+                // clamp now for a cache hit or when the async result publishes.
+                comparisonViewModel.selectedAlignedProgressMeters = restoredAlignedProgress
+                if comparisonViewModel.routeAlignmentLoadState == .ready {
                     comparisonViewModel.clampAlignedProgress()
                 }
             } else {
@@ -1388,6 +1393,12 @@ class AppState: ObservableObject {
             comparisonSelectionMessage = "Choose a different run to compare."
             return
         }
+        // SwiftUI pickers may write their already-selected value while
+        // reconciling a restored view. Treat that as a no-op so a valid
+        // restored Route-Aware position is not cleared and recomputed.
+        if workspaceMode == .comparison, comparisonWorkout?.id == workout.id {
+            return
+        }
 
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
@@ -1558,7 +1569,6 @@ class AppState: ObservableObject {
         if selectedComparisonDistanceMeters < 0 {
             selectedComparisonDistanceMeters = 0
         }
-        comparisonViewModel.clampAlignedProgress()
         requestSessionSave()
     }
 
