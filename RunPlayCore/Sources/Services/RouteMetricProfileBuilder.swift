@@ -32,7 +32,61 @@ public struct RouteMetricProfileBuilder: Sendable {
         policy: RouteMetricColorPolicy = .runningDefault,
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> RouteMetricProfile {
-        if isCancelled() { throw CancellationError() }
+        var profile: RouteMetricPhaseProfile? = nil
+        return try build(
+            routePoints: routePoints,
+            context: context,
+            mode: mode,
+            policy: policy,
+            isCancelled: isCancelled,
+            profile: &profile
+        )
+    }
+
+    /// Test-only profiled path. Shares the production implementation.
+    func buildCollectingProfile(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        mode: WorkoutRouteColorMode,
+        policy: RouteMetricColorPolicy = .runningDefault,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> (profile: RouteMetricProfile, phaseProfile: RouteMetricPhaseProfile) {
+        var phase: RouteMetricPhaseProfile? = RouteMetricPhaseProfile()
+        let wallStart = ContinuousClock.now
+        let built = try build(
+            routePoints: routePoints,
+            context: context,
+            mode: mode,
+            policy: policy,
+            isCancelled: isCancelled,
+            profile: &phase
+        )
+        var result = phase ?? RouteMetricPhaseProfile()
+        result.wallNanoseconds = HotspotProfileClock.nanoseconds(
+            from: wallStart,
+            to: ContinuousClock.now
+        )
+        return (built, result)
+    }
+
+    private func build(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        mode: WorkoutRouteColorMode,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteMetricPhaseProfile?
+    ) throws -> RouteMetricProfile {
+        if profile != nil {
+            let start = ContinuousClock.now
+            if isCancelled() { throw CancellationError() }
+            profile?.inputValidationNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else if isCancelled() {
+            throw CancellationError()
+        }
 
         switch mode {
         case .solid:
@@ -42,21 +96,24 @@ public struct RouteMetricProfileBuilder: Sendable {
                 routePoints: routePoints,
                 context: context,
                 policy: policy,
-                isCancelled: isCancelled
+                isCancelled: isCancelled,
+                profile: &profile
             )
         case .heartRate:
             return try heartRateProfile(
                 routePoints: routePoints,
                 context: context,
                 policy: policy,
-                isCancelled: isCancelled
+                isCancelled: isCancelled,
+                profile: &profile
             )
         case .correctedElevation:
             return try elevationProfile(
                 routePoints: routePoints,
                 context: context,
                 policy: policy,
-                isCancelled: isCancelled
+                isCancelled: isCancelled,
+                profile: &profile
             )
         }
     }
@@ -164,34 +221,87 @@ public struct RouteMetricProfileBuilder: Sendable {
         routePoints: [RoutePoint],
         context: WorkoutAnalysisContext,
         policy: RouteMetricColorPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteMetricPhaseProfile?
     ) throws -> RouteMetricProfile {
-        let raw = try rawIntervals(
-            routePoints: routePoints,
-            isCancelled: isCancelled
-        ) { start, end, startIndex, endIndex in
-            let distance = end.distanceFromStartMeters - start.distanceFromStartMeters
-            guard distance > 0 else { return nil }
-
-            let startActive = context.timeline.activeSeconds(atPointIndex: startIndex) ?? 0
-            let endActive = context.timeline.activeSeconds(atPointIndex: endIndex) ?? 0
-            let activeDelta = endActive - startActive
-            guard activeDelta > 0, activeDelta.isFinite else { return nil }
-
-            let pace = (activeDelta / distance) * 1000.0
-            guard pace.isFinite,
-                  policy.validPaceRangeSecondsPerKm.contains(pace)
-            else { return nil }
-            return pace
+        let raw: [RawInterval]
+        if profile != nil {
+            let start = ContinuousClock.now
+            raw = try rawIntervals(
+                routePoints: routePoints,
+                isCancelled: isCancelled
+            ) { startPoint, endPoint, startIndex, endIndex in
+                Self.paceMetric(
+                    start: startPoint,
+                    end: endPoint,
+                    startIndex: startIndex,
+                    endIndex: endIndex,
+                    context: context,
+                    policy: policy
+                )
+            }
+            profile?.metricExtractionNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            raw = try rawIntervals(
+                routePoints: routePoints,
+                isCancelled: isCancelled
+            ) { startPoint, endPoint, startIndex, endIndex in
+                Self.paceMetric(
+                    start: startPoint,
+                    end: endPoint,
+                    startIndex: startIndex,
+                    endIndex: endIndex,
+                    context: context,
+                    policy: policy
+                )
+            }
         }
 
-        let smoothed = try smoothDistanceDomain(
-            rawValues: raw.map(\.metricValue),
-            intervals: raw,
-            halfWindowMeters: policy.paceSmoothingHalfWindowMeters,
-            isCancelled: isCancelled
-        )
+        let smoothed: [Double?]
+        if profile != nil {
+            let start = ContinuousClock.now
+            smoothed = try smoothDistanceDomain(
+                rawValues: raw.map(\.metricValue),
+                intervals: raw,
+                halfWindowMeters: policy.paceSmoothingHalfWindowMeters,
+                isCancelled: isCancelled
+            )
+            profile?.smoothingNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            smoothed = try smoothDistanceDomain(
+                rawValues: raw.map(\.metricValue),
+                intervals: raw,
+                halfWindowMeters: policy.paceSmoothingHalfWindowMeters,
+                isCancelled: isCancelled
+            )
+        }
 
+        if profile != nil {
+            let start = ContinuousClock.now
+            let result = try finalizeProfile(
+                mode: .pace,
+                routePoints: routePoints,
+                rawIntervals: raw,
+                smoothedValues: smoothed,
+                direction: .lowerIsBetter,
+                policy: policy,
+                formatLower: { DisplayFormatter.formatPace($0) },
+                formatMedian: { DisplayFormatter.formatPace($0) },
+                formatUpper: { DisplayFormatter.formatPace($0) },
+                isCancelled: isCancelled
+            )
+            profile?.scaleBucketNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+            return result
+        }
         return try finalizeProfile(
             mode: .pace,
             routePoints: routePoints,
@@ -206,47 +316,115 @@ public struct RouteMetricProfileBuilder: Sendable {
         )
     }
 
+    private static func paceMetric(
+        start: RoutePoint,
+        end: RoutePoint,
+        startIndex: Int,
+        endIndex: Int,
+        context: WorkoutAnalysisContext,
+        policy: RouteMetricColorPolicy
+    ) -> Double? {
+        let distance = end.distanceFromStartMeters - start.distanceFromStartMeters
+        guard distance > 0 else { return nil }
+
+        let startActive = context.timeline.activeSeconds(atPointIndex: startIndex) ?? 0
+        let endActive = context.timeline.activeSeconds(atPointIndex: endIndex) ?? 0
+        let activeDelta = endActive - startActive
+        guard activeDelta > 0, activeDelta.isFinite else { return nil }
+
+        let pace = (activeDelta / distance) * 1000.0
+        guard pace.isFinite,
+              policy.validPaceRangeSecondsPerKm.contains(pace)
+        else { return nil }
+        return pace
+    }
+
     // MARK: - Heart rate
 
     private func heartRateProfile(
         routePoints: [RoutePoint],
         context: WorkoutAnalysisContext,
         policy: RouteMetricColorPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteMetricPhaseProfile?
     ) throws -> RouteMetricProfile {
         let timeline = context.timeline
-        let raw = try rawIntervals(
-            routePoints: routePoints,
-            isCancelled: isCancelled
-        ) { start, end, startIndex, endIndex in
-            let hr1 = validatedHR(start.heartRateBPM, policy: policy)
-            let hr2 = validatedHR(end.heartRateBPM, policy: policy)
-
-            if let h1 = hr1, let h2 = hr2 {
-                return (h1 + h2) / 2
+        let raw: [RawInterval]
+        if profile != nil {
+            let start = ContinuousClock.now
+            raw = try rawIntervals(routePoints: routePoints, isCancelled: isCancelled) {
+                startPoint, endPoint, startIndex, endIndex in
+                Self.heartRateMetric(
+                    start: startPoint,
+                    end: endPoint,
+                    startIndex: startIndex,
+                    endIndex: endIndex,
+                    timeline: timeline,
+                    policy: policy,
+                    validatedHR: { self.validatedHR($0, policy: policy) }
+                )
             }
-
-            // Adjacent same-segment pairs may use a single valid endpoint when
-            // the interval elapsed span is within the short-gap policy. Longer
-            // sampling gaps remain no-data rather than inventing HR. Intervals
-            // with neither endpoint never receive a median fill.
-            guard let single = hr1 ?? hr2 else { return nil }
-            let startElapsed = timeline.elapsedSeconds(atPointIndex: startIndex) ?? start.elapsedSeconds
-            let endElapsed = timeline.elapsedSeconds(atPointIndex: endIndex) ?? end.elapsedSeconds
-            let gap = abs(endElapsed - startElapsed)
-            guard gap.isFinite, gap <= policy.maximumHeartRateEndpointGapSeconds else {
-                return nil
+            profile?.metricExtractionNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            raw = try rawIntervals(routePoints: routePoints, isCancelled: isCancelled) {
+                startPoint, endPoint, startIndex, endIndex in
+                Self.heartRateMetric(
+                    start: startPoint,
+                    end: endPoint,
+                    startIndex: startIndex,
+                    endIndex: endIndex,
+                    timeline: timeline,
+                    policy: policy,
+                    validatedHR: { self.validatedHR($0, policy: policy) }
+                )
             }
-            return single
         }
 
-        let smoothed = try smoothDistanceDomain(
-            rawValues: raw.map(\.metricValue),
-            intervals: raw,
-            halfWindowMeters: policy.heartRateSmoothingHalfWindowMeters,
-            isCancelled: isCancelled
-        )
+        let smoothed: [Double?]
+        if profile != nil {
+            let start = ContinuousClock.now
+            smoothed = try smoothDistanceDomain(
+                rawValues: raw.map(\.metricValue),
+                intervals: raw,
+                halfWindowMeters: policy.heartRateSmoothingHalfWindowMeters,
+                isCancelled: isCancelled
+            )
+            profile?.smoothingNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            smoothed = try smoothDistanceDomain(
+                rawValues: raw.map(\.metricValue),
+                intervals: raw,
+                halfWindowMeters: policy.heartRateSmoothingHalfWindowMeters,
+                isCancelled: isCancelled
+            )
+        }
 
+        if profile != nil {
+            let start = ContinuousClock.now
+            let result = try finalizeProfile(
+                mode: .heartRate,
+                routePoints: routePoints,
+                rawIntervals: raw,
+                smoothedValues: smoothed,
+                direction: .higherIsMore,
+                policy: policy,
+                formatLower: { DisplayFormatter.formatHeartRate($0) },
+                formatMedian: { DisplayFormatter.formatHeartRate($0) },
+                formatUpper: { DisplayFormatter.formatHeartRate($0) },
+                isCancelled: isCancelled
+            )
+            profile?.scaleBucketNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+            return result
+        }
         return try finalizeProfile(
             mode: .heartRate,
             routePoints: routePoints,
@@ -261,13 +439,40 @@ public struct RouteMetricProfileBuilder: Sendable {
         )
     }
 
+    private static func heartRateMetric(
+        start: RoutePoint,
+        end: RoutePoint,
+        startIndex: Int,
+        endIndex: Int,
+        timeline: WorkoutTimeline,
+        policy: RouteMetricColorPolicy,
+        validatedHR: (Double?) -> Double?
+    ) -> Double? {
+        let hr1 = validatedHR(start.heartRateBPM)
+        let hr2 = validatedHR(end.heartRateBPM)
+
+        if let h1 = hr1, let h2 = hr2 {
+            return (h1 + h2) / 2
+        }
+
+        guard let single = hr1 ?? hr2 else { return nil }
+        let startElapsed = timeline.elapsedSeconds(atPointIndex: startIndex) ?? start.elapsedSeconds
+        let endElapsed = timeline.elapsedSeconds(atPointIndex: endIndex) ?? end.elapsedSeconds
+        let gap = abs(endElapsed - startElapsed)
+        guard gap.isFinite, gap <= policy.maximumHeartRateEndpointGapSeconds else {
+            return nil
+        }
+        return single
+    }
+
     // MARK: - Corrected elevation
 
     private func elevationProfile(
         routePoints: [RoutePoint],
         context: WorkoutAnalysisContext,
         policy: RouteMetricColorPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteMetricPhaseProfile?
     ) throws -> RouteMetricProfile {
         let elevation = context.elevationProfile
         guard elevation.hasMeaningfulElevation else {
@@ -289,36 +494,94 @@ public struct RouteMetricProfileBuilder: Sendable {
                 isCancelled: isCancelled
             )
         }
-        var elevationSamplesByPointID: [UUID: ElevationProfileSample] = [:]
-        elevationSamplesByPointID.reserveCapacity(elevation.samples.count)
-        for sample in elevation.samples {
-            elevationSamplesByPointID[sample.routePointID] = sample
-        }
-        let raw = try rawIntervals(
-            routePoints: routePoints,
-            isCancelled: isCancelled
-        ) { start, end, startIndex, endIndex in
-            guard let e1 = correctedAltitude(
-                at: startIndex,
-                point: start,
-                profile: elevation,
-                samplesByPointID: elevationSamplesByPointID
-            ),
-            let e2 = correctedAltitude(
-                at: endIndex,
-                point: end,
-                profile: elevation,
-                samplesByPointID: elevationSamplesByPointID
-            ) else {
-                return nil
+        let raw: [RawInterval]
+        if profile != nil {
+            let start = ContinuousClock.now
+            var elevationSamplesByPointID: [UUID: ElevationProfileSample] = [:]
+            elevationSamplesByPointID.reserveCapacity(elevation.samples.count)
+            for sample in elevation.samples {
+                elevationSamplesByPointID[sample.routePointID] = sample
             }
-            return (e1 + e2) / 2
+            raw = try rawIntervals(
+                routePoints: routePoints,
+                isCancelled: isCancelled
+            ) { startPoint, endPoint, startIndex, endIndex in
+                guard let e1 = self.correctedAltitude(
+                    at: startIndex,
+                    point: startPoint,
+                    profile: elevation,
+                    samplesByPointID: elevationSamplesByPointID
+                ),
+                let e2 = self.correctedAltitude(
+                    at: endIndex,
+                    point: endPoint,
+                    profile: elevation,
+                    samplesByPointID: elevationSamplesByPointID
+                ) else {
+                    return nil
+                }
+                return (e1 + e2) / 2
+            }
+            profile?.metricExtractionNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            var elevationSamplesByPointID: [UUID: ElevationProfileSample] = [:]
+            elevationSamplesByPointID.reserveCapacity(elevation.samples.count)
+            for sample in elevation.samples {
+                elevationSamplesByPointID[sample.routePointID] = sample
+            }
+            raw = try rawIntervals(
+                routePoints: routePoints,
+                isCancelled: isCancelled
+            ) { startPoint, endPoint, startIndex, endIndex in
+                guard let e1 = self.correctedAltitude(
+                    at: startIndex,
+                    point: startPoint,
+                    profile: elevation,
+                    samplesByPointID: elevationSamplesByPointID
+                ),
+                let e2 = self.correctedAltitude(
+                    at: endIndex,
+                    point: endPoint,
+                    profile: elevation,
+                    samplesByPointID: elevationSamplesByPointID
+                ) else {
+                    return nil
+                }
+                return (e1 + e2) / 2
+            }
         }
 
         // Elevation is already corrected/smoothed in ElevationProfile; do not
         // re-smooth. Pass raw values through as the smoothed series.
         let values = raw.map(\.metricValue)
+        if profile != nil {
+            profile?.smoothingNanoseconds = 0
+        }
 
+        if profile != nil {
+            let start = ContinuousClock.now
+            let result = try finalizeProfile(
+                mode: .correctedElevation,
+                routePoints: routePoints,
+                rawIntervals: raw,
+                smoothedValues: values,
+                direction: .higherIsMore,
+                policy: policy,
+                minimumScaleSpan: policy.minimumElevationSpanMeters,
+                formatLower: { DisplayFormatter.formatElevation($0) },
+                formatMedian: { DisplayFormatter.formatElevation($0) },
+                formatUpper: { DisplayFormatter.formatElevation($0) },
+                isCancelled: isCancelled
+            )
+            profile?.scaleBucketNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+            return result
+        }
         return try finalizeProfile(
             mode: .correctedElevation,
             routePoints: routePoints,

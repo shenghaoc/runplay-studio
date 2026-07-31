@@ -362,9 +362,39 @@ losing per-workout cancellation. A per-workout call would require either a
 retained native accumulator, which contradicts the contract that C++ retains
 nothing between calls, or a Swift-owned open-addressed table plus a rehash
 boundary. This bounded Swift phase addresses the measured cost without adding
-any of those contracts. Profile the remaining active production hotspots before
-selecting another migration; legacy SceneKit projection stays low priority
-unless it regains a shipped caller. See [phase-plan.md](phase-plan.md).
+any of those contracts. See [phase-plan.md](phase-plan.md).
+
+#### Remaining-core hotspot profile conclusion
+
+`scripts/run-remaining-core-hotspot-profile.sh` profiles the remaining active
+production paths with production-equivalent Mode A/B decomposition, exact
+output digests, a 5% accounting-residue gate, and statistical release timings.
+Machine-specific milliseconds live only in profile output, not here.
+
+**Selected next boundary:** `SegmentDetector` as one bulk C++23 kernel.
+Additive analysis profiles show segment detection dominates post-normalization
+analysis wall time on large and product-limit routes, while ordinary 1k-point
+workouts remain well under a millisecond end-to-end.
+
+**Intentional remaining Swift ownership:**
+
+- importer decode (Foundation JSON / XMLParser / FIT binary framing);
+- `WorkoutLibraryQueryService` over lightweight library entries;
+- `RouteAlignmentSampleBuilder` and Swift post-DTW block/diagnostics work
+  (DTW path solve is already native);
+- route-metric label formatting and Platform map-line presentation;
+- cancellation, identity, Codable models, and persistence.
+
+**Why rejected candidates stay Swift (for now):** MovementProfile and
+ElevationProfile are real numeric work but are a small share of analysis wall
+relative to SegmentDetector; importer parsers are not portable pure-numeric
+kernels; MetricSmoother alone is too small; SplitCalculator is modest once
+context is shared. A combined full-analysis kernel is deferred until the
+dominant SegmentDetector boundary is reviewed as its own phase.
+
+Legacy SceneKit projection stays low priority unless it regains a shipped
+caller. The portable-core migration ends with a mandatory cleanup phase
+(transitional boundaries, oracles, sanitizers, package-consumer, docs).
 
 Timings are machine-specific and live in benchmark and profile output, not in
 this document.

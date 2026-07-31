@@ -1,5 +1,13 @@
 # Requirements: Remaining Core Hotspot Profile
 
+## Implementation status
+
+These requirements describe the **full required scope**. The PR 91 completion
+implements them; they are not weakened to match a preliminary harness. Where XML
+importers interleave parse with object construction, a combined phase
+`XML parse + route/lap construction` is permitted and required (no fabricated
+separability).
+
 ## Type
 
 Profiling and roadmap selection only. No migration target is assumed before measurement. Production behavior, public APIs, and persisted models remain unchanged.

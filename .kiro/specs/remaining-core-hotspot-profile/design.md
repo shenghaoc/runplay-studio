@@ -1,172 +1,103 @@
-# Design: Remaining Core Hotspot Profile
+# Design: Remaining Core Hotspot Profile (final)
 
-## Profiling Harness Architecture
+## Architecture
 
-Follows the established `PersonalHeatmapPipelineProfile` pattern:
+Follows the Personal Heatmap profiler pattern, extended for multi-family coverage.
 
-- Single XCTestCase class that skips unless `RUNPLAY_CORE_HOTSPOT_PROFILE=1`
-- Two modes per candidate: Mode A (unmodified public entrypoint) and Mode B (profiled reconstruction with phase timings)
-- Parity assertions between Mode A and Mode B outputs
-- Markdown-compatible table output via `print()`
-- Script `scripts/run-remaining-core-hotspot-profile.sh` wraps release build + test execution
+### Components
 
-## Environment Variables
+| Component | Role |
+|---|---|
+| `RemainingCoreHotspotProfile` | XCTest driver; one method per family; no aggregator |
+| `Profiling/HotspotProfilingSupport.swift` | `ContinuousClock` stats, accounting, memory snapshots, family filter |
+| `Profiling/HotspotProfilingFixtures.swift` | Deterministic A/B/C/D/E synthetic fixtures |
+| `Profiling/HotspotProfilingDigests.swift` | Exact Mode A/B digests (import digests omit minted UUIDs) |
+| `Profiling/FITProfilingFixtureBuilder.swift` | Reuses `FITMultiSessionFixtureBuilder` |
+| `RemainingPlatformHotspotProfile` | Map-line coalescing + Strava archive path |
+| `scripts/run-remaining-core-hotspot-profile.sh` | Release build, Core + Platform invocation, nonzero on failure |
 
-- `RUNPLAY_CORE_HOTSPOT_PROFILE=1` — enable the profile (skips otherwise)
-- `RUNPLAY_PROFILE_FAMILY=analysis|alignment|metrics|import|all` — filter candidate families (default: all)
-- `RUNPLAY_PROFILE_PRODUCT_LIMIT=1` — enable 1M-point product-limit probes
+### Production-equivalent Mode A / Mode B
 
-## Fixture Generation
+For decomposed candidates, production entry points gain **internal** profiled
+twins (`analyzeCollectingProfile`, `normalizeAndAnalyzeCollectingProfile`,
+`buildCollectingProfile`, `alignCollectingProfile`) that:
 
-All fixtures are deterministic and synthetic. No private workout data.
+1. share the same implementation as the public path;
+2. read `ContinuousClock` only when the profiled entry is used;
+3. produce pure-Swift phase timing structs (no C++ types);
+4. are referenced only from tests (enforced by `validate-cpp-boundaries.sh`).
 
-### Analysis Fixtures
+Production public entry points pass a `nil` profile pointer and perform no clock
+reads on the measurement path.
 
-Synthetic route generation using `Fixtures.makeSyntheticRoute(pointCount:segments:laps:stationary:)`:
+### Nested phases
 
-- A1: 1000 points, 1 segment, continuous movement (~5K shape)
-- A2: 100_000 points, 5 segments, pauses, elevation noise
-- A3: 100_000 points, 1000 tiny segments
-- A4: 500 points, mixed stationary/moving
-- A5: 10_000 points, altitude-heavy (sinusoidal elevation profile)
-- A6: 5_000 points, 50 recorded laps
-- A7: 1_000_000 points, 1 segment (product-limit probe)
+Sample-builder subphases are nested under the sample-builder total and are not
+double-counted in top-level accounting. Elevation inside route quality for
+`normalizeAndAnalyze` is attributed to the route-quality phase, not re-added.
 
-### Alignment Fixtures
+### Duplicate execution prevention
 
-- B1: Two 500-point similar routes (small variations)
-- B2: Two 2_000-point max-sample routes
-- B3: Two 50_000-point raw routes that adaptively coarsen to 2K samples
-- B4: Two 2_000-point routes with 50 segments each
-- B5: Two routes with geographic noise and prefix offset
+- No `testAllFamilies`.
+- Each family method records `ProfileFamilyInvocationCounter` once.
+- Family filter (`RUNPLAY_PROFILE_FAMILY`) returns early without work when unmatched.
 
-### Route Metric Fixtures
+### Statistics
 
-- C1: 100_000 points with pace data
-- C2: 100_000 points with HR gaps
-- C3: 10_000 points with sinusoidal elevation
-- C4: 100_000 points with many segments
-- C5: 1_000_000 points (product-limit)
+| Size | Warm-ups | Measured |
+|---|---:|---:|
+| standard | 5 | 20 |
+| large | 2 | 5 |
+| productLimit | 1 | 3 |
 
-### Import Fixtures
+Report median / p90 / min / max. Fixture generation is outside the measured region.
 
-Generated from synthetic data, serialized to temp files:
+### Parity
 
-For each format (JSON, GPX, TCX, FIT):
-- D1: Small realistic (<1000 points)
-- D2: 10_000 points
-- D3: 100_000 points
-- D4: Many segments
-- D5: With metrics and laps
-- D6: Malformed input (rejection test)
+Mode A output digest == Mode B output digest for every decomposed fixture.
+Import parity uses digests that exclude freshly minted workout/point IDs while
+retaining all computational fields.
 
-FIT additional: compressed timestamps, multi-session, timer events.
-
-## Phase Decomposition per Family
-
-### Analysis (Family A)
+### Accounting and overhead
 
 ```
-wall clock → route-quality (already native, measured separately)
-           → timeline construction
-           → elevation construction
-           → derived speed/pace
-           → movement profile
-           → summary
-           → splits
-           → recorded laps
-           → segment detection
-           → warning/diagnostic assembly
+unaccountedFraction = (ModeB_wall − top_level_phase_sum) / ModeB_wall
+|unaccountedFraction| ≤ 0.05 required to publish attribution
+
+overhead = ModeB_median / ModeA_median
+overhead ≤ 1.15 preferred; above that, phase % marked approximate
 ```
 
-Reconstruction: `WorkoutAnalysisContext` with finer-grained constructor + `WorkoutAnalyzer.analyze()`.
+### Memory
 
-### Alignment (Family B)
+Darwin: resident before/after + process high-water via `mach_task_basic_info`.
+Labels state process-wide high-water is not a sampled per-op peak unless a
+separate memory mode samples mid-operation. Linux compiles with zero stubs.
 
-```
-wall clock → valid-point filtering
-           → origin + adaptive interval
-           → resampling + interpolation
-           → projection
-           → heading generation
-           → direction detection
-           → native DTW bridge
-           → block construction
-           → diagnostics/classification
-           → aligned metrics
-```
+### Importer fixtures
 
-Reconstruction: copy of `ConstrainedDynamicTimeWarpingAligner.align()` logic with timing instrumentation wrapped around each phase.
+- JSON / GPX / TCX generated as UTF-8 text in-process.
+- FIT binaries from `FITMultiSessionFixtureBuilder` (shared encoder).
+- Strava ZIP via ZIPFoundation in Platform tests.
+- XML parse+build reported as one combined phase (interleaved in production).
 
-### Route Metrics (Family C)
+### Scoring and roadmap
 
-```
-wall clock → input validation
-           → metric extraction
-           → smoothing (MetricSmoother)
-           → scale/bucket calculation
-           → line coalescing (RouteMetricMapLineBuilder)
-```
+Eleven-dimension 0–5 rubric with explicit disqualifiers and thresholds.
+Final selected next phase is **SegmentDetector**, not MovementProfile-first:
+segments dominate large/product-limit analysis wall; MovementProfile is a small
+share. Full ranking and phase counts live in `docs/phase-plan.md` and the PR body.
 
-### Import (Family D)
+## Environment variables
 
-Per importer, per fixture:
+| Variable | Meaning |
+|---|---|
+| `RUNPLAY_CORE_HOTSPOT_PROFILE=1` | Enable harness (otherwise skip) |
+| `RUNPLAY_PROFILE_FAMILY` | `all` / `analysis` / `alignment` / `metrics` / `import` / `comparison` |
+| `RUNPLAY_PROFILE_PRODUCT_LIMIT=1` | A7 + C5 one-million-point probes |
+| `RUNPLAY_PROFILE_MEMORY=1` | Extra memory rows |
 
-```
-wall clock → read/decompression
-           → parse/decode
-           → point/lap construction
-           → timestamp handling
-           → selection policy
-           → normalization
-           → elevation
-           → post-normalization analysis
-```
+## Non-goals
 
-## Memory Measurement
-
-```swift
-#if canImport(Darwin)
-import Darwin
-func residentMemory() -> UInt64 { ... }  // task_info + mach_task_self_
-#endif
-```
-
-Record: resident before, peak resident (sampled during operation via high-frequency timer), resident after.
-
-## Statistics
-
-```swift
-func median(_ samples: [Double]) -> Double
-func p90(_ samples: [Double]) -> Double
-```
-
-Standard: 5 warm-ups, 20 iterations. Large: 2 warm-ups, 5 iterations. Product-limit: 1 warm-up, 3 iterations.
-
-## Output Format
-
-Markdown tables matching the required PR description format:
-
-- Fixture matrix table (point count, segments, laps, iterations)
-- Phase breakdown table (ms per phase)
-- Phase percent table
-- Accounting residue table
-- Memory table
-- Candidate ranking table with 0-5 rubric scores
-
-## File Structure
-
-```
-RunPlayCore/Tests/RunPlayCoreTests/RemainingCoreHotspotProfile.swift
-  ├── RemainingCoreHotspotProfile (XCTestCase)
-  │   ├── Entry point: testRemainingCoreHotspotProfile()
-  │   ├── Family filter
-  │   ├── Per-fixture drivers
-  │   ├── Phase measurement helpers
-  │   ├── Memory measurement (Darwin-guarded)
-  │   └── Statistics helpers
-  └── Fixture generation helpers (synthetic route builders, importer fixture generators)
-
-scripts/run-remaining-core-hotspot-profile.sh
-  └── Release build + test execution + report extraction
-```
+No production algorithm, C++ API, schema, importer behavior, UI, or resource-limit
+change. No migration implementation on this branch.
