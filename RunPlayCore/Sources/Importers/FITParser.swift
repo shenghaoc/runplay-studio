@@ -74,8 +74,8 @@ public struct FITDefinitionMessage: Sendable {
         self.fields = fields
         self.developerFields = developerFields
 
-        // ⚡ Bolt: Pre-compute total data size inline instead of using .reduce
-        // in a computed property accessed millions of times during parsing.
+        // ⚡ Bolt: Field lists are immutable; precompute once so each data
+        // message can read total size in O(1) instead of re-reducing fields.
         var size = 0
         for field in fields {
             size += Int(field.size)
