@@ -42,6 +42,22 @@ public struct WorkoutAnalysisContext: Sendable {
         self.elevationProfile = elevationProfile
         self.movementProfile = nil
     }
+
+    /// Assemble a context from already-built components without re-deriving them.
+    ///
+    /// Used by the production-equivalent profiling path so measured elevation /
+    /// timeline / movement phases are not silently repeated when forming the
+    /// context value. Ordinary production call sites continue to use the
+    /// deriving initializers above.
+    init(
+        prebuiltTimeline timeline: WorkoutTimeline,
+        elevationProfile: ElevationProfile,
+        movementProfile: MovementProfile?
+    ) {
+        self.timeline = timeline
+        self.elevationProfile = elevationProfile
+        self.movementProfile = movementProfile
+    }
 }
 
 /// Fixed defensive work bounds for distance-stepped derived consumers. These

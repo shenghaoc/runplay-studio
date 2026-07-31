@@ -861,6 +861,107 @@ else
   done
 fi
 
+# --- Remaining-core hotspot profiling stays test-only --------------------------
+
+CORE_HOTSPOT_PROFILE_TEST="RunPlayCore/Tests/RunPlayCoreTests/RemainingCoreHotspotProfile.swift"
+CORE_HOTSPOT_PROFILE_SCRIPT="scripts/run-remaining-core-hotspot-profile.sh"
+PLATFORM_HOTSPOT_PROFILE_TEST="RunPlayPlatform/Tests/RunPlayPlatformTests/RemainingPlatformHotspotProfile.swift"
+
+if [[ ! -f "$CORE_HOTSPOT_PROFILE_TEST" ]]; then
+  fail "missing remaining-core hotspot profile harness $CORE_HOTSPOT_PROFILE_TEST"
+else
+  pass "remaining-core hotspot profile harness present"
+fi
+if [[ ! -x "$CORE_HOTSPOT_PROFILE_SCRIPT" ]]; then
+  fail "missing or non-executable remaining-core hotspot profile runner $CORE_HOTSPOT_PROFILE_SCRIPT"
+else
+  pass "remaining-core hotspot profile runner present and executable"
+fi
+if [[ -f "$PLATFORM_HOTSPOT_PROFILE_TEST" ]]; then
+  pass "platform hotspot profile harness present"
+fi
+
+if [[ -f "$CORE_HOTSPOT_PROFILE_TEST" ]]; then
+  core_hotspot_body="$(
+    strip_comments "$CORE_HOTSPOT_PROFILE_TEST" | tr '\n' ' ' | tr -s '[:space:]' ' '
+  )"
+  if printf '%s' "$core_hotspot_body" \
+    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_CORE_HOTSPOT_PROFILE'; then
+    pass "remaining-core hotspot profile skips unless RUNPLAY_CORE_HOTSPOT_PROFILE=1"
+  else
+    fail "$CORE_HOTSPOT_PROFILE_TEST must skip unless RUNPLAY_CORE_HOTSPOT_PROFILE=1"
+  fi
+  if printf '%s' "$core_hotspot_body" | grep -Eq 'func testAllFamilies'; then
+    fail "$CORE_HOTSPOT_PROFILE_TEST must not define testAllFamilies (double execution)"
+  else
+    pass "remaining-core hotspot profile has no testAllFamilies aggregator"
+  fi
+fi
+
+# Test-only profiled entry points must not be public and must not be referenced
+# from production sources outside their defining service files.
+core_hotspot_profile_api_re='(^|[^[:alnum:]_])(analyzeCollectingProfile|normalizeAndAnalyzeCollectingProfile|buildCollectingProfile|alignCollectingProfile|WorkoutAnalysisPhaseProfile|RouteAlignmentPhaseProfile|RouteMetricPhaseProfile|RouteAlignmentSamplePhaseProfile)([^[:alnum:]_]|$)'
+
+core_hotspot_profile_api_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    RunPlayCore/Sources/Services/WorkoutAnalyzer.swift) continue ;;
+    RunPlayCore/Sources/Services/WorkoutAnalysisPhaseProfile.swift) continue ;;
+    RunPlayCore/Sources/Services/HotspotProfileClock.swift) continue ;;
+    RunPlayCore/Sources/Services/RouteMetricProfileBuilder.swift) continue ;;
+    RunPlayCore/Sources/Services/RouteAlignment/RouteAlignmentSampleBuilder.swift) continue ;;
+    RunPlayCore/Sources/Services/RouteAlignment/ConstrainedDynamicTimeWarpingAligner.swift) continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && core_hotspot_profile_api_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$core_hotspot_profile_api_re" || true)
+done
+
+if [[ ${#core_hotspot_profile_api_leaks[@]} -eq 0 ]]; then
+  pass "remaining-core hotspot profiling APIs are referenced only by defining services and tests"
+else
+  for leak in "${core_hotspot_profile_api_leaks[@]}"; do
+    fail "production Swift references test-only hotspot profiling API: $leak"
+  done
+fi
+
+# Profiled entry points and phase profile types must stay internal (not public).
+for hotspot_source in \
+  RunPlayCore/Sources/Services/WorkoutAnalyzer.swift \
+  RunPlayCore/Sources/Services/WorkoutAnalysisPhaseProfile.swift \
+  RunPlayCore/Sources/Services/RouteMetricProfileBuilder.swift \
+  RunPlayCore/Sources/Services/RouteAlignment/RouteAlignmentSampleBuilder.swift \
+  RunPlayCore/Sources/Services/RouteAlignment/ConstrainedDynamicTimeWarpingAligner.swift; do
+  if [[ -f "$hotspot_source" ]] \
+    && strip_comments "$hotspot_source" \
+      | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(analyzeCollectingProfile|normalizeAndAnalyzeCollectingProfile|buildCollectingProfile|alignCollectingProfile|WorkoutAnalysisPhaseProfile|RouteAlignmentPhaseProfile|RouteMetricPhaseProfile|RouteAlignmentSamplePhaseProfile)'; then
+    fail "hotspot profiling API must stay internal in $hotspot_source"
+  fi
+done
+pass "hotspot profiling APIs stay internal (not public/package)"
+
+# Production code must not branch on the profile environment variable.
+profile_env_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    RunPlayCore/Sources/*|RunPlayPlatform/Sources/*|RunPlayStudio/Sources/*) ;;
+    *) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && profile_env_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En 'RUNPLAY_CORE_HOTSPOT_PROFILE|RUNPLAY_PROFILE_FAMILY|RUNPLAY_PROFILE_PRODUCT_LIMIT' || true)
+done
+if [[ ${#profile_env_leaks[@]} -eq 0 ]]; then
+  pass "production sources do not branch on hotspot profile environment variables"
+else
+  for leak in "${profile_env_leaks[@]}"; do
+    fail "production source references hotspot profile env var: $leak"
+  done
+fi
+
 # The public heatmap surface is unchanged by the profiling phase: these
 # declarations must remain public in their documented locations.
 HEATMAP_MODELS_SOURCE="RunPlayCore/Sources/Models/PersonalHeatmap.swift"

@@ -21,16 +21,95 @@ public struct WorkoutAnalyzer: Sendable {
         analyze(&workout, context: context, policy: .runningDefault)
     }
 
+    /// Test-only profiled path for `analyze(_:)`.
+    ///
+    /// Shares the production implementation. Clocks are read only on this path.
+    /// Ordinary `analyze` never calls this and never collects timings.
+    func analyzeCollectingProfile(
+        _ workout: inout RunWorkout,
+        policy: RouteQualityPolicy = .runningDefault
+    ) -> WorkoutAnalysisPhaseProfile {
+        var profile = WorkoutAnalysisPhaseProfile()
+        let wallStart = ContinuousClock.now
+
+        let elevation: ElevationProfile
+        do {
+            let start = ContinuousClock.now
+            elevation = ElevationProfile(routePoints: workout.routePoints, policy: policy)
+            profile.elevationNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        }
+
+        let timeline: WorkoutTimeline
+        do {
+            let start = ContinuousClock.now
+            timeline = WorkoutTimeline(routePoints: workout.routePoints, elevationProfile: elevation)
+            profile.timelineNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        }
+
+        let movement: MovementProfile?
+        do {
+            let start = ContinuousClock.now
+            movement = try? MovementProfile(routePoints: workout.routePoints, timeline: timeline)
+            profile.movementProfileNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        }
+
+        // Reuse the already-measured components (same as WorkoutAnalysisContext(workout:)
+        // would leave in place) without silently rebuilding timeline.
+        let context = WorkoutAnalysisContext(
+            prebuiltTimeline: timeline,
+            elevationProfile: elevation,
+            movementProfile: movement
+        )
+        // Movement was already measured above; do not double-count inside analyze.
+        var analysisProfile: WorkoutAnalysisPhaseProfile? = WorkoutAnalysisPhaseProfile()
+        try? analyzeCancellable(
+            &workout,
+            context: context,
+            policy: policy,
+            isCancelled: { false },
+            profile: &analysisProfile
+        )
+        if let analysisProfile {
+            profile.derivedMetricsNanoseconds = analysisProfile.derivedMetricsNanoseconds
+            // Prefer context-build movement time; analyze path reuses it (0 ns).
+            if analysisProfile.movementProfileNanoseconds > 0 {
+                profile.movementProfileNanoseconds = analysisProfile.movementProfileNanoseconds
+            }
+            profile.contextRebindNanoseconds = analysisProfile.contextRebindNanoseconds
+            profile.summaryNanoseconds = analysisProfile.summaryNanoseconds
+            profile.splitsNanoseconds = analysisProfile.splitsNanoseconds
+            profile.recordedLapsNanoseconds = analysisProfile.recordedLapsNanoseconds
+            profile.segmentsNanoseconds = analysisProfile.segmentsNanoseconds
+            profile.warningsNanoseconds = analysisProfile.warningsNanoseconds
+        }
+        profile.wallNanoseconds = HotspotProfileClock.nanoseconds(
+            from: wallStart,
+            to: ContinuousClock.now
+        )
+        return profile
+    }
+
     private func analyze(
         _ workout: inout RunWorkout,
         context: WorkoutAnalysisContext,
         policy: RouteQualityPolicy
     ) {
+        var profile: WorkoutAnalysisPhaseProfile? = nil
         try? analyzeCancellable(
             &workout,
             context: context,
             policy: policy,
-            isCancelled: { false }
+            isCancelled: { false },
+            profile: &profile
         )
     }
 
@@ -38,21 +117,35 @@ public struct WorkoutAnalyzer: Sendable {
         _ workout: inout RunWorkout,
         context: WorkoutAnalysisContext,
         policy: RouteQualityPolicy,
-        isCancelled: @escaping @Sendable () -> Bool
+        isCancelled: @escaping @Sendable () -> Bool,
+        profile: inout WorkoutAnalysisPhaseProfile?
     ) throws {
         try throwIfCancelled(isCancelled)
-        try calculateDerivedMetrics(
-            &workout,
-            timeline: context.timeline,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+
+        try measurePhase(into: &profile, keyPath: \.derivedMetricsNanoseconds) {
+            try calculateDerivedMetrics(
+                &workout,
+                timeline: context.timeline,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
         try throwIfCancelled(isCancelled)
 
         // Build movement profile from the (possibly updated) route points
         let movementProfile: MovementProfile
         if let existing = context.movementProfile {
             movementProfile = existing
+        } else if profile != nil {
+            let (built, nanos) = try HotspotProfileClock.measureNanoseconds {
+                try MovementProfile(
+                    routePoints: workout.routePoints,
+                    timeline: context.timeline,
+                    isCancelled: isCancelled
+                )
+            }
+            movementProfile = built
+            profile?.movementProfileNanoseconds = nanos
         } else {
             movementProfile = try MovementProfile(
                 routePoints: workout.routePoints,
@@ -60,70 +153,126 @@ public struct WorkoutAnalyzer: Sendable {
                 isCancelled: isCancelled
             )
         }
-        let ctx = WorkoutAnalysisContext(
-            routePoints: workout.routePoints,
-            elevationProfile: context.elevationProfile,
-            movementProfile: movementProfile
-        )
+        let ctx: WorkoutAnalysisContext
+        if profile != nil {
+            let start = ContinuousClock.now
+            ctx = WorkoutAnalysisContext(
+                routePoints: workout.routePoints,
+                elevationProfile: context.elevationProfile,
+                movementProfile: movementProfile
+            )
+            profile?.contextRebindNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            ctx = WorkoutAnalysisContext(
+                routePoints: workout.routePoints,
+                elevationProfile: context.elevationProfile,
+                movementProfile: movementProfile
+            )
+        }
 
-        workout.summary = calculateSummary(workout, context: ctx, policy: policy)
+        measurePhase(into: &profile, keyPath: \.summaryNanoseconds) {
+            workout.summary = calculateSummary(workout, context: ctx, policy: policy)
+        }
         try throwIfCancelled(isCancelled)
-        workout.splits = try SplitCalculator.calculateSplits(
-            from: workout,
-            context: ctx,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+
+        try measurePhase(into: &profile, keyPath: \.splitsNanoseconds) {
+            workout.splits = try SplitCalculator.calculateSplits(
+                from: workout,
+                context: ctx,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
         try throwIfCancelled(isCancelled)
 
         // Recorded laps: rederive canonical metrics while preserving source fields.
         // Never fabricate laps from splits or route segments.
-        let lapWarnings = try reanalyzeRecordedLaps(
-            &workout,
-            context: ctx,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+        let lapWarnings: [WorkoutAnalysisWarning]
+        if profile != nil {
+            let (warnings, nanos) = try HotspotProfileClock.measureNanoseconds {
+                try reanalyzeRecordedLaps(
+                    &workout,
+                    context: ctx,
+                    policy: policy,
+                    isCancelled: isCancelled
+                )
+            }
+            lapWarnings = warnings
+            profile?.recordedLapsNanoseconds = nanos
+        } else {
+            lapWarnings = try reanalyzeRecordedLaps(
+                &workout,
+                context: ctx,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
 
-        workout.segments = try SegmentDetector.detectSegments(
-            from: workout,
-            context: ctx,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+        try measurePhase(into: &profile, keyPath: \.segmentsNanoseconds) {
+            workout.segments = try SegmentDetector.detectSegments(
+                from: workout,
+                context: ctx,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
         try throwIfCancelled(isCancelled)
-        workout.analysisVersion = RunWorkout.currentAnalysisVersion
-        workout.movementDiagnostics = movementProfile.diagnostics
 
-        // Attach movement diagnostics as analysis warnings
-        var warnings = workout.analysisWarnings.filter {
-            $0 != .movementEstimatedStoppedTime
-                && $0 != .movementLowReliability
-                && $0 != .recordedLapsMalformedSkipped
-                && $0 != .recordedLapSourceTotalsMismatch
-                && $0 != .recordedLapsRequireReimport
-        }
-        if movementProfile.totalStoppedSeconds > 0 {
-            if !warnings.contains(.movementEstimatedStoppedTime) {
-                warnings.append(.movementEstimatedStoppedTime)
+        measurePhase(into: &profile, keyPath: \.warningsNanoseconds) {
+            workout.analysisVersion = RunWorkout.currentAnalysisVersion
+            workout.movementDiagnostics = movementProfile.diagnostics
+
+            // Attach movement diagnostics as analysis warnings
+            var warnings = workout.analysisWarnings.filter {
+                $0 != .movementEstimatedStoppedTime
+                    && $0 != .movementLowReliability
+                    && $0 != .recordedLapsMalformedSkipped
+                    && $0 != .recordedLapSourceTotalsMismatch
+                    && $0 != .recordedLapsRequireReimport
             }
-        }
-        if movementProfile.diagnostics.usedConservativeFallback {
-            if !warnings.contains(.movementLowReliability) {
-                warnings.append(.movementLowReliability)
+            if movementProfile.totalStoppedSeconds > 0 {
+                if !warnings.contains(.movementEstimatedStoppedTime) {
+                    warnings.append(.movementEstimatedStoppedTime)
+                }
             }
+            if movementProfile.diagnostics.usedConservativeFallback {
+                if !warnings.contains(.movementLowReliability) {
+                    warnings.append(.movementLowReliability)
+                }
+            }
+            for warning in lapWarnings where !warnings.contains(warning) {
+                warnings.append(warning)
+            }
+            if workout.mayRequireReimportForRecordedLaps,
+               !warnings.contains(.recordedLapsRequireReimport) {
+                warnings.append(.recordedLapsRequireReimport)
+                var diagnostics = workout.recordedLapDiagnostics
+                diagnostics.requiresReimportForSourceLaps = true
+                workout.recordedLapDiagnostics = diagnostics
+            }
+            workout.analysisWarnings = warnings
         }
-        for warning in lapWarnings where !warnings.contains(warning) {
-            warnings.append(warning)
+    }
+
+    @inline(__always)
+    private func measurePhase(
+        into profile: inout WorkoutAnalysisPhaseProfile?,
+        keyPath: WritableKeyPath<WorkoutAnalysisPhaseProfile, UInt64>,
+        _ body: () throws -> Void
+    ) rethrows {
+        guard profile != nil else {
+            try body()
+            return
         }
-        if workout.mayRequireReimportForRecordedLaps,
-           !warnings.contains(.recordedLapsRequireReimport) {
-            warnings.append(.recordedLapsRequireReimport)
-            var diagnostics = workout.recordedLapDiagnostics
-            diagnostics.requiresReimportForSourceLaps = true
-            workout.recordedLapDiagnostics = diagnostics
-        }
-        workout.analysisWarnings = warnings
+        let start = ContinuousClock.now
+        try body()
+        profile?[keyPath: keyPath] = HotspotProfileClock.nanoseconds(
+            from: start,
+            to: ContinuousClock.now
+        )
     }
 
     /// Rederive recorded-lap metrics from source boundaries. Empty collections
@@ -170,12 +319,74 @@ public struct WorkoutAnalyzer: Sendable {
             withUnsafeCurrentTask { $0?.isCancelled ?? false }
         }
     ) throws {
-        let quality = try RouteQualityProcessor(policy: policy).process(
-            workout.routePoints,
+        var profile: WorkoutAnalysisPhaseProfile? = nil
+        try normalizeAndAnalyze(
+            &workout,
             distancePolicy: distancePolicy,
+            policy: policy,
             sourceInvalidCoordinatePointCount: sourceInvalidCoordinatePointCount,
-            isCancelled: isCancelled
+            isCancelled: isCancelled,
+            profile: &profile
         )
+    }
+
+    /// Test-only profiled path for `normalizeAndAnalyze`.
+    ///
+    /// Shares the production implementation. Clocks are read only on this path.
+    func normalizeAndAnalyzeCollectingProfile(
+        _ workout: inout RunWorkout,
+        distancePolicy: RouteDistancePolicy,
+        policy: RouteQualityPolicy = .runningDefault,
+        sourceInvalidCoordinatePointCount: Int = 0,
+        isCancelled: @escaping @Sendable () -> Bool = { false }
+    ) throws -> WorkoutAnalysisPhaseProfile {
+        var profile: WorkoutAnalysisPhaseProfile? = WorkoutAnalysisPhaseProfile()
+        let wallStart = ContinuousClock.now
+        try normalizeAndAnalyze(
+            &workout,
+            distancePolicy: distancePolicy,
+            policy: policy,
+            sourceInvalidCoordinatePointCount: sourceInvalidCoordinatePointCount,
+            isCancelled: isCancelled,
+            profile: &profile
+        )
+        var result = profile ?? WorkoutAnalysisPhaseProfile()
+        result.wallNanoseconds = HotspotProfileClock.nanoseconds(
+            from: wallStart,
+            to: ContinuousClock.now
+        )
+        return result
+    }
+
+    private func normalizeAndAnalyze(
+        _ workout: inout RunWorkout,
+        distancePolicy: RouteDistancePolicy,
+        policy: RouteQualityPolicy,
+        sourceInvalidCoordinatePointCount: Int,
+        isCancelled: @escaping @Sendable () -> Bool,
+        profile: inout WorkoutAnalysisPhaseProfile?
+    ) throws {
+        let quality: RouteQualityResult
+        if profile != nil {
+            let (result, nanos) = try HotspotProfileClock.measureNanoseconds {
+                try RouteQualityProcessor(policy: policy).process(
+                    workout.routePoints,
+                    distancePolicy: distancePolicy,
+                    sourceInvalidCoordinatePointCount: sourceInvalidCoordinatePointCount,
+                    isCancelled: isCancelled
+                )
+            }
+            quality = result
+            profile?.routeQualityNanoseconds = nanos
+        } else {
+            quality = try RouteQualityProcessor(policy: policy).process(
+                workout.routePoints,
+                distancePolicy: distancePolicy,
+                sourceInvalidCoordinatePointCount: sourceInvalidCoordinatePointCount,
+                isCancelled: isCancelled
+            )
+        }
+
         try throwIfCancelled(isCancelled)
         var analyzed = workout
         analyzed.routePoints = quality.routePoints
@@ -185,16 +396,33 @@ public struct WorkoutAnalyzer: Sendable {
         analyzed.routeDistanceProvenance = quality.distanceProvenance
         let nonQualityWarnings = analyzed.analysisWarnings.filter { !$0.isRouteQualityWarning }
         analyzed.analysisWarnings = Self.uniqued(nonQualityWarnings + quality.analysisWarnings)
-        let context = WorkoutAnalysisContext(
-            routePoints: quality.routePoints,
-            elevationProfile: quality.elevationProfile
-        )
+
+        // Elevation is produced inside route quality; do not double-count it.
+        // Timeline construction is the remaining context-preparation phase.
+        let context: WorkoutAnalysisContext
+        if profile != nil {
+            let timelineStart = ContinuousClock.now
+            context = WorkoutAnalysisContext(
+                routePoints: quality.routePoints,
+                elevationProfile: quality.elevationProfile
+            )
+            profile?.timelineNanoseconds = HotspotProfileClock.nanoseconds(
+                from: timelineStart,
+                to: ContinuousClock.now
+            )
+        } else {
+            context = WorkoutAnalysisContext(
+                routePoints: quality.routePoints,
+                elevationProfile: quality.elevationProfile
+            )
+        }
         try throwIfCancelled(isCancelled)
         try analyzeCancellable(
             &analyzed,
             context: context,
             policy: policy,
-            isCancelled: isCancelled
+            isCancelled: isCancelled,
+            profile: &profile
         )
         try throwIfCancelled(isCancelled)
         workout = analyzed

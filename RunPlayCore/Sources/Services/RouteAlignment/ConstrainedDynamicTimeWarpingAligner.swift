@@ -29,51 +29,165 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         policy: RouteAlignmentPolicy = .default,
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> RouteAlignmentSnapshot {
+        var profile: RouteAlignmentPhaseProfile? = nil
+        return try align(
+            primary: primary,
+            comparison: comparison,
+            primaryContext: primaryContext,
+            comparisonContext: comparisonContext,
+            policy: policy,
+            isCancelled: isCancelled,
+            profile: &profile
+        )
+    }
+
+    /// Test-only profiled path. Shares the production implementation.
+    func alignCollectingProfile(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryContext: WorkoutAnalysisContext,
+        comparisonContext: WorkoutAnalysisContext,
+        policy: RouteAlignmentPolicy = .default,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> (snapshot: RouteAlignmentSnapshot, profile: RouteAlignmentPhaseProfile) {
+        var profile: RouteAlignmentPhaseProfile? = RouteAlignmentPhaseProfile()
+        let wallStart = ContinuousClock.now
+        let snapshot = try align(
+            primary: primary,
+            comparison: comparison,
+            primaryContext: primaryContext,
+            comparisonContext: comparisonContext,
+            policy: policy,
+            isCancelled: isCancelled,
+            profile: &profile
+        )
+        var result = profile ?? RouteAlignmentPhaseProfile()
+        result.wallNanoseconds = HotspotProfileClock.nanoseconds(
+            from: wallStart,
+            to: ContinuousClock.now
+        )
+        return (snapshot, result)
+    }
+
+    private func align(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryContext: WorkoutAnalysisContext,
+        comparisonContext: WorkoutAnalysisContext,
+        policy: RouteAlignmentPolicy,
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteAlignmentPhaseProfile?
+    ) throws -> RouteAlignmentSnapshot {
         // Contexts are accepted for API stability / future matched metrics
         // construction at the call site; DTW cost remains geometry-only.
         _ = primaryContext
         _ = comparisonContext
 
         let samplePair: RouteAlignmentSamplePair
-        do {
-            samplePair = try sampleBuilder.build(
+        if profile != nil {
+            let built = sampleBuilder.buildCollectingProfileResult(
                 primary: primary,
                 comparison: comparison,
                 policy: policy,
                 isCancelled: isCancelled
             )
-        } catch RouteAlignmentSampleError.cancelled {
-            return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
-        } catch RouteAlignmentSampleError.insufficientRouteData {
-            return .unavailable(
-                reason: .insufficientRouteData,
-                diagnostics: baseDiagnostics(policy: policy),
-                policyVersion: policy.algorithmVersion
-            )
-        } catch RouteAlignmentSampleError.unsupportedGeographicExtent {
-            return .unavailable(
-                reason: .unsupportedGeographicExtent,
-                diagnostics: baseDiagnostics(policy: policy),
-                policyVersion: policy.algorithmVersion
-            )
-        } catch RouteAlignmentSampleError.resourceLimit {
-            return .unavailable(
-                reason: .resourceLimit,
-                diagnostics: baseDiagnostics(policy: policy),
-                policyVersion: policy.algorithmVersion
-            )
+            profile?.sampleBuilderDetail = built.profile
+            profile?.sampleBuilderNanoseconds = built.profile.wallNanoseconds
+            switch built.pair {
+            case .success(let pair):
+                samplePair = pair
+            case .failure(let error):
+                switch error as? RouteAlignmentSampleError {
+                case .cancelled:
+                    return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
+                case .insufficientRouteData:
+                    return .unavailable(
+                        reason: .insufficientRouteData,
+                        diagnostics: baseDiagnostics(policy: policy),
+                        policyVersion: policy.algorithmVersion
+                    )
+                case .unsupportedGeographicExtent:
+                    return .unavailable(
+                        reason: .unsupportedGeographicExtent,
+                        diagnostics: baseDiagnostics(policy: policy),
+                        policyVersion: policy.algorithmVersion
+                    )
+                case .resourceLimit:
+                    return .unavailable(
+                        reason: .resourceLimit,
+                        diagnostics: baseDiagnostics(policy: policy),
+                        policyVersion: policy.algorithmVersion
+                    )
+                case .none:
+                    return .unavailable(
+                        reason: .algorithmFailure,
+                        diagnostics: baseDiagnostics(policy: policy),
+                        policyVersion: policy.algorithmVersion
+                    )
+                }
+            }
+        } else {
+            do {
+                samplePair = try sampleBuilder.build(
+                    primary: primary,
+                    comparison: comparison,
+                    policy: policy,
+                    isCancelled: isCancelled
+                )
+            } catch RouteAlignmentSampleError.cancelled {
+                return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
+            } catch RouteAlignmentSampleError.insufficientRouteData {
+                return .unavailable(
+                    reason: .insufficientRouteData,
+                    diagnostics: baseDiagnostics(policy: policy),
+                    policyVersion: policy.algorithmVersion
+                )
+            } catch RouteAlignmentSampleError.unsupportedGeographicExtent {
+                return .unavailable(
+                    reason: .unsupportedGeographicExtent,
+                    diagnostics: baseDiagnostics(policy: policy),
+                    policyVersion: policy.algorithmVersion
+                )
+            } catch RouteAlignmentSampleError.resourceLimit {
+                return .unavailable(
+                    reason: .resourceLimit,
+                    diagnostics: baseDiagnostics(policy: policy),
+                    policyVersion: policy.algorithmVersion
+                )
+            } catch {
+                return .unavailable(
+                    reason: .algorithmFailure,
+                    diagnostics: baseDiagnostics(policy: policy),
+                    policyVersion: policy.algorithmVersion
+                )
+            }
         }
 
         if isCancelled() {
             return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
         }
 
-        let direction = detectDirection(
-            primary: samplePair.primary,
-            comparison: samplePair.comparison,
-            policy: policy,
-            isCancelled: isCancelled
-        )
+        let direction: RouteAlignmentDirection
+        if profile != nil {
+            let start = ContinuousClock.now
+            direction = detectDirection(
+                primary: samplePair.primary,
+                comparison: samplePair.comparison,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+            profile?.directionDetectionNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            direction = detectDirection(
+                primary: samplePair.primary,
+                comparison: samplePair.comparison,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
         if isCancelled() {
             return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
         }
@@ -99,7 +213,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
                 samples: samplePair,
                 direction: direction,
                 policy: policy,
-                isCancelled: isCancelled
+                isCancelled: isCancelled,
+                profile: &profile
             )
         } catch is RouteAlignmentCancellation {
             return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
@@ -213,7 +328,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         samples: RouteAlignmentSamplePair,
         direction: RouteAlignmentDirection,
         policy: RouteAlignmentPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteAlignmentPhaseProfile?
     ) throws -> RouteAlignmentSnapshot {
         let primary = samples.primary
         let comparison = samples.comparison
@@ -240,15 +356,32 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         // native call per row, cell, or sample, and no callback into Swift.
         let solved: RunPlayRouteAlignmentDtwResult
         do {
-            solved = try RunPlayRouteAlignmentDtwBridge.solve(
-                primary: primary,
-                comparison: comparison,
-                primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
-                comparisonRouteDistanceMeters: samples.comparisonRouteDistanceMeters,
-                effectiveSampleIntervalMeters: samples.effectiveSampleIntervalMeters,
-                policy: policy,
-                isCancelled: isCancelled
-            )
+            if profile != nil {
+                let start = ContinuousClock.now
+                solved = try RunPlayRouteAlignmentDtwBridge.solve(
+                    primary: primary,
+                    comparison: comparison,
+                    primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
+                    comparisonRouteDistanceMeters: samples.comparisonRouteDistanceMeters,
+                    effectiveSampleIntervalMeters: samples.effectiveSampleIntervalMeters,
+                    policy: policy,
+                    isCancelled: isCancelled
+                )
+                profile?.nativeDTWNanoseconds = HotspotProfileClock.nanoseconds(
+                    from: start,
+                    to: ContinuousClock.now
+                )
+            } else {
+                solved = try RunPlayRouteAlignmentDtwBridge.solve(
+                    primary: primary,
+                    comparison: comparison,
+                    primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
+                    comparisonRouteDistanceMeters: samples.comparisonRouteDistanceMeters,
+                    effectiveSampleIntervalMeters: samples.effectiveSampleIntervalMeters,
+                    policy: policy,
+                    isCancelled: isCancelled
+                )
+            }
         } catch is CancellationError {
             throw RouteAlignmentCancellation()
         }
@@ -277,44 +410,84 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
 
         // Drop free prefix/suffix warp-only edges that do not contribute geometry.
         // Build anchors and blocks; split when either sample crosses a segment gap.
-        let built = buildBlocks(
-            path: path,
-            primary: primary,
-            comparison: comparison,
-            policy: policy
-        )
+        let built: BuiltBlocks
+        if profile != nil {
+            let start = ContinuousClock.now
+            built = buildBlocks(
+                path: path,
+                primary: primary,
+                comparison: comparison,
+                policy: policy
+            )
+            profile?.blockConstructionNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            built = buildBlocks(
+                path: path,
+                primary: primary,
+                comparison: comparison,
+                policy: policy
+            )
+        }
 
-        var diagnostics = makeDiagnostics(
-            samples: samples,
-            direction: direction,
-            policy: policy,
-            path: path,
-            blocks: built.blocks,
-            primaryMatchedDistance: built.primaryMatchedDistance,
-            comparisonMatchedDistance: built.comparisonMatchedDistance,
-            primaryUnmatchedPrefix: primary[path.first?.primaryIndex ?? 0].distanceFromStartMeters,
-            comparisonUnmatchedPrefix: comparison[path.first?.comparisonIndex ?? 0].distanceFromStartMeters,
-            primaryUnmatchedSuffix: samples.primaryRouteDistanceMeters - primary[path.last?.primaryIndex ?? (n - 1)].distanceFromStartMeters,
-            comparisonUnmatchedSuffix: samples.comparisonRouteDistanceMeters - comparison[path.last?.comparisonIndex ?? (m - 1)].distanceFromStartMeters
-        )
+        let finishDiagnostics: () -> (
+            diagnostics: RouteAlignmentDiagnostics,
+            availability: RouteAlignmentAvailability
+        ) = {
+            var diagnostics = self.makeDiagnostics(
+                samples: samples,
+                direction: direction,
+                policy: policy,
+                path: path,
+                blocks: built.blocks,
+                primaryMatchedDistance: built.primaryMatchedDistance,
+                comparisonMatchedDistance: built.comparisonMatchedDistance,
+                primaryUnmatchedPrefix: primary[path.first?.primaryIndex ?? 0].distanceFromStartMeters,
+                comparisonUnmatchedPrefix: comparison[path.first?.comparisonIndex ?? 0].distanceFromStartMeters,
+                primaryUnmatchedSuffix: samples.primaryRouteDistanceMeters - primary[path.last?.primaryIndex ?? (n - 1)].distanceFromStartMeters,
+                comparisonUnmatchedSuffix: samples.comparisonRouteDistanceMeters - comparison[path.last?.comparisonIndex ?? (m - 1)].distanceFromStartMeters
+            )
+            let availability = self.classify(
+                diagnostics: diagnostics,
+                policy: policy,
+                direction: direction
+            )
+            if case .unavailable = availability {
+                return (diagnostics, availability)
+            }
+            if direction == .ambiguous {
+                diagnostics = self.withWarning(
+                    diagnostics,
+                    "Route geometry is somewhat ambiguous; treat local deltas cautiously."
+                )
+            }
+            return (diagnostics, availability)
+        }
 
-        let availability = classify(
-            diagnostics: diagnostics,
-            policy: policy,
-            direction: direction
-        )
+        let diagnostics: RouteAlignmentDiagnostics
+        let availability: RouteAlignmentAvailability
+        if profile != nil {
+            let start = ContinuousClock.now
+            let finished = finishDiagnostics()
+            diagnostics = finished.diagnostics
+            availability = finished.availability
+            profile?.diagnosticsNanoseconds = HotspotProfileClock.nanoseconds(
+                from: start,
+                to: ContinuousClock.now
+            )
+        } else {
+            let finished = finishDiagnostics()
+            diagnostics = finished.diagnostics
+            availability = finished.availability
+        }
+
         if case .unavailable(let reason) = availability {
             return .unavailable(
                 reason: reason,
                 diagnostics: diagnostics,
                 policyVersion: policy.algorithmVersion
-            )
-        }
-
-        if direction == .ambiguous {
-            diagnostics = withWarning(
-                diagnostics,
-                "Route geometry is somewhat ambiguous; treat local deltas cautiously."
             )
         }
 
