@@ -124,8 +124,13 @@
 - [x] Migrate route-quality geometry into **one** combined C++ kernel: distance relationships, isolated coordinate-outlier evidence, implicit-gap inference, segment compaction, supplied-distance validity, per-segment distance-source selection, and cumulative normalized distances
 - [x] Migrate per-workout personal heatmap route coverage into one bulk C++ kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, supercover traversal, per-workout de-duplication, and deterministic cell ordering
 - [x] Migrate the Route-Aware **constrained DTW path kernel** into one bulk C++ call per alignment attempt: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed tie priority, warp-run capping, endpoint selection, and path reconstruction
-- [ ] Take a **profiling-driven cross-workout heatmap aggregation decision** before migrating library-level aggregation
+- [x] Profile remaining core hotspots: `RemainingCoreHotspotProfile` covers analysis, alignment, metrics, import, and comparison families; results inform the migration roadmap below.
+- [ ] **Migrate MovementProfile to C++23**: standalone two-pass movement-state classification (59 ms at 500 kpts, 24% of analysis wall). Highest-scoring candidate (4.45/5) — pure numeric, uses inline Haversine, well-bounded parity. One bulk call: `classify_movement_states(routePoints, activeSeconds, policy) → (states, movingCum, stoppedCum, diagnostics)`.
+- [ ] **Migrate ElevationProfile to C++23**: multi-pass elevation correction (30 ms at 500 kpts). Second after MovementProfile; SegmentDetector depends on both.
+- [ ] **Migrate SegmentDetector to C++23**: sliding-window pace/elevation detection (190 ms at 500 kpts, 77% of analysis wall). Highest absolute cost but blocked on MovementProfile + ElevationProfile migration.
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
+
+**Not recommended for migration**: MetricSmoother (sub-ms), import parsers (I/O-bound), RouteAlignmentSampleBuilder (infrequent, 2k cap), SplitCalculator (auto-resolves after deps).
 
 Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation, elevation,
