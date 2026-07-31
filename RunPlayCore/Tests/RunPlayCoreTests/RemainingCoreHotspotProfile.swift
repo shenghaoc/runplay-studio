@@ -43,9 +43,9 @@ private func physicalMemoryBytes() -> UInt64 { 0 }
 
 private func measureBlock(_ block: () -> Void) -> (seconds: Double, memDelta: UInt64) {
     let memBefore = physicalMemoryBytes()
-    let start = CFAbsoluteTimeGetCurrent()
+    let start = Date().timeIntervalSinceReferenceDate
     block()
-    let elapsed = CFAbsoluteTimeGetCurrent() - start
+    let elapsed = Date().timeIntervalSinceReferenceDate - start
     let memAfter = physicalMemoryBytes()
     return (elapsed, memAfter > memBefore ? memAfter - memBefore : 0)
 }
