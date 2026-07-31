@@ -334,8 +334,12 @@ struct ManageTagsSheet: View {
     let onReorder: ([UUID]) async -> Bool
     @Binding var errorMessage: String?
 
-    @State private var draftName = ""
-    @State private var draftColor: WorkoutTagColor = .default
+    /// Create-row draft. Kept separate from edit so Return/default-action
+    /// never submits the wrong form, and canceling an edit cannot pollute Create.
+    @State private var createName = ""
+    @State private var createColor: WorkoutTagColor = .default
+    @State private var editName = ""
+    @State private var editColor: WorkoutTagColor = .default
     @State private var editingID: UUID?
     @State private var tagPendingDelete: WorkoutTag?
     @State private var orderedIDs: [UUID]
@@ -367,44 +371,52 @@ struct ManageTagsSheet: View {
         return orderedIDs.compactMap { byID[$0] }
     }
 
+    private var canCreateTag: Bool {
+        editingID == nil
+            && !createName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canSaveEdit: Bool {
+        !editName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             Text("Manage Tags")
                 .font(.title2.weight(.semibold))
 
             HStack {
-                TextField("New tag name", text: $draftName)
+                TextField("New tag name", text: $createName)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("New tag name")
-                Picker("Color", selection: $draftColor) {
+                    .disabled(editingID != nil)
+                Picker("Color", selection: $createColor) {
                     ForEach(WorkoutTagColor.allCases, id: \.self) { color in
                         Text(color.displayName).tag(color)
                     }
                 }
                 .frame(width: 120)
+                .disabled(editingID != nil)
                 Button("Create") {
                     Task {
-                        let ok = await onCreate(draftName, draftColor)
+                        let ok = await onCreate(createName, createColor)
                         if ok {
-                            draftName = ""
-                            draftColor = .default
+                            createName = ""
+                            createColor = .default
                         }
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canCreateTag)
             }
 
             List {
                 ForEach(orderedTags) { tag in
                     HStack {
                         if editingID == tag.id {
-                            TextField("Name", text: Binding(
-                                get: { draftName },
-                                set: { draftName = $0 }
-                            ))
-                            .textFieldStyle(.roundedBorder)
-                            Picker("Color", selection: $draftColor) {
+                            TextField("Name", text: $editName)
+                                .textFieldStyle(.roundedBorder)
+                            Picker("Color", selection: $editColor) {
                                 ForEach(WorkoutTagColor.allCases, id: \.self) { color in
                                     Text(color.displayName).tag(color)
                                 }
@@ -413,12 +425,21 @@ struct ManageTagsSheet: View {
                             .frame(width: 100)
                             Button("Save") {
                                 Task {
-                                    let ok = await onUpdate(tag.id, draftName, draftColor)
-                                    if ok { editingID = nil }
+                                    let ok = await onUpdate(tag.id, editName, editColor)
+                                    if ok {
+                                        editingID = nil
+                                        editName = ""
+                                        editColor = .default
+                                    }
                                 }
                             }
-                            .disabled(draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            Button("Cancel") { editingID = nil }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(!canSaveEdit)
+                            Button("Cancel") {
+                                editingID = nil
+                                editName = ""
+                                editColor = .default
+                            }
                         } else {
                             WorkoutTagChip(name: tag.name, color: tag.color, isCompact: false)
                             Text("\(assignmentCounts[tag.id] ?? 0) runs")
@@ -427,12 +448,14 @@ struct ManageTagsSheet: View {
                             Spacer()
                             Button("Edit") {
                                 editingID = tag.id
-                                draftName = tag.name
-                                draftColor = tag.color
+                                editName = tag.name
+                                editColor = tag.color
                             }
+                            .disabled(editingID != nil)
                             Button("Delete", role: .destructive) {
                                 tagPendingDelete = tag
                             }
+                            .disabled(editingID != nil)
                         }
                     }
                 }
@@ -610,11 +633,18 @@ struct ManageSmartCollectionsSheet: View {
                                     Button("Save") {
                                         Task {
                                             let ok = await onRename(collection.id, renameDraft)
-                                            if ok { renamingID = nil }
+                                            if ok {
+                                                renamingID = nil
+                                                renameDraft = ""
+                                            }
                                         }
                                     }
+                                    .keyboardShortcut(.defaultAction)
                                     .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                    Button("Cancel") { renamingID = nil }
+                                    Button("Cancel") {
+                                        renamingID = nil
+                                        renameDraft = ""
+                                    }
                                 } else {
                                     Text(collection.name)
                                         .font(.headline)
