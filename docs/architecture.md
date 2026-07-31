@@ -371,7 +371,7 @@ production paths with production-equivalent Mode A/B decomposition, exact
 output digests, a 5% accounting-residue gate, and statistical release timings.
 Machine-specific milliseconds live only in profile output, not here.
 
-**Selected next boundary:** `SegmentDetector` as one bulk C++23 kernel.
+**Selected next boundary:** ~~`SegmentDetector` as one bulk C++23 kernel.~~ ✓ (completed)
 Additive analysis profiles show segment detection dominates post-normalization
 analysis wall time on large and product-limit routes, while ordinary 1k-point
 workouts remain well under a millisecond end-to-end.
@@ -390,7 +390,7 @@ ElevationProfile are real numeric work but are a small share of analysis wall
 relative to SegmentDetector; importer parsers are not portable pure-numeric
 kernels; MetricSmoother alone is too small; SplitCalculator is modest once
 context is shared. A combined full-analysis kernel is deferred until the
-dominant SegmentDetector boundary is reviewed as its own phase.
+dominant SegmentDetector boundary is reviewed as its own phase. ✓ (completed — one bulk native call per SegmentDetector invocation via `detect_segment_windows`)
 
 Legacy SceneKit projection stays low priority unless it regains a shipped
 caller. The portable-core migration ends with a mandatory cleanup phase

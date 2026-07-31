@@ -112,7 +112,12 @@ not import `RunPlayEngineCpp` directly.
   point cost, open prefix/suffix seeding, constrained transitions with fixed tie
   priority, consecutive-warp capping, endpoint selection, and path
   reconstruction — through one bulk call per alignment attempt. No scalar
-  per-point Swift/C++ production calls are allowed.
+  per-point Swift/C++ production calls are allowed. For segment detection,
+  C++23 performs the distance-window search for fastest 400m, fastest/slowest
+  1km, and biggest climb/descent through one bulk call per
+  `SegmentDetector` invocation. Swift retains policy calculation, public
+  `SegmentHighlight` construction, UUIDs, titles, subtitles, final range
+  metadata, HR averages, cancellation, diagnostics, and persistence.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
