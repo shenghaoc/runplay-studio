@@ -174,6 +174,26 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="detect_segment_windows",
+        type_text=(
+            "SegmentDetectionSummary "
+            "(const SegmentDetectionSample *, std::size_t, "
+            "SegmentDetectionConfiguration, SegmentWindowCandidate *, "
+            "std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const SegmentDetectionSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_candidates",
+                type_text="SegmentWindowCandidate *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 

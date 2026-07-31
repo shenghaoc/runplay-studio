@@ -767,4 +767,29 @@ public struct ElevationProfile: Sendable {
             throw CancellationError()
         }
     }
+
+    // MARK: - Segment-detection snapshot
+
+    /// Lightweight copy-on-write snapshot of elevation arrays consumed by
+    /// the C++23 SegmentDetector window-search kernel.
+    public struct ElevationSegmentDetectionSnapshot: Sendable {
+        public let cumulativeAscentMeters: [Double]
+        public let cumulativeDescentMeters: [Double]
+        public let reliableIntervalCounts: [Double]
+        public let reliableRunIdentifiers: [Int?]
+    }
+
+    /// Returns the exact internal elevation arrays through copy-on-write so
+    /// the segment-detection bridge can build compact native input without
+    /// recomputing any elevation values.
+    public func segmentDetectionSnapshot()
+        -> ElevationSegmentDetectionSnapshot
+    {
+        ElevationSegmentDetectionSnapshot(
+            cumulativeAscentMeters: cumulativeAscent,
+            cumulativeDescentMeters: cumulativeDescent,
+            reliableIntervalCounts: reliableIntervalCounts,
+            reliableRunIdentifiers: reliableRunIdentifiers
+        )
+    }
 }

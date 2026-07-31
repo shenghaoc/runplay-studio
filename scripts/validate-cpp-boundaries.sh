@@ -1194,6 +1194,61 @@ for layer in RunPlayPlatform/Sources RunPlayStudio/Sources; do
   fi
 done
 
+# --- SegmentDetector bridge --------------------------------------------------
+
+SEGMENT_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlaySegmentDetectorBridge.swift"
+SEGMENT_DETECTOR_SOURCE="RunPlayCore/Sources/Services/SegmentDetector.swift"
+
+if [[ ! -f "$SEGMENT_BRIDGE_SOURCE" ]]; then
+  fail "missing SegmentDetector bridge $SEGMENT_BRIDGE_SOURCE"
+else
+  pass "SegmentDetector bridge exists"
+fi
+
+# Only Interop invokes detect_segment_windows
+segment_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*detect_segment_windows([^[:alnum:]_]|$)'
+segment_native_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$SEGMENT_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && segment_native_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$segment_native_re" || true)
+done
+
+if [[ ${#segment_native_leaks[@]} -eq 0 ]]; then
+  pass "detect_segment_windows is invoked only from the SegmentDetector bridge"
+else
+  for leak in "${segment_native_leaks[@]}"; do
+    fail "detect_segment_windows used outside the SegmentDetector bridge: $leak"
+  done
+fi
+
+# SegmentDetector calls only the pure-Swift bridge
+if strip_comments "$SEGMENT_DETECTOR_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])RunPlaySegmentDetectorBridge([^[:alnum:]_]|$)'; then
+  pass "SegmentDetector consumes the pure Swift segment-detector bridge"
+else
+  fail "SegmentDetector must call RunPlaySegmentDetectorBridge"
+fi
+
+# No C++ types in public Swift
+segment_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(SegmentDetectionSample|SegmentDetectionConfiguration|SegmentWindowKind|SegmentWindowCandidate|SegmentDetectionStatus|SegmentDetectionSummary)([^[:alnum:]_]|$)'
+for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift; do
+  relative="${swift_file#./}"
+  case "$relative" in
+    RunPlayCore/Sources/Interop/*) continue ;;
+    "$SEGMENT_BRIDGE_SOURCE") continue ;;
+  esac
+  if strip_comments "$swift_file" | grep -Eq "$segment_cpp_type_re"; then
+    fail "C++ SegmentDetection types exposed in public Swift: $relative"
+  fi
+done
+pass "C++ SegmentDetection types stay in Interop"
+
 # --- Summary -----------------------------------------------------------------
 
 if [[ $failures -ne 0 ]]; then

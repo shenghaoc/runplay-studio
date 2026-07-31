@@ -4,6 +4,10 @@ import Foundation
 ///
 /// Fastest and slowest windows use active pace. Windows may span recording
 /// gaps, but elevation never connects points from different route segments.
+///
+/// The C++23 engine selects at most five winning distance windows through one
+/// bulk native call. Swift retains public highlight materialization, UUIDs,
+/// titles, subtitles, final range metadata, HR averages, and cancellation.
 public struct SegmentDetector {
 
     public static func detectSegments(from workout: RunWorkout) -> [SegmentHighlight] {
@@ -41,165 +45,200 @@ public struct SegmentDetector {
         policy: RouteQualityPolicy,
         isCancelled: @Sendable () -> Bool
     ) throws -> [SegmentHighlight] {
+        let points = workout.routePoints
         let timeline = context.timeline
+        let elevationProfile = context.elevationProfile
+
+        guard points.count >= 2 else { return [] }
+
+        // Build search configuration from policy
+        let config = searchConfiguration(
+            points: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            policy: policy
+        )
+
+        // One native call
+        let result = try RunPlaySegmentDetectorBridge.search(
+            routePoints: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            configuration: config,
+            cancellationCheckStride: policy.cancellationCheckStride,
+            isCancelled: isCancelled
+        )
+
+        // Finalize candidates in Swift
         var segments: [SegmentHighlight] = []
 
-        if let segment = try findFastestWindow(
-            workout,
-            timeline: timeline,
-            distanceMeters: 400,
-            type: .fastest400m,
-            isCancelled: isCancelled
-        ) {
-            segments.append(segment)
-        }
-        if let segment = try findFastestWindow(
-            workout,
-            timeline: timeline,
-            distanceMeters: 1000,
-            type: .fastest1km,
-            isCancelled: isCancelled
-        ) {
-            segments.append(segment)
-        }
-        if let segment = try findSlowestWindow(
-            workout,
-            timeline: timeline,
-            distanceMeters: 1000,
-            type: .slowest1km,
-            isCancelled: isCancelled
-        ) {
-            segments.append(segment)
-        }
-        if let segment = try findBiggestElevationSegment(
-            workout,
-            context: context,
-            ascending: true,
-            policy: policy,
-            isCancelled: isCancelled
-        ) {
-            segments.append(segment)
-        }
-        if let segment = try findBiggestElevationSegment(
-            workout,
-            context: context,
-            ascending: false,
-            policy: policy,
-            isCancelled: isCancelled
-        ) {
-            segments.append(segment)
+        for candidate in result.candidates {
+            if isCancelled() { throw CancellationError() }
+
+            switch candidate.kind {
+            case .fastest400m:
+                if let highlight = finalizePaceCandidate(
+                    candidate,
+                    type: .fastest400m,
+                    timeline: timeline,
+                    displayPriority: 1
+                ) {
+                    segments.append(highlight)
+                }
+            case .fastest1km:
+                if let highlight = finalizePaceCandidate(
+                    candidate,
+                    type: .fastest1km,
+                    timeline: timeline,
+                    displayPriority: 2
+                ) {
+                    segments.append(highlight)
+                }
+            case .slowest1km:
+                if let highlight = finalizePaceCandidate(
+                    candidate,
+                    type: .slowest1km,
+                    timeline: timeline,
+                    displayPriority: 3
+                ) {
+                    segments.append(highlight)
+                }
+            case .biggestClimb:
+                if let highlight = finalizeElevationCandidate(
+                    candidate,
+                    ascending: true,
+                    context: context,
+                    timeline: timeline,
+                    displayPriority: 4
+                ) {
+                    segments.append(highlight)
+                }
+            case .biggestDescent:
+                if let highlight = finalizeElevationCandidate(
+                    candidate,
+                    ascending: false,
+                    context: context,
+                    timeline: timeline,
+                    displayPriority: 5
+                ) {
+                    segments.append(highlight)
+                }
+            }
         }
 
         return segments.sorted { $0.displayPriority < $1.displayPriority }
     }
 
-    // MARK: - Active-pace windows
+    // MARK: - Configuration
 
-    private static func findFastestWindow(
-        _ workout: RunWorkout,
+    private static func searchConfiguration(
+        points: [RoutePoint],
         timeline: WorkoutTimeline,
-        distanceMeters: Double,
-        type: SegmentType,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> SegmentHighlight? {
-        guard workout.routePoints.count >= 2,
-              timeline.totalDistanceMeters - timeline.startDistanceMeters >= distanceMeters
-        else {
-            return nil
-        }
+        elevationProfile: ElevationProfile,
+        policy: RouteQualityPolicy
+    ) -> SegmentDetectorSearchConfiguration {
+        let distanceSpan = timeline.totalDistanceMeters - timeline.startDistanceMeters
+        let routePointCount = points.count
 
-        var bestPace = Double.infinity
-        var bestResult: WindowEvaluation?
-        var bestStart = timeline.startDistanceMeters
-        let preferredStep = min(50.0, distanceMeters / 4)
-        let stepSize = RouteAnalysisBudget.boundedStep(
-            preferredStep: preferredStep,
-            distanceSpan: timeline.totalDistanceMeters - timeline.startDistanceMeters,
-            routePointCount: workout.routePoints.count
+        // 400m step
+        let preferred400Step = min(50.0, 400.0 / 4)
+        let bounded400Step = RouteAnalysisBudget.boundedStep(
+            preferredStep: preferred400Step,
+            distanceSpan: distanceSpan,
+            routePointCount: routePointCount
         )
-        var windowStart = timeline.startDistanceMeters
 
-        while windowStart + distanceMeters <= timeline.totalDistanceMeters {
-            if isCancelled() { throw CancellationError() }
-            let windowEnd = windowStart + distanceMeters
-            if let result = evaluateWindow(
-                timeline: timeline,
-                startDistance: windowStart,
-                endDistance: windowEnd
-            ), result.pace < bestPace {
-                bestPace = result.pace
-                bestResult = result
-                bestStart = windowStart
-            }
-            windowStart += stepSize
+        // 1km step
+        let preferred1kmStep = min(50.0, 1_000.0 / 4)
+        let bounded1kmStep = RouteAnalysisBudget.boundedStep(
+            preferredStep: preferred1kmStep,
+            distanceSpan: distanceSpan,
+            routePointCount: routePointCount
+        )
+
+        // Elevation
+        let elevationEnabled = elevationProfile.hasMeaningfulElevation
+            && timeline.totalDistanceMeters >= policy.elevationHighlightMinimumWindowMeters
+
+        let elevationWindowDistance: Double
+        let elevationStep: Double
+        if elevationEnabled {
+            elevationWindowDistance = max(
+                policy.elevationHighlightMinimumWindowMeters,
+                min(
+                    policy.elevationHighlightMaximumWindowMeters,
+                    timeline.totalDistanceMeters * policy.elevationHighlightWindowRouteFraction
+                )
+            )
+            let preferredElevationStep = max(
+                policy.elevationHighlightMinimumStepMeters,
+                elevationWindowDistance / Double(policy.elevationHighlightStepsPerWindow)
+            )
+            elevationStep = RouteAnalysisBudget.boundedStep(
+                preferredStep: preferredElevationStep,
+                distanceSpan: distanceSpan,
+                routePointCount: routePointCount
+            )
+        } else {
+            elevationWindowDistance = 0
+            elevationStep = 0
         }
 
-        guard let result = bestResult, bestPace.isFinite, bestPace > 0 else { return nil }
-        return makePaceHighlight(
-            type: type,
-            result: result,
-            startDistance: bestStart,
-            endDistance: bestStart + distanceMeters,
-            distanceMeters: distanceMeters,
-            displayPriority: type == .fastest400m ? 1 : 2
+        return SegmentDetectorSearchConfiguration(
+            fastest400mDistanceMeters: 400,
+            fastest400mStepMeters: bounded400Step,
+            oneKilometerDistanceMeters: 1_000,
+            oneKilometerStepMeters: bounded1kmStep,
+            minimumValidPaceSecondsPerKilometer: 120,
+            maximumValidPaceSecondsPerKilometer: 1_200,
+            elevationEnabled: elevationEnabled,
+            elevationWindowDistanceMeters: elevationWindowDistance,
+            elevationStepMeters: elevationStep,
+            maximumEvaluationsPerSearch: UInt64(
+                RouteAnalysisBudget.maximumEvaluations(forRoutePointCount: routePointCount)
+            )
         )
     }
 
-    private static func findSlowestWindow(
-        _ workout: RunWorkout,
-        timeline: WorkoutTimeline,
-        distanceMeters: Double,
-        type: SegmentType,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> SegmentHighlight? {
-        guard workout.routePoints.count >= 2,
-              timeline.totalDistanceMeters - timeline.startDistanceMeters >= distanceMeters
-        else {
-            return nil
-        }
-
-        var slowestPace: Double = 0
-        var slowestResult: WindowEvaluation?
-        var slowestStart = timeline.startDistanceMeters
-        let preferredStep = min(50.0, distanceMeters / 4)
-        let stepSize = RouteAnalysisBudget.boundedStep(
-            preferredStep: preferredStep,
-            distanceSpan: timeline.totalDistanceMeters - timeline.startDistanceMeters,
-            routePointCount: workout.routePoints.count
-        )
-        var windowStart = timeline.startDistanceMeters
-
-        while windowStart + distanceMeters <= timeline.totalDistanceMeters {
-            if isCancelled() { throw CancellationError() }
-            let windowEnd = windowStart + distanceMeters
-            if let result = evaluateWindow(
-                timeline: timeline,
-                startDistance: windowStart,
-                endDistance: windowEnd
-            ), result.pace > slowestPace {
-                slowestPace = result.pace
-                slowestResult = result
-                slowestStart = windowStart
-            }
-            windowStart += stepSize
-        }
-
-        guard let result = slowestResult, slowestPace.isFinite, slowestPace > 0 else { return nil }
-        return makePaceHighlight(
-            type: type,
-            result: result,
-            startDistance: slowestStart,
-            endDistance: slowestStart + distanceMeters,
-            distanceMeters: distanceMeters,
-            displayPriority: 3
-        )
-    }
+    // MARK: - Pace finalization
 
     private struct WindowEvaluation {
         let range: WorkoutTimeline.DistanceRange
         let pace: Double
         let elevationDelta: Double?
         let averageHeartRate: Double?
+    }
+
+    private static func finalizePaceCandidate(
+        _ candidate: RunPlaySegmentWindowCandidate,
+        type: SegmentType,
+        timeline: WorkoutTimeline,
+        displayPriority: Int
+    ) -> SegmentHighlight? {
+        // Evaluate the winning window to get range and metadata
+        guard let result = evaluateWindow(
+            timeline: timeline,
+            startDistance: candidate.startDistanceMeters,
+            endDistance: candidate.endDistanceMeters
+        ) else {
+            return nil
+        }
+
+        // Verify pace matches C++ selection within tolerance
+        let tolerance = max(1e-9, abs(candidate.selectionValue) * 1e-12)
+        guard abs(result.pace - candidate.selectionValue) <= tolerance else {
+            return nil
+        }
+
+        let distanceMeters = candidate.endDistanceMeters - candidate.startDistanceMeters
+        return makePaceHighlight(
+            type: type,
+            result: result,
+            startDistance: candidate.startDistanceMeters,
+            endDistance: candidate.endDistanceMeters,
+            distanceMeters: distanceMeters,
+            displayPriority: displayPriority
+        )
     }
 
     private static func evaluateWindow(
@@ -250,69 +289,45 @@ public struct SegmentDetector {
         )
     }
 
-    // MARK: - Elevation highlights
+    // MARK: - Elevation finalization
 
-    private static func findBiggestElevationSegment(
-        _ workout: RunWorkout,
-        context: WorkoutAnalysisContext,
+    private static func finalizeElevationCandidate(
+        _ candidate: RunPlaySegmentWindowCandidate,
         ascending: Bool,
-        policy: RouteQualityPolicy,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> SegmentHighlight? {
-        let points = workout.routePoints
-        let timeline = context.timeline
+        context: WorkoutAnalysisContext,
+        timeline: WorkoutTimeline,
+        displayPriority: Int
+    ) -> SegmentHighlight? {
         let elevationProfile = context.elevationProfile
-        guard points.count >= 2,
-              elevationProfile.hasMeaningfulElevation,
-              timeline.totalDistanceMeters >= policy.elevationHighlightMinimumWindowMeters
-        else {
+
+        // Verify continuous reliable elevation
+        guard elevationProfile.hasContinuousReliableElevation(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ) else {
             return nil
         }
 
-        let windowDistance = max(
-            policy.elevationHighlightMinimumWindowMeters,
-            min(
-                policy.elevationHighlightMaximumWindowMeters,
-                timeline.totalDistanceMeters * policy.elevationHighlightWindowRouteFraction
-            )
-        )
-        let preferredStep = max(
-            policy.elevationHighlightMinimumStepMeters,
-            windowDistance / Double(policy.elevationHighlightStepsPerWindow)
-        )
-        let stepSize = RouteAnalysisBudget.boundedStep(
-            preferredStep: preferredStep,
-            distanceSpan: timeline.totalDistanceMeters - timeline.startDistanceMeters,
-            routePointCount: points.count
-        )
-        var bestDelta: Double = 0
-        var bestStart = timeline.startDistanceMeters
-        var windowStart = timeline.startDistanceMeters
-
-        while windowStart + windowDistance <= timeline.totalDistanceMeters {
-            if isCancelled() { throw CancellationError() }
-            let windowEnd = windowStart + windowDistance
-            defer { windowStart += stepSize }
-
-            guard elevationProfile.hasContinuousReliableElevation(
-                from: windowStart,
-                to: windowEnd
-            ), let change = elevationProfile.change(from: windowStart, to: windowEnd)
-            else {
-                continue
-            }
-
-            let delta = ascending ? change.ascentMeters : -change.descentMeters
-            if (ascending && delta > bestDelta) || (!ascending && delta < bestDelta) {
-                bestDelta = delta
-                bestStart = windowStart
-            }
+        // Get change from profile and verify against C++ selection
+        guard let change = elevationProfile.change(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ) else {
+            return nil
         }
 
-        let bestEnd = bestStart + windowDistance
-        guard bestDelta != 0,
-              let range = timeline.distanceRange(from: bestStart, to: bestEnd)
-        else {
+        let delta = ascending ? change.ascentMeters : -change.descentMeters
+        let tolerance = max(1e-9, abs(candidate.selectionValue) * 1e-12)
+        guard abs(delta - candidate.selectionValue) <= tolerance else {
+            return nil
+        }
+        guard delta != 0 else { return nil }
+
+        // Get timeline range
+        guard let range = timeline.distanceRange(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ) else {
             return nil
         }
 
@@ -320,17 +335,20 @@ public struct SegmentDetector {
         return SegmentHighlight(
             type: type,
             title: type.displayName,
-            subtitle: String(format: "%.0f m %@", abs(bestDelta), ascending ? "↑" : "↓"),
-            startDistanceMeters: bestStart,
-            endDistanceMeters: bestEnd,
+            subtitle: String(format: "%.0f m %@", abs(delta), ascending ? "↑" : "↓"),
+            startDistanceMeters: candidate.startDistanceMeters,
+            endDistanceMeters: candidate.endDistanceMeters,
             startElapsedSeconds: range.start.elapsedSeconds,
             endElapsedSeconds: range.end.elapsedSeconds,
             durationSeconds: range.activeSeconds,
-            distanceMeters: windowDistance,
-            elevationDeltaMeters: bestDelta,
-            averageHeartRate: timeline.averageHeartRate(from: bestStart, to: bestEnd),
+            distanceMeters: candidate.endDistanceMeters - candidate.startDistanceMeters,
+            elevationDeltaMeters: delta,
+            averageHeartRate: timeline.averageHeartRate(
+                from: candidate.startDistanceMeters,
+                to: candidate.endDistanceMeters
+            ),
             sourcePointRange: range.sourcePointRange,
-            displayPriority: ascending ? 4 : 5
+            displayPriority: displayPriority
         )
     }
 
