@@ -392,6 +392,7 @@ struct ManageTagsSheet: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             List {
@@ -416,6 +417,7 @@ struct ManageTagsSheet: View {
                                     if ok { editingID = nil }
                                 }
                             }
+                            .disabled(draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             Button("Cancel") { editingID = nil }
                         } else {
                             WorkoutTagChip(name: tag.name, color: tag.color, isCompact: false)
@@ -611,6 +613,7 @@ struct ManageSmartCollectionsSheet: View {
                                             if ok { renamingID = nil }
                                         }
                                     }
+                                    .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                     Button("Cancel") { renamingID = nil }
                                 } else {
                                     Text(collection.name)
