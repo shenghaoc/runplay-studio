@@ -922,6 +922,7 @@ struct WorkoutLibraryView: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(createTagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(AppDesign.Spacing.large)

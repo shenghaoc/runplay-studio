@@ -28,3 +28,7 @@
 ## 2026-07-26 - Empty State Accessibility
 **Learning:** Buttons in overlays and empty states—including text actions such as "Import", "All Time", and "Reset Filters"—are standalone CTAs that may be encountered without their surrounding visual context. Although `Button("Label")` supplies a default accessibility label, tooltips are not automatically derived and the visible label alone may not explain what the action will do.
 **Action:** Add contextual `.help()` and `.accessibilityLabel()` text to buttons in overlays and empty states so tooltips and VoiceOver communicate the actionable context that sighted users infer from the surrounding explanation.
+
+## 2026-07-31 - Disable Empty Name Form Submission
+**Learning:** Create/Save buttons for required tag and smart-collection names stayed enabled when the field was empty or whitespace-only. Click and `.keyboardShortcut(.defaultAction)` could still fire, reaching Core empty-name validation with a poor UX. Sharing one draft between Create and inline Edit made Return submit Create with the edit text (often a duplicate) instead of saving the row.
+**Action:** Pair every required-name Create/Save with `.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)` on the same control that owns `.defaultAction` (see `SaveSmartCollectionSheet`). Keep create and edit drafts separate so canceling or saving an edit cannot pollute Create, and disable Create (and its default action) while a row is being edited.
