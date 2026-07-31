@@ -60,6 +60,8 @@ public struct FITDefinitionMessage: Sendable {
     public let globalMessageNumber: UInt16
     public let fields: [FITFieldDefinition]
     public let developerFields: [FITDeveloperFieldDefinition]
+    /// Total data size in bytes for a data message using this definition.
+    public let totalDataSize: Int
 
     public init(
         architecture: UInt8,
@@ -71,12 +73,17 @@ public struct FITDefinitionMessage: Sendable {
         self.globalMessageNumber = globalMessageNumber
         self.fields = fields
         self.developerFields = developerFields
-    }
 
-    /// Total data size in bytes for a data message using this definition.
-    public var totalDataSize: Int {
-        fields.reduce(0) { $0 + Int($1.size) }
-            + developerFields.reduce(0) { $0 + Int($1.size) }
+        // ⚡ Bolt: Pre-compute total data size inline instead of using .reduce
+        // in a computed property accessed millions of times during parsing.
+        var size = 0
+        for field in fields {
+            size += Int(field.size)
+        }
+        for field in developerFields {
+            size += Int(field.size)
+        }
+        self.totalDataSize = size
     }
 }
 
