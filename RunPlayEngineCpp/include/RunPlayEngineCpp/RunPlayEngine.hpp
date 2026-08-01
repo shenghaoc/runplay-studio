@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 
 #include "RunPlayEngineCpp/ElevationProfile.hpp"
 #include "RunPlayEngineCpp/Geodesy.hpp"
@@ -29,6 +30,10 @@ struct EngineInfo final {
     LanguageStandard language_standard;
     std::uint64_t cpp_language_value;
 };
+
+static_assert(std::is_standard_layout_v<EngineInfo>);
+static_assert(std::is_trivially_copyable_v<EngineInfo>);
+static_assert(std::is_nothrow_copy_constructible_v<EngineInfo>);
 
 /// Returns deterministic engine identity for the current build.
 ///
