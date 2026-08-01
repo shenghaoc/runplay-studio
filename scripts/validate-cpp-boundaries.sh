@@ -78,6 +78,13 @@ else
   pass "public route alignment DTW header present"
 fi
 
+SEGMENT_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/SegmentDetection.hpp"
+if [[ ! -f "$SEGMENT_HEADER" ]]; then
+  fail "missing public segment detection header SegmentDetection.hpp"
+else
+  pass "public segment detection header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
@@ -111,6 +118,13 @@ if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   pass "umbrella header includes RouteAlignmentDtw.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteAlignmentDtw.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/SegmentDetection\.hpp"'; then
+  pass "umbrella header includes SegmentDetection.hpp"
+else
+  fail "RunPlayEngine.hpp must include SegmentDetection.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -198,6 +212,16 @@ if [[ -f "$DTW_HEADER" ]]; then
     pass "constrained-DTW boundary is one bulk two-input/one-output noexcept call"
   else
     fail "compute_constrained_dtw_path must use two const input*+size_t pairs, three doubles, a by-value policy, a mutable output*+capacity, and noexcept"
+  fi
+fi
+
+if [[ -f "$SEGMENT_HEADER" ]]; then
+  segment_body="$(strip_comments "$SEGMENT_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  segment_signature_re='SegmentDetectionSummary[[:space:]]+detect_segment_windows[[:space:]]*\([[:space:]]*const[[:space:]]+SegmentDetectionSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*SegmentDetectionConfiguration[[:space:]]+configuration[[:space:]]*,[[:space:]]*SegmentWindowCandidate[[:space:]]*\*[[:space:]]*output_candidates[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$segment_body" =~ $segment_signature_re ]]; then
+    pass "segment detection boundary is one bulk input/output noexcept call"
+  else
+    fail "detect_segment_windows must use const input*, by-value configuration, mutable output*+capacity, and noexcept"
   fi
 fi
 
@@ -1193,6 +1217,61 @@ for layer in RunPlayPlatform/Sources RunPlayStudio/Sources; do
     pass "$layer does not import RunPlayEngineCpp"
   fi
 done
+
+# --- SegmentDetector bridge --------------------------------------------------
+
+SEGMENT_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlaySegmentDetectorBridge.swift"
+SEGMENT_DETECTOR_SOURCE="RunPlayCore/Sources/Services/SegmentDetector.swift"
+
+if [[ ! -f "$SEGMENT_BRIDGE_SOURCE" ]]; then
+  fail "missing SegmentDetector bridge $SEGMENT_BRIDGE_SOURCE"
+else
+  pass "SegmentDetector bridge exists"
+fi
+
+# Only Interop invokes detect_segment_windows
+segment_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*detect_segment_windows([^[:alnum:]_]|$)'
+segment_native_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$SEGMENT_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && segment_native_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$segment_native_re" || true)
+done
+
+if [[ ${#segment_native_leaks[@]} -eq 0 ]]; then
+  pass "detect_segment_windows is invoked only from the SegmentDetector bridge"
+else
+  for leak in "${segment_native_leaks[@]}"; do
+    fail "detect_segment_windows used outside the SegmentDetector bridge: $leak"
+  done
+fi
+
+# SegmentDetector calls only the pure-Swift bridge
+if strip_comments "$SEGMENT_DETECTOR_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])RunPlaySegmentDetectorBridge([^[:alnum:]_]|$)'; then
+  pass "SegmentDetector consumes the pure Swift segment-detector bridge"
+else
+  fail "SegmentDetector must call RunPlaySegmentDetectorBridge"
+fi
+
+# No C++ types in public Swift
+segment_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(SegmentDetectionSample|SegmentDetectionConfiguration|SegmentWindowKind|SegmentWindowCandidate|SegmentDetectionStatus|SegmentDetectionSummary)([^[:alnum:]_]|$)'
+for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift; do
+  relative="${swift_file#./}"
+  case "$relative" in
+    RunPlayCore/Sources/Interop/*) continue ;;
+    "$SEGMENT_BRIDGE_SOURCE") continue ;;
+  esac
+  if strip_comments "$swift_file" | grep -Eq "$segment_cpp_type_re"; then
+    fail "C++ SegmentDetection types exposed in public Swift: $relative"
+  fi
+done
+pass "C++ SegmentDetection types stay in Interop"
 
 # --- Summary -----------------------------------------------------------------
 

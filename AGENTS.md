@@ -112,7 +112,12 @@ not import `RunPlayEngineCpp` directly.
   point cost, open prefix/suffix seeding, constrained transitions with fixed tie
   priority, consecutive-warp capping, endpoint selection, and path
   reconstruction — through one bulk call per alignment attempt. No scalar
-  per-point Swift/C++ production calls are allowed.
+  per-point Swift/C++ production calls are allowed. For segment detection,
+  C++23 performs the distance-window search for fastest 400m, fastest/slowest
+  1km, and biggest climb/descent through one bulk call per
+  `SegmentDetector` invocation. Swift retains policy calculation, public
+  `SegmentHighlight` construction, UUIDs, titles, subtitles, final range
+  metadata, HR averages, cancellation, diagnostics, and persistence.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -178,6 +183,11 @@ Approved pointer boundaries:
   * `const RouteAlignmentCostSample*` primary and comparison inputs plus a
     caller-owned `RouteAlignmentDtwPathCell*` output
 
+- segment detection:
+
+  * `const SegmentDetectionSample*` input samples
+  * `SegmentWindowCandidate*` caller-owned output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -204,6 +214,16 @@ allocation and exactly after the packed row layout is built. One native call
 occurs per alignment attempt; none occurs per dynamic-programming row or cell.
 Cancellation is cooperative Swift work checked before and after the native call
 and during conversion and output translation, never inside the native call.
+
+The segment-detection boundary writes exactly `candidate_count` entries on
+success, where `candidate_count` is at most five. Swift always supplies the
+fixed five-entry capacity; insufficient capacity is an engine contract
+violation rather than a retry signal. On any failure status the output buffer
+is left completely unchanged. The three internal searches (fastest 400m,
+combined one-kilometre pace, and combined elevation) each retain the existing
+per-search evaluation bound. One native call occurs per `SegmentDetector`
+invocation, with cooperative Swift cancellation during conversion and before
+and after the native call.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route

@@ -13,6 +13,7 @@ int main() {
     run_route_quality_pipeline_tests();
     run_personal_heatmap_coverage_tests();
     run_route_alignment_dtw_tests();
+    run_segment_detection_tests();
     std::cout << "RunPlayEngineCppTests: all checks passed\n";
     return EXIT_SUCCESS;
 }

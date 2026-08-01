@@ -8,6 +8,7 @@
 #include "RunPlayEngineCpp/RouteGeometry.hpp"
 #include "RunPlayEngineCpp/RouteInterop.hpp"
 #include "RunPlayEngineCpp/RouteQualityPipeline.hpp"
+#include "RunPlayEngineCpp/SegmentDetection.hpp"
 
 namespace runplay {
 

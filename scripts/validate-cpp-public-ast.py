@@ -174,6 +174,26 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="detect_segment_windows",
+        type_text=(
+            "SegmentDetectionSummary "
+            "(const SegmentDetectionSample *, std::size_t, "
+            "SegmentDetectionConfiguration, SegmentWindowCandidate *, "
+            "std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const SegmentDetectionSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_candidates",
+                type_text="SegmentWindowCandidate *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -517,6 +537,15 @@ def run_self_test() -> int:
             "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
             "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
             "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            (
+                "FunctionDecl detect_segment_windows "
+                "'SegmentDetectionSummary "
+                "(const SegmentDetectionSample *, std::size_t, "
+                "SegmentDetectionConfiguration, SegmentWindowCandidate *, "
+                "std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const SegmentDetectionSample *'",
+            "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -1018,6 +1047,72 @@ def run_self_test() -> int:
                 "ParmVarDecl primary_samples 'const RouteAlignmentCostSample *'",
                 "ParmVarDecl comparison_samples 'const RouteAlignmentCostSample *'",
                 "ParmVarDecl output_path 'RouteAlignmentDtwPathCell *'",
+            ]
+        ),
+        "segment writable input": "\n".join(
+            [
+                (
+                    "FunctionDecl detect_segment_windows "
+                    "'SegmentDetectionSummary "
+                    "(SegmentDetectionSample *, std::size_t, "
+                    "SegmentDetectionConfiguration, SegmentWindowCandidate *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'SegmentDetectionSample *'",
+                "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
+            ]
+        ),
+        "segment const output": "\n".join(
+            [
+                (
+                    "FunctionDecl detect_segment_windows "
+                    "'SegmentDetectionSummary "
+                    "(const SegmentDetectionSample *, std::size_t, "
+                    "SegmentDetectionConfiguration, "
+                    "const SegmentWindowCandidate *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const SegmentDetectionSample *'",
+                "ParmVarDecl output_candidates 'const SegmentWindowCandidate *'",
+            ]
+        ),
+        "segment missing output capacity": "\n".join(
+            [
+                (
+                    "FunctionDecl detect_segment_windows "
+                    "'SegmentDetectionSummary "
+                    "(const SegmentDetectionSample *, std::size_t, "
+                    "SegmentDetectionConfiguration, "
+                    "SegmentWindowCandidate *) noexcept'"
+                ),
+                "ParmVarDecl samples 'const SegmentDetectionSample *'",
+                "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
+            ]
+        ),
+        "segment callback": "\n".join(
+            [
+                (
+                    "FunctionDecl detect_segment_windows "
+                    "'SegmentDetectionSummary "
+                    "(const SegmentDetectionSample *, std::size_t, "
+                    "SegmentDetectionConfiguration, SegmentWindowCandidate *, "
+                    "std::size_t, bool (*)()) noexcept'"
+                ),
+                "ParmVarDecl samples 'const SegmentDetectionSample *'",
+                "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
+                "ParmVarDecl is_cancelled 'bool (*)()'",
+            ]
+        ),
+        "renamed unapproved segment function": "\n".join(
+            [
+                (
+                    "FunctionDecl find_segment_windows "
+                    "'SegmentDetectionSummary "
+                    "(const SegmentDetectionSample *, std::size_t, "
+                    "SegmentDetectionConfiguration, SegmentWindowCandidate *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const SegmentDetectionSample *'",
+                "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
             ]
         ),
     }

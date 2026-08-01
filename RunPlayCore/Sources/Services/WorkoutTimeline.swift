@@ -755,4 +755,27 @@ public struct WorkoutTimeline: Sendable {
     private static func interpolate(_ first: Double, _ second: Double, _ fraction: Double) -> Double {
         first + ((second - first) * fraction)
     }
+
+    // MARK: - Segment-detection snapshot
+
+    /// Lightweight copy-on-write snapshot of the timeline arrays consumed by
+    /// the C++23 SegmentDetector window-search kernel.
+    struct WorkoutTimelineSegmentDetectionSnapshot: Sendable {
+        let distancesMeters: [Double]
+        let elapsedSeconds: [Double]
+        let activeSeconds: [Double]
+    }
+
+    /// Returns the exact internal timeline arrays through copy-on-write so
+    /// the segment-detection bridge can build compact native input without
+    /// recomputing any timeline values.
+    func segmentDetectionSnapshot()
+        -> WorkoutTimelineSegmentDetectionSnapshot
+    {
+        WorkoutTimelineSegmentDetectionSnapshot(
+            distancesMeters: distanceMetersByPoint,
+            elapsedSeconds: elapsedSecondsByPoint,
+            activeSeconds: activeSecondsByPoint
+        )
+    }
 }
