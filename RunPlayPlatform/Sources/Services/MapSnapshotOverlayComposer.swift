@@ -62,9 +62,6 @@ public enum MapSnapshotOverlayComposer: Sendable {
                 containsNoData = true
             }
 
-            let points = route.coordinates.map { converter.point(for: $0) }
-            guard points.count >= 2 else { continue }
-
             context.saveGState()
             context.setLineCap(.round)
             context.setLineJoin(.round)
@@ -73,9 +70,17 @@ public enum MapSnapshotOverlayComposer: Sendable {
             context.setStrokeColor(color.cgColor)
 
             let path = CGMutablePath()
-            path.move(to: points[0])
-            for point in points.dropFirst() {
-                path.addLine(to: point)
+            var isFirst = true
+            // ⚡ Bolt: Use an inline loop to build the path, avoiding map and flatMap
+            // which cause intermediate O(N) array allocations during map drawing.
+            for coordinate in route.coordinates {
+                let point = converter.point(for: coordinate)
+                if isFirst {
+                    path.move(to: point)
+                    isFirst = false
+                } else {
+                    path.addLine(to: point)
+                }
             }
             context.addPath(path)
             context.strokePath()
@@ -184,13 +189,28 @@ public struct LinearMapCoordinateConverter: MapCoordinateConverting, Sendable {
     }
 
     public init(routes: [RouteMapLine], size: CGSize) {
-        let coords = routes.flatMap(\.coordinates)
-        let lats = coords.map(\.latitude)
-        let lons = coords.map(\.longitude)
-        self.minLatitude = lats.min() ?? 0
-        self.maxLatitude = lats.max() ?? 1
-        self.minLongitude = lons.min() ?? 0
-        self.maxLongitude = lons.max() ?? 1
+        var minLat = Double.infinity
+        var maxLat = -Double.infinity
+        var minLon = Double.infinity
+        var maxLon = -Double.infinity
+        var hasCoords = false
+
+        // ⚡ Bolt: Used a manual loop instead of chained .flatMap().map().min() to
+        // eliminate multiple intermediate O(N) array allocations per instantiation.
+        for route in routes {
+            for coordinate in route.coordinates {
+                hasCoords = true
+                if coordinate.latitude < minLat { minLat = coordinate.latitude }
+                if coordinate.latitude > maxLat { maxLat = coordinate.latitude }
+                if coordinate.longitude < minLon { minLon = coordinate.longitude }
+                if coordinate.longitude > maxLon { maxLon = coordinate.longitude }
+            }
+        }
+
+        self.minLatitude = hasCoords ? minLat : 0
+        self.maxLatitude = hasCoords ? maxLat : 1
+        self.minLongitude = hasCoords ? minLon : 0
+        self.maxLongitude = hasCoords ? maxLon : 1
         self.size = size
     }
 

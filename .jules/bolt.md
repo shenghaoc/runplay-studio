@@ -73,3 +73,7 @@
 ## 2026-07-31 - Precompute Immutable Field Reductions on Hot Parse Paths
 **Learning:** `FITDefinitionMessage.totalDataSize` was a computed property that re-ran `fields.reduce` and `developerFields.reduce` on every access. Definition messages are created once and then reused: each subsequent data message reads `totalDataSize` once to bound the payload. Recomputing an O(fields) reduction per data message is pure waste when the field lists are fixed at definition time.
 **Action:** When a reduction depends only on immutable construction inputs, precompute it once in `init` with plain `for` loops and store it as a `let`. Leave each data-message path as an O(1) property read.
+
+## 2026-08-01 - O(N) Array Allocations During Map Drawing
+**Learning:** Extracting points via `routes.flatMap(\.coordinates).map { ... }` or directly allocating an array via `route.coordinates.map { converter.point(for: $0) }` during map rendering operations created unnecessary O(N) intermediate array allocations per route drawn. These loops execute on the UI rendering thread when snapshotting map states or updating geometries, causing avoidable Garbage Collection/ARC pauses.
+**Action:** Replace map and flatMap chains in high-frequency path generation logic or coordinate bounds calculations with simple inline `for` loops that directly append to drawing contexts (`CGMutablePath`) or update primitive accumulator variables (like min/max coordinates).
