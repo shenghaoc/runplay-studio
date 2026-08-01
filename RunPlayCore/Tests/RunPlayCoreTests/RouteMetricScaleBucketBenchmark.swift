@@ -14,8 +14,8 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
         let memoryBefore = processMemorySnapshot()
         print("\n<!-- BEGIN RUNPLAY ROUTE METRIC SCALE BUCKET BENCHMARK -->")
         print("\n# Route metric scale/bucket benchmark\n")
-        print("| Fixture | Swift oracle ms | Complete bridge ms | Conversion ms | Native ms | Translation ms | Production profile ms |")
-        print("|---|---:|---:|---:|---:|---:|---:|")
+        print("| Fixture | Swift oracle ms | Complete bridge ms | Conversion ms | Output allocation ms | Native ms | Translation ms | Public materialization ms | Production profile ms |")
+        print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
 
         try runFixture(
             label: "R1 1k pace",
@@ -151,10 +151,42 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             _ = try builder.build(workout: workout, context: context, mode: mode, policy: policy)
         }
         let conversions = reports.map(\.inputConversionMilliseconds)
+        let allocations = reports.map(\.outputAllocationMilliseconds)
         let native = reports.map(\.nativeKernelMilliseconds)
         let translations = reports.map(\.outputTranslationMilliseconds)
-        print("| \(label) | \(format(median(oracleTimes))) | \(format(median(bridgeTimes))) | \(format(median(conversions))) | \(format(median(native))) | \(format(median(translations))) | \(format(median(productionTimes))) |")
+        let result = try XCTUnwrap(reports.last?.result)
+        let materializationTimes = timings(iterations: iterations) {
+            let intervals = materializeIntervals(metrics: metrics, weights: weights, result: result)
+            withExtendedLifetime(intervals) {}
+        }
+        print("| \(label) | \(format(median(oracleTimes))) | \(format(median(bridgeTimes))) | \(format(median(conversions))) | \(format(median(allocations))) | \(format(median(native))) | \(format(median(translations))) | \(format(median(materializationTimes))) | \(format(median(productionTimes))) |")
         print("Native maximum \(label): \(format(native.max() ?? 0)) ms")
+    }
+
+    private func materializeIntervals(
+        metrics: [Double?],
+        weights: [Double],
+        result: RunPlayRouteMetricScaleBucketResult
+    ) -> [RouteMetricInterval] {
+        var intervals: [RouteMetricInterval] = []
+        intervals.reserveCapacity(metrics.count)
+        var distance = 0.0
+        for index in metrics.indices {
+            let start = distance
+            distance += weights[index]
+            let assignment = result.assignments[index]
+            intervals.append(RouteMetricInterval(
+                startPointIndex: index,
+                endPointIndex: index + 1,
+                routeSegmentIndex: 0,
+                startDistanceMeters: start,
+                endDistanceMeters: distance,
+                metricValue: metrics[index],
+                normalizedValue: assignment.normalizedValue,
+                bucket: assignment.bucketIndex.map(RouteMetricColorBucket.level) ?? .noData
+            ))
+        }
+        return intervals
     }
 
     private func oracle(
