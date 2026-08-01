@@ -237,8 +237,8 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(CSVRow.escape("\r=CMD('/c calc')"), "\"'\r=CMD('/c calc')\"")
 
         // Non-formula strings starting with whitespace must not be incorrectly escaped
-        XCTAssertEqual(CSVRow.escape("\tHello"), "'\tHello")
-        XCTAssertEqual(CSVRow.escape("\rHello"), "\"'\rHello\"")
+        XCTAssertEqual(CSVRow.escape("\tHello"), "\tHello")
+        XCTAssertEqual(CSVRow.escape("\rHello"), "\"\rHello\"")
 
         // Special case: Formula with comma that would also trigger normal CSV quoting
         XCTAssertEqual(CSVRow.escape("=cmd, /c calc"), "\"'=cmd, /c calc\"")

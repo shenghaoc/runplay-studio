@@ -284,7 +284,7 @@ public enum CSVRow {
     /// starting with `=, +, -, @`. Effective in Excel, Google Sheets, and LibreOffice Calc.
     /// NOTE: The single-quote prefix is not part of RFC 4180; behavior in other applications may vary.
     /// Non-whitespace characters that could start a spreadsheet formula (OWASP A1.4).
-    private static let dangerousPrefixes: Set<Character> = ["=", "+", "-", "@", "\t", "\r"]
+    private static let dangerousPrefixes: Set<Character> = ["=", "+", "-", "@"]
 
     public static func escape(_ field: String) -> String {
         var safeField = field
