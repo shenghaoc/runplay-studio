@@ -39,8 +39,12 @@ jobs:
         run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify RunPlayCore
         run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+      # Building alone would not exercise the smoke test's runtime
+      # `precondition`s, so run the binary as well.
       - name: Verify external RunPlayCore consumer
-        run: swift build --package-path Tests/PackageConsumerSmoke
+        run: |
+          swift build --package-path Tests/PackageConsumerSmoke
+          swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
 
   # AddressSanitizer + UndefinedBehaviorSanitizer on the native C++ test binary
   core-linux-sanitizers:

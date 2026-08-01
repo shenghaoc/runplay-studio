@@ -1,9 +1,13 @@
 import Foundation
 import RunPlayCore
 
-// Representative compile-only RunPlayCore public API usage beyond a bare import.
-// This exercises stable platform-neutral value APIs: geodesy, the route-point
-// model, and Codable round-tripping.
+// Representative external-consumer smoke test for the RunPlayCore public API,
+// beyond a bare import. It exercises stable platform-neutral value APIs:
+// geodesy, the route-point model, and Codable round-tripping.
+//
+// This is compile-and-run, not compile-only: the `precondition` calls below are
+// real runtime assertions, and CI both builds this package and runs the binary.
+// Building alone would type-check the API usage but never execute an assertion.
 
 let distance = GeoDistance.distanceMeters(
     fromLat: 37.7749, lon: -122.4194,
