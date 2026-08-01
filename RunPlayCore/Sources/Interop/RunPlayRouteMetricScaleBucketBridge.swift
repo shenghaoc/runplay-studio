@@ -38,6 +38,44 @@ enum RunPlayRouteMetricScaleBucketBridgeError: Error, Equatable {
 }
 
 enum RunPlayRouteMetricScaleBucketBridge {
+    /// Test-only invocation counter for native assign calls.
+    private final class InvocationCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func reset() {
+            lock.lock()
+            count = 0
+            lock.unlock()
+        }
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
+    private static let invocationCounter = InvocationCounter()
+
+    static var assignInvocationCount: Int {
+        invocationCounter.value
+    }
+
+    static func resetAssignInvocationCountForTests() {
+        invocationCounter.reset()
+    }
+
+    private static func recordAssignInvocation() {
+        invocationCounter.increment()
+    }
+
     static func assign(
         metricValues: [Double?],
         weightsMeters: [Double],
@@ -49,7 +87,8 @@ enum RunPlayRouteMetricScaleBucketBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlayRouteMetricScaleBucketResult {
-        try assignNative(
+        recordAssignInvocation()
+        return try assignNative(
             metricValues: metricValues,
             weightsMeters: weightsMeters,
             lowerQuantile: lowerQuantile,
@@ -74,6 +113,7 @@ enum RunPlayRouteMetricScaleBucketBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlayRouteMetricScaleBucketBenchmarkReport {
+        recordAssignInvocation()
         let timed = try assignNative(
             metricValues: metricValues,
             weightsMeters: weightsMeters,
@@ -163,6 +203,12 @@ enum RunPlayRouteMetricScaleBucketBridge {
 
         let conversionEnd = collectBenchmarkTimings ? DispatchTime.now().uptimeNanoseconds : 0
         let allocationStart = conversionEnd
+        // Typed caller-owned workspace for eligible compact/sort. Distinct from
+        // the output buffer — never an overlay or type-pun of live outputs.
+        var workspace = ContiguousArray<runplay.RouteMetricScaleBucketWorkspaceSample>(
+            repeating: runplay.RouteMetricScaleBucketWorkspaceSample(),
+            count: count
+        )
         var output = ContiguousArray<runplay.RouteMetricScaleBucketOutputSample>(
             repeating: runplay.RouteMetricScaleBucketOutputSample(),
             count: count
@@ -172,14 +218,18 @@ enum RunPlayRouteMetricScaleBucketBridge {
         try checkCancellation(isCancelled)
         let nativeStart = collectBenchmarkTimings ? DispatchTime.now().uptimeNanoseconds : 0
         let summary = input.withUnsafeBufferPointer { inputBuffer in
-            output.withUnsafeMutableBufferPointer { outputBuffer in
-                runplay.assign_route_metric_scale_buckets(
-                    inputBuffer.baseAddress,
-                    inputBuffer.count,
-                    policy,
-                    outputBuffer.baseAddress,
-                    outputBuffer.count
-                )
+            workspace.withUnsafeMutableBufferPointer { workspaceBuffer in
+                output.withUnsafeMutableBufferPointer { outputBuffer in
+                    runplay.assign_route_metric_scale_buckets(
+                        inputBuffer.baseAddress,
+                        inputBuffer.count,
+                        policy,
+                        workspaceBuffer.baseAddress,
+                        workspaceBuffer.count,
+                        outputBuffer.baseAddress,
+                        outputBuffer.count
+                    )
+                }
             }
         }
         let nativeEnd = collectBenchmarkTimings ? DispatchTime.now().uptimeNanoseconds : 0
@@ -197,7 +247,9 @@ enum RunPlayRouteMetricScaleBucketBridge {
             throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
         case .invalid_input_buffer,
              .invalid_output_buffer,
+             .invalid_workspace_buffer,
              .insufficient_output_capacity,
+             .insufficient_workspace_capacity,
              .internal_failure:
             throw RunPlayRouteMetricScaleBucketBridgeError.engineContractViolation
         default:

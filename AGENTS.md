@@ -130,14 +130,18 @@ not import `RunPlayEngineCpp` directly.
   ascent/descent — through one bulk call per profile build. Swift retains
   route-point UUIDs, public `ElevationProfile`/`ElevationProfileSample`
   models, all distance-query APIs, policy ownership, cancellation,
-  diagnostics, and persistence. For non-solid route-metric profiles, C++23
-  performs deterministic distance-weighted lower/median/upper scale
+  diagnostics, and persistence. For pace and heart-rate route-metric profiles,
+  C++23 performs deterministic distance-weighted lower/median/upper scale
   construction, numeric normalization, bucket assignment, and numeric summary
-  construction through one bulk call per profile finalization. Swift retains
-  raw pace, heart-rate, and corrected-elevation extraction, distance-domain
-  smoothing, scale direction, localized labels, public route-metric models,
-  availability and caching, Platform line coalescing, cancellation,
-  diagnostics, UI state, and persistence.
+  construction through one bulk call per profile finalization, using a
+  caller-owned typed eligible workspace buffer plus a caller-owned output
+  buffer. Corrected-elevation scale/bucket finalization intentionally remains
+  in Swift because production A/B showed a native regression above the hard
+  gate; that is mode-owned ownership, not an error-driven fallback. Swift
+  retains raw pace, heart-rate, and corrected-elevation extraction,
+  distance-domain smoothing, scale direction, localized labels, public
+  route-metric models, availability and caching, Platform line coalescing,
+  cancellation, diagnostics, UI state, and persistence.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -212,6 +216,12 @@ Approved pointer boundaries:
 
   * `const ElevationProfileInputSample*` input samples
   * `ElevationProfileOutputSample*` caller-owned output
+
+- route-metric scale/bucket assignment (pace and heart-rate production):
+
+  * `const RouteMetricScaleBucketInputSample*` input samples
+  * `RouteMetricScaleBucketWorkspaceSample*` caller-owned eligible workspace
+  * `RouteMetricScaleBucketOutputSample*` caller-owned output
 
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.

@@ -23,29 +23,20 @@ RouteMetricScaleBucketSummary failure(
     return summary;
 }
 
-/// Dense eligible workspace packed into the caller-owned output buffer.
-/// Smaller records keep the single sort cheaper than reordering full
-/// `RouteMetricScaleBucketOutputSample` values.
-struct EligibleRecord final {
-    double metric_value{0};
-    double weight_meters{0};
-    std::uint64_t source_index{0};
-};
-
-static_assert(sizeof(EligibleRecord) <= sizeof(RouteMetricScaleBucketOutputSample));
-static_assert(alignof(EligibleRecord) <= alignof(RouteMetricScaleBucketOutputSample));
+using WorkspaceSample = RouteMetricScaleBucketWorkspaceSample;
 
 bool eligible_scale_order(
-    const EligibleRecord& lhs,
-    const EligibleRecord& rhs
+    const WorkspaceSample& lhs,
+    const WorkspaceSample& rhs
 ) noexcept {
+    // Match Swift: metric value, then weight. Ties on both fields select the
+    // same quantile metric value regardless of source order.
     if (lhs.metric_value != rhs.metric_value) return lhs.metric_value < rhs.metric_value;
-    if (lhs.weight_meters != rhs.weight_meters) return lhs.weight_meters < rhs.weight_meters;
-    return lhs.source_index < rhs.source_index;
+    return lhs.weight_meters < rhs.weight_meters;
 }
 
 double quantile(
-    const EligibleRecord* samples,
+    const WorkspaceSample* samples,
     std::size_t eligible_count,
     double requested,
     double maximum_weight
@@ -76,10 +67,6 @@ double normalized_value(double value, double lower, double upper) noexcept {
 }
 
 /// Preserve Swift `bucketIndex` semantics across the full `Int64` domain.
-///
-/// Avoid undefined floating-to-integer conversion near `Int64::max` by
-/// clamping the scaled value before the cast when it meets or exceeds
-/// `count - 1` as a double.
 std::int64_t bucket_index(double normalized, std::int64_t requested_count) noexcept {
     const std::int64_t count = std::max<std::int64_t>(2, requested_count);
     const double clamped = std::min(1.0, std::max(0.0, normalized));
@@ -122,9 +109,6 @@ bool is_valid_interval(
     double metric_value,
     double weight_meters
 ) noexcept {
-    // Valid intervals may carry a positive-infinite weight; those still count
-    // toward valid coverage and the minimum-valid-interval gate, but not
-    // toward weighted quantiles.
     return has_metric_value == 1U
         && std::isfinite(metric_value)
         && weight_meters > 0.0;
@@ -175,6 +159,8 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
     const RouteMetricScaleBucketInputSample* samples,
     std::size_t sample_count,
     RouteMetricScaleBucketPolicy policy,
+    RouteMetricScaleBucketWorkspaceSample* workspace_samples,
+    std::size_t workspace_capacity,
     RouteMetricScaleBucketOutputSample* output_samples,
     std::size_t output_capacity
 ) noexcept {
@@ -188,8 +174,14 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
     if (output_samples == nullptr) {
         return failure(RouteMetricScaleBucketStatus::invalid_output_buffer, sample_count);
     }
+    if (workspace_samples == nullptr) {
+        return failure(RouteMetricScaleBucketStatus::invalid_workspace_buffer, sample_count);
+    }
     if (output_capacity < sample_count) {
         return failure(RouteMetricScaleBucketStatus::insufficient_output_capacity, sample_count);
+    }
+    if (workspace_capacity < sample_count) {
+        return failure(RouteMetricScaleBucketStatus::insufficient_workspace_capacity, sample_count);
     }
     if (sample_count > max_route_input_samples) {
         return failure(RouteMetricScaleBucketStatus::resource_limit, sample_count);
@@ -197,14 +189,12 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
 
     // Read-only validation pass. Also accumulates the counts that decide
     // whether a scale can possibly exist, so guaranteed no-scale inputs skip
-    // both subsequent sorts.
+    // workspace compaction and sorting.
     std::uint64_t valid_count = 0;
     std::size_t eligible_count = 0;
     double valid_coverage = 0.0;
     for (std::size_t index = 0; index < sample_count; ++index) {
         const auto& sample = samples[index];
-        // Accept finite nonnegative weights, positive infinity, and negative
-        // zero. Reject NaN and any negative weight (including -infinity).
         if (sample.has_metric_value > 1U
             || std::isnan(sample.weight_meters)
             || sample.weight_meters < 0.0) {
@@ -223,9 +213,6 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
         }
     }
 
-    // A scale is known to be impossible before any sorting when any of these
-    // holds. NaN / negative-infinite minimum_scale_span must continue through
-    // the general path so they follow Swift `max(0, minimumScaleSpan)`.
     const bool scale_known_impossible =
         valid_count < policy.minimum_valid_interval_count
         || eligible_count == 0U
@@ -233,8 +220,8 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
         || !std::isfinite(policy.upper_quantile)
         || policy.minimum_scale_span == std::numeric_limits<double>::infinity();
 
-    // No failure is possible below this point. Only now may the caller-owned
-    // result buffer become a native workspace.
+    // No failure is possible below this point. Output may be written; the
+    // workspace is used only when a scale may still exist.
     if (scale_known_impossible) {
         write_no_scale_output(samples, sample_count, output_samples);
         return success_summary(
@@ -249,12 +236,9 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
         );
     }
 
-    // Compact quantile-eligible samples into a dense EligibleRecord prefix
-    // overlaid on the output buffer, sort that prefix only, then rewrite the
-    // full output in source order from input (no second full-buffer sort).
-    auto* eligible_records = reinterpret_cast<EligibleRecord*>(
-        static_cast<void*>(output_samples)
-    );
+    // Compact quantile-eligible samples into the typed workspace prefix.
+    // Workspace elements are genuine RouteMetricScaleBucketWorkspaceSample
+    // objects owned by the caller — never an overlay of the output buffer.
     std::size_t write = 0;
     for (std::size_t index = 0; index < sample_count; ++index) {
         if (!is_quantile_eligible(
@@ -264,34 +248,30 @@ RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
             )) {
             continue;
         }
-        eligible_records[write].metric_value = samples[index].metric_value;
-        eligible_records[write].weight_meters = samples[index].weight_meters;
-        eligible_records[write].source_index = static_cast<std::uint64_t>(index);
+        workspace_samples[write].metric_value = samples[index].metric_value;
+        workspace_samples[write].weight_meters = samples[index].weight_meters;
         ++write;
     }
     std::sort(
-        eligible_records,
-        eligible_records + write,
+        workspace_samples,
+        workspace_samples + write,
         eligible_scale_order
     );
     eligible_count = write;
 
     double maximum_weight = 0.0;
     for (std::size_t index = 0; index < eligible_count; ++index) {
-        maximum_weight = std::max(maximum_weight, eligible_records[index].weight_meters);
+        maximum_weight = std::max(maximum_weight, workspace_samples[index].weight_meters);
     }
     const double lower =
-        quantile(eligible_records, eligible_count, policy.lower_quantile, maximum_weight);
+        quantile(workspace_samples, eligible_count, policy.lower_quantile, maximum_weight);
     const double median =
-        quantile(eligible_records, eligible_count, 0.5, maximum_weight);
+        quantile(workspace_samples, eligible_count, 0.5, maximum_weight);
     const double upper =
-        quantile(eligible_records, eligible_count, policy.upper_quantile, maximum_weight);
-    // Match Swift `max(0, minimumScaleSpan)` including NaN → 0 via the false
-    // comparison against the left operand.
+        quantile(workspace_samples, eligible_count, policy.upper_quantile, maximum_weight);
     const bool has_scale = std::abs(upper - lower) + 1e-12
         >= std::max(0.0, policy.minimum_scale_span);
 
-    // Rewrite the full output buffer in original source order from input.
     std::uint64_t no_data_count = 0;
     if (has_scale) {
         for (std::size_t index = 0; index < sample_count; ++index) {

@@ -130,8 +130,9 @@ production constrained-DTW path solver for Route-Aware comparison, the
 production SegmentDetector window-search kernel, and the production
 ElevationProfile multi-pass construction kernel. It also performs deterministic
 distance-weighted route-metric scale construction, numeric normalization, and
-bucket assignment through one allocation-free bulk call per non-solid metric
-profile.
+bucket assignment for pace and heart rate through one allocation-free bulk call
+per pace/HR metric profile. Corrected-elevation scale/bucket finalization
+intentionally remains in Swift after production A/B showed a native regression.
 
 ```text
 Swift stage-1 ordered [RoutePoint]

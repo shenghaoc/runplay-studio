@@ -819,30 +819,63 @@ public struct RouteMetricProfileBuilder: Sendable {
             weightsMeters.append(max(0, raw.endDistanceMeters - raw.startDistanceMeters))
         }
 
-        // Exactly one native call per non-solid profile finalization when a
-        // scale is still possible. Metric extraction and distance-domain
-        // smoothing remain entirely in Swift.
-        let numeric = try RunPlayRouteMetricScaleBucketBridge.assign(
-            metricValues: smoothedValues,
-            weightsMeters: weightsMeters,
-            lowerQuantile: policy.lowerQuantile,
-            upperQuantile: policy.upperQuantile,
-            minimumScaleSpan: minimumScaleSpan,
-            minimumValidIntervalCount: policy.minimumValidIntervalCount,
-            bucketCount: policy.bucketCount,
-            cancellationCheckStride: policy.cancellationStride,
-            isCancelled: isCancelled
-        )
+        // Pace and heart-rate: one native scale/bucket call when a scale may
+        // still exist. Corrected elevation intentionally uses the production
+        // Swift numeric finalizer (mode-owned ownership; not an error fallback).
+        let scaleValues: (lower: Double, median: Double, upper: Double)?
+        let assignmentNormalized: [Double?]
+        let assignmentBuckets: [Int?]
+        let validCoverage: Double
+        let validCount: Int
+        let noDataCount: Int
+
+        if mode == .correctedElevation {
+            let swiftResult = try finalizeCorrectedElevationScaleBucketsInSwift(
+                metricValues: smoothedValues,
+                weightsMeters: weightsMeters,
+                lowerQuantile: policy.lowerQuantile,
+                upperQuantile: policy.upperQuantile,
+                minimumScaleSpan: minimumScaleSpan,
+                minimumValidIntervalCount: policy.minimumValidIntervalCount,
+                bucketCount: policy.bucketCount,
+                cancellationCheckStride: policy.cancellationStride,
+                isCancelled: isCancelled
+            )
+            scaleValues = swiftResult.scale.map { ($0.lowerBound, $0.median, $0.upperBound) }
+            assignmentNormalized = swiftResult.assignments.map(\.normalizedValue)
+            assignmentBuckets = swiftResult.assignments.map(\.bucketIndex)
+            validCoverage = swiftResult.validCoverageDistanceMeters
+            validCount = swiftResult.validIntervalCount
+            noDataCount = swiftResult.noDataIntervalCount
+        } else {
+            let numeric = try RunPlayRouteMetricScaleBucketBridge.assign(
+                metricValues: smoothedValues,
+                weightsMeters: weightsMeters,
+                lowerQuantile: policy.lowerQuantile,
+                upperQuantile: policy.upperQuantile,
+                minimumScaleSpan: minimumScaleSpan,
+                minimumValidIntervalCount: policy.minimumValidIntervalCount,
+                bucketCount: policy.bucketCount,
+                cancellationCheckStride: policy.cancellationStride,
+                isCancelled: isCancelled
+            )
+            scaleValues = numeric.scale.map { ($0.lowerBound, $0.median, $0.upperBound) }
+            assignmentNormalized = numeric.assignments.map(\.normalizedValue)
+            assignmentBuckets = numeric.assignments.map(\.bucketIndex)
+            validCoverage = numeric.validCoverageDistanceMeters
+            validCount = numeric.validIntervalCount
+            noDataCount = numeric.noDataIntervalCount
+        }
 
         let totalDistance = totalRouteDistance(routePoints)
-        let scale = numeric.scale.map { value in
+        let scale = scaleValues.map { value in
             RouteMetricScale(
-                lowerBound: value.lowerBound,
+                lowerBound: value.lower,
                 median: value.median,
-                upperBound: value.upperBound,
-                lowerLabel: formatLower(value.lowerBound),
+                upperBound: value.upper,
+                lowerLabel: formatLower(value.lower),
                 medianLabel: formatMedian(value.median),
-                upperLabel: formatUpper(value.upperBound),
+                upperLabel: formatUpper(value.upper),
                 direction: direction
             )
         }
@@ -854,8 +887,7 @@ public struct RouteMetricProfileBuilder: Sendable {
                 throw CancellationError()
             }
             let value = smoothedValues[index]
-            let assignment = numeric.assignments[index]
-            let bucket = assignment.bucketIndex.map(RouteMetricColorBucket.level) ?? .noData
+            let bucket = assignmentBuckets[index].map(RouteMetricColorBucket.level) ?? .noData
 
             intervals.append(RouteMetricInterval(
                 startPointIndex: raw.startPointIndex,
@@ -864,29 +896,54 @@ public struct RouteMetricProfileBuilder: Sendable {
                 startDistanceMeters: raw.startDistanceMeters,
                 endDistanceMeters: raw.endDistanceMeters,
                 metricValue: value,
-                normalizedValue: assignment.normalizedValue,
+                normalizedValue: assignmentNormalized[index],
                 bucket: bucket
             ))
         }
 
         let coverageFraction = totalDistance > 0
-            ? min(1, max(0, numeric.validCoverageDistanceMeters / totalDistance))
+            ? min(1, max(0, validCoverage / totalDistance))
             : 0
 
         return RouteMetricProfile(
             mode: mode,
             intervals: intervals,
             scale: scale,
-            validCoverageDistanceMeters: numeric.validCoverageDistanceMeters,
+            validCoverageDistanceMeters: validCoverage,
             totalRouteDistanceMeters: totalDistance,
             diagnostics: RouteMetricDiagnostics(
                 intervalCount: intervals.count,
-                validIntervalCount: numeric.validIntervalCount,
-                noDataIntervalCount: numeric.noDataIntervalCount,
+                validIntervalCount: validCount,
+                noDataIntervalCount: noDataCount,
                 validCoverageFraction: coverageFraction,
                 bucketCount: policy.bucketCount,
                 policyVersion: policy.policyVersion
             )
+        )
+    }
+
+    /// Mode-owned Swift numeric finalization for corrected elevation only.
+    private func finalizeCorrectedElevationScaleBucketsInSwift(
+        metricValues: [Double?],
+        weightsMeters: [Double],
+        lowerQuantile: Double,
+        upperQuantile: Double,
+        minimumScaleSpan: Double,
+        minimumValidIntervalCount: Int,
+        bucketCount: Int,
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricScaleBucketSwiftFinalizer.Result {
+        try RouteMetricScaleBucketSwiftFinalizer.assign(
+            metricValues: metricValues,
+            weightsMeters: weightsMeters,
+            lowerQuantile: lowerQuantile,
+            upperQuantile: upperQuantile,
+            minimumScaleSpan: minimumScaleSpan,
+            minimumValidIntervalCount: minimumValidIntervalCount,
+            bucketCount: bucketCount,
+            cancellationCheckStride: cancellationCheckStride,
+            isCancelled: isCancelled
         )
     }
 

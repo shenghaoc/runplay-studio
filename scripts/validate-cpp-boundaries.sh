@@ -265,11 +265,29 @@ fi
 
 if [[ -f "$ROUTE_METRIC_HEADER" ]]; then
   route_metric_body="$(strip_comments "$ROUTE_METRIC_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
-  route_metric_signature_re='RouteMetricScaleBucketSummary[[:space:]]+assign_route_metric_scale_buckets[[:space:]]*\([[:space:]]*const[[:space:]]+RouteMetricScaleBucketInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*RouteMetricScaleBucketPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*RouteMetricScaleBucketOutputSample[[:space:]]*\*[[:space:]]*output_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  route_metric_signature_re='RouteMetricScaleBucketSummary[[:space:]]+assign_route_metric_scale_buckets[[:space:]]*\([[:space:]]*const[[:space:]]+RouteMetricScaleBucketInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*RouteMetricScaleBucketPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*RouteMetricScaleBucketWorkspaceSample[[:space:]]*\*[[:space:]]*workspace_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+workspace_capacity[[:space:]]*,[[:space:]]*RouteMetricScaleBucketOutputSample[[:space:]]*\*[[:space:]]*output_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
   if [[ "$route_metric_body" =~ $route_metric_signature_re ]]; then
-    pass "route metric scale/bucket boundary is one bulk input/output noexcept call"
+    pass "route metric scale/bucket boundary is one bulk input/workspace/output noexcept call"
   else
-    fail "assign_route_metric_scale_buckets must use const input*, by-value policy, mutable output*+capacity, and noexcept"
+    fail "assign_route_metric_scale_buckets must use const input*, by-value policy, mutable workspace*+capacity, mutable output*+capacity, and noexcept"
+  fi
+
+  if grep -Eq 'struct[[:space:]]+RouteMetricScaleBucketWorkspaceSample' "$ROUTE_METRIC_HEADER" \
+    && grep -Eq 'sizeof\(RouteMetricScaleBucketWorkspaceSample\)[[:space:]]*==[[:space:]]*16' "$ROUTE_METRIC_HEADER"; then
+    pass "route metric workspace sample is a public 16-byte typed eligible record"
+  else
+    fail "RouteMetricScaleBucketWorkspaceSample must be a public 16-byte typed workspace sample"
+  fi
+
+  # Lifetime safety: production must not type-pun the output buffer into a
+  # workspace record type. ASan/UBSan do not prove object-lifetime correctness
+  # for this class of bug (they often miss pure lifetime aliasing), so the
+  # boundary validator rejects the opaque cast pattern directly.
+  if grep -E 'reinterpret_cast[[:space:]]*<[[:space:]]*(EligibleRecord|RouteMetricScaleBucketWorkspaceSample)[[:space:]]*\*' \
+      RunPlayEngineCpp/Sources/RouteMetricScaleBuckets.cpp >/dev/null 2>&1; then
+    fail "route metric kernel must not reinterpret_cast output samples as a workspace type"
+  else
+    pass "route metric kernel avoids output-buffer workspace type-punning"
   fi
 fi
 
@@ -1493,16 +1511,32 @@ fi
 
 if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
   | grep -Eq 'RunPlayRouteMetricScaleBucketBridge[[:space:]]*\.[[:space:]]*assign'; then
-  pass "RouteMetricProfileBuilder consumes the pure Swift route metric bridge"
+  pass "RouteMetricProfileBuilder consumes the pure Swift route metric bridge for pace/HR"
 else
-  fail "RouteMetricProfileBuilder must consume RunPlayRouteMetricScaleBucketBridge"
+  fail "RouteMetricProfileBuilder must consume RunPlayRouteMetricScaleBucketBridge for pace/HR"
+fi
+
+if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
+  | grep -Eq 'finalizeCorrectedElevationScaleBucketsInSwift|RouteMetricScaleBucketSwiftFinalizer'; then
+  pass "corrected elevation owns an explicit production Swift numeric finalizer"
+else
+  fail "corrected elevation must use an explicit mode-owned Swift scale/bucket finalizer"
 fi
 
 if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
   | grep -Eq 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weighted(Quantile|Median)'; then
-  fail "old weighted scale construction remains in production RouteMetricProfileBuilder"
+  fail "DistanceWeightedStatistics must not be the production route-metric finalizer in RouteMetricProfileBuilder"
 else
-  pass "old Swift numeric scale loop is absent from production"
+  pass "production route-metric finalizer does not call DistanceWeightedStatistics"
+fi
+
+if [[ -f "RunPlayCore/Sources/Services/RouteMetricScaleBucketSwiftFinalizer.swift" ]] \
+  && ! grep -REn 'SwiftRouteMetricScaleBucketOracle' \
+    RunPlayCore/Sources/Services/RouteMetricScaleBucketSwiftFinalizer.swift \
+    RunPlayCore/Sources/Services/RouteMetricProfileBuilder.swift >/dev/null 2>&1; then
+  pass "production Swift elevation finalizer does not call the test oracle"
+else
+  fail "production Swift elevation finalizer must not call SwiftRouteMetricScaleBucketOracle"
 fi
 
 if [[ -f "$ROUTE_METRIC_ORACLE" ]] \
@@ -1529,7 +1563,7 @@ else
   fail "RouteMetricMapLineBuilder Swift policy markers are missing"
 fi
 
-route_metric_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(RouteMetricScaleBucketInputSample|RouteMetricScaleBucketPolicy|RouteMetricScaleBucketOutputSample|RouteMetricScaleBucketStatus|RouteMetricScaleBucketSummary)([^[:alnum:]_]|$)'
+route_metric_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(RouteMetricScaleBucketInputSample|RouteMetricScaleBucketWorkspaceSample|RouteMetricScaleBucketPolicy|RouteMetricScaleBucketOutputSample|RouteMetricScaleBucketStatus|RouteMetricScaleBucketSummary)([^[:alnum:]_]|$)'
 route_metric_cpp_leaks=()
 for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift RunPlayPlatform/Sources/**/*.swift RunPlayStudio/Sources/**/*.swift; do
   [[ -f "$swift_file" ]] || continue

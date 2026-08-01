@@ -31,3 +31,7 @@
 - [x] Add same-machine production A/B benchmark
   (`RouteMetricProductionABBenchmark`) runnable against both `origin/main` and
   PR head without new C++ APIs.
+- [x] Replace output-buffer type-punning with a typed caller-owned
+  `RouteMetricScaleBucketWorkspaceSample` buffer (16-byte eligible record).
+- [x] Keep corrected-elevation numeric finalization in production Swift after
+  A4 production A/B failed the `<= 1.05×` hard gate; pace and HR remain native.

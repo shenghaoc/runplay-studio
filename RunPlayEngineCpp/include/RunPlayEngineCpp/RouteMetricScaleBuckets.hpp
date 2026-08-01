@@ -18,6 +18,23 @@ static_assert(std::is_nothrow_default_constructible_v<RouteMetricScaleBucketInpu
 static_assert(std::is_nothrow_copy_constructible_v<RouteMetricScaleBucketInputSample>);
 static_assert(std::is_nothrow_copy_assignable_v<RouteMetricScaleBucketInputSample>);
 
+/// Caller-owned dense workspace for quantile-eligible (metric, weight) pairs.
+///
+/// Swift allocates and owns this buffer. C++ may compact eligible samples into
+/// the leading prefix and sort that prefix. Guaranteed no-scale paths need not
+/// touch the workspace. Capacity must be at least `sample_count`.
+struct RouteMetricScaleBucketWorkspaceSample final {
+    double metric_value{0};
+    double weight_meters{0};
+};
+
+static_assert(sizeof(RouteMetricScaleBucketWorkspaceSample) == 16);
+static_assert(std::is_standard_layout_v<RouteMetricScaleBucketWorkspaceSample>);
+static_assert(std::is_trivially_copyable_v<RouteMetricScaleBucketWorkspaceSample>);
+static_assert(std::is_nothrow_default_constructible_v<RouteMetricScaleBucketWorkspaceSample>);
+static_assert(std::is_nothrow_copy_constructible_v<RouteMetricScaleBucketWorkspaceSample>);
+static_assert(std::is_nothrow_copy_assignable_v<RouteMetricScaleBucketWorkspaceSample>);
+
 struct RouteMetricScaleBucketPolicy final {
     double lower_quantile{0};
     double upper_quantile{0};
@@ -54,7 +71,9 @@ enum class RouteMetricScaleBucketStatus : std::uint8_t {
     success,
     invalid_input_buffer,
     invalid_output_buffer,
+    invalid_workspace_buffer,
     insufficient_output_capacity,
+    insufficient_workspace_capacity,
     invalid_policy,
     invalid_input_contract,
     resource_limit,
@@ -82,20 +101,24 @@ static_assert(std::is_nothrow_copy_assignable_v<RouteMetricScaleBucketSummary>);
 
 /// Assign a deterministic numeric scale and bucket to one metric profile.
 ///
-/// Both buffers are Swift-owned and borrowed synchronously. C++ retains no
-/// pointer and performs no callback. The output buffer becomes an eligible-only
-/// sort workspace only after complete validation, and every error leaves it
-/// byte-for-byte unchanged. No route-sized native heap allocation occurs.
+/// All buffers are Swift-owned and borrowed synchronously. C++ retains no
+/// pointer and performs no callback. The workspace is a typed eligible-only
+/// sort buffer — never an alias over the output buffer. Every error leaves
+/// the output buffer byte-for-byte unchanged. No route-sized native heap
+/// allocation occurs.
 ///
 /// When a scale is known to be impossible after the read-only validation pass,
-/// the kernel initializes the output in source order and performs no sort.
-/// Otherwise it packs quantile-eligible records into the output buffer,
-/// sorts that dense prefix only, then rewrites the full result in source order.
+/// the kernel initializes the output in source order, leaves the workspace
+/// untouched, and performs no sort. Otherwise it compacts quantile-eligible
+/// records into the workspace prefix, sorts that prefix only, then writes
+/// results into the output buffer in source order.
 [[nodiscard]]
 RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
     const RouteMetricScaleBucketInputSample* samples,
     std::size_t sample_count,
     RouteMetricScaleBucketPolicy policy,
+    RouteMetricScaleBucketWorkspaceSample* workspace_samples,
+    std::size_t workspace_capacity,
     RouteMetricScaleBucketOutputSample* output_samples,
     std::size_t output_capacity
 ) noexcept;

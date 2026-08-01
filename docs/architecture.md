@@ -491,19 +491,24 @@ probe returns reusable metric profiles, so the selected metric is not built
 twice; only lightweight availability remains cached for later mode switches.
 
 For every non-solid profile, Swift performs raw metric extraction and
-distance-domain smoothing, then makes exactly one
-`assign_route_metric_scale_buckets` call with caller-owned input and output
-buffers. C++23 filters eligible weighted samples, constructs the deterministic
-numeric scale, normalizes values, assigns buckets, and returns coverage/count
-summaries without route-sized heap allocation or retained pointers. Policy
-`bucket_count` and output `bucket_index` use `std::int64_t` so the public Swift
-`Int` domain is preserved. Valid intervals may carry positive-infinite weights
-(coverage may be `+infinity`); only finite positive weights contribute to
-weighted quantiles. When a scale is known to be impossible after the read-only
-validation pass, the kernel initializes the output in source order and skips
-both sorts. Swift then creates localized labels and public intervals in source
-order. Solid mode makes no native call. Platform hysteresis, adaptive chunking,
-and line coalescing are unchanged.
+distance-domain smoothing. Pace and heart-rate then make exactly one
+`assign_route_metric_scale_buckets` call with caller-owned input, typed
+eligible workspace, and output buffers. C++23 filters eligible weighted
+samples into the workspace, constructs the deterministic numeric scale,
+normalizes values, assigns buckets, and returns coverage/count summaries
+without route-sized heap allocation, retained pointers, or output-buffer
+type-punning. Corrected elevation intentionally finalizes scale and buckets
+in Swift (`RouteMetricScaleBucketSwiftFinalizer`) because same-machine
+production A/B showed a native regression above the hard gate; that is
+mode-owned ownership, not an error-driven fallback. Policy `bucket_count` and
+output `bucket_index` use `std::int64_t` so the public Swift `Int` domain is
+preserved. Valid intervals may carry positive-infinite weights (coverage may
+be `+infinity`); only finite positive weights contribute to weighted quantiles.
+When a scale is known to be impossible after the read-only validation pass,
+the native kernel initializes the output in source order, leaves the workspace
+untouched, and performs no sort. Swift then creates localized labels and
+public intervals in source order. Solid mode makes no native call. Platform
+hysteresis, adaptive chunking, and line coalescing are unchanged.
 
 Comparison maps keep primary blue / comparison orange identity. The personal
 heatmap retains its own density palette. Missing HR is neutral no-data, not a
