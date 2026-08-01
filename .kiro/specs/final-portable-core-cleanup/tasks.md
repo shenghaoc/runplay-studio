@@ -99,7 +99,9 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 
 ## Commit and PR
 
-- [ ] Commit "refactor: complete portable core migration cleanup"
-- [ ] Push to `codex/final-portable-core-cleanup`
-- [ ] Open draft PR "Complete portable C++23 engine migration cleanup" with the
+- [x] Commit "refactor: complete portable core migration cleanup"
+- [x] Push to `codex/final-portable-core-cleanup`
+- [x] Open draft PR "Complete portable C++23 engine migration cleanup" with the
+      objective, scope, non-goals, validation actually run, remaining manual
+      checks, and dependent/conflicting PRs in the PR body (PR #98).
       mandated body and completion report.
