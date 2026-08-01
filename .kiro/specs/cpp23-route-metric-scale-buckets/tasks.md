@@ -18,4 +18,4 @@
 - [x] Extend AST and boundary validation without weakening existing checks.
 - [x] Add the opt-in release benchmark and pass performance/memory gates.
 - [x] Update durable architecture/roadmap documentation.
-- [ ] Run the complete verification matrix and exact-head CI.
+- [x] Run the complete verification matrix and exact-head CI.
