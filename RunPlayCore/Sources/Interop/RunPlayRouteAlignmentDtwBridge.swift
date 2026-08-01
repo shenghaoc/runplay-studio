@@ -210,6 +210,7 @@ enum RunPlayRouteAlignmentDtwBridge {
         capacity: Int
     ) -> runplay.RouteAlignmentDtwSummary {
         let nativePolicy = makeNativePolicy(policy)
+        NativeCallObserver.record(.routeAlignmentDtw)
         return primary.withUnsafeBufferPointer { primaryBuffer in
             comparison.withUnsafeBufferPointer { comparisonBuffer in
                 outputBuffer.withUnsafeMutableBufferPointer { output in

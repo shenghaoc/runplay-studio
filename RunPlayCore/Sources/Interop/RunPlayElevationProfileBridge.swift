@@ -207,6 +207,7 @@ enum RunPlayElevationProfileBridge {
         let nativeStart = collectBenchmarkTimings
             ? DispatchTime.now().uptimeNanoseconds
             : 0
+        NativeCallObserver.record(.elevationProfile)
         let summary = samples.withUnsafeBufferPointer { samplesBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 runplay.build_elevation_profile(

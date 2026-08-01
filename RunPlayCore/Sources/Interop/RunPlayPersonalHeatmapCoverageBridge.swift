@@ -578,7 +578,8 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         outputBuffer: inout ContiguousArray<runplay.PersonalHeatmapCellIndex>,
         capacity: Int
     ) -> runplay.PersonalHeatmapCoverageSummary {
-        nativeSamples.withUnsafeBufferPointer { sampleBuffer in
+        NativeCallObserver.record(.personalHeatmapCoverage)
+        return nativeSamples.withUnsafeBufferPointer { sampleBuffer in
             outputBuffer.withUnsafeMutableBufferPointer { outBuf in
                 let basePtr = sampleBuffer.baseAddress?.advanced(by: range.lowerBound)
                 return runplay.compute_personal_heatmap_workout_coverage(

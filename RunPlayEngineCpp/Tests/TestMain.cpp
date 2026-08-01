@@ -9,7 +9,6 @@ int main() {
     run_engine_info_tests();
     run_route_interop_tests();
     run_geodesy_tests();
-    run_route_geometry_tests();
     run_route_quality_pipeline_tests();
     run_personal_heatmap_coverage_tests();
     run_route_alignment_dtw_tests();

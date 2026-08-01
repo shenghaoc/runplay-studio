@@ -4,6 +4,10 @@ import XCTest
 final class RouteMetricScaleBucketParityTests: XCTestCase {
     private let builder = RouteMetricProfileBuilder()
 
+    #if DEBUG
+    /// Counts come from `NativeCallObserver.observing`, which scopes a tally to
+    /// the closure instead of resetting process-wide state, so a concurrently
+    /// running test cannot contribute to these numbers.
     func testNativeCallCountsByMode() throws {
         let workout = HotspotProfilingFixtures.makeWorkout(options: .init(
             pointCount: 120,
@@ -12,31 +16,36 @@ final class RouteMetricScaleBucketParityTests: XCTestCase {
         ))
         let context = WorkoutAnalysisContext(workout: workout)
 
-        RunPlayRouteMetricScaleBucketBridge.resetAssignInvocationCountForTests()
-        _ = try builder.build(workout: workout, context: context, mode: .pace)
-        XCTAssertEqual(RunPlayRouteMetricScaleBucketBridge.assignInvocationCount, 1)
+        func nativeAssignCount(_ body: () throws -> Void) rethrows -> Int {
+            try NativeCallObserver.observing(body).counts.routeMetricScaleBucket
+        }
 
-        RunPlayRouteMetricScaleBucketBridge.resetAssignInvocationCountForTests()
-        _ = try builder.build(workout: workout, context: context, mode: .heartRate)
-        XCTAssertEqual(RunPlayRouteMetricScaleBucketBridge.assignInvocationCount, 1)
-
-        RunPlayRouteMetricScaleBucketBridge.resetAssignInvocationCountForTests()
-        _ = try builder.build(workout: workout, context: context, mode: .correctedElevation)
         XCTAssertEqual(
-            RunPlayRouteMetricScaleBucketBridge.assignInvocationCount,
+            try nativeAssignCount { _ = try builder.build(workout: workout, context: context, mode: .pace) },
+            1
+        )
+        XCTAssertEqual(
+            try nativeAssignCount { _ = try builder.build(workout: workout, context: context, mode: .heartRate) },
+            1
+        )
+        XCTAssertEqual(
+            try nativeAssignCount {
+                _ = try builder.build(workout: workout, context: context, mode: .correctedElevation)
+            },
             0,
             "corrected elevation owns Swift numeric finalization"
         )
-
-        RunPlayRouteMetricScaleBucketBridge.resetAssignInvocationCountForTests()
-        _ = try builder.build(workout: workout, context: context, mode: .solid)
-        XCTAssertEqual(RunPlayRouteMetricScaleBucketBridge.assignInvocationCount, 0)
-
-        RunPlayRouteMetricScaleBucketBridge.resetAssignInvocationCountForTests()
-        _ = try builder.probe(routePoints: workout.routePoints, context: context)
+        XCTAssertEqual(
+            try nativeAssignCount { _ = try builder.build(workout: workout, context: context, mode: .solid) },
+            0
+        )
         // Probe builds pace + HR + elevation; only pace and HR call native.
-        XCTAssertEqual(RunPlayRouteMetricScaleBucketBridge.assignInvocationCount, 2)
+        XCTAssertEqual(
+            try nativeAssignCount { _ = try builder.probe(routePoints: workout.routePoints, context: context) },
+            2
+        )
     }
+    #endif
 
     func testAllModesAndCustomPolicies() throws {
         let workout = HotspotProfilingFixtures.makeWorkout(options: .init(

@@ -81,6 +81,7 @@ enum RunPlayRouteQualityBridge {
             isCancelled: isCancelled
         ) { input in
             try checkCancellation(isCancelled: isCancelled)
+            NativeCallObserver.record(.routeQuality)
             let result: runplay.RouteQualityPipelineSummary =
                 selection.withUnsafeBufferPointer { selectionBuffer in
                     output.withUnsafeMutableBufferPointer { outputBuffer in
@@ -332,6 +333,7 @@ enum RunPlayRouteQualityBridge {
             repeating: runplay.RouteQualityOutputSample(),
             count: orderedPoints.count
         )
+        NativeCallObserver.record(.routeQuality)
         let summary = RunPlayRouteInputBuffer.withNativeSamples(orderedPoints) { input in
             selection.withUnsafeBufferPointer { selectionBuffer in
                 output.withUnsafeMutableBufferPointer { outputBuffer in

@@ -195,6 +195,7 @@ enum RunPlaySegmentDetectorBridge {
         try checkCancellation(isCancelled: isCancelled)
 
         // One native call
+        NativeCallObserver.record(.segmentDetection)
         let summary = samples.withUnsafeBufferPointer { samplesBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 runplay.detect_segment_windows(

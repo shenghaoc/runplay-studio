@@ -71,8 +71,8 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 
 `RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
 engine identity (`runplay::engine_info`), a route value and inspection
-contract, allocation-free geodesy primitives, a transitional bulk
-step-distance boundary, the production combined route-quality geometry
+contract, allocation-free geodesy primitives, the production combined
+route-quality geometry
 kernel, the production per-workout personal heatmap coverage kernel, and the
 production constrained-DTW path solver for Route-Aware comparison, and the
 production SegmentDetector window-search kernel:
@@ -183,8 +183,7 @@ Semantics:
 - isolated coordinate outliers are rejected; adjacent candidates are retained;
 - implicit gaps and explicit source segments form contiguous final segments;
 - supplied-distance validity resets per final segment;
-- coordinate-derived steps reuse internal geodesy helpers (not the public
-  step-distance boundary);
+- coordinate-derived steps reuse internal geodesy helpers;
 - no distance is added across explicit or inferred boundaries;
 - point identity and order are preserved.
 
@@ -196,13 +195,14 @@ diagnostics translation, public models, and persistence.**
 gap inference, final segment compaction, supplied-distance policy, and
 normalized cumulative distances through one bulk call.**
 
-The standalone step-distance boundary remains transitional/test-focused.
 `RouteQualityProcessor` calls only `RunPlayRouteQualityBridge`. No scalar
 per-point Swift/C++ production calls are allowed.
 `scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
 
-Elevation, timelines, splits, projection services, and file parsers remain in
-Swift `RunPlayCore` until later migration PRs. Per-workout personal heatmap
+Timelines, splits, projection services, and file parsers remain in Swift
+`RunPlayCore`. Elevation-profile construction is already native (see
+[ElevationProfile and WorkoutAnalysisContext](#elevationprofile-and-workoutanalysiscontext)).
+Per-workout personal heatmap
 route coverage is already native, and cross-workout heatmap aggregation stays
 Swift by an explicit profiling-driven decision; see
 [Personal Heatmap](#personal-heatmap). The Route-Aware constrained-DTW path
@@ -222,8 +222,6 @@ the engine directly.
 Approved pointer boundaries:
 
 - `const RouteInputSample*` input for route inspection
-- `const RouteInputSample*` input plus `double*` caller-owned output for the
-  transitional route step-distance calculation
 - combined route-quality geometry: const input samples, optional const
   selection bytes, and caller-owned `RouteQualityOutputSample*` output
 - per-workout personal heatmap coverage: `const PersonalHeatmapRouteSample*`

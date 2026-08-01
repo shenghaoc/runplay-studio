@@ -2,8 +2,9 @@
 # run-cpp-engine-tests.sh — build and run native RunPlayEngineCppTests
 #
 # Usage:
-#   ./scripts/run-cpp-engine-tests.sh              # normal clang++ build + run
-#   ./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan via clang++
+#   ./scripts/run-cpp-engine-tests.sh                 # normal clang++ build + run
+#   ./scripts/run-cpp-engine-tests.sh --sanitize      # ASan + UBSan via clang++
+#   ./scripts/run-cpp-engine-tests.sh --list-sources  # print discovered sources
 #
 # The native C++ test binary is compiled with clang++ on all platforms.
 # SwiftPM's C++ executable target can fail on Linux with:
@@ -16,19 +17,23 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+SANITIZE=0
+LIST_SOURCES=0
 case "$#" in
   0)
-    SANITIZE=0
     ;;
   1)
-    if [[ "$1" != "--sanitize" ]]; then
-      echo "error: unknown argument '$1' (expected --sanitize)" >&2
-      exit 2
-    fi
-    SANITIZE=1
+    case "$1" in
+      --sanitize) SANITIZE=1 ;;
+      --list-sources) LIST_SOURCES=1 ;;
+      *)
+        echo "error: unknown argument '$1' (expected --sanitize or --list-sources)" >&2
+        exit 2
+        ;;
+    esac
     ;;
   *)
-    echo "error: expected no arguments or exactly --sanitize" >&2
+    echo "error: expected no arguments, --sanitize, or --list-sources" >&2
     exit 2
     ;;
 esac
@@ -47,6 +52,16 @@ done < <(find RunPlayEngineCpp/Tests -type f -name '*.cpp' -print | LC_ALL=C sor
 if [[ ${#ENGINE_SOURCES[@]} -eq 0 || ${#TEST_SOURCES[@]} -eq 0 ]]; then
   echo "error: engine and native test source lists must both be non-empty" >&2
   exit 1
+fi
+
+# Emit exactly the translation units this script would hand the compiler, so
+# scripts/validate-cpp-boundaries.sh can diff real discovery against an
+# independently computed expected set. Printing the same arrays that build_args
+# consumes is what makes this a witness rather than a second implementation:
+# replacing `find` above with a hard-coded list would change this output too.
+if [[ "$LIST_SOURCES" -eq 1 ]]; then
+  printf '%s\n' "${ENGINE_SOURCES[@]}" "${TEST_SOURCES[@]}"
+  exit 0
 fi
 
 # Prefer the active toolchain's clang++ so macOS and Linux CI stay aligned.

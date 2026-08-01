@@ -89,7 +89,7 @@ not import `RunPlayEngineCpp` directly.
   third-party deps). It currently exposes engine identity, route input values,
   one synchronous route-batch inspection boundary, allocation-free geodesy
   primitives (coordinate validation, Haversine distance, local-metre
-  projection), a transitional bulk route step-distance boundary, the
+  projection), the
   production combined route-quality geometry kernel, the production
   per-workout personal heatmap coverage kernel, the production
   constrained-DTW path solver for Route-Aware comparison, the production
@@ -189,8 +189,6 @@ reads documented members rather than positional elements.
 Approved pointer boundaries:
 
 - `const RouteInputSample*` input for route inspection
-- `const RouteInputSample*` input plus `double*` caller-owned output for the
-  transitional route step-distance calculation
 - combined route-quality geometry:
 
   * `const RouteInputSample*` input samples

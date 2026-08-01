@@ -123,8 +123,8 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI
 framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
 foundation target. The engine provides identity, route input values, a bulk
-inspection boundary, allocation-free geodesy primitives, a transitional
-step-distance boundary, the production combined route-quality geometry
+inspection boundary, allocation-free geodesy primitives, the production
+combined route-quality geometry
 kernel, the production per-workout personal heatmap coverage kernel, the
 production constrained-DTW path solver for Route-Aware comparison, the
 production SegmentDetector window-search kernel, and the production
@@ -175,8 +175,7 @@ persistence.**
 
 **C++ performs production outlier evidence, isolated-point rejection, implicit
 gap inference, final segment compaction, supplied-distance policy, and
-normalized cumulative distances through one bulk call.** The standalone
-step-distance boundary remains transitional/test-focused. No scalar per-point
+normalized cumulative distances through one bulk call.** No scalar per-point
 Swift/C++ production calls are allowed.
 
 **For Route-Aware comparison, C++ performs the bounded band-packed

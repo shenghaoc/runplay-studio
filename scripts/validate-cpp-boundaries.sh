@@ -24,10 +24,56 @@ pass() {
 # Match code constructs, not comments: strip // line comments and /* */ blocks
 # for the purpose of pattern checks on a single file.
 strip_comments() {
+  if [[ ! -r "$1" ]]; then
+    echo "strip_comments: cannot read $1" >&2
+    return 2
+  fi
   # Remove block comments then line comments. Not a full C++ preprocessor, but
   # sufficient to avoid flagging words that only appear in comments.
-  perl -0777 -pe 's{/\*.*?\*/}{}gs; s{//[^\n]*}{}g' "$1"
+  #
+  # The trailing `|| true` absorbs one specific failure: when this function is
+  # piped into a consumer that exits early (`grep -q` stops at its first match),
+  # perl cannot flush the rest of its output and exits non-zero. Under
+  # `set -o pipefail` that turns a *successful* match into a spurious boundary
+  # failure. The race depends on file size and machine speed, so it fires on CI
+  # runners while passing locally. Prefer `code_matches` below, which avoids the
+  # pipe entirely; this guard only stops a stray pipe from failing the build.
+  perl -0777 -pe 's{/\*.*?\*/}{}gs; s{//[^\n]*}{}g' "$1" || true
 }
+
+# Return 0 if the comment-stripped body of file $1 matches extended regex $2.
+#
+# Use this instead of `strip_comments FILE | grep -Eq RE`. Capturing the body
+# into a variable first means the reader always consumes all of perl's output,
+# so there is no early-exit pipe and no pipefail race (see strip_comments).
+code_matches() {
+  local body
+  body="$(strip_comments "$1")" || return 2
+  grep -Eq "$2" <<<"$body"
+}
+
+# --- Script hygiene ----------------------------------------------------------
+
+# Guard against reintroducing `strip_comments ... | grep -q`. That shape is a
+# latent `set -o pipefail` race: `grep -q` exits at its first match, perl fails
+# to flush, and a real match gets reported as a boundary failure. It reproduced
+# as a red macOS CI job while passing locally. `code_matches` is the safe form.
+# Keeping the pattern in a variable is what stops this guard matching itself:
+# the scanner below never spells out the searched-for text, and the one line
+# that does carries SELF_LINT_EXEMPT. Comment lines are dropped first, and line
+# continuations are joined so a wrapped pipeline is seen as a single statement.
+self_lint_re='strip_comments\b[^\n|]*\|\s*grep\s+-E?q'  # SELF_LINT_EXEMPT
+self_pipeline_hits="$(
+  grep -v -e '^[[:space:]]*#' -e 'SELF_LINT_EXEMPT' "${BASH_SOURCE[0]}" \
+    | SELF_LINT_RE="$self_lint_re" perl -0777 -ne \
+      's/\\\n\s*/ /g; my $re = $ENV{SELF_LINT_RE}; print "$&\n" while /$re/g' \
+    || true
+)"
+if [[ -z "$self_pipeline_hits" ]]; then
+  pass "validator matches source through code_matches, not an early-exit pipeline"
+else
+  fail "use code_matches instead of piping stripped source into an early-exit grep: $self_pipeline_hits"
+fi
 
 # --- Structural presence -----------------------------------------------------
 
@@ -48,13 +94,6 @@ if [[ ! -f "$ROUTE_HEADER" ]]; then
   fail "missing public route header RouteInterop.hpp"
 else
   pass "public route interop header present"
-fi
-
-GEOMETRY_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/RouteGeometry.hpp"
-if [[ ! -f "$GEOMETRY_HEADER" ]]; then
-  fail "missing public route geometry header RouteGeometry.hpp"
-else
-  pass "public route geometry header present"
 fi
 
 QUALITY_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/RouteQualityPipeline.hpp"
@@ -99,57 +138,43 @@ else
   pass "public route metric scale/bucket header present"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteInterop.hpp"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteGeometry\.hpp"'; then
-  pass "umbrella header includes RouteGeometry.hpp"
-else
-  fail "RunPlayEngine.hpp must include RouteGeometry.hpp"
-fi
-
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteQualityPipeline\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteQualityPipeline\.hpp"'; then
   pass "umbrella header includes RouteQualityPipeline.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteQualityPipeline.hpp"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/PersonalHeatmapCoverage\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/PersonalHeatmapCoverage\.hpp"'; then
   pass "umbrella header includes PersonalHeatmapCoverage.hpp"
 else
   fail "RunPlayEngine.hpp must include PersonalHeatmapCoverage.hpp"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteAlignmentDtw\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteAlignmentDtw\.hpp"'; then
   pass "umbrella header includes RouteAlignmentDtw.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteAlignmentDtw.hpp"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/SegmentDetection\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/SegmentDetection\.hpp"'; then
   pass "umbrella header includes SegmentDetection.hpp"
 else
   fail "RunPlayEngine.hpp must include SegmentDetection.hpp"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/ElevationProfile\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/ElevationProfile\.hpp"'; then
   pass "umbrella header includes ElevationProfile.hpp"
 else
   fail "RunPlayEngine.hpp must include ElevationProfile.hpp"
 fi
 
-if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
-  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteMetricScaleBuckets\.hpp"'; then
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteMetricScaleBuckets\.hpp"'; then
   pass "umbrella header includes RouteMetricScaleBuckets.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteMetricScaleBuckets.hpp"
@@ -210,16 +235,6 @@ if [[ -f "$ROUTE_HEADER" ]]; then
     pass "route boundary is one const pointer-plus-count noexcept call"
   else
     fail "inspect_route_batch must use const RouteInputSample* plus size_t and noexcept"
-  fi
-fi
-
-if [[ -f "$GEOMETRY_HEADER" ]]; then
-  geometry_body="$(strip_comments "$GEOMETRY_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
-  geometry_signature_re='RouteStepDistanceSummary[[:space:]]+compute_route_step_distances[[:space:]]*\([[:space:]]*const[[:space:]]+RouteInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*double[[:space:]]*\*[[:space:]]*step_distances_meters[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+step_distance_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
-  if [[ "$geometry_body" =~ $geometry_signature_re ]]; then
-    pass "step-distance boundary is one bulk input/output noexcept call"
-  else
-    fail "compute_route_step_distances must use const input*, size_t, double* output, capacity, and noexcept"
   fi
 fi
 
@@ -402,6 +417,39 @@ if [[ $failures -eq 0 ]]; then
   pass "RunPlayEngineCpp sources avoid Apple frameworks and ObjC"
 fi
 
+# --- Native discovery coverage ------------------------------------------------
+#
+# Every .cpp under the engine tree must actually be compiled by
+# scripts/run-cpp-engine-tests.sh, which is what carries both the normal and the
+# ASan/UBSan native runs. Checking file *locations* alone would not prove this:
+# the runner could replace its `find` with a partial hard-coded list and a
+# location-only guard would still pass.
+#
+# So compare two independently produced sets:
+#   expected — this script's own `find` over the whole engine tree
+#   actual   — `--list-sources`, which prints the exact translation units the
+#              runner hands the compiler
+# A hard-coded or truncated list in the runner changes `actual` and fails here.
+
+expected_native_sources="$(
+  find RunPlayEngineCpp -type f -name '*.cpp' -print | LC_ALL=C sort
+)"
+if actual_native_sources="$(./scripts/run-cpp-engine-tests.sh --list-sources)"; then
+  actual_native_sources="$(LC_ALL=C sort <<<"$actual_native_sources")"
+  if [[ "$expected_native_sources" == "$actual_native_sources" ]]; then
+    pass "native runner compiles every engine .cpp ($(wc -l <<<"$actual_native_sources" | tr -d ' ') translation units)"
+  else
+    missing="$(comm -23 <(printf '%s\n' "$expected_native_sources") \
+                        <(printf '%s\n' "$actual_native_sources") | tr '\n' ' ')"
+    extra="$(comm -13 <(printf '%s\n' "$expected_native_sources") \
+                      <(printf '%s\n' "$actual_native_sources") | tr '\n' ' ')"
+    [[ -n "${missing// /}" ]] && fail "native runner does not compile: $missing"
+    [[ -n "${extra// /}" ]] && fail "native runner lists non-engine sources: $extra"
+  fi
+else
+  fail "scripts/run-cpp-engine-tests.sh --list-sources failed; discovery cannot be verified"
+fi
+
 # --- Lower layers must not depend upward -------------------------------------
 
 # C++ engine must not reference upper Swift module names as imports or includes.
@@ -483,10 +531,9 @@ fi
 
 # Scalar C++ geodesy symbols remain parity-only. Production route-quality
 # geometry stages 2–4 must go through the combined bridge, never one call per
-# point. The step-distance bridge remains transitional/test-focused.
+# point.
 GEODESY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayGeodesyBridge.swift"
 GEO_DISTANCE_SOURCE="RunPlayCore/Sources/Services/GeoDistance.swift"
-STEP_DISTANCE_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteStepDistanceBridge.swift"
 ROUTE_QUALITY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteQualityBridge.swift"
 ROUTE_QUALITY_PROCESSOR_SOURCE="RunPlayCore/Sources/Services/RouteQualityProcessor.swift"
 ROUTE_INPUT_BUFFER_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteInputBuffer.swift"
@@ -496,9 +543,6 @@ if [[ ! -f "$GEODESY_BRIDGE_SOURCE" ]]; then
 fi
 if [[ ! -f "$GEO_DISTANCE_SOURCE" ]]; then
   fail "missing production Swift geodesy reference $GEO_DISTANCE_SOURCE"
-fi
-if [[ ! -f "$STEP_DISTANCE_BRIDGE_SOURCE" ]]; then
-  fail "missing transitional step-distance bridge $STEP_DISTANCE_BRIDGE_SOURCE"
 fi
 if [[ ! -f "$ROUTE_QUALITY_BRIDGE_SOURCE" ]]; then
   fail "missing production route-quality bridge $ROUTE_QUALITY_BRIDGE_SOURCE"
@@ -520,7 +564,6 @@ geodesy_reference_positive_fixtures=(
 geodesy_reference_negative_fixtures=(
   'RunPlayGeoDistance.distanceMeters(0, 0)'
   'runplay.inspect_route_batch(buffer.baseAddress, buffer.count)'
-  'runplay.compute_route_step_distances(input, count, output, capacity)'
   'let LocalMetersPerSecond = 1.0'
 )
 geodesy_reference_matcher_ok=1
@@ -561,62 +604,11 @@ else
 fi
 
 if [[ -f "$GEO_DISTANCE_SOURCE" ]]; then
-  if strip_comments "$GEO_DISTANCE_SOURCE" \
-    | grep -Eq "$geodesy_reference_re"; then
+  if code_matches "$GEO_DISTANCE_SOURCE" "$geodesy_reference_re"; then
     fail "$GEO_DISTANCE_SOURCE must remain the Swift parity oracle, not a C++ caller"
   else
     pass "GeoDistance.swift remains an independent Swift implementation"
   fi
-fi
-
-# Only the step-distance bridge may invoke the transitional C++ bulk symbol.
-# Comments and string literals are stripped first so documentation cannot
-# create false positives, and tests remain free to mention the symbol by name.
-step_distance_symbol_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_route_step_distances([^[:alnum:]_]|$)'
-step_distance_symbol_positive=(
-  'runplay.compute_route_step_distances(input.baseAddress, input.count, output.baseAddress, output.count)'
-  'let summary = runplay . compute_route_step_distances(a, b, c, d)'
-)
-step_distance_symbol_negative=(
-  'RunPlayRouteStepDistanceBridge.compute(points)'
-  'let text = "compute_route_step_distances"'
-  'func compute_route_step_distances_helper() {}'
-)
-step_distance_symbol_matcher_ok=1
-for fixture in "${step_distance_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$step_distance_symbol_re"; then
-    step_distance_symbol_matcher_ok=0
-  fi
-done
-for fixture in "${step_distance_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$step_distance_symbol_re"; then
-    step_distance_symbol_matcher_ok=0
-  fi
-done
-if [[ $step_distance_symbol_matcher_ok -eq 1 ]]; then
-  pass "bulk step-distance symbol matcher adversarial fixtures"
-else
-  fail "bulk step-distance symbol matcher failed its adversarial fixtures"
-fi
-
-step_distance_symbol_leaks=()
-for swift_file in "${SWIFT_FILES[@]}"; do
-  relative_swift_file="${swift_file#./}"
-  case "$relative_swift_file" in
-    "$STEP_DISTANCE_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
-  esac
-  while IFS= read -r leak; do
-    [[ -n "$leak" ]] && step_distance_symbol_leaks+=("$relative_swift_file:$leak")
-  done < <(strip_comments "$swift_file" | grep -En "$step_distance_symbol_re" || true)
-done
-
-if [[ ${#step_distance_symbol_leaks[@]} -eq 0 ]]; then
-  pass "compute_route_step_distances is invoked only from the transitional bridge"
-else
-  for leak in "${step_distance_symbol_leaks[@]}"; do
-    fail "compute_route_step_distances used outside the transitional bridge: $leak"
-  done
 fi
 
 # Only the route-quality bridge may invoke the combined geometry symbol.
@@ -699,15 +691,13 @@ else
   done
 fi
 
-if strip_comments "$HEATMAP_BUILDER_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
   fail "PersonalHeatmapBuilder must not reference C++ runplay symbols directly"
 else
   pass "PersonalHeatmapBuilder stays free of direct C++ symbols"
 fi
 
-if strip_comments "$HEATMAP_BUILDER_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])RunPlayPersonalHeatmapCoverageBridge([^[:alnum:]_]|$)'; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" '(^|[^[:alnum:]_])RunPlayPersonalHeatmapCoverageBridge([^[:alnum:]_]|$)'; then
   pass "PersonalHeatmapBuilder consumes the pure Swift personal heatmap coverage bridge"
 else
   fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
@@ -877,8 +867,7 @@ else
   done
 fi
 
-if strip_comments "$HEATMAP_BUILDER_SOURCE" \
-  | grep -Eq "$heatmap_profile_api_re"; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" "$heatmap_profile_api_re"; then
   fail "PersonalHeatmapBuilder must not call the test-only heatmap profiling API"
 else
   pass "PersonalHeatmapBuilder does not call the heatmap profiling API"
@@ -886,8 +875,7 @@ fi
 
 # The diagnostic must not widen the public surface of RunPlayCore.
 if [[ -f "$HEATMAP_BRIDGE_SOURCE" ]]; then
-  if strip_comments "$HEATMAP_BRIDGE_SOURCE" \
-    | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(profiledCoverage|profiledAccumulateCoverage|RunPlayPersonalHeatmapCoverageProfile|RunPlayPersonalHeatmapAccumulationProfile)'; then
+  if code_matches "$HEATMAP_BRIDGE_SOURCE" '^[[:space:]]*(public|open|package)[^/]*(profiledCoverage|profiledAccumulateCoverage|RunPlayPersonalHeatmapCoverageProfile|RunPlayPersonalHeatmapAccumulationProfile)'; then
     fail "heatmap profiling diagnostic must stay internal, not public/package"
   else
     pass "heatmap profiling diagnostic stays internal to RunPlayCore"
@@ -1025,8 +1013,7 @@ for hotspot_source in \
   RunPlayCore/Sources/Services/RouteAlignment/RouteAlignmentSampleBuilder.swift \
   RunPlayCore/Sources/Services/RouteAlignment/ConstrainedDynamicTimeWarpingAligner.swift; do
   if [[ -f "$hotspot_source" ]] \
-    && strip_comments "$hotspot_source" \
-      | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(analyzeCollectingProfile|normalizeAndAnalyzeCollectingProfile|buildCollectingProfile|alignCollectingProfile|WorkoutAnalysisPhaseProfile|RouteAlignmentPhaseProfile|RouteMetricPhaseProfile|RouteAlignmentSamplePhaseProfile)'; then
+    && code_matches "$hotspot_source" '^[[:space:]]*(public|open|package)[^/]*(analyzeCollectingProfile|normalizeAndAnalyzeCollectingProfile|buildCollectingProfile|alignCollectingProfile|WorkoutAnalysisPhaseProfile|RouteAlignmentPhaseProfile|RouteMetricPhaseProfile|RouteAlignmentSamplePhaseProfile)'; then
     fail "hotspot profiling API must stay internal in $hotspot_source"
   fi
 done
@@ -1118,7 +1105,7 @@ dtw_comment_fixture="$(mktemp "${TMPDIR:-/tmp}/runplay-dtw-comment.XXXXXX")"
   printf '/* runplay.compute_constrained_dtw_path(a, b, c, d) */\n'
   printf 'let solved = RunPlayRouteAlignmentDtwBridge.solve()\n'
 } > "$dtw_comment_fixture"
-if strip_comments "$dtw_comment_fixture" | grep -Eq "$dtw_symbol_re"; then
+if code_matches "$dtw_comment_fixture" "$dtw_symbol_re"; then
   dtw_symbol_matcher_ok=0
 fi
 rm -f "$dtw_comment_fixture"
@@ -1152,15 +1139,13 @@ fi
 # The aligner owns policy, sampling, blocks, and diagnostics; the native solve
 # reaches it only through the pure Swift bridge.
 if [[ -f "$DTW_ALIGNER_SOURCE" ]]; then
-  if strip_comments "$DTW_ALIGNER_SOURCE" \
-    | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+  if code_matches "$DTW_ALIGNER_SOURCE" '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
     fail "ConstrainedDynamicTimeWarpingAligner must not reference C++ runplay symbols directly"
   else
     pass "ConstrainedDynamicTimeWarpingAligner stays free of direct C++ symbols"
   fi
 
-  if strip_comments "$DTW_ALIGNER_SOURCE" \
-    | grep -Eq '(^|[^[:alnum:]_])RunPlayRouteAlignmentDtwBridge([^[:alnum:]_]|$)'; then
+  if code_matches "$DTW_ALIGNER_SOURCE" '(^|[^[:alnum:]_])RunPlayRouteAlignmentDtwBridge([^[:alnum:]_]|$)'; then
     pass "ConstrainedDynamicTimeWarpingAligner consumes the pure Swift constrained-DTW bridge"
   else
     fail "ConstrainedDynamicTimeWarpingAligner must call RunPlayRouteAlignmentDtwBridge"
@@ -1219,46 +1204,24 @@ if [[ -f "$DTW_ALIGNER_SOURCE" ]]; then
   fi
 fi
 
-# RouteQualityProcessor must call the pure Swift quality bridge, not C++ symbols
-# and not the transitional step-distance bridge.
-if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+# RouteQualityProcessor must call the pure Swift quality bridge, not C++ symbols.
+if code_matches "$ROUTE_QUALITY_PROCESSOR_SOURCE" '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
   fail "RouteQualityProcessor must not reference C++ runplay symbols directly"
 else
   pass "RouteQualityProcessor stays free of direct C++ symbols"
 fi
 
-if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])RunPlayRouteQualityBridge([^[:alnum:]_]|$)'; then
+if code_matches "$ROUTE_QUALITY_PROCESSOR_SOURCE" '(^|[^[:alnum:]_])RunPlayRouteQualityBridge([^[:alnum:]_]|$)'; then
   pass "RouteQualityProcessor consumes the pure Swift route-quality bridge"
 else
   fail "RouteQualityProcessor must call RunPlayRouteQualityBridge"
 fi
 
-if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])RunPlayRouteStepDistanceBridge([^[:alnum:]_]|$)'; then
-  fail "RouteQualityProcessor must not call transitional RunPlayRouteStepDistanceBridge"
-else
-  pass "RouteQualityProcessor no longer calls the transitional step-distance bridge"
-fi
-
-if strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])(RunPlayGeodesyBridge|haversine_distance_meters|is_valid_coordinate|project_lat_lon_to_local_meters)([^[:alnum:]_]|$)' \
-  || strip_comments "$ROUTE_QUALITY_PROCESSOR_SOURCE" \
-    | grep -Eq '(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*'; then
+if code_matches "$ROUTE_QUALITY_PROCESSOR_SOURCE" '(^|[^[:alnum:]_])(RunPlayGeodesyBridge|haversine_distance_meters|is_valid_coordinate|project_lat_lon_to_local_meters)([^[:alnum:]_]|$)' \
+  || code_matches "$ROUTE_QUALITY_PROCESSOR_SOURCE" '(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*'; then
   fail "RouteQualityProcessor must not call scalar C++ geodesy"
 else
   pass "RouteQualityProcessor does not call scalar C++ geodesy"
-fi
-
-# Quality bridge must not invoke the public step-distance boundary.
-if strip_comments "$ROUTE_QUALITY_BRIDGE_SOURCE" \
-  | grep -Eq "$step_distance_symbol_re" \
-  || strip_comments "$ROUTE_QUALITY_BRIDGE_SOURCE" \
-    | grep -Eq '(^|[^[:alnum:]_])RunPlayRouteStepDistanceBridge([^[:alnum:]_]|$)'; then
-  fail "route-quality bridge must not call the public step-distance boundary"
-else
-  pass "route-quality bridge uses internal combined kernel only"
 fi
 
 # Shared native input builder must remain under Interop.
@@ -1318,8 +1281,7 @@ else
 fi
 
 # SegmentDetector calls only the pure-Swift bridge
-if strip_comments "$SEGMENT_DETECTOR_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])RunPlaySegmentDetectorBridge([^[:alnum:]_]|$)'; then
+if code_matches "$SEGMENT_DETECTOR_SOURCE" '(^|[^[:alnum:]_])RunPlaySegmentDetectorBridge([^[:alnum:]_]|$)'; then
   pass "SegmentDetector consumes the pure Swift segment-detector bridge"
 else
   fail "SegmentDetector must call RunPlaySegmentDetectorBridge"
@@ -1333,7 +1295,7 @@ for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Service
     RunPlayCore/Sources/Interop/*) continue ;;
     "$SEGMENT_BRIDGE_SOURCE") continue ;;
   esac
-  if strip_comments "$swift_file" | grep -Eq "$segment_cpp_type_re"; then
+  if code_matches "$swift_file" "$segment_cpp_type_re"; then
     fail "C++ SegmentDetection types exposed in public Swift: $relative"
   fi
 done
@@ -1371,16 +1333,14 @@ else
   done
 fi
 
-if strip_comments "$ELEVATION_PROFILE_SOURCE" \
-  | grep -Eq '(^|[^[:alnum:]_])RunPlayElevationProfileBridge([^[:alnum:]_]|$)'; then
+if code_matches "$ELEVATION_PROFILE_SOURCE" '(^|[^[:alnum:]_])RunPlayElevationProfileBridge([^[:alnum:]_]|$)'; then
   pass "ElevationProfile consumes the pure Swift elevation-profile bridge"
 else
   fail "ElevationProfile must call RunPlayElevationProfileBridge"
 fi
 
 # Old multi-pass production algorithm must not remain in production ElevationProfile.
-if strip_comments "$ELEVATION_PROFILE_SOURCE" \
-  | grep -Eq 'altitudeSpikeMinimumDeviationMeters|altitudeShortExcursionMinimumDeviationMeters|elevationGainLossDeadbandMeters'; then
+if code_matches "$ELEVATION_PROFILE_SOURCE" 'altitudeSpikeMinimumDeviationMeters|altitudeShortExcursionMinimumDeviationMeters|elevationGainLossDeadbandMeters'; then
   fail "production ElevationProfile still contains the old multi-pass algorithm policy fields"
 else
   pass "production ElevationProfile no longer embeds the multi-pass algorithm body"
@@ -1400,7 +1360,7 @@ for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Service
     RunPlayCore/Sources/Interop/*) continue ;;
     "$ELEVATION_BRIDGE_SOURCE") continue ;;
   esac
-  if strip_comments "$swift_file" | grep -Eq "$elevation_cpp_type_re"; then
+  if code_matches "$swift_file" "$elevation_cpp_type_re"; then
     fail "C++ ElevationProfile types exposed in public Swift: $relative"
   fi
 done
@@ -1454,21 +1414,18 @@ else
   done
 fi
 
-if strip_comments "$ELEVATION_BRIDGE_SOURCE" \
-  | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)'; then
+if code_matches "$ELEVATION_BRIDGE_SOURCE" '^[[:space:]]*(public|open|package)[^/]*(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)'; then
   fail "elevation benchmark diagnostic must stay internal, not public/package"
 else
   pass "elevation benchmark diagnostic stays internal to RunPlayCore"
 fi
 
 # SegmentDetector continues to consume pure Swift elevation snapshot
-if strip_comments "$SEGMENT_DETECTOR_SOURCE" \
-  | grep -Eq 'segmentDetectionSnapshot'; then
+if code_matches "$SEGMENT_DETECTOR_SOURCE" 'segmentDetectionSnapshot'; then
   pass "SegmentDetector continues to consume pure Swift elevation snapshot"
 else
   # Snapshot may be used only through the bridge; accept either path.
-  if strip_comments "$SEGMENT_BRIDGE_SOURCE" \
-    | grep -Eq 'segmentDetectionSnapshot'; then
+  if code_matches "$SEGMENT_BRIDGE_SOURCE" 'segmentDetectionSnapshot'; then
     pass "SegmentDetector bridge continues to consume pure Swift elevation snapshot"
   else
     fail "SegmentDetector elevation snapshot consumption missing"
@@ -1509,22 +1466,19 @@ else
   fail "assign_route_metric_scale_buckets must have exactly one call site in its Interop bridge"
 fi
 
-if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
-  | grep -Eq 'RunPlayRouteMetricScaleBucketBridge[[:space:]]*\.[[:space:]]*assign'; then
+if code_matches "$ROUTE_METRIC_BUILDER_SOURCE" 'RunPlayRouteMetricScaleBucketBridge[[:space:]]*\.[[:space:]]*assign'; then
   pass "RouteMetricProfileBuilder consumes the pure Swift route metric bridge for pace/HR"
 else
   fail "RouteMetricProfileBuilder must consume RunPlayRouteMetricScaleBucketBridge for pace/HR"
 fi
 
-if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
-  | grep -Eq 'finalizeCorrectedElevationScaleBucketsInSwift|RouteMetricScaleBucketSwiftFinalizer'; then
+if code_matches "$ROUTE_METRIC_BUILDER_SOURCE" 'finalizeCorrectedElevationScaleBucketsInSwift|RouteMetricScaleBucketSwiftFinalizer'; then
   pass "corrected elevation owns an explicit production Swift numeric finalizer"
 else
   fail "corrected elevation must use an explicit mode-owned Swift scale/bucket finalizer"
 fi
 
-if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
-  | grep -Eq 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weighted(Quantile|Median)'; then
+if code_matches "$ROUTE_METRIC_BUILDER_SOURCE" 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weighted(Quantile|Median)'; then
   fail "DistanceWeightedStatistics must not be the production route-metric finalizer in RouteMetricProfileBuilder"
 else
   pass "production route-metric finalizer does not call DistanceWeightedStatistics"
@@ -1549,15 +1503,13 @@ else
 fi
 
 if [[ -f "RunPlayCore/Sources/Services/DistanceWeightedStatistics.swift" ]] \
-  && strip_comments "$ROUTE_METRIC_LINE_SOURCE" \
-    | grep -Eq 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weightedMedianBucket'; then
+  && code_matches "$ROUTE_METRIC_LINE_SOURCE" 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weightedMedianBucket'; then
   pass "DistanceWeightedStatistics remains available to Platform map-line chunking"
 else
   fail "DistanceWeightedStatistics must remain available to RouteMetricMapLineBuilder"
 fi
 
-if strip_comments "$ROUTE_METRIC_LINE_SOURCE" \
-  | grep -Eq '(preferredMinimumColorRunDistanceMeters|enableBucketHysteresis|maximumStyledLineCount)'; then
+if code_matches "$ROUTE_METRIC_LINE_SOURCE" '(preferredMinimumColorRunDistanceMeters|enableBucketHysteresis|maximumStyledLineCount)'; then
   pass "RouteMetricMapLineBuilder remains Swift with hysteresis/adaptive policy"
 else
   fail "RouteMetricMapLineBuilder Swift policy markers are missing"
@@ -1567,7 +1519,7 @@ route_metric_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(Rou
 route_metric_cpp_leaks=()
 for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift RunPlayPlatform/Sources/**/*.swift RunPlayStudio/Sources/**/*.swift; do
   [[ -f "$swift_file" ]] || continue
-  if strip_comments "$swift_file" | grep -Eq "$route_metric_cpp_type_re"; then
+  if code_matches "$swift_file" "$route_metric_cpp_type_re"; then
     route_metric_cpp_leaks+=("$swift_file")
   fi
 done

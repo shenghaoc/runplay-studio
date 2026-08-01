@@ -38,44 +38,6 @@ enum RunPlayRouteMetricScaleBucketBridgeError: Error, Equatable {
 }
 
 enum RunPlayRouteMetricScaleBucketBridge {
-    /// Test-only invocation counter for native assign calls.
-    private final class InvocationCounter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var count = 0
-
-        var value: Int {
-            lock.lock()
-            defer { lock.unlock() }
-            return count
-        }
-
-        func reset() {
-            lock.lock()
-            count = 0
-            lock.unlock()
-        }
-
-        func increment() {
-            lock.lock()
-            count += 1
-            lock.unlock()
-        }
-    }
-
-    private static let invocationCounter = InvocationCounter()
-
-    static var assignInvocationCount: Int {
-        invocationCounter.value
-    }
-
-    static func resetAssignInvocationCountForTests() {
-        invocationCounter.reset()
-    }
-
-    private static func recordAssignInvocation() {
-        invocationCounter.increment()
-    }
-
     static func assign(
         metricValues: [Double?],
         weightsMeters: [Double],
@@ -87,7 +49,7 @@ enum RunPlayRouteMetricScaleBucketBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlayRouteMetricScaleBucketResult {
-        recordAssignInvocation()
+        NativeCallObserver.record(.routeMetricScaleBucket)
         return try assignNative(
             metricValues: metricValues,
             weightsMeters: weightsMeters,
@@ -113,7 +75,7 @@ enum RunPlayRouteMetricScaleBucketBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlayRouteMetricScaleBucketBenchmarkReport {
-        recordAssignInvocation()
+        NativeCallObserver.record(.routeMetricScaleBucket)
         let timed = try assignNative(
             metricValues: metricValues,
             weightsMeters: weightsMeters,

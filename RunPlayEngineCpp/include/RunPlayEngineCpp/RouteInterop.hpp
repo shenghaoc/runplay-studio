@@ -77,7 +77,8 @@ struct RouteInputSample final {
 };
 
 static_assert(std::is_standard_layout_v<RouteInputSample>);
-static_assert(std::is_copy_constructible_v<RouteInputSample>);
+static_assert(std::is_trivially_copyable_v<RouteInputSample>);
+static_assert(std::is_nothrow_copy_constructible_v<RouteInputSample>);
 
 enum class RouteInteropStatus : std::uint8_t {
     success,
@@ -105,7 +106,8 @@ struct RouteBatchInspection final {
 };
 
 static_assert(std::is_standard_layout_v<RouteBatchInspection>);
-static_assert(std::is_copy_constructible_v<RouteBatchInspection>);
+static_assert(std::is_trivially_copyable_v<RouteBatchInspection>);
+static_assert(std::is_nothrow_copy_constructible_v<RouteBatchInspection>);
 
 /// Inspects a complete route through one synchronous borrowed-buffer call.
 ///
