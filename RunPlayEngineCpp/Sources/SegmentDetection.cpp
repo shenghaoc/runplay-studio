@@ -515,8 +515,13 @@ static PaceResult search_fastest_pace(
         const auto clocks = range_clocks(
             start_elapsed, end_elapsed, start_active, end_active);
 
-        if (clocks.active > 0.0 && window_distance > 0.0) {
-            const double pace = (clocks.active / window_distance) * 1000.0;
+        const double evaluated_distance = window_end - window_start;
+        if (clocks.active > 0.0 && evaluated_distance > 0.0) {
+            // Swift calculates pace from the two rounded window boundaries,
+            // not the configured mathematical window length. At large
+            // cumulative distances their subtraction can differ by one ULP,
+            // which matters to strict first-winner comparisons.
+            const double pace = (clocks.active / evaluated_distance) * 1000.0;
             if (std::isfinite(pace) &&
                 pace >= min_pace && pace <= max_pace) {
                 if (pace < best_pace) {
@@ -584,8 +589,9 @@ static CombinedPaceResults search_combined_one_km(
         const auto clocks = range_clocks(
             start_elapsed, end_elapsed, start_active, end_active);
 
-        if (clocks.active > 0.0 && window_distance > 0.0) {
-            const double pace = (clocks.active / window_distance) * 1000.0;
+        const double evaluated_distance = window_end - window_start;
+        if (clocks.active > 0.0 && evaluated_distance > 0.0) {
+            const double pace = (clocks.active / evaluated_distance) * 1000.0;
             if (std::isfinite(pace) &&
                 pace >= min_pace && pace <= max_pace) {
                 if (pace < fastest_pace) {

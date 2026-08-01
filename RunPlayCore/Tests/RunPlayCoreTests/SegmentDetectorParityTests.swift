@@ -6,6 +6,41 @@ import XCTest
 /// Swift search and materialization path; UUIDs are the only excluded field.
 final class SegmentDetectorParityTests: XCTestCase {
 
+    func testGeneratedFixtureMatrixCoversRequiredRouteFamilies() {
+        var pauseBoundaryCount = 0
+        var stationaryPlateauCount = 0
+        var missingAltitudeCount = 0
+        var kilometerRouteCount = 0
+
+        for fixtureIndex in 0..<SegmentDetectorParityFixtures.generatedFixtureCount {
+            let points = SegmentDetectorParityFixtures.generatedFixture(
+                index: fixtureIndex
+            )
+            if points.contains(where: { $0.altitudeMeters == nil }) {
+                missingAltitudeCount += 1
+            }
+            if let first = points.first, let last = points.last,
+               last.distanceFromStartMeters - first.distanceFromStartMeters >= 1_000 {
+                kilometerRouteCount += 1
+            }
+            for pair in zip(points, points.dropFirst())
+                where pair.0.distanceFromStartMeters
+                    == pair.1.distanceFromStartMeters {
+                if pair.0.routeSegmentIndex == pair.1.routeSegmentIndex {
+                    stationaryPlateauCount += 1
+                } else {
+                    pauseBoundaryCount += 1
+                }
+            }
+        }
+
+        XCTAssertEqual(SegmentDetectorParityFixtures.generatedFixtureCount, 1_000)
+        XCTAssertGreaterThanOrEqual(pauseBoundaryCount, 200)
+        XCTAssertGreaterThanOrEqual(stationaryPlateauCount, 140)
+        XCTAssertGreaterThanOrEqual(missingAltitudeCount, 250)
+        XCTAssertGreaterThanOrEqual(kilometerRouteCount, 800)
+    }
+
     func testEndToEndHighlightsMatchSwiftOracle() throws {
         let fixtures: [(String, [RoutePoint])] = [
             ("continuous-variable", Self.makeContinuousVariableRoute()),
@@ -29,6 +64,32 @@ final class SegmentDetectorParityTests: XCTestCase {
             )
 
             assertSegmentsEqual(actual, expected, fixture: name)
+        }
+    }
+
+    func testOneThousandGeneratedEndToEndHighlightsMatchSwiftOracle() throws {
+        for fixtureIndex in 0..<SegmentDetectorParityFixtures.generatedFixtureCount {
+            let points = SegmentDetectorParityFixtures.generatedFixture(
+                index: fixtureIndex
+            )
+            let workout = RunWorkout(routePoints: points)
+            let context = WorkoutAnalysisContext(workout: workout)
+            let expected = SwiftSegmentDetectorOracle.detectSegments(
+                from: workout,
+                context: context
+            )
+            let actual = try SegmentDetector.detectSegments(
+                from: workout,
+                context: context,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+
+            assertSegmentsEqual(
+                actual,
+                expected,
+                fixture: "generated-\(fixtureIndex)"
+            )
         }
     }
 

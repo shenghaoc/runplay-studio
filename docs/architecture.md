@@ -382,9 +382,16 @@ Machine-specific milliseconds live only in profile output, not here.
 
 **Completed boundary:** `SegmentDetector` now performs its bounded window search
 through one bulk C++23 kernel per invocation.
-Additive analysis profiles show segment detection dominates post-normalization
-analysis wall time on large and product-limit routes, while ordinary 1k-point
-workouts remain well under a millisecond end-to-end.
+The post-cutover analysis profile passes exact Mode A/B digests through the
+product limit. Segment detection remains a material phase, but elevation is now
+the largest isolated phase in direct analysis and route quality plus elevation
+dominates normalization. Ordinary 1k-point workouts remain well under a
+millisecond end-to-end.
+
+**Selected next boundary:** `ElevationProfile`. The post-cutover product-limit
+profile confirms that its multi-pass correction and cumulative gain/loss work
+remains material after the SegmentDetector migration. Preserve its current
+gap, smoothing, and source-altitude semantics as a literal translation.
 
 **Intentional remaining Swift ownership:**
 
@@ -395,13 +402,12 @@ workouts remain well under a millisecond end-to-end.
 - route-metric label formatting and Platform map-line presentation;
 - cancellation, identity, Codable models, and persistence.
 
-**Why rejected candidates stay Swift (for now):** MovementProfile and
-ElevationProfile are real numeric work but are a small share of analysis wall
-relative to SegmentDetector; importer parsers are not portable pure-numeric
-kernels; MetricSmoother alone is too small; SplitCalculator is modest once
-context is shared. A combined full-analysis kernel was intentionally deferred
-until the dominant SegmentDetector boundary could be reviewed independently;
-that boundary is now `detect_segment_windows`, called once per invocation.
+**Why other candidates stay Swift (for now):** MovementProfile remains smaller
+than the selected elevation work; importer parsers are not portable
+pure-numeric kernels; MetricSmoother alone is too small; SplitCalculator is
+modest once context is shared. A combined full-analysis kernel remains
+unjustified while the selected elevation boundary can be reviewed and proven
+independently.
 
 Legacy SceneKit projection stays low priority unless it regains a shipped
 caller. The portable-core migration ends with a mandatory cleanup phase

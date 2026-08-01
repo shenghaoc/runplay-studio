@@ -32,6 +32,9 @@ Distance-boundary semantics preserve both existing consumers:
 - Pace clocks match `WorkoutTimeline`: same-segment plateaus use first arrival
   for both roles except the terminal end; cross-segment plateaus use the first
   resumed sample for range start and last prior sample for range end.
+- Pace uses the subtraction of the two rounded distance boundaries as its
+  denominator, exactly as Swift does; it does not substitute the configured
+  mathematical window length.
 - Elevation values match `ElevationProfile`: exact duplicates use last for
   range start and first for range end.
 - Neither path interpolates across a `continuity_group` boundary.
@@ -62,3 +65,15 @@ File: `RunPlayCore/Sources/Interop/RunPlaySegmentDetectorBridge.swift`
 2. One bridge search.
 3. For each candidate: validate and build highlight using existing evaluateWindow
    and makePaceHighlight / elevation finalization.
+
+## Verification
+
+- Native tests cover input/capacity contracts, independent work budgets,
+  finite-but-out-of-range evaluation estimates, duplicate-distance ownership,
+  and large-distance rounded-window pace.
+- Bridge and end-to-end tests share 1,000 deterministic production-shaped
+  fixtures and compare native candidates plus every durable highlight field.
+- The release benchmark compares the full pre-migration Swift oracle with the
+  full production path at 100,000 and 1,000,000 points.
+- The production-equivalent remaining-core analysis profile is rerun after the
+  cutover, including its one-million-point fixture and exact Mode A/B digests.

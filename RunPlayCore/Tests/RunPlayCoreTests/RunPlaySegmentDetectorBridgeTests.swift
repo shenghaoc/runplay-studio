@@ -12,7 +12,11 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         _ = RunWorkout(routePoints: points)
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
-        let config = makeDefaultPaceConfig(points: points, timeline: timeline)
+        let config = makeDefaultConfig(
+            points: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile
+        )
 
         let bridgeResult = try RunPlaySegmentDetectorBridge.search(
             routePoints: points, timeline: timeline,
@@ -45,7 +49,11 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         _ = RunWorkout(routePoints: points)
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
-        let config = makeDefaultPaceConfig(points: points, timeline: timeline)
+        let config = makeDefaultConfig(
+            points: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile
+        )
 
         let bridgeResult = try RunPlaySegmentDetectorBridge.search(
             routePoints: points, timeline: timeline,
@@ -217,7 +225,11 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         let points = TestFixtures.makeBudgetRoute()
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
-        let config = makeDefaultPaceConfig(points: points, timeline: timeline)
+        let config = makeDefaultConfig(
+            points: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile
+        )
 
         XCTAssertThrowsError(try RunPlaySegmentDetectorBridge.search(
             routePoints: points,
@@ -234,11 +246,15 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
     // MARK: - Generated fixture parity
 
     func testDeterministicGeneratedParityFixtures() throws {
-        let fixtures = TestFixtures.generateParityFixtures(count: 100)
-        for (index, points) in fixtures.enumerated() {
+        for index in 0..<SegmentDetectorParityFixtures.generatedFixtureCount {
+            let points = SegmentDetectorParityFixtures.generatedFixture(index: index)
             let timeline = WorkoutTimeline(routePoints: points)
             let elevationProfile = ElevationProfile(routePoints: points)
-            let config = makeDefaultPaceConfig(points: points, timeline: timeline)
+            let config = makeDefaultConfig(
+                points: points,
+                timeline: timeline,
+                elevationProfile: elevationProfile
+            )
 
             let bridgeResult = try RunPlaySegmentDetectorBridge.search(
                 routePoints: points, timeline: timeline,
@@ -284,7 +300,11 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         let result = try RunPlaySegmentDetectorBridge.search(
             routePoints: [], timeline: WorkoutTimeline(routePoints: []),
             elevationProfile: ElevationProfile(routePoints: []),
-            configuration: makeDefaultPaceConfig(points: [], timeline: WorkoutTimeline(routePoints: [])),
+            configuration: makeDefaultConfig(
+                points: [],
+                timeline: WorkoutTimeline(routePoints: []),
+                elevationProfile: ElevationProfile(routePoints: [])
+            ),
             cancellationCheckStride: 1, isCancelled: { false }
         )
         XCTAssertEqual(result.candidates.count, 0)
@@ -298,7 +318,11 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             routePoints: points,
             timeline: WorkoutTimeline(routePoints: points),
             elevationProfile: ElevationProfile(routePoints: points),
-            configuration: makeDefaultPaceConfig(points: points, timeline: WorkoutTimeline(routePoints: points)),
+            configuration: makeDefaultConfig(
+                points: points,
+                timeline: WorkoutTimeline(routePoints: points),
+                elevationProfile: ElevationProfile(routePoints: points)
+            ),
             cancellationCheckStride: 1, isCancelled: { false }
         )
         XCTAssertEqual(result.candidates.count, 0)
@@ -306,9 +330,10 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeDefaultPaceConfig(
+    private func makeDefaultConfig(
         points: [RoutePoint],
-        timeline: WorkoutTimeline
+        timeline: WorkoutTimeline,
+        elevationProfile: ElevationProfile
     ) -> SegmentDetectorSearchConfiguration {
         let distanceSpan = timeline.totalDistanceMeters - timeline.startDistanceMeters
         let routeCount = points.count
@@ -320,13 +345,40 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             preferredStep: 50, distanceSpan: distanceSpan,
             routePointCount: routeCount
         )
+        let policy = RouteQualityPolicy.runningDefault
+        let elevationEnabled = elevationProfile.hasMeaningfulElevation
+            && timeline.totalDistanceMeters
+                >= policy.elevationHighlightMinimumWindowMeters
+        let elevationWindow = elevationEnabled
+            ? max(
+                policy.elevationHighlightMinimumWindowMeters,
+                min(
+                    policy.elevationHighlightMaximumWindowMeters,
+                    timeline.totalDistanceMeters
+                        * policy.elevationHighlightWindowRouteFraction
+                )
+            )
+            : 0
+        let elevationStep = elevationEnabled
+            ? RouteAnalysisBudget.boundedStep(
+                preferredStep: max(
+                    policy.elevationHighlightMinimumStepMeters,
+                    elevationWindow
+                        / Double(policy.elevationHighlightStepsPerWindow)
+                ),
+                distanceSpan: distanceSpan,
+                routePointCount: routeCount
+            )
+            : 0
+
         return SegmentDetectorSearchConfiguration(
             fastest400mDistanceMeters: 400, fastest400mStepMeters: bounded400Step,
             oneKilometerDistanceMeters: 1000, oneKilometerStepMeters: bounded1kmStep,
             minimumValidPaceSecondsPerKilometer: 120,
             maximumValidPaceSecondsPerKilometer: 1200,
-            elevationEnabled: false,
-            elevationWindowDistanceMeters: 0, elevationStepMeters: 0,
+            elevationEnabled: elevationEnabled,
+            elevationWindowDistanceMeters: elevationWindow,
+            elevationStepMeters: elevationStep,
             maximumEvaluationsPerSearch: UInt64(
                 RouteAnalysisBudget.maximumEvaluations(forRoutePointCount: routeCount)
             )
@@ -447,39 +499,6 @@ private enum TestFixtures {
                 segment: 0
             )
         }
-    }
-
-    static func generateParityFixtures(count: Int) -> [[RoutePoint]] {
-        var fixtures: [[RoutePoint]] = []
-        fixtures.reserveCapacity(count)
-        let start = Date()
-
-        for fi in 0..<count {
-            let n = [5, 10, 15, 20, 50, 100][fi % 6]
-            let spacing: Double = [5, 10, 25, 50, 100][fi % 5]
-            let hasAltitude = fi % 3 != 0
-            let hasSegments = fi % 4 == 0
-
-            var points: [RoutePoint] = []
-            var segment = 0
-            for i in 0..<n {
-                let d = Double(i) * spacing
-                let t = d * 0.25
-                let alt: Double? = hasAltitude ? 10 + Double(i % 5) : nil
-                if hasSegments, i > n / 2, segment < 2 { segment = 1 }
-                points.append(RoutePoint(
-                    timestamp: start.addingTimeInterval(t),
-                    latitude: 1 + d / 100_000,
-                    longitude: 1,
-                    altitudeMeters: alt,
-                    distanceFromStartMeters: d,
-                    elapsedSeconds: t,
-                    routeSegmentIndex: segment
-                ))
-            }
-            fixtures.append(points)
-        }
-        return fixtures
     }
 
     private static func segmentPoint(

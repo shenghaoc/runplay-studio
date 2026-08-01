@@ -457,6 +457,64 @@ static void test_each_search_has_its_own_evaluation_budget() {
             "pace summary counts 17 400m + 11 combined 1km evaluations");
 }
 
+static void test_finite_evaluation_quotient_beyond_uint64_is_resource_limited() {
+    std::array<SegmentDetectionSample, 2> samples = {{
+        {0, 0, 0, 0, 0, 0, 0, -1},
+        {1.0e20, 1.0e12, 1.0e12, 0, 0, 0, 0, -1},
+    }};
+    SegmentWindowCandidate output[5] = {};
+    output[0].start_distance_meters = 12345;
+
+    SegmentDetectionConfiguration config{};
+    config.fastest_400m_distance_meters = 400;
+    config.fastest_400m_step_meters = 1;
+    config.one_kilometer_distance_meters = 1'000;
+    config.one_kilometer_step_meters = 50;
+    config.minimum_valid_pace_seconds_per_kilometer = 120;
+    config.maximum_valid_pace_seconds_per_kilometer = 1'200;
+    config.maximum_evaluations_per_search = 1'000;
+
+    const auto summary = detect_segment_windows(
+        samples.data(), samples.size(), config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::resource_limit,
+            "finite quotient beyond uint64 range is resource limited");
+    expect(output[0].start_distance_meters == 12345,
+            "resource-limit preflight leaves output unchanged");
+}
+
+static void test_pace_uses_rounded_window_boundary_distance() {
+    constexpr double start_distance = 8'388'475.4963460555;
+    const double end_distance = start_distance + 1'000.0;
+    std::array<SegmentDetectionSample, 2> samples = {{
+        {start_distance, 0, 0, 0, 0, 0, 0, -1},
+        {end_distance, 300, 300, 0, 0, 0, 0, -1},
+    }};
+    SegmentWindowCandidate output[5] = {};
+
+    SegmentDetectionConfiguration config{};
+    config.fastest_400m_distance_meters = 2'000;
+    config.fastest_400m_step_meters = 50;
+    config.one_kilometer_distance_meters = 1'000;
+    config.one_kilometer_step_meters = 50;
+    config.minimum_valid_pace_seconds_per_kilometer = 120;
+    config.maximum_valid_pace_seconds_per_kilometer = 1'200;
+    config.maximum_evaluations_per_search = 10;
+
+    const auto summary = detect_segment_windows(
+        samples.data(), samples.size(), config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::success,
+            "large-distance rounded window → success");
+    expect(summary.candidate_count == 2,
+            "large-distance rounded window → fastest and slowest 1km");
+
+    const double evaluated_distance = end_distance - start_distance;
+    const double expected_pace = (300.0 / evaluated_distance) * 1'000.0;
+    expect(output[0].selection_value == expected_pace,
+            "fastest pace uses rounded boundary subtraction");
+    expect(output[1].selection_value == expected_pace,
+            "slowest pace uses rounded boundary subtraction");
+}
+
 // ---------------------------------------------------------------------------
 // Elevation tests
 // ---------------------------------------------------------------------------
@@ -547,6 +605,8 @@ void run_segment_detection_tests() {
     test_same_segment_distance_plateau_uses_first_arrival();
     test_pause_plateau_uses_inner_segment_boundaries();
     test_each_search_has_its_own_evaluation_budget();
+    test_finite_evaluation_quotient_beyond_uint64_is_resource_limited();
+    test_pace_uses_rounded_window_boundary_distance();
     test_biggest_climb();
     test_flat_route_no_elevation();
 }

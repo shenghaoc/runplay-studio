@@ -66,7 +66,16 @@ final class SegmentDetectorBenchmark: XCTestCase {
             productionSamples.append(productionElapsed)
         }
 
-        XCTAssertEqual(digest(productionResult), digest(oracleResult))
+        let productionDigest = digest(productionResult)
+        let oracleDigest = digest(oracleResult)
+        guard productionDigest == oracleDigest else {
+            XCTFail("""
+            SegmentDetector durable highlight parity failed.
+            production: \(productionDigest)
+            Swift oracle: \(oracleDigest)
+            """)
+            return
+        }
 
         let oracleMedian = median(oracleSamples)
         let productionMedian = median(productionSamples)
