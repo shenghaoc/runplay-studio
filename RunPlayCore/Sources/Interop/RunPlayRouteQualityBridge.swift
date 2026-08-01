@@ -28,44 +28,6 @@ struct RunPlayRouteQualityGeometryResult: Sendable {
 /// exactly once. C++ retains no pointer and performs no callback. The public
 /// step-distance boundary is not used on this production path.
 enum RunPlayRouteQualityBridge {
-    /// Test-only invocation counter for native geometry calls.
-    private final class InvocationCounter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var count = 0
-
-        var value: Int {
-            lock.lock()
-            defer { lock.unlock() }
-            return count
-        }
-
-        func reset() {
-            lock.lock()
-            count = 0
-            lock.unlock()
-        }
-
-        func increment() {
-            lock.lock()
-            count += 1
-            lock.unlock()
-        }
-    }
-
-    private static let invocationCounter = InvocationCounter()
-
-    static var nativeInvocationCount: Int {
-        invocationCounter.value
-    }
-
-    static func resetNativeInvocationCountForTests() {
-        invocationCounter.reset()
-    }
-
-    private static func recordNativeInvocation() {
-        invocationCounter.increment()
-    }
-
     static func process(
         _ orderedPoints: [RoutePoint],
         policy: RouteQualityPolicy,
@@ -119,7 +81,7 @@ enum RunPlayRouteQualityBridge {
             isCancelled: isCancelled
         ) { input in
             try checkCancellation(isCancelled: isCancelled)
-            recordNativeInvocation()
+            NativeCallObserver.record(.routeQuality)
             let result: runplay.RouteQualityPipelineSummary =
                 selection.withUnsafeBufferPointer { selectionBuffer in
                     output.withUnsafeMutableBufferPointer { outputBuffer in
@@ -371,7 +333,7 @@ enum RunPlayRouteQualityBridge {
             repeating: runplay.RouteQualityOutputSample(),
             count: orderedPoints.count
         )
-        recordNativeInvocation()
+        NativeCallObserver.record(.routeQuality)
         let summary = RunPlayRouteInputBuffer.withNativeSamples(orderedPoints) { input in
             selection.withUnsafeBufferPointer { selectionBuffer in
                 output.withUnsafeMutableBufferPointer { outputBuffer in

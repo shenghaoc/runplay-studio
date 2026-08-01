@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import XCTest
 @testable import RunPlayCore
@@ -7,35 +8,37 @@ import XCTest
 /// finalization and solid mode (covered in
 /// `RouteMetricScaleBucketParityTests.testNativeCallCountsByMode`).
 ///
-/// Counters are bridge-local and reset before each assertion, so ordering and
-/// parallelism within this class cannot pollute the counts.
+/// Counts come from `NativeCallObserver.observing`, which binds a fresh tally to
+/// a task-local for the duration of the closure. Each assertion therefore sees
+/// only the native calls made by its own operation — a concurrently running test
+/// cannot contribute to the total. The observer exists only in DEBUG builds, so
+/// this whole file is DEBUG-gated too.
 final class NativeCallCardinalityTests: XCTestCase {
     private let processor = RouteQualityProcessor()
 
     func testRouteQualityProcessorCallsQualityAndElevationExactlyOnce() throws {
         let points = makeStraightLinePoints(count: 120)
 
-        RunPlayRouteQualityBridge.resetNativeInvocationCountForTests()
-        RunPlayElevationProfileBridge.resetNativeInvocationCountForTests()
+        let (_, counts) = try NativeCallObserver.observing {
+            try processor.process(points, sortByTimestamp: false)
+        }
 
-        _ = try processor.process(points, sortByTimestamp: false)
-
-        XCTAssertEqual(RunPlayRouteQualityBridge.nativeInvocationCount, 1)
-        XCTAssertEqual(RunPlayElevationProfileBridge.nativeInvocationCount, 1)
+        XCTAssertEqual(counts.routeQuality, 1)
+        XCTAssertEqual(counts.elevationProfile, 1)
     }
 
     func testElevationProfileBuildCallsNativeExactlyOnce() throws {
         let points = makeStraightLinePoints(count: 64)
 
-        RunPlayElevationProfileBridge.resetNativeInvocationCountForTests()
+        let (_, counts) = try NativeCallObserver.observing {
+            try ElevationProfile.build(
+                routePoints: points,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+        }
 
-        _ = try ElevationProfile.build(
-            routePoints: points,
-            policy: .runningDefault,
-            isCancelled: { false }
-        )
-
-        XCTAssertEqual(RunPlayElevationProfileBridge.nativeInvocationCount, 1)
+        XCTAssertEqual(counts.elevationProfile, 1)
     }
 
     func testSegmentDetectorCallsNativeExactlyOnce() throws {
@@ -46,67 +49,132 @@ final class NativeCallCardinalityTests: XCTestCase {
             seed: 1_103,
             name: "segment-cardinality"
         ))
-        // Context construction builds an elevation profile through the same
-        // bridge; the segment counter is unaffected.
+        // Context construction builds an elevation profile through a different
+        // bridge; keeping it outside the scope isolates the segment count.
         let context = WorkoutAnalysisContext(workout: workout)
 
-        RunPlaySegmentDetectorBridge.resetNativeInvocationCountForTests()
+        let (highlights, counts) = try NativeCallObserver.observing {
+            try SegmentDetector.detectSegments(
+                from: workout,
+                context: context,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+        }
 
-        let highlights = try SegmentDetector.detectSegments(
-            from: workout,
-            context: context,
-            policy: .runningDefault,
-            isCancelled: { false }
-        )
-
-        XCTAssertEqual(RunPlaySegmentDetectorBridge.nativeInvocationCount, 1)
+        XCTAssertEqual(counts.segmentDetection, 1)
         XCTAssertFalse(highlights.isEmpty)
     }
 
     func testConstrainedDTWAlignerCallsNativeOncePerAlignmentAttempt() throws {
         let workout = makeAlignmentWorkout(distanceMeters: 4_000, step: 20)
 
-        RunPlayRouteAlignmentDtwBridge.resetNativeInvocationCountForTests()
+        let (snapshot, counts) = try NativeCallObserver.observing {
+            try ConstrainedDynamicTimeWarpingAligner().align(
+                primary: workout,
+                comparison: workout,
+                primaryContext: WorkoutAnalysisContext(workout: workout),
+                comparisonContext: WorkoutAnalysisContext(workout: workout)
+            )
+        }
 
-        let snapshot = try ConstrainedDynamicTimeWarpingAligner().align(
-            primary: workout,
-            comparison: workout,
-            primaryContext: WorkoutAnalysisContext(workout: workout),
-            comparisonContext: WorkoutAnalysisContext(workout: workout)
-        )
-
-        XCTAssertEqual(RunPlayRouteAlignmentDtwBridge.nativeInvocationCount, 1)
+        XCTAssertEqual(counts.routeAlignmentDtw, 1)
         guard case .available = snapshot.availability else {
             return XCTFail("Expected an available alignment")
         }
     }
 
-    func testPersonalHeatmapBuilderCallsNativeOncePerWorkoutPerAttempt() throws {
+    func testPersonalHeatmapBuilderCallsNativeOncePerWorkoutInASinglePass() throws {
         let line = makeHeatmapLineWorkouts(count: 3)
         let builder = PersonalHeatmapBuilder()
 
-        RunPlayPersonalHeatmapCoverageBridge.resetNativeInvocationCountForTests()
+        let (snapshot, counts) = try NativeCallObserver.observing {
+            try builder.build(
+                workouts: line,
+                configuration: PersonalHeatmapConfiguration(cellSizeMeters: 50)
+            )
+        }
 
-        let snapshot = try builder.build(
-            workouts: line,
-            configuration: PersonalHeatmapConfiguration(cellSizeMeters: 50)
-        )
-
-        // Three non-empty workouts in a single adaptive pass: one native
-        // coverage call each.
-        XCTAssertEqual(RunPlayPersonalHeatmapCoverageBridge.nativeInvocationCount, 3)
-        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, 3)
+        // Three non-empty workouts, one adaptive pass: one coverage call each.
         XCTAssertEqual(snapshot.diagnostics.adaptiveResolutionRetries, 0)
+        XCTAssertEqual(counts.personalHeatmapCoverage, 3)
+        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, 3)
+    }
+
+    /// The single-pass test above cannot distinguish "once per workout per
+    /// attempt" from "once per workout, ever". A tight `maximumRenderedCellCount`
+    /// with a fine starting cell size forces the builder to coarsen and re-run
+    /// the whole aggregation, so the rule is checked against a real retry count.
+    ///
+    /// The exact rule is *not* one call per workout per attempt. The coverage
+    /// boundary is capacity-negotiated: when the caller-owned output buffer is
+    /// too small, C++ writes nothing, reports `required_cell_count`, and Swift
+    /// reallocates and calls once more. That renegotiation is bounded to a
+    /// single extra call (the bridge does not loop), so per workout per attempt
+    /// the count is 1 normally and 2 after a capacity retry.
+    func testPersonalHeatmapBuilderCallsNativeOncePerWorkoutPerAdaptiveAttemptPlusCapacityRetries() throws {
+        let workoutCount = 3
+        let line = makeHeatmapLineWorkouts(count: workoutCount)
+        let builder = PersonalHeatmapBuilder()
+
+        let (snapshot, counts) = try NativeCallObserver.observing {
+            try builder.build(
+                workouts: line,
+                configuration: PersonalHeatmapConfiguration(
+                    cellSizeMeters: 5,
+                    minimumWorkoutCount: 1,
+                    maximumRenderedCellCount: 8
+                )
+            )
+        }
+
+        let retries = snapshot.diagnostics.adaptiveResolutionRetries
+        XCTAssertGreaterThan(retries, 0, "expected the adaptive loop to coarsen at least once")
+
+        let attempts = retries + 1
+        let calls = counts.personalHeatmapCoverage
+
+        // Lower bound: every workout is visited exactly once per attempt.
+        XCTAssertGreaterThanOrEqual(
+            calls,
+            workoutCount * attempts,
+            "each workout must be covered on every adaptive attempt"
+        )
+        // Upper bound: at most one capacity renegotiation per workout per attempt.
+        XCTAssertLessThanOrEqual(
+            calls,
+            workoutCount * attempts * 2,
+            "capacity renegotiation must not loop beyond a single extra call"
+        )
+        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, workoutCount)
     }
 
     func testEmptyRouteCallsNoNativeElevationOrQuality() throws {
-        RunPlayRouteQualityBridge.resetNativeInvocationCountForTests()
-        RunPlayElevationProfileBridge.resetNativeInvocationCountForTests()
+        let (_, counts) = try NativeCallObserver.observing {
+            try processor.process([], sortByTimestamp: false)
+        }
 
-        _ = try processor.process([], sortByTimestamp: false)
+        XCTAssertEqual(counts.routeQuality, 0)
+        XCTAssertEqual(counts.elevationProfile, 0)
+    }
 
-        XCTAssertEqual(RunPlayRouteQualityBridge.nativeInvocationCount, 0)
-        XCTAssertEqual(RunPlayElevationProfileBridge.nativeInvocationCount, 0)
+    /// Guards the isolation property the scoping is there to provide: native
+    /// work performed outside a scope must not appear inside one.
+    func testObservationScopeExcludesWorkDoneOutsideIt() throws {
+        let points = makeStraightLinePoints(count: 64)
+
+        _ = try processor.process(points, sortByTimestamp: false)
+
+        let (_, counts) = try NativeCallObserver.observing {
+            try ElevationProfile.build(
+                routePoints: points,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+        }
+
+        XCTAssertEqual(counts.elevationProfile, 1)
+        XCTAssertEqual(counts.routeQuality, 0, "work before the scope must not be counted")
     }
 
     // MARK: - Helpers
@@ -163,3 +231,4 @@ final class NativeCallCardinalityTests: XCTestCase {
         }
     }
 }
+#endif
