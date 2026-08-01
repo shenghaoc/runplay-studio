@@ -54,6 +54,44 @@ enum RunPlayElevationProfileBridgeError: Error, Equatable {
 /// `build_elevation_profile` exactly once, and translates the one-to-one
 /// output samples. C++ retains no pointer and performs no callback.
 enum RunPlayElevationProfileBridge {
+    /// Test-only invocation counter for native elevation-profile calls.
+    private final class InvocationCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func reset() {
+            lock.lock()
+            count = 0
+            lock.unlock()
+        }
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
+    private static let invocationCounter = InvocationCounter()
+
+    static var nativeInvocationCount: Int {
+        invocationCounter.value
+    }
+
+    static func resetNativeInvocationCountForTests() {
+        invocationCounter.reset()
+    }
+
+    private static func recordNativeInvocation() {
+        invocationCounter.increment()
+    }
+
     static func build(
         routePoints: [RoutePoint],
         policy: RouteQualityPolicy,
@@ -207,6 +245,7 @@ enum RunPlayElevationProfileBridge {
         let nativeStart = collectBenchmarkTimings
             ? DispatchTime.now().uptimeNanoseconds
             : 0
+        recordNativeInvocation()
         let summary = samples.withUnsafeBufferPointer { samplesBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 runplay.build_elevation_profile(

@@ -199,8 +199,10 @@ normalized cumulative distances through one bulk call.**
 per-point Swift/C++ production calls are allowed.
 `scripts/validate-cpp-boundaries.sh` enforces that isolation mechanically.
 
-Elevation, timelines, splits, projection services, and file parsers remain in
-Swift `RunPlayCore` until later migration PRs. Per-workout personal heatmap
+Timelines, splits, projection services, and file parsers remain in Swift
+`RunPlayCore`. Elevation-profile construction is already native (see
+[ElevationProfile and WorkoutAnalysisContext](#elevationprofile-and-workoutanalysiscontext)).
+Per-workout personal heatmap
 route coverage is already native, and cross-workout heatmap aggregation stays
 Swift by an explicit profiling-driven decision; see
 [Personal Heatmap](#personal-heatmap). The Route-Aware constrained-DTW path

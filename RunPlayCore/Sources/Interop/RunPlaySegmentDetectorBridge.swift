@@ -52,6 +52,44 @@ struct SegmentDetectorSearchConfiguration: Sendable {
 // MARK: - Bridge
 
 enum RunPlaySegmentDetectorBridge {
+    /// Test-only invocation counter for native window-search calls.
+    private final class InvocationCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func reset() {
+            lock.lock()
+            count = 0
+            lock.unlock()
+        }
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
+    private static let invocationCounter = InvocationCounter()
+
+    static var nativeInvocationCount: Int {
+        invocationCounter.value
+    }
+
+    static func resetNativeInvocationCountForTests() {
+        invocationCounter.reset()
+    }
+
+    private static func recordNativeInvocation() {
+        invocationCounter.increment()
+    }
+
     static func search(
         routePoints: [RoutePoint],
         timeline: WorkoutTimeline,
@@ -195,6 +233,7 @@ enum RunPlaySegmentDetectorBridge {
         try checkCancellation(isCancelled: isCancelled)
 
         // One native call
+        recordNativeInvocation()
         let summary = samples.withUnsafeBufferPointer { samplesBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 runplay.detect_segment_windows(

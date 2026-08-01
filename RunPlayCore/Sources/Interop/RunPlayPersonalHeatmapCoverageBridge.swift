@@ -578,7 +578,8 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
         outputBuffer: inout ContiguousArray<runplay.PersonalHeatmapCellIndex>,
         capacity: Int
     ) -> runplay.PersonalHeatmapCoverageSummary {
-        nativeSamples.withUnsafeBufferPointer { sampleBuffer in
+        RunPlayPersonalHeatmapCoverageBridge.recordNativeInvocation()
+        return nativeSamples.withUnsafeBufferPointer { sampleBuffer in
             outputBuffer.withUnsafeMutableBufferPointer { outBuf in
                 let basePtr = sampleBuffer.baseAddress?.advanced(by: range.lowerBound)
                 return runplay.compute_personal_heatmap_workout_coverage(
@@ -597,6 +598,44 @@ final class RunPlayPersonalHeatmapPreparedBatch: @unchecked Sendable {
 
 /// Production bridge for per-workout personal heatmap coverage.
 enum RunPlayPersonalHeatmapCoverageBridge {
+    /// Test-only invocation counter for native per-workout coverage calls.
+    private final class InvocationCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func reset() {
+            lock.lock()
+            count = 0
+            lock.unlock()
+        }
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
+    private static let invocationCounter = InvocationCounter()
+
+    static var nativeInvocationCount: Int {
+        invocationCounter.value
+    }
+
+    static func resetNativeInvocationCountForTests() {
+        invocationCounter.reset()
+    }
+
+    fileprivate static func recordNativeInvocation() {
+        invocationCounter.increment()
+    }
+
     static func prepare(
         workoutRoutes: [[RoutePoint]],
         isCancelled: @Sendable () -> Bool

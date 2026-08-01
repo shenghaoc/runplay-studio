@@ -4,89 +4,98 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 
 ## Workstream A — Boundary inventory
 
-- [ ] Create `docs/cpp-engine-boundary-inventory.md` covering every public
+- [x] Create `docs/cpp-engine-boundary-inventory.md` covering every public
       callable and struct with the required metadata (name, header, signature,
       pointer roles, capacity contract, error statuses, no-write guarantees,
       native-call cardinality, production caller, and status).
-- [ ] Confirm "remaining count: 0" transitional boundaries.
+- [x] Confirm "remaining count: 0" transitional boundaries.
 
 ## Workstream B — Step-distance removal
 
-- [ ] Delete `RouteGeometry.hpp`, `RouteGeometry.cpp`, `RouteGeometryTests.cpp`,
+- [x] Delete `RouteGeometry.hpp`, `RouteGeometry.cpp`, `RouteGeometryTests.cpp`,
       `RunPlayRouteStepDistanceBridge.swift`,
       `RunPlayRouteStepDistanceBridgeTests.swift`, `RouteStepDistanceBenchmark.swift`,
       `scripts/run-step-distance-benchmark.sh`.
-- [ ] Update umbrella header, `TestMain.cpp`, `validate-cpp-boundaries.sh`,
+- [x] Update umbrella header, `TestMain.cpp`, `validate-cpp-boundaries.sh`,
       `validate-cpp-public-ast.py`, `Package.swift` comment.
-- [ ] Verify no `compute_route_step_distances` / `RunPlayRouteStepDistanceBridge`
+- [x] Verify no `compute_route_step_distances` / `RunPlayRouteStepDistanceBridge`
       references remain.
 
 ## Workstream C — Pointer/lifetime audit
 
-- [ ] Audit all remaining public callables (const inputs, caller-owned outputs,
+- [x] Audit all remaining public callables (const inputs, caller-owned outputs,
       exact write counts, capacity negotiation, no-write on error).
-- [ ] Document findings in the boundary inventory.
+- [x] Document findings in the boundary inventory.
 
 ## Workstream D — Header dependency audit
 
-- [ ] Verify every public header depends only on stdlib + public engine headers.
-- [ ] Verify umbrella header remains valid after removal.
+- [x] Verify every public header depends only on stdlib + public engine headers.
+- [x] Verify umbrella header remains valid after removal.
 
 ## Workstream E — Swift facade audit
 
-- [ ] Confirm only `RunPlayCore/Sources/Interop/` imports `RunPlayEngineCpp`.
-- [ ] Confirm no C++ type escapes into public `RunPlayCore` APIs.
-- [ ] Confirm nonescaping pointer scopes, cancellation, no hidden fallback.
+- [x] Confirm only `RunPlayCore/Sources/Interop/` imports `RunPlayEngineCpp`.
+- [x] Confirm no C++ type escapes into public `RunPlayCore` APIs.
+- [x] Confirm nonescaping pointer scopes, cancellation, no hidden fallback.
 
 ## Workstream F — Call-cardinality enforcement
 
-- [ ] Add tests proving one native call per production operation.
-- [ ] Add zero-call coverage for corrected-elevation finalization and solid mode.
+- [x] Add tests proving one native call per production operation.
+- [x] Add zero-call coverage for corrected-elevation finalization and solid mode.
 
 ## Workstream G — Oracle classification
 
-- [ ] Classify every oracle in the test target as active or removed.
-- [ ] Remove any migration-decision-only oracle with no active consumer.
+- [x] Classify every oracle in the test target as active or removed.
+- [x] Remove any migration-decision-only oracle with no active consumer.
+      (All five oracles — `SwiftPersonalHeatmapBuilderOracle`,
+      `SwiftElevationProfileOracle`, `PreMigrationRouteAlignerOracle`,
+      `SwiftSegmentDetectorOracle`, `SwiftConstrainedDtwPathOracle` — have
+      active parity-test consumers; none is migration-decision-only.)
 
 ## Workstream H — Verification document + benchmark inventory
 
-- [ ] Create `docs/cpp-engine-verification.md` with the full benchmark/profile
+- [x] Create `docs/cpp-engine-verification.md` with the full benchmark/profile
       inventory, sanitizer matrix, and discovery-coverage proof.
-- [ ] Remove the step-distance benchmark script; reframe
+- [x] Remove the step-distance benchmark script; reframe
       `RemainingCoreHotspotProfile` as a production diagnostic.
+      (Step-distance script removed in Workstream B; the hotspot profile is a
+      release production diagnostic gated on `RUNPLAY_CORE_HOTSPOT_PROFILE=1`
+      with family selection — no migration-decision-only ranking material.)
 
 ## Workstream I — Discovery and sanitizer coverage
 
-- [ ] Add a discovery-coverage guard proving added-but-omitted native files fail.
-- [ ] Document normal vs ASan/UBSan participation.
+- [x] Add a discovery-coverage guard proving added-but-omitted native files fail.
+- [x] Document normal vs ASan/UBSan participation.
 
 ## Workstream J — Package-consumer smoke
 
-- [ ] Strengthen `Tests/PackageConsumerSmoke` with representative compile-only
+- [x] Strengthen `Tests/PackageConsumerSmoke` with representative compile-only
       `RunPlayCore` usage.
-- [ ] Verify `swift build --package-path Tests/PackageConsumerSmoke`.
+- [x] Verify `swift build --package-path Tests/PackageConsumerSmoke`.
 
 ## Workstream K — iOS readiness
 
-- [ ] Create `docs/portable-core-ios-readiness.md`.
+- [x] Create `docs/portable-core-ios-readiness.md`.
 
 ## Workstream L — Durable docs
 
-- [ ] Update `AGENTS.md`, `README.md`, `docs/architecture.md`,
+- [x] Update `AGENTS.md`, `README.md`, `docs/architecture.md`,
       `docs/phase-plan.md`; mark migration complete; remaining count 0.
+      (AGENTS.md and phase-plan already current; fixed stale "elevation remains
+      Swift until later migration PRs" prose in `docs/architecture.md`.)
 
 ## Verification
 
-- [ ] `./scripts/validate-cpp-boundaries.sh`
-- [ ] `python3 scripts/validate-cpp-public-ast.py --self-test`
-- [ ] strict engine build with warning flags
-- [ ] native tests (normal + `--sanitize`)
-- [ ] `swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors`
-- [ ] `swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors`
-- [ ] `swift build --package-path Tests/PackageConsumerSmoke`
-- [ ] full macOS `swift test -Xswiftc -warnings-as-errors`
-- [ ] `xcodebuild test -scheme RunPlayStudio-Package -destination 'platform=macOS'`
-- [ ] grep audits and `git diff --check`
+- [x] `./scripts/validate-cpp-boundaries.sh`
+- [x] `python3 scripts/validate-cpp-public-ast.py --self-test`
+- [x] strict engine build with warning flags
+- [x] native tests (normal + `--sanitize`)
+- [x] `swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors`
+- [x] `swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors`
+- [x] `swift build --package-path Tests/PackageConsumerSmoke`
+- [x] full macOS `swift test -Xswiftc -warnings-as-errors`
+- [x] `xcodebuild test -scheme RunPlayStudio-Package -destination 'platform=macOS'`
+- [x] grep audits and `git diff --check`
 
 ## Commit and PR
 

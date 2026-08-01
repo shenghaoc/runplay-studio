@@ -378,6 +378,25 @@ if [[ $failures -eq 0 ]]; then
   pass "RunPlayEngineCpp sources avoid Apple frameworks and ObjC"
 fi
 
+# --- Native discovery coverage ------------------------------------------------
+#
+# scripts/run-cpp-engine-tests.sh derives its source and test lists from `find`
+# over RunPlayEngineCpp/Sources and RunPlayEngineCpp/Tests only. Prove that
+# every .cpp under the engine tree lives inside one of those two discovery
+# roots, so a source or test added-but-omitted from discovery fails this guard
+# instead of silently escaping normal and ASan/UBSan coverage.
+
+for src in "${ENGINE_SOURCES[@]}"; do
+  case "$src" in
+    *.cpp)
+      case "$src" in
+        RunPlayEngineCpp/Sources/*|RunPlayEngineCpp/Tests/*) ;;
+        *) fail "$src is a .cpp outside the native discovery roots (Sources/, Tests/)" ;;
+      esac
+      ;;
+  esac
+done
+
 # --- Lower layers must not depend upward -------------------------------------
 
 # C++ engine must not reference upper Swift module names as imports or includes.

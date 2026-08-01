@@ -54,6 +54,44 @@ enum RunPlayRouteAlignmentDtwBridgeError: Error, Equatable {
 /// and retains nothing. Cancellation is cooperative and checked around the
 /// native call, never inside it.
 enum RunPlayRouteAlignmentDtwBridge {
+    /// Test-only invocation counter for native path-solve calls.
+    private final class InvocationCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func reset() {
+            lock.lock()
+            count = 0
+            lock.unlock()
+        }
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
+    private static let invocationCounter = InvocationCounter()
+
+    static var nativeInvocationCount: Int {
+        invocationCounter.value
+    }
+
+    static func resetNativeInvocationCountForTests() {
+        invocationCounter.reset()
+    }
+
+    private static func recordNativeInvocation() {
+        invocationCounter.increment()
+    }
+
     static func solve(
         primary: [RouteAlignmentSample],
         comparison: [RouteAlignmentSample],
@@ -210,6 +248,7 @@ enum RunPlayRouteAlignmentDtwBridge {
         capacity: Int
     ) -> runplay.RouteAlignmentDtwSummary {
         let nativePolicy = makeNativePolicy(policy)
+        recordNativeInvocation()
         return primary.withUnsafeBufferPointer { primaryBuffer in
             comparison.withUnsafeBufferPointer { comparisonBuffer in
                 outputBuffer.withUnsafeMutableBufferPointer { output in
