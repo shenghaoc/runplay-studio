@@ -107,22 +107,33 @@ final class SegmentDetectorBenchmark: XCTestCase {
 
     private static func digest(_ segments: [SegmentHighlight]) -> [String] {
         segments.map { segment in
-            [
-                segment.type.rawValue,
-                segment.title,
-                segment.subtitle,
-                String(segment.startDistanceMeters.bitPattern),
-                String(segment.endDistanceMeters.bitPattern),
-                String(segment.startElapsedSeconds.bitPattern),
-                String(segment.endElapsedSeconds.bitPattern),
-                String(segment.durationSeconds.bitPattern),
-                String(segment.distanceMeters.bitPattern),
-                segment.paceSecondsPerKilometer.map { String($0.bitPattern) } ?? "nil",
-                segment.elevationDeltaMeters.map { String($0.bitPattern) } ?? "nil",
-                segment.averageHeartRate.map { String($0.bitPattern) } ?? "nil",
-                "\(segment.sourcePointRange.lowerBound)..<\(segment.sourcePointRange.upperBound)",
-                String(segment.displayPriority),
-            ].joined(separator: "|")
+            let sourceRange = String(segment.sourcePointRange.lowerBound)
+                + "..<"
+                + String(segment.sourcePointRange.upperBound)
+            let pace = segment.paceSecondsPerKilometer
+                .map { String($0.bitPattern) } ?? "nil"
+            let elevation = segment.elevationDeltaMeters
+                .map { String($0.bitPattern) } ?? "nil"
+            let heartRate = segment.averageHeartRate
+                .map { String($0.bitPattern) } ?? "nil"
+
+            var fields: [String] = []
+            fields.reserveCapacity(14)
+            fields.append(segment.type.rawValue)
+            fields.append(segment.title)
+            fields.append(segment.subtitle)
+            fields.append(String(segment.startDistanceMeters.bitPattern))
+            fields.append(String(segment.endDistanceMeters.bitPattern))
+            fields.append(String(segment.startElapsedSeconds.bitPattern))
+            fields.append(String(segment.endElapsedSeconds.bitPattern))
+            fields.append(String(segment.durationSeconds.bitPattern))
+            fields.append(String(segment.distanceMeters.bitPattern))
+            fields.append(pace)
+            fields.append(elevation)
+            fields.append(heartRate)
+            fields.append(sourceRange)
+            fields.append(String(segment.displayPriority))
+            return fields.joined(separator: "|")
         }
     }
 
