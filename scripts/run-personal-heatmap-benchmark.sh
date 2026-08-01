@@ -45,6 +45,11 @@ sed -n \
   '/BEGIN RUNPLAY HEATMAP AGGREGATION BENCHMARK/,/END RUNPLAY HEATMAP AGGREGATION BENCHMARK/p' \
   "$log" | grep -v 'RUNPLAY HEATMAP AGGREGATION BENCHMARK'
 
+# The product-limit probe prints after the coverage END marker, so it falls
+# outside both marker ranges above. Without this the 1,000,000-point probe runs
+# under RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1 and its report is discarded.
+sed -n '/product-limit native probe/,/peak RSS:/p' "$log"
+
 if [[ $status -ne 0 ]]; then
   echo "" >&2
   echo "run-personal-heatmap-benchmark: benchmark FAILED." >&2

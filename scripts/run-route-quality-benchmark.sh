@@ -18,9 +18,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Building and running the release route-quality benchmark..."
 
+# The second range is required. With RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1 the
+# product-limit probe prints after the "merge gate" line, so a single range
+# ending there runs the 1,000,000-point probe and then discards its report.
 RUNPLAY_BENCHMARK=1 swift test \
   -c release \
   --filter RouteQualityPipelineBenchmark \
-  2>&1 | sed -n '/RunPlay route-quality geometry benchmark/,/merge gate/p'
+  2>&1 | sed -n \
+    -e '/RunPlay route-quality geometry benchmark/,/merge gate/p' \
+    -e '/product-limit native probe/,/peak RSS:/p'
 
 echo "Benchmark complete."
