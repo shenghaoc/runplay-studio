@@ -47,10 +47,30 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 
 - [x] Classify every oracle in the test target as active or removed.
 - [x] Remove any migration-decision-only oracle with no active consumer.
-      (All five oracles — `SwiftPersonalHeatmapBuilderOracle`,
-      `SwiftElevationProfileOracle`, `PreMigrationRouteAlignerOracle`,
-      `SwiftSegmentDetectorOracle`, `SwiftConstrainedDtwPathOracle` — have
-      active parity-test consumers; none is migration-decision-only.)
+      (Nine oracles are retained, each with named active consumers; none is
+      migration-decision-only. Seven are file-level:
+      `SwiftRouteQualityGeometryOracle` — RunPlayRouteQualityBridgeTests,
+      RouteQualityPipelineBenchmark; `SwiftElevationProfileOracle` —
+      ElevationProfileParityTests, RunPlayElevationProfileBridgeTests,
+      ElevationProfileBenchmark; `SwiftPersonalHeatmapBuilderOracle` —
+      PersonalHeatmapBuilderOracleParityTests,
+      PersonalHeatmapAggregationOptimizationTests,
+      PersonalHeatmapCoverageBenchmark, PersonalHeatmapPipelineProfile;
+      `SwiftRouteMetricScaleBucketOracle` — RouteMetricScaleBucketParityTests,
+      RouteMetricScaleBucketCompatibilityTests,
+      RunPlayRouteMetricScaleBucketBridgeTests,
+      RouteMetricScaleBucketBenchmark; `SwiftSegmentDetectorOracle` —
+      SegmentDetectorParityTests, RunPlaySegmentDetectorBridgeTests,
+      SegmentDetectorBenchmark; `SwiftConstrainedDtwPathOracle` —
+      RunPlayRouteAlignmentDtwBridgeTests, RouteAlignmentDtwBenchmark,
+      DynamicTimeWarpingRouteAlignerTests, PreMigrationRouteAlignerOracle;
+      `PreMigrationRouteAlignerOracle` — DynamicTimeWarpingRouteAlignerTests.
+      Two are private nested types: `SwiftRouteInspectionOracle` inside
+      RunPlayRouteBridgeTests, pinning the inspection field digest, and
+      `SwiftWorkoutCoverageOracle` inside
+      RunPlayPersonalHeatmapCoverageBridgeTests, pinning per-workout coverage.
+      The boundary inventory's verification-coverage table maps each oracle to
+      its boundary.)
 
 ## Workstream H — Verification document + benchmark inventory
 
@@ -104,4 +124,3 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 - [x] Open draft PR "Complete portable C++23 engine migration cleanup" with the
       objective, scope, non-goals, validation actually run, remaining manual
       checks, and dependent/conflicting PRs in the PR body (PR #98).
-      mandated body and completion report.

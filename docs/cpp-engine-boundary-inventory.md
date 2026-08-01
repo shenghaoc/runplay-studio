@@ -2,7 +2,35 @@
 
 **Transitional boundaries remaining: 0.** The sole transitional boundary
 (`compute_route_step_distances`) has been removed; every remaining public
-callable is a production kernel or a parity/test-focused geodesy primitive.
+callable is a production kernel or a deliberately retained verification
+utility, classified explicitly below.
+
+## Boundary status
+
+Every public callable carries exactly one status:
+
+| Callable | Status | Basis |
+|---|---|---|
+| `process_route_quality_geometry` | **production** | called by `RouteQualityProcessor` via `RunPlayRouteQualityBridge` |
+| `compute_personal_heatmap_workout_coverage` | **production** | called by the personal heatmap builder via `RunPlayPersonalHeatmapCoverageBridge` |
+| `compute_constrained_dtw_path` | **production** | called by the Route-Aware aligner via `RunPlayRouteAlignmentDtwBridge` |
+| `detect_segment_windows` | **production** | called by the segment detector via `RunPlaySegmentDetectorBridge` |
+| `build_elevation_profile` | **production** | called by the elevation profile builder via `RunPlayElevationProfileBridge` |
+| `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
+| `inspect_route_batch` | **parity/contract verification** | no production caller; consumed only by `RunPlayRouteBridge` for parity tests and validators |
+| `is_valid_coordinate`, `haversine_distance_meters`, `project_lat_lon_to_local_meters` | **parity/test utility** | production Swift geodesy uses `GeoDistance`; these pin the C++ implementations against it |
+| `engine_info` | **smoke/identity** | build/ABI identity probe; consumed by engine smoke tests and the external-consumer smoke |
+
+Six pointer-bearing boundaries are production; the seventh
+(`inspect_route_batch`) is not. Its continued public exposure is deliberate: it
+is the value-contract verification boundary — the only callable that exercises
+the complete `RouteInputSample` field mapping (per-field value counts, segment
+transitions, and the field digest) through the same borrowed-buffer path the
+production kernels use, without invoking any kernel logic. Parity tests use it
+to pin the Swift→C++ conversion in isolation, so a field-mapping regression is
+reported as an inspection digest mismatch rather than as a downstream numeric
+divergence inside some kernel. Removing it would leave the conversion tested
+only indirectly.
 
 This document is the canonical inventory of the public `RunPlayEngineCpp` C++23
 boundary surface. It exists so the set of Swift-facing C++ entry points can be
@@ -37,18 +65,29 @@ reuses internal pairwise step helpers (`internal::pairwise_*` in
 
 ## Public types
 
-Every type, enum, and constant reachable from the umbrella header. All structs
-are `final`, standard-layout, and trivially copyable (asserted by
-`static_assert` in their headers); all enums are `enum class` with an explicit
-`std::uint8_t` underlying type. **None of these appear in a public `RunPlayCore`
-API** — they are confined to `RunPlayCore/Sources/Interop/`, which
-`scripts/validate-cpp-boundaries.sh` enforces per header family.
+Every type, alias, enum, and constant reachable from the umbrella header. All
+structs are `final`, standard-layout, and trivially copyable, and every struct's
+header carries `static_assert`s for all three properties (`EngineInfo`,
+`RouteInputSample`, and `RouteBatchInspection` gained the trivial-copyability
+assertions in this cleanup; every other header already had them). All enums are
+`enum class` with an explicit `std::uint8_t` underlying type. **None of these
+appear in a public `RunPlayCore` API** — they are confined to
+`RunPlayCore/Sources/Interop/`, which `scripts/validate-cpp-boundaries.sh`
+enforces per header family.
+
+`RouteInterop.hpp` additionally exposes two public aliases,
+`RouteOptionalDouble` (`std::optional<double>`) and `RouteOptionalSourceIndex`
+(`std::optional<std::uint64_t>`). They exist because Swift 6.3 cannot name
+unspecialized C++ class templates, so the supported `std::optional`
+specializations must be nameable through concrete aliases. `std::optional` of a
+trivially copyable payload propagates trivial copyability (C++17), which is why
+the structs embedding these aliases can assert it.
 
 | Header | Structs | Enums | Constants |
 |---|---|---|---|
 | `RunPlayEngine.hpp` | `EngineInfo` | `LanguageStandard` | — |
 | `Geodesy.hpp` | `LocalMeters` | — | `earth_radius_meters` |
-| `RouteInterop.hpp` | `RouteInputSample`, `RouteBatchInspection` | `RouteInteropStatus` | `max_route_input_samples` (1,250,000) |
+| `RouteInterop.hpp` | `RouteInputSample`, `RouteBatchInspection` (aliases: `RouteOptionalDouble`, `RouteOptionalSourceIndex`) | `RouteInteropStatus` | `max_route_input_samples` (1,250,000) |
 | `RouteQualityPipeline.hpp` | `RouteQualityGeometryPolicy`, `RouteQualityOutputSample`, `RouteQualityPipelineSummary` | `RouteQualityDistancePolicy`, `RouteSegmentDistanceSource`, `RouteQualityDistanceSource`, `RouteQualityPipelineStatus` | — |
 | `PersonalHeatmapCoverage.hpp` | `PersonalHeatmapRouteSample`, `PersonalHeatmapCellIndex`, `PersonalHeatmapCoverageSummary` | `PersonalHeatmapCoverageStatus` | `personal_heatmap_max_latitude_degrees`, max cells per interval |
 | `RouteAlignmentDtw.hpp` | `RouteAlignmentCostSample`, `RouteAlignmentDtwPolicy`, `RouteAlignmentDtwPathCell`, `RouteAlignmentDtwSummary` | `RouteAlignmentDtwStepKind`, `RouteAlignmentDtwStatus` | — |
@@ -162,7 +201,7 @@ symbols directly.
 
 | C++ boundary | Swift bridge | Production consumer |
 |---|---|---|
-| `inspect_route_batch` | `RunPlayRouteBridge` | route-size validation preflight |
+| `inspect_route_batch` | `RunPlayRouteBridge` | none — parity/contract tests only (route-size preflight is pure Swift via `WorkoutImportResourceLimits`) |
 | `process_route_quality_geometry` | `RunPlayRouteQualityBridge` | `RouteQualityProcessor` |
 | `compute_personal_heatmap_workout_coverage` | `RunPlayPersonalHeatmapCoverageBridge` | personal heatmap builder (one call per workout per adaptive attempt) |
 | `compute_constrained_dtw_path` | `RunPlayRouteAlignmentDtwBridge` | Route-Aware aligner (one call per alignment attempt) |
