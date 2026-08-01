@@ -248,6 +248,18 @@ Approved pointer boundaries:
   success. Insufficient capacity is a contract violation, every failure leaves
   the output unchanged, and each internal distance-window search retains its
   per-search evaluation bound.
+- elevation profile construction: `const ElevationProfileInputSample*` input
+  samples plus a caller-owned `ElevationProfileOutputSample*` output. One
+  output entry corresponds to one input route point. After validation the
+  output buffer is the route-sized workspace; no route-sized native heap is
+  allocated. Every failure leaves the output unchanged. One native call occurs
+  per profile build. C++23 performs source altitude screening, spike and
+  short-excursion rejection, supported rejected-sample interpolation, run
+  classification, distance-domain smoothing, reliable interval tracking, and
+  deadband-confirmed cumulative ascent/descent. Swift retains route-point
+  UUIDs, public `ElevationProfile`/`ElevationProfileSample` models, all
+  distance-query APIs, policy ownership, cancellation, diagnostics, and
+  persistence.
 
 #### C++ policy defaults
 
@@ -388,10 +400,15 @@ the largest isolated phase in direct analysis and route quality plus elevation
 dominates normalization. Ordinary 1k-point workouts remain well under a
 millisecond end-to-end.
 
-**Selected next boundary:** `ElevationProfile`. The post-cutover product-limit
-profile confirms that its multi-pass correction and cumulative gain/loss work
-remains material after the SegmentDetector migration. Preserve its current
-gap, smoothing, and source-altitude semantics as a literal translation.
+**Completed boundary:** `ElevationProfile` multi-pass construction is production
+C++23. Exact oracle parity preserves gap, spike, excursion, smoothing, and
+deadband gain/loss semantics. SegmentDetector continues to consume the pure
+Swift elevation snapshot after the native elevation build.
+
+**Selected next boundary:** re-measure with the post-elevation analysis
+profile. Candidates remain MovementProfile, route-metric scale/bucket work, a
+Swift optimization, or final portable-core cleanup. Do not begin the next
+phase until the post-cutover profile is reviewed.
 
 **Intentional remaining Swift ownership:**
 
@@ -400,14 +417,14 @@ gap, smoothing, and source-altitude semantics as a literal translation.
 - `RouteAlignmentSampleBuilder` and Swift post-DTW block/diagnostics work
   (DTW path solve is already native);
 - route-metric label formatting and Platform map-line presentation;
+- public elevation models, distance queries, and SegmentDetector snapshot
+  materialization;
 - cancellation, identity, Codable models, and persistence.
 
-**Why other candidates stay Swift (for now):** MovementProfile remains smaller
-than the selected elevation work; importer parsers are not portable
-pure-numeric kernels; MetricSmoother alone is too small; SplitCalculator is
-modest once context is shared. A combined full-analysis kernel remains
-unjustified while the selected elevation boundary can be reviewed and proven
-independently.
+**Why other candidates stay Swift (for now):** MovementProfile and route-metric
+work must be re-ranked after elevation cutover; importer parsers are not
+portable pure-numeric kernels; MetricSmoother alone is too small;
+SplitCalculator is modest once context is shared.
 
 Legacy SceneKit projection stays low priority unless it regains a shipped
 caller. The portable-core migration ends with a mandatory cleanup phase

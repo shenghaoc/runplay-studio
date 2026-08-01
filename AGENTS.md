@@ -91,12 +91,14 @@ not import `RunPlayEngineCpp` directly.
   primitives (coordinate validation, Haversine distance, local-metre
   projection), a transitional bulk route step-distance boundary, the
   production combined route-quality geometry kernel, the production
-  per-workout personal heatmap coverage kernel, and the production
-  constrained-DTW path solver for Route-Aware comparison. C++23 performs production
+  per-workout personal heatmap coverage kernel, the production
+  constrained-DTW path solver for Route-Aware comparison, the production
+  SegmentDetector window-search kernel, and the production ElevationProfile
+  multi-pass construction kernel. C++23 performs production
   outlier evidence, isolated-point rejection, implicit gap inference, final
   segment compaction, supplied-distance policy, and normalized cumulative
-  distances through one bulk call. Swift still owns stage-1 validation,
-  source-speed checks, and elevation. For the personal heatmap, C++23 performs
+  distances through one bulk call. Swift still owns stage-1 validation and
+  source-speed checks. For the personal heatmap, C++23 performs
   Web Mercator projection, grid-cell quantization, effective-segment gap
   breaking, supercover interval traversal, per-workout cell de-duplication, and
   deterministic cell ordering through one bulk call per workout; Swift still
@@ -117,7 +119,17 @@ not import `RunPlayEngineCpp` directly.
   1km, and biggest climb/descent through one bulk call per
   `SegmentDetector` invocation. Swift retains policy calculation, public
   `SegmentHighlight` construction, UUIDs, titles, subtitles, final range
-  metadata, HR averages, cancellation, diagnostics, and persistence.
+  metadata, HR averages, cancellation, diagnostics, and persistence. For
+  elevation construction, C++23 performs the complete multi-pass
+  `ElevationProfile` build — source altitude screening, endpoint and isolated
+  spike rejection, short-excursion rejection, supported rejected-sample
+  interpolation, continuous altitude-run identification, reliable-run
+  classification, distance-domain smoothing, cumulative corrected signed
+  change, reliable-interval counting, and deadband-confirmed cumulative
+  ascent/descent — through one bulk call per profile build. Swift retains
+  route-point UUIDs, public `ElevationProfile`/`ElevationProfileSample`
+  models, all distance-query APIs, policy ownership, cancellation,
+  diagnostics, and persistence.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -127,7 +139,7 @@ not import `RunPlayEngineCpp` directly.
   logic with conditional `FoundationXML`; it must not import UI, map,
   graphics, Core Location, or Combine. Swift continues to own route-size
   validation, basic field sanitization, sorting, initial source-segment
-  compaction, source-speed validation, elevation, diagnostics translation,
+  compaction, source-speed validation, diagnostics translation,
   public models, and persistence. For Route-Aware comparison, Swift continues
   to build the compact alignment samples (at most 2,000 per route), detect
   route direction, construct alignment blocks from the returned index path,
@@ -188,6 +200,11 @@ Approved pointer boundaries:
   * `const SegmentDetectionSample*` input samples
   * `SegmentWindowCandidate*` caller-owned output
 
+- elevation profile construction:
+
+  * `const ElevationProfileInputSample*` input samples
+  * `ElevationProfileOutputSample*` caller-owned output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -224,6 +241,16 @@ combined one-kilometre pace, and combined elevation) each retain the existing
 per-search evaluation bound. One native call occurs per `SegmentDetector`
 invocation, with cooperative Swift cancellation during conversion and before
 and after the native call.
+
+The elevation-profile boundary writes exactly `sample_count` output entries on
+success (one-to-one with inputs). After validation the caller-owned output
+buffer is the route-sized workspace; no route-sized native heap allocation is
+performed. On any failure status the output buffer is left completely
+unchanged. One native call occurs per `ElevationProfile.build`; none occurs per
+sample, altitude run, smoothing window, or ascent/descent interval.
+Cancellation is cooperative Swift work during conversion, immediately before
+and after the native call, and during output translation — never inside the
+native call.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route

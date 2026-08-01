@@ -128,8 +128,8 @@
 - [x] Optimize cross-workout heatmap aggregation **in Swift**, adding no native aggregation boundary: reserve the global count dictionary per adaptive pass, reduce `PersonalHeatmapCellID` hashing cost, and stop materializing a per-workout cell array
 - [x] **Profile remaining core computational hotspots** (`RemainingCoreHotspotProfile` + Platform map-line/Strava harness): production-equivalent Mode A/B decomposition, exact parity digests, 5% accounting gate, statistical release timings, GPX/TCX/FIT/Strava/multi-session FIT, and 1M-point product-limit probes. Evidence drives the roadmap below.
 - [x] **Migrate SegmentDetector to C++23**: one bulk window-search call over route distance, timeline clocks, and optional elevation snapshots selects at most five candidates; Swift retains public highlight construction, metadata, cancellation, and persistence. The cutover preserves duplicate-distance ownership, first-winner ties, active-pace limits, reliable elevation gaps, and per-search work bounds, with native, bridge, and end-to-end oracle parity coverage.
-- [ ] **Migrate ElevationProfile to C++23** (selected next phase by the post-SegmentDetector product-limit profile): multi-pass altitude correction and cumulative gain/loss remain the largest isolated direct-analysis phase after the cutover. Preserve gap, smoothing, source-altitude, and cumulative gain/loss semantics literally.
-- [ ] **Migrate MovementProfile to C++23** only if still justified after the above: two-pass movement-state classification (~20 ms at 1M; ~4 ms at 100k; ≪1 ms ordinary). Not the first migration — it is a small share of analysis wall (~4–5%).
+- [x] **Migrate ElevationProfile to C++23**: one bulk multi-pass call performs source screening, spike/excursion rejection, supported fill, run classification, distance-domain smoothing, and deadband-confirmed cumulative ascent/descent; Swift retains public models, UUIDs, distance queries, policy, cancellation, and persistence. Exact oracle parity required; no schema or analysis-version change.
+- [ ] **Migrate MovementProfile to C++23** only if still justified after the post-elevation cutover profile: two-pass movement-state classification. Not automatically selected — re-measure remaining shares first.
 - [ ] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary disposition, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
@@ -146,11 +146,11 @@
 | Bound | Count | Contents |
 |---|---:|---|
 | Minimum | 1 | Final cleanup |
-| Expected | 3 | ElevationProfile → optional MovementProfile → final cleanup |
-| Maximum reasonable | 4 | Above plus optional route-metric scale/bucket kernel if map-color latency remains a product issue |
+| Expected | 2–3 | Optional MovementProfile and/or route-metric scale/bucket → final cleanup (re-rank after post-elevation profile) |
+| Maximum reasonable | 3 | Above plus a targeted Swift optimization if still product-visible |
 
 Swift performs route-size validation, basic field sanitization, sorting,
-initial source-segment compaction, source-speed validation, elevation,
+initial source-segment compaction, source-speed validation,
 diagnostics translation, public models, and persistence.
 
 C++ performs production outlier evidence, isolated-point rejection, implicit
