@@ -125,8 +125,10 @@ framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
 foundation target. The engine provides identity, route input values, a bulk
 inspection boundary, allocation-free geodesy primitives, a transitional
 step-distance boundary, the production combined route-quality geometry
-kernel, the production per-workout personal heatmap coverage kernel, and the
-production constrained-DTW path solver for Route-Aware comparison.
+kernel, the production per-workout personal heatmap coverage kernel, the
+production constrained-DTW path solver for Route-Aware comparison, the
+production SegmentDetector window-search kernel, and the production
+ElevationProfile multi-pass construction kernel.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -135,7 +137,10 @@ Swift stage-1 ordered [RoutePoint]
       + Swift-owned RouteQualityOutputSample buffer
     → one synchronous process_route_quality_geometry call
     → pure-Swift retained points / provenance / diagnostics
-    → Swift source-speed validation and elevation
+    → Swift source-speed validation
+    → one ElevationProfileInputSample buffer
+    → one build_elevation_profile call
+    → pure-Swift ElevationProfile + public distance queries
 ```
 
 C++ receives each point's original array offset as `source_index`; the Swift
@@ -153,8 +158,9 @@ Earth radius, Haversine formula, projection coefficients, operation order, and
 existing limitations are all unchanged.
 
 **Swift performs route-size validation, basic field sanitization, sorting,
-initial source-segment compaction, source-speed validation, elevation,
-diagnostics translation, public models, and persistence.**
+initial source-segment compaction, source-speed validation, public elevation
+models and distance queries, diagnostics translation, public models, and
+persistence.**
 
 **C++ performs production outlier evidence, isolated-point rejection, implicit
 gap inference, final segment compaction, supplied-distance policy, and

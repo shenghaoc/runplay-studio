@@ -18,3 +18,4 @@ void run_route_quality_pipeline_tests();
 void run_personal_heatmap_coverage_tests();
 void run_route_alignment_dtw_tests();
 void run_segment_detection_tests();
+void run_elevation_profile_tests();

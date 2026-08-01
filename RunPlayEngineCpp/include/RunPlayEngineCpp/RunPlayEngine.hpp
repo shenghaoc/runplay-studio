@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "RunPlayEngineCpp/ElevationProfile.hpp"
 #include "RunPlayEngineCpp/Geodesy.hpp"
 #include "RunPlayEngineCpp/PersonalHeatmapCoverage.hpp"
 #include "RunPlayEngineCpp/RouteAlignmentDtw.hpp"

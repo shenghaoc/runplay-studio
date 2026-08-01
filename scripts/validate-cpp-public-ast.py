@@ -194,6 +194,26 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="build_elevation_profile",
+        type_text=(
+            "ElevationProfileSummary "
+            "(const ElevationProfileInputSample *, std::size_t, "
+            "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+            "std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const ElevationProfileInputSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_samples",
+                type_text="ElevationProfileOutputSample *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -546,6 +566,15 @@ def run_self_test() -> int:
             ),
             "ParmVarDecl samples 'const SegmentDetectionSample *'",
             "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
+            (
+                "FunctionDecl build_elevation_profile "
+                "'ElevationProfileSummary "
+                "(const ElevationProfileInputSample *, std::size_t, "
+                "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                "std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+            "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -1113,6 +1142,144 @@ def run_self_test() -> int:
                 ),
                 "ParmVarDecl samples 'const SegmentDetectionSample *'",
                 "ParmVarDecl output_candidates 'SegmentWindowCandidate *'",
+            ]
+        ),
+        "elevation writable input": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            ]
+        ),
+        "elevation const output": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, "
+                    "const ElevationProfileOutputSample *, std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'const ElevationProfileOutputSample *'",
+            ]
+        ),
+        "elevation wrong input type": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const SegmentDetectionSample *, std::size_t, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const SegmentDetectionSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            ]
+        ),
+        "elevation wrong output type": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, SegmentWindowCandidate *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'SegmentWindowCandidate *'",
+            ]
+        ),
+        "elevation missing count": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            ]
+        ),
+        "elevation missing capacity": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *) "
+                    "noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            ]
+        ),
+        "elevation extra pointer": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                    "std::size_t, double *) noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+                "ParmVarDecl workspace 'double *'",
+            ]
+        ),
+        "elevation callback": "\n".join(
+            [
+                (
+                    "FunctionDecl build_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                    "std::size_t, bool (*)()) noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+                "ParmVarDecl is_cancelled 'bool (*)()'",
+            ]
+        ),
+        "elevation pointer return": (
+            "FunctionDecl build_elevation_profile "
+            "'ElevationProfileOutputSample * "
+            "(const ElevationProfileInputSample *, std::size_t, "
+            "ElevationProfilePolicy) noexcept'"
+        ),
+        "elevation public container return": (
+            "FunctionDecl build_elevation_profile "
+            "'std::vector<ElevationProfileOutputSample> "
+            "(const ElevationProfileInputSample *, std::size_t, "
+            "ElevationProfilePolicy) noexcept'"
+        ),
+        "throwing elevation function": (
+            "FunctionDecl build_elevation_profile "
+            "'ElevationProfileSummary "
+            "(const ElevationProfileInputSample *, std::size_t, "
+            "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+            "std::size_t)'"
+        ),
+        "renamed unapproved elevation function": "\n".join(
+            [
+                (
+                    "FunctionDecl compute_elevation_profile "
+                    "'ElevationProfileSummary "
+                    "(const ElevationProfileInputSample *, std::size_t, "
+                    "ElevationProfilePolicy, ElevationProfileOutputSample *, "
+                    "std::size_t) noexcept'"
+                ),
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
             ]
         ),
     }

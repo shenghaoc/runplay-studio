@@ -85,6 +85,13 @@ else
   pass "public segment detection header present"
 fi
 
+ELEVATION_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/ElevationProfile.hpp"
+if [[ ! -f "$ELEVATION_HEADER" ]]; then
+  fail "missing public elevation profile header ElevationProfile.hpp"
+else
+  pass "public elevation profile header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
@@ -125,6 +132,13 @@ if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   pass "umbrella header includes SegmentDetection.hpp"
 else
   fail "RunPlayEngine.hpp must include SegmentDetection.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/ElevationProfile\.hpp"'; then
+  pass "umbrella header includes ElevationProfile.hpp"
+else
+  fail "RunPlayEngine.hpp must include ElevationProfile.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -222,6 +236,16 @@ if [[ -f "$SEGMENT_HEADER" ]]; then
     pass "segment detection boundary is one bulk input/output noexcept call"
   else
     fail "detect_segment_windows must use const input*, by-value configuration, mutable output*+capacity, and noexcept"
+  fi
+fi
+
+if [[ -f "$ELEVATION_HEADER" ]]; then
+  elevation_body="$(strip_comments "$ELEVATION_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  elevation_signature_re='ElevationProfileSummary[[:space:]]+build_elevation_profile[[:space:]]*\([[:space:]]*const[[:space:]]+ElevationProfileInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*ElevationProfilePolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*ElevationProfileOutputSample[[:space:]]*\*[[:space:]]*output_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$elevation_body" =~ $elevation_signature_re ]]; then
+    pass "elevation profile boundary is one bulk input/output noexcept call"
+  else
+    fail "build_elevation_profile must use const input*, by-value policy, mutable output*+capacity, and noexcept"
   fi
 fi
 
@@ -1272,6 +1296,142 @@ for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Service
   fi
 done
 pass "C++ SegmentDetection types stay in Interop"
+
+# --- ElevationProfile bridge -------------------------------------------------
+
+ELEVATION_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayElevationProfileBridge.swift"
+ELEVATION_PROFILE_SOURCE="RunPlayCore/Sources/Services/ElevationProfile.swift"
+
+if [[ ! -f "$ELEVATION_BRIDGE_SOURCE" ]]; then
+  fail "missing ElevationProfile bridge $ELEVATION_BRIDGE_SOURCE"
+else
+  pass "ElevationProfile bridge exists"
+fi
+
+elevation_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*build_elevation_profile([^[:alnum:]_]|$)'
+elevation_native_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$ELEVATION_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && elevation_native_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$elevation_native_re" || true)
+done
+
+if [[ ${#elevation_native_leaks[@]} -eq 0 ]]; then
+  pass "build_elevation_profile is invoked only from the ElevationProfile bridge"
+else
+  for leak in "${elevation_native_leaks[@]}"; do
+    fail "build_elevation_profile used outside the ElevationProfile bridge: $leak"
+  done
+fi
+
+if strip_comments "$ELEVATION_PROFILE_SOURCE" \
+  | grep -Eq '(^|[^[:alnum:]_])RunPlayElevationProfileBridge([^[:alnum:]_]|$)'; then
+  pass "ElevationProfile consumes the pure Swift elevation-profile bridge"
+else
+  fail "ElevationProfile must call RunPlayElevationProfileBridge"
+fi
+
+# Old multi-pass production algorithm must not remain in production ElevationProfile.
+if strip_comments "$ELEVATION_PROFILE_SOURCE" \
+  | grep -Eq 'altitudeSpikeMinimumDeviationMeters|altitudeShortExcursionMinimumDeviationMeters|elevationGainLossDeadbandMeters'; then
+  fail "production ElevationProfile still contains the old multi-pass algorithm policy fields"
+else
+  pass "production ElevationProfile no longer embeds the multi-pass algorithm body"
+fi
+
+# Oracle confined to tests
+if [[ -f "RunPlayCore/Tests/RunPlayCoreTests/SwiftElevationProfileOracle.swift" ]]; then
+  pass "Swift elevation oracle confined to tests"
+else
+  fail "missing SwiftElevationProfileOracle in tests"
+fi
+
+elevation_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(ElevationProfileInputSample|ElevationProfilePolicy|ElevationProfileOutputSample|ElevationProfileStatus|ElevationProfileSummary)([^[:alnum:]_]|$)'
+for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift; do
+  relative="${swift_file#./}"
+  case "$relative" in
+    RunPlayCore/Sources/Interop/*) continue ;;
+    "$ELEVATION_BRIDGE_SOURCE") continue ;;
+  esac
+  if strip_comments "$swift_file" | grep -Eq "$elevation_cpp_type_re"; then
+    fail "C++ ElevationProfile types exposed in public Swift: $relative"
+  fi
+done
+pass "C++ ElevationProfile types stay in Interop"
+
+# Diagnostic benchmark entry points must remain internal and may be referenced
+# only by their defining bridge and test targets.
+elevation_benchmark_api_re='(^|[^[:alnum:]_])(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)([^[:alnum:]_]|$)'
+elevation_benchmark_api_positive=(
+  'let report = try RunPlayElevationProfileBridge.buildCollectingBenchmarkReport('
+  'struct RunPlayElevationProfileBenchmarkReport: Sendable {'
+)
+elevation_benchmark_api_negative=(
+  'let buildCollectingBenchmarkReporter = true'
+  'struct RunPlayElevationProfileBenchmarkReporter {}'
+)
+elevation_benchmark_api_matcher_ok=1
+for fixture in "${elevation_benchmark_api_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+    elevation_benchmark_api_matcher_ok=0
+  fi
+done
+for fixture in "${elevation_benchmark_api_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+    elevation_benchmark_api_matcher_ok=0
+  fi
+done
+if [[ $elevation_benchmark_api_matcher_ok -eq 1 ]]; then
+  pass "elevation benchmark API matcher adversarial fixtures"
+else
+  fail "elevation benchmark API matcher failed its adversarial fixtures"
+fi
+
+elevation_benchmark_api_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$ELEVATION_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && elevation_benchmark_api_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$elevation_benchmark_api_re" || true)
+done
+
+if [[ ${#elevation_benchmark_api_leaks[@]} -eq 0 ]]; then
+  pass "elevation benchmark API is referenced only by its bridge and tests"
+else
+  for leak in "${elevation_benchmark_api_leaks[@]}"; do
+    fail "production Swift references the test-only elevation benchmark API: $leak"
+  done
+fi
+
+if strip_comments "$ELEVATION_BRIDGE_SOURCE" \
+  | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)'; then
+  fail "elevation benchmark diagnostic must stay internal, not public/package"
+else
+  pass "elevation benchmark diagnostic stays internal to RunPlayCore"
+fi
+
+# SegmentDetector continues to consume pure Swift elevation snapshot
+if strip_comments "$SEGMENT_DETECTOR_SOURCE" \
+  | grep -Eq 'segmentDetectionSnapshot'; then
+  pass "SegmentDetector continues to consume pure Swift elevation snapshot"
+else
+  # Snapshot may be used only through the bridge; accept either path.
+  if strip_comments "$SEGMENT_BRIDGE_SOURCE" \
+    | grep -Eq 'segmentDetectionSnapshot'; then
+    pass "SegmentDetector bridge continues to consume pure Swift elevation snapshot"
+  else
+    fail "SegmentDetector elevation snapshot consumption missing"
+  fi
+fi
 
 # --- Summary -----------------------------------------------------------------
 
