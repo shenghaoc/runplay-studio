@@ -33,3 +33,11 @@
 **Vulnerability:** `WorkoutArchiveService` opened ZIP archives via `Archive(url:accessMode:)` without first requiring a local file URL. A non-file scheme could still reach filesystem probes (`attributesOfItem(atPath:)`) via `url.path` and third-party open paths intended only for local archives.
 **Learning:** Any API that accepts a `URL` for local file access — including third-party openers like ZIPFoundation's `Archive(url:)` and Foundation path helpers that read `url.path` — must reject non-file URLs before filesystem or network I/O.
 **Prevention:** Validate `url.isFileURL` at the start of archive scan/import entry points, before size checks, path-based FileManager calls, or `Archive(url:)` initialization.
+
+## 2026-08-02 - Reject Re-adding Tab/CR to CSV dangerousPrefixes
+
+**Issue:** A follow-up Sentinel task again proposed adding `\t` and `\r` to `dangerousPrefixes` in `CSVRow.escape`, reintroducing the regression corrected in PR #47 and the 2026-07-16 learning.
+
+**Learning:** Tab- and CR-prefixed formulas (`\t=SUM(...)`, `\r=CMD(...)`) are already handled by the whitespace-trimming slow path. Putting whitespace characters in `dangerousPrefixes` routes them through the fast path, which incorrectly formula-escapes legitimate non-formula fields such as `\tHello`.
+
+**Prevention:** Never add `\t`, `\r`, or other whitespace to `dangerousPrefixes`. Keep regression tests that assert `\tHello` and `\rHello` are not formula-escaped, while formula cases with leading whitespace continue to pass via the slow path.
