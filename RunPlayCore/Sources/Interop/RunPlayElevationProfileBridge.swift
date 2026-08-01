@@ -30,6 +30,15 @@ struct RunPlayElevationProfileBuildResult: Sendable {
     let totalDescentMeters: Double?
 }
 
+/// Diagnostic-only phase timings for one complete bridge invocation.
+/// Production callers never request or collect these clocks.
+struct RunPlayElevationProfileBenchmarkReport: Sendable {
+    let inputConversionMilliseconds: Double
+    let outputAllocationMilliseconds: Double
+    let nativeKernelMilliseconds: Double
+    let outputTranslationMilliseconds: Double
+}
+
 enum RunPlayElevationProfileBridgeError: Error, Equatable {
     case resourceLimit
     case invalidPolicy
@@ -68,8 +77,41 @@ enum RunPlayElevationProfileBridge {
         return try buildNative(
             routePoints: routePoints,
             policy: policy,
-            isCancelled: isCancelled
+            isCancelled: isCancelled,
+            collectBenchmarkTimings: false
+        ).result
+    }
+
+    /// Diagnostic-only profiled bridge used by release benchmarks. The result
+    /// travels through the same conversion, native call, validation, and output
+    /// translation as production.
+    static func buildCollectingBenchmarkReport(
+        routePoints: [RoutePoint],
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RunPlayElevationProfileBenchmarkReport {
+        guard !routePoints.isEmpty else {
+            return RunPlayElevationProfileBenchmarkReport(
+                inputConversionMilliseconds: 0,
+                outputAllocationMilliseconds: 0,
+                nativeKernelMilliseconds: 0,
+                outputTranslationMilliseconds: 0
+            )
+        }
+        guard routePoints.count <= WorkoutImportResourceLimits.maxRoutePointCount else {
+            throw RunPlayElevationProfileBridgeError.resourceLimit
+        }
+
+        let profiled = try buildNative(
+            routePoints: routePoints,
+            policy: policy,
+            isCancelled: isCancelled,
+            collectBenchmarkTimings: true
         )
+        guard let report = profiled.report else {
+            throw RunPlayElevationProfileBridgeError.engineContractViolation
+        }
+        return report
     }
 
     /// Nested so every temporary C++ value is destroyed before the pure-Swift
@@ -77,10 +119,17 @@ enum RunPlayElevationProfileBridge {
     private static func buildNative(
         routePoints: [RoutePoint],
         policy: RouteQualityPolicy,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> RunPlayElevationProfileBuildResult {
+        isCancelled: @Sendable () -> Bool,
+        collectBenchmarkTimings: Bool
+    ) throws -> (
+        result: RunPlayElevationProfileBuildResult,
+        report: RunPlayElevationProfileBenchmarkReport?
+    ) {
         let count = routePoints.count
         let stride = max(1, policy.cancellationCheckStride)
+        let conversionStart = collectBenchmarkTimings
+            ? DispatchTime.now().uptimeNanoseconds
+            : 0
 
         var samples = ContiguousArray<runplay.ElevationProfileInputSample>()
         samples.reserveCapacity(count)
@@ -139,13 +188,25 @@ enum RunPlayElevationProfileBridge {
         nativePolicy.gain_loss_deadband_meters =
             policy.elevationGainLossDeadbandMeters
 
+        let conversionEnd = collectBenchmarkTimings
+            ? DispatchTime.now().uptimeNanoseconds
+            : 0
+        let allocationStart = conversionEnd
+
         var output = ContiguousArray<runplay.ElevationProfileOutputSample>(
             repeating: runplay.ElevationProfileOutputSample(),
             count: count
         )
 
+        let allocationEnd = collectBenchmarkTimings
+            ? DispatchTime.now().uptimeNanoseconds
+            : 0
+
         try checkCancellation(isCancelled: isCancelled)
 
+        let nativeStart = collectBenchmarkTimings
+            ? DispatchTime.now().uptimeNanoseconds
+            : 0
         let summary = samples.withUnsafeBufferPointer { samplesBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 runplay.build_elevation_profile(
@@ -157,8 +218,15 @@ enum RunPlayElevationProfileBridge {
                 )
             }
         }
+        let nativeEnd = collectBenchmarkTimings
+            ? DispatchTime.now().uptimeNanoseconds
+            : 0
 
         try checkCancellation(isCancelled: isCancelled)
+
+        let translationStart = collectBenchmarkTimings
+            ? DispatchTime.now().uptimeNanoseconds
+            : 0
 
         switch summary.status {
         case .success:
@@ -321,13 +389,37 @@ enum RunPlayElevationProfileBridge {
             }
         }
 
-        return RunPlayElevationProfileBuildResult(
+        let result = RunPlayElevationProfileBuildResult(
             samples: results,
             rejectedAltitudeCount: rejectedCount,
             hasMeaningfulElevation: meaningful,
             totalAscentMeters: meaningful ? summary.total_ascent_meters : nil,
             totalDescentMeters: meaningful ? summary.total_descent_meters : nil
         )
+
+        guard collectBenchmarkTimings else {
+            return (result, nil)
+        }
+        let translationEnd = DispatchTime.now().uptimeNanoseconds
+        let report = RunPlayElevationProfileBenchmarkReport(
+            inputConversionMilliseconds: milliseconds(
+                from: conversionStart,
+                to: conversionEnd
+            ),
+            outputAllocationMilliseconds: milliseconds(
+                from: allocationStart,
+                to: allocationEnd
+            ),
+            nativeKernelMilliseconds: milliseconds(
+                from: nativeStart,
+                to: nativeEnd
+            ),
+            outputTranslationMilliseconds: milliseconds(
+                from: translationStart,
+                to: translationEnd
+            )
+        )
+        return (result, report)
     }
 
     private static func checkCancellation(
@@ -342,5 +434,9 @@ enum RunPlayElevationProfileBridge {
         if a == b { return true }
         let tolerance = max(1e-9, abs(b) * 1e-12)
         return abs(a - b) <= tolerance
+    }
+
+    private static func milliseconds(from start: UInt64, to end: UInt64) -> Double {
+        Double(end - start) / 1_000_000
     }
 }

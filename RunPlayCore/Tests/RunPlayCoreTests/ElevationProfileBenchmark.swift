@@ -5,7 +5,11 @@ import Testing
 /// Release-mode elevation profile benchmarks.
 ///
 /// Skipped unless `RUNPLAY_BENCHMARK=1`. Always intended to run in release.
-@Suite("ElevationProfile benchmarks", .disabled(if: ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] != "1"))
+@Suite(
+    "ElevationProfile benchmarks",
+    .serialized,
+    .disabled(if: ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] != "1")
+)
 struct ElevationProfileBenchmark {
 
     @Test("E1 ordinary 1,000-point workout")
@@ -31,6 +35,7 @@ struct ElevationProfileBenchmark {
     ) throws {
         let points = makeClimb(count: count)
         let policy = RouteQualityPolicy.runningDefault
+        let memoryBefore = processMemorySnapshot()
 
         func median(_ values: [Double]) -> Double {
             let sorted = values.sorted()
@@ -70,14 +75,53 @@ struct ElevationProfileBenchmark {
             )
         }
 
+        var inputConversionSamples: [Double] = []
+        var outputAllocationSamples: [Double] = []
+        var nativeKernelSamples: [Double] = []
+        var outputTranslationSamples: [Double] = []
+        inputConversionSamples.reserveCapacity(measurements)
+        outputAllocationSamples.reserveCapacity(measurements)
+        nativeKernelSamples.reserveCapacity(measurements)
+        outputTranslationSamples.reserveCapacity(measurements)
+
+        for iteration in 0..<(warmups + measurements) {
+            let report = try RunPlayElevationProfileBridge.buildCollectingBenchmarkReport(
+                routePoints: points,
+                policy: policy,
+                isCancelled: { false }
+            )
+            guard iteration >= warmups else { continue }
+            inputConversionSamples.append(report.inputConversionMilliseconds)
+            outputAllocationSamples.append(report.outputAllocationMilliseconds)
+            nativeKernelSamples.append(report.nativeKernelMilliseconds)
+            outputTranslationSamples.append(report.outputTranslationMilliseconds)
+        }
+
+        let inputConversionMs = median(inputConversionSamples)
+        let outputAllocationMs = median(outputAllocationSamples)
+        let nativeKernelMs = median(nativeKernelSamples)
+        let outputTranslationMs = median(outputTranslationSamples)
+        let nativeMaximumMs = nativeKernelSamples.max() ?? 0
+        let memoryAfter = processMemorySnapshot()
+        let residentChange = Int64(memoryAfter.residentBytes) - Int64(memoryBefore.residentBytes)
+
         let ratio = oracleMs > 0 ? bridgeMs / oracleMs : 0
         print(
             """
             ElevationProfileBenchmark \(name):
               oracle_ms=\(String(format: "%.3f", oracleMs))
               bridge_ms=\(String(format: "%.3f", bridgeMs))
+              native_kernel_ms=\(String(format: "%.3f", nativeKernelMs))
               production_ms=\(String(format: "%.3f", productionMs))
               bridge_over_oracle=\(String(format: "%.3f", ratio))
+              input_conversion_ms=\(String(format: "%.3f", inputConversionMs))
+              output_allocation_ms=\(String(format: "%.3f", outputAllocationMs))
+              output_translation_ms=\(String(format: "%.3f", outputTranslationMs))
+              native_maximum_ms=\(String(format: "%.3f", nativeMaximumMs))
+              resident_before_bytes=\(memoryBefore.residentBytes)
+              resident_after_bytes=\(memoryAfter.residentBytes)
+              resident_change_bytes=\(residentChange)
+              process_high_water_resident_bytes=\(memoryAfter.highWaterResidentBytes)
             """
         )
 
@@ -90,16 +134,24 @@ struct ElevationProfileBenchmark {
 
     private func makeClimb(count: Int) -> [RoutePoint] {
         let base = Date(timeIntervalSinceReferenceDate: 10_000)
-        return (0..<count).map { index in
-            RoutePoint(
-                timestamp: base.addingTimeInterval(Double(index)),
-                latitude: 37.0 + Double(index) * 0.000001,
-                longitude: -122.0,
-                altitudeMeters: 100.0 + Double(index % 500) * 0.02,
-                distanceFromStartMeters: Double(index),
-                elapsedSeconds: Double(index),
+        var points: [RoutePoint] = []
+        points.reserveCapacity(count)
+
+        for index in 0..<count {
+            let value = Double(index)
+            let altitude = 100 + Double(index % 500) * 0.02
+
+            points.append(RoutePoint(
+                timestamp: base.addingTimeInterval(value),
+                latitude: 37 + value * 0.000001,
+                longitude: -122,
+                altitudeMeters: altitude,
+                distanceFromStartMeters: value,
+                elapsedSeconds: value,
                 routeSegmentIndex: 0
-            )
+            ))
         }
+
+        return points
     }
 }

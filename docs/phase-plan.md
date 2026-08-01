@@ -129,7 +129,7 @@
 - [x] **Profile remaining core computational hotspots** (`RemainingCoreHotspotProfile` + Platform map-line/Strava harness): production-equivalent Mode A/B decomposition, exact parity digests, 5% accounting gate, statistical release timings, GPX/TCX/FIT/Strava/multi-session FIT, and 1M-point product-limit probes. Evidence drives the roadmap below.
 - [x] **Migrate SegmentDetector to C++23**: one bulk window-search call over route distance, timeline clocks, and optional elevation snapshots selects at most five candidates; Swift retains public highlight construction, metadata, cancellation, and persistence. The cutover preserves duplicate-distance ownership, first-winner ties, active-pace limits, reliable elevation gaps, and per-search work bounds, with native, bridge, and end-to-end oracle parity coverage.
 - [x] **Migrate ElevationProfile to C++23**: one bulk multi-pass call performs source screening, spike/excursion rejection, supported fill, run classification, distance-domain smoothing, and deadband-confirmed cumulative ascent/descent; Swift retains public models, UUIDs, distance queries, policy, cancellation, and persistence. Exact oracle parity required; no schema or analysis-version change.
-- [ ] **Migrate MovementProfile to C++23** only if still justified after the post-elevation cutover profile: two-pass movement-state classification. Not automatically selected — re-measure remaining shares first.
+- [ ] **Optimize route-metric scale/bucket work** if product-limit map coloring warrants another performance phase. The post-elevation profile leaves this as the strongest measured candidate; revalidate the product-visible need before implementation.
 - [ ] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary disposition, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
@@ -138,6 +138,7 @@
 - `MetricSmoother` alone: sub-ms / small absolute cost.
 - Import parsers (JSON/GPX/TCX/FIT) as C++ kernels: XML/binary decode is Foundation-bound; end-to-end import is not dominated by a portable numeric core once normalization/analysis is separated. TCX XML parse+build is expensive in absolute terms but is not a good C++23 engine candidate.
 - `RouteAlignmentSampleBuilder`: remaining alignment cost outside native DTW is small on ordinary pairs; DTW path is already native.
+- `MovementProfile`: the refreshed one-million-point analysis profile measured about 17 ms (8.5% of `analyze`); ordinary routes remain sub-millisecond end to end, so a native migration is not justified ahead of route metrics or cleanup.
 - `SplitCalculator`: modest absolute cost; benefits if timeline/movement stay shared in Swift.
 - Combined full-analysis kernel as the *first* cutover: SegmentDetector alone already holds most of the analysis wall and is more reviewable as one phase.
 
@@ -146,7 +147,7 @@
 | Bound | Count | Contents |
 |---|---:|---|
 | Minimum | 1 | Final cleanup |
-| Expected | 2–3 | Optional MovementProfile and/or route-metric scale/bucket → final cleanup (re-rank after post-elevation profile) |
+| Expected | 2 | Optional route-metric scale/bucket work → final cleanup |
 | Maximum reasonable | 3 | Above plus a targeted Swift optimization if still product-visible |
 
 Swift performs route-size validation, basic field sanitization, sorting,

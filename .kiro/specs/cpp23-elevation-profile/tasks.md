@@ -14,10 +14,18 @@ Checked boxes do not replace tests or benchmark evidence.
 - [x] Production parity tests
 - [x] AST and boundary validation updates
 - [x] AGENTS / architecture / phase-plan documentation
-- [ ] Release benchmark script and measurements
-- [ ] Full Core/Platform/Studio verification
-- [ ] Post-cutover analysis profile
-- [ ] Draft PR with evidence
+- [x] Release benchmark script and measurements
+- [x] Full Core/Platform/Studio verification
+- [x] Post-cutover analysis profile
+- [x] Draft PR with evidence
+
+## Post-cutover decision
+
+- Route-metric scale/bucket work is the next performance candidate if the
+  product-limit map-coloring path warrants another optimization phase.
+- MovementProfile remains in Swift: the refreshed product-limit analysis share
+  is too small to justify a native migration ahead of route metrics or cleanup.
+- Final portable-core cleanup remains mandatory.
 
 ## Explicit non-goals
 
