@@ -145,6 +145,36 @@ final class MapSnapshotOverlayComposerTests: XCTestCase {
         XCTAssertGreaterThan(reflectedPixel.blue, 240)
     }
 
+    func testLinearConverterEmptyRoutesUseDefaultBounds() {
+        let converter = LinearMapCoordinateConverter(routes: [], size: size)
+        XCTAssertEqual(converter.minLatitude, 0)
+        XCTAssertEqual(converter.maxLatitude, 1)
+        XCTAssertEqual(converter.minLongitude, 0)
+        XCTAssertEqual(converter.maxLongitude, 1)
+        XCTAssertEqual(converter.size, size)
+    }
+
+    func testLinearConverterBoundsSpanAllRoutesWithoutIntermediateArrays() {
+        let routes = [
+            line(id: "a", style: .primary, coords: [(10, -20), (12, -18)]),
+            line(id: "b", style: .primary, coords: [(8, -15), (11, -22)])
+        ]
+        let converter = LinearMapCoordinateConverter(routes: routes, size: size)
+        XCTAssertEqual(converter.minLatitude, 8)
+        XCTAssertEqual(converter.maxLatitude, 12)
+        XCTAssertEqual(converter.minLongitude, -22)
+        XCTAssertEqual(converter.maxLongitude, -15)
+    }
+
+    func testLinearConverterSingleCoordinateStillSetsMinMax() {
+        let routes = [line(id: "solo", style: .primary, coords: [(37.5, -122.4)])]
+        let converter = LinearMapCoordinateConverter(routes: routes, size: size)
+        XCTAssertEqual(converter.minLatitude, 37.5)
+        XCTAssertEqual(converter.maxLatitude, 37.5)
+        XCTAssertEqual(converter.minLongitude, -122.4)
+        XCTAssertEqual(converter.maxLongitude, -122.4)
+    }
+
     // MARK: - Helpers
 
     private func line(

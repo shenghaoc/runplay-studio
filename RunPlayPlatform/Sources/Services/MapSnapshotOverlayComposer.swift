@@ -69,18 +69,13 @@ public enum MapSnapshotOverlayComposer: Sendable {
             let color = nsColor(for: route.style)
             context.setStrokeColor(color.cgColor)
 
+            // Convert coordinates directly into the path; avoid allocating an intermediate [CGPoint].
+            // Safe: `count >= 2` is enforced above.
             let path = CGMutablePath()
-            var isFirst = true
-            // ⚡ Bolt: Use an inline loop to build the path, avoiding map and flatMap
-            // which cause intermediate O(N) array allocations during map drawing.
-            for coordinate in route.coordinates {
-                let point = converter.point(for: coordinate)
-                if isFirst {
-                    path.move(to: point)
-                    isFirst = false
-                } else {
-                    path.addLine(to: point)
-                }
+            let coordinates = route.coordinates
+            path.move(to: converter.point(for: coordinates[0]))
+            for index in 1..<coordinates.count {
+                path.addLine(to: converter.point(for: coordinates[index]))
             }
             context.addPath(path)
             context.strokePath()
@@ -195,8 +190,7 @@ public struct LinearMapCoordinateConverter: MapCoordinateConverting, Sendable {
         var maxLon = -Double.infinity
         var hasCoords = false
 
-        // ⚡ Bolt: Used a manual loop instead of chained .flatMap().map().min() to
-        // eliminate multiple intermediate O(N) array allocations per instantiation.
+        // Single pass over all coordinates — avoids flatMap/map intermediate arrays for min/max.
         for route in routes {
             for coordinate in route.coordinates {
                 hasCoords = true
