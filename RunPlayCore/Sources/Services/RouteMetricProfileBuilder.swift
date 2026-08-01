@@ -791,60 +791,55 @@ public struct RouteMetricProfileBuilder: Sendable {
     ) throws -> RouteMetricProfile {
         if isCancelled() { throw CancellationError() }
 
-        var samples: [DistanceWeightedStatistics.WeightedSample] = []
-        samples.reserveCapacity(smoothedValues.count)
-        var validCoverage = 0.0
-        var validCount = 0
-
-        for (index, value) in smoothedValues.enumerated() {
-            let distance = max(0, rawIntervals[index].endDistanceMeters - rawIntervals[index].startDistanceMeters)
-            guard let value, value.isFinite, distance > 0 else { continue }
-            samples.append(.init(value: value, weight: distance))
-            validCoverage += distance
-            validCount += 1
+        guard smoothedValues.count == rawIntervals.count else {
+            throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
         }
 
+        var weightsMeters: [Double] = []
+        weightsMeters.reserveCapacity(rawIntervals.count)
+        for (index, raw) in rawIntervals.enumerated() {
+            if index.isMultiple(of: policy.cancellationStride), isCancelled() {
+                throw CancellationError()
+            }
+            weightsMeters.append(max(0, raw.endDistanceMeters - raw.startDistanceMeters))
+        }
+
+        // Exactly one native call per non-solid profile finalization. Metric
+        // extraction and distance-domain smoothing remain entirely in Swift.
+        let numeric = try RunPlayRouteMetricScaleBucketBridge.assign(
+            metricValues: smoothedValues,
+            weightsMeters: weightsMeters,
+            lowerQuantile: policy.lowerQuantile,
+            upperQuantile: policy.upperQuantile,
+            minimumScaleSpan: minimumScaleSpan,
+            minimumValidIntervalCount: policy.minimumValidIntervalCount,
+            bucketCount: policy.bucketCount,
+            cancellationCheckStride: policy.cancellationStride,
+            isCancelled: isCancelled
+        )
+
         let totalDistance = totalRouteDistance(routePoints)
-        let scale: RouteMetricScale?
-        if validCount >= policy.minimumValidIntervalCount,
-           let lower = DistanceWeightedStatistics.weightedQuantile(samples, quantile: policy.lowerQuantile),
-           let median = DistanceWeightedStatistics.weightedMedian(samples),
-           let upper = DistanceWeightedStatistics.weightedQuantile(samples, quantile: policy.upperQuantile),
-           abs(upper - lower) + 1e-12 >= max(0, minimumScaleSpan) {
-            // Equal bounds remain safe; normalization maps everything to 0.5.
-            scale = RouteMetricScale(
-                lowerBound: lower,
-                median: median,
-                upperBound: upper,
-                lowerLabel: formatLower(lower),
-                medianLabel: formatMedian(median),
-                upperLabel: formatUpper(upper),
+        let scale = numeric.scale.map { value in
+            RouteMetricScale(
+                lowerBound: value.lowerBound,
+                median: value.median,
+                upperBound: value.upperBound,
+                lowerLabel: formatLower(value.lowerBound),
+                medianLabel: formatMedian(value.median),
+                upperLabel: formatUpper(value.upperBound),
                 direction: direction
             )
-        } else {
-            scale = nil
         }
 
         var intervals: [RouteMetricInterval] = []
         intervals.reserveCapacity(rawIntervals.count)
-        var noDataCount = 0
-
         for (index, raw) in rawIntervals.enumerated() {
             if index % policy.cancellationStride == 0, isCancelled() {
                 throw CancellationError()
             }
             let value = smoothedValues[index]
-            let normalized: Double?
-            let bucket: RouteMetricColorBucket
-            if let value, let scale {
-                let n = normalize(value: value, scale: scale)
-                normalized = n
-                bucket = .level(bucketIndex(normalized: n, bucketCount: policy.bucketCount))
-            } else {
-                normalized = nil
-                bucket = .noData
-                noDataCount += 1
-            }
+            let assignment = numeric.assignments[index]
+            let bucket = assignment.bucketIndex.map(RouteMetricColorBucket.level) ?? .noData
 
             intervals.append(RouteMetricInterval(
                 startPointIndex: raw.startPointIndex,
@@ -853,25 +848,25 @@ public struct RouteMetricProfileBuilder: Sendable {
                 startDistanceMeters: raw.startDistanceMeters,
                 endDistanceMeters: raw.endDistanceMeters,
                 metricValue: value,
-                normalizedValue: normalized,
+                normalizedValue: assignment.normalizedValue,
                 bucket: bucket
             ))
         }
 
         let coverageFraction = totalDistance > 0
-            ? min(1, max(0, validCoverage / totalDistance))
+            ? min(1, max(0, numeric.validCoverageDistanceMeters / totalDistance))
             : 0
 
         return RouteMetricProfile(
             mode: mode,
             intervals: intervals,
             scale: scale,
-            validCoverageDistanceMeters: validCoverage,
+            validCoverageDistanceMeters: numeric.validCoverageDistanceMeters,
             totalRouteDistanceMeters: totalDistance,
             diagnostics: RouteMetricDiagnostics(
                 intervalCount: intervals.count,
-                validIntervalCount: validCount,
-                noDataIntervalCount: noDataCount,
+                validIntervalCount: numeric.validIntervalCount,
+                noDataIntervalCount: numeric.noDataIntervalCount,
                 validCoverageFraction: coverageFraction,
                 bucketCount: policy.bucketCount,
                 policyVersion: policy.policyVersion

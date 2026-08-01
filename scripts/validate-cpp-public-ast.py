@@ -214,6 +214,26 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="assign_route_metric_scale_buckets",
+        type_text=(
+            "RouteMetricScaleBucketSummary "
+            "(const RouteMetricScaleBucketInputSample *, std::size_t, "
+            "RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, "
+            "std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const RouteMetricScaleBucketInputSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_samples",
+                type_text="RouteMetricScaleBucketOutputSample *",
+                mutable_output=True,
+            ),
+        ),
+    ),
 )
 
 
@@ -575,6 +595,15 @@ def run_self_test() -> int:
             ),
             "ParmVarDecl samples 'const ElevationProfileInputSample *'",
             "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            (
+                "FunctionDecl assign_route_metric_scale_buckets "
+                "'RouteMetricScaleBucketSummary "
+                "(const RouteMetricScaleBucketInputSample *, std::size_t, "
+                "RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, "
+                "std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+            "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -1280,6 +1309,74 @@ def run_self_test() -> int:
                 ),
                 "ParmVarDecl samples 'const ElevationProfileInputSample *'",
                 "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            ]
+        ),
+        "route metric writable input": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+            ]
+        ),
+        "route metric const output": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, const RouteMetricScaleBucketOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'const RouteMetricScaleBucketOutputSample *'",
+            ]
+        ),
+        "route metric wrong input type": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const ElevationProfileInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const ElevationProfileInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+            ]
+        ),
+        "route metric wrong output type": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, ElevationProfileOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
+            ]
+        ),
+        "route metric missing count": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+            ]
+        ),
+        "route metric missing capacity": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+            ]
+        ),
+        "route metric extra pointer": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t, double *) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+                "ParmVarDecl scratch 'double *'",
+            ]
+        ),
+        "route metric callback": "\n".join(
+            [
+                "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t, bool (*)()) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+                "ParmVarDecl callback 'bool (*)()'",
+            ]
+        ),
+        "route metric pointer return": "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketOutputSample * (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy) noexcept'",
+        "route metric container return": "FunctionDecl assign_route_metric_scale_buckets 'std::vector<RouteMetricScaleBucketOutputSample> (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy) noexcept'",
+        "throwing route metric function": "FunctionDecl assign_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t)'",
+        "renamed route metric lookalike": "\n".join(
+            [
+                "FunctionDecl compute_route_metric_scale_buckets 'RouteMetricScaleBucketSummary (const RouteMetricScaleBucketInputSample *, std::size_t, RouteMetricScaleBucketPolicy, RouteMetricScaleBucketOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
+                "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
             ]
         ),
     }

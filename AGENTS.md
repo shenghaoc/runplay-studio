@@ -94,7 +94,8 @@ not import `RunPlayEngineCpp` directly.
   per-workout personal heatmap coverage kernel, the production
   constrained-DTW path solver for Route-Aware comparison, the production
   SegmentDetector window-search kernel, and the production ElevationProfile
-  multi-pass construction kernel. C++23 performs production
+  multi-pass construction kernel, plus production route-metric scale and
+  bucket finalization. C++23 performs production
   outlier evidence, isolated-point rejection, implicit gap inference, final
   segment compaction, supplied-distance policy, and normalized cumulative
   distances through one bulk call. Swift still owns stage-1 validation and
@@ -129,7 +130,14 @@ not import `RunPlayEngineCpp` directly.
   ascent/descent — through one bulk call per profile build. Swift retains
   route-point UUIDs, public `ElevationProfile`/`ElevationProfileSample`
   models, all distance-query APIs, policy ownership, cancellation,
-  diagnostics, and persistence.
+  diagnostics, and persistence. For non-solid route-metric profiles, C++23
+  performs deterministic distance-weighted lower/median/upper scale
+  construction, numeric normalization, bucket assignment, and numeric summary
+  construction through one bulk call per profile finalization. Swift retains
+  raw pace, heart-rate, and corrected-elevation extraction, distance-domain
+  smoothing, scale direction, localized labels, public route-metric models,
+  availability and caching, Platform line coalescing, cancellation,
+  diagnostics, UI state, and persistence.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation

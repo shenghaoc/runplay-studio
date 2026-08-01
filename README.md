@@ -128,7 +128,10 @@ step-distance boundary, the production combined route-quality geometry
 kernel, the production per-workout personal heatmap coverage kernel, the
 production constrained-DTW path solver for Route-Aware comparison, the
 production SegmentDetector window-search kernel, and the production
-ElevationProfile multi-pass construction kernel.
+ElevationProfile multi-pass construction kernel. It also performs deterministic
+distance-weighted route-metric scale construction, numeric normalization, and
+bucket assignment through one allocation-free bulk call per non-solid metric
+profile.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -149,6 +152,13 @@ C++ receives each point's original array offset as `source_index`; the Swift
 `std::optional<double>`, and C++ retains no pointer after the call. Route
 operations must use one bulk engine call rather than per-point calls, and
 Platform/Studio must not traverse C++ containers directly.
+
+Route-metric extraction and distance-domain smoothing remain Swift. Swift sends
+one optional numeric value and interval weight per finalized interval, owns the
+input and output buffers, then materializes localized labels and public
+`RouteMetricProfile` values from the pure-numeric result. C++ retains no pointer;
+Platform map-line coalescing, profile availability/caching, cancellation, UI,
+diagnostics, and persistence remain Swift-owned.
 
 The engine also provides allocation-free C++23 geodesy primitives —
 `is_valid_coordinate`, `haversine_distance_meters`, and
