@@ -120,9 +120,10 @@ enum RunPlayRouteMetricScaleBucketBridge {
         guard count <= RunPlayEngineLimits.maxRouteInputSamples else {
             throw RunPlayRouteMetricScaleBucketBridgeError.resourceLimit
         }
+        // Preserve the full public Swift `Int` domain for bucket counts.
         guard minimumValidIntervalCount >= 0,
               let nativeMinimumCount = UInt64(exactly: minimumValidIntervalCount),
-              let nativeBucketCount = Int32(exactly: bucketCount)
+              let nativeBucketCount = Int64(exactly: bucketCount)
         else {
             throw RunPlayRouteMetricScaleBucketBridgeError.invalidPolicy
         }
@@ -136,7 +137,9 @@ enum RunPlayRouteMetricScaleBucketBridge {
         for index in 0..<count {
             if index.isMultiple(of: stride), isCancelled() { throw CancellationError() }
             let weight = weightsMeters[index]
-            guard weight.isFinite, weight >= 0 else {
+            // Accept finite nonnegative weights, +infinity, and -0. Reject NaN
+            // and any negative weight including -infinity.
+            if weight.isNaN || weight < 0 {
                 throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
             }
             var sample = runplay.RouteMetricScaleBucketInputSample()
@@ -201,12 +204,15 @@ enum RunPlayRouteMetricScaleBucketBridge {
             throw RunPlayRouteMetricScaleBucketBridgeError.engineContractViolation
         }
 
+        // Positive infinity is a legal valid-coverage result (extreme finite
+        // interval weights may overflow during accumulation). Reject only NaN
+        // and negative coverage.
         guard summary.sample_count == UInt64(count),
               summary.required_output_capacity == UInt64(count),
               summary.valid_interval_count <= UInt64(count),
               summary.no_data_interval_count <= UInt64(count),
               summary.has_scale == 0 || summary.has_scale == 1,
-              summary.valid_coverage_distance_meters.isFinite,
+              !summary.valid_coverage_distance_meters.isNaN,
               summary.valid_coverage_distance_meters >= 0,
               let validCount = Int(exactly: summary.valid_interval_count),
               let noDataCount = Int(exactly: summary.no_data_interval_count)
@@ -272,7 +278,8 @@ enum RunPlayRouteMetricScaleBucketBridge {
                 guard native.normalized_value.isFinite,
                       (0...1).contains(native.normalized_value),
                       native.bucket_index >= 0,
-                      Int(native.bucket_index) < effectiveBucketCount,
+                      let bucket = Int(exactly: native.bucket_index),
+                      bucket < effectiveBucketCount,
                       numericScale != nil,
                       expectedMetric != nil
                 else {
@@ -280,7 +287,7 @@ enum RunPlayRouteMetricScaleBucketBridge {
                 }
                 assignments.append(RunPlayRouteMetricBucketAssignment(
                     normalizedValue: native.normalized_value,
-                    bucketIndex: Int(native.bucket_index)
+                    bucketIndex: bucket
                 ))
             }
         }

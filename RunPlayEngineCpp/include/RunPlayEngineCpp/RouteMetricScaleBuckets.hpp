@@ -23,7 +23,8 @@ struct RouteMetricScaleBucketPolicy final {
     double upper_quantile{0};
     double minimum_scale_span{0};
     std::uint64_t minimum_valid_interval_count{0};
-    std::int32_t bucket_count{0};
+    /// Supported Swift `Int` domain on all targets (full 64-bit signed range).
+    std::int64_t bucket_count{0};
 };
 
 static_assert(std::is_standard_layout_v<RouteMetricScaleBucketPolicy>);
@@ -37,7 +38,8 @@ struct RouteMetricScaleBucketOutputSample final {
     double metric_value{0};
     double weight_meters{0};
     double normalized_value{0};
-    std::int32_t bucket_index{-1};
+    /// `-1` = no data; otherwise `0...(bucket_count - 1)`.
+    std::int64_t bucket_index{-1};
     std::uint8_t has_metric_value{0};
     std::uint8_t has_normalized_value{0};
 };
@@ -81,9 +83,14 @@ static_assert(std::is_nothrow_copy_assignable_v<RouteMetricScaleBucketSummary>);
 /// Assign a deterministic numeric scale and bucket to one metric profile.
 ///
 /// Both buffers are Swift-owned and borrowed synchronously. C++ retains no
-/// pointer and performs no callback. The output buffer becomes the sorting
-/// workspace only after complete validation, and every error leaves it
+/// pointer and performs no callback. The output buffer becomes an eligible-only
+/// sort workspace only after complete validation, and every error leaves it
 /// byte-for-byte unchanged. No route-sized native heap allocation occurs.
+///
+/// When a scale is known to be impossible after the read-only validation pass,
+/// the kernel initializes the output in source order and performs no sort.
+/// Otherwise it packs quantile-eligible records into the output buffer,
+/// sorts that dense prefix only, then rewrites the full result in source order.
 [[nodiscard]]
 RouteMetricScaleBucketSummary assign_route_metric_scale_buckets(
     const RouteMetricScaleBucketInputSample* samples,

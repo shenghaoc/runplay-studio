@@ -19,3 +19,15 @@
 - [x] Add the opt-in release benchmark and pass performance/memory gates.
 - [x] Update durable architecture/roadmap documentation.
 - [x] Run the complete verification matrix and exact-head CI.
+- [x] Preserve the full public Swift `Int` `bucketCount` domain via
+  `std::int64_t` policy and output fields (no `Int32` narrowing).
+- [x] Preserve positive-infinite valid coverage from extreme finite weights and
+  accept individually positive-infinite weights as valid but not
+  quantile-eligible; reject NaN and negative weights including `-infinity`.
+- [x] Skip both native sorts on guaranteed no-scale inputs discovered during the
+  read-only validation pass.
+- [x] Refactor compatibility tests to compare oracle, native bridge, and
+  production profile builder where representable.
+- [x] Add same-machine production A/B benchmark
+  (`RouteMetricProductionABBenchmark`) runnable against both `origin/main` and
+  PR head without new C++ APIs.

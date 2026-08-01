@@ -795,6 +795,21 @@ public struct RouteMetricProfileBuilder: Sendable {
             throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
         }
 
+        // Structural no-scale: interval count alone cannot satisfy the minimum
+        // valid-interval policy. Skip the native bridge and still report exact
+        // valid coverage / count diagnostics from a single source-order scan.
+        // This is not a numeric fallback — scale math remains exclusively native.
+        if rawIntervals.count < policy.minimumValidIntervalCount {
+            return try finalizeStructurallyImpossibleScale(
+                mode: mode,
+                routePoints: routePoints,
+                rawIntervals: rawIntervals,
+                smoothedValues: smoothedValues,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+        }
+
         var weightsMeters: [Double] = []
         weightsMeters.reserveCapacity(rawIntervals.count)
         for (index, raw) in rawIntervals.enumerated() {
@@ -804,8 +819,9 @@ public struct RouteMetricProfileBuilder: Sendable {
             weightsMeters.append(max(0, raw.endDistanceMeters - raw.startDistanceMeters))
         }
 
-        // Exactly one native call per non-solid profile finalization. Metric
-        // extraction and distance-domain smoothing remain entirely in Swift.
+        // Exactly one native call per non-solid profile finalization when a
+        // scale is still possible. Metric extraction and distance-domain
+        // smoothing remain entirely in Swift.
         let numeric = try RunPlayRouteMetricScaleBucketBridge.assign(
             metricValues: smoothedValues,
             weightsMeters: weightsMeters,
@@ -867,6 +883,64 @@ public struct RouteMetricProfileBuilder: Sendable {
                 intervalCount: intervals.count,
                 validIntervalCount: numeric.validIntervalCount,
                 noDataIntervalCount: numeric.noDataIntervalCount,
+                validCoverageFraction: coverageFraction,
+                bucketCount: policy.bucketCount,
+                policyVersion: policy.policyVersion
+            )
+        )
+    }
+
+    /// Build a no-scale profile when interval count alone makes a scale
+    /// impossible (`rawIntervals.count < minimumValidIntervalCount`).
+    private func finalizeStructurallyImpossibleScale(
+        mode: WorkoutRouteColorMode,
+        routePoints: [RoutePoint],
+        rawIntervals: [RawInterval],
+        smoothedValues: [Double?],
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfile {
+        var intervals: [RouteMetricInterval] = []
+        intervals.reserveCapacity(rawIntervals.count)
+        var validCount = 0
+        var validCoverage = 0.0
+        for (index, raw) in rawIntervals.enumerated() {
+            if index.isMultiple(of: policy.cancellationStride), isCancelled() {
+                throw CancellationError()
+            }
+            let weight = max(0, raw.endDistanceMeters - raw.startDistanceMeters)
+            let value = smoothedValues[index]
+            if let value, value.isFinite, weight > 0 {
+                validCount += 1
+                validCoverage += weight
+            }
+            intervals.append(RouteMetricInterval(
+                startPointIndex: raw.startPointIndex,
+                endPointIndex: raw.endPointIndex,
+                routeSegmentIndex: raw.routeSegmentIndex,
+                startDistanceMeters: raw.startDistanceMeters,
+                endDistanceMeters: raw.endDistanceMeters,
+                metricValue: value,
+                normalizedValue: nil,
+                bucket: .noData
+            ))
+        }
+
+        let totalDistance = totalRouteDistance(routePoints)
+        let coverageFraction = totalDistance > 0
+            ? min(1, max(0, validCoverage / totalDistance))
+            : 0
+
+        return RouteMetricProfile(
+            mode: mode,
+            intervals: intervals,
+            scale: nil,
+            validCoverageDistanceMeters: validCoverage,
+            totalRouteDistanceMeters: totalDistance,
+            diagnostics: RouteMetricDiagnostics(
+                intervalCount: intervals.count,
+                validIntervalCount: validCount,
+                noDataIntervalCount: intervals.count,
                 validCoverageFraction: coverageFraction,
                 bucketCount: policy.bucketCount,
                 policyVersion: policy.policyVersion
