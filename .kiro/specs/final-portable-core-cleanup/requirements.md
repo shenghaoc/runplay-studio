@@ -106,8 +106,10 @@ or test is added but not discovered. Documented in `docs/cpp-engine-verification
 ### R10. Package-consumer smoke
 
 `Tests/PackageConsumerSmoke` exercises representative `RunPlayCore` public API
-usage (models or services) beyond a bare import, still compile-only, and still
-builds clean under CI.
+usage (models or services) beyond a bare import. It is a compile-and-run smoke
+test: the assertions are runtime `precondition`s, and the Linux CI job both
+builds the package and runs `RunPlayCoreConsumerSmoke`, so those assertions
+actually execute. Building alone would only type-check the API usage.
 
 ### R11. iOS readiness document
 

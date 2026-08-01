@@ -10,9 +10,11 @@ RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
 
 The single structural change is the removal of the transitional public
 step-distance boundary (`RouteGeometry.hpp` / `RouteGeometry.cpp`,
-`RunPlayRouteStepDistanceBridge.swift`), leaving nine public headers and eight
+`RunPlayRouteStepDistanceBridge.swift`), leaving nine public headers and seven
 pointer-bearing production callables plus the non-pointer engine identity and
-geodesy primitives.
+geodesy primitives. Seven is the count enforced by the
+`scripts/validate-cpp-public-ast.py` allow-list and recorded in
+`docs/cpp-engine-boundary-inventory.md`.
 
 ```text
 RunPlayEngineCpp (9 public headers)
@@ -80,14 +82,14 @@ Docs updated (no stale step-distance references, migration marked complete):
 | `GeoDistance` | Retain | Independent Swift geodesy reference; production still uses it for remaining Swift stages |
 | `RouteMetricScaleBucketSwiftFinalizer` | Retain | Intentional corrected-elevation production Swift ownership, not a fallback |
 | `run-cpp-engine-tests.sh` | Retain | Already uses automatic `find` discovery; add a discovery-coverage guard |
-| `Tests/PackageConsumerSmoke` | Strengthen | Add representative compile-only `RunPlayCore` usage beyond a bare import |
+| `Tests/PackageConsumerSmoke` | Strengthen | Add representative `RunPlayCore` usage beyond a bare import; compile **and** run (runtime `precondition`s) |
 
 ## Call cardinality
 
 | Production caller | Native call count per operation |
 | --- | --- |
 | `RouteQualityProcessor.process` | 1 (route quality) + 1 (elevation) |
-| `PersonalHeatmapBuilder` per workout per attempt | 1 |
+| `PersonalHeatmapBuilder` per workout per attempt | 1, or 2 when the output capacity was too small (bounded single capacity renegotiation) |
 | `ConstrainedDynamicTimeWarpingAligner.align` | 1 per alignment attempt |
 | `SegmentDetector.detect` | 1 |
 | `ElevationProfile.build` | 1 |
@@ -95,13 +97,22 @@ Docs updated (no stale step-distance references, migration marked complete):
 | `RouteMetricProfileBuilder` corrected elevation | 0 (Swift finalizer) |
 | solid mode | 0 |
 
-Cardinality tests instrument the bridge layer (test-only call counters or
-fixture-level assertions) without changing production behavior.
+Cardinality tests observe the bridge layer through `NativeCallObserver`, which
+is `#if DEBUG` only. Release builds carry no counter, no lock, and no mutable
+diagnostic state, so production behaviour is genuinely unchanged. Observation is
+scoped to a task-local for the duration of the measured closure rather than
+reset on process-wide state, so a concurrently running test cannot pollute a
+count.
 
 ## Discovery coverage guard
 
-`run-cpp-engine-tests.sh` already builds every `RunPlayEngineCpp/Sources/*.cpp`
-and `RunPlayEngineCpp/Tests/*.cpp` via `find ... | LC_ALL=C sort`. A
-verification check (in `validate-cpp-boundaries.sh`) asserts the runner derives
-its source and test lists from `find` (not a hard-coded manifest) and that the
-counts match the on-disk file sets, so an added-but-omitted file fails CI.
+`run-cpp-engine-tests.sh` builds every `RunPlayEngineCpp/Sources/*.cpp` and
+`RunPlayEngineCpp/Tests/*.cpp` via `find ... | LC_ALL=C sort`, and exposes the
+resulting list through `--list-sources`.
+
+`validate-cpp-boundaries.sh` compares that output against its own independent
+`find` over the engine tree. Comparing two separately produced sets is what
+makes the guard meaningful: a file added but omitted from discovery fails, and
+so does a runner edit that swaps `find` for a partial hard-coded manifest.
+Checking only that each `.cpp` sits under `Sources/` or `Tests/` would catch the
+first case but not the second.

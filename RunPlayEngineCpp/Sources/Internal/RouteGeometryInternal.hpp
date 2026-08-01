@@ -11,9 +11,9 @@ namespace internal {
 
 /// One pairwise coordinate-derived step between two same-segment samples.
 ///
-/// Invalid coordinates yield positive zero, matching bulk step-distance and
-/// Swift `GeoDistance.distanceMeters`. Callers that need segment-boundary
-/// zeros must apply that rule before invoking this helper.
+/// Invalid coordinates yield positive zero, matching Swift
+/// `GeoDistance.distanceMeters`. Callers that need segment-boundary zeros must
+/// apply that rule before invoking this helper.
 [[nodiscard]]
 inline double pairwise_coordinate_step_meters(
     const RouteInputSample& previous,

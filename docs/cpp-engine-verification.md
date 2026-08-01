@@ -13,17 +13,34 @@ measured on deterministic synthetic fixtures.
 
 | Runner | Gate | Coverage |
 |---|---|---|
-| `scripts/run-elevation-profile-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Elevation profile kernel vs Swift oracle, deterministic fixture |
-| `scripts/run-personal-heatmap-benchmark.sh` | `RUNPLAY_BENCHMARK=1`, `RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1` | Complete personal heatmap builder and aggregation |
+| `scripts/run-elevation-profile-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Elevation profile kernel vs Swift oracle, deterministic fixture. Its `E7` 1,000,000-point product-limit probe runs **unconditionally** — see the gating note below |
+| `scripts/run-personal-heatmap-benchmark.sh` | `RUNPLAY_BENCHMARK=1`, `RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1` | Complete personal heatmap builder and aggregation; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
 | `scripts/run-personal-heatmap-profile.sh` | `RUNPLAY_HEATMAP_PROFILE=1` | Phase-level profile of the personal heatmap pipeline |
 | `scripts/run-remaining-core-hotspot-profile.sh` | `RUNPLAY_CORE_HOTSPOT_PROFILE=1` | Release phase-level profile of remaining RunPlayCore computational hotspots (production diagnostic; `RUNPLAY_PROFILE_FAMILY` selects the family, `RUNPLAY_PROFILE_PRODUCT_LIMIT=1` enables 1M-point probes) |
 | `scripts/run-route-alignment-dtw-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Constrained-DTW path solve; `RUNPLAY_BENCHMARK_MAX_BAND=1` adds the maximum-band probe |
 | `scripts/run-route-metric-scale-bucket-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | C++23 route-metric numeric finalizer; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
-| `scripts/run-route-quality-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Combined route-quality geometry cutover on a deterministic 100,000-point fixture |
+| `scripts/run-route-quality-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Combined route-quality geometry cutover on a deterministic 100,000-point fixture; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
 | `scripts/run-segment-detector-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Complete segment-detector cutover; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
 
 All eight runners remain present after the step-distance migration; the
 transitional step-distance benchmark runner was removed with its boundary.
+
+### Product-limit probe gating is not uniform
+
+Five runners carry a 1,000,000-point probe, and they do not gate it the same
+way. Four make it opt-in behind `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1`
+(personal-heatmap, route-metric, route-quality, segment-detector), while
+`ElevationProfileBenchmark`'s `E7 1,000,000-point product limit` case has no
+environment gate at all and runs on every invocation of its runner.
+
+This is a real inconsistency, not a documentation gap: a plain
+`scripts/run-elevation-profile-benchmark.sh` pays for a 1M-point probe, whereas
+a plain `scripts/run-route-metric-scale-bucket-benchmark.sh` prints
+`_R7/R8 skipped; set RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1._` and does not. Anyone
+comparing default-mode runtimes across runners is not comparing like with like.
+Unifying the gate is deliberately left out of this change because it would alter
+what the elevation runner measures by default; it is recorded here so the next
+change to these runners makes that choice on purpose.
 
 ## Sanitizer matrix
 
@@ -56,13 +73,33 @@ find RunPlayEngineCpp/Sources -type f -name '*.cpp' -print | LC_ALL=C sort
 find RunPlayEngineCpp/Tests   -type f -name '*.cpp' -print | LC_ALL=C sort
 ```
 
-A guard in `scripts/validate-cpp-boundaries.sh` proves a source or test added
-but omitted from discovery fails CI: every `*.cpp` under the engine tree must
-reside under `RunPlayEngineCpp/Sources/` or `RunPlayEngineCpp/Tests/`, the two
-roots the runner scans. A `.cpp` placed anywhere else in the tree (for example a
-new top-level directory) fails the guard with a concrete path. Because the
-runner's own lists are `find`-derived over those exact roots, a file inside
-them can never be silently omitted, and a file outside them cannot escape.
+and exposes the result — the exact translation units it hands the compiler —
+through `--list-sources`:
+
+```bash
+./scripts/run-cpp-engine-tests.sh --list-sources
+```
+
+`scripts/validate-cpp-boundaries.sh` compares that output against its own
+independent `find` over the whole engine tree and fails on any difference,
+naming the specific files.
+
+Comparing two separately produced sets is what makes this a proof rather than a
+restatement. It closes two distinct regressions:
+
+1. **A source or test added outside the discovery roots** — present in the
+   validator's `find`, absent from the runner's list.
+2. **A runner edit that replaces `find` with a partial hard-coded manifest** —
+   the files still sit in the right directories, so a location-only check would
+   still pass, but the runner's printed list shrinks and the comparison fails.
+
+The second case is the one a location-only guard cannot see. Both are
+negative-tested: temporarily hard-coding a two-entry test list makes the
+validator report the eight dropped test files by name.
+
+Because the compared set is the runner's real compile list, every file it covers
+participates in **both** the normal and the ASan/UBSan configuration — the two
+runs share one source list and differ only in flags.
 
 Engine `.hpp` headers are scanned by the boundary validator's Apple-framework
 and dependency checks; the public `include/RunPlayEngineCpp` headers are

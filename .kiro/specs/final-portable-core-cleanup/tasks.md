@@ -69,8 +69,8 @@ Checked boxes record intended work. Tests and CI are the completion evidence.
 
 ## Workstream J — Package-consumer smoke
 
-- [x] Strengthen `Tests/PackageConsumerSmoke` with representative compile-only
-      `RunPlayCore` usage.
+- [x] Strengthen `Tests/PackageConsumerSmoke` with representative
+      `RunPlayCore` usage, run as a compile-and-run external-consumer smoke.
 - [x] Verify `swift build --package-path Tests/PackageConsumerSmoke`.
 
 ## Workstream K — iOS readiness
