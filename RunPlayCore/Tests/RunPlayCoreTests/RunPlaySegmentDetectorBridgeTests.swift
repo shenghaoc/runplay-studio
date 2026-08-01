@@ -109,6 +109,128 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         XCTAssertNil(descent, "No descent when elevation disabled")
     }
 
+    func testSameSegmentDistancePlateauMatchesTimelineOracle() throws {
+        let points = TestFixtures.makeSameSegmentPlateauRoute()
+        let timeline = WorkoutTimeline(routePoints: points)
+        let elevationProfile = ElevationProfile(routePoints: points)
+        let config = SegmentDetectorSearchConfiguration(
+            fastest400mDistanceMeters: 400, fastest400mStepMeters: 50,
+            oneKilometerDistanceMeters: 1_000, oneKilometerStepMeters: 50,
+            minimumValidPaceSecondsPerKilometer: 120,
+            maximumValidPaceSecondsPerKilometer: 1_200,
+            elevationEnabled: false,
+            elevationWindowDistanceMeters: 0,
+            elevationStepMeters: 0,
+            maximumEvaluationsPerSearch: 100
+        )
+
+        let bridgeResult = try RunPlaySegmentDetectorBridge.search(
+            routePoints: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            configuration: config,
+            cancellationCheckStride: 2_048,
+            isCancelled: { false }
+        )
+        let oracleResult = SwiftSegmentDetectorOracle.search(
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            config: makeOracleConfig(timeline: timeline, bridgeConfig: config)
+        )
+
+        XCTAssertEqual(bridgeResult.candidates.count, oracleResult.count)
+        XCTAssertEqual(bridgeResult.candidates.first?.startDistanceMeters, 400)
+        assertClose(
+            bridgeResult.candidates.first?.selectionValue ?? .nan,
+            oracleResult.first?.selectionValue ?? .nan
+        )
+        assertClose(bridgeResult.candidates.first?.selectionValue ?? .nan, 500)
+    }
+
+    func testSeparatedReliableElevationRunsRemainValid() throws {
+        let points = TestFixtures.makeSeparatedElevationRunsRoute()
+        let timeline = WorkoutTimeline(routePoints: points)
+        let elevationProfile = ElevationProfile(routePoints: points)
+        XCTAssertTrue(elevationProfile.hasMeaningfulElevation)
+
+        let config = SegmentDetectorSearchConfiguration(
+            fastest400mDistanceMeters: 400, fastest400mStepMeters: 50,
+            oneKilometerDistanceMeters: 1_000, oneKilometerStepMeters: 50,
+            minimumValidPaceSecondsPerKilometer: 120,
+            maximumValidPaceSecondsPerKilometer: 1_200,
+            elevationEnabled: true,
+            elevationWindowDistanceMeters: 200,
+            elevationStepMeters: 100,
+            maximumEvaluationsPerSearch: 1_000
+        )
+
+        let bridgeResult = try RunPlaySegmentDetectorBridge.search(
+            routePoints: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            configuration: config,
+            cancellationCheckStride: 2_048,
+            isCancelled: { false }
+        )
+        let oracleResult = SwiftSegmentDetectorOracle.search(
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            config: makeOracleConfig(timeline: timeline, bridgeConfig: config)
+        )
+
+        XCTAssertEqual(
+            bridgeResult.candidates.map(\.kind).count,
+            oracleResult.count,
+            "Missing-altitude gaps must separate, not invalidate, reliable runs"
+        )
+    }
+
+    func testEachInternalSearchRetainsItsOwnEvaluationBudget() throws {
+        let points = TestFixtures.makeBudgetRoute()
+        let timeline = WorkoutTimeline(routePoints: points)
+        let elevationProfile = ElevationProfile(routePoints: points)
+        let config = SegmentDetectorSearchConfiguration(
+            fastest400mDistanceMeters: 400, fastest400mStepMeters: 100,
+            oneKilometerDistanceMeters: 1_000, oneKilometerStepMeters: 100,
+            minimumValidPaceSecondsPerKilometer: 120,
+            maximumValidPaceSecondsPerKilometer: 1_200,
+            elevationEnabled: false,
+            elevationWindowDistanceMeters: 0,
+            elevationStepMeters: 0,
+            maximumEvaluationsPerSearch: 20
+        )
+
+        let result = try RunPlaySegmentDetectorBridge.search(
+            routePoints: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            configuration: config,
+            cancellationCheckStride: 2_048,
+            isCancelled: { false }
+        )
+
+        XCTAssertEqual(result.paceEvaluationCount, 28)
+        XCTAssertGreaterThan(result.candidates.count, 0)
+    }
+
+    func testCancellationPropagatesDuringInputConversion() {
+        let points = TestFixtures.makeBudgetRoute()
+        let timeline = WorkoutTimeline(routePoints: points)
+        let elevationProfile = ElevationProfile(routePoints: points)
+        let config = makeDefaultPaceConfig(points: points, timeline: timeline)
+
+        XCTAssertThrowsError(try RunPlaySegmentDetectorBridge.search(
+            routePoints: points,
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            configuration: config,
+            cancellationCheckStride: 1,
+            isCancelled: { true }
+        )) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
     // MARK: - Generated fixture parity
 
     func testDeterministicGeneratedParityFixtures() throws {
@@ -275,6 +397,54 @@ private enum TestFixtures {
                 distanceFromStartMeters: d,
                 elapsedSeconds: d * 0.25,
                 routeSegmentIndex: 0
+            )
+        }
+    }
+
+    static func makeSameSegmentPlateauRoute() -> [RoutePoint] {
+        let start = Date()
+        return [
+            segmentPoint(start: start, time: 0, distance: 0, segment: 0),
+            segmentPoint(start: start, time: 300, distance: 400, segment: 0),
+            segmentPoint(start: start, time: 400, distance: 400, segment: 0),
+            segmentPoint(start: start, time: 500, distance: 800, segment: 0),
+        ]
+    }
+
+    static func makeSeparatedElevationRunsRoute() -> [RoutePoint] {
+        let start = Date()
+        return (0..<10).map { index in
+            let distance = Double(index) * 100
+            let altitude: Double?
+            switch index {
+            case 0...3:
+                altitude = 100 + Double(index) * 4
+            case 4...5:
+                altitude = nil
+            default:
+                altitude = 140 + Double(index - 6) * 5
+            }
+            return RoutePoint(
+                timestamp: start.addingTimeInterval(distance * 0.3),
+                latitude: 1 + distance / 100_000,
+                longitude: 1,
+                altitudeMeters: altitude,
+                distanceFromStartMeters: distance,
+                elapsedSeconds: distance * 0.3,
+                routeSegmentIndex: 0
+            )
+        }
+    }
+
+    static func makeBudgetRoute() -> [RoutePoint] {
+        let start = Date()
+        return (0...20).map { index in
+            let distance = Double(index) * 100
+            return segmentPoint(
+                start: start,
+                time: distance * 0.3,
+                distance: distance,
+                segment: 0
             )
         }
     }

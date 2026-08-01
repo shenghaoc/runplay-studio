@@ -1,20 +1,14 @@
 #include "RunPlayEngineCpp/SegmentDetection.hpp"
+#include "RunPlayEngineCpp/RouteInterop.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <optional>
 
 namespace runplay {
 namespace {
-
-// ---------------------------------------------------------------------------
-// Engine route-sample ceiling (25% above product limit)
-// ---------------------------------------------------------------------------
-
-inline constexpr std::size_t max_route_input_samples = 1'250'000;
 
 // ---------------------------------------------------------------------------
 // Internal distance-boundary location
@@ -65,12 +59,87 @@ static std::size_t upper_bound_index(
     return low;
 }
 
+// Exact translation of WorkoutTimeline.distanceLocation semantics.
+// Same-segment distance plateaus use first arrival for both roles, except a
+// terminal range end includes the final sample. A plateau that crosses route
+// segments assigns the start to the first point of the resumed segment and the
+// end to the last point of the prior segment.
+static std::optional<DistanceLocation> timeline_distance_location(
+    const SegmentDetectionSample* samples,
+    std::size_t count,
+    double distance,
+    bool is_range_start) noexcept
+{
+    if (count == 0) return std::nullopt;
+
+    const double first_dist = samples[0].distance_meters;
+    const double last_dist = samples[count - 1].distance_meters;
+    const double target = std::max(first_dist, std::min(distance, last_dist));
+
+    const std::size_t first_at_or_after = lower_bound_index(samples, count, target);
+
+    if (first_at_or_after < count &&
+        samples[first_at_or_after].distance_meters == target) {
+        const std::size_t first = first_at_or_after;
+        const std::size_t last = upper_bound_index(samples, count, target) - 1;
+        std::size_t selected = first;
+
+        if (samples[first].continuity_group == samples[last].continuity_group) {
+            if (!is_range_start && last == count - 1) {
+                selected = last;
+            }
+        } else if (is_range_start) {
+            const std::int32_t resumed_group = samples[last].continuity_group;
+            selected = last;
+            while (selected > first &&
+                   samples[selected - 1].continuity_group == resumed_group) {
+                --selected;
+            }
+        } else {
+            const std::int32_t prior_group = samples[first].continuity_group;
+            selected = first;
+            while (selected < last &&
+                   samples[selected + 1].continuity_group == prior_group) {
+                ++selected;
+            }
+        }
+        return DistanceLocation{selected, selected, 0.0};
+    }
+
+    if (first_at_or_after == 0) {
+        return DistanceLocation{0, 0, 0.0};
+    }
+    if (first_at_or_after >= count) {
+        const std::size_t last = count - 1;
+        return DistanceLocation{last, last, 0.0};
+    }
+
+    const std::size_t before = first_at_or_after - 1;
+    const std::size_t after = first_at_or_after;
+
+    if (samples[before].continuity_group != samples[after].continuity_group) {
+        const std::size_t selected = is_range_start ? after : before;
+        return DistanceLocation{selected, selected, 0.0};
+    }
+
+    const double span = samples[after].distance_meters -
+                        samples[before].distance_meters;
+    if (!(span > 0.0)) {
+        const std::size_t selected = is_range_start ? after : before;
+        return DistanceLocation{selected, selected, 0.0};
+    }
+
+    const double fraction = std::max(0.0, std::min(1.0,
+        (target - samples[before].distance_meters) / span));
+    return DistanceLocation{before, after, fraction};
+}
+
 // Exact translation of ElevationProfile.distanceLocation semantics.
 // Clamp target to [samples[0].distance, samples[last].distance].
 // Exact duplicate: range start → last duplicate; range end → first duplicate.
 // Interpolation only inside one continuity_group.
 // Cross-group target: start selects later group, end selects earlier group.
-static std::optional<DistanceLocation> distance_location(
+static std::optional<DistanceLocation> elevation_distance_location(
     const SegmentDetectionSample* samples,
     std::size_t count,
     double distance,
@@ -127,7 +196,8 @@ static std::optional<double> sampled_value_at(
     double distance,
     bool is_range_start) noexcept
 {
-    const auto loc = distance_location(samples, count, distance, is_range_start);
+    const auto loc = elevation_distance_location(
+        samples, count, distance, is_range_start);
     if (!loc) return std::nullopt;
 
     if (loc->before == loc->after) {
@@ -143,7 +213,9 @@ static std::optional<double> sampled_value_at(
 
     const double before_val = samples[loc->before].*member;
     const double after_val = samples[loc->after].*member;
-    return before_val + (after_val - before_val) * loc->fraction;
+    const double difference = after_val - before_val;
+    const double scaled_difference = difference * loc->fraction;
+    return before_val + scaled_difference;
 }
 
 /// Interpolate the two clocks at a distance — exact translation of
@@ -156,13 +228,28 @@ static bool sample_clocks(
     double& out_elapsed,
     double& out_active) noexcept
 {
-    const auto opt_elapsed = sampled_value_at(samples, count,
-        &SegmentDetectionSample::elapsed_seconds, distance, is_range_start);
-    const auto opt_active = sampled_value_at(samples, count,
-        &SegmentDetectionSample::active_seconds, distance, is_range_start);
-    if (!opt_elapsed || !opt_active) return false;
-    out_elapsed = *opt_elapsed;
-    out_active = *opt_active;
+    const auto location = timeline_distance_location(
+        samples, count, distance, is_range_start);
+    if (!location) return false;
+
+    if (location->before == location->after) {
+        out_elapsed = samples[location->before].elapsed_seconds;
+        out_active = samples[location->before].active_seconds;
+        return true;
+    }
+
+    const auto& before = samples[location->before];
+    const auto& after = samples[location->after];
+    const double elapsed_difference =
+        after.elapsed_seconds - before.elapsed_seconds;
+    const double scaled_elapsed_difference =
+        elapsed_difference * location->fraction;
+    out_elapsed = before.elapsed_seconds + scaled_elapsed_difference;
+    const double active_difference =
+        after.active_seconds - before.active_seconds;
+    const double scaled_active_difference =
+        active_difference * location->fraction;
+    out_active = before.active_seconds + scaled_active_difference;
     return true;
 }
 
@@ -212,6 +299,8 @@ static SegmentDetectionStatus validate_input(
     if (s0.elapsed_seconds < 0.0) return SegmentDetectionStatus::invalid_input_contract;
     if (!std::isfinite(s0.active_seconds)) return SegmentDetectionStatus::invalid_input_contract;
     if (s0.active_seconds < 0.0) return SegmentDetectionStatus::invalid_input_contract;
+    if (s0.active_seconds - s0.elapsed_seconds > 1e-12)
+        return SegmentDetectionStatus::invalid_input_contract;
     if (!std::isfinite(s0.cumulative_ascent_meters)) return SegmentDetectionStatus::invalid_input_contract;
     if (s0.cumulative_ascent_meters < 0.0) return SegmentDetectionStatus::invalid_input_contract;
     if (!std::isfinite(s0.cumulative_descent_meters)) return SegmentDetectionStatus::invalid_input_contract;
@@ -219,10 +308,9 @@ static SegmentDetectionStatus validate_input(
     if (!std::isfinite(s0.reliable_interval_count)) return SegmentDetectionStatus::invalid_input_contract;
     if (s0.reliable_interval_count < 0.0) return SegmentDetectionStatus::invalid_input_contract;
     if (s0.continuity_group != 0) return SegmentDetectionStatus::invalid_input_contract;
-    if (s0.reliable_elevation_run != -1) {
-        if (s0.reliable_elevation_run < 0)
-            return SegmentDetectionStatus::invalid_input_contract;
-    }
+    if (s0.reliable_elevation_run != -1 &&
+        s0.reliable_elevation_run != 0)
+        return SegmentDetectionStatus::invalid_input_contract;
 
     std::int32_t prev_group = 0;
     std::int32_t prev_reliable_run_seen = -1;
@@ -272,6 +360,10 @@ static SegmentDetectionStatus validate_input(
         if (s.continuity_group < prev_group) return SegmentDetectionStatus::invalid_input_contract;
         const std::int32_t group_delta = s.continuity_group - prev.continuity_group;
         if (group_delta > 1) return SegmentDetectionStatus::invalid_input_contract;
+        if (group_delta == 1 &&
+            s.reliable_elevation_run >= 0 &&
+            s.reliable_elevation_run == prev.reliable_elevation_run)
+            return SegmentDetectionStatus::invalid_input_contract;
         prev_group = s.continuity_group;
 
         // Reliable elevation run validation
@@ -353,19 +445,21 @@ static SegmentDetectionStatus validate_configuration(
     return SegmentDetectionStatus::success;
 }
 
-// Helper to estimate evaluation counts
-static std::optional<std::uint64_t> estimate_pace_evaluations(
+// A distance-stepped loop evaluates floor(span / step) + 1 windows. Avoid
+// converting an attacker-controlled quotient to an integer before proving it
+// is within the caller-supplied bound.
+static bool evaluation_count_is_within_limit(
     double window_distance,
     double step,
-    double total_distance) noexcept
+    double total_distance,
+    std::uint64_t maximum_evaluations) noexcept
 {
-    if (!(total_distance >= window_distance)) return 0;
+    if (!(total_distance >= window_distance)) return true;
     const double span = total_distance - window_distance;
-    if (!(span >= 0.0)) return 0;
-    // Count = floor(span / step) + 1
+    if (!(span >= 0.0)) return true;
     const double steps = span / step;
-    if (!std::isfinite(steps)) return std::nullopt;
-    return static_cast<std::uint64_t>(steps) + 1;
+    if (!std::isfinite(steps)) return false;
+    return steps < static_cast<double>(maximum_evaluations);
 }
 
 // ---------------------------------------------------------------------------
@@ -534,8 +628,10 @@ static bool is_same_reliable_run(
     double start_distance,
     double end_distance) noexcept
 {
-    const auto start_loc = distance_location(samples, count, start_distance, true);
-    const auto end_loc = distance_location(samples, count, end_distance, false);
+    const auto start_loc = elevation_distance_location(
+        samples, count, start_distance, true);
+    const auto end_loc = elevation_distance_location(
+        samples, count, end_distance, false);
     if (!start_loc || !end_loc) return false;
 
     // For range_start (is_range_start=true):
@@ -715,55 +811,47 @@ SegmentDetectionSummary detect_segment_windows(
     const double span = total_distance - start_distance;
 
     // Estimate evaluation counts and check resource limits
-    std::uint64_t total_est = 0;
-
     // Fastest 400m
     if (span >= configuration.fastest_400m_distance_meters) {
-        const auto est = estimate_pace_evaluations(
+        const bool is_within_limit = evaluation_count_is_within_limit(
             configuration.fastest_400m_distance_meters,
             configuration.fastest_400m_step_meters,
-            span);
-        if (!est || *est > configuration.maximum_evaluations_per_search) {
+            span,
+            configuration.maximum_evaluations_per_search);
+        if (!is_within_limit) {
             summary.status = SegmentDetectionStatus::resource_limit;
             summary.sample_count = sample_count;
             return summary;
         }
-        total_est += *est;
     }
 
     // 1km windows (fastest + slowest combined)
     if (span >= configuration.one_kilometer_distance_meters) {
-        const auto est = estimate_pace_evaluations(
+        const bool is_within_limit = evaluation_count_is_within_limit(
             configuration.one_kilometer_distance_meters,
             configuration.one_kilometer_step_meters,
-            span);
-        if (!est || *est > configuration.maximum_evaluations_per_search) {
+            span,
+            configuration.maximum_evaluations_per_search);
+        if (!is_within_limit) {
             summary.status = SegmentDetectionStatus::resource_limit;
             summary.sample_count = sample_count;
             return summary;
         }
-        total_est += *est;
     }
 
     // Elevation windows
     if (configuration.elevation_enabled == 1 &&
         span >= configuration.elevation_window_distance_meters) {
-        const auto est = estimate_pace_evaluations(
+        const bool is_within_limit = evaluation_count_is_within_limit(
             configuration.elevation_window_distance_meters,
             configuration.elevation_step_meters,
-            span);
-        if (!est || *est > configuration.maximum_evaluations_per_search) {
+            span,
+            configuration.maximum_evaluations_per_search);
+        if (!is_within_limit) {
             summary.status = SegmentDetectionStatus::resource_limit;
             summary.sample_count = sample_count;
             return summary;
         }
-        total_est += *est;
-    }
-
-    if (total_est > configuration.maximum_evaluations_per_search) {
-        summary.status = SegmentDetectionStatus::resource_limit;
-        summary.sample_count = sample_count;
-        return summary;
     }
 
     // All validation done; perform searches into local storage

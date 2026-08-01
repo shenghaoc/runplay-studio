@@ -37,7 +37,7 @@ RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
 
 ```
 RunPlayEngineCpp/              # Portable C++23 computational engine
-├── include/RunPlayEngineCpp/  # Engine identity, route values, geodesy, step distances
+├── include/RunPlayEngineCpp/  # Engine identity plus bulk route/analysis boundaries
 ├── Sources/                   # C++ implementation
 └── Tests/                     # Native C++ test executable sources
 
@@ -67,14 +67,15 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
     └── RunPlayStudioTests/    # macOS-specific tests
 ```
 
-### C++ route geometry and production quality pipeline (current phase)
+### C++ route and analysis kernels
 
 `RunPlayEngineCpp` is a C++23 foundation target. It exposes deterministic
 engine identity (`runplay::engine_info`), a route value and inspection
 contract, allocation-free geodesy primitives, a transitional bulk
 step-distance boundary, the production combined route-quality geometry
 kernel, the production per-workout personal heatmap coverage kernel, and the
-production constrained-DTW path solver for Route-Aware comparison:
+production constrained-DTW path solver for Route-Aware comparison, and the
+production SegmentDetector window-search kernel:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -84,7 +85,9 @@ production constrained-DTW path solver for Route-Aware comparison:
   digest independently implemented in Swift and C++;
 - production stages 2–4 of route quality through one bulk call;
 - the production Route-Aware constrained-DTW path solve through one bulk call
-  per alignment attempt.
+  per alignment attempt;
+- the production SegmentDetector candidate search through one bulk call per
+  detector invocation.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -239,6 +242,12 @@ Approved pointer boundaries:
   that proven bound and an insufficient-capacity response is an engine contract
   violation. On any failure status the output buffer is left completely
   unchanged.
+- segment detection: `const SegmentDetectionSample*` input samples plus a
+  caller-owned `SegmentWindowCandidate*` output. Swift supplies the fixed
+  five-entry capacity and consumes exactly `candidate_count` entries on
+  success. Insufficient capacity is a contract violation, every failure leaves
+  the output unchanged, and each internal distance-window search retains its
+  per-search evaluation bound.
 
 #### C++ policy defaults
 
@@ -371,7 +380,8 @@ production paths with production-equivalent Mode A/B decomposition, exact
 output digests, a 5% accounting-residue gate, and statistical release timings.
 Machine-specific milliseconds live only in profile output, not here.
 
-**Selected next boundary:** ~~`SegmentDetector` as one bulk C++23 kernel.~~ ✓ (completed)
+**Completed boundary:** `SegmentDetector` now performs its bounded window search
+through one bulk C++23 kernel per invocation.
 Additive analysis profiles show segment detection dominates post-normalization
 analysis wall time on large and product-limit routes, while ordinary 1k-point
 workouts remain well under a millisecond end-to-end.
@@ -389,8 +399,9 @@ workouts remain well under a millisecond end-to-end.
 ElevationProfile are real numeric work but are a small share of analysis wall
 relative to SegmentDetector; importer parsers are not portable pure-numeric
 kernels; MetricSmoother alone is too small; SplitCalculator is modest once
-context is shared. A combined full-analysis kernel is deferred until the
-dominant SegmentDetector boundary is reviewed as its own phase. ✓ (completed — one bulk native call per SegmentDetector invocation via `detect_segment_windows`)
+context is shared. A combined full-analysis kernel was intentionally deferred
+until the dominant SegmentDetector boundary could be reviewed independently;
+that boundary is now `detect_segment_windows`, called once per invocation.
 
 Legacy SceneKit projection stays low priority unless it regains a shipped
 caller. The portable-core migration ends with a mandatory cleanup phase

@@ -122,7 +122,7 @@ enum RunPlaySegmentDetectorBridge {
 
         // Compact reliable run identifiers
         var compactReliableRun: Int32 = 0
-        var previousRawReliableRun: Int? = nil
+        var previousRawReliableRun: Int?
 
         for index in 0..<count {
             if index.isMultiple(of: cancellationCheckStride), isCancelled() {
@@ -151,10 +151,13 @@ enum RunPlaySegmentDetectorBridge {
                 }
                 // First reliable run uses current compactReliableRun (starts at 0)
                 mappedRun = compactReliableRun
+                // Keep the previous reliable run across nil samples. A missing
+                // elevation interval separates runs, and the next non-nil raw
+                // identifier must advance the compact identifier.
+                previousRawReliableRun = raw
             } else {
                 mappedRun = -1
             }
-            previousRawReliableRun = rawRun
 
             var sample = runplay.SegmentDetectionSample()
             sample.distance_meters = timelineSnapshot.distancesMeters[index]
@@ -230,11 +233,12 @@ enum RunPlaySegmentDetectorBridge {
             throw RunPlaySegmentDetectorBridgeError.engineContractViolation
         }
 
-        let candidateCount = Int(summary.candidate_count)
-        guard candidateCount <= 5 else {
+        let maximumCandidateCount = Int(runplay.segment_detection_max_candidate_count)
+        guard summary.candidate_count <= UInt64(maximumCandidateCount) else {
             throw RunPlaySegmentDetectorBridgeError.engineContractViolation
         }
-        guard summary.required_output_capacity == 5 else {
+        let candidateCount = Int(summary.candidate_count)
+        guard summary.required_output_capacity == UInt64(maximumCandidateCount) else {
             throw RunPlaySegmentDetectorBridgeError.engineContractViolation
         }
 
@@ -285,6 +289,20 @@ enum RunPlaySegmentDetectorBridge {
                 }
             }
 
+            let expectedWindowDistance: Double
+            switch kind {
+            case .fastest400m:
+                expectedWindowDistance = configuration.fastest400mDistanceMeters
+            case .fastest1km, .slowest1km:
+                expectedWindowDistance = configuration.oneKilometerDistanceMeters
+            case .biggestClimb, .biggestDescent:
+                expectedWindowDistance = configuration.elevationWindowDistanceMeters
+            }
+            let expectedEndDistance = startDistance + expectedWindowDistance
+            guard endDistance == expectedEndDistance else {
+                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+
             candidates.append(RunPlaySegmentWindowCandidate(
                 kind: kind,
                 startDistanceMeters: startDistance,
@@ -308,10 +326,14 @@ enum RunPlaySegmentDetectorBridge {
             }
         }
 
-        let paceEvalCount = Int(summary.pace_window_evaluation_count)
-        let elevEvalCount = Int(summary.elevation_window_evaluation_count)
-        guard paceEvalCount <= Int(configuration.maximumEvaluationsPerSearch),
-              elevEvalCount <= Int(configuration.maximumEvaluationsPerSearch)
+        let (maximumPaceEvaluations, paceLimitOverflow) =
+            configuration.maximumEvaluationsPerSearch.multipliedReportingOverflow(by: 2)
+        guard !paceLimitOverflow,
+              summary.pace_window_evaluation_count <= maximumPaceEvaluations,
+              summary.elevation_window_evaluation_count
+                <= configuration.maximumEvaluationsPerSearch,
+              let paceEvalCount = Int(exactly: summary.pace_window_evaluation_count),
+              let elevEvalCount = Int(exactly: summary.elevation_window_evaluation_count)
         else {
             throw RunPlaySegmentDetectorBridgeError.engineContractViolation
         }

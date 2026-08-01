@@ -183,6 +183,11 @@ Approved pointer boundaries:
   * `const RouteAlignmentCostSample*` primary and comparison inputs plus a
     caller-owned `RouteAlignmentDtwPathCell*` output
 
+- segment detection:
+
+  * `const SegmentDetectionSample*` input samples
+  * `SegmentWindowCandidate*` caller-owned output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -209,6 +214,16 @@ allocation and exactly after the packed row layout is built. One native call
 occurs per alignment attempt; none occurs per dynamic-programming row or cell.
 Cancellation is cooperative Swift work checked before and after the native call
 and during conversion and output translation, never inside the native call.
+
+The segment-detection boundary writes exactly `candidate_count` entries on
+success, where `candidate_count` is at most five. Swift always supplies the
+fixed five-entry capacity; insufficient capacity is an engine contract
+violation rather than a retry signal. On any failure status the output buffer
+is left completely unchanged. The three internal searches (fastest 400m,
+combined one-kilometre pace, and combined elevation) each retain the existing
+per-search evaluation bound. One native call occurs per `SegmentDetector`
+invocation, with cooperative Swift cancellation during conversion and before
+and after the native call.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route

@@ -127,7 +127,7 @@
 - [x] Profile cross-workout heatmap aggregation and record the decision
 - [x] Optimize cross-workout heatmap aggregation **in Swift**, adding no native aggregation boundary: reserve the global count dictionary per adaptive pass, reduce `PersonalHeatmapCellID` hashing cost, and stop materializing a per-workout cell array
 - [x] **Profile remaining core computational hotspots** (`RemainingCoreHotspotProfile` + Platform map-line/Strava harness): production-equivalent Mode A/B decomposition, exact parity digests, 5% accounting gate, statistical release timings, GPX/TCX/FIT/Strava/multi-session FIT, and 1M-point product-limit probes. Evidence drives the roadmap below.
-- [ ] **Migrate SegmentDetector to C++23** (selected next phase): sliding-window fastest/slowest and elevation-highlight detection. Dominant remaining analysis cost (~62–78% of `analyze` wall; ~333 ms median phase at 1M points; ~69 ms at 100k). One bulk call over route distances, active-time series, and optional elevation samples → bounded segment highlights.
+- [x] **Migrate SegmentDetector to C++23**: one bulk window-search call over route distance, timeline clocks, and optional elevation snapshots selects at most five candidates; Swift retains public highlight construction, metadata, cancellation, and persistence. The cutover preserves duplicate-distance ownership, first-winner ties, active-pace limits, reliable elevation gaps, and per-search work bounds, with native, bridge, and end-to-end oracle parity coverage.
 - [ ] **Migrate ElevationProfile to C++23** (after SegmentDetector if product-limit elevation cost remains material): multi-pass altitude correction and cumulative gain/loss (~75 ms phase at 1M points; ~5–8 ms at 100k; sub-ms on ordinary 1k-point workouts).
 - [ ] **Migrate MovementProfile to C++23** only if still justified after the above: two-pass movement-state classification (~20 ms at 1M; ~4 ms at 100k; ≪1 ms ordinary). Not the first migration — it is a small share of analysis wall (~4–5%).
 - [ ] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary disposition, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
@@ -145,9 +145,9 @@
 
 | Bound | Count | Contents |
 |---|---:|---|
-| Minimum | 2 | SegmentDetector + final cleanup |
-| Expected | 4 | SegmentDetector → ElevationProfile → optional MovementProfile → final cleanup |
-| Maximum reasonable | 5 | Above plus optional route-metric scale/bucket kernel if map-color latency remains a product issue |
+| Minimum | 1 | Final cleanup |
+| Expected | 3 | ElevationProfile → optional MovementProfile → final cleanup |
+| Maximum reasonable | 4 | Above plus optional route-metric scale/bucket kernel if map-color latency remains a product issue |
 
 Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation, elevation,

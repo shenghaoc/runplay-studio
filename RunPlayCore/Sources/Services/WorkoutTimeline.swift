@@ -760,16 +760,16 @@ public struct WorkoutTimeline: Sendable {
 
     /// Lightweight copy-on-write snapshot of the timeline arrays consumed by
     /// the C++23 SegmentDetector window-search kernel.
-    public struct WorkoutTimelineSegmentDetectionSnapshot: Sendable {
-        public let distancesMeters: [Double]
-        public let elapsedSeconds: [Double]
-        public let activeSeconds: [Double]
+    struct WorkoutTimelineSegmentDetectionSnapshot: Sendable {
+        let distancesMeters: [Double]
+        let elapsedSeconds: [Double]
+        let activeSeconds: [Double]
     }
 
     /// Returns the exact internal timeline arrays through copy-on-write so
     /// the segment-detection bridge can build compact native input without
     /// recomputing any timeline values.
-    public func segmentDetectionSnapshot()
+    func segmentDetectionSnapshot()
         -> WorkoutTimelineSegmentDetectionSnapshot
     {
         WorkoutTimelineSegmentDetectionSnapshot(

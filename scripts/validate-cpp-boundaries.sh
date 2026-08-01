@@ -78,6 +78,13 @@ else
   pass "public route alignment DTW header present"
 fi
 
+SEGMENT_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/SegmentDetection.hpp"
+if [[ ! -f "$SEGMENT_HEADER" ]]; then
+  fail "missing public segment detection header SegmentDetection.hpp"
+else
+  pass "public segment detection header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
@@ -111,6 +118,13 @@ if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   pass "umbrella header includes RouteAlignmentDtw.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteAlignmentDtw.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/SegmentDetection\.hpp"'; then
+  pass "umbrella header includes SegmentDetection.hpp"
+else
+  fail "RunPlayEngine.hpp must include SegmentDetection.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -198,6 +212,16 @@ if [[ -f "$DTW_HEADER" ]]; then
     pass "constrained-DTW boundary is one bulk two-input/one-output noexcept call"
   else
     fail "compute_constrained_dtw_path must use two const input*+size_t pairs, three doubles, a by-value policy, a mutable output*+capacity, and noexcept"
+  fi
+fi
+
+if [[ -f "$SEGMENT_HEADER" ]]; then
+  segment_body="$(strip_comments "$SEGMENT_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  segment_signature_re='SegmentDetectionSummary[[:space:]]+detect_segment_windows[[:space:]]*\([[:space:]]*const[[:space:]]+SegmentDetectionSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*SegmentDetectionConfiguration[[:space:]]+configuration[[:space:]]*,[[:space:]]*SegmentWindowCandidate[[:space:]]*\*[[:space:]]*output_candidates[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$segment_body" =~ $segment_signature_re ]]; then
+    pass "segment detection boundary is one bulk input/output noexcept call"
+  else
+    fail "detect_segment_windows must use const input*, by-value configuration, mutable output*+capacity, and noexcept"
   fi
 fi
 

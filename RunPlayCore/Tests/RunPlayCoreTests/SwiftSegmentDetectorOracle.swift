@@ -79,6 +79,113 @@ enum SwiftSegmentDetectorOracle {
         return results
     }
 
+    /// Full test-only reconstruction of the pre-migration public highlight
+    /// output. UUIDs remain intentionally fresh; parity tests compare every
+    /// durable and user-visible field instead.
+    static func detectSegments(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy = .runningDefault
+    ) -> [SegmentHighlight] {
+        let points = workout.routePoints
+        let timeline = context.timeline
+        let elevationProfile = context.elevationProfile
+        guard points.count >= 2 else { return [] }
+
+        let distanceSpan = timeline.totalDistanceMeters - timeline.startDistanceMeters
+        let fastest400mStep = RouteAnalysisBudget.boundedStep(
+            preferredStep: 50,
+            distanceSpan: distanceSpan,
+            routePointCount: points.count
+        )
+        let oneKilometerStep = RouteAnalysisBudget.boundedStep(
+            preferredStep: 50,
+            distanceSpan: distanceSpan,
+            routePointCount: points.count
+        )
+        let elevationEnabled = elevationProfile.hasMeaningfulElevation
+            && timeline.totalDistanceMeters >= policy.elevationHighlightMinimumWindowMeters
+        let elevationWindow = elevationEnabled
+            ? max(
+                policy.elevationHighlightMinimumWindowMeters,
+                min(
+                    policy.elevationHighlightMaximumWindowMeters,
+                    timeline.totalDistanceMeters
+                        * policy.elevationHighlightWindowRouteFraction
+                )
+            )
+            : 0
+        let elevationStep = elevationEnabled
+            ? RouteAnalysisBudget.boundedStep(
+                preferredStep: max(
+                    policy.elevationHighlightMinimumStepMeters,
+                    elevationWindow / Double(policy.elevationHighlightStepsPerWindow)
+                ),
+                distanceSpan: distanceSpan,
+                routePointCount: points.count
+            )
+            : 0
+
+        let candidates = search(
+            timeline: timeline,
+            elevationProfile: elevationProfile,
+            config: SearchConfig(
+                fastest400mDistance: 400,
+                fastest400mStep: fastest400mStep,
+                oneKmDistance: 1_000,
+                oneKmStep: oneKilometerStep,
+                minPace: 120,
+                maxPace: 1_200,
+                elevationEnabled: elevationEnabled,
+                elevationWindow: elevationWindow,
+                elevationStep: elevationStep
+            )
+        )
+
+        return candidates.compactMap { candidate in
+            switch candidate.kind {
+            case .fastest400m:
+                return makePaceHighlight(
+                    candidate,
+                    type: .fastest400m,
+                    timeline: timeline,
+                    displayPriority: 1
+                )
+            case .fastest1km:
+                return makePaceHighlight(
+                    candidate,
+                    type: .fastest1km,
+                    timeline: timeline,
+                    displayPriority: 2
+                )
+            case .slowest1km:
+                return makePaceHighlight(
+                    candidate,
+                    type: .slowest1km,
+                    timeline: timeline,
+                    displayPriority: 3
+                )
+            case .biggestClimb:
+                return makeElevationHighlight(
+                    candidate,
+                    ascending: true,
+                    timeline: timeline,
+                    elevationProfile: elevationProfile,
+                    displayPriority: 4
+                )
+            case .biggestDescent:
+                return makeElevationHighlight(
+                    candidate,
+                    ascending: false,
+                    timeline: timeline,
+                    elevationProfile: elevationProfile,
+                    displayPriority: 5
+                )
+            }
+        }
+        .sorted { $0.displayPriority < $1.displayPriority }
+    }
+
     // MARK: - Pace
 
     private static func findFastestPace(
@@ -175,6 +282,47 @@ enum SwiftSegmentDetectorOracle {
         return pace
     }
 
+    private static func makePaceHighlight(
+        _ candidate: Candidate,
+        type: SegmentType,
+        timeline: WorkoutTimeline,
+        displayPriority: Int
+    ) -> SegmentHighlight? {
+        guard let range = timeline.distanceRange(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ) else {
+            return nil
+        }
+        let distance = candidate.endDistanceMeters - candidate.startDistanceMeters
+        guard distance > 0, range.activeSeconds > 0 else { return nil }
+        let pace = (range.activeSeconds / distance) * 1_000
+        guard pace.isFinite, (120...1_200).contains(pace) else { return nil }
+
+        return SegmentHighlight(
+            type: type,
+            title: type.displayName,
+            subtitle: DisplayFormatter.formatPace(pace),
+            startDistanceMeters: candidate.startDistanceMeters,
+            endDistanceMeters: candidate.endDistanceMeters,
+            startElapsedSeconds: range.start.elapsedSeconds,
+            endElapsedSeconds: range.end.elapsedSeconds,
+            durationSeconds: range.activeSeconds,
+            distanceMeters: distance,
+            paceSecondsPerKilometer: pace,
+            elevationDeltaMeters: timeline.signedElevationChange(
+                from: candidate.startDistanceMeters,
+                to: candidate.endDistanceMeters
+            ),
+            averageHeartRate: timeline.averageHeartRate(
+                from: candidate.startDistanceMeters,
+                to: candidate.endDistanceMeters
+            ),
+            sourcePointRange: range.sourcePointRange,
+            displayPriority: displayPriority
+        )
+    }
+
     // MARK: - Elevation
 
     private static func findCombinedElevation(
@@ -230,5 +378,50 @@ enum SwiftSegmentDetectorOracle {
                         endDistanceMeters: bestDescentStart + window, selectionValue: bestDescentDelta)
             : nil
         return (climb, descent)
+    }
+
+    private static func makeElevationHighlight(
+        _ candidate: Candidate,
+        ascending: Bool,
+        timeline: WorkoutTimeline,
+        elevationProfile: ElevationProfile,
+        displayPriority: Int
+    ) -> SegmentHighlight? {
+        guard elevationProfile.hasContinuousReliableElevation(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ),
+        let change = elevationProfile.change(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ),
+        let range = timeline.distanceRange(
+            from: candidate.startDistanceMeters,
+            to: candidate.endDistanceMeters
+        ) else {
+            return nil
+        }
+
+        let delta = ascending ? change.ascentMeters : -change.descentMeters
+        guard delta != 0 else { return nil }
+        let type: SegmentType = ascending ? .biggestClimb : .biggestDescent
+        return SegmentHighlight(
+            type: type,
+            title: type.displayName,
+            subtitle: String(format: "%.0f m %@", abs(delta), ascending ? "↑" : "↓"),
+            startDistanceMeters: candidate.startDistanceMeters,
+            endDistanceMeters: candidate.endDistanceMeters,
+            startElapsedSeconds: range.start.elapsedSeconds,
+            endElapsedSeconds: range.end.elapsedSeconds,
+            durationSeconds: range.activeSeconds,
+            distanceMeters: candidate.endDistanceMeters - candidate.startDistanceMeters,
+            elevationDeltaMeters: delta,
+            averageHeartRate: timeline.averageHeartRate(
+                from: candidate.startDistanceMeters,
+                to: candidate.endDistanceMeters
+            ),
+            sourcePointRange: range.sourcePointRange,
+            displayPriority: displayPriority
+        )
     }
 }

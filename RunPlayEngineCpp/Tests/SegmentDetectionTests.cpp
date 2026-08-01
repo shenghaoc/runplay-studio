@@ -232,6 +232,45 @@ static void test_continuity_group_not_zero() {
             "first continuity != 0 → invalid_input_contract");
 }
 
+static void test_first_active_time_cannot_exceed_elapsed_time() {
+    SegmentDetectionSample sample{0, 0, 1, 0, 0, 0, 0, -1};
+    SegmentWindowCandidate output[5] = {};
+    SegmentDetectionConfiguration config{};
+    config.maximum_evaluations_per_search = 1000;
+
+    const auto summary = detect_segment_windows(&sample, 1, config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::invalid_input_contract,
+            "first active > elapsed → invalid_input_contract");
+}
+
+static void test_first_reliable_run_must_be_zero_based() {
+    SegmentDetectionSample samples[2] = {
+        {0, 0, 0, 0, 0, 0, 0, 1},
+        {100, 30, 30, 1, 0, 1, 0, 1},
+    };
+    SegmentWindowCandidate output[5] = {};
+    SegmentDetectionConfiguration config{};
+    config.maximum_evaluations_per_search = 1000;
+
+    const auto summary = detect_segment_windows(samples, 2, config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::invalid_input_contract,
+            "first reliable run 1 → invalid_input_contract");
+}
+
+static void test_reliable_run_cannot_cross_continuity_group() {
+    SegmentDetectionSample samples[2] = {
+        {0, 0, 0, 0, 0, 0, 0, 0},
+        {100, 30, 30, 1, 0, 1, 1, 0},
+    };
+    SegmentWindowCandidate output[5] = {};
+    SegmentDetectionConfiguration config{};
+    config.maximum_evaluations_per_search = 1000;
+
+    const auto summary = detect_segment_windows(samples, 2, config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::invalid_input_contract,
+            "reliable run crossing route gap → invalid_input_contract");
+}
+
 // ---------------------------------------------------------------------------
 // Distance boundary tests
 // ---------------------------------------------------------------------------
@@ -313,6 +352,109 @@ static void test_pause_spanning_active_time() {
         }
     }
     expect(found_1km, "pause test → found fastest 1km");
+}
+
+static void test_same_segment_distance_plateau_uses_first_arrival() {
+    // Same-segment stationary time belongs to a window that starts at the
+    // plateau. WorkoutTimeline selects the first arrival for that range start.
+    std::array<SegmentDetectionSample, 4> samples = {{
+        {0, 0, 0, 0, 0, 0, 0, -1},
+        {400, 300, 300, 0, 0, 0, 0, -1},
+        {400, 400, 400, 0, 0, 0, 0, -1},
+        {800, 500, 500, 0, 0, 0, 0, -1},
+    }};
+
+    SegmentWindowCandidate output[5] = {};
+    SegmentDetectionConfiguration config{};
+    config.fastest_400m_distance_meters = 400;
+    config.fastest_400m_step_meters = 50;
+    config.one_kilometer_distance_meters = 1000;
+    config.one_kilometer_step_meters = 50;
+    config.minimum_valid_pace_seconds_per_kilometer = 120;
+    config.maximum_valid_pace_seconds_per_kilometer = 1200;
+    config.maximum_evaluations_per_search = 100;
+
+    const auto summary = detect_segment_windows(
+        samples.data(), samples.size(), config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::success,
+            "same-segment plateau → success");
+    expect(summary.candidate_count == 1,
+            "same-segment plateau → one pace candidate");
+    expect(output[0].kind == SegmentWindowKind::fastest_400m,
+            "same-segment plateau → fastest 400m");
+    expect(output[0].start_distance_meters == 400,
+            "same-segment plateau → winning window starts at plateau");
+    expect(std::abs(output[0].selection_value - 500) < 1e-9,
+            "same-segment plateau → stationary active time retained");
+}
+
+static void test_pause_plateau_uses_inner_segment_boundaries() {
+    // Multiple samples can share the stop/resume distance on both sides of a
+    // route gap. The end owns the last prior sample and the start owns the
+    // first resumed sample, matching WorkoutTimeline exactly.
+    std::array<SegmentDetectionSample, 6> samples = {{
+        {0, 0, 0, 0, 0, 0, 0, -1},
+        {500, 150, 150, 0, 0, 0, 0, -1},
+        {500, 160, 160, 0, 0, 0, 0, -1},
+        {500, 1160, 160, 0, 0, 0, 1, -1},
+        {500, 1170, 170, 0, 0, 0, 1, -1},
+        {1000, 1320, 320, 0, 0, 0, 1, -1},
+    }};
+
+    SegmentWindowCandidate output[5] = {};
+    SegmentDetectionConfiguration config{};
+    config.fastest_400m_distance_meters = 500;
+    config.fastest_400m_step_meters = 500;
+    config.one_kilometer_distance_meters = 1500;
+    config.one_kilometer_step_meters = 50;
+    config.minimum_valid_pace_seconds_per_kilometer = 120;
+    config.maximum_valid_pace_seconds_per_kilometer = 1200;
+    config.maximum_evaluations_per_search = 10;
+
+    const auto summary = detect_segment_windows(
+        samples.data(), samples.size(), config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::success,
+            "multi-sample pause plateau → success");
+    expect(summary.candidate_count == 1,
+            "multi-sample pause plateau → one candidate");
+    expect(output[0].start_distance_meters == 0,
+            "equal windows preserve first-winner tie");
+    expect(std::abs(output[0].selection_value - 320) < 1e-9,
+            "pause plateau uses last prior boundary sample");
+}
+
+static void test_each_search_has_its_own_evaluation_budget() {
+    std::array<SegmentDetectionSample, 21> samples{};
+    for (std::size_t index = 0; index < samples.size(); ++index) {
+        const double distance = static_cast<double>(index) * 100.0;
+        samples[index] = {
+            distance,
+            distance * 0.3,
+            distance * 0.3,
+            0,
+            0,
+            0,
+            0,
+            -1,
+        };
+    }
+
+    SegmentWindowCandidate output[5] = {};
+    SegmentDetectionConfiguration config{};
+    config.fastest_400m_distance_meters = 400;
+    config.fastest_400m_step_meters = 100;
+    config.one_kilometer_distance_meters = 1000;
+    config.one_kilometer_step_meters = 100;
+    config.minimum_valid_pace_seconds_per_kilometer = 120;
+    config.maximum_valid_pace_seconds_per_kilometer = 1200;
+    config.maximum_evaluations_per_search = 20;
+
+    const auto summary = detect_segment_windows(
+        samples.data(), samples.size(), config, output, 5);
+    expect(summary.status == SegmentDetectionStatus::success,
+            "individually bounded searches → success");
+    expect(summary.pace_window_evaluation_count == 28,
+            "pace summary counts 17 400m + 11 combined 1km evaluations");
 }
 
 // ---------------------------------------------------------------------------
@@ -397,8 +539,14 @@ void run_segment_detection_tests() {
     test_decreasing_distance();
     test_decreasing_elapsed();
     test_continuity_group_not_zero();
+    test_first_active_time_cannot_exceed_elapsed_time();
+    test_first_reliable_run_must_be_zero_based();
+    test_reliable_run_cannot_cross_continuity_group();
     test_constant_pace_route();
     test_pause_spanning_active_time();
+    test_same_segment_distance_plateau_uses_first_arrival();
+    test_pause_plateau_uses_inner_segment_boundaries();
+    test_each_search_has_its_own_evaluation_budget();
     test_biggest_climb();
     test_flat_route_no_elevation();
 }

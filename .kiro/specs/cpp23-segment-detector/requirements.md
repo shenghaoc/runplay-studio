@@ -26,6 +26,10 @@ per invocation.
 - Strict comparisons preserve first-winner ties.
 - No interpolation across route gaps.
 - Reliable elevation runs remain gap-safe.
+- Pace clock sampling preserves `WorkoutTimeline` plateau ownership; elevation
+  sampling preserves `ElevationProfile` duplicate-distance ownership.
+- Each of the three internal search loops retains the existing per-search
+  evaluation bound.
 - Public output ordering unchanged.
 
 ## Non-goals

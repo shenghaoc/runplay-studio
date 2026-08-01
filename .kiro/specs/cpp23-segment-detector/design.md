@@ -28,10 +28,13 @@ Algorithm:
 5. When elevation enabled: find biggest climb + descent (combined loop).
 6. Copy to output; write nothing on error.
 
-Distance-boundary semantics match ElevationProfile.distanceLocation:
-- Exact duplicate: range_start → last, range_end → first.
-- Interpolation only inside one continuity_group.
-- Cross-group target: start selects later, end selects earlier.
+Distance-boundary semantics preserve both existing consumers:
+- Pace clocks match `WorkoutTimeline`: same-segment plateaus use first arrival
+  for both roles except the terminal end; cross-segment plateaus use the first
+  resumed sample for range start and last prior sample for range end.
+- Elevation values match `ElevationProfile`: exact duplicates use last for
+  range start and first for range end.
+- Neither path interpolates across a `continuity_group` boundary.
 
 ## Swift snapshots
 
@@ -47,9 +50,10 @@ File: `RunPlayCore/Sources/Interop/RunPlaySegmentDetectorBridge.swift`
 - Compacts route-segment indices into zero-based continuity groups.
 - Compacts reliable elevation run identifiers into zero-based runs.
 - Allocates exactly five native output entries.
-- One cancellation check before and after native call.
+- Stride-based cancellation during conversion plus checks before and after the
+  native call.
 - Validates: status, count, kind uniqueness, bounds, pacing/elevation ranges,
-  deterministic order.
+  configured window lengths, deterministic order, and evaluation counts.
 
 ## Production integration
 
