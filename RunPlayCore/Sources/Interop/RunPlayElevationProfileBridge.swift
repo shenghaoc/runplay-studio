@@ -282,7 +282,9 @@ enum RunPlayElevationProfileBridge {
         var previousDescent = 0.0
         var previousReliableIntervals = 0.0
         var previousRunID: Int32?
-        var maxRunID: Int32 = -1
+        var previousReliableRunID: Int32?
+        var observedRunCount = 0
+        var observedReliableRunCount = 0
 
         for index in 0..<count {
             if index.isMultiple(of: stride), isCancelled() {
@@ -349,13 +351,19 @@ enum RunPlayElevationProfileBridge {
                 } else if runID != 0 {
                     throw RunPlayElevationProfileBridgeError.engineContractViolation
                 }
-                maxRunID = max(maxRunID, runID)
+                if runID != previousRunID {
+                    observedRunCount += 1
+                }
                 previousRunID = runID
             }
 
             if reliableRunID >= 0 {
                 guard reliableRunID == runID else {
                     throw RunPlayElevationProfileBridgeError.engineContractViolation
+                }
+                if reliableRunID != previousReliableRunID {
+                    observedReliableRunCount += 1
+                    previousReliableRunID = reliableRunID
                 }
             }
 
@@ -375,7 +383,10 @@ enum RunPlayElevationProfileBridge {
             ))
         }
 
-        guard observedRejected == rejectedCount else {
+        guard observedRejected == rejectedCount,
+              summary.run_count == UInt64(observedRunCount),
+              summary.reliable_run_count == UInt64(observedReliableRunCount)
+        else {
             throw RunPlayElevationProfileBridgeError.engineContractViolation
         }
 

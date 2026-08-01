@@ -17,7 +17,7 @@ Checked boxes do not replace tests or benchmark evidence.
 - [x] Release benchmark script and measurements
 - [x] Full Core/Platform/Studio verification
 - [x] Post-cutover analysis profile
-- [x] Draft PR with evidence
+- [x] PR evidence synchronized with exact-head verification
 
 ## Post-cutover decision
 

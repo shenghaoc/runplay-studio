@@ -103,10 +103,8 @@ struct ElevationProfileParityTests {
         }
     }
 
-    @Test("public initializer empty on cancellation-shaped failure path")
-    func publicInitializerSurvives() {
-        // Nonthrowing initializer retains catch-and-empty behavior for errors.
-        // Resource-limit routes are not constructed this way in production.
+    @Test("public initializer builds the production profile")
+    func publicInitializerBuildsProfile() {
         let points = ordinaryClimb()
         let profile = ElevationProfile(routePoints: points)
         #expect(profile.samples.count == points.count)

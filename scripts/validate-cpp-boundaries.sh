@@ -1364,6 +1364,61 @@ for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Service
 done
 pass "C++ ElevationProfile types stay in Interop"
 
+# Diagnostic benchmark entry points must remain internal and may be referenced
+# only by their defining bridge and test targets.
+elevation_benchmark_api_re='(^|[^[:alnum:]_])(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)([^[:alnum:]_]|$)'
+elevation_benchmark_api_positive=(
+  'let report = try RunPlayElevationProfileBridge.buildCollectingBenchmarkReport('
+  'struct RunPlayElevationProfileBenchmarkReport: Sendable {'
+)
+elevation_benchmark_api_negative=(
+  'let buildCollectingBenchmarkReporter = true'
+  'struct RunPlayElevationProfileBenchmarkReporter {}'
+)
+elevation_benchmark_api_matcher_ok=1
+for fixture in "${elevation_benchmark_api_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+    elevation_benchmark_api_matcher_ok=0
+  fi
+done
+for fixture in "${elevation_benchmark_api_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+    elevation_benchmark_api_matcher_ok=0
+  fi
+done
+if [[ $elevation_benchmark_api_matcher_ok -eq 1 ]]; then
+  pass "elevation benchmark API matcher adversarial fixtures"
+else
+  fail "elevation benchmark API matcher failed its adversarial fixtures"
+fi
+
+elevation_benchmark_api_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$ELEVATION_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && elevation_benchmark_api_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$elevation_benchmark_api_re" || true)
+done
+
+if [[ ${#elevation_benchmark_api_leaks[@]} -eq 0 ]]; then
+  pass "elevation benchmark API is referenced only by its bridge and tests"
+else
+  for leak in "${elevation_benchmark_api_leaks[@]}"; do
+    fail "production Swift references the test-only elevation benchmark API: $leak"
+  done
+fi
+
+if strip_comments "$ELEVATION_BRIDGE_SOURCE" \
+  | grep -Eq '^[[:space:]]*(public|open|package)[^/]*(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)'; then
+  fail "elevation benchmark diagnostic must stay internal, not public/package"
+else
+  pass "elevation benchmark diagnostic stays internal to RunPlayCore"
+fi
+
 # SegmentDetector continues to consume pure Swift elevation snapshot
 if strip_comments "$SEGMENT_DETECTOR_SOURCE" \
   | grep -Eq 'segmentDetectionSnapshot'; then

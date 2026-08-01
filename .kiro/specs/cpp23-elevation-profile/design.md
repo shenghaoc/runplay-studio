@@ -42,6 +42,8 @@ Swift owns every buffer. C++ retains nothing and performs no callback.
 
 - Bridge: `RunPlayElevationProfileBridge` (Interop only).
 - Production `ElevationProfile.build` calls the pure-Swift bridge once.
+- Bridge translation validates summary counts against the one-to-one output,
+  including rejected samples, altitude runs, and reliable altitude runs.
 - SegmentDetector continues to consume `segmentDetectionSnapshot()`.
 
 ## Parity strategy

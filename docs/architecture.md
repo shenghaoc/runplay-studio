@@ -405,10 +405,11 @@ C++23. Exact oracle parity preserves gap, spike, excursion, smoothing, and
 deadband gain/loss semantics. SegmentDetector continues to consume the pure
 Swift elevation snapshot after the native elevation build.
 
-**Selected next boundary:** re-measure with the post-elevation analysis
-profile. Candidates remain MovementProfile, route-metric scale/bucket work, a
-Swift optimization, or final portable-core cleanup. Do not begin the next
-phase until the post-cutover profile is reviewed.
+**Post-cutover decision:** route-metric scale/bucket work is the next
+performance candidate only if product-limit map coloring warrants another
+optimization phase. MovementProfile remains in Swift because its refreshed
+analysis share is too small to justify a native migration ahead of route
+metrics or final portable-core cleanup.
 
 **Intentional remaining Swift ownership:**
 
