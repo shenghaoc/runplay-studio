@@ -92,6 +92,13 @@ else
   pass "public elevation profile header present"
 fi
 
+ROUTE_METRIC_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/RouteMetricScaleBuckets.hpp"
+if [[ ! -f "$ROUTE_METRIC_HEADER" ]]; then
+  fail "missing public route metric scale/bucket header RouteMetricScaleBuckets.hpp"
+else
+  pass "public route metric scale/bucket header present"
+fi
+
 if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
@@ -139,6 +146,13 @@ if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
   pass "umbrella header includes ElevationProfile.hpp"
 else
   fail "RunPlayEngine.hpp must include ElevationProfile.hpp"
+fi
+
+if strip_comments RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp \
+  | grep -Eq '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteMetricScaleBuckets\.hpp"'; then
+  pass "umbrella header includes RouteMetricScaleBuckets.hpp"
+else
+  fail "RunPlayEngine.hpp must include RouteMetricScaleBuckets.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -246,6 +260,34 @@ if [[ -f "$ELEVATION_HEADER" ]]; then
     pass "elevation profile boundary is one bulk input/output noexcept call"
   else
     fail "build_elevation_profile must use const input*, by-value policy, mutable output*+capacity, and noexcept"
+  fi
+fi
+
+if [[ -f "$ROUTE_METRIC_HEADER" ]]; then
+  route_metric_body="$(strip_comments "$ROUTE_METRIC_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  route_metric_signature_re='RouteMetricScaleBucketSummary[[:space:]]+assign_route_metric_scale_buckets[[:space:]]*\([[:space:]]*const[[:space:]]+RouteMetricScaleBucketInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*RouteMetricScaleBucketPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*RouteMetricScaleBucketWorkspaceSample[[:space:]]*\*[[:space:]]*workspace_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+workspace_capacity[[:space:]]*,[[:space:]]*RouteMetricScaleBucketOutputSample[[:space:]]*\*[[:space:]]*output_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$route_metric_body" =~ $route_metric_signature_re ]]; then
+    pass "route metric scale/bucket boundary is one bulk input/workspace/output noexcept call"
+  else
+    fail "assign_route_metric_scale_buckets must use const input*, by-value policy, mutable workspace*+capacity, mutable output*+capacity, and noexcept"
+  fi
+
+  if grep -Eq 'struct[[:space:]]+RouteMetricScaleBucketWorkspaceSample' "$ROUTE_METRIC_HEADER" \
+    && grep -Eq 'sizeof\(RouteMetricScaleBucketWorkspaceSample\)[[:space:]]*==[[:space:]]*16' "$ROUTE_METRIC_HEADER"; then
+    pass "route metric workspace sample is a public 16-byte typed eligible record"
+  else
+    fail "RouteMetricScaleBucketWorkspaceSample must be a public 16-byte typed workspace sample"
+  fi
+
+  # Lifetime safety: production must not type-pun the output buffer into a
+  # workspace record type. ASan/UBSan do not prove object-lifetime correctness
+  # for this class of bug (they often miss pure lifetime aliasing), so the
+  # boundary validator rejects the opaque cast pattern directly.
+  if grep -E 'reinterpret_cast[[:space:]]*<[[:space:]]*(EligibleRecord|RouteMetricScaleBucketWorkspaceSample)[[:space:]]*\*' \
+      RunPlayEngineCpp/Sources/RouteMetricScaleBuckets.cpp >/dev/null 2>&1; then
+    fail "route metric kernel must not reinterpret_cast output samples as a workspace type"
+  else
+    pass "route metric kernel avoids output-buffer workspace type-punning"
   fi
 fi
 
@@ -1431,6 +1473,115 @@ else
   else
     fail "SegmentDetector elevation snapshot consumption missing"
   fi
+fi
+
+# --- Route metric scale/bucket bridge ---------------------------------------
+
+ROUTE_METRIC_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteMetricScaleBucketBridge.swift"
+ROUTE_METRIC_BUILDER_SOURCE="RunPlayCore/Sources/Services/RouteMetricProfileBuilder.swift"
+ROUTE_METRIC_LINE_SOURCE="RunPlayPlatform/Sources/Services/RouteMetricMapLineBuilder.swift"
+ROUTE_METRIC_ORACLE="RunPlayCore/Tests/RunPlayCoreTests/SwiftRouteMetricScaleBucketOracle.swift"
+
+if [[ -f "$ROUTE_METRIC_BRIDGE_SOURCE" ]]; then
+  pass "route metric scale/bucket bridge exists"
+else
+  fail "missing route metric scale/bucket bridge"
+fi
+
+route_metric_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*assign_route_metric_scale_buckets([^[:alnum:]_]|$)'
+route_metric_native_sites=0
+route_metric_native_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  matches="$(strip_comments "$swift_file" | grep -En "$route_metric_native_re" || true)"
+  [[ -z "$matches" ]] && continue
+  if [[ "$relative_swift_file" == "$ROUTE_METRIC_BRIDGE_SOURCE" ]]; then
+    route_metric_native_sites=$((route_metric_native_sites + $(printf '%s\n' "$matches" | wc -l | tr -d ' ')))
+  elif [[ "$relative_swift_file" != RunPlayCore/Tests/* \
+       && "$relative_swift_file" != RunPlayPlatform/Tests/* \
+       && "$relative_swift_file" != RunPlayStudio/Tests/* ]]; then
+    route_metric_native_leaks+=("$relative_swift_file:$matches")
+  fi
+done
+if [[ ${#route_metric_native_leaks[@]} -eq 0 && $route_metric_native_sites -eq 1 ]]; then
+  pass "assign_route_metric_scale_buckets has exactly one Interop call site"
+else
+  fail "assign_route_metric_scale_buckets must have exactly one call site in its Interop bridge"
+fi
+
+if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
+  | grep -Eq 'RunPlayRouteMetricScaleBucketBridge[[:space:]]*\.[[:space:]]*assign'; then
+  pass "RouteMetricProfileBuilder consumes the pure Swift route metric bridge for pace/HR"
+else
+  fail "RouteMetricProfileBuilder must consume RunPlayRouteMetricScaleBucketBridge for pace/HR"
+fi
+
+if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
+  | grep -Eq 'finalizeCorrectedElevationScaleBucketsInSwift|RouteMetricScaleBucketSwiftFinalizer'; then
+  pass "corrected elevation owns an explicit production Swift numeric finalizer"
+else
+  fail "corrected elevation must use an explicit mode-owned Swift scale/bucket finalizer"
+fi
+
+if strip_comments "$ROUTE_METRIC_BUILDER_SOURCE" \
+  | grep -Eq 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weighted(Quantile|Median)'; then
+  fail "DistanceWeightedStatistics must not be the production route-metric finalizer in RouteMetricProfileBuilder"
+else
+  pass "production route-metric finalizer does not call DistanceWeightedStatistics"
+fi
+
+if [[ -f "RunPlayCore/Sources/Services/RouteMetricScaleBucketSwiftFinalizer.swift" ]] \
+  && ! grep -REn 'SwiftRouteMetricScaleBucketOracle' \
+    RunPlayCore/Sources/Services/RouteMetricScaleBucketSwiftFinalizer.swift \
+    RunPlayCore/Sources/Services/RouteMetricProfileBuilder.swift >/dev/null 2>&1; then
+  pass "production Swift elevation finalizer does not call the test oracle"
+else
+  fail "production Swift elevation finalizer must not call SwiftRouteMetricScaleBucketOracle"
+fi
+
+if [[ -f "$ROUTE_METRIC_ORACLE" ]] \
+  && ! find RunPlayCore/Sources RunPlayPlatform/Sources RunPlayStudio/Sources \
+    -type f -name '*.swift' -print0 \
+    | xargs -0 grep -El 'SwiftRouteMetricScaleBucketOracle' >/dev/null; then
+  pass "Swift route metric oracle is confined to tests"
+else
+  fail "Swift route metric oracle must exist only in tests"
+fi
+
+if [[ -f "RunPlayCore/Sources/Services/DistanceWeightedStatistics.swift" ]] \
+  && strip_comments "$ROUTE_METRIC_LINE_SOURCE" \
+    | grep -Eq 'DistanceWeightedStatistics[[:space:]]*\.[[:space:]]*weightedMedianBucket'; then
+  pass "DistanceWeightedStatistics remains available to Platform map-line chunking"
+else
+  fail "DistanceWeightedStatistics must remain available to RouteMetricMapLineBuilder"
+fi
+
+if strip_comments "$ROUTE_METRIC_LINE_SOURCE" \
+  | grep -Eq '(preferredMinimumColorRunDistanceMeters|enableBucketHysteresis|maximumStyledLineCount)'; then
+  pass "RouteMetricMapLineBuilder remains Swift with hysteresis/adaptive policy"
+else
+  fail "RouteMetricMapLineBuilder Swift policy markers are missing"
+fi
+
+route_metric_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(RouteMetricScaleBucketInputSample|RouteMetricScaleBucketWorkspaceSample|RouteMetricScaleBucketPolicy|RouteMetricScaleBucketOutputSample|RouteMetricScaleBucketStatus|RouteMetricScaleBucketSummary)([^[:alnum:]_]|$)'
+route_metric_cpp_leaks=()
+for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift RunPlayPlatform/Sources/**/*.swift RunPlayStudio/Sources/**/*.swift; do
+  [[ -f "$swift_file" ]] || continue
+  if strip_comments "$swift_file" | grep -Eq "$route_metric_cpp_type_re"; then
+    route_metric_cpp_leaks+=("$swift_file")
+  fi
+done
+if [[ ${#route_metric_cpp_leaks[@]} -eq 0 ]]; then
+  pass "C++ route metric types stay in Interop"
+else
+  fail "C++ route metric types escaped Interop: ${route_metric_cpp_leaks[*]}"
+fi
+
+if [[ -x scripts/run-route-metric-scale-bucket-benchmark.sh ]] \
+  && grep -Eq 'RUNPLAY_BENCHMARK' RunPlayCore/Tests/RunPlayCoreTests/RouteMetricScaleBucketBenchmark.swift; then
+  pass "route metric benchmark is present and explicitly opt-in"
+else
+  fail "route metric benchmark runner or opt-in guard missing"
 fi
 
 # --- Summary -----------------------------------------------------------------

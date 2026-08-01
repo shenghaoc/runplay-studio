@@ -15,6 +15,7 @@ int main() {
     run_route_alignment_dtw_tests();
     run_segment_detection_tests();
     run_elevation_profile_tests();
+    run_route_metric_scale_bucket_tests();
     std::cout << "RunPlayEngineCppTests: all checks passed\n";
     return EXIT_SUCCESS;
 }

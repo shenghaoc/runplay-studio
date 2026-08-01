@@ -129,7 +129,7 @@
 - [x] **Profile remaining core computational hotspots** (`RemainingCoreHotspotProfile` + Platform map-line/Strava harness): production-equivalent Mode A/B decomposition, exact parity digests, 5% accounting gate, statistical release timings, GPX/TCX/FIT/Strava/multi-session FIT, and 1M-point product-limit probes. Evidence drives the roadmap below.
 - [x] **Migrate SegmentDetector to C++23**: one bulk window-search call over route distance, timeline clocks, and optional elevation snapshots selects at most five candidates; Swift retains public highlight construction, metadata, cancellation, and persistence. The cutover preserves duplicate-distance ownership, first-winner ties, active-pace limits, reliable elevation gaps, and per-search work bounds, with native, bridge, and end-to-end oracle parity coverage.
 - [x] **Migrate ElevationProfile to C++23**: one bulk multi-pass call performs source screening, spike/excursion rejection, supported fill, run classification, distance-domain smoothing, and deadband-confirmed cumulative ascent/descent; Swift retains public models, UUIDs, distance queries, policy, cancellation, and persistence. Exact oracle parity required; no schema or analysis-version change.
-- [ ] **Optimize route-metric scale/bucket work** if product-limit map coloring warrants another performance phase. The post-elevation profile leaves this as the strongest measured candidate; revalidate the product-visible need before implementation.
+- [x] **Migrate pace and heart-rate route-metric scale/bucket work to C++23**: one allocation-free bulk call per pace/HR finalization performs deterministic distance-weighted lower/median/upper scale construction, numeric normalization, bucket assignment, coverage accumulation, and numeric summary construction via a typed caller-owned eligible workspace plus output buffer. Corrected elevation intentionally retains Swift numeric finalization after production A/B showed a native regression above the hard gate (mode-owned ownership, not a fallback). Swift retains raw extraction, smoothing, localized labels, public profiles, availability/caching, Platform line coalescing, cancellation, diagnostics, UI, and persistence. Exact parity is required; no schema, analysis-version, normalization-version, importer, or public API change. Compatibility corrections keep the full public Swift `Int` `bucketCount` domain (`std::int64_t`), positive-infinite valid coverage, individually positive-infinite weights as valid but not quantile-eligible, and a no-sort fast path when a scale is known to be impossible.
 - [ ] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary disposition, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
@@ -147,8 +147,8 @@
 | Bound | Count | Contents |
 |---|---:|---|
 | Minimum | 1 | Final cleanup |
-| Expected | 2 | Optional route-metric scale/bucket work → final cleanup |
-| Maximum reasonable | 3 | Above plus a targeted Swift optimization if still product-visible |
+| Expected | 1 | Final cleanup |
+| Maximum reasonable | 2 | Final cleanup plus a targeted Swift optimization only if new evidence justifies it |
 
 Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation,
