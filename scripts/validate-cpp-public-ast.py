@@ -87,25 +87,6 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
         ),
     ),
     ApprovedPointerFunction(
-        name="compute_route_step_distances",
-        type_text=(
-            "RouteStepDistanceSummary "
-            "(const RouteInputSample *, std::size_t, double *, std::size_t) "
-            "noexcept"
-        ),
-        parameters=(
-            ApprovedPointerParameter(
-                name="samples",
-                type_text="const RouteInputSample *",
-            ),
-            ApprovedPointerParameter(
-                name="step_distances_meters",
-                type_text="double *",
-                mutable_output=True,
-            ),
-        ),
-    ),
-    ApprovedPointerFunction(
         name="process_route_quality_geometry",
         type_text=(
             "RouteQualityPipelineSummary "
@@ -546,14 +527,6 @@ def run_self_test() -> int:
             ),
             "ParmVarDecl samples 'const RouteInputSample *'",
             (
-                "FunctionDecl compute_route_step_distances "
-                "'RouteStepDistanceSummary "
-                "(const RouteInputSample *, std::size_t, double *, std::size_t) "
-                "noexcept'"
-            ),
-            "ParmVarDecl samples 'const RouteInputSample *'",
-            "ParmVarDecl step_distances_meters 'double *'",
-            (
                 "FunctionDecl process_route_quality_geometry "
                 "'RouteQualityPipelineSummary "
                 "(const RouteInputSample *, std::size_t, RouteQualityGeometryPolicy, "
@@ -698,83 +671,6 @@ def run_self_test() -> int:
         "geodesy std::vector return": (
             "FunctionDecl project_route "
             "'std::vector<LocalMeters> (double, double) noexcept'"
-        ),
-        "writable input pointer": "\n".join(
-            [
-                (
-                    "FunctionDecl compute_route_step_distances "
-                    "'RouteStepDistanceSummary "
-                    "(RouteInputSample *, std::size_t, double *, std::size_t) "
-                    "noexcept'"
-                ),
-                "ParmVarDecl samples 'RouteInputSample *'",
-                "ParmVarDecl step_distances_meters 'double *'",
-            ]
-        ),
-        "const output pointer": "\n".join(
-            [
-                (
-                    "FunctionDecl compute_route_step_distances "
-                    "'RouteStepDistanceSummary "
-                    "(const RouteInputSample *, std::size_t, const double *, "
-                    "std::size_t) noexcept'"
-                ),
-                "ParmVarDecl samples 'const RouteInputSample *'",
-                "ParmVarDecl step_distances_meters 'const double *'",
-            ]
-        ),
-        "output pointer with wrong element type": "\n".join(
-            [
-                (
-                    "FunctionDecl compute_route_step_distances "
-                    "'RouteStepDistanceSummary "
-                    "(const RouteInputSample *, std::size_t, float *, "
-                    "std::size_t) noexcept'"
-                ),
-                "ParmVarDecl samples 'const RouteInputSample *'",
-                "ParmVarDecl step_distances_meters 'float *'",
-            ]
-        ),
-        "missing output capacity": "\n".join(
-            [
-                (
-                    "FunctionDecl compute_route_step_distances "
-                    "'RouteStepDistanceSummary "
-                    "(const RouteInputSample *, std::size_t, double *) noexcept'"
-                ),
-                "ParmVarDecl samples 'const RouteInputSample *'",
-                "ParmVarDecl step_distances_meters 'double *'",
-            ]
-        ),
-        "extra pointer parameter": "\n".join(
-            [
-                (
-                    "FunctionDecl compute_route_step_distances "
-                    "'RouteStepDistanceSummary "
-                    "(const RouteInputSample *, std::size_t, double *, "
-                    "std::size_t, int *) noexcept'"
-                ),
-                "ParmVarDecl samples 'const RouteInputSample *'",
-                "ParmVarDecl step_distances_meters 'double *'",
-                "ParmVarDecl scratch 'int *'",
-            ]
-        ),
-        "renamed unapproved pointer function": "\n".join(
-            [
-                (
-                    "FunctionDecl compute_route_steps "
-                    "'RouteStepDistanceSummary "
-                    "(const RouteInputSample *, std::size_t, double *, "
-                    "std::size_t) noexcept'"
-                ),
-                "ParmVarDecl samples 'const RouteInputSample *'",
-                "ParmVarDecl step_distances_meters 'double *'",
-            ]
-        ),
-        "throwing step-distance function": (
-            "FunctionDecl compute_route_step_distances "
-            "'RouteStepDistanceSummary "
-            "(const RouteInputSample *, std::size_t, double *, std::size_t)'"
         ),
         "writable route input": "\n".join(
             [

@@ -130,7 +130,7 @@
 - [x] **Migrate SegmentDetector to C++23**: one bulk window-search call over route distance, timeline clocks, and optional elevation snapshots selects at most five candidates; Swift retains public highlight construction, metadata, cancellation, and persistence. The cutover preserves duplicate-distance ownership, first-winner ties, active-pace limits, reliable elevation gaps, and per-search work bounds, with native, bridge, and end-to-end oracle parity coverage.
 - [x] **Migrate ElevationProfile to C++23**: one bulk multi-pass call performs source screening, spike/excursion rejection, supported fill, run classification, distance-domain smoothing, and deadband-confirmed cumulative ascent/descent; Swift retains public models, UUIDs, distance queries, policy, cancellation, and persistence. Exact oracle parity required; no schema or analysis-version change.
 - [x] **Migrate pace and heart-rate route-metric scale/bucket work to C++23**: one allocation-free bulk call per pace/HR finalization performs deterministic distance-weighted lower/median/upper scale construction, numeric normalization, bucket assignment, coverage accumulation, and numeric summary construction via a typed caller-owned eligible workspace plus output buffer. Corrected elevation intentionally retains Swift numeric finalization after production A/B showed a native regression above the hard gate (mode-owned ownership, not a fallback). Swift retains raw extraction, smoothing, localized labels, public profiles, availability/caching, Platform line coalescing, cancellation, diagnostics, UI, and persistence. Exact parity is required; no schema, analysis-version, normalization-version, importer, or public API change. Compatibility corrections keep the full public Swift `Int` `bucketCount` domain (`std::int64_t`), positive-infinite valid coverage, individually positive-infinite weights as valid but not quantile-eligible, and a no-sort fast path when a scale is known to be impossible.
-- [ ] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary disposition, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
+- [x] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary removed entirely, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
 **Rejected for C++ migration (remain Swift)** — see also `docs/architecture.md`:
@@ -146,9 +146,11 @@
 
 | Bound | Count | Contents |
 |---|---:|---|
-| Minimum | 1 | Final cleanup |
-| Expected | 1 | Final cleanup |
-| Maximum reasonable | 2 | Final cleanup plus a targeted Swift optimization only if new evidence justifies it |
+| Minimum | 0 | — |
+| Expected | 0 | — |
+| Maximum reasonable | 0 | — |
+
+The portable-core migration and its mandatory cleanup are complete.
 
 Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation,
@@ -158,8 +160,7 @@ C++ performs production outlier evidence, isolated-point rejection, implicit
 gap inference, final segment compaction, supplied-distance policy, and
 normalized cumulative distances through one bulk call.
 
-The standalone step-distance boundary remains transitional/test-focused. No
-scalar per-point Swift/C++ production calls are allowed. No persisted schema,
+No scalar per-point Swift/C++ production calls are allowed. No persisted schema,
 analysis version, UI, or importer behaviour changes in this cutover.
 
 #### Route-Aware comparison ownership after the DTW cutover
@@ -185,16 +186,14 @@ remaining comparison logic have not migrated.
 Each crossing of the engine boundary pays a fixed conversion tax — building the
 `RouteInputSample` batch and converting the result back — that does not scale
 with how much work happens after conversion. On a 100,000-point fixture that
-tax was roughly 0.9 ms of a step-distance bridge call. Migrating each geometric
+tax was roughly 0.9 ms of a bridge call. Migrating each geometric
 stage separately would pay it repeatedly; migrating them together pays it once.
 
-The combined kernel reuses internal pairwise step logic rather than invoking
-the public step-distance boundary. Product limit (1,000,000 points) and engine
-ceiling (1,250,000 samples) are unchanged.
+The combined kernel reuses internal pairwise step logic directly. Product limit
+(1,000,000 points) and engine ceiling (1,250,000 samples) are unchanged.
 
 `scripts/run-route-quality-benchmark.sh` compares complete Swift stages 2–4
-against the complete combined bridge (including conversion). The historical
-step-distance script remains available for the transitional boundary.
+against the complete combined bridge (including conversion).
 
 #### Why cross-workout heatmap aggregation stays in Swift
 

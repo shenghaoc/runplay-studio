@@ -6,7 +6,6 @@
 #include "RunPlayEngineCpp/Geodesy.hpp"
 #include "RunPlayEngineCpp/PersonalHeatmapCoverage.hpp"
 #include "RunPlayEngineCpp/RouteAlignmentDtw.hpp"
-#include "RunPlayEngineCpp/RouteGeometry.hpp"
 #include "RunPlayEngineCpp/RouteInterop.hpp"
 #include "RunPlayEngineCpp/RouteQualityPipeline.hpp"
 #include "RunPlayEngineCpp/RouteMetricScaleBuckets.hpp"
