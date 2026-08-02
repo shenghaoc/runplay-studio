@@ -270,6 +270,10 @@ Concurrency:
 - Production: `release-prod-<ref>` (do not cancel in progress)
 - Dry run: `release-dryrun-<ref>`
 
+Both paths package into `release-artifacts/` inside the checkout. That directory
+is git-ignored, so packaging output cannot be committed by accident and cannot
+dirty the worktree that production packaging requires to be clean.
+
 ### Environment `release`
 
 Configure GitHub Environment protections (recommended):

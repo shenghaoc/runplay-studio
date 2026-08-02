@@ -47,6 +47,7 @@ while retaining its intentional development bundle identifier.
 | Dry run | adhoc + `dry_run: true` manifest | Credential-free CI validation |
 | Demo path | Keep separate workflow/script | Do not silently promote demo to production |
 | Artifact replacement | Build and verify in an output-local staging directory | A failed run cannot publish a partial new artifact set |
+| Workflow output location | `release-artifacts/` inside the checkout, git-ignored | Keeps upload paths simple while preventing accidental commits and self-inflicted dirty-worktree failures in production packaging |
 | Non-production state | Require `--dry-run` for unsigned, ad-hoc, or non-notarized output | Prevent official-looking false manifest state |
 
 ## Artifact naming

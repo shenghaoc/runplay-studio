@@ -51,6 +51,7 @@ CLAUDE.local.md
 # Generated
 *.generated.swift
 dist/
+release-artifacts/
 test-output.txt
 
 # Local private workout files for manual dogfooding
