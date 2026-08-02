@@ -45,8 +45,7 @@ final class WorkoutVideoReplaySamplerTests: XCTestCase {
                 sawGap = true
             }
         }
-        // Multi-segment workouts expose gap/pause on the elapsed clock.
-        XCTAssertTrue(sawGap || workout.routePoints.contains { $0.routeSegmentIndex > 0 })
+        XCTAssertTrue(sawGap)
     }
 
     func testMissingMetricsRemainNilNotZero() throws {
@@ -87,6 +86,39 @@ final class WorkoutVideoReplaySamplerTests: XCTestCase {
         XCTAssertTrue(WorkoutVideoExportEligibility.canExportVideo(continuousWorkout()))
         XCTAssertFalse(WorkoutVideoExportEligibility.canExportVideo(RunWorkout(routePoints: [])))
         XCTAssertNotNil(WorkoutVideoExportEligibility.unavailableHelp(for: RunWorkout(routePoints: [])))
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let onePointWithSummary = RunWorkout(
+            routePoints: [
+                RoutePoint(
+                    timestamp: start,
+                    latitude: 37.77,
+                    longitude: -122.42,
+                    elapsedSeconds: 0
+                ),
+            ],
+            summary: RunSummary(totalElapsedSeconds: 60)
+        )
+        XCTAssertFalse(WorkoutVideoExportEligibility.hasPlayableTimeline(onePointWithSummary))
+
+        let timestampPlayable = RunWorkout(
+            routePoints: [
+                RoutePoint(
+                    timestamp: start,
+                    latitude: 37.77,
+                    longitude: -122.42,
+                    elapsedSeconds: 0
+                ),
+                RoutePoint(
+                    timestamp: start.addingTimeInterval(30),
+                    latitude: 37.78,
+                    longitude: -122.41,
+                    elapsedSeconds: 0
+                ),
+            ],
+            summary: RunSummary(totalElapsedSeconds: 0)
+        )
+        XCTAssertTrue(WorkoutVideoExportEligibility.hasPlayableTimeline(timestampPlayable))
     }
 
     func testVideoFilename() {

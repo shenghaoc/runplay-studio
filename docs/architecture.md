@@ -914,6 +914,7 @@ interpolates selected-distance markers without introducing another renderer.
 
 - **SwiftUI**: App UI and views
 - **MapKit**: Platform route/map data and one SwiftUI map with top-down and pitched presentations
+- **AVFoundation**: File-backed H.264 route-replay encoding and validation
 - **Swift Charts**: Pace, elevation, heart rate charts
 - **SceneKit**: Legacy prototype utilities retained internally; not the shipped map surface
 - **UniformTypeIdentifiers**: File import
@@ -930,7 +931,6 @@ interpolates selected-distance markers without introducing another renderer.
 
 ## Future Considerations
 
-- AVFoundation for video export (still out of scope; PNG map export uses MapKit snapshots only)
 - HealthKit for direct Apple Health import
 
 

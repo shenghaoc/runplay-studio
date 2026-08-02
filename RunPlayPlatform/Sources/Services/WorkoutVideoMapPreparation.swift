@@ -195,10 +195,51 @@ public struct MapKitWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable 
             mapRect: mapRect
         )
 
-        let holder = VideoSnapshotterHolder(options: options)
+        let holder = MapKitSnapshotterSession<WorkoutVideoMapPreparation>(
+            options: options
+        ) { snapshot, isCancelled in
+            let basemap = try WorkoutMapSnapshotImageNormalizer.normalizedCGImage(
+                from: snapshot.image,
+                targetSize: request.size
+            )
+            let converter = ImmediateCoordinateConverter(snapshot: snapshot)
+
+            var pixels: [WorkoutVideoRoutePixel?] = []
+            pixels.reserveCapacity(request.routePoints.count)
+            for (index, point) in request.routePoints.enumerated() {
+                if isCancelled() { throw CancellationError() }
+                if let coord = RouteMapCoordinate(point) {
+                    pixels.append(
+                        WorkoutVideoRoutePixel(
+                            routePointID: point.id,
+                            routePointIndex: index,
+                            routeSegmentIndex: point.routeSegmentIndex,
+                            point: converter.point(for: coord)
+                        )
+                    )
+                } else {
+                    pixels.append(nil)
+                }
+            }
+
+            let composed = try MapSnapshotOverlayComposer.compose(
+                basemap: basemap,
+                routes: request.routes,
+                markers: request.markers,
+                converter: converter,
+                lineWidth: request.lineWidth,
+                isCancelled: isCancelled
+            )
+            return WorkoutVideoMapPreparation(
+                staticMapImage: composed.cgImage,
+                routePointPixels: pixels,
+                containsNoDataLines: composed.containsNoDataLines,
+                effectiveRouteColorMode: .solid
+            )
+        }
         do {
             return try await withTaskCancellationHandler {
-                try await holder.start(request: request)
+                try await holder.start()
             } onCancel: {
                 holder.cancel()
             }
@@ -208,145 +249,29 @@ public struct MapKitWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable 
     }
 }
 
-/// Unchecked holder so MapKit snapshotter can participate in cancellation.
-private final class VideoSnapshotterHolder: @unchecked Sendable {
-    private let snapshotter: MKMapSnapshotter
-    private let lock = NSLock()
-    private var didCancel = false
-
-    init(options: MKMapSnapshotter.Options) {
-        self.snapshotter = MKMapSnapshotter(options: options)
-    }
-
-    func cancel() {
-        lock.lock()
-        didCancel = true
-        lock.unlock()
-        snapshotter.cancel()
-    }
-
-    private func cancellationRequested() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return didCancel
-    }
-
-    func start(
-        request: WorkoutVideoMapPreparationRequest
-    ) async throws -> WorkoutVideoMapPreparation {
-        try await withCheckedThrowingContinuation { continuation in
-            snapshotter.start(with: DispatchQueue.global(qos: .userInitiated)) { snap, error in
-                if self.cancellationRequested() {
-                    continuation.resume(throwing: CancellationError())
-                    return
-                }
-
-                if let error {
-                    let nsError = error as NSError
-                    if nsError.domain == NSCocoaErrorDomain, nsError.code == NSUserCancelledError {
-                        continuation.resume(throwing: CancellationError())
-                    } else {
-                        continuation.resume(
-                            throwing: WorkoutMapSnapshotError.snapshotFailed(error.localizedDescription)
-                        )
-                    }
-                    return
-                }
-
-                guard let snap else {
-                    continuation.resume(
-                        throwing: WorkoutMapSnapshotError.snapshotFailed("Snapshot returned no image")
-                    )
-                    return
-                }
-
-                do {
-                    let basemap = try WorkoutMapSnapshotImageNormalizer.normalizedCGImage(
-                        from: snap.image,
-                        targetSize: request.size
-                    )
-                    let converter = ImmediateVideoCoordinateConverter(snapshot: snap)
-
-                    // Capture pixels while the live snapshot converter is valid.
-                    var pixels: [WorkoutVideoRoutePixel?] = []
-                    pixels.reserveCapacity(request.routePoints.count)
-                    for (index, point) in request.routePoints.enumerated() {
-                        if self.cancellationRequested() {
-                            throw CancellationError()
-                        }
-                        if let coord = RouteMapCoordinate(point) {
-                            let pixel = converter.point(for: coord)
-                            pixels.append(
-                                WorkoutVideoRoutePixel(
-                                    routePointID: point.id,
-                                    routePointIndex: index,
-                                    routeSegmentIndex: point.routeSegmentIndex,
-                                    point: pixel
-                                )
-                            )
-                        } else {
-                            pixels.append(nil)
-                        }
-                    }
-
-                    let composed = try MapSnapshotOverlayComposer.compose(
-                        basemap: basemap,
-                        routes: request.routes,
-                        markers: request.markers,
-                        converter: converter,
-                        lineWidth: request.lineWidth,
-                        isCancelled: { self.cancellationRequested() }
-                    )
-
-                    // Effective mode is filled by the high-level orchestrator.
-                    let preparation = WorkoutVideoMapPreparation(
-                        staticMapImage: composed.cgImage,
-                        routePointPixels: pixels,
-                        containsNoDataLines: composed.containsNoDataLines,
-                        effectiveRouteColorMode: .solid
-                    )
-                    continuation.resume(returning: preparation)
-                } catch is CancellationError {
-                    continuation.resume(throwing: CancellationError())
-                } catch let snapshotError as WorkoutMapSnapshotError {
-                    continuation.resume(throwing: snapshotError)
-                } catch {
-                    continuation.resume(
-                        throwing: WorkoutMapSnapshotError.compositionFailed(error.localizedDescription)
-                    )
-                }
-            }
-        }
-    }
-}
-
-private struct ImmediateVideoCoordinateConverter: MapCoordinateConverting, @unchecked Sendable {
-    let snapshot: MKMapSnapshotter.Snapshot
-
-    func point(for coordinate: RouteMapCoordinate) -> CGPoint {
-        let nsPoint = snapshot.point(for: coordinate.mapKitCoordinate)
-        return CGPoint(x: nsPoint.x, y: nsPoint.y)
-    }
-}
-
 // MARK: - Synthetic preparer (tests)
 
 /// Deterministic preparer that draws a blank basemap and maps points linearly.
-public struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
-    public let fillColor: NSColor
+#if DEBUG
+struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
+    let fillColor: NSColor
 
-    public init(fillColor: NSColor = NSColor(calibratedRed: 0.15, green: 0.35, blue: 0.2, alpha: 1)) {
+    init(fillColor: NSColor = NSColor(calibratedRed: 0.15, green: 0.35, blue: 0.2, alpha: 1)) {
         self.fillColor = fillColor
     }
 
-    public func prepare(
+    func prepare(
         request: WorkoutVideoMapPreparationRequest
     ) async throws -> WorkoutVideoMapPreparation {
         try Task.checkCancellation()
         let width = max(1, Int(request.size.width.rounded()))
         let height = max(1, Int(request.size.height.rounded()))
 
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw WorkoutMapSnapshotError.compositionFailed(
+                "Could not create the sRGB color space"
+            )
+        }
         guard let context = CGContext(
             data: nil,
             width: width,
@@ -426,3 +351,4 @@ public struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendab
         )
     }
 }
+#endif

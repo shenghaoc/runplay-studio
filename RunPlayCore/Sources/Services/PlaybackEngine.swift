@@ -16,16 +16,18 @@ public class PlaybackEngine {
     public init() {}
 
     public func load(_ workout: RunWorkout) {
+        load(workout, analysisContext: WorkoutAnalysisContext(workout: workout))
+    }
+
+    /// Load with a caller-owned immutable analysis context so export and other
+    /// derived consumers can reuse route-sized timeline/elevation work.
+    func load(_ workout: RunWorkout, analysisContext: WorkoutAnalysisContext) {
         stop()
         self.workout = workout
-        let context = WorkoutAnalysisContext(workout: workout)
-        let timeline = context.timeline
-        self.timeline = context.timeline
-        self.elevationProfile = context.elevationProfile
-        self.movementProfile = try? MovementProfile(
-            routePoints: workout.routePoints,
-            timeline: timeline
-        )
+        let timeline = analysisContext.timeline
+        self.timeline = timeline
+        self.elevationProfile = analysisContext.elevationProfile
+        self.movementProfile = analysisContext.movementProfile
 
         state = ReplayState(
             playbackState: .stopped,

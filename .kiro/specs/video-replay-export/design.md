@@ -76,7 +76,9 @@ display.
 
 ## Encoding pipeline
 
-`WorkoutVideoExporter`:
+`WorkoutVideoExporter` owns eligibility, replay/map orchestration, and route
+presentation. Its cohesive `WorkoutVideoAssetEncoder` collaborator owns the
+writer, temporary-file transaction, and asset validation:
 
 1. Validate eligibility and configuration
 2. Prepare route presentation (once) + map (once for appearance/colour)
@@ -85,8 +87,9 @@ display.
 5. Pixel-buffer adaptor pool (`kCVPixelFormatType_32BGRA`)
 6. For each frame: sample → resolve marker → render → append at
    `CMTime(value: i, timescale: fps)` with readiness backpressure
-7. Finish writer, validate asset (tracks, dimensions, duration, optional
-   first/mid/last decode), move to destination
+7. Finish writer, validate H.264 subtype, single video/no audio, exact dimensions,
+   frame rate/count, duration, colour metadata, and first/mid/last decode, then
+   atomically replace the destination
 8. On cancel/fail: cancel writer, delete temporary file
 
 Result type: `WorkoutVideoExportResult` (URL, filename, size, duration, frame
@@ -97,9 +100,14 @@ count, dimensions, fps) — not `ExportResult`.
 `@MainActor` `WorkoutVideoExportViewModel` mirrors PNG export ownership:
 
 - Configuration, availability probe, poster generation with request serials
-- Duration change does not re-prepare map; appearance/colour does
-- Export task with throttled progress; cancel restores controls
-- Injectable map preparer and exporter for tests
+- Duration change reuses a completed or in-flight map preparation;
+  appearance/colour changes invalidate it
+- Export task with throttled progress; cancel restores controls only after writer
+  and temporary-file cleanup acknowledgement
+- Injectable export client for deterministic retry/cancellation tests
+- Cached poster accessibility summary reports the effective route colour
+- Menu eligibility is assessed off-main and keyed to the current workout so a
+  stale result cannot enable a newly selected ineligible workout
 
 ## Privacy
 
@@ -109,5 +117,7 @@ metadata. Visual route location is inherent to the basemap.
 
 ## Performance bounds
 
-At most 1 800 frames; one static map; one profile prep; serial writer; no
-full-frame arrays; no `Data` of the MP4; main actor never encodes.
+At most 1 800 frames; one static map; one reusable availability/profile probe;
+one route-line preparation per map; shared immutable analysis context; serial
+writer; no full-frame arrays; no `Data` of the MP4; main actor never analyses,
+renders, or encodes route-sized work.

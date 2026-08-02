@@ -95,17 +95,18 @@ public final class WorkoutVideoReplaySampler: @unchecked Sendable {
     private let workout: RunWorkout
     private let engine: PlaybackEngine
     private let analysisContext: WorkoutAnalysisContext
+    private let lock = NSLock()
 
     public init(workout: RunWorkout, analysisContext: WorkoutAnalysisContext? = nil) {
         self.workout = workout
         self.analysisContext = analysisContext ?? WorkoutAnalysisContext(workout: workout)
         self.engine = PlaybackEngine()
-        self.engine.load(workout)
+        self.engine.load(workout, analysisContext: self.analysisContext)
     }
 
     /// Total source elapsed duration used for frame planning.
     public var totalElapsedSeconds: Double {
-        engine.state.totalDuration
+        lock.withLock { engine.state.totalDuration }
     }
 
     /// Whether the workout has a positive finite playable elapsed timeline.
@@ -116,6 +117,8 @@ public final class WorkoutVideoReplaySampler: @unchecked Sendable {
 
     /// Sample canonical metrics at a planned frame index.
     public func sample(frameIndex: Int, plan: WorkoutVideoFramePlan) -> WorkoutVideoFrameSample {
+        lock.lock()
+        defer { lock.unlock() }
         let elapsed = plan.sourceElapsedSeconds(atFrameIndex: frameIndex)
         let progress = plan.progress(atFrameIndex: frameIndex)
         engine.seekToTime(elapsed)
@@ -133,7 +136,7 @@ public final class WorkoutVideoReplaySampler: @unchecked Sendable {
             pace = nil
         }
         let hr: Double?
-        if let h = metrics.heartRateBPM, h.isFinite, h > 0 {
+        if let h = metrics.heartRateBPM, MetricValidation.isValidHeartRate(h) {
             hr = h
         } else {
             hr = nil
@@ -171,7 +174,7 @@ public final class WorkoutVideoReplaySampler: @unchecked Sendable {
 
     /// Snapshot of the private engine state (for tests verifying isolation).
     public var privateEngineState: ReplayState {
-        engine.state
+        lock.withLock { engine.state }
     }
 }
 
@@ -179,6 +182,16 @@ public final class WorkoutVideoReplaySampler: @unchecked Sendable {
 
 /// Portable eligibility checks for video export (no MapKit).
 public enum WorkoutVideoExportEligibility: Sendable {
+    public struct Assessment: Equatable, Sendable {
+        public let canExport: Bool
+        public let unavailableHelp: String?
+
+        public init(canExport: Bool, unavailableHelp: String?) {
+            self.canExport = canExport
+            self.unavailableHelp = unavailableHelp
+        }
+    }
+
     /// True when the workout has at least one coordinate usable for a route map.
     public static func hasUsableRoute(_ workout: RunWorkout) -> Bool {
         workout.routePoints.contains { point in
@@ -186,32 +199,39 @@ public enum WorkoutVideoExportEligibility: Sendable {
         }
     }
 
-    /// True when elapsed duration is positive and finite and route points exist.
+    /// True when the canonical replay elapsed duration is positive and finite.
     public static func hasPlayableTimeline(_ workout: RunWorkout) -> Bool {
         guard !workout.routePoints.isEmpty else { return false }
-        let elapsed = workout.summary.totalElapsedSeconds
-        if elapsed.isFinite, elapsed > 0 { return true }
-        // Fall back to last point elapsed when summary is incomplete.
-        if let last = workout.routePoints.last?.elapsedSeconds,
-           last.isFinite, last > 0 {
-            return true
-        }
-        return false
+        let elapsed = WorkoutTimeline.playableElapsedDuration(routePoints: workout.routePoints)
+        return elapsed.isFinite && elapsed > 0
     }
 
     /// Full gate for enabling the Export Route Replay menu action.
     public static func canExportVideo(_ workout: RunWorkout) -> Bool {
-        hasUsableRoute(workout) && hasPlayableTimeline(workout)
+        assessment(for: workout).canExport
     }
 
     public static func unavailableHelp(for workout: RunWorkout) -> String? {
-        guard !canExportVideo(workout) else { return nil }
-        if !hasUsableRoute(workout) {
-            return "This workout has no usable GPS route for video export."
+        assessment(for: workout).unavailableHelp
+    }
+
+    /// Evaluate the route-sized coordinate gate once. UI callers should run
+    /// this off the main actor and cache the returned value for body updates.
+    public static func assessment(for workout: RunWorkout) -> Assessment {
+        let usableRoute = hasUsableRoute(workout)
+        let playableTimeline = hasPlayableTimeline(workout)
+        if !usableRoute {
+            return Assessment(
+                canExport: false,
+                unavailableHelp: "This workout has no usable GPS route for video export."
+            )
         }
-        if !hasPlayableTimeline(workout) {
-            return "This workout has no playable elapsed timeline for video export."
+        if !playableTimeline {
+            return Assessment(
+                canExport: false,
+                unavailableHelp: "This workout has no playable elapsed timeline for video export."
+            )
         }
-        return "Video export is unavailable for this workout."
+        return Assessment(canExport: true, unavailableHelp: nil)
     }
 }

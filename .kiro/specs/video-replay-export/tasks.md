@@ -33,5 +33,5 @@
 ## Documentation and validation
 
 - [x] Update README, PRODUCT, DESIGN, architecture, privacy, manual-testing, a11y
-- [ ] Warning-clean Core/Platform/Studio suites and release packaging scripts
-- [ ] Draft PR with full description; do not merge
+- [x] Warning-clean Core/Platform/Studio suites and release packaging scripts
+- [x] Draft PR with full description; do not merge

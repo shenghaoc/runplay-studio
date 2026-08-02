@@ -1588,12 +1588,8 @@ class AppState: ObservableObject {
     }
 
     func analysisContext(for workout: RunWorkout) -> WorkoutAnalysisContext {
-        if let cached = analysisContextCache[workout.id],
-           cached.normalizationVersion == workout.normalizationVersion,
-           cached.pointCount == workout.routePoints.count,
-           cached.firstPointID == workout.routePoints.first?.id,
-           cached.lastPointID == workout.routePoints.last?.id {
-            return cached.context
+        if let cached = cachedAnalysisContext(for: workout) {
+            return cached
         }
         let context = WorkoutAnalysisContext(workout: workout)
         analysisContextCache[workout.id] = CachedAnalysisContext(
@@ -1604,5 +1600,19 @@ class AppState: ObservableObject {
             context: context
         )
         return context
+    }
+
+    /// Return an already-derived context without performing route-sized work.
+    /// Callers that can derive off-main use this to reuse a valid cache entry
+    /// while avoiding a synchronous cache miss on the main actor.
+    func cachedAnalysisContext(for workout: RunWorkout) -> WorkoutAnalysisContext? {
+        if let cached = analysisContextCache[workout.id],
+           cached.normalizationVersion == workout.normalizationVersion,
+           cached.pointCount == workout.routePoints.count,
+           cached.firstPointID == workout.routePoints.first?.id,
+           cached.lastPointID == workout.routePoints.last?.id {
+            return cached.context
+        }
+        return nil
     }
 }

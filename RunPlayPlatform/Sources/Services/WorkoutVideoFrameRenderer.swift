@@ -35,7 +35,11 @@ public struct WorkoutVideoFrameRenderer: Sendable {
         }
 
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw WorkoutVideoExportError.frameRenderingFailed(
+                "Could not create the sRGB color space"
+            )
+        }
         let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
             | CGImageAlphaInfo.premultipliedFirst.rawValue
 
@@ -182,13 +186,9 @@ public struct WorkoutVideoFrameRenderer: Sendable {
             ("Active", frame.formattedActive),
             ("Distance", frame.formattedDistance),
             ("Active Pace", frame.formattedPace),
+            ("Heart Rate", frame.formattedHeartRate),
+            ("Elevation", frame.formattedElevation),
         ]
-        if frame.heartRateBPM != nil {
-            rows.append(("Heart Rate", frame.formattedHeartRate))
-        }
-        if frame.correctedElevationMeters != nil {
-            rows.append(("Elevation", frame.formattedElevation))
-        }
         if let state = frame.stateLabel {
             rows.append(("State", state))
         }
@@ -334,7 +334,11 @@ public struct WorkoutVideoFrameRenderer: Sendable {
             throw WorkoutVideoExportError.frameRenderingFailed("Missing base address")
         }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw WorkoutVideoExportError.frameRenderingFailed(
+                "Could not create the sRGB color space"
+            )
+        }
         let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
             | CGImageAlphaInfo.premultipliedFirst.rawValue
         guard let context = CGContext(

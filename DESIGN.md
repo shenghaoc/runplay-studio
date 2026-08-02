@@ -197,7 +197,8 @@ Native workspace background, hero icon in a material circle, and a reduced-motio
 Fixed **1920×1080** landscape H.264 MP4 at **30 fps** (15 / 30 / 60 second presets).
 Offline renderer: static top-down MapKit basemap, segmented route, start/finish
 markers, moving current-position marker, and a metrics HUD (elapsed, active,
-distance, pace, optional HR/elevation, gap/movement state, progress). Light and
+distance, pace, HR/elevation with truthful unavailable placeholders,
+gap/movement state, progress). Light and
 Dark palettes are explicit. Source elapsed timeline is compressed into the
 selected video length; timing does not depend on machine speed or live replay.
 

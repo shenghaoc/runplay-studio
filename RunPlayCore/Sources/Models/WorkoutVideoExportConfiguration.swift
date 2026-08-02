@@ -84,7 +84,7 @@ public struct WorkoutVideoExportPolicy: Hashable, Sendable {
         height: 180,
         framesPerSecond: 10,
         averageBitRate: 500_000,
-        maximumFrameCount: 30,
+        maximumFrameCount: 600,
         progressUpdateStride: 2,
         policyVersion: 1
     )
@@ -131,6 +131,7 @@ public enum WorkoutVideoExportPhase: String, Hashable, Sendable {
     case renderingPoster
     case awaitingDestination
     case encoding
+    case cancelling
     case finalizing
     case completed
     case cancelled
@@ -144,6 +145,7 @@ public enum WorkoutVideoExportPhase: String, Hashable, Sendable {
         case .renderingPoster: return "Rendering preview"
         case .awaitingDestination: return "Choose destination"
         case .encoding: return "Encoding video"
+        case .cancelling: return "Cancelling"
         case .finalizing: return "Finalizing"
         case .completed: return "Completed"
         case .cancelled: return "Cancelled"
@@ -207,24 +209,26 @@ public enum WorkoutVideoExportError: Error, LocalizedError, Sendable, Equatable 
             return "Invalid video configuration: \(detail)"
         case .mapPreparationFailed(let detail):
             return "Map preparation failed: \(detail)"
-        case .writerCreationFailed(let detail):
-            return "Could not create video writer: \(detail)"
+        case .writerCreationFailed:
+            return "Could not create the video writer."
         case .cannotAddVideoInput:
             return "Could not add a video track to the export."
-        case .cannotStartWriting(let detail):
-            return "Could not start writing video: \(detail)"
+        case .cannotStartWriting:
+            return "Could not start writing the video."
         case .pixelBufferAllocationFailed:
             return "Could not allocate a video frame buffer."
-        case .frameRenderingFailed(let detail):
-            return "Could not render a video frame: \(detail)"
-        case .frameAppendFailed(let index, let detail):
-            return "Could not write frame \(index + 1): \(detail)"
-        case .finalizationFailed(let detail):
-            return "Could not finalize video: \(detail)"
+        case .frameRenderingFailed:
+            return "Could not render a video frame."
+        case .frameAppendFailed(let index, _):
+            return index >= 0
+                ? "Could not write frame \(index + 1)."
+                : "Could not write a video frame."
+        case .finalizationFailed:
+            return "Could not finalize the video."
         case .validationFailed(let detail):
             return "Exported video failed validation: \(detail)"
-        case .destinationWriteFailed(let detail):
-            return "Could not save video: \(detail)"
+        case .destinationWriteFailed:
+            return "Could not save the video. Check that the destination is writable and has enough free space."
         case .cancelled:
             return "Video export cancelled."
         }

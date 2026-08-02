@@ -26,9 +26,8 @@ struct WorkoutVideoExportSheet: View {
         }
         .frame(minWidth: 900, minHeight: 640)
         .task {
-            await viewModel.updateAvailabilityProbe()
-            guard !Task.isCancelled else { return }
             viewModel.onAppear()
+            await viewModel.updateAvailabilityProbe()
         }
         .onDisappear {
             viewModel.dismissCleanup()
@@ -46,7 +45,7 @@ struct WorkoutVideoExportSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Export Route Replay")
                     .font(.title2.weight(.semibold))
-                Text("Offline H.264 MP4 · 1920×1080 · 30 fps · no audio")
+                Text(viewModel.outputSummaryText)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -60,10 +59,13 @@ struct WorkoutVideoExportSheet: View {
             Section("Video Length") {
                 Picker("Video Length", selection: $viewModel.configuration.duration) {
                     ForEach(WorkoutVideoDuration.allCases, id: \.self) { duration in
-                        Text(duration.displayName).tag(duration)
+                        Text("\(duration.seconds) sec")
+                            .accessibilityLabel(duration.displayName)
+                            .tag(duration)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .disabled(viewModel.isExporting)
                 .accessibilityLabel("Video length")
                 .accessibilityHint("Compresses the full workout elapsed timeline into the selected length")
@@ -76,6 +78,7 @@ struct WorkoutVideoExportSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .disabled(viewModel.isExporting)
                 .accessibilityLabel("Export appearance")
             }
@@ -85,17 +88,27 @@ struct WorkoutVideoExportSheet: View {
                     ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
                         Text(mode.displayName)
                             .tag(mode)
+                            .disabled(!viewModel.isModeAvailable(mode))
                     }
                 }
-                .disabled(viewModel.isExporting)
+                .disabled(viewModel.isExporting || viewModel.isLoadingAvailability)
                 .accessibilityLabel("Route color mode")
 
-                ForEach(WorkoutRouteColorMode.allCases.filter { $0 != .solid }, id: \.self) { mode in
-                    if !viewModel.isModeAvailable(mode) {
-                        Text("\(mode.displayName): \(mode.unavailableReason ?? "Unavailable")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                if viewModel.isLoadingAvailability {
+                    Text("Checking metric availability…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(
+                        WorkoutRouteColorMode.allCases.filter { $0 != .solid },
+                        id: \.self
+                    ) { mode in
+                        if !viewModel.isModeAvailable(mode) {
+                            Text("\(mode.displayName): \(mode.unavailableReason ?? "Unavailable")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
@@ -103,8 +116,8 @@ struct WorkoutVideoExportSheet: View {
             Section("Output") {
                 LabeledContent("Container", value: "MP4")
                 LabeledContent("Codec", value: "H.264")
-                LabeledContent("Resolution", value: "1920 × 1080")
-                LabeledContent("Frame rate", value: "30 fps")
+                LabeledContent("Resolution", value: viewModel.outputResolutionText)
+                LabeledContent("Frame rate", value: viewModel.outputFrameRateText)
                 LabeledContent("Audio", value: "None")
             }
 
@@ -121,11 +134,22 @@ struct WorkoutVideoExportSheet: View {
             }
 
             if let error = viewModel.errorMessage {
-                Section {
+                Section(viewModel.isPreviewFailure ? "Preview failed" : "Export failed") {
                     Text(error)
                         .font(.callout)
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
+                    if viewModel.isPreviewFailure {
+                        Button("Retry Preview") {
+                            viewModel.retryPreview()
+                        }
+                        .disabled(!viewModel.canRetryPreview)
+                    } else {
+                        Button("Try Again…") {
+                            presentSavePanel()
+                        }
+                        .disabled(!viewModel.canExport)
+                    }
                 }
             }
 
@@ -175,7 +199,7 @@ struct WorkoutVideoExportSheet: View {
                         .padding(12)
                         .opacity(viewModel.isPreparingPoster ? 0.55 : 1)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(viewModel.posterAccessibilityLabel())
+                        .accessibilityLabel(viewModel.posterAccessibilityLabel)
                 } else if viewModel.isPreparingPoster {
                     ProgressView("Preparing map and preview…")
                 } else if viewModel.mapFailureMessage != nil {
@@ -197,7 +221,7 @@ struct WorkoutVideoExportSheet: View {
                     .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
             )
 
-            Text("Final output: 1920×1080 H.264 MP4 · source elapsed timeline compressed to \(viewModel.configuration.duration.displayName)")
+            Text("Final output: \(viewModel.outputResolutionText) H.264 MP4 · source elapsed timeline compressed to \(viewModel.configuration.duration.displayName)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -209,6 +233,7 @@ struct WorkoutVideoExportSheet: View {
                 Button("Cancel Export") {
                     viewModel.cancelExport()
                 }
+                .disabled(viewModel.isCancelling)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Cancel video export")
             } else {
@@ -231,6 +256,9 @@ struct WorkoutVideoExportSheet: View {
     }
 
     private var statusText: String {
+        if viewModel.isCancelling {
+            return WorkoutVideoExportPhase.cancelling.displayName
+        }
         if viewModel.isExporting, viewModel.progress.totalFrames > 0 {
             return "\(viewModel.phase.displayName) · \(viewModel.progress.completedFrames)/\(viewModel.progress.totalFrames)"
         }
@@ -238,6 +266,9 @@ struct WorkoutVideoExportSheet: View {
     }
 
     private var statusAccessibilityLabel: String {
+        if viewModel.isCancelling {
+            return "Cancelling video export and removing temporary output"
+        }
         if viewModel.isExporting, viewModel.progress.totalFrames > 0 {
             return "Encoding video \(viewModel.progress.completedFrames) of \(viewModel.progress.totalFrames) frames, \(viewModel.progress.percentComplete) percent complete"
         }

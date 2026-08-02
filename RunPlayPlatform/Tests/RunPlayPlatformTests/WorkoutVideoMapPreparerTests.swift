@@ -88,17 +88,20 @@ final class WorkoutVideoMapPreparerTests: XCTestCase {
             markers: [],
             routePoints: workout.routePoints
         )
-        let task = Task {
-            try await preparer.prepare(request: request)
-        }
-        task.cancel()
-        do {
-            _ = try await task.value
-        } catch is CancellationError {
-            // expected
-        } catch {
-            // May complete before cancel; acceptable for synthetic path.
-        }
+        let cancelled = await Task.detached {
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+            do {
+                _ = try await preparer.prepare(request: request)
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }.value
+        XCTAssertTrue(cancelled)
     }
 
     private func sampleWorkout() -> RunWorkout {

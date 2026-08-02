@@ -24,20 +24,28 @@ final class WorkoutVideoExporterTests: XCTestCase {
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("runplay-video-export-\(UUID().uuidString).mp4")
         defer { try? FileManager.default.removeItem(at: destination) }
+        try Data("existing destination".utf8).write(to: destination)
 
         let progressBox = ProgressBox()
-        let result = try await exporter.export(
-            workout: workout,
-            configuration: WorkoutVideoExportConfiguration(
-                duration: .fifteenSeconds,
-                appearance: .dark,
-                routeColorMode: .solid
-            ),
-            destinationURL: destination,
-            policy: exportPolicy,
-            mapPreparation: nil
-        ) { progress in
-            progressBox.record(progress.completedFrames)
+        let result: WorkoutVideoExportResult
+        do {
+            result = try await exporter.export(
+                workout: workout,
+                configuration: WorkoutVideoExportConfiguration(
+                    duration: .fifteenSeconds,
+                    appearance: .dark,
+                    routeColorMode: .solid
+                ),
+                destinationURL: destination,
+                policy: exportPolicy,
+                mapPreparation: nil,
+                analysisContext: nil
+            ) { progress in
+                progressBox.record(progress)
+            }
+        } catch {
+            XCTFail("Exporter failed: \(error)")
+            return
         }
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
@@ -47,6 +55,7 @@ final class WorkoutVideoExporterTests: XCTestCase {
         XCTAssertEqual(result.height, 180)
         XCTAssertEqual(result.framesPerSecond, 10)
         XCTAssertEqual(progressBox.maxCompleted, 150)
+        XCTAssertEqual(progressBox.lastPhase, .completed)
         XCTAssertEqual(result.filename, destination.lastPathComponent)
 
         let asset = AVURLAsset(url: destination)
@@ -57,14 +66,32 @@ final class WorkoutVideoExporterTests: XCTestCase {
 
         let duration = try await asset.load(.duration)
         let seconds = CMTimeGetSeconds(duration)
-        XCTAssertGreaterThan(seconds, 14.0)
-        XCTAssertLessThan(seconds, 16.5)
+        XCTAssertEqual(seconds, 15, accuracy: 0.11)
+
+        let track = try XCTUnwrap(videoTracks.first)
+        let nominalFrameRate = try await track.load(.nominalFrameRate)
+        XCTAssertEqual(nominalFrameRate, 10, accuracy: 0.01)
+        let descriptions = try await track.load(.formatDescriptions)
+        let description = try XCTUnwrap(descriptions.first)
+        XCTAssertEqual(
+            CMFormatDescriptionGetMediaSubType(description),
+            kCMVideoCodecType_H264
+        )
+        XCTAssertNotNil(CMFormatDescriptionGetExtension(
+            description,
+            extensionKey: kCMFormatDescriptionExtension_ColorPrimaries
+        ))
 
         // Destination move leaves a playable file.
         let moved = FileManager.default.temporaryDirectory
             .appendingPathComponent("runplay-video-moved-\(UUID().uuidString).mp4")
         defer { try? FileManager.default.removeItem(at: moved) }
-        try FileManager.default.moveItem(at: destination, to: moved)
+        do {
+            try FileManager.default.moveItem(at: destination, to: moved)
+        } catch {
+            XCTFail("Moving completed output failed: \(error)")
+            return
+        }
         let movedAsset = AVURLAsset(url: moved)
         let movedTracks = try await movedAsset.loadTracks(withMediaType: .video)
         XCTAssertEqual(movedTracks.count, 1)
@@ -83,9 +110,14 @@ final class WorkoutVideoExporterTests: XCTestCase {
         let exporter = WorkoutVideoExporter(
             mapPreparer: SyntheticWorkoutVideoMapPreparer()
         )
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("runplay-video-cancel-\(UUID().uuidString).mp4")
-        defer { try? FileManager.default.removeItem(at: destination) }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runplay-video-cancel-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let destination = directory.appendingPathComponent("existing.mp4")
+        let original = Data("preserve me".utf8)
+        try original.write(to: destination)
+        let gate = EncodingPauseGate()
 
         let task = Task {
             try await exporter.export(
@@ -97,22 +129,97 @@ final class WorkoutVideoExporterTests: XCTestCase {
                 ),
                 destinationURL: destination,
                 policy: exportPolicy,
-                mapPreparation: nil
-            ) { _ in }
+                mapPreparation: nil,
+                analysisContext: nil
+            ) { progress in
+                if progress.phase == .encoding, progress.completedFrames > 0 {
+                    await gate.pauseOnce()
+                }
+            }
         }
-        // Cancel quickly after start.
-        try await Task.sleep(nanoseconds: 30_000_000)
+        await gate.waitUntilPaused()
         task.cancel()
+        await gate.release()
         do {
             _ = try await task.value
-            // If encoding was very fast, file may exist — only assert cleanup on cancel path.
+            XCTFail("Expected deterministic cancellation")
         } catch is CancellationError {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+            // Expected.
         } catch let error as WorkoutVideoExportError where error.isCancellation {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+            // Expected.
         } catch {
-            // Completed before cancel is acceptable.
+            XCTFail("Unexpected cancellation error: \(error)")
         }
+        XCTAssertEqual(try Data(contentsOf: destination), original)
+        let leftovers = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix("runplay-video-") }
+        XCTAssertTrue(leftovers.isEmpty, "Temporary files remain: \(leftovers)")
+    }
+
+    func testFinalizationCancellationIsNormalizedAndPreservesDestination() async throws {
+        let exportPolicy = WorkoutVideoExportPolicy(
+            width: 320,
+            height: 180,
+            framesPerSecond: 10,
+            averageBitRate: 400_000,
+            maximumFrameCount: 200,
+            progressUpdateStride: 10
+        )
+        let workout = sampleWorkout()
+        let exporter = WorkoutVideoExporter(
+            mapPreparer: SyntheticWorkoutVideoMapPreparer()
+        )
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "runplay-video-finalize-cancel-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let destination = directory.appendingPathComponent("existing.mp4")
+        let original = Data("preserve me during validation".utf8)
+        try original.write(to: destination)
+        let gate = EncodingPauseGate()
+
+        let task = Task {
+            try await exporter.export(
+                workout: workout,
+                configuration: WorkoutVideoExportConfiguration(
+                    duration: .fifteenSeconds,
+                    appearance: .light,
+                    routeColorMode: .solid
+                ),
+                destinationURL: destination,
+                policy: exportPolicy,
+                mapPreparation: nil,
+                analysisContext: nil
+            ) { progress in
+                if progress.phase == .finalizing {
+                    await gate.pauseOnce()
+                }
+            }
+        }
+        await gate.waitUntilPaused()
+        task.cancel()
+        await gate.release()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected finalization cancellation")
+        } catch let error as WorkoutVideoExportError {
+            XCTAssertEqual(error, .cancelled)
+        } catch {
+            XCTFail("Unexpected finalization cancellation error: \(error)")
+        }
+
+        XCTAssertEqual(try Data(contentsOf: destination), original)
+        let leftovers = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix("runplay-video-") }
+        XCTAssertTrue(leftovers.isEmpty, "Temporary files remain: \(leftovers)")
     }
 
     func testMapFailureSurfacesStructuredError() async throws {
@@ -216,12 +323,51 @@ private struct FailingVideoMapPreparer: WorkoutVideoMapPreparing {
 
 private final class ProgressBox: @unchecked Sendable {
     private let box = OSAllocatedUnfairLock(initialState: 0)
+    private let phaseBox = OSAllocatedUnfairLock<WorkoutVideoExportPhase?>(
+        initialState: nil
+    )
 
     var maxCompleted: Int {
         box.withLock { $0 }
     }
 
-    func record(_ completed: Int) {
-        box.withLock { $0 = max($0, completed) }
+    var lastPhase: WorkoutVideoExportPhase? {
+        phaseBox.withLock { $0 }
+    }
+
+    func record(_ progress: WorkoutVideoExportProgress) {
+        box.withLock { $0 = max($0, progress.completedFrames) }
+        phaseBox.withLock { $0 = progress.phase }
+    }
+}
+
+private actor EncodingPauseGate {
+    private var paused = false
+    private var released = false
+    private var pausedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func pauseOnce() async {
+        guard !paused else { return }
+        paused = true
+        pausedWaiters.forEach { $0.resume() }
+        pausedWaiters.removeAll()
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilPaused() async {
+        guard !paused else { return }
+        await withCheckedContinuation { continuation in
+            pausedWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        released = true
+        releaseWaiters.forEach { $0.resume() }
+        releaseWaiters.removeAll()
     }
 }

@@ -78,6 +78,7 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case exportCompleted(name: String)
     case exportFailed(message: String)
     case videoPreviewReady
+    case videoPreviewFailed(message: String)
     case videoExportCompleted(name: String)
     case videoExportFailed(message: String)
     case videoExportCancelled
@@ -115,6 +116,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Export failed. \(message)"
         case .videoPreviewReady:
             return "Video preview ready."
+        case .videoPreviewFailed(let message):
+            return "Video preview failed. \(message)"
         case .videoExportCompleted(let name):
             return "Video exported \(name)."
         case .videoExportFailed(let message):

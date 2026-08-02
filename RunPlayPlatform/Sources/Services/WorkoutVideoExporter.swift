@@ -1,7 +1,4 @@
-import AVFoundation
 import CoreGraphics
-import CoreMedia
-import CoreVideo
 import Foundation
 import RunPlayCore
 
@@ -39,6 +36,25 @@ public struct WorkoutVideoExportResult: Sendable {
     }
 }
 
+/// Poster image plus the exact midpoint state represented by that image.
+/// `CGImage` is immutable; the unchecked conformance only bridges the SDK's
+/// missing Sendable annotation for that immutable Core Graphics value.
+public struct WorkoutVideoPoster: @unchecked Sendable {
+    public let image: CGImage
+    public let sample: WorkoutVideoFrameSample
+    public let effectiveRouteColorMode: WorkoutRouteColorMode
+
+    public init(
+        image: CGImage,
+        sample: WorkoutVideoFrameSample,
+        effectiveRouteColorMode: WorkoutRouteColorMode
+    ) {
+        self.image = image
+        self.sample = sample
+        self.effectiveRouteColorMode = effectiveRouteColorMode
+    }
+}
+
 // MARK: - Protocol
 
 /// Exports a deterministic offline workout route-replay MP4.
@@ -49,6 +65,7 @@ public protocol WorkoutVideoExporting: Sendable {
         destinationURL: URL,
         policy: WorkoutVideoExportPolicy,
         mapPreparation: WorkoutVideoMapPreparation?,
+        analysisContext: WorkoutAnalysisContext?,
         progress: @Sendable (WorkoutVideoExportProgress) async -> Void
     ) async throws -> WorkoutVideoExportResult
 }
@@ -61,6 +78,7 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
     private let profileBuilder: RouteMetricProfileBuilder
     private let lineBuilder: RouteMetricMapLineBuilder
     private let frameRenderer: WorkoutVideoFrameRenderer
+    private let assetEncoder: WorkoutVideoAssetEncoder
 
     public init(
         mapPreparer: any WorkoutVideoMapPreparing = MapKitWorkoutVideoMapPreparer(),
@@ -72,9 +90,8 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         self.profileBuilder = profileBuilder
         self.lineBuilder = lineBuilder
         self.frameRenderer = frameRenderer
+        self.assetEncoder = WorkoutVideoAssetEncoder(frameRenderer: frameRenderer)
     }
-
-    private var fileManager: FileManager { .default }
 
     public func export(
         workout: RunWorkout,
@@ -82,6 +99,7 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         destinationURL: URL,
         policy: WorkoutVideoExportPolicy = .production,
         mapPreparation: WorkoutVideoMapPreparation? = nil,
+        analysisContext: WorkoutAnalysisContext? = nil,
         progress: @Sendable (WorkoutVideoExportProgress) async -> Void = { _ in }
     ) async throws -> WorkoutVideoExportResult {
         try policy.validate()
@@ -96,8 +114,8 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         try Task.checkCancellation()
         await progress(WorkoutVideoExportProgress(phase: .preparingRoute))
 
-        let analysisContext = WorkoutAnalysisContext(workout: workout)
-        let sampler = WorkoutVideoReplaySampler(workout: workout, analysisContext: analysisContext)
+        let context = analysisContext ?? WorkoutAnalysisContext(workout: workout)
+        let sampler = WorkoutVideoReplaySampler(workout: workout, analysisContext: context)
         guard sampler.hasPlayableTimeline else {
             throw WorkoutVideoExportError.noPlayableTimeline
         }
@@ -119,83 +137,23 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
                 workout: workout,
                 configuration: configuration,
                 policy: policy,
-                analysisContext: analysisContext
+                analysisContext: context
             )
         }
 
         try Task.checkCancellation()
 
-        let title = workout.displayName
-        let dateText = Self.formatWorkoutDate(workout)
-        let mapSize = CGSize(
-            width: preparedMap.pixelWidth,
-            height: preparedMap.pixelHeight
-        )
-
-        let temporaryURL = try makeTemporaryURL(near: destinationURL)
-        var temporaryRetained = true
-        defer {
-            if temporaryRetained {
-                try? fileManager.removeItem(at: temporaryURL)
-            }
-        }
-
-        do {
-            try await encode(
-                plan: plan,
-                policy: policy,
-                sampler: sampler,
-                map: preparedMap,
-                mapSize: mapSize,
-                title: title,
-                dateText: dateText,
-                configuration: configuration,
-                temporaryURL: temporaryURL,
-                progress: progress
-            )
-        } catch is CancellationError {
-            throw WorkoutVideoExportError.cancelled
-        } catch let error as WorkoutVideoExportError {
-            throw error
-        } catch {
-            throw WorkoutVideoExportError.finalizationFailed(error.localizedDescription)
-        }
-
-        try Task.checkCancellation()
-        await progress(WorkoutVideoExportProgress(
-            phase: .finalizing,
-            completedFrames: plan.frameCount,
-            totalFrames: plan.frameCount
-        ))
-
-        try await validateOutput(
-            url: temporaryURL,
+        return try await assetEncoder.export(
+            plan: plan,
             policy: policy,
-            plan: plan
+            sampler: sampler,
+            map: preparedMap,
+            title: workout.displayName,
+            dateText: Self.formatWorkoutDate(workout),
+            configuration: configuration,
+            destinationURL: destinationURL,
+            progress: progress
         )
-
-        try publish(temporaryURL: temporaryURL, to: destinationURL)
-        temporaryRetained = false
-
-        let attrs = try fileManager.attributesOfItem(atPath: destinationURL.path)
-        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-
-        let result = WorkoutVideoExportResult(
-            url: destinationURL,
-            filename: destinationURL.lastPathComponent,
-            fileSizeBytes: size,
-            outputDurationSeconds: plan.outputDurationSeconds,
-            frameCount: plan.frameCount,
-            width: policy.width,
-            height: policy.height,
-            framesPerSecond: policy.framesPerSecond
-        )
-        await progress(WorkoutVideoExportProgress(
-            phase: .completed,
-            completedFrames: plan.frameCount,
-            totalFrames: plan.frameCount
-        ))
-        return result
     }
 
     // MARK: - Map preparation
@@ -204,23 +162,30 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         workout: RunWorkout,
         configuration: WorkoutVideoExportConfiguration,
         policy: WorkoutVideoExportPolicy,
-        analysisContext: WorkoutAnalysisContext? = nil
+        analysisContext: WorkoutAnalysisContext? = nil,
+        profileProbe: RouteMetricProfileProbe? = nil
     ) async throws -> WorkoutVideoMapPreparation {
         try Task.checkCancellation()
         let context = analysisContext ?? WorkoutAnalysisContext(workout: workout)
         let policyColor = RouteMetricColorPolicy.runningDefault
 
-        let routePrep = try await Task.detached(priority: .userInitiated) {
+        let routeTask = Task.detached(priority: .userInitiated) {
             try Self.prepareRoutePresentation(
                 workout: workout,
                 context: context,
                 preferredMode: configuration.routeColorMode,
                 policy: policyColor,
+                profileProbe: profileProbe,
                 profileBuilder: self.profileBuilder,
                 lineBuilder: self.lineBuilder,
                 isCancelled: { Task.isCancelled }
             )
-        }.value
+        }
+        let routePrep = try await withTaskCancellationHandler {
+            try await routeTask.value
+        } onCancel: {
+            routeTask.cancel()
+        }
 
         try Task.checkCancellation()
 
@@ -258,21 +223,24 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         }
     }
 
-    /// Poster midpoint frame as CGImage (for UI preview).
-    public func renderPoster(
+    /// Poster midpoint frame and exact accessibility state for UI preview.
+    public func renderPosterResult(
         workout: RunWorkout,
         configuration: WorkoutVideoExportConfiguration,
         mapPreparation: WorkoutVideoMapPreparation,
-        policy: WorkoutVideoExportPolicy = .poster
-    ) throws -> CGImage {
+        policy: WorkoutVideoExportPolicy = .poster,
+        analysisContext: WorkoutAnalysisContext? = nil
+    ) throws -> WorkoutVideoPoster {
         try policy.validate()
-        let sampler = WorkoutVideoReplaySampler(workout: workout)
+        let sampler = WorkoutVideoReplaySampler(
+            workout: workout,
+            analysisContext: analysisContext
+        )
         let plan = try WorkoutVideoFramePlan.make(
             duration: configuration.duration,
             policy: policy,
             sourceTotalElapsedSeconds: sampler.totalElapsedSeconds
         )
-        // Midpoint frame for representative poster.
         let midIndex = plan.frameCount / 2
         let sample = sampler.sample(frameIndex: midIndex, plan: plan)
         let marker = mapPreparation.markerPixel(for: sample)
@@ -288,323 +256,33 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
             width: mapPreparation.pixelWidth,
             height: mapPreparation.pixelHeight
         )
-        return try frameRenderer.renderImage(
+        let image = try frameRenderer.renderImage(
             frame: model,
             staticMap: mapPreparation.staticMapImage,
             width: policy.width,
             height: policy.height,
             mapSize: mapSize
         )
+        return WorkoutVideoPoster(
+            image: image,
+            sample: sample,
+            effectiveRouteColorMode: mapPreparation.effectiveRouteColorMode
+        )
     }
 
-    // MARK: - Encoding
-
-    private func encode(
-        plan: WorkoutVideoFramePlan,
-        policy: WorkoutVideoExportPolicy,
-        sampler: WorkoutVideoReplaySampler,
-        map: WorkoutVideoMapPreparation,
-        mapSize: CGSize,
-        title: String,
-        dateText: String,
+    /// Compatibility convenience for callers that need only the image.
+    public func renderPoster(
+        workout: RunWorkout,
         configuration: WorkoutVideoExportConfiguration,
-        temporaryURL: URL,
-        progress: @Sendable (WorkoutVideoExportProgress) async -> Void
-    ) async throws {
-        if fileManager.fileExists(atPath: temporaryURL.path) {
-            try fileManager.removeItem(at: temporaryURL)
-        }
-
-        let writer: AVAssetWriter
-        do {
-            writer = try AVAssetWriter(outputURL: temporaryURL, fileType: .mp4)
-        } catch {
-            throw WorkoutVideoExportError.writerCreationFailed(error.localizedDescription)
-        }
-
-        // Avoid embedding GPS / location metadata.
-        writer.metadata = []
-        writer.shouldOptimizeForNetworkUse = false
-
-        let compression: [String: Any] = [
-            AVVideoAverageBitRateKey: policy.averageBitRate,
-            AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-        ]
-        let outputSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: policy.width,
-            AVVideoHeightKey: policy.height,
-            AVVideoCompressionPropertiesKey: compression,
-        ]
-
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
-        input.expectsMediaDataInRealTime = false
-
-        guard writer.canAdd(input) else {
-            throw WorkoutVideoExportError.cannotAddVideoInput
-        }
-        writer.add(input)
-
-        let sourceAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            kCVPixelBufferWidthKey as String: policy.width,
-            kCVPixelBufferHeightKey as String: policy.height,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any],
-        ]
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: sourceAttributes
-        )
-
-        guard writer.startWriting() else {
-            let detail = writer.error?.localizedDescription ?? "unknown writer error"
-            throw WorkoutVideoExportError.cannotStartWriting(detail)
-        }
-        writer.startSession(atSourceTime: .zero)
-
-        await progress(WorkoutVideoExportProgress(
-            phase: .encoding,
-            completedFrames: 0,
-            totalFrames: plan.frameCount
-        ))
-
-        let timescale = CMTimeScale(policy.framesPerSecond)
-        let pool = adaptor.pixelBufferPool
-
-        for frameIndex in 0..<plan.frameCount {
-            try Task.checkCancellation()
-
-            try await waitUntilReady(input: input, writer: writer)
-
-            try Task.checkCancellation()
-
-            var pixelBuffer: CVPixelBuffer?
-            let poolStatus: CVReturn
-            if let pool {
-                poolStatus = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
-            } else {
-                poolStatus = CVPixelBufferCreate(
-                    kCFAllocatorDefault,
-                    policy.width,
-                    policy.height,
-                    kCVPixelFormatType_32BGRA,
-                    sourceAttributes as CFDictionary,
-                    &pixelBuffer
-                )
-            }
-            guard poolStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
-                writer.cancelWriting()
-                throw WorkoutVideoExportError.pixelBufferAllocationFailed
-            }
-
-            let sample = sampler.sample(frameIndex: frameIndex, plan: plan)
-            let marker = map.markerPixel(for: sample)
-            let model = WorkoutVideoFrameModel.make(
-                sample: sample,
-                markerPixel: marker,
-                workoutTitle: title,
-                workoutDateText: dateText,
-                appearance: configuration.appearance,
-                routeColorMode: map.effectiveRouteColorMode
-            )
-
-            do {
-                try frameRenderer.render(
-                    frame: model,
-                    staticMap: map.staticMapImage,
-                    into: buffer,
-                    mapSize: mapSize
-                )
-            } catch {
-                writer.cancelWriting()
-                throw WorkoutVideoExportError.frameRenderingFailed(error.localizedDescription)
-            }
-
-            let time = CMTime(value: CMTimeValue(frameIndex), timescale: timescale)
-            guard adaptor.append(buffer, withPresentationTime: time) else {
-                let detail = writer.error?.localizedDescription ?? "append failed"
-                writer.cancelWriting()
-                throw WorkoutVideoExportError.frameAppendFailed(frameIndex, detail)
-            }
-
-            let completed = frameIndex + 1
-            if completed == plan.frameCount
-                || completed % policy.progressUpdateStride == 0 {
-                await progress(WorkoutVideoExportProgress(
-                    phase: .encoding,
-                    completedFrames: completed,
-                    totalFrames: plan.frameCount
-                ))
-            }
-        }
-
-        input.markAsFinished()
-
-        // AVAssetWriter is not Sendable; finishWriting always runs its handler
-        // on a writer-owned queue after the session ends.
-        nonisolated(unsafe) let finishingWriter = writer
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            finishingWriter.finishWriting {
-                switch finishingWriter.status {
-                case .completed:
-                    continuation.resume()
-                case .cancelled:
-                    continuation.resume(throwing: WorkoutVideoExportError.cancelled)
-                case .failed:
-                    let detail = finishingWriter.error?.localizedDescription ?? "finishWriting failed"
-                    continuation.resume(throwing: WorkoutVideoExportError.finalizationFailed(detail))
-                default:
-                    continuation.resume(
-                        throwing: WorkoutVideoExportError.finalizationFailed(
-                            "Unexpected writer status \(finishingWriter.status.rawValue)"
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    /// Cooperative backpressure wait — short sleeps, no full-CPU spin, not on main actor.
-    private func waitUntilReady(input: AVAssetWriterInput, writer: AVAssetWriter) async throws {
-        while !input.isReadyForMoreMediaData {
-            try Task.checkCancellation()
-            if writer.status == .failed {
-                let detail = writer.error?.localizedDescription ?? "writer failed while waiting"
-                throw WorkoutVideoExportError.frameAppendFailed(-1, detail)
-            }
-            if writer.status == .cancelled {
-                throw WorkoutVideoExportError.cancelled
-            }
-            try await Task.sleep(nanoseconds: 2_000_000) // 2 ms
-        }
-        if Task.isCancelled {
-            writer.cancelWriting()
-            throw WorkoutVideoExportError.cancelled
-        }
-    }
-
-    // MARK: - Validation
-
-    private func validateOutput(
-        url: URL,
-        policy: WorkoutVideoExportPolicy,
-        plan: WorkoutVideoFramePlan
-    ) async throws {
-        guard fileManager.fileExists(atPath: url.path) else {
-            throw WorkoutVideoExportError.validationFailed("Temporary output file is missing")
-        }
-        let attrs = try fileManager.attributesOfItem(atPath: url.path)
-        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-        guard size > 0 else {
-            throw WorkoutVideoExportError.validationFailed("Temporary output file is empty")
-        }
-
-        let asset = AVURLAsset(url: url)
-        let videoTracks = try await asset.loadTracks(withMediaType: .video)
-        guard videoTracks.count == 1 else {
-            throw WorkoutVideoExportError.validationFailed(
-                "Expected exactly one video track, found \(videoTracks.count)"
-            )
-        }
-        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        guard audioTracks.isEmpty else {
-            throw WorkoutVideoExportError.validationFailed("Output must not contain an audio track")
-        }
-
-        let duration = try await asset.load(.duration)
-        guard duration.isNumeric, !duration.isIndefinite else {
-            throw WorkoutVideoExportError.validationFailed("Output duration is not finite")
-        }
-        let durationSeconds = CMTimeGetSeconds(duration)
-        let expected = plan.outputDurationSeconds
-        let tolerance = 1.0 / Double(policy.framesPerSecond) + 0.05
-        // Last frame presentation time is (frameCount-1)/fps; container duration
-        // is typically frameCount/fps or one frame shorter depending on encoder.
-        let minDuration = expected - tolerance - (1.0 / Double(policy.framesPerSecond))
-        let maxDuration = expected + tolerance
-        guard durationSeconds >= minDuration, durationSeconds <= maxDuration + 0.25 else {
-            throw WorkoutVideoExportError.validationFailed(
-                String(
-                    format: "Duration %.3fs outside expected range around %.3fs",
-                    durationSeconds,
-                    expected
-                )
-            )
-        }
-
-        let track = videoTracks[0]
-        let naturalSize = try await track.load(.naturalSize)
-        let preferredTransform = try await track.load(.preferredTransform)
-        let transformed = naturalSize.applying(preferredTransform)
-        let width = Int(abs(transformed.width).rounded())
-        let height = Int(abs(transformed.height).rounded())
-        guard width == policy.width, height == policy.height else {
-            throw WorkoutVideoExportError.validationFailed(
-                "Dimensions \(width)×\(height) do not match \(policy.width)×\(policy.height)"
-            )
-        }
-
-        let formatDescriptions = try await track.load(.formatDescriptions)
-        guard !formatDescriptions.isEmpty else {
-            throw WorkoutVideoExportError.validationFailed("Video track has no format description")
-        }
-
-        // Decode first, middle, and last samples when practical.
-        try await decodeSampleFrames(asset: asset, plan: plan)
-    }
-
-    private func decodeSampleFrames(asset: AVURLAsset, plan: WorkoutVideoFramePlan) async throws {
-        guard let reader = try? AVAssetReader(asset: asset) else {
-            // Reader failure is soft when format is otherwise valid.
-            return
-        }
-        let tracks = try await asset.loadTracks(withMediaType: .video)
-        guard let track = tracks.first else { return }
-        let output = AVAssetReaderTrackOutput(
-            track: track,
-            outputSettings: [
-                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            ]
-        )
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { return }
-        reader.add(output)
-        guard reader.startReading() else { return }
-
-        var samplesRead = 0
-        while let sample = output.copyNextSampleBuffer() {
-            samplesRead += 1
-            _ = sample
-            // Bound decode work in CI: stop after a handful of samples.
-            if samplesRead >= 3 { break }
-        }
-        reader.cancelReading()
-        guard samplesRead >= 1 else {
-            throw WorkoutVideoExportError.validationFailed("Could not decode any video samples")
-        }
-    }
-
-    // MARK: - File transaction
-
-    private func makeTemporaryURL(near destination: URL) throws -> URL {
-        let directory = destination.deletingLastPathComponent()
-        let base = directory.path.isEmpty
-            ? fileManager.temporaryDirectory
-            : directory
-        let name = "runplay-video-\(UUID().uuidString).mp4"
-        return base.appendingPathComponent(name, isDirectory: false)
-    }
-
-    private func publish(temporaryURL: URL, to destinationURL: URL) throws {
-        do {
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                _ = try fileManager.replaceItemAt(destinationURL, withItemAt: temporaryURL)
-            } else {
-                try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-            }
-        } catch {
-            throw WorkoutVideoExportError.destinationWriteFailed(error.localizedDescription)
-        }
+        mapPreparation: WorkoutVideoMapPreparation,
+        policy: WorkoutVideoExportPolicy = .poster
+    ) throws -> CGImage {
+        try renderPosterResult(
+            workout: workout,
+            configuration: configuration,
+            mapPreparation: mapPreparation,
+            policy: policy
+        ).image
     }
 
     // MARK: - Route prep (mirrors PNG export ownership)
@@ -620,6 +298,7 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         context: WorkoutAnalysisContext,
         preferredMode: WorkoutRouteColorMode,
         policy: RouteMetricColorPolicy,
+        profileProbe: RouteMetricProfileProbe?,
         profileBuilder: RouteMetricProfileBuilder,
         lineBuilder: RouteMetricMapLineBuilder,
         isCancelled: @Sendable () -> Bool
@@ -638,7 +317,7 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
                 isCancelled: isCancelled
             )
         } else {
-            let probe = try profileBuilder.probe(
+            let probe = try profileProbe ?? profileBuilder.probe(
                 routePoints: workout.routePoints,
                 context: context,
                 policy: policy,

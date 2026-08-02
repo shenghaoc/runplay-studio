@@ -95,6 +95,42 @@ public struct WorkoutTimeline: Sendable {
         case gap(before: Int, after: Int)
     }
 
+    private struct SourceClock {
+        let usesTimestamps: Bool
+        let timestampElapsedTotal: Double
+        let elapsedTotal: Double
+    }
+
+    private static func sourceClock(for routePoints: [RoutePoint]) -> SourceClock {
+        guard let first = routePoints.first, let last = routePoints.last else {
+            return SourceClock(
+                usesTimestamps: true,
+                timestampElapsedTotal: 0,
+                elapsedTotal: 0
+            )
+        }
+
+        let timestampElapsedTotal = nonNegativeFinite(
+            last.timestamp.timeIntervalSince(first.timestamp)
+        )
+        if timestampElapsedTotal > 0 {
+            return SourceClock(
+                usesTimestamps: true,
+                timestampElapsedTotal: timestampElapsedTotal,
+                elapsedTotal: timestampElapsedTotal
+            )
+        }
+
+        let suppliedElapsed = last.elapsedSeconds.isFinite && last.elapsedSeconds > 0
+            ? last.elapsedSeconds
+            : 0
+        return SourceClock(
+            usesTimestamps: false,
+            timestampElapsedTotal: 0,
+            elapsedTotal: suppliedElapsed
+        )
+    }
+
     private let routePoints: [RoutePoint]
     private let elevationProfile: ElevationProfile
     private let elapsedSecondsByPoint: [Double]
@@ -134,8 +170,8 @@ public struct WorkoutTimeline: Sendable {
             return
         }
 
-        let finalTimestampDelta = routePoints.last?.timestamp.timeIntervalSince(first.timestamp) ?? 0
-        let timestampElapsedTotal = Self.nonNegativeFinite(finalTimestampDelta)
+        let sourceClock = Self.sourceClock(for: routePoints)
+        let timestampElapsedTotal = sourceClock.timestampElapsedTotal
 
         // When timestamps do not span (all equal or invalid) but the route
         // points carry a valid elapsedSeconds series, fall back to that series.
@@ -144,14 +180,12 @@ public struct WorkoutTimeline: Sendable {
         let useTimestampElapsed: Bool
         let elapsedTotal: Double
 
-        if timestampElapsedTotal > 0 {
+        if sourceClock.usesTimestamps {
             useTimestampElapsed = true
             elapsedTotal = timestampElapsedTotal
-        } else if let last = routePoints.last,
-                  last.elapsedSeconds.isFinite,
-                  last.elapsedSeconds > 0 {
+        } else if sourceClock.elapsedTotal > 0 {
             useTimestampElapsed = false
-            elapsedTotal = last.elapsedSeconds
+            elapsedTotal = sourceClock.elapsedTotal
         } else {
             useTimestampElapsed = true
             elapsedTotal = 0
@@ -238,6 +272,13 @@ public struct WorkoutTimeline: Sendable {
         totalPausedSeconds = Self.safeDifference(totalElapsedSeconds, totalActiveSeconds)
         startDistanceMeters = distanceValues.first ?? 0
         totalDistanceMeters = distanceValues.last ?? 0
+    }
+
+    /// Canonical elapsed duration without constructing route-sized derived
+    /// arrays. Use this for inexpensive eligibility gates that must agree with
+    /// `WorkoutTimeline` replay semantics.
+    public static func playableElapsedDuration(routePoints: [RoutePoint]) -> Double {
+        sourceClock(for: routePoints).elapsedTotal
     }
 
     /// Active elapsed time at each route point, aligned with the source array.

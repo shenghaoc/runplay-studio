@@ -7,6 +7,11 @@ final class WorkoutVideoFramePlanTests: XCTestCase {
         XCTAssertEqual(try policy.frameCount(for: .fifteenSeconds), 450)
         XCTAssertEqual(try policy.frameCount(for: .thirtySeconds), 900)
         XCTAssertEqual(try policy.frameCount(for: .sixtySeconds), 1_800)
+
+        let unitPolicy = WorkoutVideoExportPolicy.unitTest
+        XCTAssertEqual(try unitPolicy.frameCount(for: .fifteenSeconds), 150)
+        XCTAssertEqual(try unitPolicy.frameCount(for: .thirtySeconds), 300)
+        XCTAssertEqual(try unitPolicy.frameCount(for: .sixtySeconds), 600)
     }
 
     func testFirstMidFinalSourceTimes() throws {
@@ -116,5 +121,21 @@ final class WorkoutVideoFramePlanTests: XCTestCase {
         XCTAssertEqual(plan.presentationTimeValue(atFrameIndex: 0), 0)
         XCTAssertEqual(plan.presentationTimeValue(atFrameIndex: 15), 15)
         XCTAssertEqual(plan.presentationTimeValue(atFrameIndex: 29), 29)
+    }
+
+    func testOperationalErrorsDoNotExposeTemporaryPaths() {
+        let path = "/private/tmp/runplay-video-secret.mp4"
+        let errors: [WorkoutVideoExportError] = [
+            .writerCreationFailed(path),
+            .cannotStartWriting(path),
+            .frameRenderingFailed(path),
+            .frameAppendFailed(0, path),
+            .finalizationFailed(path),
+            .destinationWriteFailed(path),
+        ]
+        for error in errors {
+            XCTAssertFalse(error.localizedDescription.contains(path))
+            XCTAssertFalse(error.localizedDescription.contains("/private/tmp"))
+        }
     }
 }
