@@ -60,7 +60,7 @@ not publication evidence.
 - [x] Inspect dry-run app (`plutil`, `file`, `lipo`, `otool`, `codesign`)
 - [x] ZIP extract + isolated fresh-home launch smoke
 - [ ] Production Developer ID + notarization (owner credentials only — not this PR)
-- [ ] Final exact-head CI on the opened PR
+- [x] Final exact-head CI on the opened PR
 
 ## Explicitly not done in this PR
 
