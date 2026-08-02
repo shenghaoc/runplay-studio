@@ -1,86 +1,76 @@
-#!/bin/bash
-# package-demo.sh — Create a macOS .app bundle from SwiftPM release build.
+#!/usr/bin/env bash
+# package-demo.sh — Unsigned demonstration macOS .app packaging.
 #
 # Usage:
 #   ./scripts/package-demo.sh [output-dir]
 #
 # Produces:
-#   <output-dir>/RunPlayStudio.app   (unsigned, not notarized)
+#   <output-dir>/RunPlayStudio.app
 #   <output-dir>/RunPlayStudio.app.zip
 #
-# Requirements:
-#   - macOS 26.0+
-#   - Xcode 26.4+ (Swift 6.3)
+# Label: Unsigned — demo/testing only
 #
-# Used in CI for demo artifact packaging; can also be run locally.
-# The resulting .app is unsigned and not notarized — for demo/testing only.
+# Never signs, notarizes, or claims Gatekeeper acceptance.
+# Delegates bundle assembly to scripts/assemble-app-bundle.sh.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/release-common.sh
+source "$SCRIPT_DIR/lib/release-common.sh"
+
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${1:-$REPO_ROOT/.build/artifacts}"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 
-APP_NAME="RunPlayStudio"
-APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
+VERSION="$(release_read_version_file "$REPO_ROOT/VERSION")"
+BUILD_NUMBER="${RUNPLAY_DEMO_BUILD_NUMBER:-1}"
+release_validate_build_number "$BUILD_NUMBER"
 
-echo "==> Building release binary..."
-swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors
-BIN_DIR="$(swift build -c release --package-path "$REPO_ROOT" --show-bin-path)"
-BINARY="$BIN_DIR/$APP_NAME"
-RESOURCE_BUNDLE="$BIN_DIR/RunPlayStudio_RunPlayStudio.bundle"
+APP_BUNDLE="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app"
+ZIP_PATH="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app.zip"
+ZIP_TEMP="$OUTPUT_DIR/.$RUNPLAY_PRODUCT_NAME.app.zip.tmp.$$"
 
-if [[ ! -f "$BINARY" ]]; then
-    echo "ERROR: Release binary not found at $BINARY" >&2
-    exit 1
+cleanup() {
+  rm -f "$ZIP_TEMP"
+}
+trap cleanup EXIT
+
+release_log "Packaging unsigned demo artifact (version=$VERSION build=$BUILD_NUMBER)"
+release_log "Label: Unsigned — demo/testing only"
+
+# A failed rebuild must not leave an older zip looking like the result of the
+# current command. The app itself is replaced atomically by the assembler.
+rm -f "$ZIP_PATH" "$ZIP_TEMP"
+
+"$SCRIPT_DIR/assemble-app-bundle.sh" \
+  --repo-root "$REPO_ROOT" \
+  --output "$APP_BUNDLE" \
+  --version "$VERSION" \
+  --build-number "$BUILD_NUMBER"
+
+# Verify the exact app before creating the demo archive.
+if [[ -x "$SCRIPT_DIR/verify-app-bundle.sh" ]]; then
+  "$SCRIPT_DIR/verify-app-bundle.sh" \
+    --app "$APP_BUNDLE" \
+    --expected-signing-mode unsigned \
+    --expected-version "$VERSION" \
+    --expected-build-number "$BUILD_NUMBER" || {
+      release_warn "demo structural verification reported issues (see above)"
+      # Demo path historically shipped unsigned; fail hard on structure/privacy.
+      exit 1
+    }
 fi
 
-echo "==> Creating app bundle at $APP_BUNDLE..."
-rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+release_log "Creating demo zip archive..."
+(
+  cd "$OUTPUT_DIR"
+  ditto -c -k --sequesterRsrc --keepParent "$RUNPLAY_PRODUCT_NAME.app" "$(basename "$ZIP_TEMP")"
+)
+mv "$ZIP_TEMP" "$ZIP_PATH"
 
-cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-
-# Copy the SwiftPM resource bundle where Bundle.module expects it.
-if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
-    echo "ERROR: SwiftPM resource bundle not found at $RESOURCE_BUNDLE" >&2
-    echo "       The app bundle will be incomplete without demo data." >&2
-    exit 1
-fi
-cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
-
-# Write Info.plist
-cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>$APP_NAME</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.shenghaoc.runplay-studio</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>$APP_NAME</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>26.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-</dict>
-</plist>
-PLIST
-
-# Create zip for artifact upload
-echo "==> Creating zip archive..."
-(cd "$OUTPUT_DIR" && ditto -c -k --sequesterRsrc --keepParent "$APP_NAME.app" "$APP_NAME.app.zip")
+release_log "Demo packaging complete"
+release_log "  app: $APP_BUNDLE"
+release_log "  zip: $ZIP_PATH"
+release_log "  status: Unsigned — demo/testing only (not notarized; not Gatekeeper-approved)"

@@ -1,0 +1,346 @@
+name: Release
+
+# Production publication: tag push matching v* (requires release environment secrets).
+# Dry run: workflow_dispatch with dry_run=true (default) — no credentials, no GitHub Release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Ad-hoc dry run (no Developer ID, no notarization, no GitHub Release)"
+        type: boolean
+        default: true
+      build_number:
+        description: "Optional CFBundleVersion override (digits only). Empty uses GITHUB_RUN_NUMBER."
+        type: string
+        required: false
+        default: ""
+      version_override:
+        description: "Optional version override; must exactly equal VERSION file contents when set."
+        type: string
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Separate groups so a branch dry-run never cancels a production tag release.
+  group: ${{ github.event_name == 'push' && format('release-prod-{0}', github.ref) || format('release-dryrun-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  validate-and-package:
+    name: Validate and package
+    runs-on: macos-26
+    # Production tag path uses the `release` environment; every other trigger
+    # resolves to the empty string, which GitHub treats as "no environment".
+    # Verified on an isolated probe branch: an empty name neither fails the run
+    # nor creates an environment named "".
+    environment: ${{ github.event_name == 'push' && 'release' || '' }}
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      is_production: ${{ steps.meta.outputs.is_production }}
+      artifact_dir: release-artifacts
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode 26.4
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+
+      - name: Verify Swift 6.3
+        run: |
+          swift --version
+          swift --version | grep -q 'Swift version 6.3'
+
+      - name: Resolve release metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version_override || '' }}
+          INPUT_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.build_number || '' }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/release-common.sh
+
+          VERSION="$(release_read_version_file VERSION)"
+          if [[ -n "${INPUT_VERSION}" ]]; then
+            release_validate_version "${INPUT_VERSION}"
+            if [[ "${INPUT_VERSION}" != "${VERSION}" ]]; then
+              echo "version_override '${INPUT_VERSION}' does not match VERSION '${VERSION}'" >&2
+              exit 1
+            fi
+          fi
+
+          IS_PRODUCTION=false
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            IS_PRODUCTION=true
+            release_validate_release_tag "${REF_NAME}" "${VERSION}"
+            release_validate_annotated_tag_at_head . "${REF_NAME}"
+            # Official tags must point to a commit already reachable from the
+            # current main branch, never to an unmerged release-only branch.
+            git fetch --no-tags origin main
+            MAIN_SHA="$(git rev-parse FETCH_HEAD)"
+            if ! git merge-base --is-ancestor HEAD "${MAIN_SHA}"; then
+              echo "Tagged commit $(git rev-parse HEAD) is not reachable from origin/main ${MAIN_SHA}" >&2
+              exit 1
+            fi
+            if [[ -n "$(git status --porcelain)" ]]; then
+              echo "working tree became dirty after checkout" >&2
+              exit 1
+            fi
+          else
+            # workflow_dispatch dry-run path (default). Force dry-run when input true.
+            if [[ "${INPUT_DRY_RUN}" != "true" ]]; then
+              echo "workflow_dispatch with dry_run=false is not used for production." >&2
+              echo "Publish only via an annotated tag push matching VERSION (vX.Y.Z)." >&2
+              exit 1
+            fi
+          fi
+
+          if [[ -n "${INPUT_BUILD}" ]]; then
+            BUILD_NUMBER="${INPUT_BUILD}"
+          else
+            BUILD_NUMBER="${RUN_NUMBER}"
+          fi
+          release_validate_build_number "${BUILD_NUMBER}"
+
+          {
+            echo "version=${VERSION}"
+            echo "build_number=${BUILD_NUMBER}"
+            echo "is_production=${IS_PRODUCTION}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${VERSION} build=${BUILD_NUMBER} production=${IS_PRODUCTION}"
+
+      - name: Validate C++ architecture boundaries
+        run: ./scripts/validate-cpp-boundaries.sh
+
+      - name: Build RunPlayEngineCpp (warnings-as-errors)
+        run: >-
+          swift build --target RunPlayEngineCpp
+          -Xcxx -Wall
+          -Xcxx -Wextra
+          -Xcxx -Wpedantic
+          -Xcxx -Wconversion
+          -Xcxx -Wsign-conversion
+          -Xcxx -Wshadow
+
+      - name: Run native C++ engine tests
+        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+
+      - name: Full package tests
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Package tooling syntax
+        run: |
+          bash -n scripts/lib/release-common.sh
+          bash -n scripts/assemble-app-bundle.sh
+          bash -n scripts/package-demo.sh
+          bash -n scripts/package-release.sh
+          bash -n scripts/verify-app-bundle.sh
+          bash -n scripts/test-release-packaging.sh
+          bash -n script/build_and_run.sh
+
+      - name: Ad-hoc dry-run package
+        if: steps.meta.outputs.is_production != 'true'
+        env:
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          ./scripts/package-release.sh \
+            --signing-mode adhoc \
+            --skip-notarization \
+            --dry-run \
+            --build-number "${BUILD_NUMBER}" \
+            --output-dir "${GITHUB_WORKSPACE}/release-artifacts"
+
+      - name: Import Developer ID certificate into temporary keychain
+        if: steps.meta.outputs.is_production == 'true'
+        env:
+          DEVELOPER_ID_CERT_P12_BASE64: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          RELEASE_KEYCHAIN_PASSWORD: ${{ secrets.RELEASE_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Never print secret material. Avoid set -x.
+          if [[ -z "${DEVELOPER_ID_CERT_P12_BASE64}" || -z "${DEVELOPER_ID_CERT_PASSWORD}" ]]; then
+            echo "Missing Developer ID certificate secrets in the release environment" >&2
+            exit 1
+          fi
+          KEYCHAIN_PASSWORD="${RELEASE_KEYCHAIN_PASSWORD:-}"
+          if [[ -z "${KEYCHAIN_PASSWORD}" ]]; then
+            KEYCHAIN_PASSWORD="$(/usr/bin/openssl rand -base64 32)"
+          fi
+          KEYCHAIN_PATH="${RUNNER_TEMP}/runplay-release.keychain-db"
+          CERT_PATH="${RUNNER_TEMP}/runplay-developer-id.p12"
+          printf '%s' "${DEVELOPER_ID_CERT_P12_BASE64}" | base64 --decode > "${CERT_PATH}"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" -k "${KEYCHAIN_PATH}" -P "${DEVELOPER_ID_CERT_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" $(security list-keychains -d user | sed -e s/\"//g)
+          rm -f "${CERT_PATH}"
+          # Verify identity is visible without printing private keys.
+          security find-identity -p codesigning -v "${KEYCHAIN_PATH}"
+
+      - name: Write App Store Connect API key
+        if: steps.meta.outputs.is_production == 'true'
+        env:
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APP_STORE_CONNECT_API_KEY_P8_BASE64}" || -z "${APP_STORE_CONNECT_KEY_ID}" ]]; then
+            echo "Missing App Store Connect API key secrets" >&2
+            exit 1
+          fi
+          KEY_PATH="${RUNNER_TEMP}/runplay-notary-key.p8"
+          printf '%s' "${APP_STORE_CONNECT_API_KEY_P8_BASE64}" | base64 --decode > "${KEY_PATH}"
+          chmod 600 "${KEY_PATH}"
+
+      - name: Production package (Developer ID + notarize + staple)
+        if: steps.meta.outputs.is_production == 'true'
+        env:
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          DEVELOPER_ID_APPLICATION_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DEVELOPER_ID_APPLICATION_IDENTITY}" ]]; then
+            echo "DEVELOPER_ID_APPLICATION_IDENTITY secret is required" >&2
+            exit 1
+          fi
+          if [[ -z "${APP_STORE_CONNECT_KEY_ID}" || -z "${APP_STORE_CONNECT_ISSUER_ID}" ]]; then
+            echo "App Store Connect key id / issuer secrets are required" >&2
+            exit 1
+          fi
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/runplay-notary-key.p8"
+          ./scripts/package-release.sh \
+            --signing-mode developer-id \
+            --signing-identity "${DEVELOPER_ID_APPLICATION_IDENTITY}" \
+            --notarize \
+            --notary-key "${NOTARY_KEY_PATH}" \
+            --notary-key-id "${APP_STORE_CONNECT_KEY_ID}" \
+            --notary-issuer "${APP_STORE_CONNECT_ISSUER_ID}" \
+            --build-number "${BUILD_NUMBER}" \
+            --version "${VERSION}" \
+            --git-tag "${REF_NAME}" \
+            --require-clean-worktree \
+            --output-dir "${GITHUB_WORKSPACE}/release-artifacts"
+
+      - name: Upload packaging artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: RunPlayStudio-${{ steps.meta.outputs.version }}-macos-arm64
+          path: |
+            release-artifacts/*.zip
+            release-artifacts/*-release.json
+            release-artifacts/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+          include-hidden-files: true
+
+      - name: Cleanup temporary credentials
+        if: always() && github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="${RUNNER_TEMP}/runplay-release.keychain-db"
+          CERT_PATH="${RUNNER_TEMP}/runplay-developer-id.p12"
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/runplay-notary-key.p8"
+          rm -f "${CERT_PATH}" "${NOTARY_KEY_PATH}"
+          if [[ -f "${KEYCHAIN_PATH}" ]]; then
+            security delete-keychain "${KEYCHAIN_PATH}" || true
+          fi
+          # Restore default keychain search list best-effort.
+          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db" || true
+
+  publish:
+    name: Publish GitHub Release
+    needs: validate-and-package
+    if: needs.validate-and-package.outputs.is_production == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    environment: release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: RunPlayStudio-${{ needs.validate-and-package.outputs.version }}-macos-arm64
+          path: release-artifacts
+
+      - name: Validate downloaded release set
+        env:
+          VERSION: ${{ needs.validate-and-package.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ZIP="release-artifacts/RunPlayStudio-${VERSION}-macos-arm64.zip"
+          MANIFEST="release-artifacts/RunPlayStudio-${VERSION}-release.json"
+          SUMS="release-artifacts/SHA256SUMS"
+          EXPECTED_COMMIT="$(git rev-parse HEAD)"
+          [[ -f "${ZIP}" && -f "${MANIFEST}" && -f "${SUMS}" ]]
+          (cd release-artifacts && sha256sum -c SHA256SUMS)
+          ZIP_SHA="$(sha256sum "${ZIP}" | awk '{print $1}')"
+          ZIP_SIZE="$(wc -c <"${ZIP}" | tr -d ' ')"
+          jq -e \
+            --arg version "${VERSION}" \
+            --arg tag "${TAG}" \
+            --arg commit "${EXPECTED_COMMIT}" \
+            --arg artifact "$(basename "${ZIP}")" \
+            --arg zip_sha "${ZIP_SHA}" \
+            --argjson zip_size "${ZIP_SIZE}" \
+            '.marketing_version == $version
+             and .git_tag == $tag
+             and .git_commit_sha == $commit
+             and .artifact_filename == $artifact
+             and .artifact_sha256 == $zip_sha
+             and .artifact_size_bytes == $zip_size
+             and .architecture == "arm64"
+             and .universal_binary == false
+             and .signing_mode == "developer-id"
+             and .hardened_runtime == true
+             and .notarization_status == "accepted"
+             and .stapling_status == "stapled"
+             and .gatekeeper_status == "accepted"
+             and .dry_run == false' \
+            "${MANIFEST}" >/dev/null
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate-and-package.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # gh stages uploads through a draft and publishes only after every
+          # supplied asset upload succeeds.
+          NOTES="docs/release-notes/v${VERSION}.md"
+          [[ -f "${NOTES}" ]] || {
+            echo "Missing release notes: ${NOTES}" >&2
+            exit 1
+          }
+          gh release create "${TAG}" \
+            --verify-tag \
+            --title "RunPlay Studio ${VERSION}" \
+            --notes-file "${NOTES}" \
+            release-artifacts/RunPlayStudio-${VERSION}-macos-arm64.zip \
+            release-artifacts/RunPlayStudio-${VERSION}-release.json \
+            release-artifacts/SHA256SUMS

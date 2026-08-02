@@ -246,6 +246,32 @@ remaining active production hotspots before selecting another C++ migration.
 - [x] Route coloring by pace or HR on map polyline (native MapKit; relative workout scale; corrected elevation)
 - [x] Dynamic time warping for comparison (Route-Aware alignment; Distance mode retained)
 
+### Phase: macOS v0.1 release readiness
+Tooling and documentation for a reproducible release pipeline. Items marked
+complete refer to **in-repo pipeline readiness**, not publication of an official
+binary.
+
+- [x] Authoritative `VERSION` file and build-number policy
+- [x] Staged shared app-bundle assembly + Info.plist template (release, demo,
+  and development launcher)
+- [x] Preserve unsigned demo packaging path
+- [x] Release packager (unsigned / ad-hoc / Developer ID CLI)
+- [x] Ad-hoc dry-run path without Apple credentials
+- [x] Signing workflow design (hardened runtime, inside-out, verify)
+- [x] Notarization workflow design (`notarytool`, staple, Gatekeeper, final zip)
+- [x] Versioned artifacts, `SHA256SUMS`, machine-readable release manifest
+- [x] GitHub Actions `release.yml` (dry-run dispatch + annotated-tag production
+  path with `main` ancestry and downloaded-artifact validation)
+- [x] Credential-free packaging tests in PR CI
+- [x] `docs/releasing.md` and v0.1.0 release notes
+- [ ] Production Developer ID signing with owner credentials
+- [ ] Production notarization + staple with owner credentials
+- [ ] Production GitHub Release / official binary publication
+- [ ] Annotated `v0.1.0` tag created by owner
+
+See [docs/releasing.md](releasing.md). This phase does not add iOS, HealthKit,
+Sparkle, DMG, or Intel builds.
+
 
 ## Strava bulk-export import (implemented)
 

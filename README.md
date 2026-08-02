@@ -101,7 +101,26 @@ actually exercised; secondary-display placement requires matching hardware.
 
 See [docs/demo-script.md](docs/demo-script.md) for a 3–5 minute walkthrough using bundled synthetic data.
 
-See [docs/release-notes/v0.1.0-demo.md](docs/release-notes/v0.1.0-demo.md) for the v0.1 demo release.
+See [docs/release-notes/v0.1.0-demo.md](docs/release-notes/v0.1.0-demo.md) for the historical v0.1 demo notes, and
+[docs/release-notes/v0.1.0.md](docs/release-notes/v0.1.0.md) for product v0.1.0 release notes.
+
+---
+
+## Distribution
+
+The **release pipeline is prepared**, but **no official signed release has been
+published yet**. See [docs/releasing.md](docs/releasing.md).
+
+| Channel | Signing | Notarized | Gatekeeper | Use |
+|---------|---------|-----------|------------|-----|
+| **Demo artifact** (`scripts/package-demo.sh`) | Unsigned (demo/testing only; linker ad-hoc may appear on arm64) | No | May block | Evaluation only |
+| **Official release artifact** (tag + `release` environment) | Developer ID Application, hardened runtime | Yes (notarytool + staple) | Assessed | Public distribution when published |
+
+Do **not** treat an unsigned demo zip as an official binary, and do not bypass
+Gatekeeper for anything described as an official release.
+
+Authoritative marketing version: root [`VERSION`](VERSION) file (`0.1.0`).
+Architecture: **Apple Silicon (arm64) only** — not universal.
 
 ---
 
@@ -116,6 +135,8 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 | `swift test` | ✅ Pass |
 | Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
+| Release packaging dry-run tooling | ✅ In-repo (`scripts/package-release.sh`) |
+| Official notarized binary | ⏳ Not yet published |
 | Manual GUI verification | See `docs/manual-testing.md` |
 
 ### Core Testability
