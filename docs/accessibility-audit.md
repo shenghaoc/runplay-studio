@@ -13,7 +13,7 @@ Audited workflows:
 - All Runs search, filters, sort, selection, tags
 - Workout tabs, replay, charts, splits/laps, segments
 - Comparison and Personal Heatmap
-- File import, Strava archive import, metadata editing, PNG export surfaces
+- File import, Strava archive import, metadata editing, PNG and video export surfaces
 - Alerts, confirmations, progress, empty states
 
 ## Command architecture
@@ -169,6 +169,10 @@ Timer ticks never announce.
   actions; cancellation and completion paths are keyboard reachable.
 - PNG export preview remains one coherent accessibility description (existing
   view-model label tests).
+- Video export exposes full duration names, appearance and route-colour labels,
+  one coherent poster summary, frame-count progress, and explicit completed,
+  failed, cancelling, and cancelled status. The native default and cancel
+  actions remain keyboard reachable.
 
 ## Dynamic announcement policy
 
@@ -244,6 +248,16 @@ or repository-approved workouts. The pass covered:
 Destructive deletion was not performed against the local library during this
 pass. Eligibility, confirmation, and failure behavior remain covered by the
 existing store, app-state, and library tests.
+
+### Video export verification boundary (3 August 2026)
+
+The packaged video-export flow was inspected with bundled demo data. The live
+accessibility hierarchy exposed full duration names, labelled appearance and
+route-colour controls, one poster summary, the native save panel, frame-count
+progress, the completion alert, and a settled Cancelled state whose controls
+were re-enabled after Escape. The 25 July spoken VoiceOver and full keyboard
+passes predate video export; no spoken VoiceOver session or complete
+keyboard-only traversal was performed for video export on 3 August.
 
 ## Accessibility Inspector verification
 

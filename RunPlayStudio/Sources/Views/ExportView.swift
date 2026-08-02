@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct ExportView: View {
     let workout: RunWorkout
     let segments: [SegmentHighlight]
+    let analysisContext: WorkoutAnalysisContext?
 
     @AppStorage("routeColorMode") private var storedRouteColorMode: String = WorkoutRouteColorMode.solid.rawValue
     @Environment(\.colorScheme) private var colorScheme
@@ -17,9 +18,16 @@ struct ExportView: View {
     @State private var exportSuccess: String?
     @State private var showingSuccess = false
     @State private var pngViewModel: PNGSummaryExportViewModel?
+    @State private var videoViewModel: WorkoutVideoExportViewModel?
     @State private var announcementPolicy = AccessibilityAnnouncementPolicy()
+    @State private var videoEligibility: VideoEligibilitySnapshot?
 
     private let exportService = ExportService()
+
+    private var canExportVideo: Bool {
+        videoEligibility?.key == videoEligibilityKey
+            && videoEligibility?.assessment.canExport == true
+    }
 
     var body: some View {
         Menu {
@@ -52,6 +60,16 @@ struct ExportView: View {
             }
             .accessibilityLabel("Export summary card as PNG image")
 
+            Button(action: { openVideoSheet() }) {
+                Label("Export Route Replay (MP4)", systemImage: "square.stack.3d.down.right")
+            }
+            .disabled(!canExportVideo)
+            .help(videoExportHelp)
+            .accessibilityLabel("Export route replay as MP4 video")
+            .accessibilityHint(canExportVideo
+                ? "Opens options for offline H.264 route replay export"
+                : videoExportHelp)
+
             Divider()
 
             Button(action: { exportCombinedCSV() }) {
@@ -82,8 +100,52 @@ struct ExportView: View {
                 }
             )
         }
+        .sheet(item: $videoViewModel) { viewModel in
+            WorkoutVideoExportSheet(
+                viewModel: viewModel,
+                onDismiss: {
+                    videoViewModel = nil
+                },
+                onExported: { filename in
+                    showSuccess("Saved to \(filename)", announce: false)
+                }
+            )
+        }
         .blocksBackgroundCommands(
-            showingError || showingSuccess || pngViewModel != nil
+            showingError || showingSuccess || pngViewModel != nil || videoViewModel != nil
+        )
+        .task(id: videoEligibilityKey) {
+            videoEligibility = nil
+            let key = videoEligibilityKey
+            let workout = workout
+            let assessment = await Task.detached(priority: .userInitiated) {
+                WorkoutVideoExportEligibility.assessment(for: workout)
+            }.value
+            guard !Task.isCancelled, key == videoEligibilityKey else { return }
+            videoEligibility = VideoEligibilitySnapshot(
+                key: key,
+                assessment: assessment
+            )
+        }
+    }
+
+    private var videoExportHelp: String {
+        guard videoEligibility?.key == videoEligibilityKey else {
+            return "Checking whether this workout can be exported as video."
+        }
+        if let unavailableHelp = videoEligibility?.assessment.unavailableHelp {
+            return unavailableHelp
+        }
+        return "Export a deterministic offline H.264 MP4 of this route replay."
+    }
+
+    private var videoEligibilityKey: VideoEligibilityKey {
+        VideoEligibilityKey(
+            workoutID: workout.id,
+            normalizationVersion: workout.normalizationVersion,
+            routePointCount: workout.routePoints.count,
+            firstPointID: workout.routePoints.first?.id,
+            lastPointID: workout.routePoints.last?.id
         )
     }
 
@@ -100,6 +162,22 @@ struct ExportView: View {
             workout: workout,
             segments: segments,
             initialConfiguration: configuration
+        )
+    }
+
+    private func openVideoSheet() {
+        guard canExportVideo else { return }
+        let routeMode = WorkoutRouteColorMode(rawValue: storedRouteColorMode) ?? .solid
+        let appearance: PNGSummaryExportAppearance = colorScheme == .dark ? .dark : .light
+        let configuration = WorkoutVideoExportConfiguration(
+            duration: .thirtySeconds,
+            appearance: appearance,
+            routeColorMode: routeMode
+        )
+        videoViewModel = WorkoutVideoExportViewModel(
+            workout: workout,
+            initialConfiguration: configuration,
+            analysisContext: analysisContext
         )
     }
 
@@ -175,12 +253,26 @@ struct ExportView: View {
         announcementPolicy.handle(.exportFailed(message: message))
     }
 
-    private func showSuccess(_ message: String) {
+    private func showSuccess(_ message: String, announce: Bool = true) {
         exportSuccess = message
         showingSuccess = true
+        guard announce else { return }
         let filename = message.hasPrefix("Saved to ")
             ? String(message.dropFirst("Saved to ".count))
             : message
         announcementPolicy.handle(.exportCompleted(name: filename))
     }
+}
+
+private struct VideoEligibilityKey: Hashable {
+    let workoutID: UUID
+    let normalizationVersion: Int
+    let routePointCount: Int
+    let firstPointID: UUID?
+    let lastPointID: UUID?
+}
+
+private struct VideoEligibilitySnapshot {
+    let key: VideoEligibilityKey
+    let assessment: WorkoutVideoExportEligibility.Assessment
 }

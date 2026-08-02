@@ -29,6 +29,7 @@ Accessibility Inspector alone.
 - [ ] Heatmap: filters, Fit Heatmap, summary statistics.
 - [ ] Import file, multi-session FIT review, and Strava archive; cancel sheets with Escape.
 - [ ] PNG export configuration, preview, save/cancel.
+- [ ] Video export configuration, poster preview, 15/30/60 s encode, cancel cleanup.
 - [ ] Help → Keyboard Shortcuts matches live menu chords.
 - [ ] Reduce Motion: map fit jumps without animation; replay still works.
 - [ ] Differentiate Without Colour: comparison shows P/C markers.
@@ -628,6 +629,46 @@ Latest export notes:
 - Manual GUI pass on 2026-07-08 confirmed save-panel export works for JSON,
   CSV, and PNG in a normal desktop session.
 
+
+## Route replay video export (synthetic)
+
+Use **synthetic or bundled demo workouts only**. Do not commit generated MP4s.
+
+1. Open Export → **Export Route Replay (MP4)** on a synthetic workout with GPS.
+2. Confirm poster preview, duration presets (15/30/60), Light/Dark, and route colour.
+3. Export a 15-second MP4; open in QuickTime: 1920×1080, no audio, marker reaches finish, progress 100%.
+4. Cancel a longer export mid-encode; confirm no partial destination file remains.
+5. Confirm live replay position is unchanged after export.
+6. Confirm unavailable metric route colours cannot silently produce a differently labelled video.
+7. Trigger a recoverable encode/save failure; choose **Try Again…** and retry.
+8. Keyboard-navigate the sheet and inspect the poster/status accessibility summaries.
+9. Confirm exactly one completion, failure, or cancellation announcement per outcome.
+
+Automated coverage: `WorkoutVideoFramePlanTests`,
+`WorkoutVideoReplaySamplerTests`, `WorkoutVideoMapPreparerTests`,
+`WorkoutVideoFrameRendererTests`, `WorkoutVideoExporterTests`, and
+`WorkoutVideoExportViewModelTests`.
+
+Focused pre-merge smoke record (2026-08-03): an ad-hoc packaged build was
+launched with a fresh temporary `HOME` and `CFFIXED_USER_HOME`, using only the
+bundled demo workouts. The toolbar command opened the native sheet; all three
+duration segments rendered without clipping and exposed their full 15/30/60
+second names through the accessibility tree. All three duration options were
+selected. Light/Dark appearance and Solid/Pace route-colour changes refreshed
+the poster and its accessibility summary. A 15-second Light/Solid export
+completed through the native save panel and produced one completion alert. It
+played to its final frame in QuickTime with the finish marker, 100% progress,
+and source time 35:42/35:42. `ffprobe` reported one H.264 video stream, 1920×1080,
+30 fps, 450 frames, 15.000000 seconds, BT.709 colour metadata, and no audio
+stream. The live replay remained at 0:00. Escape during a 60-second encode
+settled on the Cancelled state, re-enabled the controls, and left neither the
+chosen destination nor a matching temporary artifact under `/private/tmp`.
+
+The accessibility tree was inspected for the configuration, poster, save,
+progress, completion, and cancellation states. A spoken VoiceOver pass and a
+manually forced encoder failure were not performed. Unavailable-colour
+normalization, retry behavior, and single terminal-announcement behavior are
+covered deterministically by the focused tests above.
 
 ## Map-aware PNG summary export (synthetic)
 

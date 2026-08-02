@@ -193,6 +193,15 @@ a determinate bar is shown only when the total work is actually known.
 ### Empty State
 Native workspace background, hero icon in a material circle, and a reduced-motion-aware entrance. Import CTA uses `.borderedProminent` with large control size.
 
+### Route Replay Video Export
+Fixed **1920×1080** landscape H.264 MP4 at **30 fps** (15 / 30 / 60 second presets).
+Offline renderer: static top-down MapKit basemap, segmented route, start/finish
+markers, moving current-position marker, and a metrics HUD (elapsed, active,
+distance, pace, HR/elevation with truthful unavailable placeholders,
+gap/movement state, progress). Light and
+Dark palettes are explicit. Source elapsed timeline is compressed into the
+selected video length; timing does not depend on machine speed or live replay.
+
 ### PNG Summary Export Card
 Fixed **1200×1600** canvas for offline sharing. Uses **explicit Light and Dark export
 palettes** (never ambient `windowBackgroundColor`). Map-inclusive hierarchy:

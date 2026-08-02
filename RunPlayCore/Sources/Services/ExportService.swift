@@ -340,18 +340,28 @@ public enum ExportFilenameBuilder {
         format: ExportFormat,
         suffix: String? = nil
     ) -> String {
-        let baseName: String
-        if let workout = workout {
-            baseName = sanitize(workout.displayName)
-        } else {
-            baseName = "runplay-export"
-        }
-
+        let baseName = baseName(for: workout)
         let timestamp = formatDateForFilename(Date())
         if let suffix, !suffix.isEmpty {
             return "\(baseName)-\(sanitize(suffix))-\(timestamp).\(format.fileExtension)"
         }
         return "\(baseName)-\(timestamp).\(format.fileExtension)"
+    }
+
+    /// File-backed video export filename (`<workout-base>-replay.mp4`).
+    ///
+    /// Video is not an `ExportFormat` / `ExportResult` case because the MP4 is
+    /// streamed to disk and must not be loaded into `Data`.
+    public static func videoReplayFilename(for workout: RunWorkout?) -> String {
+        let baseName = baseName(for: workout)
+        return "\(baseName)-replay.mp4"
+    }
+
+    private static func baseName(for workout: RunWorkout?) -> String {
+        if let workout {
+            return sanitize(workout.displayName)
+        }
+        return "runplay-export"
     }
 
     private static func sanitize(_ name: String) -> String {

@@ -31,10 +31,26 @@ public struct MapKitWorkoutMapSnapshotter: WorkoutMapSnapshotting, Sendable {
 
         let options = Self.makeSnapshotOptions(request: request, mapRect: mapRect)
 
-        let holder = SnapshotterHolder(options: options)
+        let holder = MapKitSnapshotterSession<WorkoutMapSnapshotResult>(
+            options: options
+        ) { snapshot, isCancelled in
+            let basemap = try WorkoutMapSnapshotImageNormalizer.normalizedCGImage(
+                from: snapshot.image,
+                targetSize: request.size
+            )
+            let converter = ImmediateCoordinateConverter(snapshot: snapshot)
+            return try MapSnapshotOverlayComposer.compose(
+                basemap: basemap,
+                routes: request.routes,
+                markers: request.markers,
+                converter: converter,
+                lineWidth: request.lineWidth,
+                isCancelled: isCancelled
+            )
+        }
         do {
             return try await withTaskCancellationHandler {
-                try await holder.start(request: request)
+                try await holder.start()
             } onCancel: {
                 holder.cancel()
             }
@@ -76,14 +92,23 @@ public struct MapKitWorkoutMapSnapshotter: WorkoutMapSnapshotting, Sendable {
     }
 }
 
-/// Unchecked holder so MapKit snapshotter can participate in cancellation handlers.
-private final class SnapshotterHolder: @unchecked Sendable {
+/// Shared one-shot MapKit snapshot session. It centralizes cancellation and
+/// error normalization while allowing each consumer to synchronously capture
+/// snapshot-coordinate data before MapKit releases its live snapshot object.
+final class MapKitSnapshotterSession<Output: Sendable>: @unchecked Sendable {
+    typealias Transform = @Sendable (
+        MKMapSnapshotter.Snapshot,
+        @escaping @Sendable () -> Bool
+    ) throws -> Output
+
     private let snapshotter: MKMapSnapshotter
+    private let transform: Transform
     private let lock = NSLock()
     private var didCancel = false
 
-    init(options: MKMapSnapshotter.Options) {
+    init(options: MKMapSnapshotter.Options, transform: @escaping Transform) {
         self.snapshotter = MKMapSnapshotter(options: options)
+        self.transform = transform
     }
 
     func cancel() {
@@ -99,7 +124,7 @@ private final class SnapshotterHolder: @unchecked Sendable {
         return didCancel
     }
 
-    func start(request: WorkoutMapSnapshotRequest) async throws -> WorkoutMapSnapshotResult {
+    func start() async throws -> Output {
         try await withCheckedThrowingContinuation { continuation in
             snapshotter.start(with: DispatchQueue.global(qos: .userInitiated)) { snap, error in
                 if self.cancellationRequested() {
@@ -127,18 +152,9 @@ private final class SnapshotterHolder: @unchecked Sendable {
                 }
 
                 do {
-                    let basemap = try WorkoutMapSnapshotImageNormalizer.normalizedCGImage(
-                        from: snap.image,
-                        targetSize: request.size
-                    )
-                    let converter = ImmediateCoordinateConverter(snapshot: snap)
-                    let result = try MapSnapshotOverlayComposer.compose(
-                        basemap: basemap,
-                        routes: request.routes,
-                        markers: request.markers,
-                        converter: converter,
-                        lineWidth: request.lineWidth,
-                        isCancelled: { self.cancellationRequested() }
+                    let result = try self.transform(
+                        snap,
+                        { self.cancellationRequested() }
                     )
                     continuation.resume(returning: result)
                 } catch is CancellationError {
@@ -184,13 +200,14 @@ enum WorkoutMapSnapshotImageNormalizer {
             return source
         }
 
-        guard let context = CGContext(
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
             data: nil,
             width: width,
             height: height,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
+            space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
             throw WorkoutMapSnapshotError.compositionFailed("Could not normalize basemap pixels")
@@ -206,7 +223,7 @@ enum WorkoutMapSnapshotImageNormalizer {
 }
 
 /// Converts coordinates using a live snapshot; used only on the snapshot queue.
-private struct ImmediateCoordinateConverter: MapCoordinateConverting, @unchecked Sendable {
+struct ImmediateCoordinateConverter: MapCoordinateConverting, @unchecked Sendable {
     let snapshot: MKMapSnapshotter.Snapshot
 
     func point(for coordinate: RouteMapCoordinate) -> CGPoint {

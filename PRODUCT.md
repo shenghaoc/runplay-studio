@@ -12,7 +12,7 @@ Context: post-run analysis at a desk, not mid-activity. The user has just finish
 
 ## Product Purpose
 
-RunPlay Studio is a local-first desktop replay and analysis studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files, from a multi-session FIT container, or from a local Strava bulk-export ZIP and explore them with synchronized 2D/3D maps, charts, split analysis, and route comparison. Export summaries as JSON, CSV, or configurable PNG summary cards (optional static Apple Maps region, Light/Dark appearance, and metric route coloring) at a fixed 1200×1600 pixel size.
+RunPlay Studio is a local-first desktop replay and analysis studio for GPS running workouts. Import completed runs from GPX, TCX, FIT, or JSON files, from a multi-session FIT container, or from a local Strava bulk-export ZIP and explore them with synchronized 2D/3D maps, charts, split analysis, and route comparison. Export summaries as JSON, CSV, configurable PNG summary cards (optional static Apple Maps region, Light/Dark appearance, and metric route coloring) at a fixed 1200×1600 pixel size, or offline deterministic H.264 MP4 route-replay videos (1920×1080, 30 fps, 15/30/60 second presets) that compress the full source elapsed timeline without screen capture.
 
 Success means: a runner opens the app, imports a workout, and within seconds sees their route on a map with meaningful metrics — no accounts, no cloud, no friction.
 

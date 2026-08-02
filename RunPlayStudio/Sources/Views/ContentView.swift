@@ -157,7 +157,8 @@ struct ContentView: View {
 
                                     ExportView(
                                         workout: workout,
-                                        segments: appState.detectedSegments
+                                        segments: appState.detectedSegments,
+                                        analysisContext: appState.cachedAnalysisContext(for: workout)
                                     )
                                 }
                             }
