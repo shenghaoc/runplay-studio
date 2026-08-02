@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# assemble-app-bundle.sh — Deterministic macOS .app assembly from a SwiftPM
-# release build. Does not sign, zip, notarize, or publish.
+# assemble-app-bundle.sh — Staged, repeatable macOS .app assembly from a
+# SwiftPM build output. Does not sign, zip, notarize, or publish.
 #
 # Usage:
 #   ./scripts/assemble-app-bundle.sh \
@@ -8,6 +8,7 @@
 #     [--repo-root <path>] \
 #     [--version <x.y.z>] \
 #     [--build-number <positive-int>] \
+#     [--bundle-identifier <reverse-dns-id>] \
 #     [--bin-dir <swiftpm-bin-path>] \
 #     [--skip-build]
 #
@@ -27,8 +28,17 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_APP=""
 VERSION=""
 BUILD_NUMBER="1"
+BUNDLE_IDENTIFIER="$RUNPLAY_BUNDLE_IDENTIFIER"
 BIN_DIR=""
 SKIP_BUILD=0
+ASSEMBLY_STAGE=""
+
+cleanup() {
+  if [[ -n "$ASSEMBLY_STAGE" && -d "$ASSEMBLY_STAGE" ]]; then
+    rm -rf "$ASSEMBLY_STAGE"
+  fi
+}
+trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
@@ -41,7 +51,8 @@ Options:
   --repo-root <path>       Repository root (default: parent of scripts/)
   --version <x.y.z>        Marketing version (default: contents of VERSION)
   --build-number <int>     CFBundleVersion positive integer (default: 1)
-  --bin-dir <path>         Existing SwiftPM release bin directory
+  --bundle-identifier <id> Bundle identifier (default: distribution identity)
+  --bin-dir <path>         Existing SwiftPM bin directory
   --skip-build             Do not run swift build (requires --bin-dir)
   -h, --help               Show this help
 
@@ -65,6 +76,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --build-number)
       BUILD_NUMBER="${2:-}"
+      shift 2
+      ;;
+    --bundle-identifier)
+      BUNDLE_IDENTIFIER="${2:-}"
       shift 2
       ;;
     --bin-dir)
@@ -102,6 +117,7 @@ else
   release_validate_version "$VERSION"
 fi
 release_validate_build_number "$BUILD_NUMBER"
+release_validate_bundle_identifier "$BUNDLE_IDENTIFIER"
 
 [[ -f "$TEMPLATE" ]] || release_die "missing Info.plist template: $TEMPLATE"
 
@@ -110,6 +126,9 @@ OUTPUT_PARENT="$(dirname "$OUTPUT_APP")"
 mkdir -p "$OUTPUT_PARENT"
 OUTPUT_PARENT="$(cd "$OUTPUT_PARENT" && pwd)"
 OUTPUT_APP="$OUTPUT_PARENT/$(basename "$OUTPUT_APP")"
+if [[ "$(basename "$OUTPUT_APP")" != "$RUNPLAY_PRODUCT_NAME.app" ]]; then
+  release_die "--output must end in $RUNPLAY_PRODUCT_NAME.app (got $OUTPUT_APP)"
+fi
 
 if [[ "$SKIP_BUILD" -eq 1 ]]; then
   [[ -n "$BIN_DIR" ]] || release_die "--skip-build requires --bin-dir"
@@ -121,6 +140,7 @@ else
   fi
 fi
 
+[[ -d "$BIN_DIR" ]] || release_die "SwiftPM bin directory not found: $BIN_DIR"
 BIN_DIR="$(cd "$BIN_DIR" && pwd)"
 BINARY="$BIN_DIR/$RUNPLAY_EXECUTABLE_NAME"
 RESOURCE_BUNDLE="$BIN_DIR/$RUNPLAY_RESOURCE_BUNDLE_NAME"
@@ -137,29 +157,37 @@ if [[ -f "$BIN_DIR/${RUNPLAY_EXECUTABLE_NAME}.debug.dylib" ]]; then
   release_warn "debug dylib present next to release binary; not packaging it"
 fi
 
+ASSEMBLY_STAGE="$(mktemp -d "$OUTPUT_PARENT/.runplay-assemble.XXXXXX")"
+STAGED_APP="$ASSEMBLY_STAGE/$RUNPLAY_PRODUCT_NAME.app"
+
 release_log "Assembling app bundle at $OUTPUT_APP"
-rm -rf "$OUTPUT_APP"
-mkdir -p "$OUTPUT_APP/Contents/MacOS" "$OUTPUT_APP/Contents/Resources"
+mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 
 # Install executable with permissions preserved.
-cp "$BINARY" "$OUTPUT_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
-chmod +x "$OUTPUT_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
+cp "$BINARY" "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
+chmod +x "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
 
 # Install SwiftPM resource bundle where Bundle.module expects it.
-cp -R "$RESOURCE_BUNDLE" "$OUTPUT_APP/Contents/Resources/"
+cp -R "$RESOURCE_BUNDLE" "$STAGED_APP/Contents/Resources/"
 
 # Generate Info.plist from template.
 release_generate_info_plist \
   "$TEMPLATE" \
-  "$OUTPUT_APP/Contents/Info.plist" \
+  "$STAGED_APP/Contents/Info.plist" \
   "$VERSION" \
-  "$BUILD_NUMBER"
+  "$BUILD_NUMBER" \
+  "$BUNDLE_IDENTIFIER"
 
 # Reject empty MacOS directory outcomes.
-if [[ ! -x "$OUTPUT_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" ]]; then
+if [[ ! -x "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" ]]; then
   release_die "executable missing or not executable after assembly"
 fi
 
+# Replace only the validated product bundle after the staged assembly is
+# complete, so a failed copy or plist generation cannot leave a partial app.
+rm -rf "$OUTPUT_APP"
+mv "$STAGED_APP" "$OUTPUT_APP"
+
 release_log "Assembled unsigned app bundle: $OUTPUT_APP"
-release_log "  version=$VERSION build=$BUILD_NUMBER id=$RUNPLAY_BUNDLE_IDENTIFIER"
+release_log "  version=$VERSION build=$BUILD_NUMBER id=$BUNDLE_IDENTIFIER"
 printf '%s\n' "$OUTPUT_APP"

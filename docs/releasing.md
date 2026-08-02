@@ -44,7 +44,8 @@ Rules:
 - Packaging scripts, workflows, and release notes read this file
 - Do not hardcode the marketing version in unrelated sources
 
-Production Git tags **must** be:
+Production Git tags **must** be annotated, point at the commit being packaged,
+and reference a commit already reachable from `main`:
 
 ```text
 v<contents of VERSION>
@@ -56,7 +57,9 @@ The release workflow fails before signing when:
 
 - the tag is malformed;
 - the tag does not match `VERSION`;
+- the tag is lightweight rather than annotated;
 - `HEAD` is not the tagged commit;
+- the tagged commit is not reachable from `main`;
 - the worktree is dirty;
 - generated bundle metadata disagrees with `VERSION`.
 
@@ -78,7 +81,7 @@ Marketing version (`CFBundleShortVersionString`) comes only from `VERSION`.
 | Script | Role |
 |--------|------|
 | `scripts/lib/release-common.sh` | Shared validation, plist generation, checksums, signing helpers |
-| `scripts/assemble-app-bundle.sh` | Deterministic `.app` assembly (no sign / zip / publish) |
+| `scripts/assemble-app-bundle.sh` | Staged, repeatable `.app` assembly (no sign / zip / publish) |
 | `scripts/package-demo.sh` | Unsigned demo `.app` + `RunPlayStudio.app.zip` |
 | `scripts/package-release.sh` | Versioned release packaging (unsigned / adhoc / developer-id) |
 | `scripts/verify-app-bundle.sh` | Non-mutating structural + signing verification |
@@ -94,10 +97,17 @@ Generated fields include bundle identity, versions, minimum OS, high-resolution
 capability, and `LSApplicationCategoryType = public.app-category.healthcare-fitness`
 (fitness/workout analysis product).
 
-**Bundle identifier (distribution):** `com.shenghaoc.runplay-studio`  
+**Bundle identifier (distribution):** `com.shenghaoc.runplay-studio`
 Preserved from the historical demo packager. Do not change casually — it affects
 trust records and future upgrades. Application Support storage uses the fixed
 folder name `RunPlayStudio`, not a reverse-DNS derivation from this ID.
+
+The assembler is also reused by `script/build_and_run.sh`, with that launcher's
+intentional development bundle identifier supplied explicitly. There is one
+bundle-structure implementation, not separate release and development copies.
+"Repeatable" here means one validated process and deterministic logical
+metadata/naming; signed archives are not claimed to be byte-for-byte
+reproducible because build timestamps and secure signing timestamps vary.
 
 ---
 
@@ -135,6 +145,11 @@ the executable. That is still **not** a public distribution signature.
 ```
 
 Label: **Ad hoc signed — not trusted for public distribution**
+
+Unsigned, ad-hoc, and deliberately non-notarized output must pass `--dry-run`.
+The CLI refuses to emit an official-looking `"dry_run": false` manifest for
+those modes. A non-dry production invocation additionally requires Developer ID
+signing, notarization, an annotated tag at `HEAD`, and a clean worktree.
 
 Produces versioned artifacts:
 
@@ -201,19 +216,22 @@ Preferred CI authentication: App Store Connect API key (`.p8` + key id + issuer)
 
 Sequence:
 
-1. Assemble app  
-2. Developer ID sign nested code, then outer bundle  
-3. Verify signatures  
-4. Create a **temporary** notarization zip with `ditto`  
-5. `xcrun notarytool submit --wait`  
-6. Require accepted status  
-7. Staple ticket; `stapler validate`  
-8. `spctl --assess --type execute`  
-9. Create **final** distribution zip from the stapled app  
-10. Generate `SHA256SUMS` and release manifest  
+1. Assemble app
+2. Developer ID sign nested code, then outer bundle
+3. Verify signatures
+4. Create a **temporary** notarization zip with `ditto`
+5. `xcrun notarytool submit --wait`
+6. Require accepted status
+7. Staple ticket; `stapler validate`
+8. `spctl --assess --type execute`
+9. Create **final** distribution zip from the stapled app
+10. Generate `SHA256SUMS` and release manifest
 
-Never distribute the pre-stapling zip as the final artifact.  
+Never distribute the pre-stapling zip as the final artifact.
 On failure: fail the job, do not publish, do not mark the manifest notarized.
+The app, zip, manifest, and checksum set are staged inside the output directory
+and replace the public output paths only after verification and ZIP extraction
+checks pass; `SHA256SUMS` moves last as the completion marker.
 
 ---
 
@@ -221,12 +239,13 @@ On failure: fail the job, do not publish, do not mark the manifest notarized.
 
 Production jobs:
 
-1. Create a temporary keychain under `$RUNNER_TEMP`  
-2. Import the Developer ID `.p12`  
-3. Configure key partition list for `codesign`  
-4. Prefer that keychain for the job  
-5. Sign / notarize  
-6. **Always** delete the keychain and API key file in cleanup  
+1. Create a temporary keychain under `$RUNNER_TEMP`
+2. Import the Developer ID `.p12`
+3. Configure key partition list for `codesign`
+4. Prefer that keychain for the job
+5. Sign / notarize
+6. **Always** delete the decoded certificate, keychain, and API key file in
+   cleanup, including when setup failed partway through
 
 Do not import release certificates into the permanent login keychain.
 
@@ -239,7 +258,7 @@ Do not import release certificates into the permanent login keychain.
 | Trigger | Behavior |
 |---------|----------|
 | `workflow_dispatch` with `dry_run=true` (default) | Tests + ad-hoc package + artifact upload; **no** GitHub Release; **no** Apple credentials |
-| `push` of tag `v*` | Production path: validate tag↔VERSION, Developer ID, notarize, staple, Gatekeeper, then `gh release create` |
+| `push` of annotated tag `v*` | Production path: validate tag↔VERSION↔HEAD and `main` ancestry, Developer ID, notarize, staple, Gatekeeper, then `gh release create --verify-tag` |
 
 Permissions:
 
@@ -255,10 +274,10 @@ Concurrency:
 
 Configure GitHub Environment protections (recommended):
 
-- Required reviewers  
-- Restricted to release tags / protected refs  
-- Environment secrets only  
-- Optional wait timer  
+- Required reviewers
+- Restricted to release tags / protected refs
+- Environment secrets only
+- Optional wait timer
 
 ### Secrets (names)
 
@@ -303,6 +322,9 @@ Statuses are written from **actual command results**. Requesting notarization
 does not set `"notarization_status": "accepted"`.
 
 Dry runs set `"dry_run": true`. Production publish refuses a dry-run manifest.
+The publish job downloads the artifact set and revalidates `SHA256SUMS`, version,
+tag, commit, artifact hash and size, architecture, signing mode, hardened
+runtime, and notarization/stapling/Gatekeeper states before release creation.
 
 ---
 
@@ -371,19 +393,19 @@ Ad-hoc dry-run artifacts are **not** expected to pass Gatekeeper.
 
 ## Troubleshooting notarization
 
-- Confirm Developer ID Application (not Mac Development) identity  
-- Confirm hardened runtime and secure timestamp  
-- Inspect notarytool log (sanitized; no secrets)  
-- Ensure no unexpected nested unsigned Mach-O code  
-- Retry only after fixing the root cause — do not publish failed notarization  
+- Confirm Developer ID Application (not Mac Development) identity
+- Confirm hardened runtime and secure timestamp
+- Inspect notarytool log (sanitized; no secrets)
+- Ensure no unexpected nested unsigned Mach-O code
+- Retry only after fixing the root cause — do not publish failed notarization
 
 ---
 
 ## Out of scope for this pipeline
 
-- Mac App Store / TestFlight / Sparkle auto-update  
-- DMG installer  
-- Intel / universal binaries  
-- iOS / HealthKit  
-- Sandbox migration  
-- Telemetry, accounts, cloud backends  
+- Mac App Store / TestFlight / Sparkle auto-update
+- DMG installer
+- Intel / universal binaries
+- iOS / HealthKit
+- Sandbox migration
+- Telemetry, accounts, cloud backends

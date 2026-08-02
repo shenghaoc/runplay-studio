@@ -18,7 +18,9 @@ RUNPLAY_BUNDLE_IDENTIFIER="com.shenghaoc.runplay-studio"
 RUNPLAY_MINIMUM_SYSTEM_VERSION="26.0"
 RUNPLAY_SUPPORTED_ARCHITECTURE="arm64"
 RUNPLAY_EXECUTABLE_NAME="RunPlayStudio"
+# shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
 RUNPLAY_RESOURCE_BUNDLE_NAME="RunPlayStudio_RunPlayStudio.bundle"
+# shellcheck disable=SC2034 # sourced by the release-manifest writer
 RUNPLAY_CPP_STANDARD="C++23"
 
 # Max practical CFBundleVersion digit length (prevents absurd values).
@@ -143,6 +145,38 @@ release_validate_architecture() {
   fi
 }
 
+release_validate_bundle_identifier() {
+  local identifier="${1:-}"
+  if [[ -z "$identifier" ]]; then
+    release_die "bundle identifier must not be blank"
+  fi
+  if [[ "$identifier" != *.* ]] || [[ "$identifier" == *..* ]] || \
+      [[ ! "$identifier" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$ ]]; then
+    release_die "invalid bundle identifier: '$identifier'"
+  fi
+}
+
+# Validate that a production tag is an annotated tag whose peeled commit is
+# exactly the current checkout. The tag's version syntax is validated
+# separately by release_validate_release_tag.
+release_validate_annotated_tag_at_head() {
+  local repo_root="${1:?}"
+  local tag="${2:?}"
+  local tag_ref="refs/tags/$tag"
+  local object_type
+  object_type="$(git -C "$repo_root" cat-file -t "$tag_ref" 2>/dev/null || true)"
+  if [[ "$object_type" != "tag" ]]; then
+    release_die "release tag '$tag' must exist locally as an annotated tag"
+  fi
+
+  local tag_commit head_commit
+  tag_commit="$(git -C "$repo_root" rev-list -n 1 "$tag_ref")"
+  head_commit="$(git -C "$repo_root" rev-parse HEAD)"
+  if [[ "$tag_commit" != "$head_commit" ]]; then
+    release_die "release tag '$tag' points to $tag_commit, not current HEAD $head_commit"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Paths / artifacts
 # ---------------------------------------------------------------------------
@@ -177,16 +211,18 @@ release_generate_info_plist() {
   local output="${2:?}"
   local version="${3:?}"
   local build_number="${4:?}"
+  local bundle_identifier="${5:-$RUNPLAY_BUNDLE_IDENTIFIER}"
 
   release_validate_version "$version"
   release_validate_build_number "$build_number"
+  release_validate_bundle_identifier "$bundle_identifier"
   [[ -f "$template" ]] || release_die "Info.plist template not found: $template"
 
   # Use sed with a delimiter unlikely in values.
   sed \
     -e "s|@CFBundleDisplayName@|${RUNPLAY_PRODUCT_DISPLAY_NAME}|g" \
     -e "s|@CFBundleExecutable@|${RUNPLAY_EXECUTABLE_NAME}|g" \
-    -e "s|@CFBundleIdentifier@|${RUNPLAY_BUNDLE_IDENTIFIER}|g" \
+    -e "s|@CFBundleIdentifier@|${bundle_identifier}|g" \
     -e "s|@CFBundleName@|${RUNPLAY_PRODUCT_NAME}|g" \
     -e "s|@CFBundleShortVersionString@|${version}|g" \
     -e "s|@CFBundleVersion@|${build_number}|g" \
@@ -234,7 +270,7 @@ release_validate_sha256sums() {
   dir="$(cd "$(dirname "$sums_file")" && pwd)"
   [[ -f "$sums_file" ]] || release_die "SHA256SUMS not found: $sums_file"
   (
-    cd "$dir"
+    cd "$dir" || release_die "cannot enter checksum directory: $dir"
     if command -v shasum >/dev/null 2>&1; then
       shasum -a 256 -c "$(basename "$sums_file")"
     else

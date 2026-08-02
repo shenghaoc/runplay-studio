@@ -44,18 +44,35 @@ assert_fail() {
   fi
 }
 
-run_capture() {
-  # Run command; return exit status; capture stdout+stderr to file $1
-  local out="$1"
-  shift
+assert_fail_contains() {
+  local name="$1"
+  local expected="$2"
+  shift 2
+  local output="$TMP_ROOT/assert-fail-contains.$PASS.$FAIL.log"
   set +e
-  "$@" >"$out" 2>&1
+  "$@" >"$output" 2>&1
   local st=$?
   set -e
-  return $st
+  if [[ $st -ne 0 ]] && grep -F -q -- "$expected" "$output"; then
+    printf 'PASS: %s (failed with expected diagnostic)\n' "$name"
+    PASS=$((PASS + 1))
+  else
+    printf 'FAIL: %s (status=%s; expected diagnostic: %s)\n' "$name" "$st" "$expected" >&2
+    cat "$output" >&2 || true
+    FAIL=$((FAIL + 1))
+  fi
 }
 
 release_log "Release packaging tests (tmp=$TMP_ROOT)"
+
+if grep -F -q 'scripts/assemble-app-bundle.sh' "$REPO_ROOT/script/build_and_run.sh" && \
+    ! grep -F -q '<plist' "$REPO_ROOT/script/build_and_run.sh"; then
+  printf 'PASS: development launcher reuses shared bundle assembler\n'
+  PASS=$((PASS + 1))
+else
+  printf 'FAIL: development launcher duplicated bundle assembly\n' >&2
+  FAIL=$((FAIL + 1))
+fi
 
 # ---------------------------------------------------------------------------
 # Unit: version validation
@@ -95,6 +112,27 @@ assert_ok "tag matches version" bash -c "source '$SCRIPT_DIR/lib/release-common.
 assert_fail "tag mismatch" bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_release_tag 'v0.1.1' '0.1.0'"
 assert_fail "malformed tag" bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_release_tag '0.1.0' '0.1.0'"
 assert_fail "tag with beta" bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_release_tag 'v0.1.0-beta' '0.1.0'"
+
+TAG_REPO="$TMP_ROOT/tag-repo"
+mkdir -p "$TAG_REPO"
+git -C "$TAG_REPO" init -q
+git -C "$TAG_REPO" config user.name "RunPlay Packaging Test"
+git -C "$TAG_REPO" config user.email "packaging-test@example.invalid"
+printf 'first\n' >"$TAG_REPO/payload"
+git -C "$TAG_REPO" add payload
+git -C "$TAG_REPO" commit -q -m first
+git -C "$TAG_REPO" tag v0.1.0
+assert_fail "reject lightweight production tag" \
+  bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_annotated_tag_at_head '$TAG_REPO' 'v0.1.0'"
+git -C "$TAG_REPO" tag -d v0.1.0 >/dev/null
+git -C "$TAG_REPO" tag -a v0.1.0 -m "RunPlay Studio 0.1.0"
+assert_ok "accept annotated production tag at HEAD" \
+  bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_annotated_tag_at_head '$TAG_REPO' 'v0.1.0'"
+printf 'second\n' >>"$TAG_REPO/payload"
+git -C "$TAG_REPO" add payload
+git -C "$TAG_REPO" commit -q -m second
+assert_fail "reject annotated tag away from HEAD" \
+  bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_annotated_tag_at_head '$TAG_REPO' 'v0.1.0'"
 
 # ---------------------------------------------------------------------------
 # Unit: architecture + naming
@@ -138,6 +176,19 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+DEV_PLIST_OUT="$TMP_ROOT/Info-dev.plist"
+bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_generate_info_plist '$REPO_ROOT/Packaging/RunPlayStudio-Info.plist.in' '$DEV_PLIST_OUT' '0.1.0' '1' 'com.shenghaoc.RunPlayStudio'"
+DEV_BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEV_PLIST_OUT")"
+if [[ "$DEV_BID" == "com.shenghaoc.RunPlayStudio" ]]; then
+  printf 'PASS: explicit development bundle identifier override\n'
+  PASS=$((PASS + 1))
+else
+  printf 'FAIL: development bundle identifier override (got %s)\n' "$DEV_BID" >&2
+  FAIL=$((FAIL + 1))
+fi
+assert_fail "reject malformed bundle identifier" \
+  bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_validate_bundle_identifier '../bad'"
+
 # ---------------------------------------------------------------------------
 # CLI: package-release argument validation (no full build)
 # ---------------------------------------------------------------------------
@@ -159,12 +210,37 @@ assert_fail "unsupported arch rejected" \
 assert_fail "bad build number rejected" \
   "$SCRIPT_DIR/package-release.sh" --signing-mode adhoc --build-number '0' --skip-notarization --output-dir "$TMP_ROOT/out6"
 
+assert_fail_contains "explicit notarization choice required" \
+  "choose exactly one of --notarize or --skip-notarization" \
+  "$SCRIPT_DIR/package-release.sh" --signing-mode adhoc --dry-run --output-dir "$TMP_ROOT/out7"
+
+assert_fail_contains "ad-hoc output must be a dry run" \
+  "unsigned and ad-hoc packages require --dry-run" \
+  "$SCRIPT_DIR/package-release.sh" --signing-mode adhoc --skip-notarization --output-dir "$TMP_ROOT/out8"
+
+assert_fail_contains "non-notarized Developer ID output must be a dry run" \
+  "a non-notarized package requires --dry-run" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode developer-id \
+    --signing-identity "Developer ID Application: Test" \
+    --skip-notarization \
+    --output-dir "$TMP_ROOT/out9"
+
+assert_fail_contains "assembler rejects non-product output basename" \
+  "--output must end in RunPlayStudio.app" \
+  "$SCRIPT_DIR/assemble-app-bundle.sh" \
+    --output "$TMP_ROOT/not-the-product.app" \
+    --skip-build \
+    --bin-dir "$TMP_ROOT/empty-bin" \
+    --version 0.1.0 \
+    --build-number 1
+
 # ---------------------------------------------------------------------------
 # Integration: assemble with mock missing inputs
 # ---------------------------------------------------------------------------
 assert_fail "assemble missing binary fails" \
   "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/missing.app" \
+    --output "$TMP_ROOT/missing/RunPlayStudio.app" \
     --skip-build \
     --bin-dir "$TMP_ROOT/empty-bin" \
     --version 0.1.0 \
@@ -173,7 +249,7 @@ assert_fail "assemble missing binary fails" \
 mkdir -p "$TMP_ROOT/empty-bin"
 assert_fail "assemble empty bin fails" \
   "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/missing2.app" \
+    --output "$TMP_ROOT/missing2/RunPlayStudio.app" \
     --skip-build \
     --bin-dir "$TMP_ROOT/empty-bin" \
     --version 0.1.0 \
@@ -202,11 +278,55 @@ mkdir -p "$FAKE_BIN"
 cp "$TEST_BIN/$RUNPLAY_EXECUTABLE_NAME" "$FAKE_BIN/"
 assert_fail "assemble missing resource bundle fails" \
   "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/nores.app" \
+    --output "$TMP_ROOT/nores/RunPlayStudio.app" \
     --skip-build \
     --bin-dir "$FAKE_BIN" \
     --version 0.1.0 \
     --build-number 1
+
+PRESERVED_APP="$TMP_ROOT/preserved/RunPlayStudio.app"
+mkdir -p "$PRESERVED_APP"
+printf 'known-good\n' >"$PRESERVED_APP/marker"
+assert_fail "failed assembly leaves prior complete app untouched" \
+  "$SCRIPT_DIR/assemble-app-bundle.sh" \
+    --output "$PRESERVED_APP" \
+    --skip-build \
+    --bin-dir "$FAKE_BIN" \
+    --version 0.1.0 \
+    --build-number 1
+if [[ "$(cat "$PRESERVED_APP/marker")" == "known-good" ]]; then
+  printf 'PASS: staged assembly preserves prior app on failure\n'
+  PASS=$((PASS + 1))
+else
+  printf 'FAIL: failed assembly replaced prior app\n' >&2
+  FAIL=$((FAIL + 1))
+fi
+
+PRESERVED_SET="$TMP_ROOT/preserved-release-set"
+mkdir -p "$PRESERVED_SET/RunPlayStudio.app"
+printf 'old-app\n' >"$PRESERVED_SET/RunPlayStudio.app/marker"
+printf 'old-zip\n' >"$PRESERVED_SET/RunPlayStudio-0.1.0-macos-arm64.zip"
+printf 'old-manifest\n' >"$PRESERVED_SET/RunPlayStudio-0.1.0-release.json"
+printf 'old-sums\n' >"$PRESERVED_SET/SHA256SUMS"
+assert_fail "failed package run does not publish staged output" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode adhoc \
+    --skip-notarization \
+    --dry-run \
+    --output-dir "$PRESERVED_SET" \
+    --skip-build \
+    --bin-dir "$FAKE_BIN"
+if [[ "$(cat "$PRESERVED_SET/RunPlayStudio.app/marker")" == "old-app" ]] && \
+    [[ "$(cat "$PRESERVED_SET/RunPlayStudio-0.1.0-macos-arm64.zip")" == "old-zip" ]] && \
+    [[ "$(cat "$PRESERVED_SET/RunPlayStudio-0.1.0-release.json")" == "old-manifest" ]] && \
+    [[ "$(cat "$PRESERVED_SET/SHA256SUMS")" == "old-sums" ]] && \
+    ! find "$PRESERVED_SET" -maxdepth 1 -name '.runplay-release-stage.*' | grep -q .; then
+  printf 'PASS: staged package failure preserves the prior complete artifact set\n'
+  PASS=$((PASS + 1))
+else
+  printf 'FAIL: failed package run changed the prior artifact set or leaked staging output\n' >&2
+  FAIL=$((FAIL + 1))
+fi
 
 # Full adhoc package-release
 RELEASE_OUT="$INTEGRATION_OUT/release"
@@ -321,6 +441,30 @@ if [[ -d "$APP" ]]; then
     printf 'FAIL: verify-app-bundle adhoc\n' >&2
     FAIL=$((FAIL + 1))
   fi
+
+  ENTITLED_APP="$TMP_ROOT/entitled/RunPlayStudio.app"
+  mkdir -p "$(dirname "$ENTITLED_APP")"
+  cp -R "$APP" "$ENTITLED_APP"
+  ENTITLEMENTS_PLIST="$TMP_ROOT/unexpected-entitlements.plist"
+  /usr/libexec/PlistBuddy \
+    -c 'Add :com.apple.security.get-task-allow bool true' \
+    "$ENTITLEMENTS_PLIST" >/dev/null
+  codesign --force --sign - --entitlements "$ENTITLEMENTS_PLIST" "$ENTITLED_APP" >/dev/null
+  assert_fail_contains "unexpected custom entitlements fail verification" \
+    "unexpected custom entitlements" \
+    "$SCRIPT_DIR/verify-app-bundle.sh" \
+      --app "$ENTITLED_APP" \
+      --expected-signing-mode adhoc \
+      --expected-version 0.1.0 \
+      --expected-build-number 9
+fi
+
+if find "$RELEASE_OUT" -maxdepth 1 -name '*.app-contents.txt' | grep -q .; then
+  printf 'FAIL: unexpected app-contents sidecar artifact\n' >&2
+  FAIL=$((FAIL + 1))
+else
+  printf 'PASS: no undocumented app-contents sidecar artifact\n'
+  PASS=$((PASS + 1))
 fi
 
 # Demo packaging path (unsigned) reusing bin

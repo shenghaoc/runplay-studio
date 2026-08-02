@@ -252,14 +252,16 @@ complete refer to **in-repo pipeline readiness**, not publication of an official
 binary.
 
 - [x] Authoritative `VERSION` file and build-number policy
-- [x] Deterministic shared app-bundle assembly + Info.plist template
+- [x] Staged shared app-bundle assembly + Info.plist template (release, demo,
+  and development launcher)
 - [x] Preserve unsigned demo packaging path
 - [x] Release packager (unsigned / ad-hoc / Developer ID CLI)
 - [x] Ad-hoc dry-run path without Apple credentials
 - [x] Signing workflow design (hardened runtime, inside-out, verify)
 - [x] Notarization workflow design (`notarytool`, staple, Gatekeeper, final zip)
 - [x] Versioned artifacts, `SHA256SUMS`, machine-readable release manifest
-- [x] GitHub Actions `release.yml` (dry-run dispatch + tag production path)
+- [x] GitHub Actions `release.yml` (dry-run dispatch + annotated-tag production
+  path with `main` ancestry and downloaded-artifact validation)
 - [x] Credential-free packaging tests in PR CI
 - [x] `docs/releasing.md` and v0.1.0 release notes
 - [ ] Production Developer ID signing with owner credentials

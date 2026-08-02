@@ -82,11 +82,13 @@ jobs:
           if [[ "${EVENT_NAME}" == "push" ]]; then
             IS_PRODUCTION=true
             release_validate_release_tag "${REF_NAME}" "${VERSION}"
-            # Checked-out commit must be the tagged commit.
-            TAG_SHA="$(git rev-list -n 1 "refs/tags/${REF_NAME}")"
-            HEAD_SHA="$(git rev-parse HEAD)"
-            if [[ "${TAG_SHA}" != "${HEAD_SHA}" ]]; then
-              echo "HEAD ${HEAD_SHA} is not the tagged commit ${TAG_SHA} for ${REF_NAME}" >&2
+            release_validate_annotated_tag_at_head . "${REF_NAME}"
+            # Official tags must point to a commit already reachable from the
+            # current main branch, never to an unmerged release-only branch.
+            git fetch --no-tags origin main
+            MAIN_SHA="$(git rev-parse FETCH_HEAD)"
+            if ! git merge-base --is-ancestor HEAD "${MAIN_SHA}"; then
+              echo "Tagged commit $(git rev-parse HEAD) is not reachable from origin/main ${MAIN_SHA}" >&2
               exit 1
             fi
             if [[ -n "$(git status --porcelain)" ]]; then
@@ -143,6 +145,7 @@ jobs:
           bash -n scripts/package-release.sh
           bash -n scripts/verify-app-bundle.sh
           bash -n scripts/test-release-packaging.sh
+          bash -n script/build_and_run.sh
 
       - name: Ad-hoc dry-run package
         if: steps.meta.outputs.is_production != 'true'
@@ -175,8 +178,8 @@ jobs:
             KEYCHAIN_PASSWORD="$(/usr/bin/openssl rand -base64 32)"
           fi
           KEYCHAIN_PATH="${RUNNER_TEMP}/runplay-release.keychain-db"
-          CERT_PATH="${RUNNER_TEMP}/developer-id.p12"
-          echo "${DEVELOPER_ID_CERT_P12_BASE64}" | base64 --decode > "${CERT_PATH}"
+          CERT_PATH="${RUNNER_TEMP}/runplay-developer-id.p12"
+          printf '%s' "${DEVELOPER_ID_CERT_P12_BASE64}" | base64 --decode > "${CERT_PATH}"
           security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
           security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
@@ -184,7 +187,6 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           security list-keychains -d user -s "${KEYCHAIN_PATH}" $(security list-keychains -d user | sed -e s/\"//g)
           rm -f "${CERT_PATH}"
-          echo "KEYCHAIN_PATH=${KEYCHAIN_PATH}" >> "$GITHUB_ENV"
           # Verify identity is visible without printing private keys.
           security find-identity -p codesigning -v "${KEYCHAIN_PATH}"
 
@@ -199,10 +201,9 @@ jobs:
             echo "Missing App Store Connect API key secrets" >&2
             exit 1
           fi
-          KEY_PATH="${RUNNER_TEMP}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
-          echo "${APP_STORE_CONNECT_API_KEY_P8_BASE64}" | base64 --decode > "${KEY_PATH}"
+          KEY_PATH="${RUNNER_TEMP}/runplay-notary-key.p8"
+          printf '%s' "${APP_STORE_CONNECT_API_KEY_P8_BASE64}" | base64 --decode > "${KEY_PATH}"
           chmod 600 "${KEY_PATH}"
-          echo "NOTARY_KEY_PATH=${KEY_PATH}" >> "$GITHUB_ENV"
 
       - name: Production package (Developer ID + notarize + staple)
         if: steps.meta.outputs.is_production == 'true'
@@ -223,6 +224,7 @@ jobs:
             echo "App Store Connect key id / issuer secrets are required" >&2
             exit 1
           fi
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/runplay-notary-key.p8"
           ./scripts/package-release.sh \
             --signing-mode developer-id \
             --signing-identity "${DEVELOPER_ID_APPLICATION_IDENTITY}" \
@@ -249,13 +251,14 @@ jobs:
           include-hidden-files: true
 
       - name: Cleanup temporary credentials
-        if: always() && steps.meta.outputs.is_production == 'true'
+        if: always() && github.event_name == 'push'
         run: |
           set -euo pipefail
-          if [[ -n "${NOTARY_KEY_PATH:-}" && -f "${NOTARY_KEY_PATH}" ]]; then
-            rm -f "${NOTARY_KEY_PATH}"
-          fi
-          if [[ -n "${KEYCHAIN_PATH:-}" && -f "${KEYCHAIN_PATH}" ]]; then
+          KEYCHAIN_PATH="${RUNNER_TEMP}/runplay-release.keychain-db"
+          CERT_PATH="${RUNNER_TEMP}/runplay-developer-id.p12"
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/runplay-notary-key.p8"
+          rm -f "${CERT_PATH}" "${NOTARY_KEY_PATH}"
+          if [[ -f "${KEYCHAIN_PATH}" ]]; then
             security delete-keychain "${KEYCHAIN_PATH}" || true
           fi
           # Restore default keychain search list best-effort.
@@ -271,12 +274,51 @@ jobs:
     environment: release
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
         with:
           name: RunPlayStudio-${{ needs.validate-and-package.outputs.version }}-macos-arm64
           path: release-artifacts
+
+      - name: Validate downloaded release set
+        env:
+          VERSION: ${{ needs.validate-and-package.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ZIP="release-artifacts/RunPlayStudio-${VERSION}-macos-arm64.zip"
+          MANIFEST="release-artifacts/RunPlayStudio-${VERSION}-release.json"
+          SUMS="release-artifacts/SHA256SUMS"
+          EXPECTED_COMMIT="$(git rev-parse HEAD)"
+          [[ -f "${ZIP}" && -f "${MANIFEST}" && -f "${SUMS}" ]]
+          (cd release-artifacts && sha256sum -c SHA256SUMS)
+          ZIP_SHA="$(sha256sum "${ZIP}" | awk '{print $1}')"
+          ZIP_SIZE="$(wc -c <"${ZIP}" | tr -d ' ')"
+          jq -e \
+            --arg version "${VERSION}" \
+            --arg tag "${TAG}" \
+            --arg commit "${EXPECTED_COMMIT}" \
+            --arg artifact "$(basename "${ZIP}")" \
+            --arg zip_sha "${ZIP_SHA}" \
+            --argjson zip_size "${ZIP_SIZE}" \
+            '.marketing_version == $version
+             and .git_tag == $tag
+             and .git_commit_sha == $commit
+             and .artifact_filename == $artifact
+             and .artifact_sha256 == $zip_sha
+             and .artifact_size_bytes == $zip_size
+             and .architecture == "arm64"
+             and .universal_binary == false
+             and .signing_mode == "developer-id"
+             and .hardened_runtime == true
+             and .notarization_status == "accepted"
+             and .stapling_status == "stapled"
+             and .gatekeeper_status == "accepted"
+             and .dry_run == false' \
+            "${MANIFEST}" >/dev/null
 
       - name: Create GitHub Release
         env:
@@ -285,31 +327,15 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Only after signing, notarization, stapling, Gatekeeper, checksums.
+          # gh stages uploads through a draft and publishes only after every
+          # supplied asset upload succeeds.
           NOTES="docs/release-notes/v${VERSION}.md"
-          if [[ ! -f "${NOTES}" ]]; then
+          [[ -f "${NOTES}" ]] || {
             echo "Missing release notes: ${NOTES}" >&2
             exit 1
-          fi
-          # Refuse if dry_run true slipped into production manifest.
-          MANIFEST="release-artifacts/RunPlayStudio-${VERSION}-release.json"
-          if grep -q '"dry_run": true' "${MANIFEST}"; then
-            echo "Refusing to publish: manifest still marked dry_run" >&2
-            exit 1
-          fi
-          if ! grep -q '"notarization_status": "accepted"' "${MANIFEST}"; then
-            echo "Refusing to publish: notarization not accepted in manifest" >&2
-            exit 1
-          fi
-          if ! grep -q '"stapling_status": "stapled"' "${MANIFEST}"; then
-            echo "Refusing to publish: stapling not confirmed in manifest" >&2
-            exit 1
-          fi
-          if ! grep -q '"gatekeeper_status": "accepted"' "${MANIFEST}"; then
-            echo "Refusing to publish: Gatekeeper not accepted in manifest" >&2
-            exit 1
-          fi
+          }
           gh release create "${TAG}" \
+            --verify-tag \
             --title "RunPlay Studio ${VERSION}" \
             --notes-file "${NOTES}" \
             release-artifacts/RunPlayStudio-${VERSION}-macos-arm64.zip \

@@ -20,13 +20,18 @@ not publication evidence.
 
 - [x] `scripts/assemble-app-bundle.sh`
 - [x] Update `scripts/package-demo.sh` to use assembler
+- [x] Reuse the assembler from `script/build_and_run.sh` while preserving its
+  development bundle identifier
 - [x] `scripts/package-release.sh` (unsigned / adhoc / developer-id / notarize)
 - [x] `scripts/verify-app-bundle.sh`
 - [x] `scripts/test-release-packaging.sh`
+- [x] Enforce staged output, truthful dry-run state, deployment target, and no
+  unexpected entitlements
 
 ## CI / workflows
 
 - [x] `.github/workflows/release.yml` (dry-run dispatch + tag production)
+- [x] Require annotated tag at `HEAD` on `main`; validate downloaded release set
 - [x] macOS CI packaging smoke via `test-release-packaging.sh`
 - [x] Preserve existing demo workflow behavior
 
@@ -48,7 +53,7 @@ not publication evidence.
 ## Validation (local / CI)
 
 - [x] `bash -n` on all new scripts
-- [x] `./scripts/test-release-packaging.sh` (54 pass / 0 fail)
+- [x] `./scripts/test-release-packaging.sh` (70 pass / 0 fail)
 - [x] Ad-hoc dry run to `/private/tmp/runplay-v0.1-dry-run`
 - [x] `./scripts/package-demo.sh`
 - [x] Warning-clean AGENTS.md baseline suite (local exact worktree)

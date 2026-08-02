@@ -94,4 +94,5 @@ jobs:
           bash -n scripts/package-release.sh
           bash -n scripts/verify-app-bundle.sh
           bash -n scripts/test-release-packaging.sh
+          bash -n script/build_and_run.sh
           ./scripts/test-release-packaging.sh

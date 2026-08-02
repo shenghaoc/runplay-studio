@@ -34,7 +34,6 @@ GIT_TAG=""
 # Cleanup state
 CLEANUP_DIRS=()
 TEMP_NOTARY_ZIP=""
-WORK_APP=""
 
 usage() {
   cat <<'EOF'
@@ -52,19 +51,19 @@ Options:
   --architecture arm64          Architecture (only arm64 supported)
   --signing-identity <id>       Developer ID Application identity (developer-id mode)
   --notarize                    Notarize after Developer ID signing
-  --skip-notarization           Explicitly skip notarization
+  --skip-notarization           Explicitly skip; non-production dry runs only
   --notary-key <path>           App Store Connect API key .p8 path
   --notary-key-id <id>          API key ID
   --notary-issuer <uuid>        API issuer UUID
-  --dry-run                     Label artifacts as dry-run (no publication)
+  --dry-run                     Required for unsigned, ad-hoc, or non-notarized output
   --skip-build                  Reuse --bin-dir without building
   --bin-dir <path>              Existing SwiftPM release bin directory
-  --require-clean-worktree      Fail if git worktree is dirty
-  --git-tag <tag>               Expected production tag (vX.Y.Z); validated vs VERSION
+  --require-clean-worktree      Fail if git worktree is dirty; required for production
+  --git-tag <tag>               Annotated production tag at HEAD; required for production
   -h, --help                    Show this help
 
 Artifact naming (outer):
-  RunPlayStudio-<version>-macos-arm64.app/   (internal name RunPlayStudio.app)
+  RunPlayStudio.app                          (working bundle)
   RunPlayStudio-<version>-macos-arm64.zip
   RunPlayStudio-<version>-release.json
   SHA256SUMS
@@ -80,7 +79,9 @@ Examples:
       --notarize \
       --notary-key "$HOME/AuthKey.p8" \
       --notary-key-id "$KEY_ID" \
-      --notary-issuer "$ISSUER_ID"
+      --notary-issuer "$ISSUER_ID" \
+      --git-tag "v$(tr -d '\n' < VERSION)" \
+      --require-clean-worktree
 EOF
 }
 
@@ -149,6 +150,9 @@ release_validate_build_number "$BUILD_NUMBER"
 if [[ "$NOTARIZE" -eq 1 && "$SKIP_NOTARIZATION" -eq 1 ]]; then
   release_die "cannot combine --notarize and --skip-notarization"
 fi
+if [[ "$NOTARIZE" -eq 0 && "$SKIP_NOTARIZATION" -eq 0 ]]; then
+  release_die "choose exactly one of --notarize or --skip-notarization"
+fi
 
 if [[ "$NOTARIZE" -eq 1 ]]; then
   if [[ "$SIGNING_MODE" != "developer-id" ]]; then
@@ -176,12 +180,27 @@ if [[ "$NOTARIZE" -eq 1 ]]; then
   [[ -f "$NOTARY_KEY" ]] || release_die "notary key file not found: $NOTARY_KEY"
 fi
 
-if [[ "$REQUIRE_CLEAN" -eq 1 ]]; then
-  release_require_clean_worktree "$REPO_ROOT"
-fi
-
 if [[ -n "$GIT_TAG" ]]; then
   release_validate_release_tag "$GIT_TAG" "$VERSION"
+  release_validate_annotated_tag_at_head "$REPO_ROOT" "$GIT_TAG"
+fi
+
+# Anything other than the complete Developer ID + notarization path is a dry
+# run by definition. Refuse an official-looking manifest for unsigned, ad-hoc,
+# or deliberately non-notarized output.
+if [[ "$DRY_RUN_FLAG" -eq 0 ]]; then
+  [[ "$SIGNING_MODE" == "developer-id" ]] || \
+    release_die "unsigned and ad-hoc packages require --dry-run"
+  [[ "$NOTARIZE" -eq 1 ]] || \
+    release_die "a non-notarized package requires --dry-run"
+  [[ -n "$GIT_TAG" ]] || \
+    release_die "production packaging requires --git-tag"
+  [[ "$REQUIRE_CLEAN" -eq 1 ]] || \
+    release_die "production packaging requires --require-clean-worktree"
+fi
+
+if [[ "$REQUIRE_CLEAN" -eq 1 ]]; then
+  release_require_clean_worktree "$REPO_ROOT"
 fi
 
 if [[ -z "$OUTPUT_DIR" ]]; then
@@ -190,16 +209,18 @@ fi
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 
-STEM="$(release_versioned_stem "$VERSION" "$ARCHITECTURE")"
-APP_INNER="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app"
-APP_VERSIONED_DIR="$OUTPUT_DIR/$STEM.app"
 ZIP_NAME="$(release_artifact_zip_name "$VERSION" "$ARCHITECTURE")"
-ZIP_PATH="$OUTPUT_DIR/$ZIP_NAME"
 MANIFEST_NAME="$(release_artifact_manifest_name "$VERSION")"
-MANIFEST_PATH="$OUTPUT_DIR/$MANIFEST_NAME"
-SHA256SUMS_PATH="$OUTPUT_DIR/SHA256SUMS"
-STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/runplay-release-stage.XXXXXX")"
+STAGE_DIR="$(mktemp -d "$OUTPUT_DIR/.runplay-release-stage.XXXXXX")"
 CLEANUP_DIRS+=("$STAGE_DIR")
+WORK_APP="$STAGE_DIR/$RUNPLAY_PRODUCT_NAME.app"
+ZIP_PATH="$STAGE_DIR/$ZIP_NAME"
+MANIFEST_PATH="$STAGE_DIR/$MANIFEST_NAME"
+SHA256SUMS_PATH="$STAGE_DIR/SHA256SUMS"
+FINAL_APP="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app"
+FINAL_ZIP="$OUTPUT_DIR/$ZIP_NAME"
+FINAL_MANIFEST="$OUTPUT_DIR/$MANIFEST_NAME"
+FINAL_SHA256SUMS="$OUTPUT_DIR/SHA256SUMS"
 
 # Status fields filled during packaging
 SIGNING_LABEL=""
@@ -234,7 +255,7 @@ release_log "  output=$OUTPUT_DIR"
 # 1. Assemble
 ASSEMBLE_ARGS=(
   --repo-root "$REPO_ROOT"
-  --output "$APP_INNER"
+  --output "$WORK_APP"
   --version "$VERSION"
   --build-number "$BUILD_NUMBER"
 )
@@ -254,16 +275,16 @@ case "$SIGNING_MODE" in
     ;;
   adhoc)
     release_log "Ad-hoc signing ($SIGNING_LABEL)"
-    release_codesign_bundle "$APP_INNER" "-" "adhoc"
-    codesign --verify --strict --verbose=2 "$APP_INNER"
-    codesign --verify --deep --strict --verbose=2 "$APP_INNER"
+    release_codesign_bundle "$WORK_APP" "-" "adhoc"
+    codesign --verify --strict --verbose=2 "$WORK_APP"
+    codesign --verify --deep --strict --verbose=2 "$WORK_APP"
     ;;
   developer-id)
     release_log "Developer ID signing with hardened runtime + timestamp"
-    release_codesign_bundle "$APP_INNER" "$SIGNING_IDENTITY" "developer-id"
-    codesign --verify --strict --verbose=2 "$APP_INNER"
-    codesign --verify --deep --strict --verbose=2 "$APP_INNER"
-    CS_OUT="$(codesign -dvvv "$APP_INNER" 2>&1 || true)"
+    release_codesign_bundle "$WORK_APP" "$SIGNING_IDENTITY" "developer-id"
+    codesign --verify --strict --verbose=2 "$WORK_APP"
+    codesign --verify --deep --strict --verbose=2 "$WORK_APP"
+    CS_OUT="$(codesign -dvvv "$WORK_APP" 2>&1 || true)"
     if ! printf '%s\n' "$CS_OUT" | grep -q 'Developer ID Application'; then
       release_die "post-sign verification: Developer ID Application authority missing"
     fi
@@ -280,7 +301,7 @@ esac
 if [[ "$NOTARIZE" -eq 1 ]]; then
   release_log "Creating temporary notarization zip (not the final artifact)"
   TEMP_NOTARY_ZIP="$STAGE_DIR/notarize-submit.zip"
-  ditto -c -k --sequesterRsrc --keepParent "$APP_INNER" "$TEMP_NOTARY_ZIP"
+  ditto -c -k --sequesterRsrc --keepParent "$WORK_APP" "$TEMP_NOTARY_ZIP"
 
   release_log "Submitting to Apple notary service via notarytool (waiting)..."
   # Never enable xtrace around credential args.
@@ -296,11 +317,11 @@ if [[ "$NOTARIZE" -eq 1 ]]; then
   fi
   NOTARIZATION_STATUS="accepted"
   release_log "Notarization accepted; stapling ticket..."
-  xcrun stapler staple "$APP_INNER"
-  xcrun stapler validate "$APP_INNER"
+  xcrun stapler staple "$WORK_APP"
+  xcrun stapler validate "$WORK_APP"
   STAPLING_STATUS="stapled"
   release_log "Assessing with Gatekeeper..."
-  if spctl --assess --type execute --verbose=4 "$APP_INNER"; then
+  if spctl --assess --type execute --verbose=4 "$WORK_APP"; then
     GATEKEEPER_STATUS="accepted"
   else
     GATEKEEPER_STATUS="rejected"
@@ -325,7 +346,7 @@ fi
 # 4. Verify the exact app that will be zipped (no rebuild after this point).
 VERIFY_MODE="$SIGNING_MODE"
 VERIFY_ARGS=(
-  --app "$APP_INNER"
+  --app "$WORK_APP"
   --expected-signing-mode "$VERIFY_MODE"
   --expected-version "$VERSION"
   --expected-build-number "$BUILD_NUMBER"
@@ -338,7 +359,7 @@ fi
 # Digest of the verified tree immediately before zip — zip must use this tree.
 INVENTORY_PRE_ZIP="$STAGE_DIR/inventory-pre-zip.txt"
 (
-  cd "$APP_INNER"
+  cd "$WORK_APP"
   find . -type f | LC_ALL=C sort | while IFS= read -r f; do
     printf '%s %s\n' "$(release_sha256_file "$f")" "$f"
   done
@@ -349,14 +370,14 @@ BUNDLE_DIGEST_AFTER="$(release_sha256_file "$INVENTORY_PRE_ZIP")"
 release_log "Creating final distribution zip: $ZIP_NAME"
 rm -f "$ZIP_PATH"
 (
-  cd "$OUTPUT_DIR"
-  ditto -c -k --sequesterRsrc --keepParent "$RUNPLAY_PRODUCT_NAME.app" "$ZIP_NAME"
+  cd "$STAGE_DIR"
+  ditto -c -k --sequesterRsrc --keepParent "$RUNPLAY_PRODUCT_NAME.app" "$ZIP_PATH"
 )
 
 # Confirm the on-disk app was not mutated by zipping.
 INVENTORY_POST_ZIP="$STAGE_DIR/inventory-post-zip.txt"
 (
-  cd "$APP_INNER"
+  cd "$WORK_APP"
   find . -type f | LC_ALL=C sort | while IFS= read -r f; do
     printf '%s %s\n' "$(release_sha256_file "$f")" "$f"
   done
@@ -364,14 +385,6 @@ INVENTORY_POST_ZIP="$STAGE_DIR/inventory-post-zip.txt"
 if ! cmp -s "$INVENTORY_PRE_ZIP" "$INVENTORY_POST_ZIP"; then
   release_die "app bundle content changed during zip creation"
 fi
-
-# Place a versioned copy directory marker for convenience (copy of app path name).
-# Outer artifact remains the versioned zip; internal bundle is RunPlayStudio.app.
-rm -rf "$APP_VERSIONED_DIR"
-# Do not duplicate the entire app tree as a second copy for disk space; instead
-# write a small sidecar that records the canonical inner name. The versioned
-# zip is the publishable artifact.
-printf '%s\n' "$RUNPLAY_PRODUCT_NAME.app" >"$OUTPUT_DIR/$STEM.app-contents.txt"
 
 # 6. Checksums (final post-stapling zip + manifest later)
 # Write checksums for zip first; update after manifest.
@@ -449,11 +462,20 @@ if [[ "$STAPLING_STATUS" == "stapled" ]]; then
   xcrun stapler validate "$EXTRACTED_APP" || release_die "staple did not survive zip extraction"
 fi
 
+# Publish the fully verified set only after every gate has passed. SHA256SUMS is
+# moved last and therefore acts as the completion marker for the artifact set.
+rm -rf "$FINAL_APP"
+rm -f "$FINAL_ZIP" "$FINAL_MANIFEST" "$FINAL_SHA256SUMS"
+mv "$WORK_APP" "$FINAL_APP"
+mv "$ZIP_PATH" "$FINAL_ZIP"
+mv "$MANIFEST_PATH" "$FINAL_MANIFEST"
+mv "$SHA256SUMS_PATH" "$FINAL_SHA256SUMS"
+
 release_log "Release packaging complete"
-release_log "  app:  $APP_INNER"
-release_log "  zip:  $ZIP_PATH"
-release_log "  manifest: $MANIFEST_PATH"
-release_log "  checksums: $SHA256SUMS_PATH"
+release_log "  app:  $FINAL_APP"
+release_log "  zip:  $FINAL_ZIP"
+release_log "  manifest: $FINAL_MANIFEST"
+release_log "  checksums: $FINAL_SHA256SUMS"
 release_log "  signing: $SIGNING_LABEL"
 release_log "  notarization: $NOTARIZATION_STATUS"
 release_log "  dry_run: $DRY_RUN_JSON"

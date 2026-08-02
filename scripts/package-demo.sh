@@ -30,9 +30,19 @@ release_validate_build_number "$BUILD_NUMBER"
 
 APP_BUNDLE="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app"
 ZIP_PATH="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app.zip"
+ZIP_TEMP="$OUTPUT_DIR/.$RUNPLAY_PRODUCT_NAME.app.zip.tmp.$$"
+
+cleanup() {
+  rm -f "$ZIP_TEMP"
+}
+trap cleanup EXIT
 
 release_log "Packaging unsigned demo artifact (version=$VERSION build=$BUILD_NUMBER)"
 release_log "Label: Unsigned — demo/testing only"
+
+# A failed rebuild must not leave an older zip looking like the result of the
+# current command. The app itself is replaced atomically by the assembler.
+rm -f "$ZIP_PATH" "$ZIP_TEMP"
 
 "$SCRIPT_DIR/assemble-app-bundle.sh" \
   --repo-root "$REPO_ROOT" \
@@ -40,21 +50,7 @@ release_log "Label: Unsigned — demo/testing only"
   --version "$VERSION" \
   --build-number "$BUILD_NUMBER"
 
-# Remove prior zip if present.
-rm -f "$ZIP_PATH"
-
-release_log "Creating demo zip archive..."
-(
-  cd "$OUTPUT_DIR"
-  ditto -c -k --sequesterRsrc --keepParent "$RUNPLAY_PRODUCT_NAME.app" "$RUNPLAY_PRODUCT_NAME.app.zip"
-)
-
-release_log "Demo packaging complete"
-release_log "  app: $APP_BUNDLE"
-release_log "  zip: $ZIP_PATH"
-release_log "  status: Unsigned — demo/testing only (not notarized; not Gatekeeper-approved)"
-
-# Optional structural verification when verify script exists.
+# Verify the exact app before creating the demo archive.
 if [[ -x "$SCRIPT_DIR/verify-app-bundle.sh" ]]; then
   "$SCRIPT_DIR/verify-app-bundle.sh" \
     --app "$APP_BUNDLE" \
@@ -66,3 +62,15 @@ if [[ -x "$SCRIPT_DIR/verify-app-bundle.sh" ]]; then
       exit 1
     }
 fi
+
+release_log "Creating demo zip archive..."
+(
+  cd "$OUTPUT_DIR"
+  ditto -c -k --sequesterRsrc --keepParent "$RUNPLAY_PRODUCT_NAME.app" "$(basename "$ZIP_TEMP")"
+)
+mv "$ZIP_TEMP" "$ZIP_PATH"
+
+release_log "Demo packaging complete"
+release_log "  app: $APP_BUNDLE"
+release_log "  zip: $ZIP_PATH"
+release_log "  status: Unsigned — demo/testing only (not notarized; not Gatekeeper-approved)"

@@ -26,6 +26,8 @@ VERSION ──► assemble-app-bundle.sh ──► RunPlayStudio.app (unsigned s
 ```
 
 Shared logic lives in `scripts/lib/release-common.sh` so packagers stay focused.
+The existing debug launcher also delegates bundle construction to the assembler,
+while retaining its intentional development bundle identifier.
 
 ## Key decisions
 
@@ -44,6 +46,8 @@ Shared logic lives in `scripts/lib/release-common.sh` so packagers stay focused.
 | Publication | `gh release create` after gates | Prefer official GitHub CLI over unreviewed marketplace actions |
 | Dry run | adhoc + `dry_run: true` manifest | Credential-free CI validation |
 | Demo path | Keep separate workflow/script | Do not silently promote demo to production |
+| Artifact replacement | Build and verify in an output-local staging directory | A failed run cannot publish a partial new artifact set |
+| Non-production state | Require `--dry-run` for unsigned, ad-hoc, or non-notarized output | Prevent official-looking false manifest state |
 
 ## Artifact naming
 
@@ -56,32 +60,37 @@ Shared logic lives in `scripts/lib/release-common.sh` so packagers stay focused.
 
 ### Dry run (`workflow_dispatch`, default)
 
-1. Checkout, Xcode 26.4, Swift 6.3  
-2. Boundary validation + tests  
-3. `package-release.sh --signing-mode adhoc --skip-notarization --dry-run`  
-4. Upload versioned zip, manifest, SHA256SUMS  
-5. Never create a GitHub Release  
+1. Checkout, Xcode 26.4, Swift 6.3
+2. Boundary validation + tests
+3. `package-release.sh --signing-mode adhoc --skip-notarization --dry-run`
+4. Upload versioned zip, manifest, SHA256SUMS
+5. Never create a GitHub Release
 
 ### Production (`push` tags `v*`)
 
-1. Validate tag ↔ VERSION ↔ HEAD; clean tree  
-2. Same correctness suite  
-3. Temporary keychain + import Developer ID  
-4. `package-release.sh --signing-mode developer-id --notarize ...`  
-5. Publish job checks manifest statuses then `gh release create`  
+1. Validate annotated tag ↔ VERSION ↔ HEAD and `main` ancestry; clean tree
+2. Same correctness suite
+3. Temporary keychain + import Developer ID
+4. `package-release.sh --signing-mode developer-id --notarize ...`
+5. Download and validate checksums plus exact manifest facts
+6. `gh release create --verify-tag` after all gates pass
 
 ## Security
 
-- Secrets only in `release` environment  
-- No `set -x` around credentials  
-- Keychain and `.p8` deleted in `always()` cleanup  
-- Manifest never embeds secret material or local absolute user paths  
+- Secrets only in `release` environment
+- No `set -x` around credentials
+- Keychain, decoded `.p12`, and `.p8` deleted in `always()` cleanup, including
+  partial setup failures
+- Manifest never embeds secret material or local absolute user paths
+- Unexpected entitlements fail bundle verification
 
 ## Testing strategy
 
-`scripts/test-release-packaging.sh` covers validators, CLI rejection cases, plist
-generation, adhoc packaging, checksum validation, manifest truthfulness, and
-privacy absence checks without Developer ID credentials.
+`scripts/test-release-packaging.sh` covers validators, CLI rejection cases,
+safe/staged assembly and failed-run artifact preservation, development-identity
+reuse, ad-hoc packaging, deployment target and entitlement enforcement,
+checksum validation, manifest truthfulness, and privacy absence checks without
+Developer ID credentials.
 
 ## Risks
 
@@ -89,5 +98,5 @@ privacy absence checks without Developer ID credentials.
 |------|------------|
 | Tag without secrets | Production job fails closed; no partial official publish |
 | Accidental publication from PR | No tag created; dry_run default; publish job gated |
-| Bundle ID mismatch with local `build_and_run.sh` | Document packaging ID as distribution authority; local script is dev-only |
+| Development and distribution bundle IDs intentionally differ | Pass the development ID explicitly through the shared assembler and test both identities |
 | Linker ad-hoc on “unsigned” demo | Document as allowed; still not public distribution |

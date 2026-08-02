@@ -123,15 +123,23 @@ if [[ -f "$PLIST" ]]; then
   BEXEC="$(read_plist CFBundleExecutable)"
   BNAME="$(read_plist CFBundleName)"
   BDISP="$(read_plist CFBundleDisplayName)"
+  BPACKAGE="$(read_plist CFBundlePackageType)"
   BVER="$(read_plist CFBundleShortVersionString)"
   BBUILD="$(read_plist CFBundleVersion)"
   BMIN="$(read_plist LSMinimumSystemVersion)"
+  BCATEGORY="$(read_plist LSApplicationCategoryType)"
+  BHIGH_RES="$(read_plist NSHighResolutionCapable)"
+  BPRINCIPAL="$(read_plist NSPrincipalClass)"
 
   [[ "$BID" == "$RUNPLAY_BUNDLE_IDENTIFIER" ]] && pass "bundle identifier $BID" || fail "bundle identifier expected $RUNPLAY_BUNDLE_IDENTIFIER got '$BID'"
   [[ "$BEXEC" == "$RUNPLAY_EXECUTABLE_NAME" ]] && pass "CFBundleExecutable $BEXEC" || fail "CFBundleExecutable expected $RUNPLAY_EXECUTABLE_NAME got '$BEXEC'"
   [[ "$BNAME" == "$RUNPLAY_PRODUCT_NAME" ]] && pass "CFBundleName $BNAME" || fail "CFBundleName expected $RUNPLAY_PRODUCT_NAME got '$BNAME'"
   [[ "$BDISP" == "$RUNPLAY_PRODUCT_DISPLAY_NAME" ]] && pass "CFBundleDisplayName $BDISP" || fail "CFBundleDisplayName expected $RUNPLAY_PRODUCT_DISPLAY_NAME got '$BDISP'"
+  [[ "$BPACKAGE" == "APPL" ]] && pass "CFBundlePackageType APPL" || fail "CFBundlePackageType expected APPL got '$BPACKAGE'"
   [[ "$BMIN" == "$RUNPLAY_MINIMUM_SYSTEM_VERSION" ]] && pass "LSMinimumSystemVersion $BMIN" || fail "LSMinimumSystemVersion expected $RUNPLAY_MINIMUM_SYSTEM_VERSION got '$BMIN'"
+  [[ "$BCATEGORY" == "public.app-category.healthcare-fitness" ]] && pass "application category healthcare-fitness" || fail "unexpected LSApplicationCategoryType '$BCATEGORY'"
+  [[ "$BHIGH_RES" == "true" ]] && pass "high-resolution rendering enabled" || fail "NSHighResolutionCapable expected true got '$BHIGH_RES'"
+  [[ "$BPRINCIPAL" == "NSApplication" ]] && pass "NSPrincipalClass NSApplication" || fail "NSPrincipalClass expected NSApplication got '$BPRINCIPAL'"
 
   if [[ -n "$EXPECTED_VERSION" ]]; then
     [[ "$BVER" == "$EXPECTED_VERSION" ]] && pass "marketing version $BVER" || fail "marketing version expected $EXPECTED_VERSION got '$BVER'"
@@ -165,6 +173,17 @@ if [[ -f "$EXEC" ]]; then
     fi
   else
     fail "expected arm64-only binary; got lipo: $LIPO_OUT"
+  fi
+
+  BINARY_MIN_VERSION="$(otool -l "$EXEC" 2>/dev/null | awk '
+    $1 == "cmd" { in_build = ($2 == "LC_BUILD_VERSION"); in_legacy = ($2 == "LC_VERSION_MIN_MACOSX") }
+    in_build && $1 == "minos" { print $2; exit }
+    in_legacy && $1 == "version" { print $2; exit }
+  ')"
+  if [[ "$BINARY_MIN_VERSION" == "$RUNPLAY_MINIMUM_SYSTEM_VERSION" ]]; then
+    pass "Mach-O minimum macOS $BINARY_MIN_VERSION"
+  else
+    fail "Mach-O minimum macOS expected $RUNPLAY_MINIMUM_SYSTEM_VERSION got '${BINARY_MIN_VERSION:-missing}'"
   fi
 fi
 
@@ -235,12 +254,10 @@ fi
 
 # --- signing ---
 CODESIGN_DV=""
-CODESIGN_AUTH=""
 TEAM_ID=""
 RUNTIME_FLAGS=""
 if codesign -dvvv "$APP_PATH" >/dev/null 2>&1; then
   CODESIGN_DV="$(codesign -dvvv "$APP_PATH" 2>&1 || true)"
-  CODESIGN_AUTH="$(printf '%s\n' "$CODESIGN_DV" | awk -F= '/Authority=/{print $2; exit}' || true)"
   TEAM_ID="$(printf '%s\n' "$CODESIGN_DV" | awk -F= '/TeamIdentifier=/{print $2; exit}' || true)"
   RUNTIME_FLAGS="$(printf '%s\n' "$CODESIGN_DV" | awk -F= '/flags=/{print $2; exit}' || true)"
 fi
@@ -321,17 +338,26 @@ case "$EXPECTED_SIGNING_MODE" in
     ;;
 esac
 
-# Entitlements dump (informational)
-if codesign -d --entitlements :- "$APP_PATH" >/dev/null 2>&1; then
-  ENT_XML="$(codesign -d --entitlements :- "$APP_PATH" 2>/dev/null || true)"
-  if [[ -z "$ENT_XML" ]] || printf '%s' "$ENT_XML" | grep -q '<dict/>'; then
-    pass "no custom entitlements (empty or absent)"
-  else
-    info "entitlements present (audit required):"
-    printf '%s\n' "$ENT_XML" | head -n 40
+# v0.1 intentionally has no custom entitlements. Inspect the outer app and
+# every Mach-O object; an unexpected entitlement is a hard verification error,
+# not an informational note.
+ENTITLEMENT_TARGETS=("$APP_PATH")
+while IFS= read -r mpath; do
+  [[ -n "$mpath" ]] || continue
+  ENTITLEMENT_TARGETS+=("$mpath")
+done < <(release_find_macho_code_objects "$APP_PATH")
+
+ENTITLEMENT_FAILURES_BEFORE="$FAILURES"
+for entitlement_target in "${ENTITLEMENT_TARGETS[@]}"; do
+  ENT_XML="$(codesign -d --entitlements - "$entitlement_target" 2>/dev/null || true)"
+  [[ -n "$ENT_XML" ]] || continue
+  ENT_SUMMARY="$(printf '%s' "$ENT_XML" | plutil -p - 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ "$ENT_SUMMARY" != "{}" ]]; then
+    fail "unexpected custom entitlements on ${entitlement_target#"$APP_PATH"/}"
   fi
-else
-  info "no entitlements blob (expected for no custom entitlements)"
+done
+if [[ "$FAILURES" -eq "$ENTITLEMENT_FAILURES_BEFORE" ]]; then
+  pass "no custom entitlements on app or nested code"
 fi
 
 # Stapling / Gatekeeper only when requested

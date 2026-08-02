@@ -9,7 +9,7 @@ and publication remain credential-gated owner actions.
 ## In scope
 
 1. Authoritative `VERSION` file (`0.1.0`) and validated build numbers
-2. Shared deterministic app-bundle assembly
+2. Shared staged app-bundle assembly with deterministic logical metadata
 3. Preserved unsigned demo packaging path
 4. Separate release packager with unsigned / adhoc / developer-id modes
 5. Ad-hoc dry runs without Apple credentials
@@ -38,7 +38,9 @@ and publication remain credential-gated owner actions.
 - FR-V1: `VERSION` is the sole marketing-version authority (`x.y.z`).
 - FR-V2: Reject blank, whitespace, `v` prefix, prerelease, and non-semver-three-part values.
 - FR-V3: `CFBundleShortVersionString` comes from `VERSION`; `CFBundleVersion` is a positive integer.
-- FR-V4: Production tags must equal `v` + `VERSION`; mismatch fails before signing.
+- FR-V4: Production tags must be annotated, equal `v` + `VERSION`, point to
+  `HEAD`, and reference a commit reachable from `main`; mismatch fails before
+  signing.
 - FR-V5: Dry runs may run without a tag.
 
 ### Assembly
@@ -56,19 +58,23 @@ and publication remain credential-gated owner actions.
 
 ### Release packaging
 
-- FR-R1: Explicit CLI with help, validation, and safe path handling.
+- FR-R1: Explicit CLI with help, validation, safe product-bundle paths, staged
+  assembly, and publish-on-success artifact replacement.
 - FR-R2: Unsupported option combinations fail (e.g. notarize + adhoc).
 - FR-R3: Deterministic versioned artifact names; no generic official `RunPlayStudio.app.zip`.
 - FR-R4: Exact verified app is what gets zipped (optional staple first).
-- FR-R5: Manifest statuses reflect measured results, not intentions.
+- FR-R5: Manifest statuses reflect measured results, not intentions; unsigned,
+  ad-hoc, and non-notarized output cannot claim `dry_run: false`.
 
 ### Signing and notarization
 
 - FR-S1: Three modes — unsigned, adhoc, developer-id.
 - FR-S2: Developer ID uses hardened runtime, timestamp, inside-out signing (no `--deep` as signer).
-- FR-S3: No custom entitlements unless proven necessary (none for v0.1).
+- FR-S3: No custom entitlements unless proven necessary (none for v0.1); bundle
+  verification fails if any are present on the app or nested code.
 - FR-S4: Notarization via `notarytool` only; staple; Gatekeeper assess; then final zip.
-- FR-S5: Temporary CI keychain with unconditional cleanup.
+- FR-S5: Temporary CI keychain with cleanup that also runs after partial
+  credential setup failures.
 - FR-S6: Secrets never printed or uploaded.
 
 ### CI / workflow
@@ -78,6 +84,8 @@ and publication remain credential-gated owner actions.
 - FR-C3: Least-privilege permissions; separate concurrency groups.
 - FR-C4: PR CI runs credential-free packaging smoke tests.
 - FR-C5: Existing Core / sanitizer / full-stack CI remains intact.
+- FR-C6: Publication revalidates downloaded checksums and exact manifest facts
+  before `gh release create --verify-tag`.
 
 ### Privacy
 
