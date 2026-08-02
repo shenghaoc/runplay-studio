@@ -148,35 +148,12 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             throw WorkoutImportError.missingData("TCX file has no timestamps; cannot compute pace or duration")
         }
 
-        // Per-track distance rebasing only — never mix per-lap resets into a
-        // decreasing global series. Normalization later makes distance monotonic.
-        var trackLocalDistances: [Double?] = Array(repeating: nil, count: flat.count)
-        var trackStart = 0
-        while trackStart < flat.count {
-            var trackEnd = trackStart + 1
-            while trackEnd < flat.count, !flat[trackEnd].isTrackStart {
-                trackEnd += 1
-            }
-
-            // Rebase inline to avoid intermediate array allocations
-            var trackOffset: Double? = nil
-            for i in trackStart..<trackEnd {
-                if let dist = flat[i].raw.distanceMeters {
-                    if trackOffset == nil {
-                        trackOffset = dist
-                    }
-                    trackLocalDistances[i] = dist - trackOffset!
-                } else {
-                    trackLocalDistances[i] = nil
-                }
-            }
-
-            trackStart = trackEnd
-        }
-
         var currentLapFirstIndex: [Int: Int] = [:]
         var currentLapLastIndex: [Int: Int] = [:]
         var continuousTrackDistanceOffset = 0.0
+        // Rebase supplied distances as route points are built so the importer
+        // does not need a separate route-sized distance buffer or traversal.
+        var trackDistanceOffset: Double?
 
         for (index, item) in flat.enumerated() {
             let timestamp = timestamps[index]
@@ -186,31 +163,41 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
                 timestamp: timestamp
             )
 
-            if item.isTrackStart, index > 0 {
-                let decision = TCXRouteContinuityResolver.decide(
-                    previous: previousContinuityPoint,
-                    next: continuityPoint,
-                    policy: continuity
-                )
-                if decision == .discontinuous {
-                    segmentIndex += 1
-                    continuousTrackDistanceOffset = 0
-                } else {
-                    continuousTrackDistanceOffset = routePoints.last?.distanceFromStartMeters ?? 0
+            if item.isTrackStart {
+                trackDistanceOffset = nil
+                if index > 0 {
+                    let decision = TCXRouteContinuityResolver.decide(
+                        previous: previousContinuityPoint,
+                        next: continuityPoint,
+                        policy: continuity
+                    )
+                    if decision == .discontinuous {
+                        segmentIndex += 1
+                        continuousTrackDistanceOffset = 0
+                    } else {
+                        continuousTrackDistanceOffset = routePoints.last?.distanceFromStartMeters ?? 0
+                    }
                 }
             }
 
+            let trackLocalDistance: Double
             if let d = item.raw.distanceMeters {
                 hasAnySuppliedDistance = true
                 if !d.isFinite || d < 0 {
                     allSuppliedDistancesValid = false
                 }
+                let offset = trackDistanceOffset ?? d
+                trackDistanceOffset = offset
+                // Do not clamp: a decreasing series must remain visible to
+                // downstream validation so coordinates can replace it.
+                trackLocalDistance = d - offset
             } else {
                 allSuppliedDistancesValid = false
+                trackLocalDistance = 0
             }
 
             let elapsed = timestamp.timeIntervalSince(startDate)
-            let dist = (trackLocalDistances[index] ?? 0) + continuousTrackDistanceOffset
+            let dist = trackLocalDistance + continuousTrackDistanceOffset
 
             let point = RoutePoint(
                 timestamp: timestamp,
@@ -331,8 +318,6 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
 
         return workout
     }
-
-    // MARK: - Distance Rebasing
 }
 
 // MARK: - TCX XML Parser
