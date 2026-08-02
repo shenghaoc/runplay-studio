@@ -62,9 +62,6 @@ public enum MapSnapshotOverlayComposer: Sendable {
                 containsNoData = true
             }
 
-            let points = route.coordinates.map { converter.point(for: $0) }
-            guard points.count >= 2 else { continue }
-
             context.saveGState()
             context.setLineCap(.round)
             context.setLineJoin(.round)
@@ -72,10 +69,13 @@ public enum MapSnapshotOverlayComposer: Sendable {
             let color = nsColor(for: route.style)
             context.setStrokeColor(color.cgColor)
 
+            // Convert coordinates directly into the path; avoid allocating an intermediate [CGPoint].
+            // Safe: `count >= 2` is enforced above.
             let path = CGMutablePath()
-            path.move(to: points[0])
-            for point in points.dropFirst() {
-                path.addLine(to: point)
+            let coordinates = route.coordinates
+            path.move(to: converter.point(for: coordinates[0]))
+            for index in 1..<coordinates.count {
+                path.addLine(to: converter.point(for: coordinates[index]))
             }
             context.addPath(path)
             context.strokePath()
@@ -184,13 +184,27 @@ public struct LinearMapCoordinateConverter: MapCoordinateConverting, Sendable {
     }
 
     public init(routes: [RouteMapLine], size: CGSize) {
-        let coords = routes.flatMap(\.coordinates)
-        let lats = coords.map(\.latitude)
-        let lons = coords.map(\.longitude)
-        self.minLatitude = lats.min() ?? 0
-        self.maxLatitude = lats.max() ?? 1
-        self.minLongitude = lons.min() ?? 0
-        self.maxLongitude = lons.max() ?? 1
+        var minLat = Double.infinity
+        var maxLat = -Double.infinity
+        var minLon = Double.infinity
+        var maxLon = -Double.infinity
+        var hasCoords = false
+
+        // Single pass over all coordinates — avoids flatMap/map intermediate arrays for min/max.
+        for route in routes {
+            for coordinate in route.coordinates {
+                hasCoords = true
+                if coordinate.latitude < minLat { minLat = coordinate.latitude }
+                if coordinate.latitude > maxLat { maxLat = coordinate.latitude }
+                if coordinate.longitude < minLon { minLon = coordinate.longitude }
+                if coordinate.longitude > maxLon { maxLon = coordinate.longitude }
+            }
+        }
+
+        self.minLatitude = hasCoords ? minLat : 0
+        self.maxLatitude = hasCoords ? maxLat : 1
+        self.minLongitude = hasCoords ? minLon : 0
+        self.maxLongitude = hasCoords ? maxLon : 1
         self.size = size
     }
 
