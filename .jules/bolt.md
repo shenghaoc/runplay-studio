@@ -78,3 +78,7 @@
 **Learning:** `MapSnapshotOverlayComposer` built each route path via `route.coordinates.map { converter.point(for: $0) }`, and `LinearMapCoordinateConverter` computed bounds via `routes.flatMap(\.coordinates)` plus separate latitude/longitude `.map` arrays before `.min()`/`.max()`. Those intermediate O(N) arrays ran on snapshot composition paths and created avoidable ARC churn.
 **Action:** Convert coordinates into `CGMutablePath` with an index loop (after the existing `count >= 2` guard), and compute min/max latitude/longitude in a single nested pass over routes and coordinates with primitive accumulators—no intermediate coordinate or mapped arrays.
 
+
+## 2026-08-01 - Avoid Eager compactMap Array Allocations
+**Learning:** `TCXImporter.rebaseDistance` used `distances.compactMap({ $0 }).first`. Because Swift collections are eager by default, `.compactMap` allocated a full O(N) array of all non-nil elements just to find the first one. When chained with other `.map` calls over GPS tracks, this created multiple unnecessary large array allocations.
+**Action:** Replace `compactMap(...).first` and nested `.map` calls inside performance-sensitive data processing with inline `for` loops. This eliminates intermediate array allocations and reduces ARC overhead when iterating large collections like GPS tracks.

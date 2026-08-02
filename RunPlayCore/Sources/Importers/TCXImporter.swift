@@ -157,12 +157,20 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             while trackEnd < flat.count, !flat[trackEnd].isTrackStart {
                 trackEnd += 1
             }
-            let rebased = rebaseDistance(
-                (trackStart..<trackEnd).map { flat[$0].raw.distanceMeters }
-            )
-            for (offset, value) in rebased.enumerated() {
-                trackLocalDistances[trackStart + offset] = value
+
+            // Rebase inline to avoid intermediate array allocations
+            var trackOffset: Double? = nil
+            for i in trackStart..<trackEnd {
+                if let dist = flat[i].raw.distanceMeters {
+                    if trackOffset == nil {
+                        trackOffset = dist
+                    }
+                    trackLocalDistances[i] = dist - trackOffset!
+                } else {
+                    trackLocalDistances[i] = nil
+                }
             }
+
             trackStart = trackEnd
         }
 
@@ -325,18 +333,6 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
     }
 
     // MARK: - Distance Rebasing
-
-    /// Rebase a per-track distance series so it starts from 0.
-    ///
-    /// If the series starts at a nonzero value, subtract that offset from all entries.
-    /// Returns `nil` for entries where the input was `nil`.
-    private func rebaseDistance(_ distances: [Double?]) -> [Double?] {
-        guard let firstNonNil = distances.compactMap({ $0 }).first else {
-            return distances
-        }
-        let offset = firstNonNil
-        return distances.map { $0.map { $0 - offset } }
-    }
 }
 
 // MARK: - TCX XML Parser
