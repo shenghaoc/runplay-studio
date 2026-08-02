@@ -196,6 +196,43 @@ final class TCXImporterTests: XCTestCase {
         XCTAssertEqual(workout.routePoints[1].distanceFromStartMeters, 100, accuracy: 0.001)
     }
 
+    func testTCXDecreasingSuppliedDistanceFallsBackToCoordinates() throws {
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-07-05T07:30:00.000Z</Id>
+              <Lap StartTime="2026-07-05T07:30:00.000Z">
+                <Track>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:00.000Z</Time>
+                    <Position><LatitudeDegrees>1.2966</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                    <DistanceMeters>1000</DistanceMeters>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:10.000Z</Time>
+                    <Position><LatitudeDegrees>1.2970</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                    <DistanceMeters>900</DistanceMeters>
+                  </Trackpoint>
+                  <Trackpoint>
+                    <Time>2026-07-05T07:30:20.000Z</Time>
+                    <Position><LatitudeDegrees>1.2974</LatitudeDegrees><LongitudeDegrees>103.7764</LongitudeDegrees></Position>
+                    <DistanceMeters>1100</DistanceMeters>
+                  </Trackpoint>
+                </Track>
+              </Lap>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+        """
+
+        let workout = try importer.importWorkout(from: createTempTCX(tcx))
+
+        XCTAssertEqual(workout.routeDistanceSource, .coordinateDerived)
+        XCTAssertGreaterThan(workout.routePoints.last?.distanceFromStartMeters ?? 0, 80)
+    }
+
     func testTCXPartialMissingTimesAreInterpolated() throws {
         let tcx = """
         <?xml version="1.0" encoding="UTF-8"?>
