@@ -86,3 +86,12 @@ jobs:
         run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify full package
         run: swift test -Xswiftc -warnings-as-errors
+      - name: Release packaging smoke (credential-free)
+        run: |
+          bash -n scripts/lib/release-common.sh
+          bash -n scripts/assemble-app-bundle.sh
+          bash -n scripts/package-demo.sh
+          bash -n scripts/package-release.sh
+          bash -n scripts/verify-app-bundle.sh
+          bash -n scripts/test-release-packaging.sh
+          ./scripts/test-release-packaging.sh

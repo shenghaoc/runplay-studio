@@ -78,6 +78,24 @@ device from distinct-workout cell traversal, not from raw GPS sample density.
 There is no cloud sync, cloud storage, or cloud processing. All workout files
 and analysis results remain on your local Mac.
 
+## Release packaging and notarization
+
+Demo and release **application bundles** contain only application code and
+approved synthetic demo resources from the SwiftPM resource bundle. User workout
+libraries (`Application Support/RunPlayStudio/`), `session.json`, imported
+snapshots, and personal exports are **never** part of packaging inputs or
+artifacts. Packaging verification fails if library-like or secret files appear
+in the bundle.
+
+When an official binary is **code-signed**, cryptographic signature metadata is
+processed by Apple tooling on the build machine. When an official binary is
+**notarized**, the app archive is uploaded to Apple for automated malware
+scanning via `notarytool`. That upload is the application binary and its bundled
+resources — **not** the user's workout library. Notarization is not product
+telemetry, analytics, or cloud sync of fitness data.
+
+Unsigned demo artifacts are for evaluation only and are not notarized.
+
 ## No Analytics
 
 RunPlay Studio does not collect usage analytics, event tracking, or behavioral
