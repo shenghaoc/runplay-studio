@@ -451,12 +451,17 @@ Export workout data as local files:
 - **Segments CSV** — Active duration/pace with elapsed endpoints and metrics
 - **Combined CSV** — Splits and segments in one file
 - **PNG Summary Card** — Exact 1200×1600 pixel summary image with optional static Apple Maps region, Light/Dark appearance, and Solid/Pace/HR/Elevation route coloring (reuses live-map builders)
+- **Route Replay (MP4)** — Offline deterministic H.264 video at 1920×1080 / 30 fps (15, 30, or 60 second presets). Compresses the full source elapsed timeline (including pauses and recording gaps) into the selected length with a static top-down map, start/finish markers, moving position marker, and metric HUD. Does not record the screen or live replay.
 
 All exports are local-only. No data is uploaded to a RunPlay Studio service.
 PNG export opens a configuration sheet, generates a deterministic card with
 `ImageRenderer` at scale 1.0 (GUI context required), and optionally composites
 MapKit basemap imagery with custom route overlays. Map failure offers Retry or
 Export Without Map. No Screen Recording permission is required.
+Video export streams frames through AVFoundation into a temporary file, validates
+the asset, then replaces the user-chosen destination. Map failure offers Retry
+and Cancel (basemap-free video is out of scope). The completed MP4 is never
+loaded into memory as `Data`.
 The README demo image is generated from bundled synthetic data.
 
 ### Route Comparison
@@ -487,7 +492,7 @@ Compare two completed runs side by side:
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)
 - PNG export requires GUI context (`ImageRenderer`); map-inclusive export needs MapKit network access for basemap tiles
-- Video export is not implemented
+- Video export needs a usable GPS route and playable elapsed timeline; MapKit network access for one basemap snapshot per preparation; encoding is offline and does not depend on live replay
 
 ## Roadmap
 

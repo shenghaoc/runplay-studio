@@ -13,7 +13,7 @@ Audited workflows:
 - All Runs search, filters, sort, selection, tags
 - Workout tabs, replay, charts, splits/laps, segments
 - Comparison and Personal Heatmap
-- File import, Strava archive import, metadata editing, PNG export surfaces
+- File import, Strava archive import, metadata editing, PNG and video export surfaces
 - Alerts, confirmations, progress, empty states
 
 ## Command architecture
@@ -235,7 +235,7 @@ or repository-approved workouts. The pass covered:
   timeline slider's native arrow adjustment when that slider owns focus.
 - Help → Keyboard Shortcuts, including the menu-only 2D/3D entry and absence of
   the conflicting system Dock chord.
-- Tag, Help, and PNG export sheets blocking background workspace commands.
+- Tag, Help, PNG, and video export sheets blocking background workspace commands.
 - Workout, comparison, and heatmap map fit/presentation routing, including a
   visible camera transition and comparison enter/exit.
 - PNG preview reaching Ready with one coherent labelled preview and keyboard

@@ -43,11 +43,21 @@ coordinates, so the general area of your route is visible to Apple Maps. No
 workout file data, metrics, heart rate, or account information is included in
 map requests.
 
+## Video export (MP4)
+
+Route-replay video export is offline and local-only. Frames are rendered with
+Core Graphics into an AVFoundation H.264 MP4 and written only to the destination
+you choose. The exporter does not upload workouts, attach GPS coordinates as
+hidden MP4 metadata, or include library UUIDs, device serials, or absolute paths.
+One MapKit snapshot may load basemap tiles under the MapKit policy above; the
+finished video visually shows the route region just as map-inclusive PNG export
+does and should be shared deliberately.
+
 ## Tags and smart collections
 
 Tags, tag assignments, and smart collections are local organisation metadata in
 `manifest.json`. They never leave the device, are not uploaded, and are not
-included in existing CSV/JSON/PNG exports. Smart collections store query
+included in existing CSV/JSON/PNG/MP4 exports. Smart collections store query
 criteria only (not result workout IDs). Bundled demos cannot receive persistent
 tags.
 

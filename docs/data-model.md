@@ -344,7 +344,10 @@ positive magnitudes matching the highlight subtitle, while
 `elevationDeltaMeters` remains the signed compatibility field. Split CSV uses
 `Corrected_Elevation_Gain_m`, segment CSV pairs `Elevation_Metric` with
 `Corrected_Elevation_Value_m`, and PNG summary labels use `Corrected Gain` and
-`Corrected Loss`. PNG export configuration (`PNGSummaryExportConfiguration`) is
+`Corrected Loss`. Video export configuration (`WorkoutVideoExportConfiguration`)
+is app-session UI state only and is not stored on `RunWorkout`. Video results are
+file-backed (`WorkoutVideoExportResult`) and never use in-memory `ExportResult`
+bytes. PNG export configuration (`PNGSummaryExportConfiguration`) is
 session/UI state only — never stored on `RunWorkout`. Map-inclusive cards compact
 segment/split counts and may attach a Studio-only map image + legend presentation
 model outside Core.

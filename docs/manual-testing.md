@@ -29,6 +29,7 @@ Accessibility Inspector alone.
 - [ ] Heatmap: filters, Fit Heatmap, summary statistics.
 - [ ] Import file, multi-session FIT review, and Strava archive; cancel sheets with Escape.
 - [ ] PNG export configuration, preview, save/cancel.
+- [ ] Video export configuration, poster preview, 15/30/60 s encode, cancel cleanup.
 - [ ] Help → Keyboard Shortcuts matches live menu chords.
 - [ ] Reduce Motion: map fit jumps without animation; replay still works.
 - [ ] Differentiate Without Colour: comparison shows P/C markers.
@@ -633,7 +634,12 @@ Latest export notes:
 
 Use **synthetic or bundled demo workouts only**. Do not commit private PNGs.
 
-1. Open Export → **Export Summary Card (PNG)** and confirm the configuration sheet.
+1. Open Export → **Export Route Replay (MP4)** on a synthetic workout with GPS.
+2. Confirm poster preview, duration presets (15/30/60), Light/Dark, and route colour.
+3. Export a 15-second MP4; open in QuickTime: 1920×1080, no audio, marker reaches finish, progress 100%.
+4. Cancel a longer export mid-encode; confirm no partial destination file remains.
+5. Confirm live replay position is unchanged after export.
+6. Open Export → **Export Summary Card (PNG)** and confirm the configuration sheet.
 2. Generate Light and Dark **map-inclusive Solid** cards; reopen the PNG and confirm
    exact **1200×1600** pixels and start/finish markers (no replay marker).
 3. Generate Pace, Heart Rate, and Elevation cards when available; compare legends

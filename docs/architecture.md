@@ -25,7 +25,7 @@ Import File → Importer → RouteQualityProcessor → Normalized Route + Diagno
 6. **Analyze**: `WorkoutAnalyzer` passes the context to summary, global-distance splits, source-recorded laps (`RecordedLapAnalyzer`), and notable-segment detection so every elevation consumer shares one correction
 7. **Persist**: `FileWorkoutLibraryStore` atomically stores the normalized route, provenance, diagnostics, warnings, and versioned analysis snapshot
 8. **Control**: `ReplayController` drives an elapsed-clock `PlaybackEngine` whose selected elevation comes from the corrected profile
-9. **Render and export**: Charts, route projection/colouring, comparison, and exports consume corrected analysis while raw imported altitude remains source data
+9. **Render and export**: Charts, route projection/colouring, comparison, and exports consume corrected analysis while raw imported altitude remains source data. Video export uses an independent `WorkoutVideoReplaySampler` (private `PlaybackEngine`) so live replay state is never mutated; Platform owns MapKit map preparation, Core Graphics frames, and AVFoundation encoding; Studio owns the sheet and save panel.
 
 ## Module Structure
 
@@ -58,8 +58,8 @@ RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit va
 RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 ├── Sources/
 │   ├── Commands/              # CommandRegistry, focused actions, shortcuts help
-│   ├── Services/              # UI-adjacent services (library, PNG export, announcements)
-│   ├── ViewModels/            # View state management (AppState, ReplayController, PNG export)
+│   ├── Services/              # UI-adjacent services (library, PNG/video export, announcements)
+│   ├── ViewModels/            # View state management (AppState, ReplayController, PNG/video export)
 │   ├── Views/                 # SwiftUI views
 │   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
 ├── Resources/                 # Sample data and fixtures

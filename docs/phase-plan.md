@@ -104,7 +104,7 @@
 ### Phase: Advanced Export
 - [x] Dark mode PNG summary card variant
 - [x] Map region screenshot in PNG export
-- [ ] Video export (AVFoundation) — post-MVP
+- [x] Video export (AVFoundation) — offline deterministic H.264 MP4 route replay
 
 ### Phase: Polish and Accessibility
 - [x] Keyboard shortcuts for replay and navigation
