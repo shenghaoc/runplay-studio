@@ -78,7 +78,9 @@ while retaining its intentional development bundle identifier.
 
 ## Security
 
-- Secrets only in `release` environment
+- Secrets only in `release` environment; non-production triggers resolve the
+  job `environment` expression to the empty string, which GitHub treats as no
+  environment (probe-verified) and therefore grants no environment secrets
 - No `set -x` around credentials
 - Keychain, decoded `.p12`, and `.p8` deleted in `always()` cleanup, including
   partial setup failures
@@ -93,6 +95,12 @@ reuse, ad-hoc packaging, deployment target and entitlement enforcement,
 checksum validation, manifest truthfulness, and privacy absence checks without
 Developer ID credentials.
 
+PR CI additionally executes the packaging path rather than only asserting its
+contracts: the `Release Packaging (macOS)` job builds the unsigned demo bundle
+and the ad-hoc dry-run release set, verifies checksums, and asserts packaging
+leaves the checkout clean. Both invocations share one `swift build -c release`.
+The job is separate from `macOS (Full Stack)` so the two run concurrently.
+
 ## Risks
 
 | Risk | Mitigation |
@@ -101,3 +109,6 @@ Developer ID credentials.
 | Accidental publication from PR | No tag created; dry_run default; publish job gated |
 | Development and distribution bundle IDs intentionally differ | Pass the development ID explicitly through the shared assembler and test both identities |
 | Linker ad-hoc on “unsigned” demo | Document as allowed; still not public distribution |
+| Conditional job `environment` never executed | Probe branch ran the empty-string branch of the same expression: job succeeded and no environment was created |
+| Packaging regression reaching the release path unnoticed | PR CI runs the release workflow's own dry-run invocation end to end |
+| Auto-created `release` environment has no protection rules | `docs/releasing.md` requires the owner to create it deliberately before the first tag push |

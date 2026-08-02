@@ -36,7 +36,10 @@ jobs:
   validate-and-package:
     name: Validate and package
     runs-on: macos-26
-    # Production tag path uses the protected release environment.
+    # Production tag path uses the `release` environment; every other trigger
+    # resolves to the empty string, which GitHub treats as "no environment".
+    # Verified on an isolated probe branch: an empty name neither fails the run
+    # nor creates an environment named "".
     environment: ${{ github.event_name == 'push' && 'release' || '' }}
     outputs:
       version: ${{ steps.meta.outputs.version }}

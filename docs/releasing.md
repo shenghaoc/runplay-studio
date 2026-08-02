@@ -24,7 +24,11 @@ configured, no official binary is produced.
 - Apple Silicon (`arm64`) only for this release train
 - For production: Apple Developer Program membership, Developer ID Application
   certificate, App Store Connect API key with Notary access
-- For production CI: GitHub environment `release` with secrets listed below
+- For production CI: GitHub environment `release` with secrets listed below.
+  The repository has no environments yet. GitHub auto-creates an environment
+  the first time a job references it, and an auto-created environment has **no**
+  protection rules — an owner must create `release` deliberately and add the
+  required reviewers / branch restrictions before the first tag push.
 
 ---
 
@@ -297,10 +301,29 @@ RELEASE_KEYCHAIN_PASSWORD          # optional; random if unset
 
 Never commit `.p12` / `.p8` files. Never print decoded keys or passwords.
 
-### PR CI packaging smoke
+### PR CI packaging coverage
 
-macOS CI runs `scripts/test-release-packaging.sh` (credential-free). It does not
-upload large app artifacts on every PR and does not notarize.
+The `Release Packaging (macOS)` job in
+[.github/workflows/ci.yml](../.github/workflows/ci.yml) runs on every pull
+request and every push to `main`, entirely credential-free:
+
+1. `bash -n` over every packaging script.
+2. `scripts/test-release-packaging.sh` — the packaging contract suite.
+3. `scripts/package-demo.sh` — builds a real unsigned `.app` plus its zip.
+4. `scripts/package-release.sh --signing-mode adhoc --skip-notarization
+   --dry-run` — the same invocation the Release workflow runs on its
+   non-production path.
+5. Artifact presence, `shasum -a 256 -c SHA256SUMS`, and a check that packaging
+   left the checkout clean.
+
+Steps 3 and 4 share one `swift build -c release`, so the second is cache-warm
+and near-free. The job runs concurrently with `macOS (Full Stack)` rather than
+extending it.
+
+It never signs with a Developer ID, never notarizes, never uploads app
+artifacts, and never creates a GitHub Release. The Developer ID → notarize →
+staple → Gatekeeper path has no PR coverage by construction: it needs `release`
+environment secrets and runs only on a `vX.Y.Z` tag push.
 
 ---
 

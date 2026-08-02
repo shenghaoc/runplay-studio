@@ -86,7 +86,23 @@ jobs:
         run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Verify full package
         run: swift test -Xswiftc -warnings-as-errors
-      - name: Release packaging smoke (credential-free)
+
+  # Release packaging: script contracts plus a real end-to-end build of both
+  # credential-free artifacts. Separate from the full-stack job so the two run
+  # concurrently instead of extending PR wall-clock time. Credential-free by
+  # construction: no signing identity, no notarization, no GitHub Release.
+  packaging-macos:
+    name: Release Packaging (macOS)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode 26.4
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+      - name: Verify Swift 6.3
+        run: |
+          swift --version
+          swift --version | grep -q 'Swift version 6.3'
+      - name: Packaging tooling syntax
         run: |
           bash -n scripts/lib/release-common.sh
           bash -n scripts/assemble-app-bundle.sh
@@ -95,4 +111,35 @@ jobs:
           bash -n scripts/verify-app-bundle.sh
           bash -n scripts/test-release-packaging.sh
           bash -n script/build_and_run.sh
-          ./scripts/test-release-packaging.sh
+      - name: Packaging contract tests
+        run: ./scripts/test-release-packaging.sh
+      - name: Unsigned demo package (end to end)
+        run: ./scripts/package-demo.sh "${RUNNER_TEMP}/demo-artifacts"
+      - name: Ad-hoc dry-run release package (end to end)
+        # Byte-for-byte the invocation the Release workflow runs on its
+        # non-production path, so a regression there fails on the PR instead.
+        run: >-
+          ./scripts/package-release.sh
+          --signing-mode adhoc
+          --skip-notarization
+          --dry-run
+          --build-number "${GITHUB_RUN_NUMBER}"
+          --output-dir "${RUNNER_TEMP}/release-artifacts"
+      - name: Verify produced artifacts
+        run: |
+          set -euo pipefail
+          VERSION="$(cat VERSION)"
+          DEMO="${RUNNER_TEMP}/demo-artifacts"
+          RELEASE="${RUNNER_TEMP}/release-artifacts"
+          test -d "${DEMO}/RunPlayStudio.app"
+          test -f "${DEMO}/RunPlayStudio.app.zip"
+          test -f "${RELEASE}/RunPlayStudio-${VERSION}-macos-arm64.zip"
+          test -f "${RELEASE}/RunPlayStudio-${VERSION}-release.json"
+          (cd "${RELEASE}" && shasum -a 256 -c SHA256SUMS)
+          # Production packaging refuses to run against a dirty checkout, so
+          # packaging must never write into the working tree itself.
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "packaging dirtied the working tree:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi

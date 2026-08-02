@@ -82,7 +82,9 @@ and publication remain credential-gated owner actions.
 - FR-C1: Manual dry-run workflow path without credentials or GitHub Release.
 - FR-C2: Tag `v*` production path uses `release` environment and secrets.
 - FR-C3: Least-privilege permissions; separate concurrency groups.
-- FR-C4: PR CI runs credential-free packaging smoke tests.
+- FR-C4: PR CI builds both credential-free artifacts end to end — unsigned
+  demo and ad-hoc dry run — in a dedicated `Release Packaging (macOS)` job,
+  alongside the packaging contract suite and script syntax checks.
 - FR-C5: Existing Core / sanitizer / full-stack CI remains intact.
 - FR-C6: Publication revalidates downloaded checksums and exact manifest facts
   before `gh release create --verify-tag`.

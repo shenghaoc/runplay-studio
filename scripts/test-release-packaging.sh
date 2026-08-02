@@ -74,13 +74,15 @@ else
   FAIL=$((FAIL + 1))
 fi
 
-# The release workflow writes packaging output inside the checkout. Those
-# directories must be git-ignored so artifacts cannot be committed by accident
-# and cannot dirty the worktree that production packaging requires to be clean.
-WORKFLOW_OUTPUT_DIRS="$(grep -Eo '\$\{GITHUB_WORKSPACE\}/[A-Za-z0-9._-]+' \
-  "$REPO_ROOT/.github/workflows/release.yml" | sed -E 's|.*/||' | LC_ALL=C sort -u)"
+# Any workflow that writes packaging output inside the checkout must write to a
+# git-ignored directory, so artifacts cannot be committed by accident and cannot
+# dirty the worktree that production packaging requires to be clean. CI packages
+# into ${RUNNER_TEMP} instead and so contributes no directory here.
+WORKFLOW_OUTPUT_DIRS="$(grep -Eho '\$\{GITHUB_WORKSPACE\}/[A-Za-z0-9._-]+' \
+  "$REPO_ROOT/.github/workflows/release.yml" \
+  "$REPO_ROOT/.github/workflows/ci.yml" | sed -E 's|.*/||' | LC_ALL=C sort -u)"
 if [[ -z "$WORKFLOW_OUTPUT_DIRS" ]]; then
-  printf 'FAIL: no in-checkout release workflow output directory found to check\n' >&2
+  printf 'FAIL: no in-checkout workflow output directory found to check\n' >&2
   FAIL=$((FAIL + 1))
 else
   UNIGNORED_OUTPUT_DIRS=0

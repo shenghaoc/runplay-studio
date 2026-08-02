@@ -32,7 +32,9 @@ not publication evidence.
 
 - [x] `.github/workflows/release.yml` (dry-run dispatch + tag production)
 - [x] Require annotated tag at `HEAD` on `main`; validate downloaded release set
-- [x] macOS CI packaging smoke via `test-release-packaging.sh`
+- [x] Dedicated `Release Packaging (macOS)` CI job: script syntax,
+  `test-release-packaging.sh`, end-to-end `package-demo.sh`, end-to-end ad-hoc
+  dry run, artifact/checksum assertions, clean-checkout assertion
 - [x] Git-ignore in-checkout workflow packaging output (`release-artifacts/`)
 - [x] Preserve existing demo workflow behavior
 
@@ -61,6 +63,9 @@ not publication evidence.
 - [x] Inspect dry-run app (`plutil`, `file`, `lipo`, `otool`, `codesign`)
 - [x] ZIP extract + isolated fresh-home launch smoke
 - [ ] Production Developer ID + notarization (owner credentials only — not this PR)
+- [x] Probe branch executing the empty-string `environment` expression
+  (job succeeded; repository environment count stayed 0; branch deleted)
+- [x] Local end-to-end run of the exact new CI packaging commands
 - [x] Final exact-head CI on the opened PR
 
 ## Explicitly not done in this PR
