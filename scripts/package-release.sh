@@ -312,7 +312,8 @@ if [[ "$NOTARIZE" -eq 1 ]]; then
       --issuer "$NOTARY_ISSUER" \
       --wait; then
     NOTARIZATION_STATUS="failed"
-    release_warn "notarytool submit failed; attempting to leave sanitized log path note"
+    release_warn "retrieve the detailed reason with: xcrun notarytool log <submission-id> --key <key> --key-id <key-id> --issuer <issuer>"
+    release_warn "the submission id is printed in the notarytool output above"
     release_die "notarization failed; not publishing release artifacts as official"
   fi
   NOTARIZATION_STATUS="accepted"

@@ -399,7 +399,12 @@ Ad-hoc dry-run artifacts are **not** expected to pass Gatekeeper.
 
 - Confirm Developer ID Application (not Mac Development) identity
 - Confirm hardened runtime and secure timestamp
-- Inspect notarytool log (sanitized; no secrets)
+- Inspect the notarytool log for the failing submission id (sanitized; no secrets):
+
+  ```bash
+  xcrun notarytool log <submission-id> \
+    --key "$NOTARY_KEY" --key-id "$KEY_ID" --issuer "$ISSUER_ID"
+  ```
 - Ensure no unexpected nested unsigned Mach-O code
 - Retry only after fixing the root cause — do not publish failed notarization
 
