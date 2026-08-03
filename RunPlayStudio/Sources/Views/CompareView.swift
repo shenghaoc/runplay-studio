@@ -167,12 +167,7 @@ struct CompareView: View {
                         .font(AppDesign.Typography.compactMetric)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Use Distance Alignment") {
-                        appState.setComparisonAlignmentMode(.distance)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Use Distance Alignment")
+                    useDistanceAlignmentFallbackButton
                 }
                 Spacer(minLength: 0)
             }
@@ -184,15 +179,23 @@ struct CompareView: View {
                     Text(message)
                         .font(AppDesign.Typography.compactMetric)
                         .foregroundStyle(.secondary)
-                    Button("Use Distance Alignment") {
-                        appState.setComparisonAlignmentMode(.distance)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    useDistanceAlignmentFallbackButton
                 }
                 Spacer(minLength: 0)
             }
         }
+    }
+
+    /// Shared recovery CTA for route-aware alignment unavailable/failed states.
+    /// Kept in one place so both banners stay accessibility-parity.
+    private var useDistanceAlignmentFallbackButton: some View {
+        Button("Use Distance Alignment") {
+            appState.setComparisonAlignmentMode(.distance)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help("Switch to distance-based comparison when route-aware alignment cannot be used")
+        .accessibilityLabel("Use Distance Alignment")
     }
 
     // MARK: - Selector
