@@ -189,6 +189,7 @@ struct CompareView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .accessibilityLabel("Use Distance Alignment")
                 }
                 Spacer(minLength: 0)
             }
