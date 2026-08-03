@@ -82,8 +82,11 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         // trackpoints. The parser also aborts mid-stream (see TCXXMLParser) so
         // an oversized activity is not fully materialized first; this repeats
         // the comparison against the activity actually chosen.
-        let selectedTrackpointCount = activity.laps.reduce(into: 0) { count, lap in
-            for track in lap.tracks { count += track.points.count }
+        var selectedTrackpointCount = 0
+        for lap in activity.laps {
+            for track in lap.tracks {
+                selectedTrackpointCount += track.points.count
+            }
         }
         if selectedTrackpointCount > maxRoutePointCount {
             throw WorkoutResourceLimitError.routePointLimitExceeded(
@@ -92,14 +95,15 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             )
         }
 
-        let invalidCoordinatePointCount = activity.laps.reduce(into: 0) { count, lap in
+        var invalidCoordinatePointCount = 0
+        for lap in activity.laps {
             for track in lap.tracks {
-                count += track.points.reduce(into: 0) { trackCount, point in
+                for point in track.points {
                     if !GeoDistance.isValidCoordinate(
                         lat: point.latitude,
                         lon: point.longitude
                     ) {
-                        trackCount += 1
+                        invalidCoordinatePointCount += 1
                     }
                 }
             }

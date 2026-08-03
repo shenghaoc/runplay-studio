@@ -51,9 +51,10 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         guard !allRawPoints.isEmpty else {
             throw WorkoutImportError.missingData("No GPS route data found in this GPX file")
         }
-        let invalidCoordinatePointCount = allRawPoints.reduce(into: 0) { count, point in
+        var invalidCoordinatePointCount = 0
+        for point in allRawPoints {
             if !GeoDistance.isValidCoordinate(lat: point.lat, lon: point.lon) {
-                count += 1
+                invalidCoordinatePointCount += 1
             }
         }
 

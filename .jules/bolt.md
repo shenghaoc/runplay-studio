@@ -81,3 +81,7 @@
 ## 2026-08-02 - Fuse TCX Distance Rebasing Into Route-Point Construction
 **Learning:** `TCXImporter` materialized a range projection, a compacted copy, a rebased copy, and a route-sized optional-distance buffer before consuming each rebased value once during route-point construction.
 **Action:** Keep the first supplied distance as scalar per-track state and compute each rebased value while constructing its route point. Preserve raw subtraction, including decreasing values, so downstream distance validation can reject invalid supplied series.
+
+## 2026-08-03 - Prefer Inline Loops Over reduce for Importer Counts
+**Learning:** `GPXImporter` and `TCXImporter` used `.reduce(into:)` to count trackpoints and invalid coordinates once per import. On large routes (tens of thousands of points) the nested `reduce` + inner `for` form still pays closure call overhead and is harder to keep allocation-free than a plain accumulator. Project hot-path style already prefers index/`for` accumulation for similar counting work.
+**Action:** When counting or aggregating over importer trackpoint collections, use nested inline `for` loops with a simple `var` accumulator instead of `.reduce` / `.reduce(into:)`. Keep the logic one-pass and allocation-free; leave chained transforms for small, non-route collections.
