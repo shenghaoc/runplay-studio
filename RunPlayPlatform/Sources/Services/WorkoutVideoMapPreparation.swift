@@ -288,25 +288,31 @@ struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         // Simple linear layout of valid coordinates across the canvas.
-        let validPoints = request.routePoints.enumerated().compactMap { index, point -> (Int, RoutePoint)? in
-            RouteMapCoordinate(point) != nil ? (index, point) : nil
+        // ⚡ Bolt: Inline loop avoids intermediate mapped array allocations.
+        var validPointsCount = 0
+        for point in request.routePoints {
+            if RouteMapCoordinate(point) != nil {
+                validPointsCount += 1
+            }
         }
 
         var pixels: [WorkoutVideoRoutePixel?] = Array(repeating: nil, count: request.routePoints.count)
-        if !validPoints.isEmpty {
-            let count = validPoints.count
-            for (order, pair) in validPoints.enumerated() {
-                try Task.checkCancellation()
-                let (index, point) = pair
-                let t = count == 1 ? 0.5 : Double(order) / Double(count - 1)
-                let x = 40 + t * Double(width - 80)
-                let y = Double(height) * 0.5
-                pixels[index] = WorkoutVideoRoutePixel(
-                    routePointID: point.id,
-                    routePointIndex: index,
-                    routeSegmentIndex: point.routeSegmentIndex,
-                    point: CGPoint(x: x, y: y)
-                )
+        if validPointsCount > 0 {
+            var order = 0
+            for (index, point) in request.routePoints.enumerated() {
+                if RouteMapCoordinate(point) != nil {
+                    try Task.checkCancellation()
+                    let t = validPointsCount == 1 ? 0.5 : Double(order) / Double(validPointsCount - 1)
+                    let x = 40 + t * Double(width - 80)
+                    let y = Double(height) * 0.5
+                    pixels[index] = WorkoutVideoRoutePixel(
+                        routePointID: point.id,
+                        routePointIndex: index,
+                        routeSegmentIndex: point.routeSegmentIndex,
+                        point: CGPoint(x: x, y: y)
+                    )
+                    order += 1
+                }
             }
         }
 
@@ -330,11 +336,12 @@ struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
         }
 
         // Start / finish markers.
-        if let first = pixels.compactMap({ $0 }).first {
+        // ⚡ Bolt: Use inline iteration instead of pixels.compactMap({ $0 }).first to avoid array allocation
+        if let first = pixels.first(where: { $0 != nil }) as? WorkoutVideoRoutePixel {
             context.setFillColor(NSColor.systemGreen.cgColor)
             context.fillEllipse(in: CGRect(x: first.point.x - 8, y: first.point.y - 8, width: 16, height: 16))
         }
-        if let last = pixels.compactMap({ $0 }).last {
+        if let last = pixels.last(where: { $0 != nil }) as? WorkoutVideoRoutePixel {
             context.setFillColor(NSColor.systemRed.cgColor)
             context.fillEllipse(in: CGRect(x: last.point.x - 8, y: last.point.y - 8, width: 16, height: 16))
         }

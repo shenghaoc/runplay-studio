@@ -174,8 +174,16 @@ struct ComparisonChartView: View {
 
     private var chartAccessibilityModel: ChartAccessibilityModel {
         if usesAlignedChart {
-            let paces = alignedMetrics.compactMap(\.primaryPace) + alignedMetrics.compactMap(\.comparisonPace)
-            let seriesIDs = alignedMetrics.map(\.blockIndex)
+            // ⚡ Bolt: Inline loop avoids multiple intermediate O(N) array allocations from compactMap and +.
+            var paces: [Double] = []
+            paces.reserveCapacity(alignedMetrics.count * 2)
+            var seriesIDs: [Int] = []
+            seriesIDs.reserveCapacity(alignedMetrics.count)
+            for metric in alignedMetrics {
+                if let p = metric.primaryPace { paces.append(p) }
+                if let c = metric.comparisonPace { paces.append(c) }
+                seriesIDs.append(metric.blockIndex)
+            }
             return ChartAccessibilityModel.make(
                 metricName: "Active Pace Over Matched Route",
                 unit: "s/km",
@@ -189,7 +197,13 @@ struct ComparisonChartView: View {
                 xAxisUnit: "km"
             )
         }
-        let paces = metrics.compactMap(\.primaryPace) + metrics.compactMap(\.comparisonPace)
+        // ⚡ Bolt: Inline loop avoids multiple intermediate O(N) array allocations from compactMap and +.
+        var paces: [Double] = []
+        paces.reserveCapacity(metrics.count * 2)
+        for metric in metrics {
+            if let p = metric.primaryPace { paces.append(p) }
+            if let c = metric.comparisonPace { paces.append(c) }
+        }
         return ChartAccessibilityModel.make(
             metricName: "Active Pace",
             unit: "s/km",
