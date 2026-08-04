@@ -166,7 +166,7 @@ public struct ComparisonRouteProjectionService: Sendable {
     ) -> [RouteScenePoint] {
         guard !indexedPoints.isEmpty else { return [] }
 
-        // ⚡ Bolt: Inline loop avoids intermediate mapped array allocations.
+        // ⚡ Bolt: Inline loop avoids .map closure overhead while building the projected array.
         var projected: [RouteScenePoint] = []
         projected.reserveCapacity(indexedPoints.count)
 

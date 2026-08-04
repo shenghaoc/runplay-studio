@@ -85,7 +85,7 @@ public struct RouteProjectionService: Sendable {
         }
         let minAlt = minAltOpt ?? 0
 
-        // ⚡ Bolt: Inline loop avoids intermediate mapped array allocations.
+        // ⚡ Bolt: Inline loop avoids .map closure overhead while building the projected array.
         var projected: [RouteScenePoint] = []
         projected.reserveCapacity(validIndexedPoints.count)
 

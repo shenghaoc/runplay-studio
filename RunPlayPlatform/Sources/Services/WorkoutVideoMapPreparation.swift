@@ -106,6 +106,22 @@ public struct WorkoutVideoMapPreparation: @unchecked Sendable {
         )
     }
 
+    /// First non-nil pixel without allocating a compacted copy of `pixels`.
+    public static func firstNonNilPixel(in pixels: [WorkoutVideoRoutePixel?]) -> WorkoutVideoRoutePixel? {
+        for case let pixel? in pixels {
+            return pixel
+        }
+        return nil
+    }
+
+    /// Last non-nil pixel without allocating a compacted copy of `pixels`.
+    public static func lastNonNilPixel(in pixels: [WorkoutVideoRoutePixel?]) -> WorkoutVideoRoutePixel? {
+        for case let pixel? in pixels.reversed() {
+            return pixel
+        }
+        return nil
+    }
+
     public static func markerPixel(
         routePointIndex: Int,
         routeSegmentIndex: Int,
@@ -288,7 +304,7 @@ struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         // Simple linear layout of valid coordinates across the canvas.
-        // ⚡ Bolt: Inline loop avoids intermediate mapped array allocations.
+        // ⚡ Bolt: Count valids with an inline loop instead of materializing a compactMapped pairs array.
         var validPointsCount = 0
         for point in request.routePoints {
             if RouteMapCoordinate(point) != nil {
@@ -336,12 +352,12 @@ struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
         }
 
         // Start / finish markers.
-        // ⚡ Bolt: Use inline iteration instead of pixels.compactMap({ $0 }).first to avoid array allocation
-        if let first = pixels.first(where: { $0 != nil }) as? WorkoutVideoRoutePixel {
+        // ⚡ Bolt: Scan for first/last non-nil instead of compactMap({ $0 }).first/last (full array).
+        if let first = WorkoutVideoMapPreparation.firstNonNilPixel(in: pixels) {
             context.setFillColor(NSColor.systemGreen.cgColor)
             context.fillEllipse(in: CGRect(x: first.point.x - 8, y: first.point.y - 8, width: 16, height: 16))
         }
-        if let last = pixels.last(where: { $0 != nil }) as? WorkoutVideoRoutePixel {
+        if let last = WorkoutVideoMapPreparation.lastNonNilPixel(in: pixels) {
             context.setFillColor(NSColor.systemRed.cgColor)
             context.fillEllipse(in: CGRect(x: last.point.x - 8, y: last.point.y - 8, width: 16, height: 16))
         }
