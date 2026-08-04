@@ -78,6 +78,141 @@ final class WorkoutVideoMapPreparerTests: XCTestCase {
         XCTAssertNil(none)
     }
 
+    func testFirstAndLastNonNilPixelWithLeadingTrailingNils() {
+        let pA = WorkoutVideoRoutePixel(
+            routePointID: UUID(),
+            routePointIndex: 1,
+            routeSegmentIndex: 0,
+            point: CGPoint(x: 11, y: 12)
+        )
+        let pB = WorkoutVideoRoutePixel(
+            routePointID: UUID(),
+            routePointIndex: 3,
+            routeSegmentIndex: 0,
+            point: CGPoint(x: 33, y: 34)
+        )
+        let sparse: [WorkoutVideoRoutePixel?] = [nil, pA, nil, pB, nil]
+        XCTAssertEqual(WorkoutVideoMapPreparation.firstNonNilPixel(in: sparse), pA)
+        XCTAssertEqual(WorkoutVideoMapPreparation.lastNonNilPixel(in: sparse), pB)
+
+        let allNil: [WorkoutVideoRoutePixel?] = [nil, nil, nil]
+        XCTAssertNil(WorkoutVideoMapPreparation.firstNonNilPixel(in: allNil))
+        XCTAssertNil(WorkoutVideoMapPreparation.lastNonNilPixel(in: allNil))
+        XCTAssertNil(WorkoutVideoMapPreparation.firstNonNilPixel(in: []))
+        XCTAssertNil(WorkoutVideoMapPreparation.lastNonNilPixel(in: []))
+    }
+
+    func testSyntheticPreparerLeavesNilForInvalidCoordinatesAndPreservesIndices() async throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            RoutePoint(
+                timestamp: start,
+                latitude: 37.77,
+                longitude: -122.42,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0
+            ),
+            RoutePoint(
+                timestamp: start.addingTimeInterval(1),
+                latitude: .nan,
+                longitude: -122.42,
+                distanceFromStartMeters: 8,
+                elapsedSeconds: 2
+            ),
+            RoutePoint(
+                timestamp: start.addingTimeInterval(2),
+                latitude: 37.771,
+                longitude: -122.42,
+                distanceFromStartMeters: 16,
+                elapsedSeconds: 4
+            )
+        ]
+        let preparer = SyntheticWorkoutVideoMapPreparer()
+        let width = 320
+        let height = 180
+        let request = WorkoutVideoMapPreparationRequest(
+            size: CGSize(width: width, height: height),
+            appearance: .light,
+            routes: [],
+            markers: [],
+            routePoints: points
+        )
+        let prepared = try await preparer.prepare(request: request)
+
+        XCTAssertEqual(prepared.routePointPixels.count, 3)
+        XCTAssertNil(prepared.routePointPixels[1])
+
+        let first = try XCTUnwrap(prepared.routePointPixels[0])
+        let last = try XCTUnwrap(prepared.routePointPixels[2])
+        XCTAssertEqual(first.routePointIndex, 0)
+        XCTAssertEqual(last.routePointIndex, 2)
+        XCTAssertEqual(first.routePointID, points[0].id)
+        XCTAssertEqual(last.routePointID, points[2].id)
+
+        // Two valid points: order 0 at left pad, order 1 at right pad.
+        XCTAssertEqual(first.point.x, 40, accuracy: 0.001)
+        XCTAssertEqual(last.point.x, Double(width - 40), accuracy: 0.001)
+        XCTAssertEqual(first.point.y, Double(height) * 0.5, accuracy: 0.001)
+        XCTAssertEqual(last.point.y, Double(height) * 0.5, accuracy: 0.001)
+
+        XCTAssertEqual(WorkoutVideoMapPreparation.firstNonNilPixel(in: prepared.routePointPixels), first)
+        XCTAssertEqual(WorkoutVideoMapPreparation.lastNonNilPixel(in: prepared.routePointPixels), last)
+    }
+
+    func testSyntheticPreparerSingleValidPointCentersOnCanvas() async throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            RoutePoint(
+                timestamp: start,
+                latitude: .nan,
+                longitude: -122.42,
+                distanceFromStartMeters: 0,
+                elapsedSeconds: 0
+            ),
+            RoutePoint(
+                timestamp: start.addingTimeInterval(1),
+                latitude: 37.77,
+                longitude: -122.42,
+                distanceFromStartMeters: 8,
+                elapsedSeconds: 2
+            ),
+            RoutePoint(
+                timestamp: start.addingTimeInterval(2),
+                latitude: .nan,
+                longitude: -122.42,
+                distanceFromStartMeters: 16,
+                elapsedSeconds: 4
+            )
+        ]
+        let preparer = SyntheticWorkoutVideoMapPreparer()
+        let width = 200
+        let height = 100
+        let request = WorkoutVideoMapPreparationRequest(
+            size: CGSize(width: width, height: height),
+            appearance: .dark,
+            routes: [],
+            markers: [],
+            routePoints: points
+        )
+        let prepared = try await preparer.prepare(request: request)
+
+        XCTAssertNil(prepared.routePointPixels[0])
+        XCTAssertNil(prepared.routePointPixels[2])
+        let only = try XCTUnwrap(prepared.routePointPixels[1])
+        XCTAssertEqual(only.routePointIndex, 1)
+        // Single valid point uses t = 0.5 → centered between side pads.
+        let expectedX = 40 + 0.5 * Double(width - 80)
+        XCTAssertEqual(only.point.x, expectedX, accuracy: 0.001)
+        XCTAssertEqual(
+            WorkoutVideoMapPreparation.firstNonNilPixel(in: prepared.routePointPixels),
+            only
+        )
+        XCTAssertEqual(
+            WorkoutVideoMapPreparation.lastNonNilPixel(in: prepared.routePointPixels),
+            only
+        )
+    }
+
     func testCancellationDuringSyntheticPrepare() async {
         let preparer = SyntheticWorkoutVideoMapPreparer()
         let workout = sampleWorkout()

@@ -144,12 +144,16 @@ public struct ComparisonRouteProjectionService: Sendable {
 
     /// Filter out points with invalid coordinates, preserving original indices.
     private func filterValidWithIndices(_ points: [RoutePoint]) -> [(index: Int, point: RoutePoint)] {
-        points.enumerated().compactMap { idx, point in
-            guard GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude) else {
-                return nil
+        // ⚡ Bolt: Inline loop avoids closure overhead from .enumerated().compactMap { ... }.
+        var valid: [(index: Int, point: RoutePoint)] = []
+        valid.reserveCapacity(points.count)
+        for i in points.indices {
+            let point = points[i]
+            if GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude) {
+                valid.append((index: i, point: point))
             }
-            return (index: idx, point: point)
         }
+        return valid
     }
 
     /// Project a route into local meter-space relative to the given center.
@@ -162,7 +166,11 @@ public struct ComparisonRouteProjectionService: Sendable {
     ) -> [RouteScenePoint] {
         guard !indexedPoints.isEmpty else { return [] }
 
-        return indexedPoints.map { item in
+        // ⚡ Bolt: Inline loop avoids .map closure overhead while building the projected array.
+        var projected: [RouteScenePoint] = []
+        projected.reserveCapacity(indexedPoints.count)
+
+        for item in indexedPoints {
             let point = item.point
             let (x, z) = latLonToMeters(
                 lat: point.latitude,
@@ -176,14 +184,19 @@ public struct ComparisonRouteProjectionService: Sendable {
                 atSourceIndex: item.index,
                 elevationProfile: elevationProfile
             )
-            let y = correctedAltitude.map { ($0 - minAlt) * elevationExaggeration } ?? 0
+            let y: Double
+            if let alt = correctedAltitude {
+                y = (alt - minAlt) * elevationExaggeration
+            } else {
+                y = 0
+            }
 
             // Safety: replace any NaN/infinity with 0
             let safeX = x.isFinite ? x : 0
             let safeY = y.isFinite ? y : 0
             let safeZ = z.isFinite ? z : 0
 
-            return RouteScenePoint(
+            projected.append(RouteScenePoint(
                 id: point.id,
                 xMeters: safeX,
                 yMeters: safeY,
@@ -194,21 +207,9 @@ public struct ComparisonRouteProjectionService: Sendable {
                 paceSecondsPerKilometer: point.paceSecondsPerKilometer,
                 heartRateBPM: point.heartRateBPM,
                 routeSegmentIndex: point.routeSegmentIndex
-            )
+            ))
         }
-    }
-
-    private func correctedAltitudes(
-        for indexedPoints: [(index: Int, point: RoutePoint)],
-        elevationProfile: ElevationProfile
-    ) -> [Double] {
-        indexedPoints.compactMap { item in
-            correctedAltitude(
-                for: item.point,
-                atSourceIndex: item.index,
-                elevationProfile: elevationProfile
-            )
-        }
+        return projected
     }
 
     private func correctedAltitude(

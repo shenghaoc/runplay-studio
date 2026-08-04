@@ -289,6 +289,45 @@ final class ComparisonProjectionTests: XCTestCase {
         }
     }
 
+    func testComparisonKeepsSourceIndexAfterCoordinateFilteringWithProfiles() {
+        var primary = createProfileRoute(
+            startLat: 37.7749,
+            altitudes: [10, 15, 20],
+            routeSegmentIndex: 4
+        )
+        var comparison = createProfileRoute(
+            startLat: 37.7752,
+            altitudes: [12, 18, 22],
+            routeSegmentIndex: 7
+        )
+        primary[1].latitude = .nan
+        comparison[1].longitude = .infinity
+
+        let primaryProfile = ElevationProfile(routePoints: primary)
+        let comparisonProfile = ElevationProfile(routePoints: comparison)
+
+        let result = service.project(
+            primary: primary,
+            comparison: comparison,
+            primaryElevationProfile: primaryProfile,
+            comparisonElevationProfile: comparisonProfile
+        )
+
+        // Original indices must be preserved so elevation samples attach correctly.
+        XCTAssertEqual(result.primaryRoute.map(\.sourceIndex), [0, 2])
+        XCTAssertEqual(result.primaryRoute.map(\.distanceFromStartMeters), [0, 100])
+        XCTAssertEqual(result.primaryRoute.map(\.routeSegmentIndex), [4, 4])
+        // Shared baseline min corrected alt = 10; exaggeration default 2.0.
+        XCTAssertEqual(result.primaryRoute[0].yMeters, 0, accuracy: 0.001)
+        XCTAssertEqual(result.primaryRoute[1].yMeters, 20, accuracy: 0.001)
+
+        XCTAssertEqual(result.comparisonRoute.map(\.sourceIndex), [0, 2])
+        XCTAssertEqual(result.comparisonRoute.map(\.distanceFromStartMeters), [0, 100])
+        XCTAssertEqual(result.comparisonRoute.map(\.routeSegmentIndex), [7, 7])
+        XCTAssertEqual(result.comparisonRoute[0].yMeters, 4, accuracy: 0.001)
+        XCTAssertEqual(result.comparisonRoute[1].yMeters, 24, accuracy: 0.001)
+    }
+
     func testNoNaNInProjectedCoordinates() {
         let primary = createRoute(startLat: 37.7749, startLon: -122.4194, count: 30)
         let comparison = createRoute(startLat: 37.7800, startLon: -122.4200, count: 25)
