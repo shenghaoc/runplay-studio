@@ -452,6 +452,7 @@ Export workout data as local files:
 - **Combined CSV** — Splits and segments in one file
 - **PNG Summary Card** — Exact 1200×1600 pixel summary image with optional static Apple Maps region, Light/Dark appearance, and Solid/Pace/HR/Elevation route coloring (reuses live-map builders)
 - **Route Replay (MP4)** — Offline deterministic H.264 video at 1920×1080 / 30 fps (15, 30, or 60 second presets). Compresses the full source elapsed timeline (including pauses and recording gaps) into the selected length with a static top-down map, start/finish markers, moving position marker, and metric HUD. Does not record the screen or live replay.
+- **Comparison Replay (MP4)** — Same media contract for two-workout Distance or Route-Aware comparison. One combined top-down map with primary blue `P` and comparison orange `C` markers, dual metric panels, deltas, and matched clocks in Route-Aware mode. Opened from Compare when a valid pair exists; never records the live Compare view.
 
 All exports are local-only. No data is uploaded to a RunPlay Studio service.
 PNG export opens a configuration sheet, generates a deterministic card with

@@ -357,14 +357,28 @@ public enum ExportFilenameBuilder {
         return "\(baseName)-replay.mp4"
     }
 
-    private static func baseName(for workout: RunWorkout?) -> String {
+    /// File-backed comparison video filename (`<primary>-vs-<comparison>-comparison-replay.mp4`).
+    ///
+    /// Does not include UUIDs, absolute paths, or imported source filenames.
+    public static func comparisonVideoReplayFilename(
+        primary: RunWorkout?,
+        comparison: RunWorkout?
+    ) -> String {
+        let primaryBase = baseName(for: primary, maxLength: 36)
+        let comparisonBase = baseName(for: comparison, maxLength: 36)
+        let combined = "\(primaryBase)-vs-\(comparisonBase)-comparison-replay"
+        let bounded = String(combined.prefix(120))
+        return "\(bounded).mp4"
+    }
+
+    private static func baseName(for workout: RunWorkout?, maxLength: Int = 50) -> String {
         if let workout {
-            return sanitize(workout.displayName)
+            return sanitize(workout.displayName, maxLength: maxLength)
         }
         return "runplay-export"
     }
 
-    private static func sanitize(_ name: String) -> String {
+    private static func sanitize(_ name: String, maxLength: Int = 50) -> String {
         // Remove characters not safe for filenames
         let allowed = CharacterSet.alphanumerics
             .union(CharacterSet(charactersIn: "-_ "))
@@ -375,7 +389,7 @@ public enum ExportFilenameBuilder {
             .replacingOccurrences(of: " ", with: "-")
             .replacingOccurrences(of: "--+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-            .prefix(50)
+            .prefix(maxLength)
             .lowercased()
     }
 

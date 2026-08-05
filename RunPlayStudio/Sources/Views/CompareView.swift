@@ -1,5 +1,6 @@
 import SwiftUI
 import RunPlayCore
+import AppKit
 
 /// Main comparison view showing two workouts side by side.
 ///
@@ -7,6 +8,11 @@ import RunPlayCore
 /// and improved spacing throughout.
 struct CompareView: View {
     @ObservedObject var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var comparisonVideoViewModel: ComparisonVideoExportViewModel?
+    @State private var exportSuccessMessage: String?
+    @State private var showingExportSuccess = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +86,24 @@ struct CompareView: View {
         .onChange(of: appState.comparisonViewModel.alignmentMode) { _, _ in
             appState.requestSessionSave()
         }
+        .sheet(item: $comparisonVideoViewModel) { viewModel in
+            ComparisonVideoExportSheet(
+                viewModel: viewModel,
+                onDismiss: {
+                    comparisonVideoViewModel = nil
+                },
+                onExported: { filename in
+                    exportSuccessMessage = "Saved to \(filename)"
+                    showingExportSuccess = true
+                }
+            )
+        }
+        .alert("Export Complete", isPresented: $showingExportSuccess) {
+            Button("OK") { exportSuccessMessage = nil }
+        } message: {
+            Text(exportSuccessMessage ?? "")
+        }
+        .blocksBackgroundCommands(comparisonVideoViewModel != nil || showingExportSuccess)
     }
 
     // MARK: - Alignment controls
@@ -228,7 +252,7 @@ struct CompareView: View {
 
             Spacer()
 
-            clearButton
+            comparisonActions
         }
         .padding(.horizontal, AppDesign.Spacing.xxLarge)
         .padding(.vertical, AppDesign.Spacing.large)
@@ -240,7 +264,7 @@ struct CompareView: View {
             HStack {
                 workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
                 Spacer()
-                clearButton
+                comparisonActions
             }
 
             HStack {
@@ -257,6 +281,116 @@ struct CompareView: View {
         .padding(.horizontal, AppDesign.Spacing.xxLarge)
         .padding(.vertical, AppDesign.Spacing.large)
         .background(AppDesign.panelBackground)
+    }
+
+    /// Shared actions for wide and compact comparison selectors.
+    private var comparisonActions: some View {
+        HStack(spacing: AppDesign.Spacing.medium) {
+            comparisonVideoExportButton
+            clearButton
+        }
+    }
+
+    private var canExportComparisonVideo: Bool {
+        guard let pair = appState.comparisonPair else { return false }
+        let assessment = ComparisonVideoExportEligibility.distanceAssessment(
+            pair: pair,
+            primaryContext: appState.analysisContext(for: pair.primary),
+            comparisonContext: appState.analysisContext(for: pair.comparison)
+        )
+        return assessment.canExportDistance
+    }
+
+    private var comparisonVideoExportHelp: String {
+        guard let pair = appState.comparisonPair else {
+            return "Select two workouts to export a comparison video."
+        }
+        let assessment = ComparisonVideoExportEligibility.distanceAssessment(
+            pair: pair,
+            primaryContext: appState.analysisContext(for: pair.primary),
+            comparisonContext: appState.analysisContext(for: pair.comparison)
+        )
+        if let help = assessment.distanceUnavailableHelp {
+            return help
+        }
+        return "Export a deterministic offline H.264 MP4 of this comparison."
+    }
+
+    private var comparisonVideoExportButton: some View {
+        Button {
+            openComparisonVideoSheet()
+        } label: {
+            Label("Export Comparison Replay (MP4)…", systemImage: "square.stack.3d.down.right")
+                .font(AppDesign.Typography.compactMetric)
+        }
+        .controlSize(.regular)
+        .disabled(!canExportComparisonVideo)
+        .help(comparisonVideoExportHelp)
+        .accessibilityLabel("Export comparison replay as MP4 video")
+        .accessibilityHint(
+            canExportComparisonVideo
+                ? "Opens options for offline H.264 comparison replay export"
+                : comparisonVideoExportHelp
+        )
+    }
+
+    private func openComparisonVideoSheet() {
+        guard let pair = appState.comparisonPair else { return }
+        let primaryContext = appState.analysisContext(for: pair.primary)
+        let comparisonContext = appState.analysisContext(for: pair.comparison)
+        let assessment = ComparisonVideoExportEligibility.distanceAssessment(
+            pair: pair,
+            primaryContext: primaryContext,
+            comparisonContext: comparisonContext
+        )
+        guard assessment.canExportDistance else { return }
+
+        let appearance: PNGSummaryExportAppearance = colorScheme == .dark ? .dark : .light
+        let liveMode = appState.comparisonViewModel.alignmentMode
+        let preferredMode: ComparisonAlignmentMode
+        if liveMode == .routeAware,
+           appState.comparisonViewModel.isRouteAwareReady,
+           let snapshot = appState.comparisonViewModel.routeAlignmentSnapshot,
+           ComparisonVideoExportEligibility.assessment(
+               pair: pair,
+               primaryContext: primaryContext,
+               comparisonContext: comparisonContext,
+               snapshot: snapshot
+           ).canExportRouteAware {
+            preferredMode = .routeAware
+        } else {
+            preferredMode = .distance
+        }
+
+        let seed: ComparisonVideoAlignmentSeed?
+        if let snapshot = appState.comparisonViewModel.routeAlignmentSnapshot {
+            let candidate = ComparisonVideoAlignmentSeed(
+                pair: pair,
+                primaryContext: primaryContext,
+                comparisonContext: comparisonContext,
+                snapshot: snapshot
+            )
+            seed = candidate.matches(
+                pair: pair,
+                primaryContext: primaryContext,
+                comparisonContext: comparisonContext
+            ) ? candidate : nil
+        } else {
+            seed = nil
+        }
+
+        let configuration = ComparisonVideoExportConfiguration(
+            duration: .thirtySeconds,
+            appearance: appearance,
+            alignmentMode: preferredMode
+        )
+        comparisonVideoViewModel = ComparisonVideoExportViewModel(
+            pair: pair,
+            primaryContext: primaryContext,
+            comparisonContext: comparisonContext,
+            initialConfiguration: configuration,
+            alignmentSeed: seed
+        )
     }
 
     private func workoutLabel(_ role: String, name: String) -> some View {

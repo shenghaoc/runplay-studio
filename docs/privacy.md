@@ -45,13 +45,15 @@ map requests.
 
 ## Video export (MP4)
 
-Route-replay video export is offline and local-only. Frames are rendered with
-Core Graphics into an AVFoundation H.264 MP4 and written only to the destination
-you choose. The exporter does not upload workouts, attach GPS coordinates as
-hidden MP4 metadata, or include library UUIDs, device serials, or absolute paths.
-One MapKit snapshot may load basemap tiles under the MapKit policy above; the
-finished video visually shows the route region just as map-inclusive PNG export
-does and should be shared deliberately.
+Route-replay and comparison-replay video export is offline and local-only. Frames
+are rendered with Core Graphics into an AVFoundation H.264 MP4 and written only
+to the destination you choose. The exporter does not upload workouts, attach GPS
+coordinates as hidden MP4 metadata, or include library UUIDs, device serials, or
+absolute paths. One MapKit snapshot may load basemap tiles under the MapKit
+policy above; the finished video visually shows the route region just as
+map-inclusive PNG export does and should be shared deliberately. Comparison
+videos show two route regions and may reveal more location history than a
+single-run export.
 
 ## Tags and smart collections
 

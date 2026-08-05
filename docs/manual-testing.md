@@ -649,6 +649,21 @@ Automated coverage: `WorkoutVideoFramePlanTests`,
 `WorkoutVideoFrameRendererTests`, `WorkoutVideoExporterTests`, and
 `WorkoutVideoExportViewModelTests`.
 
+## Comparison replay video export (synthetic)
+
+Use **synthetic or bundled demo workouts only**. Do not commit generated MP4s.
+
+1. Open Compare with two synthetic GPS workouts; confirm **Export Comparison Replay (MP4)…** is enabled.
+2. Distance mode: export 15 seconds; QuickTime should show P and C markers, common-distance progress end, dual clocks.
+3. Route-Aware mode (when available): export 15 seconds; confirm matched clocks, separation, quality line, block label if multi-block.
+4. When Route-Aware is unavailable, confirm Distance remains available and no silent fallback labels Distance as Route-Aware.
+5. Cancel a longer export; confirm no destination/temp file and live comparison slider/mode unchanged.
+6. Keyboard-navigate the sheet; poster exposes one combined accessibility summary.
+
+Automated coverage: `ComparisonVideoFramePlanTests`, `ComparisonVideoSamplerTests`,
+`ComparisonVideoAlignmentResolverTests`, `ComparisonVideoPixelMapTests`,
+`ComparisonVideoExporterTests`, `ComparisonVideoExportViewModelTests`.
+
 Focused pre-merge smoke record (2026-08-03): an ad-hoc packaged build was
 launched with a fresh temporary `HOME` and `CFFIXED_USER_HOME`, using only the
 bundled demo workouts. The toolbar command opened the native sheet; all three
