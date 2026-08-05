@@ -295,7 +295,6 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         let sample = frame.sample
 
         let primaryRows = sideRows(
-            identity: "P",
             distance: sample.primaryDistanceMeters,
             elapsed: sample.primaryElapsedSeconds,
             active: sample.primaryActiveSeconds,
@@ -303,7 +302,6 @@ public struct ComparisonVideoFrameRenderer: Sendable {
             labels: frame
         )
         let comparisonRows = sideRows(
-            identity: "C",
             distance: sample.comparisonDistanceMeters,
             elapsed: sample.comparisonElapsedSeconds,
             active: sample.comparisonActiveSeconds,
@@ -373,15 +371,13 @@ public struct ComparisonVideoFrameRenderer: Sendable {
     }
 
     private func sideRows(
-        identity: String,
         distance: Double,
         elapsed: Double?,
         active: Double?,
         pace: Double?,
         labels: ComparisonVideoFrameModel
     ) -> [(String, String)] {
-        _ = identity
-        return [
+        [
             ("Distance", DisplayFormatter.formatDistanceKm(distance)),
             (labels.elapsedLabel, DisplayFormatter.formatElapsed(elapsed)),
             (labels.activeLabel, DisplayFormatter.formatElapsed(active)),

@@ -90,14 +90,8 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
             ))
             return result
         } catch {
-            do {
-                if fileManager.fileExists(atPath: temporaryURL.path) {
-                    try fileManager.removeItem(at: temporaryURL)
-                }
-            } catch {
-                throw WorkoutVideoExportError.finalizationFailed(
-                    "Temporary output cleanup failed"
-                )
+            if fileManager.fileExists(atPath: temporaryURL.path) {
+                try? fileManager.removeItem(at: temporaryURL)
             }
 
             if Task.isCancelled || error is CancellationError {
