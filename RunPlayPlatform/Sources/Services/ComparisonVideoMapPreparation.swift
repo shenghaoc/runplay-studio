@@ -297,8 +297,13 @@ public struct SyntheticComparisonVideoMapPreparer: ComparisonVideoMapPreparing, 
         context.setFillColor(CGColor(red: 0.9, green: 0.9, blue: 0.92, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
+        guard let basemap = context.makeImage() else {
+            throw ComparisonVideoExportError.mapPreparationFailed(
+                "Could not create synthetic basemap image"
+            )
+        }
         let composed = try MapSnapshotOverlayComposer.compose(
-            basemap: context.makeImage()!,
+            basemap: basemap,
             routes: primaryLines + comparisonLines,
             markers: [],
             converter: converter,

@@ -496,11 +496,11 @@ public struct ComparisonVideoFrameRenderer: Sendable {
                 positiveLabel: "",
                 negativeLabel: ""
             )
-            // Prefer P/C identity over red/green alone.
+            // delta = primary - comparison; positive means P took more time.
             if value > 0 {
-                return "P ahead by \(stripSign(formatted))"
+                return "C ahead by \(stripSign(formatted))"
             }
-            return "C ahead by \(stripSign(formatted))"
+            return "P ahead by \(stripSign(formatted))"
         case .pace:
             // Positive pace delta = primary slower (higher sec/km).
             let text = DisplayFormatter.formatSignedDurationDelta(value, suffix: "/km")
