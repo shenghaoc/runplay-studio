@@ -6,9 +6,19 @@ import RunPlayCore
 ///
 /// Digests are lowercase hexadecimal. Do not implement a custom hash.
 public enum ContentHasher {
+    // ⚡ Bolt: Cache hex characters to avoid string allocation per byte
+    private static let hexChars = Array("0123456789abcdef")
+
     public static func sha256Hex(of data: Data) -> String {
         let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
+        // ⚡ Bolt: Inline loop avoids intermediate [String] array allocation from .map { ... }.joined()
+        var hex = ""
+        hex.reserveCapacity(64)
+        for byte in digest {
+            hex.append(hexChars[Int(byte >> 4)])
+            hex.append(hexChars[Int(byte & 0x0F)])
+        }
+        return hex
     }
 }
 
