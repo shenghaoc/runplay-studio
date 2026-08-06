@@ -157,7 +157,13 @@ public struct RouteColoringService {
         elevationProfile: ElevationProfile?
     ) -> [RoutePoint] {
         let base = Date(timeIntervalSince1970: 0)
-        return scenePoints.enumerated().map { offset, point in
+
+        // ⚡ Bolt: Inline loop avoids closure overhead from .enumerated().map { ... }.
+        var routePoints: [RoutePoint] = []
+        routePoints.reserveCapacity(scenePoints.count)
+
+        for offset in scenePoints.indices {
+            let point = scenePoints[offset]
             let altitude: Double?
             let id: UUID
             if let elevationProfile {
@@ -180,7 +186,7 @@ public struct RouteColoringService {
                 id = point.id
             }
 
-            return RoutePoint(
+            routePoints.append(RoutePoint(
                 id: id,
                 timestamp: base.addingTimeInterval(point.elapsedSeconds),
                 latitude: 0,
@@ -191,7 +197,9 @@ public struct RouteColoringService {
                 paceSecondsPerKilometer: point.paceSecondsPerKilometer,
                 heartRateBPM: point.heartRateBPM,
                 routeSegmentIndex: point.routeSegmentIndex
-            )
+            ))
         }
+
+        return routePoints
     }
 }
