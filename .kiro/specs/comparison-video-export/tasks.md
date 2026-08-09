@@ -55,5 +55,5 @@
 - [x] Package consumer smoke
 - [x] Release packaging regression
 - [x] Manual Distance + Route-Aware MP4 inspection — offline export path; see docs/manual-testing.md
-- [ ] Packaged-app GUI pass — entry point, sheet, save panel, keyboard navigation
+- [x] Packaged-app GUI pass — entry point, sheet, save panel, cancel, live state
 - [x] Draft PR with full description

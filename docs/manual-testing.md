@@ -688,9 +688,32 @@ rendered as `C faster by 0:19 /km slower`, because the pace branch of
 `formatDelta` let `formatSignedDurationDelta` append its default trailing label.
 The text was both self-contradictory and clipped at the delta panel edge.
 
-Step 1 and step 6 — the in-app entry point, sheet, save panel, keyboard
-navigation, and live-comparison-state-unchanged checks — were **not** covered by
-this pass and still need a packaged-app session.
+Packaged-app record (2026-08-10): the remaining steps were then run against an
+unsigned `scripts/package-demo.sh` build launched with an isolated `HOME` and
+`CFFIXED_USER_HOME`, so it seeded the two bundled synthetic demo runs and never
+opened the developer's own library. **Export Comparison Replay (MP4)…** was
+enabled in the Compare header. The sheet opened with the pair fixed, inherited
+the live Route-Aware mode and its snapshot (`Excellent · 7.6 km matched ·
+93%/93% coverage · 4 m median separation`), and rendered a midpoint poster.
+Switching 30 → 15 sec re-rendered the poster without re-fetching the basemap.
+The native save panel pre-filled
+`morning-park-run-vs-morning-park-progression-run-comparison-replay.mp4`; the
+export completed with a single completion alert, and `ffprobe` reported one
+H.264 High stream, 1920×1080, 30 fps, 450 frames, 15.000000 s, BT.709, and no
+audio. During encoding every configuration control was disabled and the primary
+button became **Cancel Export**; cancelling a 60-second export left neither the
+chosen destination nor any `runplay-video-*` temporary. After both a completed
+and a cancelled export the live Compare state was untouched — still Route-Aware,
+slider still at 0.00 / 7.62 km. The pace delta rendered as `P faster by
+5:35 /km`, confirming the fix above in the shipping UI.
+
+Not covered: Tab-order keyboard navigation (macOS keyboard navigation is off by
+default on the test machine and was deliberately not changed), a spoken
+VoiceOver pass, and Route-Aware-unavailable behaviour in the GUI — the last is
+covered by the offline record above, which showed it failing closed with
+`unsupportedGeographicExtent` and writing no file. Escape does not dismiss the
+sheet, but the pre-existing Summary Card sheet behaves identically, so that is
+app-wide rather than specific to this feature.
 
 Focused pre-merge smoke record (2026-08-03): an ad-hoc packaged build was
 launched with a fresh temporary `HOME` and `CFFIXED_USER_HOME`, using only the
