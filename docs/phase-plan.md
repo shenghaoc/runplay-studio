@@ -105,6 +105,7 @@
 - [x] Dark mode PNG summary card variant
 - [x] Map region screenshot in PNG export
 - [x] Video export (AVFoundation) — offline deterministic H.264 MP4 route replay
+- [x] Comparison replay video export — Distance and Route-Aware two-workout MP4
 
 ### Phase: Polish and Accessibility
 - [x] Keyboard shortcuts for replay and navigation

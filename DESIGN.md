@@ -202,6 +202,13 @@ gap/movement state, progress). Light and
 Dark palettes are explicit. Source elapsed timeline is compressed into the
 selected video length; timing does not depend on machine speed or live replay.
 
+### Comparison Replay Video Export
+Same media contract as single-workout video. Dual-route static basemap with
+primary blue `P` and comparison orange `C` markers (identity is not colour-only).
+Distance mode samples equal common cumulative distance; Route-Aware mode samples
+aligned progress from a reused or one-shot DTW snapshot with matched clocks and
+spatial separation. Entry is Compare-only; sheet configuration is not persisted.
+
 ### PNG Summary Export Card
 Fixed **1200×1600** canvas for offline sharing. Uses **explicit Light and Dark export
 palettes** (never ambient `windowBackgroundColor`). Map-inclusive hierarchy:

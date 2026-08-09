@@ -58,8 +58,8 @@ RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit va
 RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 ├── Sources/
 │   ├── Commands/              # CommandRegistry, focused actions, shortcuts help
-│   ├── Services/              # UI-adjacent services (library, PNG/video export, announcements)
-│   ├── ViewModels/            # View state management (AppState, ReplayController, PNG/video export)
+│   ├── Services/              # UI-adjacent services (library, PNG/video/comparison-video export, announcements)
+│   ├── ViewModels/            # View state management (AppState, ReplayController, PNG/video/comparison-video export)
 │   ├── Views/                 # SwiftUI views
 │   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
 ├── Resources/                 # Sample data and fixtures

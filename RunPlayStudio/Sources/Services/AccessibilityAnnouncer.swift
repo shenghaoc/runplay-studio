@@ -82,6 +82,11 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case videoExportCompleted(name: String)
     case videoExportFailed(message: String)
     case videoExportCancelled
+    case comparisonVideoPreviewReady
+    case comparisonVideoExportCompleted(name: String)
+    case comparisonVideoExportFailed(message: String)
+    case comparisonVideoExportCancelled
+    case comparisonVideoRouteAwareUnavailable
     case heatmapReady(runCount: Int)
     case queryResultPublished(count: Int)
     case comparisonEntered
@@ -124,6 +129,16 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Video export failed. \(message)"
         case .videoExportCancelled:
             return "Video export cancelled."
+        case .comparisonVideoPreviewReady:
+            return "Comparison video preview ready."
+        case .comparisonVideoExportCompleted(let name):
+            return "Comparison video exported \(name)."
+        case .comparisonVideoExportFailed(let message):
+            return "Comparison video export failed. \(message)"
+        case .comparisonVideoExportCancelled:
+            return "Comparison video export cancelled."
+        case .comparisonVideoRouteAwareUnavailable:
+            return "Route-Aware comparison video unavailable."
         case .heatmapReady(let runCount):
             return "Heatmap ready. \(runCount) runs included."
         case .queryResultPublished(let count):
