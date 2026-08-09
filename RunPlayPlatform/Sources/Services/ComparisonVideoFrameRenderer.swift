@@ -481,9 +481,9 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         )
     }
 
-    private enum DeltaKind { case time, pace }
+    enum DeltaKind { case time, pace }
 
-    private func formatDelta(_ value: Double?, kind: DeltaKind) -> String {
+    func formatDelta(_ value: Double?, kind: DeltaKind) -> String {
         guard let value, value.isFinite else { return "Unavailable" }
         if abs(value) < (kind == .pace ? 0.5 : 0.05) {
             return "Tie"
@@ -503,7 +503,14 @@ public struct ComparisonVideoFrameRenderer: Sendable {
             return "P ahead by \(stripSign(formatted))"
         case .pace:
             // Positive pace delta = primary slower (higher sec/km).
-            let text = DisplayFormatter.formatSignedDurationDelta(value, suffix: "/km")
+            // The faster/slower identity is carried by the P/C prefix below, so
+            // the formatter's own trailing label must stay empty.
+            let text = DisplayFormatter.formatSignedDurationDelta(
+                value,
+                suffix: "/km",
+                positiveLabel: "",
+                negativeLabel: ""
+            )
             if value > 0 {
                 return "C faster by \(stripSign(text))"
             }

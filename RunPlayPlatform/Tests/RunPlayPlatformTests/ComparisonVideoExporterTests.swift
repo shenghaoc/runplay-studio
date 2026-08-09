@@ -167,6 +167,35 @@ final class ComparisonVideoExporterTests: XCTestCase {
         XCTAssertEqual(image.height, 180)
     }
 
+    /// Delta text states one identity only. `formatSignedDurationDelta` appends
+    /// "slower"/"faster" unless suppressed, which previously produced the
+    /// self-contradictory "C faster by 0:19 /km slower" in exported frames.
+    func testDeltaLabelsCarryASingleIdentity() {
+        let renderer = ComparisonVideoFrameRenderer()
+
+        let slowerPrimary = renderer.formatDelta(19, kind: .pace)
+        XCTAssertEqual(slowerPrimary, "C faster by 0:19 /km")
+
+        let fasterPrimary = renderer.formatDelta(-19, kind: .pace)
+        XCTAssertEqual(fasterPrimary, "P faster by 0:19 /km")
+
+        for text in [slowerPrimary, fasterPrimary] {
+            XCTAssertFalse(text.contains("slower"), "leaked formatter label in \(text)")
+            XCTAssertFalse(text.hasSuffix(" "), "trailing separator in \(text)")
+            XCTAssertEqual(
+                text.components(separatedBy: "faster").count - 1,
+                1,
+                "delta text must state faster/slower exactly once: \(text)"
+            )
+        }
+
+        // delta = primary - comparison; positive means primary took more time.
+        XCTAssertEqual(renderer.formatDelta(42, kind: .time), "C ahead by 0:42")
+        XCTAssertEqual(renderer.formatDelta(-42, kind: .time), "P ahead by 0:42")
+        XCTAssertEqual(renderer.formatDelta(0, kind: .time), "Tie")
+        XCTAssertEqual(renderer.formatDelta(nil, kind: .pace), "Unavailable")
+    }
+
     // MARK: - Fixtures
 
     private func makeWorkout(
