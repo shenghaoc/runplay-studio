@@ -50,9 +50,9 @@
 ## 7. Validation
 
 - [x] Focused comparison + single-workout video tests
-- [ ] Full warning-clean test suite
-- [ ] C++ boundary + engine tests unchanged
-- [ ] Package consumer smoke
-- [ ] Release packaging regression
-- [ ] Manual Distance + Route-Aware MP4 inspection
-- [ ] Draft PR with full description
+- [x] Full warning-clean test suite
+- [x] C++ boundary + engine tests unchanged
+- [x] Package consumer smoke
+- [x] Release packaging regression
+- [ ] Manual Distance + Route-Aware MP4 inspection — requires packaged-app QuickTime verification (not CI-coverable)
+- [x] Draft PR with full description
