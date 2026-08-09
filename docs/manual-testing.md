@@ -664,6 +664,34 @@ Automated coverage: `ComparisonVideoFramePlanTests`, `ComparisonVideoSamplerTest
 `ComparisonVideoAlignmentResolverTests`, `ComparisonVideoPixelMapTests`,
 `ComparisonVideoExporterTests`, `ComparisonVideoExportViewModelTests`.
 
+Offline export record (2026-08-10): steps 2–5 were exercised through the
+production `ComparisonVideoExporter` — real `MapKitComparisonVideoMapPreparer`,
+`.production` policy — driven from an out-of-tree harness against two generated
+winding synthetic routes (~5.7 km, 35 m apart, 300 vs 278 s/km). The app's own
+workout library was never opened. Both a Distance/Light and a Route-Aware/Dark
+15-second export produced, per `ffprobe`, one H.264 High stream, 1920×1080,
+30 fps, 450 frames, 15.000000 seconds, BT.709 primaries/transfer/matrix, and no
+audio stream; a string scan found no coordinates, UUIDs, or filesystem paths in
+the container. Decoded start/middle/final frames showed both routes in their
+distinct colours, both P and C markers, per-side panels, and a progress bar
+reaching 100% with both markers at the finish. The Route-Aware frames carried
+the `Matched Elapsed`/`Matched Active`/`Matched Pace` labels, per-side distances
+that legitimately differ, `Quality Good`, and a separation of 36 m against the
+constructed 35 m offset. Cancelling a 60-second encode mid-flight left neither
+the destination nor a `runplay-video-*` temporary. Route-Aware over deliberately
+disjoint routes failed closed with `unsupportedGeographicExtent` and wrote no
+file, so Distance was never silently relabelled. QuickTime opened both files and
+reported 1920×1080 at 15.0 s.
+
+That pass found one defect, now fixed with a regression test: the pace delta
+rendered as `C faster by 0:19 /km slower`, because the pace branch of
+`formatDelta` let `formatSignedDurationDelta` append its default trailing label.
+The text was both self-contradictory and clipped at the delta panel edge.
+
+Step 1 and step 6 — the in-app entry point, sheet, save panel, keyboard
+navigation, and live-comparison-state-unchanged checks — were **not** covered by
+this pass and still need a packaged-app session.
+
 Focused pre-merge smoke record (2026-08-03): an ad-hoc packaged build was
 launched with a fresh temporary `HOME` and `CFFIXED_USER_HOME`, using only the
 bundled demo workouts. The toolbar command opened the native sheet; all three

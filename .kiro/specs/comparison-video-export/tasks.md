@@ -54,5 +54,6 @@
 - [x] C++ boundary + engine tests unchanged
 - [x] Package consumer smoke
 - [x] Release packaging regression
-- [ ] Manual Distance + Route-Aware MP4 inspection — requires packaged-app QuickTime verification (not CI-coverable)
+- [x] Manual Distance + Route-Aware MP4 inspection — offline export path; see docs/manual-testing.md
+- [ ] Packaged-app GUI pass — entry point, sheet, save panel, keyboard navigation
 - [x] Draft PR with full description
