@@ -20,9 +20,12 @@ struct KeyboardShortcutsHelpView: View {
                     .font(AppDesign.Typography.heading2)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
+                // Chained `.keyboardShortcut` modifiers do not stack: the
+                // innermost one wins and any outer one is ignored. Escape still
+                // closes this sheet through SwiftUI's built-in sheet dismissal,
+                // so Return is the only shortcut this button needs to declare.
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
-                    .keyboardShortcut(.cancelAction)
             }
             .padding()
 
