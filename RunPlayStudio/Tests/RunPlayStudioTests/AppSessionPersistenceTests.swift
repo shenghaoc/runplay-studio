@@ -186,7 +186,7 @@ final class AppSessionPersistenceTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(AppSessionSnapshot.self, from: data)
-        XCTAssertEqual(decoded.version, 2)
+        XCTAssertEqual(decoded.version, AppSessionSnapshot.currentVersion)
         XCTAssertEqual(decoded.comparison?.peerWorkoutID, peerID)
         XCTAssertEqual(decoded.comparison?.distanceMeters, 250)
         XCTAssertEqual(decoded.comparison?.alignmentModeRaw, ComparisonAlignmentMode.distance.rawValue)

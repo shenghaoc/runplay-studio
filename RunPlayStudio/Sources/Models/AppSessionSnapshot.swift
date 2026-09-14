@@ -7,6 +7,7 @@ enum AppSessionDestination: Equatable, Sendable {
     case allRuns
     case smartCollection(UUID)
     case personalHeatmap
+    case trends
     case comparison
 }
 
@@ -21,6 +22,7 @@ extension AppSessionDestination: Codable {
         case allRuns
         case smartCollection
         case personalHeatmap
+        case trends
         case comparison
     }
 
@@ -39,6 +41,8 @@ extension AppSessionDestination: Codable {
             self = .smartCollection(id)
         case .personalHeatmap:
             self = .personalHeatmap
+        case .trends:
+            self = .trends
         case .comparison:
             self = .comparison
         case .none:
@@ -60,6 +64,8 @@ extension AppSessionDestination: Codable {
             try container.encode(id, forKey: .id)
         case .personalHeatmap:
             try container.encode(Kind.personalHeatmap.rawValue, forKey: .kind)
+        case .trends:
+            try container.encode(Kind.trends.rawValue, forKey: .kind)
         case .comparison:
             try container.encode(Kind.comparison.rawValue, forKey: .kind)
         }
@@ -120,6 +126,27 @@ struct AppSessionHeatmapState: Codable, Equatable, Sendable {
         self.customEndDate = customEndDate
         self.resolutionRaw = resolutionRaw
         self.minimumWorkoutCount = minimumWorkoutCount
+    }
+}
+
+/// Durable Trends filter state. Aggregations and chart selections are
+/// recomputed from the library; only the selections persist.
+struct AppSessionTrendsState: Codable, Equatable, Sendable {
+    var periodRaw: String
+    var rangeRaw: String
+    var scopeKindRaw: String
+    var scopeSmartCollectionID: UUID?
+
+    init(
+        periodRaw: String = "month",
+        rangeRaw: String = "last12Months",
+        scopeKindRaw: String = "entireLibrary",
+        scopeSmartCollectionID: UUID? = nil
+    ) {
+        self.periodRaw = periodRaw
+        self.rangeRaw = rangeRaw
+        self.scopeKindRaw = scopeKindRaw
+        self.scopeSmartCollectionID = scopeSmartCollectionID
     }
 }
 
@@ -185,7 +212,9 @@ struct AppSessionReplayState: Codable, Equatable, Sendable {
 struct AppSessionSnapshot: Codable, Equatable, Sendable {
     /// Version 2 adds optional comparison alignment mode and aligned progress.
     /// Version 1 sessions migrate to Distance alignment with zero aligned progress.
-    static let currentVersion = 2
+    /// Version 3 adds the Trends workspace destination and filter state;
+    /// older sessions decode with default Trends selections.
+    static let currentVersion = 3
     static let minimumSupportedVersion = 1
 
     var version: Int
@@ -194,6 +223,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
     var workout: AppSessionWorkoutState
     var library: AppSessionLibraryState
     var heatmap: AppSessionHeatmapState
+    var trends: AppSessionTrendsState
     var comparison: AppSessionComparisonState?
     var replay: AppSessionReplayState?
 
@@ -204,6 +234,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         workout: AppSessionWorkoutState = AppSessionWorkoutState(),
         library: AppSessionLibraryState = AppSessionLibraryState(),
         heatmap: AppSessionHeatmapState = AppSessionHeatmapState(),
+        trends: AppSessionTrendsState = AppSessionTrendsState(),
         comparison: AppSessionComparisonState? = nil,
         replay: AppSessionReplayState? = nil
     ) {
@@ -213,6 +244,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         self.workout = workout
         self.library = library
         self.heatmap = heatmap
+        self.trends = trends
         self.comparison = comparison
         self.replay = replay
     }
@@ -230,6 +262,8 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         workout = try container.decodeIfPresent(AppSessionWorkoutState.self, forKey: .workout) ?? AppSessionWorkoutState()
         library = try container.decodeIfPresent(AppSessionLibraryState.self, forKey: .library) ?? AppSessionLibraryState()
         heatmap = try container.decodeIfPresent(AppSessionHeatmapState.self, forKey: .heatmap) ?? AppSessionHeatmapState()
+        // Version 3 adds Trends; older sessions decode with defaults.
+        trends = try container.decodeIfPresent(AppSessionTrendsState.self, forKey: .trends) ?? AppSessionTrendsState()
         var decodedComparison = try container.decodeIfPresent(AppSessionComparisonState.self, forKey: .comparison)
         // v1 → v2: missing alignment fields already default to Distance / 0.
         if decodedVersion < 2, var migrated = decodedComparison {
@@ -250,6 +284,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         case workout
         case library
         case heatmap
+        case trends
         case comparison
         case replay
     }
@@ -279,6 +314,9 @@ enum AppSessionPolicy {
     static let validWorkoutTabs = Set(["Overview", "Charts", "Splits", "Segments"])
     static let validMapDisplayModes = Set(["2D", "3D"])
     static let validHeatmapDatePresets = Set(["allTime", "last30Days", "last90Days", "currentYear", "custom"])
+    static let validTrendsPeriods = Set(WorkoutTrendsPeriod.allCases.map(\.rawValue))
+    static let validTrendsRanges = Set(WorkoutTrendsRange.allCases.map(\.rawValue))
+    static let validTrendsScopeKinds = Set(["entireLibrary", "currentLibraryFilter", "smartCollection"])
 
     static func boundedQuery(_ query: WorkoutLibrarySavedQuery) -> WorkoutLibrarySavedQuery {
         var bounded = query

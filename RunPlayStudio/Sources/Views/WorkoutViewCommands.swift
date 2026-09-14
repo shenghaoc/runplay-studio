@@ -18,6 +18,7 @@ extension FocusedValues {
 /// Actions for top-level workspace navigation from the menu bar.
 struct AppWorkspaceActions {
     var showPersonalHeatmap: () -> Void
+    var showTrends: () -> Void
     var showAllRuns: () -> Void = {}
     var importFile: () -> Void = {}
     var importStravaArchive: () -> Void = {}
@@ -175,6 +176,20 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showPersonalHeatmap).purpose)
+            .disabled(isSheetBlocking)
+
+            Button(CommandRegistry.definition(for: .showTrends).menuTitle) {
+                if let workspaceActions {
+                    workspaceActions.showTrends()
+                } else {
+                    NotificationCenter.default.post(
+                        name: .runPlayWorkspaceCommand,
+                        object: AppWorkspaceCommand.showTrends
+                    )
+                }
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .help(CommandRegistry.definition(for: .showTrends).purpose)
             .disabled(isSheetBlocking)
 
             Divider()

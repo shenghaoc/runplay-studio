@@ -88,6 +88,7 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case comparisonVideoExportCancelled
     case comparisonVideoRouteAwareUnavailable
     case heatmapReady(runCount: Int)
+    case trendsReady(runCount: Int)
     case queryResultPublished(count: Int)
     case comparisonEntered
     case comparisonExited
@@ -141,6 +142,10 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Route-Aware comparison video unavailable."
         case .heatmapReady(let runCount):
             return "Heatmap ready. \(runCount) runs included."
+        case .trendsReady(let runCount):
+            return runCount == 1
+                ? "Trends ready. 1 run included."
+                : "Trends ready. \(runCount) runs included."
         case .queryResultPublished(let count):
             if count == 0 { return "No runs match the current search or filters." }
             return count == 1 ? "1 run." : "\(count) runs."

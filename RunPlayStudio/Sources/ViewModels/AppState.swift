@@ -23,6 +23,7 @@ enum AppWorkspaceMode: Hashable, Sendable {
     case workout
     case comparison
     case personalHeatmap
+    case trends
     case workoutLibrary
 }
 
@@ -30,6 +31,7 @@ enum AppWorkspaceMode: Hashable, Sendable {
 /// sidebar selection. Kept separate from the visible workspace state.
 enum AppWorkspaceCommand {
     case showPersonalHeatmap
+    case showTrends
     case showAllRuns
 }
 
@@ -121,6 +123,8 @@ class AppState: ObservableObject {
         switch workspaceMode {
         case .personalHeatmap:
             return .personalHeatmap
+        case .trends:
+            return .trends
         case .workoutLibrary:
             if case .smartCollection(let id, _) = workoutLibrary.queryContext {
                 return .smartCollection(id)
@@ -141,6 +145,8 @@ class AppState: ObservableObject {
             showWorkoutLibrary(restoreManualQuery: true)
         case .personalHeatmap:
             showPersonalHeatmap()
+        case .trends:
+            showTrends()
         case .smartCollection(let id):
             showSmartCollection(id: id)
         case .workout(let id):
@@ -155,6 +161,7 @@ class AppState: ObservableObject {
     let replayController = ReplayController()
     let comparisonService = WorkoutComparisonService()
     let personalHeatmap: PersonalHeatmapViewModel
+    let trends: TrendsViewModel
     let workoutLibrary: WorkoutLibraryViewModel
 
     struct CachedAnalysisContext {
@@ -238,6 +245,9 @@ class AppState: ObservableObject {
         self.personalHeatmap = PersonalHeatmapViewModel(
             announcementPolicy: announcementPolicy
         )
+        self.trends = TrendsViewModel(
+            announcementPolicy: announcementPolicy
+        )
         self.workoutLibrary = WorkoutLibraryViewModel(
             announcementPolicy: announcementPolicy
         )
@@ -292,6 +302,8 @@ class AppState: ObservableObject {
             destination = .comparison
         case .personalHeatmap:
             destination = .personalHeatmap
+        case .trends:
+            destination = .trends
         case .workoutLibrary:
             if case .smartCollection(let id, _) = workoutLibrary.queryContext {
                 destination = .smartCollection(id)
@@ -352,6 +364,15 @@ class AppState: ObservableObject {
                 resolutionRaw: personalHeatmap.resolution.rawValue,
                 minimumWorkoutCount: personalHeatmap.minimumWorkoutCount
             ),
+            trends: AppSessionTrendsState(
+                periodRaw: trends.period.rawValue,
+                rangeRaw: trends.range.rawValue,
+                scopeKindRaw: trends.scope.sessionKindRawValue,
+                scopeSmartCollectionID: {
+                    if case .smartCollection(let id) = trends.scope { return id }
+                    return nil
+                }()
+            ),
             comparison: comparison,
             replay: replay
         )
@@ -382,6 +403,7 @@ class AppState: ObservableObject {
         workoutMapDisplayModeRaw = snapshot.workout.mapDisplayModeRaw
         sidebarVisibilityRaw = snapshot.sidebarVisibilityRaw
         personalHeatmap.restoreSessionState(snapshot.heatmap)
+        trends.restoreSessionState(snapshot.trends)
 
         workoutLibrary.replaceLibrary(
             workouts: workouts,
@@ -427,6 +449,16 @@ class AppState: ObservableObject {
             )
             workspaceMode = .personalHeatmap
             personalHeatmap.refresh(workouts: workouts)
+        case .trends:
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            workspaceMode = .trends
+            refreshTrends()
         case .comparison:
             workoutLibrary.restoreSessionState(
                 manualQuery: snapshot.library.manualQuery,
@@ -712,6 +744,9 @@ class AppState: ObservableObject {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
             workspaceMode = .workout
+        } else if workspaceMode == .trends {
+            trends.cancel()
+            workspaceMode = .workout
         } else if workspaceMode == .workoutLibrary {
             workspaceMode = .workout
         }
@@ -828,10 +863,11 @@ class AppState: ObservableObject {
         deletingComparisonWorkout: Bool
     ) {
         let wasHeatmap = workspaceMode == .personalHeatmap
+        let wasTrends = workspaceMode == .trends
         let wasLibrary = workspaceMode == .workoutLibrary
         if deletingSelectedWorkout {
             clearComparison()
-            // Preserve heatmap / All Runs workspace when deleting while visible.
+            // Preserve heatmap / Trends / All Runs workspace when deleting while visible.
             if wasHeatmap {
                 selectedWorkout = workouts.first
                 selectedSegment = nil
@@ -843,6 +879,17 @@ class AppState: ObservableObject {
                 }
                 workspaceMode = .personalHeatmap
                 personalHeatmap.refresh(workouts: workouts)
+            } else if wasTrends {
+                selectedWorkout = workouts.first
+                selectedSegment = nil
+                if let selectedWorkout {
+                    replayController.load(selectedWorkout)
+                    detectedSegments = selectedWorkout.segments
+                } else {
+                    detectedSegments = []
+                }
+                workspaceMode = .trends
+                refreshTrends()
             } else if wasLibrary {
                 selectedWorkout = workouts.first
                 selectedSegment = nil
@@ -861,11 +908,16 @@ class AppState: ObservableObject {
             if wasHeatmap {
                 workspaceMode = .personalHeatmap
                 personalHeatmap.refresh(workouts: workouts)
+            } else if wasTrends {
+                workspaceMode = .trends
+                refreshTrends()
             } else if wasLibrary {
                 workspaceMode = .workoutLibrary
             }
         } else if wasHeatmap {
             personalHeatmap.refresh(workouts: workouts)
+        } else if wasTrends {
+            refreshTrends()
         }
     }
 
@@ -876,6 +928,8 @@ class AppState: ObservableObject {
         switch command {
         case .showPersonalHeatmap:
             showPersonalHeatmap()
+        case .showTrends:
+            showTrends()
         case .showAllRuns:
             showWorkoutLibrary(restoreManualQuery: true)
         }
@@ -889,6 +943,9 @@ class AppState: ObservableObject {
     func showWorkoutLibrary(restoreManualQuery: Bool = false) {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
+        }
+        if workspaceMode == .trends {
+            trends.cancel()
         }
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
@@ -911,6 +968,9 @@ class AppState: ObservableObject {
     func showSmartCollection(id: UUID) {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
+        }
+        if workspaceMode == .trends {
+            trends.cancel()
         }
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
@@ -955,6 +1015,9 @@ class AppState: ObservableObject {
     /// Open the Personal Heatmap workspace. Does not change selected workout.
     func showPersonalHeatmap() {
         personalHeatmap.cancel()
+        if workspaceMode == .trends {
+            trends.cancel()
+        }
         // Leave comparison / All Runs cleanly; workspaces are mutually exclusive.
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
@@ -965,10 +1028,74 @@ class AppState: ObservableObject {
         requestSessionSave()
     }
 
+    /// Open the Trends workspace. Does not change selected workout.
+    ///
+    /// When All Runs currently shows a smart collection and Trends is still on
+    /// the entire-library default, the scope preselects that collection so
+    /// trends respect the active filter.
+    func showTrends() {
+        trends.cancel()
+        if !trends.hasBeenOpened,
+           case .entireLibrary = trends.scope,
+           case .smartCollection(let id, _) = workoutLibrary.queryContext {
+            trends.scope = .smartCollection(id)
+        }
+        trends.markOpened()
+        // Leave comparison / All Runs cleanly; workspaces are mutually exclusive.
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
+        workspaceMode = .trends
+        refreshTrends()
+        requestSessionSave()
+    }
+
+    /// Gather current library/query state and re-aggregate Trends.
+    func refreshTrends() {
+        trends.refresh(inputs: TrendsRefreshInputs(
+            workouts: workouts,
+            entries: workoutLibrary.entries,
+            documents: workoutLibrary.searchDocuments,
+            smartCollections: smartCollections,
+            currentQuery: workoutLibrary.currentRuntimeQuery()
+        ))
+    }
+
+    /// Navigate from a Trends period to All Runs filtered to that period.
+    ///
+    /// The filter uses the period bounds in the system zone; a run recorded
+    /// abroad near a period boundary can therefore contribute to a bar whose
+    /// filter excludes it (and vice versa) — an accepted display edge for
+    /// mixed-zone libraries. Manual search/tag filters are preserved; an
+    /// active smart collection becomes Modified through the normal path.
+    func showWorkoutsInTrendsPeriod(_ key: WorkoutTrendsPeriodKey) {
+        if workspaceMode == .personalHeatmap {
+            personalHeatmap.cancel()
+        }
+        trends.cancel()
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
+        workspaceMode = .workoutLibrary
+        workoutLibrary.replaceLibrary(
+            workouts: workouts,
+            favoriteIDs: favoriteWorkoutIDs,
+            organization: currentOrganizationSnapshot()
+        )
+        let bounds = WorkoutTrendsAggregator.periodBounds(for: key, timeZone: .current)
+        workoutLibrary.applyTrendsPeriodFilter(start: bounds.start, end: bounds.end)
+        requestSessionSave()
+    }
+
     /// Return to the selected workout workspace (if any).
     func showWorkoutWorkspace() {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
+        }
+        if workspaceMode == .trends {
+            trends.cancel()
         }
         if workspaceMode == .comparison {
             comparisonWorkout = nil
@@ -983,6 +1110,9 @@ class AppState: ObservableObject {
     private func enterComparisonWorkspace() {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
+        }
+        if workspaceMode == .trends {
+            trends.cancel()
         }
         workspaceMode = .comparison
         requestSessionSave()
@@ -1403,6 +1533,9 @@ class AppState: ObservableObject {
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
         }
+        if workspaceMode == .trends {
+            trends.cancel()
+        }
         comparisonWorkout = workout
         workspaceMode = .comparison
         clampComparisonDistance()
@@ -1453,6 +1586,9 @@ class AppState: ObservableObject {
         let wasComparing = workspaceMode == .comparison
         if workspaceMode == .personalHeatmap {
             personalHeatmap.cancel()
+        }
+        if workspaceMode == .trends {
+            trends.cancel()
         }
         comparisonWorkout = nil
         comparisonSelectionMessage = nil

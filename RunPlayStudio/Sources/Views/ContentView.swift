@@ -122,6 +122,8 @@ struct ContentView: View {
             switch appState.workspaceMode {
             case .personalHeatmap:
                 PersonalHeatmapView(appState: appState, viewModel: appState.personalHeatmap)
+            case .trends:
+                TrendsView(appState: appState, viewModel: appState.trends)
             case .workoutLibrary:
                 WorkoutLibraryView(appState: appState, viewModel: appState.workoutLibrary)
             case .comparison:
@@ -277,6 +279,7 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(
             showPersonalHeatmap: { appState.showPersonalHeatmap() },
+            showTrends: { appState.showTrends() },
             showAllRuns: { appState.showWorkoutLibrary(restoreManualQuery: true) },
             importFile: { appState.showImporter = true },
             importStravaArchive: { appState.showArchiveImporter = true }
