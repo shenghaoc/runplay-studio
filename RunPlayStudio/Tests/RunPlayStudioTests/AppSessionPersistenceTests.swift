@@ -323,3 +323,22 @@ final class AppSessionPersistenceTests: XCTestCase {
         XCTAssertNil(loaded)
     }
 }
+
+@MainActor
+final class LibraryRootOverrideTests: XCTestCase {
+
+    func testOverrideRedirectsTheLibraryRoot() {
+        let root = ContentView.libraryRoot(
+            environment: ["RUNPLAY_LIBRARY_ROOT": "/tmp/runplay-check"]
+        )
+        XCTAssertEqual(root.path, "/tmp/runplay-check")
+    }
+
+    func testAbsentOrBlankOverrideFallsBackToApplicationSupport() {
+        let fallback = ContentView.libraryRoot(environment: [:])
+        XCTAssertTrue(fallback.path.hasSuffix("/Application Support/RunPlayStudio"))
+        // A blank value is an unset variable, not a request to use "".
+        let blank = ContentView.libraryRoot(environment: ["RUNPLAY_LIBRARY_ROOT": "   "])
+        XCTAssertEqual(blank.path, fallback.path)
+    }
+}

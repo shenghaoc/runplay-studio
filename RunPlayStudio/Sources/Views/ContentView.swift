@@ -56,6 +56,22 @@ struct ContentView: View {
 
     /// Default library root in Application Support.
     static var defaultLibraryRoot: URL {
+        libraryRoot(environment: ProcessInfo.processInfo.environment)
+    }
+
+    /// Library root for one environment. `RUNPLAY_LIBRARY_ROOT` overrides the
+    /// Application Support location.
+    ///
+    /// Manual GUI checks need a throwaway library, and `HOME` cannot provide
+    /// one: Application Support resolves through the OS rather than the
+    /// environment, so a test launch otherwise opens — and, on an analysis
+    /// version bump, rewrites — the real dogfood library. The override is opt
+    /// in and absent from normal launches.
+    static func libraryRoot(environment: [String: String]) -> URL {
+        if let override = environment["RUNPLAY_LIBRARY_ROOT"],
+           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("RunPlayStudio", isDirectory: true)
     }

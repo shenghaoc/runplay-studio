@@ -480,7 +480,12 @@ private struct TrendsChartPanel: View {
                     case .pace, .heartRate:
                         LineMark(
                             x: .value("Period", point.periodStart, unit: unit),
-                            y: .value(metric.chartTitle, point.value ?? 0)
+                            y: .value(metric.chartTitle, point.value ?? 0),
+                            // Without a distinct series, Charts joins every
+                            // LineMark in the chart into one line and draws
+                            // straight through the gaps, however the points
+                            // are grouped in the builder.
+                            series: .value("Section", seriesIndex)
                         )
                         .foregroundStyle(color)
                         .lineStyle(StrokeStyle(lineWidth: 2))

@@ -10,6 +10,20 @@ checklist below; unchecked items have not been manually verified.
 The durable accessibility matrix lives in
 [accessibility-audit.md](accessibility-audit.md).
 
+## Running a check against a throwaway library
+
+Set `RUNPLAY_LIBRARY_ROOT` to point the app at a scratch library instead of
+`~/Library/Application Support/RunPlayStudio`:
+
+```bash
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-check ./dist/RunPlayStudio.app/Contents/MacOS/RunPlayStudio
+```
+
+`HOME` does not do this: Application Support resolves through the OS, not the
+environment, so a launch without the override opens the real library — and on
+an analysis-version bump migrates and rewrites every workout in it. Use the
+override for any check that imports, deletes, or migrates.
+
 ## Keyboard and VoiceOver Checklist
 
 Use only synthetic or approved repository fixtures. Enable Full Keyboard Access
@@ -111,7 +125,8 @@ Use only synthetic or explicitly private, ignored local workout files.
 - [ ] Confirm four charts appear: Distance, Active Pace, Heart Rate, Ascent; totals use active time.
 - [ ] Switch Period Week / Month / Year; buckets relabel correctly (weeks start Monday; 29 Dec can belong to week 1 of the next year).
 - [ ] Switch Range Last 3 / 6 / 12 Months / All Time; the first bar is a whole period (no partial leading bar) and the trailing in-progress period is annotated.
-- [ ] Confirm periods with no heart rate or elevation show gaps, not zero points; mixed periods disclose contributing runs ("from 4 of 7 runs") in the inspector and spoken summaries.
+- [x] Confirm periods with no heart rate or elevation show gaps, not zero points, and that the line charts **break** at a gap rather than drawing through it. Grouping the points is not enough: a `LineMark` without its own `series` is joined to every other `LineMark` in the chart, so this is only visible in the running app.
+- [ ] Mixed periods disclose contributing runs ("from 4 of 7 runs") in the inspector and spoken summaries.
 - [ ] Switch Scope All Workouts / Current All Runs Filter / a smart collection; aggregation rescopes.
 - [ ] With All Runs showing a smart collection, open Trends for the first time in the session; scope preselects that collection (once; later manual choices persist).
 - [ ] Hover a bar/point; the inspector shows the period detail with contributor counts.
@@ -120,6 +135,30 @@ Use only synthetic or explicitly private, ignored local workout files.
 - [ ] Import a workout; totals update on return to Trends. Delete while Trends visible; workspace stays on Trends.
 - [ ] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
 - [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
+
+### 2026-09-14 partial pass
+
+Driven through computer use against a synthetic 12-run library (15 months,
+empty months in Feb/May/Jul 2026, one month with no heart rate, one run with
+no altitude, one run outside the 12-month window), launched with
+`RUNPLAY_LIBRARY_ROOT`.
+
+Verified: Trends opens from the sidebar row and from Library → Trends; gaps
+render as gaps at both monthly and weekly granularity (three separate
+heart-rate segments monthly; isolated points weekly), and a period whose only
+run carries no altitude is omitted from Ascent rather than drawn as a zero
+bar; session restore returns to Trends with the persisted period and range.
+That pass is what caught the missing `series` on `LineMark` — the points were
+grouped correctly and still drew one continuous line.
+
+Not verified, still open: the Distance panel and the statistics row (both sit
+above the visible area at a 766 pt window height, as does the Period/Range/
+Scope filter bar — the Personal Heatmap filter bar is clipped the same way, so
+this is not specific to Trends but someone should confirm the controls are
+reachable at a normal window size); switching period, range and scope through
+the pickers; the hover inspector and click-through to All Runs; contributor
+captions; import/delete while Trends is visible; the ⌘⇧R shortcut itself; and
+any spoken VoiceOver output.
 
 ## Route Quality Checklist
 
