@@ -523,6 +523,7 @@ public struct WorkoutAnalyzer: Sendable {
 
         let elevationGain = context.elevationProfile.totalAscentMeters ?? 0
         let elevationLoss = context.elevationProfile.totalDescentMeters ?? 0
+        let rawElevation = Self.rawElevationTotals(in: points)
 
         // ⚡ Bolt: Replaced .compactMap { ... }.filter { ... }.reduce chain with inline loop.
         // This avoids intermediate O(N) array allocations for heart rate aggregations.
@@ -559,8 +560,48 @@ public struct WorkoutAnalyzer: Sendable {
             elevationGainMeters: elevationGain,
             elevationLossMeters: elevationLoss,
             averageHeartRateBPM: averageHeartRate,
-            maxHeartRateBPM: maxHR
+            maxHeartRateBPM: maxHR,
+            rawElevationGainMeters: rawElevation.gain,
+            rawElevationLossMeters: rawElevation.loss
         )
+    }
+
+    /// Raw adjacent-delta elevation totals over source-altitude pairs.
+    ///
+    /// This is an extraction-stage sum, deliberately in Swift alongside raw
+    /// metric extraction: it runs once per analysis (never per Trends open)
+    /// and is linear with a trivial constant. It applies no spike rejection,
+    /// smoothing, or deadband, so it overcounts receiver noise by design; the
+    /// corrected profile remains the preferred source. Adjacent points count
+    /// only within the same route segment, and pairs with a missing altitude
+    /// on either side are skipped. Returns `nil` totals when no adjacent
+    /// finite-altitude pair exists.
+    static func rawElevationTotals(
+        in points: [RoutePoint]
+    ) -> (gain: Double?, loss: Double?) {
+        guard points.count > 1 else { return (nil, nil) }
+        var gain = 0.0
+        var loss = 0.0
+        var pairs = 0
+        var previous: (segment: Int, altitude: Double)? = nil
+        for point in points {
+            guard let altitude = point.altitudeMeters, altitude.isFinite else {
+                previous = nil
+                continue
+            }
+            if let prior = previous, prior.segment == point.routeSegmentIndex {
+                let delta = altitude - prior.altitude
+                if delta > 0 {
+                    gain += delta
+                } else if delta < 0 {
+                    loss -= delta
+                }
+                pairs += 1
+            }
+            previous = (point.routeSegmentIndex, altitude)
+        }
+        guard pairs > 0 else { return (nil, nil) }
+        return (gain, loss)
     }
 
     private static func speed(

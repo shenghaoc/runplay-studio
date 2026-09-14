@@ -70,7 +70,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
     }
 
     private struct RawRoutePoint: Codable {
-        var timestamp: Date
+        var timestamp: RawJSONTimestamp
         var latitude: Double
         var longitude: Double
         var altitudeMeters: Double?
@@ -84,12 +84,56 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         var routeSegmentIndex: Int?
     }
 
+    /// Decodes an ISO 8601 timestamp while retaining the literal UTC offset,
+    /// mirroring `JSONDecoder`'s `.iso8601` strategy (no fractional seconds).
+    private struct RawJSONTimestamp: Codable {
+        let date: Date
+        let utcOffsetSeconds: Int?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let text = try container.decode(String.self)
+            guard let parsed = JSONWorkoutImporter.parseISO8601(text) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid ISO 8601 timestamp: \(text)"
+                )
+            }
+            self.date = parsed
+            self.utcOffsetSeconds = WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: text)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(date)
+        }
+    }
+
+    nonisolated(unsafe) private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let iso8601Lock = NSLock()
+
+    private static func parseISO8601(_ string: String) -> Date? {
+        iso8601Lock.lock()
+        defer { iso8601Lock.unlock() }
+        return iso8601Formatter.date(from: string)
+    }
+
     private func convertToWorkout(_ raw: RawWorkout) throws -> RunWorkout {
         guard !raw.routePoints.isEmpty else {
             throw WorkoutImportError.missingData("No route points found")
         }
 
-        let metadata = raw.metadata ?? WorkoutMetadata()
+        var metadata = raw.metadata ?? WorkoutMetadata()
+        if metadata.recordedUTCOffsetSeconds == nil {
+            metadata.recordedUTCOffsetSeconds = raw.routePoints
+                .compactMap(\.timestamp.utcOffsetSeconds)
+                .first
+        }
         let source = parseSource(raw.source)
 
         let validRawPoints = raw.routePoints.filter {
@@ -103,17 +147,17 @@ public struct JSONWorkoutImporter: WorkoutImporting {
             }
 
         var routePoints: [RoutePoint] = []
-        let startDate = raw.routePoints.first?.timestamp ?? Date()
+        let startDate = raw.routePoints.first?.timestamp.date ?? Date()
 
         for rawPoint in raw.routePoints {
             guard GeoDistance.isValidCoordinate(lat: rawPoint.latitude, lon: rawPoint.longitude) else {
                 continue
             }
 
-            let elapsed = rawPoint.elapsedSeconds ?? rawPoint.timestamp.timeIntervalSince(startDate)
+            let elapsed = rawPoint.elapsedSeconds ?? rawPoint.timestamp.date.timeIntervalSince(startDate)
 
             let point = RoutePoint(
-                timestamp: rawPoint.timestamp,
+                timestamp: rawPoint.timestamp.date,
                 latitude: rawPoint.latitude,
                 longitude: rawPoint.longitude,
                 altitudeMeters: rawPoint.altitudeMeters,

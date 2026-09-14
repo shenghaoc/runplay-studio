@@ -5,7 +5,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Snapshots without a version predate pause-aware analysis.
     public static let legacyAnalysisVersion = 0
     /// Version 5 introduces route-derived recorded-lap analysis.
-    public static let currentAnalysisVersion = 5
+    /// Version 6 persists raw elevation ascent/descent totals in the summary.
+    public static let currentAnalysisVersion = 6
     /// Snapshots without this version predate route-quality normalization.
     public static let legacyNormalizationVersion = 0
     public static let currentNormalizationVersion = 1

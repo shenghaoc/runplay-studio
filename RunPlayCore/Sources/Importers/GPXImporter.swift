@@ -45,8 +45,8 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         suggestedName: String,
         maxRoutePointCount: Int = WorkoutImportResourceLimits.maxRoutePointCount
     ) throws -> RunWorkout {
-        let rawSegments = try parseGPXData(data, maxRoutePointCount: maxRoutePointCount)
-
+        let parsed = try parseGPXData(data, maxRoutePointCount: maxRoutePointCount)
+        let rawSegments = parsed.segments
         let allRawPoints = rawSegments.flatMap(\.points)
         guard !allRawPoints.isEmpty else {
             throw WorkoutImportError.missingData("No GPS route data found in this GPX file")
@@ -115,7 +115,8 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
             name: suggestedName,
             activityType: "running",
             startDate: routePoints.first?.timestamp,
-            endDate: routePoints.last?.timestamp
+            endDate: routePoints.last?.timestamp,
+            recordedUTCOffsetSeconds: parsed.firstUTCOffsetSeconds
         )
 
         // GPX track import does not define device laps in the supported subset.
@@ -187,6 +188,9 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
     // first point past the limit so an oversized route is never fully built.
     private var trackpointCount = 0
     private var limitError: WorkoutResourceLimitError?
+
+    /// UTC offset of the first `<time>` text that carries one.
+    private(set) var firstUTCOffsetSeconds: Int?
 
     private let maxRoutePointCount: Int
 
@@ -269,6 +273,9 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
                 currentEle = Double(text)
             case "time":
                 currentTime = parseISO8601(text)
+                if firstUTCOffsetSeconds == nil {
+                    firstUTCOffsetSeconds = WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: text)
+                }
             case "hr":
                 currentHR = Double(text)
             case "cad":
@@ -343,7 +350,8 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
 private func parseGPXData(
     _ data: Data,
     maxRoutePointCount: Int
-) throws -> [RawGPXSegment] {
+) throws -> (segments: [RawGPXSegment], firstUTCOffsetSeconds: Int?) {
     let parser = GPXXMLParser(data: data, maxRoutePointCount: maxRoutePointCount)
-    return try parser.parse()
+    let segments = try parser.parse()
+    return (segments, parser.firstUTCOffsetSeconds)
 }
