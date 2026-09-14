@@ -244,6 +244,7 @@ remaining active production hotspots before selecting another C++ migration.
 
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs
+- [x] Trends workspace across the whole library — week/month/year aggregation of distance, active time, run count, weighted active pace, active-weighted HR, and corrected-else-raw ascent from stored summaries; period/range/scope filters with smart-collection scoping, click-through to period-filtered All Runs, recorded-offset local-date bucketing with whole-period range snapping, gap-not-zero rendering with contributing-run disclosure, session-v3 restoration, and persisted raw ascent totals (analysis version 6)
 - [x] Route coloring by pace or HR on map polyline (native MapKit; relative workout scale; corrected elevation)
 - [x] Dynamic time warping for comparison (Route-Aware alignment; Distance mode retained)
 

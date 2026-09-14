@@ -102,6 +102,25 @@ commit screenshots of real home locations or personal heatmap exports.
 - [ ] Confirm single-route and comparison maps still render correctly.
 - [ ] Relaunch: workout library persists; heatmap is recomputed (not stored as a second route DB).
 
+## Trends Workspace Checklist
+
+Use only synthetic or explicitly private, ignored local workout files.
+
+- [ ] Launch with several dated workouts spanning months (include at least one without heart rate and one without elevation data).
+- [ ] Open **Trends** from the Library sidebar section (or Library → Trends / ⌘⇧R).
+- [ ] Confirm four charts appear: Distance, Active Pace, Heart Rate, Ascent; totals use active time.
+- [ ] Switch Period Week / Month / Year; buckets relabel correctly (weeks start Monday; 29 Dec can belong to week 1 of the next year).
+- [ ] Switch Range Last 3 / 6 / 12 Months / All Time; the first bar is a whole period (no partial leading bar) and the trailing in-progress period is annotated.
+- [ ] Confirm periods with no heart rate or elevation show gaps, not zero points; mixed periods disclose contributing runs ("from 4 of 7 runs") in the inspector and spoken summaries.
+- [ ] Switch Scope All Workouts / Current All Runs Filter / a smart collection; aggregation rescopes.
+- [ ] With All Runs showing a smart collection, open Trends for the first time in the session; scope preselects that collection (once; later manual choices persist).
+- [ ] Hover a bar/point; the inspector shows the period detail with contributor counts.
+- [ ] Click a bar/point; All Runs opens filtered to that period with the scope preserved (a smart collection shows Modified).
+- [ ] Use the inspector period picker and View Runs button with keyboard and VoiceOver.
+- [ ] Import a workout; totals update on return to Trends. Delete while Trends visible; workspace stays on Trends.
+- [ ] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
+- [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
+
 ## Route Quality Checklist
 
 This checklist is intentionally unchecked. It defines the required GUI pass

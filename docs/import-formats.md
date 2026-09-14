@@ -320,3 +320,15 @@ ZIP. There is **no** Strava login, OAuth, API call, or network access.
 
 After import, counts cover imported, duplicates, unsupported sports/formats,
 no-GPS, parse failures, unsafe entries, and provider conflicts.
+
+## Recorded UTC offset
+
+Text formats that carry an explicit zone designator record it on
+`WorkoutMetadata.recordedUTCOffsetSeconds`: GPX and TCX capture the literal
+offset of the first timestamp text/attribute (`Z` is `0`, `+09:00` is
+`32_400`), and the JSON importer retains either an explicit metadata value or
+the first route-point timestamp designator. FIT logs UTC instants only and
+records no offset. Calendar features (Trends bucketing) use the recorded
+local date; workouts without a recorded offset fall back to the system zone.
+
+## Workout size and payload limits
