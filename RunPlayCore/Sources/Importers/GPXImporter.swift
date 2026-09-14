@@ -273,7 +273,9 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
                 currentEle = Double(text)
             case "time":
                 currentTime = parseISO8601(text)
-                if firstUTCOffsetSeconds == nil {
+                // Only text that parsed as an instant may supply an offset;
+                // punctuation in unparseable text is not a designator.
+                if currentTime != nil, firstUTCOffsetSeconds == nil {
                     firstUTCOffsetSeconds = WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: text)
                 }
             case "hr":

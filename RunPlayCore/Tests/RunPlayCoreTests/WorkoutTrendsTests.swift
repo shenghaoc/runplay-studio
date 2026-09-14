@@ -617,6 +617,13 @@ final class WorkoutTrendsTests: XCTestCase {
         XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "2026-09-14T08:30:00"))
         XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "2026-09-14T08:30:00+25:00"))
         XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "2026-09-14T08:30:00+09:70"))
+        // A designator only exists after a time part. Without that test the
+        // date separator itself reads as a sign: "2026-09-14" would be UTC-14.
+        XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "2026-09-14"))
+        XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "2026-09"))
+        XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "2026-09-14Z"))
+        XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: "14:30:00+09:00"))
+        XCTAssertNil(WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: ""))
     }
 
     // MARK: - Importer offset capture
@@ -656,6 +663,73 @@ final class WorkoutTrendsTests: XCTestCase {
             maxRoutePointCount: 100
         )
         XCTAssertEqual(workout.metadata.recordedUTCOffsetSeconds, 0)
+    }
+
+    func testGPXImporterIgnoresDateOnlyTimestampText() throws {
+        // A date-only <time> cannot become an instant, so its date separator
+        // must not be mistaken for a "-14" zone designator: the offset comes
+        // from the first timestamp that actually parsed.
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx version="1.1" creator="test">
+          <trk><trkseg>
+            <trkpt lat="35.68" lon="139.77"><time>2026-09-14</time></trkpt>
+            <trkpt lat="35.69" lon="139.78"><time>2026-09-14T08:31:00Z</time></trkpt>
+            <trkpt lat="35.70" lon="139.79"><time>2026-09-14T08:32:00Z</time></trkpt>
+          </trkseg></trk>
+        </gpx>
+        """
+        let workout = try GPXImporter().importWorkout(
+            data: Data(gpx.utf8),
+            suggestedName: "Run",
+            maxRoutePointCount: 100
+        )
+        XCTAssertEqual(workout.metadata.recordedUTCOffsetSeconds, 0)
+    }
+
+    func testGPXImporterTakesOffsetFromFirstParseableTimestamp() throws {
+        let gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx version="1.1" creator="test">
+          <trk><trkseg>
+            <trkpt lat="35.68" lon="139.77"><time>not-a-timestamp</time></trkpt>
+            <trkpt lat="35.69" lon="139.78"><time>2026-09-14T08:31:00+09:00</time></trkpt>
+          </trkseg></trk>
+        </gpx>
+        """
+        let workout = try GPXImporter().importWorkout(
+            data: Data(gpx.utf8),
+            suggestedName: "Run",
+            maxRoutePointCount: 100
+        )
+        XCTAssertEqual(workout.metadata.recordedUTCOffsetSeconds, 32_400)
+    }
+
+    func testTCXImporterIgnoresUnparseableActivityID() throws {
+        // The unparseable <Id> must not supply an offset; the first real
+        // trackpoint time does.
+        let tcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities><Activity Sport="Running">
+            <Id>2026-09-14</Id>
+            <Lap><Track>
+              <Trackpoint><Time>2026-09-14T08:30:00+09:00</Time>
+                <Position><LatitudeDegrees>35.68</LatitudeDegrees><LongitudeDegrees>139.77</LongitudeDegrees></Position>
+              </Trackpoint>
+              <Trackpoint><Time>2026-09-14T08:31:00+09:00</Time>
+                <Position><LatitudeDegrees>35.69</LatitudeDegrees><LongitudeDegrees>139.78</LongitudeDegrees></Position>
+              </Trackpoint>
+            </Track></Lap>
+          </Activity></Activities>
+        </TrainingCenterDatabase>
+        """
+        let workout = try TCXImporter().importWorkout(
+            data: Data(tcx.utf8),
+            suggestedName: "Run",
+            maxRoutePointCount: 100
+        )
+        XCTAssertEqual(workout.metadata.recordedUTCOffsetSeconds, 32_400)
     }
 
     func testTCXImporterRecordsLiteralOffset() throws {

@@ -325,6 +325,60 @@ final class TrendsWorkspaceTests: XCTestCase {
         XCTAssertNil(result.snapshot.trends.scopeSmartCollectionID)
     }
 
+    // MARK: - Chart gap splitting
+
+    private func chartPoint(_ ordinal: Int, _ value: Double?) -> TrendsChartPoint {
+        let key = WorkoutTrendsPeriodKey(kind: .month, year: 2026, ordinal: ordinal)
+        return TrendsChartPoint(
+            key: key,
+            periodStart: Date(timeIntervalSince1970: Double(ordinal) * 86_400),
+            label: "M\(ordinal)",
+            value: value,
+            runCount: value == nil ? 0 : 1,
+            contributingRuns: nil
+        )
+    }
+
+    func testGapSplitSeriesBreaksAtValuelessPeriods() {
+        // Jan and Mar carry a value, Feb does not: two series, never one line
+        // drawn straight across the gap.
+        let series = TrendsChartPoint.gapSplitSeries([
+            chartPoint(1, 5),
+            chartPoint(2, nil),
+            chartPoint(3, 7)
+        ])
+        XCTAssertEqual(series.count, 2)
+        XCTAssertEqual(series.first?.map(\.value), [5])
+        XCTAssertEqual(series.last?.map(\.value), [7])
+    }
+
+    func testGapSplitSeriesKeepsAdjacentPeriodsTogether() {
+        let series = TrendsChartPoint.gapSplitSeries([
+            chartPoint(1, 5),
+            chartPoint(2, 6),
+            chartPoint(3, nil),
+            chartPoint(4, 8),
+            chartPoint(5, 9)
+        ])
+        XCTAssertEqual(series.count, 2)
+        XCTAssertEqual(series.first?.map(\.value), [5, 6])
+        XCTAssertEqual(series.last?.map(\.value), [8, 9])
+    }
+
+    func testGapSplitSeriesHandlesLeadingTrailingAndEmptyInput() {
+        XCTAssertTrue(TrendsChartPoint.gapSplitSeries([]).isEmpty)
+        XCTAssertTrue(TrendsChartPoint.gapSplitSeries([chartPoint(1, nil)]).isEmpty)
+
+        let edges = TrendsChartPoint.gapSplitSeries([
+            chartPoint(1, nil),
+            chartPoint(2, 6),
+            chartPoint(3, 7),
+            chartPoint(4, nil)
+        ])
+        XCTAssertEqual(edges.count, 1)
+        XCTAssertEqual(edges.first?.map(\.value), [6, 7])
+    }
+
     func testUnknownTrendsDestinationKindFallsBackToWorkout() throws {
         let json = """
         {

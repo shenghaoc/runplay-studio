@@ -11,17 +11,28 @@ import Foundation
 enum WorkoutTimestampOffsetScanner {
     /// Offset in seconds east of Greenwich, or `nil` when no valid designator
     /// is present. Accepts `Z`/`z` and `±HH:MM`, `±HHMM`, `±HH` tails.
+    ///
+    /// A designator only exists after a time part, so the text must carry the
+    /// `T` separator that `.withInternetDateTime` requires. Without that test
+    /// a date-only string offers its own date separator as a sign: `2026-09-14`
+    /// would otherwise read as `-14` and report UTC-14.
     static func utcOffsetSeconds(inISO8601Text text: String) -> Int? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let last = trimmed.last else { return nil }
+        guard let timeSeparatorIndex = trimmed.firstIndex(where: { $0 == "T" || $0 == "t" }) else {
+            return nil
+        }
         if last == "Z" || last == "z" {
             return 0
         }
-        // The designator is the later of the final '+' or '-': date
-        // separators also use '-' but always precede the time part.
+        // The designator is the later of the final '+' or '-', and it must
+        // fall inside the time part: date separators also use '-' but always
+        // precede it.
         let plusIndex = trimmed.lastIndex(of: "+")
         let minusIndex = trimmed.lastIndex(of: "-")
-        guard let signIndex = [plusIndex, minusIndex].compactMap({ $0 }).max() else {
+        guard let signIndex = [plusIndex, minusIndex].compactMap({ $0 }).max(),
+              signIndex > timeSeparatorIndex
+        else {
             return nil
         }
         let sign = trimmed[signIndex]

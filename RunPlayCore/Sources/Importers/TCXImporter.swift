@@ -414,10 +414,12 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     /// in document order (`Id`, lap `StartTime`, then trackpoint `Time`).
     private(set) var firstUTCOffsetSeconds: Int?
 
-    private func captureUTCOffset(_ text: String) {
-        if firstUTCOffsetSeconds == nil {
-            firstUTCOffsetSeconds = WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: text)
-        }
+    /// Records the offset of the first timestamp that both parsed as an
+    /// instant and carried a designator. Text that failed to parse is ignored:
+    /// its punctuation is not a designator.
+    private func captureUTCOffset(_ text: String, parsed: Date?) {
+        guard parsed != nil, firstUTCOffsetSeconds == nil else { return }
+        firstUTCOffsetSeconds = WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: text)
     }
 
     // Current trackpoint state
@@ -479,7 +481,7 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             currentLapTracks = []
             currentLapStartTime = attributes["StartTime"].flatMap(parseISO8601)
             if let startText = attributes["StartTime"] {
-                captureUTCOffset(startText)
+                captureUTCOffset(startText, parsed: currentLapStartTime)
             }
             currentLapTotalTime = nil
             currentLapDistance = nil
@@ -534,12 +536,12 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         case "Id":
             if inActivity, !inLap, !inTrackpoint {
                 currentActivityId = parseISO8601(text)
-                captureUTCOffset(text)
+                captureUTCOffset(text, parsed: currentActivityId)
             }
         case "Time":
             if inTrackpoint {
                 currentTime = parseISO8601(text)
-                captureUTCOffset(text)
+                captureUTCOffset(text, parsed: currentTime)
             }
         case "LatitudeDegrees":
             if inPosition {

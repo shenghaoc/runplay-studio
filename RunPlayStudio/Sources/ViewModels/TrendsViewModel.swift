@@ -53,6 +53,28 @@ struct TrendsChartPoint: Identifiable, Hashable {
     let contributingRuns: Int?
 
     var id: WorkoutTrendsPeriodKey { key }
+
+    /// Splits one period series into runs of *adjacent* periods that carry a
+    /// value, so a chart never bridges a gap.
+    ///
+    /// `points` mirrors `WorkoutTrendsAggregation.buckets`, which is
+    /// contiguous across the whole window including empty periods, so
+    /// adjacency in the array is adjacency in time. Ordering alone is not
+    /// enough: every later period compares greater, which would join every
+    /// value into one unbroken series.
+    static func gapSplitSeries(_ points: [TrendsChartPoint]) -> [[TrendsChartPoint]] {
+        var series: [[TrendsChartPoint]] = []
+        var previousValuedIndex: Int?
+        for index in points.indices where points[index].value != nil {
+            if previousValuedIndex == index - 1 {
+                series[series.count - 1].append(points[index])
+            } else {
+                series.append([points[index]])
+            }
+            previousValuedIndex = index
+        }
+        return series
+    }
 }
 
 /// The four Trends metrics.

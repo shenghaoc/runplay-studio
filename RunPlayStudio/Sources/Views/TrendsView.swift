@@ -416,15 +416,7 @@ private struct TrendsChartPanel: View {
 
     /// Contiguous non-nil runs; gaps between them are never bridged.
     private var contiguousSeries: [[TrendsChartPoint]] {
-        var series: [[TrendsChartPoint]] = []
-        for point in points where point.value != nil {
-            if series.last?.last.map({ $0.key < point.key }) == true {
-                series[series.count - 1].append(point)
-            } else {
-                series.append([point])
-            }
-        }
-        return series
+        TrendsChartPoint.gapSplitSeries(points)
     }
 
     var body: some View {
@@ -616,14 +608,7 @@ private struct TrendsChartDescriptor: AXChartDescriptorRepresentable {
             }
         }
 
-        var series: [[TrendsChartPoint]] = []
-        for point in populated {
-            if series.last?.last.map({ $0.key < point.key }) == true {
-                series[series.count - 1].append(point)
-            } else {
-                series.append([point])
-            }
-        }
+        let series = TrendsChartPoint.gapSplitSeries(points)
         let dataSeries = series.enumerated().map { index, group in
             AXDataSeriesDescriptor(
                 name: series.count == 1

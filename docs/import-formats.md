@@ -325,9 +325,12 @@ no-GPS, parse failures, unsafe entries, and provider conflicts.
 
 Text formats that carry an explicit zone designator record it on
 `WorkoutMetadata.recordedUTCOffsetSeconds`: GPX and TCX capture the literal
-offset of the first timestamp text/attribute (`Z` is `0`, `+09:00` is
-`32_400`), and the JSON importer retains either an explicit metadata value or
-the first route-point timestamp designator. FIT logs UTC instants only and
+offset of the first timestamp text/attribute that both parses as an instant
+and carries a designator (`Z` is `0`, `+09:00` is `32_400`), and the JSON
+importer retains either an explicit metadata value or the first route-point
+timestamp designator. A designator is only read after the `T` time separator,
+so a date-only or otherwise unparseable timestamp contributes nothing rather
+than offering its date separator as a sign. FIT logs UTC instants only and
 records no offset. Calendar features (Trends bucketing) use the recorded
 local date; workouts without a recorded offset fall back to the system zone.
 
