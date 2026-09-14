@@ -307,6 +307,61 @@ final class WorkoutTrendsTests: XCTestCase {
         XCTAssertEqual(aggregation.includedRunCount, 1)
     }
 
+    func testFarFutureRowCannotPushRealDataOutOfWindow() {
+        // A corrupt year-9999 row must not set the window end: the real runs
+        // and the current period stay visible, and the outlier is counted.
+        let aggregation = WorkoutTrendsAggregator.aggregate(
+            rows: [
+                row(utcDate(2026, 8, 3)),
+                row(utcDate(2026, 9, 3)),
+                row(utcDate(9999, 1, 4))
+            ],
+            period: .week,
+            range: .allTime,
+            now: utcDate(2026, 9, 14),
+            displayTimeZone: utc,
+            fallbackBucketingTimeZone: utc
+        )
+        XCTAssertEqual(aggregation.includedRunCount, 2)
+        XCTAssertEqual(aggregation.outOfWindowRunCount, 1)
+        XCTAssertEqual(aggregation.windowStartKey, key(.week, 2026, 32))
+        XCTAssertEqual(aggregation.buckets.last?.id, key(.week, 2026, 38))
+        XCTAssertEqual(aggregation.currentPeriodKey, key(.week, 2026, 38))
+    }
+
+    func testWindowExtendsOnePeriodForZoneAheadRow() {
+        // A run recorded in a zone ahead of the display zone can land one
+        // period past `now`; that period stays visible and `currentPeriodKey`
+        // still reports the period containing `now`.
+        let aggregation = WorkoutTrendsAggregator.aggregate(
+            rows: [row(utcDate(2026, 9, 20, 23), offset: 46_800)],
+            period: .week,
+            range: .allTime,
+            now: utcDate(2026, 9, 14),
+            displayTimeZone: utc,
+            fallbackBucketingTimeZone: utc
+        )
+        XCTAssertEqual(aggregation.buckets.last?.id, key(.week, 2026, 39))
+        XCTAssertEqual(aggregation.includedRunCount, 1)
+        XCTAssertEqual(aggregation.outOfWindowRunCount, 0)
+        XCTAssertEqual(aggregation.currentPeriodKey, key(.week, 2026, 38))
+    }
+
+    func testPreviousKeyMirrorsNextKeyAcrossYearBoundaries() {
+        XCTAssertEqual(
+            WorkoutTrendsAggregator.previousKey(before: key(.week, 2027, 1)),
+            key(.week, 2026, 53)
+        )
+        XCTAssertEqual(
+            WorkoutTrendsAggregator.previousKey(before: key(.month, 2027, 1)),
+            key(.month, 2026, 12)
+        )
+        XCTAssertEqual(
+            WorkoutTrendsAggregator.previousKey(before: key(.year, 2027, 1)),
+            key(.year, 2026, 1)
+        )
+    }
+
     // MARK: - Aggregation semantics
 
     func testWeightedPaceHeartRateAndContributorCounts() {
@@ -578,6 +633,11 @@ final class WorkoutTrendsTests: XCTestCase {
         XCTAssertTrue(spoken.contains("1 of 2 runs"))
         XCTAssertTrue(spoken.contains("no date"))
         XCTAssertFalse(spoken.contains("No heart-rate data"))
+        // Ascent is a climb: metres, never rolled up into kilometres.
+        XCTAssertTrue(spoken.contains("Total ascent 200 metres"))
+        XCTAssertFalse(spoken.contains("Total ascent 0.20 kilometres"))
+        // `formatMetric` already renders the pace unit; it must not be doubled.
+        XCTAssertFalse(spoken.contains("per kilometre per kilometre"))
     }
 
     func testTrendsChartSummaryCountsGapsAndPartialPeriods() {

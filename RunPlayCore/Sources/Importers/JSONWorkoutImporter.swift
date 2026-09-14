@@ -130,7 +130,10 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
         var metadata = raw.metadata ?? WorkoutMetadata()
         if metadata.recordedUTCOffsetSeconds == nil {
+            // Lazily: the answer is almost always the first point, and a route
+            // may hold up to `maxRoutePointCount` of them.
             metadata.recordedUTCOffsetSeconds = raw.routePoints
+                .lazy
                 .compactMap(\.timestamp.utcOffsetSeconds)
                 .first
         }

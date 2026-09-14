@@ -54,6 +54,7 @@ struct TrendsView: View {
             appState.requestSessionSave()
         }
         .onChange(of: viewModel.scope) { _, _ in
+            inspectedKey = nil
             appState.refreshTrends()
             appState.requestSessionSave()
         }
@@ -63,10 +64,19 @@ struct TrendsView: View {
     }
 
     /// Invalidates trends work when library membership or summaries change.
-    private var libraryRevision: [String] {
-        appState.workouts.map { workout in
-            "\(workout.id.uuidString):\(workout.analysisVersion):\(workout.metadata.startDate.map { Int($0.timeIntervalSince1970) }.map(String.init) ?? "-")"
+    ///
+    /// Hashed rather than rendered as strings: this is recomputed on every
+    /// body pass, and formatting one UUID string per workout allocated its way
+    /// through the whole library each time the mouse moved over a chart.
+    private var libraryRevision: Int {
+        var hasher = Hasher()
+        for workout in appState.workouts {
+            hasher.combine(workout.id)
+            hasher.combine(workout.analysisVersion)
+            hasher.combine(workout.metadata.startDate)
+            hasher.combine(workout.metadata.recordedUTCOffsetSeconds)
         }
+        return hasher.finalize()
     }
 
     // MARK: - Header
@@ -292,7 +302,7 @@ struct TrendsView: View {
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if let key = inspectedKey, inspectedRunCount > 0 {
+                if let key = resolvedInspectedKey, inspectedRunCount > 0 {
                     Button {
                         navigate(key)
                     } label: {
@@ -308,20 +318,34 @@ struct TrendsView: View {
     }
 
     /// Bounded most-recent period list (newest first) for the keyboard path.
+    ///
+    /// A period inspected by hovering an older bar is added even when it falls
+    /// outside the bound, so the picker's selection always has a matching tag.
     private var recentKeys: [WorkoutTrendsPeriodKey?] {
         let keys = viewModel.aggregation?.buckets.map(\.id) ?? []
-        return keys.suffix(60).reversed().map { Optional($0) }
+        var recent = Array(keys.suffix(60))
+        if let inspected = resolvedInspectedKey, !recent.contains(inspected) {
+            recent.insert(inspected, at: 0)
+        }
+        return recent.reversed().map { Optional($0) }
+    }
+
+    /// The inspected period only while the current window still contains it.
+    /// A scope or range change can retire a period out from under the hover.
+    private var resolvedInspectedKey: WorkoutTrendsPeriodKey? {
+        guard let inspectedKey, viewModel.containsPeriod(inspectedKey) else { return nil }
+        return inspectedKey
     }
 
     private var inspectorBinding: Binding<WorkoutTrendsPeriodKey?> {
         Binding<WorkoutTrendsPeriodKey?>(
-            get: { inspectedKey },
+            get: { resolvedInspectedKey },
             set: { inspectedKey = $0 }
         )
     }
 
     private var inspectedDetail: String? {
-        guard let key = inspectedKey,
+        guard let key = resolvedInspectedKey,
               let bucket = viewModel.aggregation?.buckets.first(where: { $0.id == key }) else {
             return nil
         }
@@ -349,7 +373,7 @@ struct TrendsView: View {
     }
 
     private var inspectedRunCount: Int {
-        guard let key = inspectedKey else { return 0 }
+        guard let key = resolvedInspectedKey else { return 0 }
         return viewModel.aggregation?.buckets.first(where: { $0.id == key })?.runCount ?? 0
     }
 

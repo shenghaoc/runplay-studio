@@ -459,8 +459,8 @@ the heatmap it never walks route points at view time either.
 
 Rows derive purely from stored snapshot summaries and metadata — never from
 route points and never by re-parsing source files — so building rows for the
-whole library is linear in workout count and sub-second on 5,000-workout
-libraries. There is deliberately **no disk sidecar**: `AppState` already holds
+whole library is linear in workout count. There is deliberately **no disk
+sidecar**: `AppState` already holds
 every stored snapshot in memory, so a parallel cache file would be a second
 source of truth whose only job is defending against itself. Freshness comes
 from the same in-memory revision-keyed cache pattern the heatmap uses; the row
@@ -492,7 +492,14 @@ user-visible gain.
   (display zone) resolves to its period and every period with a nominal key
   at or after the anchor's is included. The trailing in-progress period is
   included whole and annotated; the enumerated window is clamped to 5,000
-  periods by dropping the oldest.
+  periods by dropping the oldest, and the enumeration itself runs backwards
+  from the newest period so it never exceeds that bound.
+- The window ends at the current period, extended by at most one period. That
+  one period is what a run recorded in a zone ahead of the display zone needs;
+  beyond it a row is clock skew or a corrupt date, and letting it set the end
+  would push the real data out of the capped window. Rows outside the window at
+  either end are counted in `outOfWindowRunCount` and disclosed in the spoken
+  summary, never silently dropped.
 - Trends state is **active time**: totals, aggregate pace (total active
   seconds ÷ total kilometres), and heart-rate weighting (active-time-weighted
   mean of run averages) never include pauses.

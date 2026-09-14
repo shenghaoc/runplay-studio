@@ -741,14 +741,12 @@ class AppState: ObservableObject {
     func selectWorkout(_ workout: RunWorkout?, persistSelection: Bool = true) {
         selectedWorkout = workout
         selectedSegment = nil
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
+        switch workspaceMode {
+        case .personalHeatmap, .trends, .workoutLibrary:
+            cancelActiveWorkspaceWork()
             workspaceMode = .workout
-        } else if workspaceMode == .trends {
-            trends.cancel()
-            workspaceMode = .workout
-        } else if workspaceMode == .workoutLibrary {
-            workspaceMode = .workout
+        case .workout, .comparison:
+            break
         }
         if let workout, comparisonWorkout?.id == workout.id {
             clearComparison()
@@ -862,13 +860,18 @@ class AppState: ObservableObject {
         deletingSelectedWorkout: Bool,
         deletingComparisonWorkout: Bool
     ) {
-        let wasHeatmap = workspaceMode == .personalHeatmap
-        let wasTrends = workspaceMode == .trends
-        let wasLibrary = workspaceMode == .workoutLibrary
+        // A library-level workspace stays visible across a deletion; the
+        // workout workspace instead follows the selection.
+        let libraryWorkspace: AppWorkspaceMode?
+        switch workspaceMode {
+        case .personalHeatmap, .trends, .workoutLibrary:
+            libraryWorkspace = workspaceMode
+        case .workout, .comparison:
+            libraryWorkspace = nil
+        }
         if deletingSelectedWorkout {
             clearComparison()
-            // Preserve heatmap / Trends / All Runs workspace when deleting while visible.
-            if wasHeatmap {
+            if let libraryWorkspace {
                 selectedWorkout = workouts.first
                 selectedSegment = nil
                 if let selectedWorkout {
@@ -877,47 +880,31 @@ class AppState: ObservableObject {
                 } else {
                     detectedSegments = []
                 }
-                workspaceMode = .personalHeatmap
-                personalHeatmap.refresh(workouts: workouts)
-            } else if wasTrends {
-                selectedWorkout = workouts.first
-                selectedSegment = nil
-                if let selectedWorkout {
-                    replayController.load(selectedWorkout)
-                    detectedSegments = selectedWorkout.segments
-                } else {
-                    detectedSegments = []
-                }
-                workspaceMode = .trends
-                refreshTrends()
-            } else if wasLibrary {
-                selectedWorkout = workouts.first
-                selectedSegment = nil
-                if let selectedWorkout {
-                    replayController.load(selectedWorkout)
-                    detectedSegments = selectedWorkout.segments
-                } else {
-                    detectedSegments = []
-                }
-                workspaceMode = .workoutLibrary
+                workspaceMode = libraryWorkspace
+                refreshLibraryWorkspace()
             } else {
                 selectWorkout(workouts.first, persistSelection: false)
             }
         } else if deletingComparisonWorkout {
             clearComparison()
-            if wasHeatmap {
-                workspaceMode = .personalHeatmap
-                personalHeatmap.refresh(workouts: workouts)
-            } else if wasTrends {
-                workspaceMode = .trends
-                refreshTrends()
-            } else if wasLibrary {
-                workspaceMode = .workoutLibrary
+            if let libraryWorkspace {
+                workspaceMode = libraryWorkspace
+                refreshLibraryWorkspace()
             }
-        } else if wasHeatmap {
+        } else if libraryWorkspace != nil {
+            refreshLibraryWorkspace()
+        }
+    }
+
+    /// Re-derive the visible library-level workspace after the library changed.
+    private func refreshLibraryWorkspace() {
+        switch workspaceMode {
+        case .personalHeatmap:
             personalHeatmap.refresh(workouts: workouts)
-        } else if wasTrends {
+        case .trends:
             refreshTrends()
+        case .workout, .comparison, .workoutLibrary:
+            break
         }
     }
 
@@ -941,12 +928,7 @@ class AppState: ObservableObject {
     /// session manual query is restored once. Re-selecting All Runs while already
     /// in the manual context must not re-apply a stale snapshot over live edits.
     func showWorkoutLibrary(restoreManualQuery: Bool = false) {
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
@@ -966,12 +948,7 @@ class AppState: ObservableObject {
 
     /// Open All Runs under a smart collection.
     func showSmartCollection(id: UUID) {
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
@@ -1012,12 +989,26 @@ class AppState: ObservableObject {
         selectWorkout(workout)
     }
 
+    /// Cancel the background work owned by the workspace being left.
+    ///
+    /// Every workspace transition routes through here rather than testing for
+    /// each workspace at each call site: only the current workspace can have
+    /// work in flight, so one switch covers them all and the next workspace
+    /// added needs one case, not a guard at every transition.
+    private func cancelActiveWorkspaceWork() {
+        switch workspaceMode {
+        case .personalHeatmap:
+            personalHeatmap.cancel()
+        case .trends:
+            trends.cancel()
+        case .workout, .comparison, .workoutLibrary:
+            break
+        }
+    }
+
     /// Open the Personal Heatmap workspace. Does not change selected workout.
     func showPersonalHeatmap() {
-        personalHeatmap.cancel()
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         // Leave comparison / All Runs cleanly; workspaces are mutually exclusive.
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
@@ -1034,7 +1025,7 @@ class AppState: ObservableObject {
     /// the entire-library default, the scope preselects that collection so
     /// trends respect the active filter.
     func showTrends() {
-        trends.cancel()
+        cancelActiveWorkspaceWork()
         if !trends.hasBeenOpened,
            case .entireLibrary = trends.scope,
            case .smartCollection(let id, _) = workoutLibrary.queryContext {
@@ -1070,10 +1061,7 @@ class AppState: ObservableObject {
     /// mixed-zone libraries. Manual search/tag filters are preserved; an
     /// active smart collection becomes Modified through the normal path.
     func showWorkoutsInTrendsPeriod(_ key: WorkoutTrendsPeriodKey) {
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        trends.cancel()
+        cancelActiveWorkspaceWork()
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         selectedComparisonDistanceMeters = 0
@@ -1091,12 +1079,7 @@ class AppState: ObservableObject {
 
     /// Return to the selected workout workspace (if any).
     func showWorkoutWorkspace() {
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         if workspaceMode == .comparison {
             comparisonWorkout = nil
             comparisonSelectionMessage = nil
@@ -1108,12 +1091,7 @@ class AppState: ObservableObject {
     }
 
     private func enterComparisonWorkspace() {
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         workspaceMode = .comparison
         requestSessionSave()
     }
@@ -1530,12 +1508,7 @@ class AppState: ObservableObject {
             return
         }
 
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         comparisonWorkout = workout
         workspaceMode = .comparison
         clampComparisonDistance()
@@ -1584,12 +1557,7 @@ class AppState: ObservableObject {
     /// showing the empty state so users can import additional runs.
     func enterEmptyComparisonMode() {
         let wasComparing = workspaceMode == .comparison
-        if workspaceMode == .personalHeatmap {
-            personalHeatmap.cancel()
-        }
-        if workspaceMode == .trends {
-            trends.cancel()
-        }
+        cancelActiveWorkspaceWork()
         comparisonWorkout = nil
         comparisonSelectionMessage = nil
         workspaceMode = .comparison

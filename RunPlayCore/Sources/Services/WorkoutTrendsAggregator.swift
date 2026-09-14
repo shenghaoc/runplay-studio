@@ -22,7 +22,8 @@ import Foundation
 public enum WorkoutTrendsAggregator {
     /// Defensive bound on the enumerated window so a decades-long weekly
     /// library cannot generate an unbounded axis. The window is clamped by
-    /// dropping the oldest periods.
+    /// dropping the oldest periods, and the enumeration itself never exceeds
+    /// this many steps.
     public static let maximumRenderedPeriods = 5_000
 
     /// The zone a row buckets in: its recorded offset when present, else the
@@ -118,9 +119,10 @@ public enum WorkoutTrendsAggregator {
 
     /// Buckets rows into a contiguous period series.
     ///
-    /// Rows before the range anchor are counted in `outOfWindowRunCount`, not
-    /// shown. Rows dated beyond the current period extend the window so
-    /// clock-skewed or future-dated data is never silently dropped.
+    /// Rows outside the displayed window — before the range anchor, older than
+    /// the render cap, or more than one period ahead of `now` — are counted in
+    /// `outOfWindowRunCount` rather than shown, so they are disclosed and
+    /// never silently dropped.
     public static func aggregate(
         rows: [WorkoutTrendsSummaryRow],
         period: WorkoutTrendsPeriod,
@@ -187,25 +189,43 @@ public enum WorkoutTrendsAggregator {
         }
 
         // The window always includes the current period (an in-progress
-        // trailing bar) and any future-dated rows; both extend past `now`.
-        let windowEnd = max(currentKey, accumulators.keys.max() ?? currentKey)
+        // trailing bar), and extends at most one period past it. One period is
+        // exactly what a run recorded in a zone ahead of the display zone
+        // needs; beyond that a row is clock skew or a corrupt date, and
+        // letting it set the end would push the real data out of a capped
+        // window entirely. Such rows are counted in `outOfWindowRunCount`,
+        // never silently dropped.
+        let newestRowKey = accumulators.keys.max()
+        let periodAfterCurrent = nextKey(after: currentKey)
+        let windowEnd: WorkoutTrendsPeriodKey
+        if let newestRowKey, newestRowKey > currentKey, newestRowKey <= periodAfterCurrent {
+            windowEnd = newestRowKey
+        } else {
+            windowEnd = currentKey
+        }
         var windowStart = anchor ?? minimumKey ?? currentKey
+        // The current period is always in the window, even when every row is
+        // dated ahead of it.
+        windowStart = min(windowStart, currentKey)
         if windowStart > windowEnd {
             windowStart = windowEnd
         }
 
-        // Enumerate the whole nominal span first (bounded by a hard iteration
-        // cap), then clamp by dropping the oldest periods so the newest data
-        // always stays visible.
+        // Enumerate backwards from the newest period, stopping at the render
+        // cap, so the clamp drops the oldest periods without first building
+        // (or walking) a span that an ancient row could make enormous.
         var keys: [WorkoutTrendsPeriodKey] = []
-        var cursor = windowStart
-        while cursor <= windowEnd && keys.count < 100 * maximumRenderedPeriods {
+        var cursor = windowEnd
+        while keys.count < maximumRenderedPeriods {
             keys.append(cursor)
-            cursor = nextKey(after: cursor)
+            if cursor <= windowStart { break }
+            let previous = previousKey(before: cursor)
+            // `previousKey` returns its argument when the component domain
+            // cannot go lower; stop rather than repeat a key.
+            if previous >= cursor { break }
+            cursor = previous
         }
-        if keys.count > maximumRenderedPeriods {
-            keys.removeFirst(keys.count - maximumRenderedPeriods)
-        }
+        keys.reverse()
 
         let buckets = keys.map { key -> WorkoutTrendsPeriodBucket in
             let accumulator = accumulators[key]
@@ -302,7 +322,7 @@ public enum WorkoutTrendsAggregator {
             buckets: buckets,
             includedRunCount: includedRunCount,
             outOfWindowRunCount: outOfWindow,
-            currentPeriodKey: keys.last == currentKey ? currentKey : nil,
+            currentPeriodKey: includedKeys.contains(currentKey) ? currentKey : nil,
             windowStartKey: keys.first,
             totalDistanceMeters: windowDistance,
             totalActiveSeconds: windowActive,
@@ -343,5 +363,37 @@ public enum WorkoutTrendsAggregator {
         }
         guard let next = calendar.date(byAdding: unit, value: 1, to: start) else { return key }
         return periodKey(for: next, period: key.kind, timeZone: calendar.timeZone)
+    }
+
+    /// The nominal key preceding `key` within its kind. Descends by one unit;
+    /// when subtraction leaves the component domain this returns `key` itself,
+    /// which stops enumeration safely.
+    static func previousKey(before key: WorkoutTrendsPeriodKey) -> WorkoutTrendsPeriodKey {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        var components = DateComponents()
+        switch key.kind {
+        case .week:
+            components.yearForWeekOfYear = key.year
+            components.weekOfYear = key.ordinal
+        case .month:
+            components.year = key.year
+            components.month = key.ordinal
+            components.day = 1
+        case .year:
+            components.year = key.year
+            components.month = 1
+            components.day = 1
+        }
+        let unit: Calendar.Component
+        switch key.kind {
+        case .week: unit = .weekOfYear
+        case .month: unit = .month
+        case .year: unit = .year
+        }
+        guard let start = calendar.date(from: components),
+              let previous = calendar.date(byAdding: unit, value: -1, to: start)
+        else { return key }
+        return periodKey(for: previous, period: key.kind, timeZone: calendar.timeZone)
     }
 }

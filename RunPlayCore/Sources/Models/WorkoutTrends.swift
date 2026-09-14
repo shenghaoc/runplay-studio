@@ -233,7 +233,9 @@ public struct WorkoutTrendsAggregation: Hashable, Sendable {
     public let buckets: [WorkoutTrendsPeriodBucket]
     /// Rows bucketed into the returned periods.
     public let includedRunCount: Int
-    /// Rows whose period falls before the range anchor.
+    /// Rows whose period falls outside the displayed window: before the range
+    /// anchor, older than the render cap, or more than one period ahead of
+    /// `now`.
     public let outOfWindowRunCount: Int
     /// Key of the period containing `now` in the display zone, when any
     /// bucket exists.

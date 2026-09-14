@@ -467,7 +467,8 @@ public struct TrendsAccessibilitySummary: Equatable, Sendable {
             "Total active time \(formatDuration(aggregation.totalActiveSeconds))."
         ]
         if let pace = aggregation.meanActivePaceSecondsPerKilometer {
-            parts.append("Mean active pace \(formatMetric(pace, unit: "s/km")) per kilometre.")
+            // `formatMetric` already renders the "per kilometre" unit.
+            parts.append("Mean active pace \(formatMetric(pace, unit: "s/km")).")
         } else {
             parts.append("Mean active pace unavailable.")
         }
@@ -480,15 +481,17 @@ public struct TrendsAccessibilitySummary: Equatable, Sendable {
             parts.append("No heart-rate data.")
         }
         if let ascent = aggregation.totalAscentMeters {
+            // Ascent is a climb, not a horizontal distance: metres always,
+            // never rolled up into kilometres.
             parts.append(
-                "Total ascent \(formatDistance(ascent)) from "
+                "Total ascent \(formatMetric(ascent, unit: "m")) from "
                     + "\(aggregation.ascentContributingRuns) of \(includedRunCount) runs."
             )
         } else {
             parts.append("No elevation data.")
         }
         if outOfWindowRunCount > 0 {
-            parts.append("\(outOfWindowRunCount) runs fall before the selected range.")
+            parts.append("\(outOfWindowRunCount) runs fall outside the selected range.")
         }
         if undatedRunCount > 0 {
             parts.append("\(undatedRunCount) runs have no date and are excluded.")

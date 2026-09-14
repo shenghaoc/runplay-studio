@@ -155,6 +155,26 @@ private struct TrendsRequestKey: Hashable {
     let now: Date
 }
 
+/// One finished aggregation plus everything the view needs to render it.
+///
+/// Chart points and period labels are built once here, off the main actor,
+/// rather than recomputed in the view body: the body reads four panels plus
+/// four accessibility summaries per pass, and each rebuild was constructing a
+/// `Calendar` twice per period.
+private struct TrendsResult: Sendable {
+    let aggregation: WorkoutTrendsAggregation
+    let undatedRunCount: Int
+    /// The empty state this result implies, or `nil` when it has runs. Cached
+    /// with the aggregation so a cache hit restores the same explanation.
+    let emptyReason: TrendsEmptyReason?
+    let chartPoints: [TrendsMetric: [TrendsChartPoint]]
+
+    /// Period keys present in this window, for O(1) membership tests.
+    var bucketKeys: Set<WorkoutTrendsPeriodKey> {
+        Set(aggregation.buckets.map(\.id))
+    }
+}
+
 /// Dedicated view model for the Trends workspace.
 ///
 /// Owns period/range/scope selections and a cancellable, stale-suppressed
@@ -177,30 +197,48 @@ final class TrendsViewModel: ObservableObject {
     private let announcementPolicy: AccessibilityAnnouncementPolicy
     private var computeTask: Task<Void, Never>?
     private var lastKey: TrendsRequestKey?
-    private var cache: [TrendsRequestKey: WorkoutTrendsAggregation] = [:]
+    private var cache: [TrendsRequestKey: TrendsResult] = [:]
     private var lastInputs: TrendsRefreshInputs = .empty
+    /// Chart points, period labels, and key membership for the applied
+    /// result. Plain stored state, not `@Published`: reading it from a view
+    /// body must not schedule another render.
+    private var appliedChartPoints: [TrendsMetric: [TrendsChartPoint]] = [:]
+    private var appliedPeriodLabels: [WorkoutTrendsPeriodKey: String] = [:]
+    private var appliedBucketKeys: Set<WorkoutTrendsPeriodKey> = []
     /// Injectable clock for relative ranges (tests).
     var nowProvider: () -> Date = { Date() }
 
     /// Period label formatters, display-zone and locale aware.
-    private lazy var weekLabelFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeZone = displayTimeZone
-        formatter.dateFormat = "d MMM yyyy"
-        return formatter
-    }()
-    private lazy var monthLabelFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeZone = displayTimeZone
-        formatter.dateFormat = "MMM yyyy"
-        return formatter
-    }()
-    private lazy var yearLabelFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeZone = displayTimeZone
-        formatter.dateFormat = "yyyy"
-        return formatter
-    }()
+    ///
+    /// One set per aggregation, built where the labels are: `DateFormatter` is
+    /// not safe to share across actors, and labels are produced off the main
+    /// actor alongside the chart points.
+    private struct PeriodLabelFormatters {
+        let week: DateFormatter
+        let month: DateFormatter
+        let year: DateFormatter
+
+        init(timeZone: TimeZone) {
+            week = Self.make(timeZone: timeZone, format: "d MMM yyyy")
+            month = Self.make(timeZone: timeZone, format: "MMM yyyy")
+            year = Self.make(timeZone: timeZone, format: "yyyy")
+        }
+
+        private static func make(timeZone: TimeZone, format: String) -> DateFormatter {
+            let formatter = DateFormatter()
+            formatter.timeZone = timeZone
+            formatter.dateFormat = format
+            return formatter
+        }
+
+        func label(for kind: WorkoutTrendsPeriod, start: Date) -> String {
+            switch kind {
+            case .week: return week.string(from: start)
+            case .month: return month.string(from: start)
+            case .year: return year.string(from: start)
+            }
+        }
+    }
 
     init(
         queryService: any WorkoutLibraryQuerying = WorkoutLibraryQueryService(),
@@ -294,150 +332,185 @@ final class TrendsViewModel: ObservableObject {
         computeTask = nil
 
         if let cached = cache[key] {
-            apply(aggregation: cached, inputs: inputs, key: key)
+            apply(result: cached, inputs: inputs)
             return
         }
 
-        let workouts = inputs.workouts
-        let entries = inputs.entries
-        let documents = inputs.documents
-        let collections = inputs.smartCollections
-        let currentQuery = inputs.currentQuery
         let scope = self.scope
         let period = self.period
         let range = self.range
         let displayTimeZone = self.displayTimeZone
-        let fallbackZone = self.displayTimeZone
         let calendar = self.calendar
         let queryService = self.queryService
 
         isComputing = true
         loadState = .loading
 
+        // A structured child task, not `Task.detached`: a detached task does
+        // not inherit cancellation, so cancelling would discard the result
+        // while the work ran on to completion. `computeResult` is
+        // `nonisolated`, so the aggregation still runs off the main actor.
         computeTask = Task { [weak self] in
-            let result: Result<
-                (aggregation: WorkoutTrendsAggregation, undated: Int, allRowsEmpty: Bool, scopedRowsEmpty: Bool),
-                Error
-            > = await Task.detached(priority: .userInitiated) {
-                do {
-                let allRows = workouts.compactMap { WorkoutTrendsSummaryRow.make(from: $0) }
-                let undated = workouts.count - allRows.count
-                let resolution = try await WorkoutTrendsScopeResolver.resolve(
+            do {
+                let result = try await Self.computeResult(
+                    inputs: inputs,
                     scope: scope,
-                    entries: entries,
-                    documents: documents,
-                    smartCollections: collections,
-                    currentQuery: currentQuery,
-                    now: now,
-                    calendar: calendar,
-                    service: queryService
-                )
-                let rows: [WorkoutTrendsSummaryRow]
-                if let matching = resolution.matchingWorkoutIDs {
-                    rows = allRows.filter { matching.contains($0.id) }
-                } else {
-                    rows = allRows
-                }
-                let aggregation = WorkoutTrendsAggregator.aggregate(
-                    rows: rows,
                     period: period,
                     range: range,
                     now: now,
                     displayTimeZone: displayTimeZone,
-                    fallbackBucketingTimeZone: fallbackZone
+                    calendar: calendar,
+                    queryService: queryService
                 )
-                return .success((
-                    aggregation: aggregation,
-                    undated: undated,
-                    allRowsEmpty: allRows.isEmpty,
-                    scopedRowsEmpty: rows.isEmpty
-                ))
-                } catch {
-                    return .failure(error)
+                guard let self, self.lastKey == key, !Task.isCancelled else { return }
+                self.store(result: result, for: key)
+                self.apply(result: result, inputs: inputs)
+            } catch is CancellationError {
+                guard let self, self.lastKey == key else { return }
+                self.isComputing = false
+                if self.loadState == .loading {
+                    self.loadState = self.aggregation == nil ? .idle : .ready
                 }
-            }.value
-
-            guard let self, self.lastKey == key, !Task.isCancelled else { return }
-
-            switch result {
-            case .success(let payload):
-                self.undatedRunCount = payload.undated
-                self.cache[key] = payload.aggregation
-                if self.cache.count > 12 {
-                    let keep = payload.aggregation
-                    self.cache.removeAll(keepingCapacity: true)
-                    self.cache[key] = keep
-                }
-                self.apply(aggregation: payload.aggregation, inputs: inputs, key: key)
-                if !inputs.workouts.isEmpty {
-                    if payload.allRowsEmpty {
-                        self.loadState = .empty(.noDatedWorkouts)
-                    } else if payload.scopedRowsEmpty {
-                        self.loadState = .empty(.scopeExcludedAll)
-                    }
-                }
-            case .failure(let error):
-                if error is CancellationError {
-                    self.isComputing = false
-                    if self.aggregation == nil, self.loadState == .loading {
-                        self.loadState = .idle
-                    } else if self.loadState == .loading {
-                        self.loadState = .ready
-                    }
-                    return
-                }
+            } catch {
+                guard let self, self.lastKey == key else { return }
                 self.isComputing = false
                 self.loadState = .failed(error.localizedDescription)
             }
         }
     }
 
-    /// Chart points for one metric, in display-zone period order.
-    func chartPoints(for metric: TrendsMetric) -> [TrendsChartPoint] {
-        guard let aggregation else { return [] }
-        return aggregation.buckets.map { bucket in
-            let bounds = WorkoutTrendsAggregator.periodBounds(
+    /// Row derivation, scope resolution, and bucketing, off the main actor.
+    ///
+    /// Cancellation is cooperative Swift work checked around each stage; the
+    /// synchronous aggregation itself cannot be interrupted, so it is bracketed
+    /// rather than polled.
+    private nonisolated static func computeResult(
+        inputs: TrendsRefreshInputs,
+        scope: WorkoutTrendsScope,
+        period: WorkoutTrendsPeriod,
+        range: WorkoutTrendsRange,
+        now: Date,
+        displayTimeZone: TimeZone,
+        calendar: Calendar,
+        queryService: any WorkoutLibraryQuerying
+    ) async throws -> TrendsResult {
+        try Task.checkCancellation()
+        let allRows = inputs.workouts.compactMap { WorkoutTrendsSummaryRow.make(from: $0) }
+        let undated = inputs.workouts.count - allRows.count
+
+        try Task.checkCancellation()
+        let resolution = try await WorkoutTrendsScopeResolver.resolve(
+            scope: scope,
+            entries: inputs.entries,
+            documents: inputs.documents,
+            smartCollections: inputs.smartCollections,
+            currentQuery: inputs.currentQuery,
+            now: now,
+            calendar: calendar,
+            service: queryService
+        )
+
+        try Task.checkCancellation()
+        let rows: [WorkoutTrendsSummaryRow]
+        if let matching = resolution.matchingWorkoutIDs {
+            rows = allRows.filter { matching.contains($0.id) }
+        } else {
+            rows = allRows
+        }
+        let aggregation = WorkoutTrendsAggregator.aggregate(
+            rows: rows,
+            period: period,
+            range: range,
+            now: now,
+            displayTimeZone: displayTimeZone,
+            fallbackBucketingTimeZone: displayTimeZone
+        )
+        try Task.checkCancellation()
+
+        let emptyReason: TrendsEmptyReason?
+        if allRows.isEmpty {
+            emptyReason = .noDatedWorkouts
+        } else if rows.isEmpty {
+            emptyReason = .scopeExcludedAll
+        } else {
+            emptyReason = nil
+        }
+        return TrendsResult(
+            aggregation: aggregation,
+            undatedRunCount: undated,
+            emptyReason: emptyReason,
+            chartPoints: chartPoints(for: aggregation, displayTimeZone: displayTimeZone)
+        )
+    }
+
+    /// Builds every metric's chart points in one pass over the buckets.
+    ///
+    /// Period bounds and the localized label are resolved once per period and
+    /// shared by all four metrics, instead of once per metric per body pass.
+    private nonisolated static func chartPoints(
+        for aggregation: WorkoutTrendsAggregation,
+        displayTimeZone: TimeZone
+    ) -> [TrendsMetric: [TrendsChartPoint]] {
+        let formatters = PeriodLabelFormatters(timeZone: displayTimeZone)
+        var points: [TrendsMetric: [TrendsChartPoint]] = [:]
+        for metric in TrendsMetric.allCases {
+            points[metric] = []
+            points[metric]?.reserveCapacity(aggregation.buckets.count)
+        }
+        for bucket in aggregation.buckets {
+            let start = WorkoutTrendsAggregator.periodBounds(
                 for: bucket.id,
                 timeZone: displayTimeZone
-            )
-            let value: Double?
-            let contributing: Int?
-            switch metric {
-            case .distance:
-                value = bucket.totalDistanceMeters / 1_000
-                contributing = nil
-            case .pace:
-                value = bucket.meanActivePaceSecondsPerKilometer
-                contributing = nil
-            case .heartRate:
-                value = bucket.meanHeartRateBPM
-                contributing = bucket.heartRateContributingRuns
-            case .ascent:
-                value = bucket.totalAscentMeters
-                contributing = bucket.ascentContributingRuns
+            ).start
+            let label = formatters.label(for: bucket.id.kind, start: start)
+            for metric in TrendsMetric.allCases {
+                let value: Double?
+                let contributing: Int?
+                switch metric {
+                case .distance:
+                    value = bucket.totalDistanceMeters / 1_000
+                    contributing = nil
+                case .pace:
+                    value = bucket.meanActivePaceSecondsPerKilometer
+                    contributing = nil
+                case .heartRate:
+                    value = bucket.meanHeartRateBPM
+                    contributing = bucket.heartRateContributingRuns
+                case .ascent:
+                    value = bucket.totalAscentMeters
+                    contributing = bucket.ascentContributingRuns
+                }
+                points[metric]?.append(TrendsChartPoint(
+                    key: bucket.id,
+                    periodStart: start,
+                    label: label,
+                    value: value,
+                    runCount: bucket.runCount,
+                    contributingRuns: contributing
+                ))
             }
-            return TrendsChartPoint(
-                key: bucket.id,
-                periodStart: bounds.start,
-                label: periodLabel(for: bucket.id),
-                value: value,
-                runCount: bucket.runCount,
-                contributingRuns: contributing
-            )
         }
+        return points
+    }
+
+    /// Chart points for one metric, in display-zone period order. A lookup:
+    /// the points were built when the aggregation was applied.
+    func chartPoints(for metric: TrendsMetric) -> [TrendsChartPoint] {
+        appliedChartPoints[metric] ?? []
+    }
+
+    /// Whether the applied window still contains this period.
+    func containsPeriod(_ key: WorkoutTrendsPeriodKey) -> Bool {
+        appliedBucketKeys.contains(key)
     }
 
     /// Short localized period label for axes and the inspector.
     func periodLabel(for key: WorkoutTrendsPeriodKey) -> String {
-        let bounds = WorkoutTrendsAggregator.periodBounds(for: key, timeZone: displayTimeZone)
-        switch key.kind {
-        case .week:
-            return weekLabelFormatter.string(from: bounds.start)
-        case .month:
-            return monthLabelFormatter.string(from: bounds.start)
-        case .year:
-            return yearLabelFormatter.string(from: bounds.start)
+        if let cached = appliedPeriodLabels[key] {
+            return cached
         }
+        let start = WorkoutTrendsAggregator.periodBounds(for: key, timeZone: displayTimeZone).start
+        return PeriodLabelFormatters(timeZone: displayTimeZone).label(for: key.kind, start: start)
     }
 
     /// Spoken workspace summary for accessibility.
@@ -477,20 +550,36 @@ final class TrendsViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private func apply(
-        aggregation: WorkoutTrendsAggregation,
-        inputs: TrendsRefreshInputs,
-        key: TrendsRequestKey
-    ) {
-        self.aggregation = aggregation
-        self.isComputing = false
+    private func store(result: TrendsResult, for key: TrendsRequestKey) {
+        cache[key] = result
+        if cache.count > 12 {
+            cache.removeAll(keepingCapacity: true)
+            cache[key] = result
+        }
+    }
+
+    /// Publishes one result. A cached result restores exactly the same state a
+    /// fresh computation would, empty-state explanation and undated count
+    /// included.
+    private func apply(result: TrendsResult, inputs: TrendsRefreshInputs) {
+        aggregation = result.aggregation
+        undatedRunCount = result.undatedRunCount
+        appliedChartPoints = result.chartPoints
+        appliedBucketKeys = result.bucketKeys
+        appliedPeriodLabels = Dictionary(
+            result.chartPoints[.distance]?.map { ($0.key, $0.label) } ?? [],
+            uniquingKeysWith: { first, _ in first }
+        )
+        isComputing = false
         if inputs.workouts.isEmpty {
             loadState = .empty(.noWorkouts)
+        } else if let emptyReason = result.emptyReason {
+            loadState = .empty(emptyReason)
         } else {
             loadState = .ready
         }
-        if aggregation.includedRunCount > 0 {
-            announcementPolicy.handle(.trendsReady(runCount: aggregation.includedRunCount))
+        if result.aggregation.includedRunCount > 0 {
+            announcementPolicy.handle(.trendsReady(runCount: result.aggregation.includedRunCount))
         }
     }
 

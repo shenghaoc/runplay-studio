@@ -325,6 +325,161 @@ final class TrendsWorkspaceTests: XCTestCase {
         XCTAssertNil(result.snapshot.trends.scopeSmartCollectionID)
     }
 
+    // MARK: - Empty-state caching and cancellation
+
+    func testCachedResultRestoresScopeExcludedEmptyState() async throws {
+        let viewModel = TrendsViewModel(
+            calendar: Calendar(identifier: .iso8601),
+            timeZone: utc
+        )
+        viewModel.nowProvider = { self.utcDate(2026, 9, 14) }
+        viewModel.range = .allTime
+        let workout = makeWorkout(name: "A", start: utcDate(2026, 9, 2))
+        let collection = WorkoutSmartCollection(
+            name: "Nothing",
+            query: WorkoutLibrarySavedQuery(
+                filter: WorkoutLibraryFilter(tags: .selected(tagIDs: [UUID()], match: .any))
+            )
+        )
+        viewModel.scope = .smartCollection(collection.id)
+        let inputs = TrendsRefreshInputs(
+            workouts: [workout],
+            entries: [WorkoutLibraryEntry.make(from: workout, manifestIndex: 0, isFavorite: false)],
+            documents: [:],
+            smartCollections: [collection],
+            currentQuery: nil
+        )
+
+        viewModel.refresh(inputs: inputs)
+        let first = await waitForTrendsReady(viewModel)
+        XCTAssertTrue(first)
+        XCTAssertEqual(viewModel.loadState, .empty(.scopeExcludedAll))
+
+        // Switch period and back: the second pass is served from the cache and
+        // must restore the same explanation, not a bare "ready" blank chart.
+        viewModel.period = .week
+        viewModel.refresh(inputs: inputs)
+        let second = await waitForTrendsReady(viewModel)
+        XCTAssertTrue(second)
+        viewModel.period = .month
+        viewModel.refresh(inputs: inputs)
+        XCTAssertEqual(viewModel.loadState, .empty(.scopeExcludedAll))
+    }
+
+    private actor CancellationRecorder {
+        private(set) var didStart = false
+        private(set) var sawCancellation = false
+        func recordStart() { didStart = true }
+        func record() { sawCancellation = true }
+    }
+
+    /// Query service that blocks long enough to be cancelled, and records
+    /// whether cancellation actually reached it.
+    private final class SlowQueryService: WorkoutLibraryQuerying {
+        let recorder = CancellationRecorder()
+
+        func execute(
+            entries: [WorkoutLibraryEntry],
+            documents: [UUID: WorkoutLibrarySearchDocument],
+            query: WorkoutLibraryQuery
+        ) async throws -> WorkoutLibraryQueryResult {
+            await recorder.recordStart()
+            for _ in 0..<200 {
+                if Task.isCancelled {
+                    await recorder.record()
+                    throw CancellationError()
+                }
+                try? await Task.sleep(nanoseconds: 5_000_000)
+            }
+            return WorkoutLibraryQueryResult(
+                matchingIDs: entries.map(\.id),
+                totalCount: entries.count,
+                filteredCount: entries.count,
+                query: query
+            )
+        }
+    }
+
+    func testCancelReachesTheAggregationWork() async throws {
+        let service = SlowQueryService()
+        let viewModel = TrendsViewModel(
+            queryService: service,
+            calendar: Calendar(identifier: .iso8601),
+            timeZone: utc
+        )
+        viewModel.nowProvider = { self.utcDate(2026, 9, 14) }
+        viewModel.scope = .currentLibraryFilter
+        let workout = makeWorkout(name: "A", start: utcDate(2026, 9, 2))
+
+        viewModel.refresh(inputs: TrendsRefreshInputs(
+            workouts: [workout],
+            entries: [WorkoutLibraryEntry.make(from: workout, manifestIndex: 0, isFavorite: false)],
+            documents: [:],
+            smartCollections: [],
+            currentQuery: WorkoutLibraryQuery(
+                searchText: "",
+                filter: WorkoutLibraryFilter(),
+                sort: .dateNewest,
+                now: utcDate(2026, 9, 14),
+                calendar: Calendar(identifier: .iso8601)
+            )
+        ))
+        XCTAssertTrue(viewModel.isComputing)
+
+        // Let the query actually start, so cancellation has to travel into
+        // in-flight work rather than being caught at the first checkpoint.
+        let startDeadline = Date().addingTimeInterval(2)
+        var didStart = await service.recorder.didStart
+        while Date() < startDeadline, !didStart {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            didStart = await service.recorder.didStart
+        }
+        XCTAssertTrue(didStart)
+
+        viewModel.cancel()
+
+        // A detached task would run on regardless; a structured child task
+        // carries the cancellation into the query.
+        let deadline = Date().addingTimeInterval(2)
+        var sawCancellation = await service.recorder.sawCancellation
+        while Date() < deadline, !sawCancellation {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            sawCancellation = await service.recorder.sawCancellation
+        }
+        XCTAssertTrue(sawCancellation)
+        XCTAssertFalse(viewModel.isComputing)
+    }
+
+    func testContainsPeriodTracksTheAppliedWindow() async throws {
+        let viewModel = TrendsViewModel(
+            calendar: Calendar(identifier: .iso8601),
+            timeZone: utc
+        )
+        viewModel.nowProvider = { self.utcDate(2026, 9, 14) }
+        viewModel.range = .allTime
+        let workout = makeWorkout(name: "A", start: utcDate(2026, 9, 2))
+        viewModel.refresh(inputs: TrendsRefreshInputs(
+            workouts: [workout],
+            entries: [],
+            documents: [:],
+            smartCollections: [],
+            currentQuery: nil
+        ))
+        let ready = await waitForTrendsReady(viewModel)
+        XCTAssertTrue(ready)
+
+        XCTAssertTrue(viewModel.containsPeriod(
+            WorkoutTrendsPeriodKey(kind: .month, year: 2026, ordinal: 9)
+        ))
+        // A period the window never covered: the inspector must not hold a
+        // selection for it.
+        XCTAssertFalse(viewModel.containsPeriod(
+            WorkoutTrendsPeriodKey(kind: .month, year: 2019, ordinal: 3)
+        ))
+    }
+
     // MARK: - Chart gap splitting
 
     private func chartPoint(_ ordinal: Int, _ value: Double?) -> TrendsChartPoint {
