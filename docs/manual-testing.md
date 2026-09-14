@@ -120,45 +120,53 @@ commit screenshots of real home locations or personal heatmap exports.
 
 Use only synthetic or explicitly private, ignored local workout files.
 
-- [ ] Launch with several dated workouts spanning months (include at least one without heart rate and one without elevation data).
-- [ ] Open **Trends** from the Library sidebar section (or Library → Trends / ⌘⇧R).
-- [ ] Confirm four charts appear: Distance, Active Pace, Heart Rate, Ascent; totals use active time.
-- [ ] Switch Period Week / Month / Year; buckets relabel correctly (weeks start Monday; 29 Dec can belong to week 1 of the next year).
-- [ ] Switch Range Last 3 / 6 / 12 Months / All Time; the first bar is a whole period (no partial leading bar) and the trailing in-progress period is annotated.
+- [x] Launch with several dated workouts spanning months (include at least one without heart rate and one without elevation data).
+- [x] Open **Trends** from the Library sidebar section (or Library → Trends / ⌘⇧R).
+- [x] Confirm four charts appear: Distance, Active Pace, Heart Rate, Ascent; totals use active time.
+- [x] Switch Period Week / Month / Year; buckets relabel correctly (weeks start Monday; 29 Dec can belong to week 1 of the next year).
+- [x] Switch Range Last 3 / 6 / 12 Months / All Time; the first bar is a whole period (no partial leading bar) and the trailing in-progress period is annotated.
 - [x] Confirm periods with no heart rate or elevation show gaps, not zero points, and that the line charts **break** at a gap rather than drawing through it. Grouping the points is not enough: a `LineMark` without its own `series` is joined to every other `LineMark` in the chart, so this is only visible in the running app.
-- [ ] Mixed periods disclose contributing runs ("from 4 of 7 runs") in the inspector and spoken summaries.
+- [x] Mixed periods disclose contributing runs ("from 4 of 7 runs") in the inspector and the statistics row.
 - [ ] Switch Scope All Workouts / Current All Runs Filter / a smart collection; aggregation rescopes.
 - [ ] With All Runs showing a smart collection, open Trends for the first time in the session; scope preselects that collection (once; later manual choices persist).
-- [ ] Hover a bar/point; the inspector shows the period detail with contributor counts.
-- [ ] Click a bar/point; All Runs opens filtered to that period with the scope preserved (a smart collection shows Modified).
+- [x] Hover a bar/point; the inspector shows the period detail with contributor counts.
+- [x] Click a bar/point; All Runs opens filtered to that period with the scope preserved (a smart collection shows Modified).
 - [ ] Use the inspector period picker and View Runs button with keyboard and VoiceOver.
 - [ ] Import a workout; totals update on return to Trends. Delete while Trends visible; workspace stays on Trends.
-- [ ] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
+- [x] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
 - [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
 
-### 2026-09-14 partial pass
+### 2026-09-15 pass
 
 Driven through computer use against a synthetic 12-run library (15 months,
 empty months in Feb/May/Jul 2026, one month with no heart rate, one run with
 no altitude, one run outside the 12-month window), launched with
 `RUNPLAY_LIBRARY_ROOT`.
 
-Verified: Trends opens from the sidebar row and from Library → Trends; gaps
-render as gaps at both monthly and weekly granularity (three separate
-heart-rate segments monthly; isolated points weekly), and a period whose only
-run carries no altitude is omitted from Ascent rather than drawn as a zero
-bar; session restore returns to Trends with the persisted period and range.
-That pass is what caught the missing `series` on `LineMark` — the points were
-grouped correctly and still drew one continuous line.
+Verified: all four panels render; gaps render as gaps at monthly, weekly and
+yearly granularity, and a period whose only run carries no altitude is omitted
+from Ascent rather than drawn as a zero bar; Period and Range switch correctly
+(All Time picked up the twelfth run and moved the disclosures to "from 9 of 12"
+and "from 11 of 12"); the Scope menu opens and lists the entire library and the
+current All Runs filter; the hover inspector shows a period's detail; clicking
+the 2026 bar opened All Runs filtered to exactly the ten runs dated 2026;
+session restore returns to Trends with the persisted period and range.
 
-Not verified, still open: the Distance panel and the statistics row (both sit
-above the visible area at a 766 pt window height, as does the Period/Range/
-Scope filter bar — the Personal Heatmap filter bar is clipped the same way, so
-this is not specific to Trends but someone should confirm the controls are
-reachable at a normal window size); switching period, range and scope through
-the pickers; the hover inspector and click-through to All Runs; contributor
-captions; import/delete while Trends is visible; the ⌘⇧R shortcut itself; and
-any spoken VoiceOver output.
+This pass found two bugs. The first was the missing `series` on `LineMark` —
+the points were grouped correctly and still drew one continuous line. The
+second was the layout: the workspace stack sized itself to the ideal height of
+four chart panels, inflated the split view past the window, and the centred
+overflow cut off the top — so the header, the statistics row, the Distance
+panel and the entire filter bar were unreachable at the app's own default
+window size and still unreachable at full screen. Both are fixed.
+
+Still open: scoping to a smart collection (the synthetic library has none);
+import or delete while Trends is visible; the ⌘⇧R shortcut itself; and any
+spoken VoiceOver output.
+
+**Personal Heatmap has the same layout flaw**, less severely — its filter bar
+was clipped by 129 pt at the default window size and 35 pt at full screen. It
+is pre-existing and was left alone here; it needs the same fix.
 
 ## Route Quality Checklist
 

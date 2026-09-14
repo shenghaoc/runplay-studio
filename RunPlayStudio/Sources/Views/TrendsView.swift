@@ -14,29 +14,38 @@ struct TrendsView: View {
     @State private var inspectedKey: WorkoutTrendsPeriodKey?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            filterBar
-            Divider()
-            ScrollView {
-                VStack(spacing: AppDesign.Spacing.large) {
-                    statisticsRow
-                    if viewModel.showsInProgressPeriod {
-                        Text("The latest \(viewModel.period.title.lowercased()) is still in progress.")
-                            .font(AppDesign.Typography.compactLabel)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+        // The stack is given the window's height explicitly. Left to size
+        // itself it reports the ideal height of four chart panels, inflates the
+        // split view past the window, and the overflow is centred — which cuts
+        // off the top, taking the header and the whole period/range/scope
+        // filter bar with it, at every window size this display can produce.
+        // A definite height makes the scroll view absorb the difference and
+        // scroll, which is what it was there to do.
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                header
+                Divider()
+                filterBar
+                Divider()
+                ScrollView {
+                    VStack(spacing: AppDesign.Spacing.large) {
+                        statisticsRow
+                        if viewModel.showsInProgressPeriod {
+                            Text("The latest \(viewModel.period.title.lowercased()) is still in progress.")
+                                .font(AppDesign.Typography.compactLabel)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        chartPanels
+                        inspector
+                        notes
                     }
-                    chartPanels
-                    inspector
-                    notes
+                    .padding(AppDesign.Spacing.xLarge)
                 }
-                .padding(AppDesign.Spacing.xLarge)
+                overlayStates
             }
-            overlayStates
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             appState.refreshTrends()
         }
@@ -309,7 +318,9 @@ struct TrendsView: View {
                         Label("View Runs (\(inspectedRunCount))", systemImage: "list.bullet")
                     }
                     .accessibilityLabel(
-                        "View the \(inspectedRunCount) runs in \(viewModel.periodLabel(for: key))"
+                        inspectedRunCount == 1
+                            ? "View the 1 run in \(viewModel.periodLabel(for: key))"
+                            : "View the \(inspectedRunCount) runs in \(viewModel.periodLabel(for: key))"
                     )
                 }
             }
