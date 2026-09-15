@@ -96,7 +96,7 @@ Use only synthetic or explicitly private, ignored local workout files. Do not
 commit screenshots of real home locations or personal heatmap exports.
 
 - [ ] Launch with several GPS workouts in the library.
-- [ ] Open **Personal Heatmap** from the Library sidebar section (or Workout → Personal Heatmap / ⌘⇧H).
+- [ ] Open **Personal Heatmap** from the Library sidebar section (or Library → Personal Heatmap / ⌘⇧H).
 - [ ] Confirm the map fits rendered heat cells on first appearance.
 - [ ] Confirm repeated corridors look stronger than one-off paths.
 - [ ] Confirm one dense-sampling workout does not overpower a sparse recording of the same path.
@@ -142,7 +142,7 @@ VoiceOver labels, and a manual pan/zoom pass.
 
 Four items in the checklist above were un-ticked afterwards, on review: that
 pass ran against a two-run library rather than "several" workouts, it did not
-open the workspace through Workout → Personal Heatmap or ⌘⇧H, it did not
+open the workspace through Library → Personal Heatmap or ⌘⇧H, it did not
 observe the automatic fit on first appearance (only the Fit Heatmap button),
 and in the filter-empty state it pressed All Time but never Reset Filters.
 
