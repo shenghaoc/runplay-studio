@@ -11,21 +11,29 @@ struct PersonalHeatmapView: View {
     @State private var presentationRequest = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            filterBar
-            Divider()
-            statisticsRow
-            Divider()
-            ZStack {
-                mapContent
-                overlayStates
+        // The stack is given the window's height explicitly. Left to size
+        // itself it reports the ideal height of its map and statistics, which
+        // can exceed the window; the overflow is then centred, so it is the
+        // top that gets cut — taking the header and the whole date-range /
+        // resolution / minimum-runs filter bar with it. A definite height
+        // lets the map area shrink instead of pushing the stack offscreen.
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                header
+                Divider()
+                filterBar
+                Divider()
+                statisticsRow
+                Divider()
+                ZStack {
+                    mapContent
+                    overlayStates
+                }
+                Divider()
+                legend
             }
-            Divider()
-            legend
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             viewModel.refresh(workouts: appState.workouts)
         }
