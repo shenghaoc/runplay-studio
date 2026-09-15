@@ -502,6 +502,9 @@ extension AppState {
             if workspaceMode == .personalHeatmap {
                 personalHeatmap.refresh(workouts: loaded)
             }
+            if workspaceMode == .trends {
+                refreshTrends()
+            }
             requestSessionSave()
         case .demos(let message, let organization, let manifestPresent):
             // Unexpected after a successful commit; fall back without wiping

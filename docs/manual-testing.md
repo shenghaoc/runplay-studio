@@ -10,6 +10,20 @@ checklist below; unchecked items have not been manually verified.
 The durable accessibility matrix lives in
 [accessibility-audit.md](accessibility-audit.md).
 
+## Running a check against a throwaway library
+
+Set `RUNPLAY_LIBRARY_ROOT` to point the app at a scratch library instead of
+`~/Library/Application Support/RunPlayStudio`:
+
+```bash
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-check ./dist/RunPlayStudio.app/Contents/MacOS/RunPlayStudio
+```
+
+`HOME` does not do this: Application Support resolves through the OS, not the
+environment, so a launch without the override opens the real library — and on
+an analysis-version bump migrates and rewrites every workout in it. Use the
+override for any check that imports, deletes, or migrates.
+
 ## Keyboard and VoiceOver Checklist
 
 Use only synthetic or approved repository fixtures. Enable Full Keyboard Access
@@ -101,6 +115,67 @@ commit screenshots of real home locations or personal heatmap exports.
 - [ ] Resize the window; pan and zoom the map; use Fit Heatmap.
 - [ ] Confirm single-route and comparison maps still render correctly.
 - [ ] Relaunch: workout library persists; heatmap is recomputed (not stored as a second route DB).
+
+## Trends Workspace Checklist
+
+Use only synthetic or explicitly private, ignored local workout files.
+
+- [x] Launch with several dated workouts spanning months (include at least one without heart rate and one without elevation data).
+- [x] Open **Trends** from the Library sidebar section (or Library → Trends / ⌘⇧R).
+- [x] Confirm four charts appear: Distance, Active Pace, Heart Rate, Ascent; totals use active time.
+- [x] Switch Period Week / Month / Year; buckets relabel correctly (weeks start Monday; 29 Dec can belong to week 1 of the next year).
+- [x] Switch Range Last 3 / 6 / 12 Months / All Time; the first bar is a whole period (no partial leading bar) and the trailing in-progress period is annotated.
+- [x] Confirm periods with no heart rate or elevation show gaps, not zero points, and that the line charts **break** at a gap rather than drawing through it. Grouping the points is not enough: a `LineMark` without its own `series` is joined to every other `LineMark` in the chart, so this is only visible in the running app.
+- [x] Mixed periods disclose contributing runs ("from 4 of 7 runs") in the inspector and the statistics row.
+- [x] Switch Scope All Workouts / Current All Runs Filter / a smart collection; aggregation rescopes.
+- [x] With All Runs showing a smart collection, open Trends for the first time in the session; scope preselects that collection (once; later manual choices persist).
+- [x] Hover a bar/point; the inspector shows the period detail with contributor counts.
+- [x] Click a bar/point; All Runs opens filtered to that period with the scope preserved (a smart collection shows Modified).
+- [ ] Use the inspector period picker and View Runs button with keyboard and VoiceOver.
+- [ ] Import a workout; totals update on return to Trends. Delete while Trends visible; workspace stays on Trends.
+- [x] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
+- [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
+
+### 2026-09-15 pass
+
+Driven through computer use against a synthetic 12-run library (15 months,
+empty months in Feb/May/Jul 2026, one month with no heart rate, one run with
+no altitude, one run outside the 12-month window), launched with
+`RUNPLAY_LIBRARY_ROOT`.
+
+Verified: all four panels render; gaps render as gaps at monthly, weekly and
+yearly granularity, and a period whose only run carries no altitude is omitted
+from Ascent rather than drawn as a zero bar; Period and Range switch correctly
+(All Time picked up the twelfth run and moved the disclosures to "from 9 of 12"
+and "from 11 of 12"); the Scope menu opens and lists the entire library and the
+current All Runs filter; the hover inspector shows a period's detail; clicking
+the 2026 bar opened All Runs filtered to exactly the ten runs dated 2026;
+session restore returns to Trends with the persisted period and range.
+
+This pass found two bugs. The first was the missing `series` on `LineMark` —
+the points were grouped correctly and still drew one continuous line. The
+second was the layout: the workspace stack sized itself to the ideal height of
+four chart panels, inflated the split view past the window, and the centred
+overflow cut off the top — so the header, the statistics row, the Distance
+panel and the entire filter bar were unreachable at the app's own default
+window size and still unreachable at full screen. Both are fixed.
+
+Scoping was re-run against a library carrying a Trail tag on four of the twelve
+runs and a matching smart collection: All Runs scoped to the collection, and
+opening Trends preselected it and rescoped to 21.73 km over 4 runs with heart
+rate "from 3 of 4 runs" — the four tagged runs exactly. That run found a third
+bug: startup restores a synthesized default session even when no session file
+exists, and `restoreSessionState` treated that as the user having already
+opened Trends, which disarmed the preselect before it could ever fire. It only
+passed in tests because they build `AppState` without the session controller.
+Fixed, with a regression test on each side of the distinction.
+
+Still open: import or delete while Trends is visible; the ⌘⇧R shortcut itself;
+and any spoken VoiceOver output.
+
+**Personal Heatmap has the same layout flaw**, less severely — its filter bar
+was clipped by 129 pt at the default window size and 35 pt at full screen. It
+is pre-existing and was left alone here; it needs the same fix.
 
 ## Route Quality Checklist
 

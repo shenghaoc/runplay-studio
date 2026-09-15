@@ -25,6 +25,13 @@ public struct RunSummary: Codable, Hashable, Sendable {
     public var averageHeartRateBPM: Double?
     public var maxHeartRateBPM: Double?
     public var caloriesEstimate: Double?
+    /// Raw ascent: sum of positive adjacent altitude deltas within one route
+    /// segment, with no spike rejection, smoothing, or deadband. `nil` when no
+    /// two adjacent points carry finite altitude. Trends uses this as the
+    /// fallback when corrected elevation is not meaningful.
+    public var rawElevationGainMeters: Double?
+    /// Raw descent counterpart of `rawElevationGainMeters`.
+    public var rawElevationLossMeters: Double?
 
     public init(
         totalDistanceMeters: Double = 0,
@@ -75,7 +82,9 @@ public struct RunSummary: Codable, Hashable, Sendable {
         elevationLossMeters: Double = 0,
         averageHeartRateBPM: Double? = nil,
         maxHeartRateBPM: Double? = nil,
-        caloriesEstimate: Double? = nil
+        caloriesEstimate: Double? = nil,
+        rawElevationGainMeters: Double? = nil,
+        rawElevationLossMeters: Double? = nil
     ) {
         let elapsed = Self.nonNegativeFinite(totalElapsedSeconds)
         let active = min(Self.nonNegativeFinite(totalActiveSeconds), elapsed)
@@ -111,6 +120,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         self.averageHeartRateBPM = Self.finiteOptional(averageHeartRateBPM)
         self.maxHeartRateBPM = Self.finiteOptional(maxHeartRateBPM)
         self.caloriesEstimate = Self.nonNegativeFiniteOptional(caloriesEstimate)
+        self.rawElevationGainMeters = Self.nonNegativeFiniteOptional(rawElevationGainMeters)
+        self.rawElevationLossMeters = Self.nonNegativeFiniteOptional(rawElevationLossMeters)
     }
 
     /// Total distance in kilometers.
@@ -181,6 +192,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         case averageHeartRateBPM
         case maxHeartRateBPM
         case caloriesEstimate
+        case rawElevationGainMeters
+        case rawElevationLossMeters
     }
 
     public init(from decoder: any Decoder) throws {
@@ -207,7 +220,9 @@ public struct RunSummary: Codable, Hashable, Sendable {
             elevationLossMeters: try container.decode(Double.self, forKey: .elevationLossMeters),
             averageHeartRateBPM: try container.decodeIfPresent(Double.self, forKey: .averageHeartRateBPM),
             maxHeartRateBPM: try container.decodeIfPresent(Double.self, forKey: .maxHeartRateBPM),
-            caloriesEstimate: try container.decodeIfPresent(Double.self, forKey: .caloriesEstimate)
+            caloriesEstimate: try container.decodeIfPresent(Double.self, forKey: .caloriesEstimate),
+            rawElevationGainMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationGainMeters),
+            rawElevationLossMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationLossMeters)
         )
     }
 
@@ -230,6 +245,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         try container.encodeIfPresent(averageHeartRateBPM, forKey: .averageHeartRateBPM)
         try container.encodeIfPresent(maxHeartRateBPM, forKey: .maxHeartRateBPM)
         try container.encodeIfPresent(caloriesEstimate, forKey: .caloriesEstimate)
+        try container.encodeIfPresent(rawElevationGainMeters, forKey: .rawElevationGainMeters)
+        try container.encodeIfPresent(rawElevationLossMeters, forKey: .rawElevationLossMeters)
     }
 
     private static func nonNegativeFinite(_ value: Double) -> Double {

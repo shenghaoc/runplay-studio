@@ -320,3 +320,32 @@ ZIP. There is **no** Strava login, OAuth, API call, or network access.
 
 After import, counts cover imported, duplicates, unsupported sports/formats,
 no-GPS, parse failures, unsafe entries, and provider conflicts.
+
+## Recorded UTC offset
+
+Text formats that carry an explicit zone designator record it on
+`WorkoutMetadata.recordedUTCOffsetSeconds`: GPX and TCX capture the literal
+offset of the first timestamp text/attribute that both parses as an instant
+and carries a designator (`Z` is `0`, `+09:00` is `32_400`), and the JSON
+importer retains either an explicit metadata value or the first route-point
+timestamp designator. A designator is only read after the `T` time separator,
+so a date-only or otherwise unparseable timestamp contributes nothing rather
+than offering its date separator as a sign. FIT logs UTC instants only and
+records no offset. Calendar features (Trends bucketing) use the recorded
+local date; workouts without a recorded offset fall back to the system zone.
+
+## Workout size and payload limits
+
+`WorkoutImportResourceLimits` defines the product limits once, and every
+importer plus the `RouteQualityProcessor` preflight reads them from there:
+
+| Limit | Constant | Value |
+| --- | --- | --- |
+| Route points per resulting workout | `maxRoutePointCount` | 1,000,000 |
+| Source payload | `maxSourceFileBytes` | 100 MiB (`100 * 1024 * 1024`) |
+
+The C++ engine's `max_route_input_samples` is an internal safety ceiling 25%
+above the route-point limit, so a route the app accepts can never be rejected
+by the engine. Raising the product limit requires raising that ceiling to
+preserve the margin; a parity test enforces the relationship. Do not add a
+second copy of either number to an importer.

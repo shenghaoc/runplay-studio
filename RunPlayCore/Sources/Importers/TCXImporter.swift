@@ -51,7 +51,8 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         suggestedName: String,
         maxRoutePointCount: Int = WorkoutImportResourceLimits.maxRoutePointCount
     ) throws -> RunWorkout {
-        let rawActivities = try parseTCXData(data, maxRoutePointCount: maxRoutePointCount)
+        let parsed = try parseTCXData(data, maxRoutePointCount: maxRoutePointCount)
+        let rawActivities = parsed.activities
 
         guard !rawActivities.isEmpty else {
             throw WorkoutImportError.missingData("No activities found in TCX file")
@@ -300,7 +301,8 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
             name: suggestedName,
             activityType: activity.sport ?? "running",
             startDate: activity.activityId ?? routePoints.first?.timestamp,
-            endDate: routePoints.last?.timestamp
+            endDate: routePoints.last?.timestamp,
+            recordedUTCOffsetSeconds: parsed.firstUTCOffsetSeconds
         )
 
         var workout = RunWorkout(
@@ -408,6 +410,18 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
     private var limitError: WorkoutResourceLimitError?
     private let maxRoutePointCount: Int
 
+    /// UTC offset of the first timestamp text/attribute that carries one,
+    /// in document order (`Id`, lap `StartTime`, then trackpoint `Time`).
+    private(set) var firstUTCOffsetSeconds: Int?
+
+    /// Records the offset of the first timestamp that both parsed as an
+    /// instant and carried a designator. Text that failed to parse is ignored:
+    /// its punctuation is not a designator.
+    private func captureUTCOffset(_ text: String, parsed: Date?) {
+        guard parsed != nil, firstUTCOffsetSeconds == nil else { return }
+        firstUTCOffsetSeconds = WorkoutTimestampOffsetScanner.utcOffsetSeconds(inISO8601Text: text)
+    }
+
     // Current trackpoint state
     private var currentTime: Date?
     private var currentLat: Double?
@@ -466,6 +480,9 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             inLap = true
             currentLapTracks = []
             currentLapStartTime = attributes["StartTime"].flatMap(parseISO8601)
+            if let startText = attributes["StartTime"] {
+                captureUTCOffset(startText, parsed: currentLapStartTime)
+            }
             currentLapTotalTime = nil
             currentLapDistance = nil
             currentLapMaxSpeed = nil
@@ -519,10 +536,12 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
         case "Id":
             if inActivity, !inLap, !inTrackpoint {
                 currentActivityId = parseISO8601(text)
+                captureUTCOffset(text, parsed: currentActivityId)
             }
         case "Time":
             if inTrackpoint {
                 currentTime = parseISO8601(text)
+                captureUTCOffset(text, parsed: currentTime)
             }
         case "LatitudeDegrees":
             if inPosition {
@@ -688,7 +707,8 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
 private func parseTCXData(
     _ data: Data,
     maxRoutePointCount: Int
-) throws -> [RawTCXActivity] {
+) throws -> (activities: [RawTCXActivity], firstUTCOffsetSeconds: Int?) {
     let parser = TCXXMLParser(data: data, maxRoutePointCount: maxRoutePointCount)
-    return try parser.parse()
+    let activities = try parser.parse()
+    return (activities, parser.firstUTCOffsetSeconds)
 }

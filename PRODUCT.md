@@ -23,7 +23,8 @@ It presents one native main window backed by one app-owned coordinator, while
 macOS restores the window frame and the app restores its logical workspace in
 a separate, versioned session file. A relaunch can return to a workout tab,
 manual All Runs query, active smart collection, Personal Heatmap filters,
-comparison pair and alignment mode, paused replay position, and sidebar visibility.
+Trends period/range/scope, comparison pair and alignment mode, paused replay
+position, and sidebar visibility.
 
 The workout-library manifest remains the authority for library membership,
 order, selected workout, favourites, tags, assignments, and smart collections.
@@ -60,7 +61,9 @@ RunPlay Studio is a precision instrument, not a social network. The vibe is "pro
 
 3. **Energetic precision.** Color signals meaning: blue = primary/action, orange = comparison, green = improvement, red = heart rate/effort. Colors are vibrant but never gratuitous. Motion is purposeful (map transitions, chart scrubbing), never decorative.
 
-4. **Focused depth, not shallow breadth.** Deep replay, rich comparison, relative route metric coloring on the native map, personal route heatmap across the local library, a scalable All Runs browser (search, filter, sort, favourites, tags, smart collections, name/notes), and precise segment detection. No feature-creep: if it doesn't help a runner understand their workout better, it doesn't ship.
+4. **Focused depth, not shallow breadth.** Deep replay, rich comparison, relative route metric coloring on the native map, personal route heatmap across the local library, a scalable All Runs browser (search, filter, sort, favourites, tags, smart collections, name/notes),
+library-wide trends over time (distance, pace, heart rate, ascent by week/month/year, scoped to
+any smart collection), and precise segment detection. No feature-creep: if it doesn't help a runner understand their workout better, it doesn't ship.
 
 5. **Native-first, not cross-platform lowest-common-denominator.** The app feels like a macOS app — native navigation, system fonts, platform conventions, Apple Maps integration. No Electron-style generic UI.
 

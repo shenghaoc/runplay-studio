@@ -171,6 +171,44 @@ enum AppSessionValidator {
             )
         )
 
+        var trendsScopeCollectionID = snapshot.trends.scopeSmartCollectionID
+        if let existingCollectionID = trendsScopeCollectionID,
+           !context.smartCollectionIDs.contains(existingCollectionID) {
+            trendsScopeCollectionID = nil
+            issues.append("Missing Trends scope collection.")
+            usedFallback = true
+        }
+        var trendsScopeKindRaw = repairedRaw(
+            snapshot.trends.scopeKindRaw,
+            allowed: AppSessionPolicy.validTrendsScopeKinds,
+            fallback: "entireLibrary",
+            issues: &issues,
+            usedFallback: &usedFallback
+        )
+        if trendsScopeKindRaw == "smartCollection", trendsScopeCollectionID == nil {
+            trendsScopeKindRaw = "entireLibrary"
+            issues.append("Trends smart-collection scope without a collection.")
+            usedFallback = true
+        }
+        let trends = AppSessionTrendsState(
+            periodRaw: repairedRaw(
+                snapshot.trends.periodRaw,
+                allowed: AppSessionPolicy.validTrendsPeriods,
+                fallback: WorkoutTrendsPeriod.month.rawValue,
+                issues: &issues,
+                usedFallback: &usedFallback
+            ),
+            rangeRaw: repairedRaw(
+                snapshot.trends.rangeRaw,
+                allowed: AppSessionPolicy.validTrendsRanges,
+                fallback: WorkoutTrendsRange.last12Months.rawValue,
+                issues: &issues,
+                usedFallback: &usedFallback
+            ),
+            scopeKindRaw: trendsScopeKindRaw,
+            scopeSmartCollectionID: trendsScopeCollectionID
+        )
+
         var comparison: AppSessionComparisonState?
         if let persistedComparison = snapshot.comparison {
             let validPrimary = context.selectedWorkoutID
@@ -294,6 +332,7 @@ enum AppSessionValidator {
                     modifiedWorkingQuery: workingQuery
                 ),
                 heatmap: heatmap,
+                trends: trends,
                 comparison: comparison,
                 replay: replay
             ),

@@ -6,6 +6,7 @@ import RunPlayCore
 enum SidebarSelection: Hashable {
     case allRuns
     case personalHeatmap
+    case trends
     case smartCollection(UUID)
     case workout(UUID)
 }
@@ -76,6 +77,12 @@ struct SidebarView: View {
                     .help("Show where you run most often across your local library (⌘⇧H)")
                     .accessibilityLabel("Personal Heatmap")
                     .accessibilityHint("Shows a density map of places you have run across your workout library")
+
+                Label("Trends", systemImage: "chart.bar.xaxis")
+                    .tag(SidebarSelection.trends)
+                    .help("Analyse your whole library over time (⌘⇧R)")
+                    .accessibilityLabel("Trends")
+                    .accessibilityHint("Shows distance, pace, heart rate, and ascent trends across your workout library over time")
             } header: {
                 Text("Library")
                     .font(AppDesign.Typography.compactLabel)

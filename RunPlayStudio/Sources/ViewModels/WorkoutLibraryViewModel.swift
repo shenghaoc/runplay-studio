@@ -402,6 +402,39 @@ final class WorkoutLibraryViewModel: ObservableObject {
         )
     }
 
+    /// Live runtime query for the current All Runs context (manual query or
+    /// the active smart collection's working query), for scope-following
+    /// features such as Trends.
+    func currentRuntimeQuery() -> WorkoutLibraryQuery {
+        WorkoutLibraryQuery(
+            searchText: searchText,
+            filter: currentFilter,
+            sort: sort,
+            now: nowProvider(),
+            calendar: calendar
+        )
+    }
+
+    /// Search documents backing the entries, for scope-following features.
+    var searchDocuments: [UUID: WorkoutLibrarySearchDocument] {
+        documents
+    }
+
+    /// Apply one Trends period as the All Runs date filter, preserving the
+    /// current search/tag scope. Editing a smart collection this way marks it
+    /// Modified through the normal query-mutation path.
+    ///
+    /// `end` is the period's exclusive end instant; it is stepped back one
+    /// second so the query service's inclusive end-of-day normalization lands
+    /// exactly on the period boundary.
+    func applyTrendsPeriodFilter(start: Date, end: Date) {
+        updateQueryState {
+            dateFilter = .custom(start: start, end: end.addingTimeInterval(-1))
+            customDateStart = start
+            customDateEnd = end.addingTimeInterval(-1)
+        }
+    }
+
     /// Capture the ordinary All Runs query even while a smart collection is
     /// active. Result IDs, counts, selection, and query caches are excluded.
     func sessionManualQuery() -> WorkoutLibrarySavedQuery {

@@ -424,6 +424,147 @@ public enum TagSelectionAccessibilityState: String, Sendable, Equatable {
     }
 }
 
+// MARK: - Trends summaries
+
+/// Spoken overview of one Trends aggregation.
+///
+/// Contributor counts are always disclosed next to heart rate and ascent so a
+/// sparse month is never heard as a complete trend.
+public struct TrendsAccessibilitySummary: Equatable, Sendable {
+    public let periodDescription: String
+    public let rangeDescription: String
+    public let scopeDescription: String
+    public let includedRunCount: Int
+    public let outOfWindowRunCount: Int
+    public let undatedRunCount: Int
+    public let aggregation: WorkoutTrendsAggregation
+
+    public init(
+        periodDescription: String,
+        rangeDescription: String,
+        scopeDescription: String,
+        includedRunCount: Int,
+        outOfWindowRunCount: Int,
+        undatedRunCount: Int,
+        aggregation: WorkoutTrendsAggregation
+    ) {
+        self.periodDescription = periodDescription
+        self.rangeDescription = rangeDescription
+        self.scopeDescription = scopeDescription
+        self.includedRunCount = max(0, includedRunCount)
+        self.outOfWindowRunCount = max(0, outOfWindowRunCount)
+        self.undatedRunCount = max(0, undatedRunCount)
+        self.aggregation = aggregation
+    }
+
+    public var spokenSummary: String {
+        var parts: [String] = [
+            "Trends by \(periodDescription).",
+            "Range \(rangeDescription).",
+            "Scope \(scopeDescription).",
+            "\(includedRunCount) runs in \(aggregation.buckets.count) periods.",
+            "Total distance \(formatDistance(aggregation.totalDistanceMeters)).",
+            "Total active time \(formatDuration(aggregation.totalActiveSeconds))."
+        ]
+        if let pace = aggregation.meanActivePaceSecondsPerKilometer {
+            // `formatMetric` already renders the "per kilometre" unit.
+            parts.append("Mean active pace \(formatMetric(pace, unit: "s/km")).")
+        } else {
+            parts.append("Mean active pace unavailable.")
+        }
+        if let heartRate = aggregation.meanHeartRateBPM {
+            parts.append(
+                "Mean heart rate \(Int(heartRate)) beats per minute from "
+                    + "\(aggregation.heartRateContributingRuns) of \(includedRunCount) runs."
+            )
+        } else {
+            parts.append("No heart-rate data.")
+        }
+        if let ascent = aggregation.totalAscentMeters {
+            // Ascent is a climb, not a horizontal distance: metres always,
+            // never rolled up into kilometres.
+            parts.append(
+                "Total ascent \(formatMetric(ascent, unit: "m")) from "
+                    + "\(aggregation.ascentContributingRuns) of \(includedRunCount) runs."
+            )
+        } else {
+            parts.append("No elevation data.")
+        }
+        if outOfWindowRunCount > 0 {
+            parts.append("\(outOfWindowRunCount) runs fall outside the selected range.")
+        }
+        if undatedRunCount > 0 {
+            parts.append("\(undatedRunCount) runs have no date and are excluded.")
+        }
+        return parts.joined(separator: " ")
+    }
+}
+
+/// Spoken summary of one Trends chart series, gap-aware.
+public struct TrendsChartAccessibilitySummary: Equatable, Sendable {
+    public let metricName: String
+    public let unit: String
+    public let periodDescription: String
+    /// One entry per period in window order; `nil` marks a gap.
+    public let values: [Double?]
+    /// Contributing runs per period, when the metric can be partial
+    /// (heart rate, ascent); `nil` otherwise.
+    public let contributorCounts: [Int]?
+    /// Run count per period, for contributor comparisons.
+    public let runCounts: [Int]
+
+    public init(
+        metricName: String,
+        unit: String,
+        periodDescription: String,
+        values: [Double?],
+        contributorCounts: [Int]? = nil,
+        runCounts: [Int]
+    ) {
+        self.metricName = metricName
+        self.unit = unit
+        self.periodDescription = periodDescription
+        self.values = values
+        self.contributorCounts = contributorCounts
+        self.runCounts = runCounts
+    }
+
+    public var spokenSummary: String {
+        let populated = values.compactMap { $0 }
+        var parts = [ "\(metricName) per \(periodDescription)." ]
+        if populated.isEmpty {
+            parts.append("No data.")
+            return parts.joined(separator: " ")
+        }
+        let gaps = values.count - populated.count
+        if gaps > 0 {
+            parts.append("Data in \(populated.count) of \(values.count) periods.")
+        } else {
+            parts.append("Data in all \(values.count) periods.")
+        }
+        if let minimum = populated.min(), let maximum = populated.max() {
+            parts.append("Between \(formatMetric(minimum, unit: unit)) and \(formatMetric(maximum, unit: unit)).")
+        }
+        if let latest = populated.last {
+            parts.append("Latest \(formatMetric(latest, unit: unit)).")
+        }
+        if let contributorCounts {
+            var partialPeriods = 0
+            for index in values.indices {
+                guard values[index] != nil else { continue }
+                guard index < contributorCounts.count, index < runCounts.count else { continue }
+                if contributorCounts[index] < runCounts[index] {
+                    partialPeriods += 1
+                }
+            }
+            if partialPeriods > 0 {
+                parts.append("\(partialPeriods) periods use runs that carry only part of this metric.")
+            }
+        }
+        return parts.joined(separator: " ")
+    }
+}
+
 // MARK: - Formatting helpers
 
 private func formatDistance(_ meters: Double) -> String {
@@ -432,6 +573,17 @@ private func formatDistance(_ meters: Double) -> String {
         return String(format: "%.2f kilometres", meters / 1000)
     }
     return String(format: "%.0f metres", meters)
+}
+
+private func formatDuration(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds > 0 else { return "unavailable" }
+    let total = Int(seconds)
+    let hours = total / 3_600
+    let minutes = (total % 3_600) / 60
+    if hours > 0 {
+        return "\(hours) h \(minutes) min"
+    }
+    return "\(minutes) min"
 }
 
 private func formatMetric(_ value: Double, unit: String) -> String {

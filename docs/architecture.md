@@ -443,10 +443,98 @@ caller. The portable-core migration ends with a mandatory cleanup phase
 Timings are machine-specific and live in benchmark and profile output, not in
 this document.
 
+### Trends workspace
+
+Trends is a **derived, library-level** visualization of whole-workout summaries
+over time. Like the personal heatmap it stores nothing per view open; unlike
+the heatmap it never walks route points at view time either.
+
+| Layer | Responsibility |
+| --- | --- |
+| **RunPlayCore** | `WorkoutTrends*` models (period, range, scope, summary row, period key, bucket, aggregation), `WorkoutTrendsSummaryRow.make` (summary-only row derivation), `WorkoutTrendsAggregator` (bucketing, range anchoring, gap semantics), `WorkoutTrendsScopeResolver` (scope → workout ID set through `WorkoutLibraryQueryService`), persisted raw ascent/descent totals in `RunSummary` at analysis time, `TrendsAccessibilitySummary` / `TrendsChartAccessibilitySummary` spoken summaries |
+| **RunPlayPlatform** | None |
+| **RunPlayStudio** | `TrendsViewModel` (filters, cancellable off-main aggregation, in-memory revision-keyed cache), `TrendsView` (Swift Charts panels, inspector, navigation), workspace/session/command wiring |
+
+#### Derivation model
+
+Rows derive purely from stored snapshot summaries and metadata — never from
+route points and never by re-parsing source files — so building rows for the
+whole library is linear in workout count. There is deliberately **no disk
+sidecar**: `AppState` already holds
+every stored snapshot in memory, so a parallel cache file would be a second
+source of truth whose only job is defending against itself. Freshness comes
+from the same in-memory revision-keyed cache pattern the heatmap uses; the row
+revision is (id, analysis version, start date, recorded UTC offset).
+
+The one value that route summaries did not previously carry is the **raw
+ascent fallback**. That is persisted once at analysis time: `WorkoutAnalyzer`
+adds `rawElevationGainMeters` / `rawElevationLossMeters` (sum of positive and
+negative adjacent altitude deltas within one route segment, skipping missing
+or non-finite samples) to `RunSummary`, and `analysisVersion` is now 6 so
+existing libraries recompute on load. This is an extraction-stage linear sum
+in Swift, deliberately in the same ownership bucket as raw pace/heart-rate
+extraction rather than a C++ kernel: it runs once per analysis, is never on a
+per-view path, and an engine boundary would add a pointer contract for no
+user-visible gain.
+
+#### Bucketing, ranges, and gaps
+
+- Each run belongs to exactly one period: the period containing its canonical
+  start **local date**. Runs crossing midnight or a week boundary count
+  entirely in their start period.
+- The local date resolves in the run's recorded UTC offset when the source
+  format carried one (GPX/TCX/JSON capture the literal designator, `Z` being
+  0); FIT logs UTC instants only, so those runs fall back to the system zone.
+  `WorkoutMetadata.recordedUTCOffsetSeconds` carries the value.
+- Weeks are ISO 8601 (Monday start; the key year is the ISO week-date year);
+  months and years share Gregorian boundaries in the same calendar.
+- "Last N months" includes whole periods: the anchor instant `now − N months`
+  (display zone) resolves to its period and every period with a nominal key
+  at or after the anchor's is included. The trailing in-progress period is
+  included whole and annotated; the enumerated window is clamped to 5,000
+  periods by dropping the oldest, and the enumeration itself runs backwards
+  from the newest period so it never exceeds that bound.
+- The window ends at the current period, extended by at most one period. That
+  one period is what a run recorded in a zone ahead of the display zone needs;
+  beyond it a row is clock skew or a corrupt date, and letting it set the end
+  would push the real data out of the capped window. Rows outside the window at
+  either end are counted in `outOfWindowRunCount` and disclosed in the spoken
+  summary, never silently dropped.
+- Trends state is **active time**: totals, aggregate pace (total active
+  seconds ÷ total kilometres), and heart-rate weighting (active-time-weighted
+  mean of run averages) never include pauses.
+- Distance, active time, and run count are true sums (zero in empty periods).
+  Pace, HR, and ascent are gaps (`nil`) when no contributing run carries the
+  metric; mixed periods aggregate the runs that do and disclose contributor
+  counts ("HR from 4 of 7 runs") in the inspector, spoken summaries, and chart
+  accessibility values, so sparse periods cannot be misread as trends.
+- Ascent per run uses corrected elevation when the summary carries a
+  meaningful profile, else the persisted raw totals.
+
+#### Scoping and navigation
+
+Scope is entire library, the current All Runs query, or a smart collection;
+the latter two resolve through `WorkoutLibraryQueryService` over lightweight
+entries, so search text, filters, tags, favourites, and relative dates behave
+identically to the All Runs table. Entering Trends for the first time in a
+session while All Runs shows a smart collection preselects that collection
+once; later manual scope choices are never overwritten. Clicking a bar/point
+(or the keyboard/VoiceOver inspector button) navigates to All Runs filtered to
+that period's bounds in the system zone, preserving manual search/tag scope;
+over an active collection the date filter marks the working query Modified.
+Mixed-zone libraries accept one display edge: a run recorded abroad near a
+period boundary can contribute to a nominal period whose system-zone filter
+excludes it.
+
+Trends state (period, range, scope kind + collection) participates in session
+restoration as of session version 3; older sessions decode with default
+selections and the validator repairs raw values, dangling collections, and
+unknown destinations.
+
 ### Workspace navigation
 
-`AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`, or
-`.workoutLibrary` (All Runs) — mutually
+`AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`,
+`.trends`, or `.workoutLibrary` (All Runs) — mutually
 exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.

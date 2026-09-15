@@ -186,7 +186,7 @@ final class AppSessionPersistenceTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(AppSessionSnapshot.self, from: data)
-        XCTAssertEqual(decoded.version, 2)
+        XCTAssertEqual(decoded.version, AppSessionSnapshot.currentVersion)
         XCTAssertEqual(decoded.comparison?.peerWorkoutID, peerID)
         XCTAssertEqual(decoded.comparison?.distanceMeters, 250)
         XCTAssertEqual(decoded.comparison?.alignmentModeRaw, ComparisonAlignmentMode.distance.rawValue)
@@ -321,5 +321,24 @@ final class AppSessionPersistenceTests: XCTestCase {
 
         let loaded = await store.load()
         XCTAssertNil(loaded)
+    }
+}
+
+@MainActor
+final class LibraryRootOverrideTests: XCTestCase {
+
+    func testOverrideRedirectsTheLibraryRoot() {
+        let root = ContentView.libraryRoot(
+            environment: ["RUNPLAY_LIBRARY_ROOT": "/tmp/runplay-check"]
+        )
+        XCTAssertEqual(root.path, "/tmp/runplay-check")
+    }
+
+    func testAbsentOrBlankOverrideFallsBackToApplicationSupport() {
+        let fallback = ContentView.libraryRoot(environment: [:])
+        XCTAssertTrue(fallback.path.hasSuffix("/Application Support/RunPlayStudio"))
+        // A blank value is an unset variable, not a request to use "".
+        let blank = ContentView.libraryRoot(environment: ["RUNPLAY_LIBRARY_ROOT": "   "])
+        XCTAssertEqual(blank.path, fallback.path)
     }
 }

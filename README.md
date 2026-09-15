@@ -25,6 +25,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Apple Maps 2D/3D replay** — One route map with a native pitch toggle and synchronized timeline controls
 - **Route metric coloring** — Color the single-workout map by solid, relative pace, relative heart rate, or corrected elevation (not HR zones; comparison and heatmap palettes stay separate)
 - **Personal heatmap** — Local density map of places you run most often across the workout library (distinct workouts per cell, not GPS sample density)
+- **Trends** — Whole-library trends by ISO week, month, or year: distance, active time, run count, active pace, heart rate, and ascent, with smart-collection scoping and click-through to the runs behind each period
 - **All Runs library** — Search, filter, sort, favourite, tag, and rename runs; save smart collections as dynamic queries; the sidebar shows bounded Favourites, Recent, and Smart Collections instead of every workout
 - **Synchronized views** — Map and charts stay in sync with the timeline
 - **Route comparison** — Distance or Route-Aware (constrained DTW) alignment, elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay
@@ -84,7 +85,8 @@ app supplies a display-aware default near 1200×800 only when no restorable
 frame exists.
 
 The separate Studio session file restores the visible workout, All Runs or
-smart-collection query context, Personal Heatmap filters, comparison pair, alignment mode,
+smart-collection query context, Personal Heatmap filters, Trends period/range/scope,
+comparison pair, alignment mode,
 distance, workout tab/map presentation, replay position and speed, and sidebar
 visibility. The library manifest remains authoritative for workout order,
 selected workout, favourites, tags, assignments, and smart collections.
