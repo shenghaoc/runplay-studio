@@ -283,6 +283,22 @@ def cpp_code_tokens(source: str) -> list[str]:
                 index = len(source) if raw_end == -1 else raw_end + len(closing)
                 continue
         if source[index] in {'"', "'"}:
+            # A single quote directly between two alphanumerics is a C++14
+            # digit separator (1'609.344, 0x1'f), never a char literal: in
+            # valid C++ a char literal follows '=', '(', ',', or whitespace,
+            # never an identifier character. Misreading a separator as the
+            # opening quote swallows everything up to the next separator —
+            # including braces — and corrupts the namespace-depth walk.
+            if (
+                source[index] == "'"
+                and code
+                and code[-1].isalnum()
+                and index + 1 < len(source)
+                and source[index + 1].isalnum()
+            ):
+                code.append(source[index])
+                index += 1
+                continue
             quote = source[index]
             index += 1
             while index < len(source):
@@ -1329,7 +1345,28 @@ def run_self_test() -> int:
             )
             return 1
 
-    valid_header = "#pragma once\nnamespace runplay { struct Value { int field; }; }\n"
+    valid_headers = {
+        "plain": "#pragma once\nnamespace runplay { struct Value { int field; }; }\n",
+        # Digit separators at namespace scope and inside struct initializers
+        # are number literals, not char literals: misreading the first quote
+        # swallowed everything through the next separator, including braces.
+        "digit separators": (
+            "#pragma once\n"
+            "namespace runplay {\n"
+            "inline constexpr double one_mile_meters = 1'609.344;\n"
+            "inline constexpr std::size_t limit = 1'250'000;\n"
+            "struct Config { double distance{1'000}; };\n"
+            "}\n"
+        ),
+        # Real char literals still skip to their closing quote.
+        "char literals": (
+            "#pragma once\n"
+            "namespace runplay {\n"
+            "inline constexpr char kind = 'x';\n"
+            "inline constexpr char digits[2] = {'0', '1'};\n"
+            "}\n"
+        ),
+    }
     invalid_headers = {
         "global declaration": "namespace runplay {}\nusing Hidden = int*;\n",
         "alternate namespace": (
@@ -1346,10 +1383,19 @@ def run_self_test() -> int:
             "template<typename T> T haversine_distance_meters(T, T, T, T) noexcept; "
             "}\n"
         ),
+        # A separator-swallow bug must still catch an escape after numbers.
+        "escape after separated number": (
+            "namespace runplay { inline constexpr double v = 1'000.0; }\n"
+            "namespace escape { using Hidden = int*; }\n"
+        ),
     }
-    if namespace_errors_for_text(valid_header):
-        print("namespace validator rejected its valid fixture", file=sys.stderr)
-        return 1
+    for name, fixture in valid_headers.items():
+        if namespace_errors_for_text(fixture):
+            print(
+                f"namespace validator rejected its valid fixture: {name}",
+                file=sys.stderr,
+            )
+            return 1
     for name, fixture in invalid_headers.items():
         if not namespace_errors_for_text(fixture):
             print(
