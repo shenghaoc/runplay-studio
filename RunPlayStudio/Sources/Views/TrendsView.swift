@@ -14,38 +14,33 @@ struct TrendsView: View {
     @State private var inspectedKey: WorkoutTrendsPeriodKey?
 
     var body: some View {
-        // The stack is given the window's height explicitly. Left to size
-        // itself it reports the ideal height of four chart panels, inflates the
-        // split view past the window, and the overflow is centred — which cuts
-        // off the top, taking the header and the whole period/range/scope
-        // filter bar with it, at every window size this display can produce.
-        // A definite height makes the scroll view absorb the difference and
-        // scroll, which is what it was there to do.
-        GeometryReader { proxy in
-            VStack(spacing: 0) {
-                header
-                Divider()
-                filterBar
-                Divider()
-                ScrollView {
-                    VStack(spacing: AppDesign.Spacing.large) {
-                        statisticsRow
-                        if viewModel.showsInProgressPeriod {
-                            Text("The latest \(viewModel.period.title.lowercased()) is still in progress.")
-                                .font(AppDesign.Typography.compactLabel)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        chartPanels
-                        inspector
-                        notes
+        // The window pins this stack; see `fillsWorkspace()` on the detail
+        // column in ContentView. Without a definite height from there the
+        // ideal height of four chart panels inflates the split view past the
+        // window and the centred overflow cuts off the header and filter bar.
+        VStack(spacing: 0) {
+            header
+            Divider()
+            filterBar
+            Divider()
+            ScrollView {
+                VStack(spacing: AppDesign.Spacing.large) {
+                    statisticsRow
+                    if viewModel.showsInProgressPeriod {
+                        Text("The latest \(viewModel.period.title.lowercased()) is still in progress.")
+                            .font(AppDesign.Typography.compactLabel)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(AppDesign.Spacing.xLarge)
+                    chartPanels
+                    inspector
+                    notes
                 }
-                overlayStates
+                .padding(AppDesign.Spacing.xLarge)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+            overlayStates
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             appState.refreshTrends()
         }

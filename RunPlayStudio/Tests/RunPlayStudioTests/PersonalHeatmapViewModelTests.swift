@@ -363,4 +363,129 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
         XCTAssertEqual(vm.minimumWorkoutCount, 1)
         await waitUntil { vm.loadState == .ready || vm.snapshot != nil }
     }
+
+    // MARK: - Duplicate-request coalescing
+
+    func testRepeatedRefreshForSettledKeyDoesNotRebuild() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready }
+        XCTAssertEqual(builder.buildCount, 1)
+
+        // The workspace view refreshes from `onChange` as well as from the
+        // control that made the change; neither should restart settled work.
+        vm.refresh(workouts: workouts)
+        vm.refresh(workouts: workouts)
+        XCTAssertEqual(builder.buildCount, 1)
+        XCTAssertEqual(vm.loadState, .ready)
+    }
+
+    func testBulkFilterChangeBuildsOnce() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+        vm.datePreset = .last30Days
+        vm.resolution = .fine
+        vm.minimumWorkoutCount = 5
+
+        // `resetFilters` refreshes, and the view then delivers one `onChange`
+        // per mutated filter — four requests for one user action.
+        vm.resetFilters(workouts: workouts)
+        vm.refresh(workouts: workouts)
+        vm.refresh(workouts: workouts)
+        vm.refresh(workouts: workouts)
+
+        await waitUntil { vm.loadState == .ready }
+        XCTAssertEqual(builder.buildCount, 1)
+        XCTAssertEqual(builder.cancellationCount, 0)
+    }
+
+    func testRetryRebuildsSettledKey() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready }
+        XCTAssertEqual(builder.buildCount, 1)
+
+        // Retry invalidates something the key cannot see, so it must bypass
+        // the coalescing guard.
+        vm.retry(workouts: workouts)
+        await waitUntil { builder.buildCount == 2 }
+        await waitUntil { vm.loadState == .ready }
+    }
+
+    func testReentryAfterCancelRefits() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready }
+        let fitsAfterFirst = vm.fitRequest
+
+        // Leaving and re-entering recreates the map surface, so the unchanged
+        // key must still re-fit rather than be coalesced away.
+        vm.cancel()
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.fitRequest > fitsAfterFirst }
+    }
+
+    // MARK: - Custom range
+
+    func testCustomRangePickerBoundsPreventInversion() {
+        let vm = PersonalHeatmapViewModel(builder: ControllableHeatmapBuilder(), now: fixedNow)
+        vm.customStartDate = fixedNow.addingTimeInterval(-86_400 * 10)
+        vm.customEndDate = fixedNow
+
+        XCTAssertEqual(vm.customStartRange.upperBound, vm.customEndDate)
+        XCTAssertEqual(vm.customEndRange.lowerBound, vm.customStartDate)
+    }
+
+    func testInvertedCustomRangeSharesKeyWithOrderedRange() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+        let early = fixedNow.addingTimeInterval(-86_400 * 10)
+
+        vm.datePreset = .custom
+        vm.customStartDate = fixedNow
+        vm.customEndDate = early
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready || vm.snapshot != nil }
+        XCTAssertEqual(builder.buildCount, 1)
+
+        // `makeConfiguration` orders the pair, so the ordered range is the same
+        // filter and must not build a second time.
+        vm.customStartDate = early
+        vm.customEndDate = fixedNow
+        vm.refresh(workouts: workouts)
+        XCTAssertEqual(builder.buildCount, 1)
+    }
+
+    // MARK: - Workout revision
+
+    func testWorkoutRevisionTracksRouteContent() {
+        let withRoute = makeWorkout(name: "A")
+        let withoutRoute = makeWorkout(name: "A", hasRoute: false)
+
+        XCTAssertEqual(
+            PersonalHeatmapRequestKey.WorkoutRevision(withRoute),
+            PersonalHeatmapRequestKey.WorkoutRevision(withRoute)
+        )
+        XCTAssertNotEqual(
+            PersonalHeatmapRequestKey.WorkoutRevision(withRoute),
+            PersonalHeatmapRequestKey.WorkoutRevision(withoutRoute)
+        )
+    }
+
 }

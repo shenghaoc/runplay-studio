@@ -135,56 +135,8 @@ struct ContentView: View {
                 }
             )
         } detail: {
-            switch appState.workspaceMode {
-            case .personalHeatmap:
-                PersonalHeatmapView(appState: appState, viewModel: appState.personalHeatmap)
-            case .trends:
-                TrendsView(appState: appState, viewModel: appState.trends)
-            case .workoutLibrary:
-                WorkoutLibraryView(appState: appState, viewModel: appState.workoutLibrary)
-            case .comparison:
-                if appState.selectedWorkout != nil {
-                    CompareView(appState: appState)
-                } else {
-                    EmptyStateView(onImport: { appState.showImporter = true }, onArchiveImport: { appState.showArchiveImporter = true })
-                }
-            case .workout:
-                if let workout = appState.selectedWorkout {
-                    WorkoutDetailView(workout: workout, appState: appState)
-                        .toolbar {
-                            ToolbarItem(placement: .primaryAction) {
-                                HStack {
-                                    if appState.isComparing {
-                                        Button(action: { appState.clearComparison() }) {
-                                            Label("End Comparison", systemImage: "arrow.left.arrow.right")
-                                        }
-                                        .help("Exit comparison mode")
-                                    } else if !appState.availableForComparison.isEmpty {
-                                        Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
-                                            Label("Compare", systemImage: "arrow.left.arrow.right")
-                                        }
-                                        .help("Compare with another run")
-                                        .accessibilityLabel("Compare runs")
-                                    } else if appState.workouts.count < 2 {
-                                        Button(action: { appState.enterEmptyComparisonMode() }) {
-                                            Label("Compare", systemImage: "arrow.left.arrow.right")
-                                        }
-                                        .help("Import another run to compare")
-                                        .accessibilityLabel("Compare runs")
-                                    }
-
-                                    ExportView(
-                                        workout: workout,
-                                        segments: appState.detectedSegments,
-                                        analysisContext: appState.cachedAnalysisContext(for: workout)
-                                    )
-                                }
-                            }
-                        }
-                } else {
-                    EmptyStateView(onImport: { appState.showImporter = true }, onArchiveImport: { appState.showArchiveImporter = true })
-                }
-            }
+            workspaceDetail
+                .fillsWorkspace()
         }
         .fileImporter(
             isPresented: $appState.showImporter,
@@ -329,6 +281,64 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 500)
+    }
+
+    /// The workspace shown in the detail column.
+    ///
+    /// Extracted so the whole column can be pinned to the window in one
+    /// place — see `fillsWorkspace()`.
+    @ViewBuilder
+    private var workspaceDetail: some View {
+        switch appState.workspaceMode {
+        case .personalHeatmap:
+            PersonalHeatmapView(appState: appState, viewModel: appState.personalHeatmap)
+        case .trends:
+            TrendsView(appState: appState, viewModel: appState.trends)
+        case .workoutLibrary:
+            WorkoutLibraryView(appState: appState, viewModel: appState.workoutLibrary)
+        case .comparison:
+            if appState.selectedWorkout != nil {
+                CompareView(appState: appState)
+            } else {
+                EmptyStateView(onImport: { appState.showImporter = true }, onArchiveImport: { appState.showArchiveImporter = true })
+            }
+        case .workout:
+            if let workout = appState.selectedWorkout {
+                WorkoutDetailView(workout: workout, appState: appState)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            HStack {
+                                if appState.isComparing {
+                                    Button(action: { appState.clearComparison() }) {
+                                        Label("End Comparison", systemImage: "arrow.left.arrow.right")
+                                    }
+                                    .help("Exit comparison mode")
+                                } else if !appState.availableForComparison.isEmpty {
+                                    Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
+                                        Label("Compare", systemImage: "arrow.left.arrow.right")
+                                    }
+                                    .help("Compare with another run")
+                                    .accessibilityLabel("Compare runs")
+                                } else if appState.workouts.count < 2 {
+                                    Button(action: { appState.enterEmptyComparisonMode() }) {
+                                        Label("Compare", systemImage: "arrow.left.arrow.right")
+                                    }
+                                    .help("Import another run to compare")
+                                    .accessibilityLabel("Compare runs")
+                                }
+
+                                ExportView(
+                                    workout: workout,
+                                    segments: appState.detectedSegments,
+                                    analysisContext: appState.cachedAnalysisContext(for: workout)
+                                )
+                            }
+                        }
+                    }
+            } else {
+                EmptyStateView(onImport: { appState.showImporter = true }, onArchiveImport: { appState.showArchiveImporter = true })
+            }
+        }
     }
 
     @ViewBuilder
