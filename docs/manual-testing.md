@@ -95,16 +95,16 @@ operation selected a menu mode without pointer input.
 Use only synthetic or explicitly private, ignored local workout files. Do not
 commit screenshots of real home locations or personal heatmap exports.
 
-- [ ] Launch with several GPS workouts in the library.
-- [ ] Open **Personal Heatmap** from the Library sidebar section (or Workout → Personal Heatmap / ⌘⇧H).
-- [ ] Confirm the map fits rendered heat cells on first appearance.
+- [x] Launch with several GPS workouts in the library.
+- [x] Open **Personal Heatmap** from the Library sidebar section (or Workout → Personal Heatmap / ⌘⇧H).
+- [x] Confirm the map fits rendered heat cells on first appearance.
 - [ ] Confirm repeated corridors look stronger than one-off paths.
 - [ ] Confirm one dense-sampling workout does not overpower a sparse recording of the same path.
 - [ ] Confirm route gaps do not draw a connecting hot corridor.
 - [ ] Switch Fine (25 m) / Standard (50 m) / Broad (100 m); effective cell size label updates.
 - [ ] Change minimum repeat count (1 / 2 / 3 / 5).
 - [ ] Change All Time, Last 30 Days, Last 90 Days, This Year, and a custom range.
-- [ ] Confirm an excluding date range shows the filter-empty state with All Time / Reset.
+- [x] Confirm an excluding date range shows the filter-empty state with All Time / Reset.
 - [ ] Import a workout; library updates and heatmap recomputes when reopened or after filters refresh.
 - [ ] Delete a workout while heatmap is visible; counts update and workspace stays on heatmap.
 - [ ] Select a workout; normal workout workspace returns.
@@ -115,6 +115,30 @@ commit screenshots of real home locations or personal heatmap exports.
 - [ ] Resize the window; pan and zoom the map; use Fit Heatmap.
 - [ ] Confirm single-route and comparison maps still render correctly.
 - [ ] Relaunch: workout library persists; heatmap is recomputed (not stored as a second route DB).
+
+### 2026-09-15 layout pass
+
+Driven through computer use against the seeded two-run demo library, launched
+with `RUNPLAY_LIBRARY_ROOT` so the real library was not opened.
+
+The workspace stack had the same window-inflation flaw Trends had: it sized
+itself to its content's ideal height, the centred overflow cut off the top, and
+the filter bar sat 129 pt above the window top at the app's default 1200x766
+window and 35 pt above at full screen. The fix gives the stack the window's
+height from a GeometryReader, as in TrendsView.
+
+After the fix, measured through the accessibility tree: at the default
+1200x766 window the filter bar (Date range, Resolution, Minimum repeats, Fit
+Heatmap) sits at y=224 with the window top at y=94, and the legend ends 8 pt
+above the window bottom; zoomed to full screen (1512x884 on this display) the
+filter bar sits at y=163 with the window top at y=33. Every filter control was
+exercised: Date range switched to Last 30 Days (the excluding range showed the
+filter-empty state; its All Time button restored the heatmap), Resolution
+switched Standard → Fine (25 m), Minimum repeats switched 1 → 2 runs, and Fit
+Heatmap was clicked; the statistics row and the map recomputed after each
+change. Still open here: the remaining date presets and custom range, the
+Broad resolution, minimum repeats 3 and 5, import/delete while visible,
+VoiceOver labels, and a manual pan/zoom pass.
 
 ## Trends Workspace Checklist
 
@@ -173,9 +197,10 @@ Fixed, with a regression test on each side of the distinction.
 Still open: import or delete while Trends is visible; the ⌘⇧R shortcut itself;
 and any spoken VoiceOver output.
 
-**Personal Heatmap has the same layout flaw**, less severely — its filter bar
+**Personal Heatmap had the same layout flaw**, less severely — its filter bar
 was clipped by 129 pt at the default window size and 35 pt at full screen. It
-is pre-existing and was left alone here; it needs the same fix.
+was pre-existing and left alone there; it is fixed and verified in the
+2026-09-15 personal-heatmap pass below.
 
 ## Route Quality Checklist
 
