@@ -44,6 +44,10 @@ enum PersonalHeatmapDatePreset: String, CaseIterable, Identifiable, Hashable {
 
 /// Strongly typed cache / request key so library content changes invalidate.
 struct PersonalHeatmapRequestKey: Hashable, Sendable {
+    /// The fields that make one workout's contribution to the heatmap stale.
+    ///
+    /// Shared with the workspace view's `libraryRevision`, so the view
+    /// invalidates on exactly what this key re-keys on.
     struct WorkoutRevision: Hashable, Sendable {
         let id: UUID
         let normalizationVersion: Int
@@ -51,6 +55,15 @@ struct PersonalHeatmapRequestKey: Hashable, Sendable {
         let firstPointID: UUID?
         let lastPointID: UUID?
         let startDate: Date?
+
+        init(_ workout: RunWorkout) {
+            self.id = workout.id
+            self.normalizationVersion = workout.normalizationVersion
+            self.pointCount = workout.routePoints.count
+            self.firstPointID = workout.routePoints.first?.id
+            self.lastPointID = workout.routePoints.last?.id
+            self.startDate = workout.metadata.startDate
+        }
     }
 
     let workouts: [WorkoutRevision]
@@ -72,16 +85,7 @@ struct PersonalHeatmapRequestKey: Hashable, Sendable {
         minimumWorkoutCount: Int,
         now: Date
     ) {
-        self.workouts = workouts.map {
-            WorkoutRevision(
-                id: $0.id,
-                normalizationVersion: $0.normalizationVersion,
-                pointCount: $0.routePoints.count,
-                firstPointID: $0.routePoints.first?.id,
-                lastPointID: $0.routePoints.last?.id,
-                startDate: $0.metadata.startDate
-            )
-        }
+        self.workouts = workouts.map(WorkoutRevision.init)
         self.datePreset = datePreset
         self.customStart = customStart
         self.customEnd = customEnd
@@ -157,6 +161,14 @@ final class PersonalHeatmapViewModel: ObservableObject {
 
     static let minimumRepeatOptions = [1, 2, 3, 5]
 
+    /// Selectable range for the custom-range start picker: never later than
+    /// the end date, so an inverted range cannot be expressed in the UI.
+    var customStartRange: PartialRangeThrough<Date> { ...customEndDate }
+
+    /// Selectable range for the custom-range end picker: never earlier than
+    /// the start date.
+    var customEndRange: PartialRangeFrom<Date> { customStartDate... }
+
     init(
         builder: any PersonalHeatmapBuilding = PersonalHeatmapBuilder(),
         calendar: Calendar = .current,
@@ -207,17 +219,35 @@ final class PersonalHeatmapViewModel: ObservableObject {
     }
 
     /// Recompute when the library or filters change.
-    func refresh(workouts: [RunWorkout]) {
+    ///
+    /// `force` rebuilds even when the key is unchanged, for callers that have
+    /// invalidated something the key cannot see — `retry` after dropping the
+    /// cache entry.
+    func refresh(workouts: [RunWorkout], force: Bool = false) {
         let now = nowProvider()
+        // Ordered the same way `makeConfiguration` orders them, so a range and
+        // its inversion share one cache entry instead of building twice for
+        // the same filter.
+        let orderedStart = min(customStartDate, customEndDate)
+        let orderedEnd = max(customStartDate, customEndDate)
         let key = PersonalHeatmapRequestKey(
             workouts: workouts,
             datePreset: datePreset,
-            customStart: datePreset == .custom ? startOfDay(customStartDate) : nil,
-            customEnd: datePreset == .custom ? endOfDay(customEndDate) : nil,
+            customStart: datePreset == .custom ? startOfDay(orderedStart) : nil,
+            customEnd: datePreset == .custom ? endOfDay(orderedEnd) : nil,
             resolution: resolution,
             minimumWorkoutCount: minimumWorkoutCount,
             now: cacheNow(for: datePreset, now: now)
         )
+
+        // One user action reaches here more than once: `resetFilters` mutates
+        // three published filters and then refreshes, so its own call plus one
+        // `onChange` per property is four requests for the same key. Without
+        // this guard each would cancel and restart the build the one before it
+        // just started.
+        if !force, key == lastKey, isRequestSettled(for: key) {
+            return
+        }
 
         // A cached result can supersede an expensive detached build just as a
         // cache miss can. Always stop the old request before publishing the
@@ -292,7 +322,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
         if let key = lastKey {
             cache.removeValue(forKey: key)
         }
-        refresh(workouts: workouts)
+        refresh(workouts: workouts, force: true)
     }
 
     func requestFit() {
@@ -307,6 +337,17 @@ final class PersonalHeatmapViewModel: ObservableObject {
     }
 
     // MARK: - Private
+
+    /// True when repeating a request for `key` would only restart work that is
+    /// already in flight or already on screen.
+    ///
+    /// A snapshot that has not been fitted for this key is deliberately *not*
+    /// settled: `cancel()` clears `fittedKey` so that re-entering the
+    /// workspace re-fits the recreated map surface.
+    private func isRequestSettled(for key: PersonalHeatmapRequestKey) -> Bool {
+        if isComputing { return true }
+        return snapshot != nil && fittedKey == key && loadState == .ready
+    }
 
     private func apply(snapshot: PersonalHeatmapSnapshot, key: PersonalHeatmapRequestKey, requestFit: Bool) {
         self.snapshot = snapshot

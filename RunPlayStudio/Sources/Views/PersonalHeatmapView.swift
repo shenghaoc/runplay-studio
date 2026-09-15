@@ -11,29 +11,26 @@ struct PersonalHeatmapView: View {
     @State private var presentationRequest = 0
 
     var body: some View {
-        // The stack is given the window's height explicitly. Left to size
-        // itself it reports the ideal height of its map and statistics, which
-        // can exceed the window; the overflow is then centred, so it is the
-        // top that gets cut — taking the header and the whole date-range /
-        // resolution / minimum-runs filter bar with it. A definite height
-        // lets the map area shrink instead of pushing the stack offscreen.
-        GeometryReader { proxy in
-            VStack(spacing: 0) {
-                header
-                Divider()
-                filterBar
-                Divider()
-                statisticsRow
-                Divider()
-                ZStack {
-                    mapContent
-                    overlayStates
-                }
-                Divider()
-                legend
+        // The window pins this stack; see `fillsWorkspace()` on the detail
+        // column in ContentView. Without a definite height from there the
+        // stack reports an ideal height the window cannot satisfy, and the
+        // centred overflow cuts off the header and filter bar. With one, the
+        // map absorbs the difference instead.
+        VStack(spacing: 0) {
+            header
+            Divider()
+            filterBar
+            Divider()
+            statisticsRow
+            Divider()
+            ZStack {
+                mapContent
+                overlayStates
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+            Divider()
+            legend
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             viewModel.refresh(workouts: appState.workouts)
         }
@@ -70,10 +67,18 @@ struct PersonalHeatmapView: View {
     }
 
     /// Invalidates heatmap work when library membership or route content changes.
-    private var libraryRevision: [String] {
-        appState.workouts.map { workout in
-            "\(workout.id.uuidString):\(workout.normalizationVersion):\(workout.routePoints.count):\(workout.routePoints.first?.id.uuidString ?? "-"):\(workout.routePoints.last?.id.uuidString ?? "-")"
+    ///
+    /// Hashed rather than rendered as strings: this is recomputed on every
+    /// body pass, and formatting three UUID strings per workout allocated its
+    /// way through the whole library on every layout tick of a window resize.
+    /// It combines `PersonalHeatmapRequestKey.WorkoutRevision`, so the view
+    /// invalidates on exactly the fields the view model re-keys on.
+    private var libraryRevision: Int {
+        var hasher = Hasher()
+        for workout in appState.workouts {
+            hasher.combine(PersonalHeatmapRequestKey.WorkoutRevision(workout))
         }
+        return hasher.finalize()
     }
 
     // MARK: - Header
@@ -101,7 +106,24 @@ struct PersonalHeatmapView: View {
 
     // MARK: - Filters
 
+    // The custom range gets its own row rather than widening the single bar.
+    // Its two date pickers barely compress, so inline they pushed the trailing
+    // Fit Heatmap button off the edge of a narrow detail column — the same
+    // controls-you-cannot-reach failure the vertical fix addressed, turned
+    // sideways. The window's minimum width is 720 pt (ContentView), which
+    // leaves roughly 500 pt of detail column once the sidebar is showing.
     private var filterBar: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+            primaryFilterRow
+            if viewModel.datePreset == .custom {
+                customRangeRow
+            }
+        }
+        .padding(.horizontal, AppDesign.Spacing.xLarge)
+        .padding(.vertical, AppDesign.Spacing.medium)
+    }
+
+    private var primaryFilterRow: some View {
         HStack(spacing: AppDesign.Spacing.large) {
             Picker("Date range", selection: $viewModel.datePreset) {
                 ForEach(PersonalHeatmapDatePreset.allCases) { preset in
@@ -112,28 +134,6 @@ struct PersonalHeatmapView: View {
             .frame(maxWidth: 160)
             .help("Filter workouts by start date")
             .accessibilityLabel("Date range")
-
-            if viewModel.datePreset == .custom {
-                DatePicker(
-                    "From",
-                    selection: $viewModel.customStartDate,
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .accessibilityLabel("Custom range start")
-
-                Text("–")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-
-                DatePicker(
-                    "To",
-                    selection: $viewModel.customEndDate,
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .accessibilityLabel("Custom range end")
-            }
 
             Picker("Resolution", selection: $viewModel.resolution) {
                 ForEach(PersonalHeatmapResolution.allCases, id: \.self) { res in
@@ -166,8 +166,43 @@ struct PersonalHeatmapView: View {
             .accessibilityLabel("Fit Heatmap")
             .disabled(viewModel.mapAreas.isEmpty)
         }
-        .padding(.horizontal, AppDesign.Spacing.xLarge)
-        .padding(.vertical, AppDesign.Spacing.medium)
+    }
+
+    // Each picker is bounded by the other, so an inverted range cannot be
+    // expressed. `makeConfiguration` still orders the pair defensively for
+    // values restored from an older session.
+    private var customRangeRow: some View {
+        HStack(spacing: AppDesign.Spacing.medium) {
+            Text("From")
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            DatePicker(
+                "From",
+                selection: $viewModel.customStartDate,
+                in: viewModel.customStartRange,
+                displayedComponents: .date
+            )
+            .labelsHidden()
+            .accessibilityLabel("Custom range start")
+
+            Text("to")
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            DatePicker(
+                "To",
+                selection: $viewModel.customEndDate,
+                in: viewModel.customEndRange,
+                displayedComponents: .date
+            )
+            .labelsHidden()
+            .accessibilityLabel("Custom range end")
+
+            Spacer()
+        }
     }
 
     // MARK: - Statistics

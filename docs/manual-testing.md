@@ -95,16 +95,16 @@ operation selected a menu mode without pointer input.
 Use only synthetic or explicitly private, ignored local workout files. Do not
 commit screenshots of real home locations or personal heatmap exports.
 
-- [x] Launch with several GPS workouts in the library.
-- [x] Open **Personal Heatmap** from the Library sidebar section (or Workout → Personal Heatmap / ⌘⇧H).
-- [x] Confirm the map fits rendered heat cells on first appearance.
+- [ ] Launch with several GPS workouts in the library.
+- [ ] Open **Personal Heatmap** from the Library sidebar section (or Workout → Personal Heatmap / ⌘⇧H).
+- [ ] Confirm the map fits rendered heat cells on first appearance.
 - [ ] Confirm repeated corridors look stronger than one-off paths.
 - [ ] Confirm one dense-sampling workout does not overpower a sparse recording of the same path.
 - [ ] Confirm route gaps do not draw a connecting hot corridor.
 - [ ] Switch Fine (25 m) / Standard (50 m) / Broad (100 m); effective cell size label updates.
 - [ ] Change minimum repeat count (1 / 2 / 3 / 5).
 - [ ] Change All Time, Last 30 Days, Last 90 Days, This Year, and a custom range.
-- [x] Confirm an excluding date range shows the filter-empty state with All Time / Reset.
+- [ ] Confirm an excluding date range shows the filter-empty state with All Time / Reset.
 - [ ] Import a workout; library updates and heatmap recomputes when reopened or after filters refresh.
 - [ ] Delete a workout while heatmap is visible; counts update and workspace stays on heatmap.
 - [ ] Select a workout; normal workout workspace returns.
@@ -139,6 +139,30 @@ Heatmap was clicked; the statistics row and the map recomputed after each
 change. Still open here: the remaining date presets and custom range, the
 Broad resolution, minimum repeats 3 and 5, import/delete while visible,
 VoiceOver labels, and a manual pan/zoom pass.
+
+Four items in the checklist above were un-ticked afterwards, on review: that
+pass ran against a two-run library rather than "several" workouts, it did not
+open the workspace through Workout → Personal Heatmap or ⌘⇧H, it did not
+observe the automatic fit on first appearance (only the Fit Heatmap button),
+and in the filter-empty state it pressed All Time but never Reset Filters.
+
+### Pending pass: shared workspace container
+
+The GeometryReader that pins each workspace to the window has since moved out
+of TrendsView and PersonalHeatmapView into one `fillsWorkspace()` modifier
+applied to the detail column in `ContentView`, and the heatmap's custom date
+range has moved to its own row beneath the filter bar. The change is covered by
+`swift test` only as far as the view models go; **the layout itself has not
+been re-verified in the running app**. Needs a pass over:
+
+- [ ] Every workspace still fills the window and none is clipped at the top:
+      Personal Heatmap, Trends, All Runs, a workout, and a comparison.
+- [ ] The workout workspace still shows its Compare / Export toolbar items —
+      they are attached inside the detail column that is now wrapped.
+- [ ] Personal Heatmap with Date range → Custom at the 720x500 minimum window
+      size: the From/To pickers sit on their own row and Fit Heatmap stays on
+      screen and clickable.
+- [ ] The custom range's two pickers cannot be crossed over each other.
 
 ## Trends Workspace Checklist
 
@@ -199,8 +223,10 @@ and any spoken VoiceOver output.
 
 **Personal Heatmap had the same layout flaw**, less severely — its filter bar
 was clipped by 129 pt at the default window size and 35 pt at full screen. It
-was pre-existing and left alone there; it is fixed and verified in the
-2026-09-15 personal-heatmap pass below.
+was pre-existing and left alone there; it is fixed, and recorded in the
+2026-09-15 personal-heatmap pass above. Both workspaces have since been moved
+onto one shared `fillsWorkspace()` container; the pending pass noted there
+covers Trends too.
 
 ## Route Quality Checklist
 
