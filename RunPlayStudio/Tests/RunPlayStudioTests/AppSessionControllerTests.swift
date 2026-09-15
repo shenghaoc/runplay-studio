@@ -93,10 +93,18 @@ final class AppSessionControllerTests: XCTestCase {
         await controller.startIfNeeded()
         appState.workoutDetailTabRaw = "Charts"
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        // Wait for the debounce to land instead of assuming it fits a fixed
+        // window. The delay is 250 ms and the old 400 ms sleep left only 150 ms
+        // of margin, which a loaded CI runner can eat. The invariant is that
+        // the change is persisted by exactly one coalesced write, not how soon.
+        let deadline = Date().addingTimeInterval(5)
+        var saveCount = await store.saveCount
+        while saveCount == 0, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            saveCount = await store.saveCount
+        }
 
         let saved = await store.storedSnapshot
-        let saveCount = await store.saveCount
         XCTAssertEqual(saved?.workout.tabRaw, "Charts")
         XCTAssertEqual(saveCount, 1)
     }

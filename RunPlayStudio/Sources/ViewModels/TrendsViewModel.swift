@@ -269,7 +269,12 @@ final class TrendsViewModel: ObservableObject {
     /// workspace owns the subsequent refresh.
     func restoreSessionState(_ session: AppSessionTrendsState) {
         cancel()
-        hasBeenOpened = true
+        // Startup restores a session even when no file exists, synthesizing
+        // defaults. Treating that as "already opened" disarmed the
+        // smart-collection preselect before the user could ever reach Trends,
+        // so it never fired in the running app. Only a session that actually
+        // carries a Trends selection is a user choice worth protecting.
+        hasBeenOpened = session != AppSessionTrendsState()
         period = WorkoutTrendsPeriod(rawValue: session.periodRaw) ?? .month
         range = WorkoutTrendsRange(rawValue: session.rangeRaw) ?? .last12Months
         scope = WorkoutTrendsScope.make(

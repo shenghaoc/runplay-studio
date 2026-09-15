@@ -134,6 +134,42 @@ final class TrendsWorkspaceTests: XCTestCase {
         XCTAssertEqual(appState.trends.scope, .entireLibrary)
     }
 
+    func testDefaultSessionLeavesTheSmartCollectionPreselectArmed() {
+        // Startup restores a synthesized default session when no file exists.
+        // That must not count as the user having opened Trends, or the
+        // preselect is dead on every launch.
+        let appState = AppState(storeActor: nil, importService: nil)
+        let workout = makeWorkout(name: "A", start: utcDate(2026, 9, 2))
+        appState.workouts = [workout]
+        let collection = WorkoutSmartCollection(name: "Trail", query: WorkoutLibrarySavedQuery())
+        appState.smartCollections = [collection]
+
+        appState.trends.restoreSessionState(AppSessionTrendsState())
+        XCTAssertFalse(appState.trends.hasBeenOpened)
+
+        appState.showSmartCollection(id: collection.id)
+        appState.showTrends()
+        XCTAssertEqual(appState.trends.scope, .smartCollection(collection.id))
+    }
+
+    func testPersistedSessionSuppressesTheSmartCollectionPreselect() {
+        let appState = AppState(storeActor: nil, importService: nil)
+        let workout = makeWorkout(name: "A", start: utcDate(2026, 9, 2))
+        appState.workouts = [workout]
+        let collection = WorkoutSmartCollection(name: "Trail", query: WorkoutLibrarySavedQuery())
+        appState.smartCollections = [collection]
+
+        // A session carrying a real selection is an explicit user choice.
+        appState.trends.restoreSessionState(
+            AppSessionTrendsState(periodRaw: "week", rangeRaw: "allTime")
+        )
+        XCTAssertTrue(appState.trends.hasBeenOpened)
+
+        appState.showSmartCollection(id: collection.id)
+        appState.showTrends()
+        XCTAssertEqual(appState.trends.scope, .entireLibrary)
+    }
+
     func testPeriodNavigationFiltersAllRuns() async {
         let appState = AppState(storeActor: nil, importService: nil)
         let inPeriod = makeWorkout(name: "Sep", start: utcDate(2026, 9, 2))
