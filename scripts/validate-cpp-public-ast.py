@@ -260,6 +260,24 @@ def without_preprocessor_directives(source: str) -> str:
     return "".join(kept_lines)
 
 
+def is_digit_separator(code: list[str], source: str, index: int) -> bool:
+    """Whether the quote at `index` separates the digits of a number literal.
+
+    A digit separator always sits between two characters of one number, so the
+    identifier-or-number run ending just before the quote must begin with a
+    digit. Testing only the single character before the quote would also match
+    an encoding-prefixed char literal (L'x', u'x', U'x', u8'x'), and treating
+    one of those as a separator swallows source from its closing quote to the
+    next quote in the file — the same corruption a mis-read separator causes.
+    """
+    if index + 1 >= len(source) or not source[index + 1].isalnum():
+        return False
+    start = len(code)
+    while start > 0 and (code[start - 1].isalnum() or code[start - 1] == "_"):
+        start -= 1
+    return start < len(code) and code[start].isdigit()
+
+
 def cpp_code_tokens(source: str) -> list[str]:
     source = without_preprocessor_directives(source)
     code: list[str] = []
@@ -283,19 +301,11 @@ def cpp_code_tokens(source: str) -> list[str]:
                 index = len(source) if raw_end == -1 else raw_end + len(closing)
                 continue
         if source[index] in {'"', "'"}:
-            # A single quote directly between two alphanumerics is a C++14
-            # digit separator (1'609.344, 0x1'f), never a char literal: in
-            # valid C++ a char literal follows '=', '(', ',', or whitespace,
-            # never an identifier character. Misreading a separator as the
-            # opening quote swallows everything up to the next separator —
+            # A quote inside a number is a C++14 digit separator (1'609.344,
+            # 0x1'f), never a char literal. Misreading a separator as the
+            # opening quote swallows everything up to the next quote —
             # including braces — and corrupts the namespace-depth walk.
-            if (
-                source[index] == "'"
-                and code
-                and code[-1].isalnum()
-                and index + 1 < len(source)
-                and source[index + 1].isalnum()
-            ):
+            if source[index] == "'" and is_digit_separator(code, source, index):
                 code.append(source[index])
                 index += 1
                 continue
@@ -1366,6 +1376,18 @@ def run_self_test() -> int:
             "inline constexpr char digits[2] = {'0', '1'};\n"
             "}\n"
         ),
+        # An encoding prefix also puts an identifier character before the
+        # opening quote; only a run that begins with a digit is a number.
+        "prefixed char literals": (
+            "#pragma once\n"
+            "namespace runplay {\n"
+            "inline constexpr wchar_t wide = L'x';\n"
+            "inline constexpr char16_t utf16 = u'y';\n"
+            "inline constexpr char32_t utf32 = U'z';\n"
+            "inline constexpr double v = 1'000.0;\n"
+            "struct Value { int field; };\n"
+            "}\n"
+        ),
     }
     invalid_headers = {
         "global declaration": "namespace runplay {}\nusing Hidden = int*;\n",
@@ -1387,6 +1409,17 @@ def run_self_test() -> int:
         "escape after separated number": (
             "namespace runplay { inline constexpr double v = 1'000.0; }\n"
             "namespace escape { using Hidden = int*; }\n"
+        ),
+        # Mistaking a prefixed char literal for a digit separator swallows
+        # from its closing quote to the next quote, hiding the declaration
+        # between them while the braces stay balanced.
+        "escape hidden behind a prefixed char literal": (
+            "namespace runplay {\n"
+            "inline constexpr wchar_t kind = L'x';\n"
+            "struct Value { int field; };\n"
+            "}\n"
+            "using Hidden = int*;\n"
+            "namespace runplay { inline constexpr double v = 1'000.0; }\n"
         ),
     }
     for name, fixture in valid_headers.items():
