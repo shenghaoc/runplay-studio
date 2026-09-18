@@ -86,8 +86,9 @@ production SegmentDetector window-search kernel:
 - production stages 2–4 of route quality through one bulk call;
 - the production Route-Aware constrained-DTW path solve through one bulk call
   per alignment attempt;
-- the production SegmentDetector candidate search through one bulk call per
-  detector invocation.
+- the production SegmentDetector candidate search — the five segment
+  highlights plus the five fixed-distance personal-record windows — through
+  one bulk call per detector invocation.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -242,10 +243,11 @@ Approved pointer boundaries:
   unchanged.
 - segment detection: `const SegmentDetectionSample*` input samples plus a
   caller-owned `SegmentWindowCandidate*` output. Swift supplies the fixed
-  five-entry capacity and consumes exactly `candidate_count` entries on
-  success. Insufficient capacity is a contract violation, every failure leaves
-  the output unchanged, and each internal distance-window search retains its
-  per-search evaluation bound.
+  ten-entry capacity and consumes exactly `candidate_count` entries on
+  success (at most ten: the five segment-highlight kinds plus one candidate
+  per personal-record window the route covers). Insufficient capacity is a
+  contract violation, every failure leaves the output unchanged, and each
+  internal distance-window search retains its per-search evaluation bound.
 - elevation profile construction: `const ElevationProfileInputSample*` input
   samples plus a caller-owned `ElevationProfileOutputSample*` output. One
   output entry corresponds to one input route point. After validation the

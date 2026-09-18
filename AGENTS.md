@@ -116,11 +116,13 @@ not import `RunPlayEngineCpp` directly.
   priority, consecutive-warp capping, endpoint selection, and path
   reconstruction — through one bulk call per alignment attempt. No scalar
   per-point Swift/C++ production calls are allowed. For segment detection,
-  C++23 performs the distance-window search for fastest 400m, fastest/slowest
-  1km, and biggest climb/descent through one bulk call per
-  `SegmentDetector` invocation. Swift retains policy calculation, public
-  `SegmentHighlight` construction, UUIDs, titles, subtitles, final range
-  metadata, HR averages, cancellation, diagnostics, and persistence. For
+  C++23 performs the distance-window searches for fastest 400m, fastest/slowest
+  1km, biggest climb/descent, and the five fixed-distance personal-record
+  windows (fastest 1 mile, 5 km, 10 km, half marathon, marathon) through one
+  bulk call per `SegmentDetector` invocation. Swift retains policy
+  calculation, public `SegmentHighlight` and `PersonalRecordWindow`
+  construction, UUIDs, titles, subtitles, final range metadata, HR averages,
+  cancellation, diagnostics, and persistence. For
   elevation construction, C++23 performs the complete multi-pass
   `ElevationProfile` build — source altitude screening, endpoint and isolated
   spike rejection, short-excursion rejection, supported rejected-sample
@@ -249,11 +251,13 @@ Cancellation is cooperative Swift work checked before and after the native call
 and during conversion and output translation, never inside the native call.
 
 The segment-detection boundary writes exactly `candidate_count` entries on
-success, where `candidate_count` is at most five. Swift always supplies the
-fixed five-entry capacity; insufficient capacity is an engine contract
-violation rather than a retry signal. On any failure status the output buffer
-is left completely unchanged. The three internal searches (fastest 400m,
-combined one-kilometre pace, and combined elevation) each retain the existing
+success, where `candidate_count` is at most ten: the five segment-highlight
+kinds plus one candidate per personal-record window that the route actually
+covers. Swift always supplies the fixed ten-entry capacity; insufficient
+capacity is an engine contract violation rather than a retry signal. On any
+failure status the output buffer is left completely unchanged. The eight
+internal searches (fastest 400m, combined one-kilometre pace, five
+personal-record windows, and combined elevation) each retain the existing
 per-search evaluation bound. One native call occurs per `SegmentDetector`
 invocation, with cooperative Swift cancellation during conversion and before
 and after the native call.

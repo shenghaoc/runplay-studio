@@ -411,6 +411,16 @@ static SegmentDetectionStatus validate_configuration(
     if (!std::isfinite(config.fastest_400m_step_meters)) return SegmentDetectionStatus::invalid_configuration;
     if (!std::isfinite(config.one_kilometer_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
     if (!std::isfinite(config.one_kilometer_step_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.one_mile_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.one_mile_step_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.five_kilometer_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.five_kilometer_step_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.ten_kilometer_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.ten_kilometer_step_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.half_marathon_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.half_marathon_step_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.marathon_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
+    if (!std::isfinite(config.marathon_step_meters)) return SegmentDetectionStatus::invalid_configuration;
     if (!std::isfinite(config.minimum_valid_pace_seconds_per_kilometer)) return SegmentDetectionStatus::invalid_configuration;
     if (!std::isfinite(config.maximum_valid_pace_seconds_per_kilometer)) return SegmentDetectionStatus::invalid_configuration;
     if (!std::isfinite(config.elevation_window_distance_meters)) return SegmentDetectionStatus::invalid_configuration;
@@ -421,6 +431,16 @@ static SegmentDetectionStatus validate_configuration(
     if (!(config.fastest_400m_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
     if (!(config.one_kilometer_distance_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
     if (!(config.one_kilometer_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.one_mile_distance_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.one_mile_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.five_kilometer_distance_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.five_kilometer_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.ten_kilometer_distance_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.ten_kilometer_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.half_marathon_distance_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.half_marathon_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.marathon_distance_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
+    if (!(config.marathon_step_meters > 0.0)) return SegmentDetectionStatus::invalid_configuration;
 
     // Pace range valid
     if (!(config.minimum_valid_pace_seconds_per_kilometer > 0.0)) return SegmentDetectionStatus::invalid_configuration;
@@ -816,32 +836,44 @@ SegmentDetectionSummary detect_segment_windows(
     const double start_distance = samples[0].distance_meters;
     const double span = total_distance - start_distance;
 
-    // Estimate evaluation counts and check resource limits
-    // Fastest 400m
-    if (span >= configuration.fastest_400m_distance_meters) {
-        const bool is_within_limit = evaluation_count_is_within_limit(
-            configuration.fastest_400m_distance_meters,
-            configuration.fastest_400m_step_meters,
-            span,
-            configuration.maximum_evaluations_per_search);
-        if (!is_within_limit) {
-            summary.status = SegmentDetectionStatus::resource_limit;
-            summary.sample_count = sample_count;
-            return summary;
-        }
-    }
+    // Every pace search steps across the spare distance beyond its window, so
+    // each is independently pre-checked against the per-search budget. Swift's
+    // RouteAnalysisBudget raises each step before the call so a compliant
+    // configuration can never trip this; resource_limit here is a contract
+    // safety net, not a graceful degradation path.
+    struct PaceWindowSpec {
+        double window_distance;
+        double step;
+    };
+    const PaceWindowSpec pace_windows[] = {
+        {configuration.fastest_400m_distance_meters,
+         configuration.fastest_400m_step_meters},
+        {configuration.one_kilometer_distance_meters,
+         configuration.one_kilometer_step_meters},
+        {configuration.one_mile_distance_meters,
+         configuration.one_mile_step_meters},
+        {configuration.five_kilometer_distance_meters,
+         configuration.five_kilometer_step_meters},
+        {configuration.ten_kilometer_distance_meters,
+         configuration.ten_kilometer_step_meters},
+        {configuration.half_marathon_distance_meters,
+         configuration.half_marathon_step_meters},
+        {configuration.marathon_distance_meters,
+         configuration.marathon_step_meters},
+    };
 
-    // 1km windows (fastest + slowest combined)
-    if (span >= configuration.one_kilometer_distance_meters) {
-        const bool is_within_limit = evaluation_count_is_within_limit(
-            configuration.one_kilometer_distance_meters,
-            configuration.one_kilometer_step_meters,
-            span,
-            configuration.maximum_evaluations_per_search);
-        if (!is_within_limit) {
-            summary.status = SegmentDetectionStatus::resource_limit;
-            summary.sample_count = sample_count;
-            return summary;
+    for (const auto& pace_window : pace_windows) {
+        if (span >= pace_window.window_distance) {
+            const bool is_within_limit = evaluation_count_is_within_limit(
+                pace_window.window_distance,
+                pace_window.step,
+                span,
+                configuration.maximum_evaluations_per_search);
+            if (!is_within_limit) {
+                summary.status = SegmentDetectionStatus::resource_limit;
+                summary.sample_count = sample_count;
+                return summary;
+            }
         }
     }
 
@@ -868,13 +900,15 @@ SegmentDetectionSummary detect_segment_windows(
     std::uint64_t pace_evals = 0;
     std::uint64_t elev_evals = 0;
 
-    // 1. Fastest 400m
-    {
+    const auto run_pace_search = [&](
+        double window_distance,
+        double step,
+        SegmentWindowKind kind) {
         std::uint64_t evals = 0;
-        auto result = search_fastest_pace(
+        const auto result = search_fastest_pace(
             samples, sample_count,
-            configuration.fastest_400m_distance_meters,
-            configuration.fastest_400m_step_meters,
+            window_distance,
+            step,
             configuration.minimum_valid_pace_seconds_per_kilometer,
             configuration.maximum_valid_pace_seconds_per_kilometer,
             total_distance,
@@ -883,13 +917,19 @@ SegmentDetectionSummary detect_segment_windows(
         pace_evals += evals;
 
         if (result.found && candidate_count < segment_detection_max_candidate_count) {
-            candidates[candidate_count].kind = SegmentWindowKind::fastest_400m;
+            candidates[candidate_count].kind = kind;
             candidates[candidate_count].start_distance_meters = result.start_distance;
             candidates[candidate_count].end_distance_meters = result.end_distance;
             candidates[candidate_count].selection_value = result.pace;
             ++candidate_count;
         }
-    }
+    };
+
+    // 1. Fastest 400m
+    run_pace_search(
+        configuration.fastest_400m_distance_meters,
+        configuration.fastest_400m_step_meters,
+        SegmentWindowKind::fastest_400m);
 
     // 2 & 3. Combined 1km loop
     {
@@ -938,6 +978,30 @@ SegmentDetectionSummary detect_segment_windows(
             ++candidate_count;
         }
     }
+
+    // 6–10. Fixed-distance personal-record windows. Each search runs only when
+    // the route covers the window; otherwise the record is not attempted and no
+    // candidate is emitted.
+    run_pace_search(
+        configuration.one_mile_distance_meters,
+        configuration.one_mile_step_meters,
+        SegmentWindowKind::fastest_one_mile);
+    run_pace_search(
+        configuration.five_kilometer_distance_meters,
+        configuration.five_kilometer_step_meters,
+        SegmentWindowKind::fastest_5km);
+    run_pace_search(
+        configuration.ten_kilometer_distance_meters,
+        configuration.ten_kilometer_step_meters,
+        SegmentWindowKind::fastest_10km);
+    run_pace_search(
+        configuration.half_marathon_distance_meters,
+        configuration.half_marathon_step_meters,
+        SegmentWindowKind::fastest_half_marathon);
+    run_pace_search(
+        configuration.marathon_distance_meters,
+        configuration.marathon_step_meters,
+        SegmentWindowKind::fastest_marathon);
 
     // Copy to output
     for (std::size_t i = 0; i < candidate_count; ++i) {

@@ -12,6 +12,11 @@ enum RunPlaySegmentWindowKind: UInt8, Sendable, Equatable {
     case slowest1km = 2
     case biggestClimb = 3
     case biggestDescent = 4
+    case fastestOneMile = 5
+    case fastest5km = 6
+    case fastest10km = 7
+    case fastestHalfMarathon = 8
+    case fastestMarathon = 9
 }
 
 struct RunPlaySegmentWindowCandidate: Equatable, Sendable {
@@ -41,17 +46,87 @@ struct SegmentDetectorSearchConfiguration: Sendable {
     let fastest400mStepMeters: Double
     let oneKilometerDistanceMeters: Double
     let oneKilometerStepMeters: Double
+    let oneMileDistanceMeters: Double
+    let oneMileStepMeters: Double
+    let fiveKilometerDistanceMeters: Double
+    let fiveKilometerStepMeters: Double
+    let tenKilometerDistanceMeters: Double
+    let tenKilometerStepMeters: Double
+    let halfMarathonDistanceMeters: Double
+    let halfMarathonStepMeters: Double
+    let marathonDistanceMeters: Double
+    let marathonStepMeters: Double
     let minimumValidPaceSecondsPerKilometer: Double
     let maximumValidPaceSecondsPerKilometer: Double
     let elevationEnabled: Bool
     let elevationWindowDistanceMeters: Double
     let elevationStepMeters: Double
     let maximumEvaluationsPerSearch: UInt64
+
+    /// The five personal-record window pairs default to the canonical engine
+    /// lengths with the shared 50 m step. A search over a span evaluates at
+    /// most span / step + 1 start positions regardless of window length, so a
+    /// step at or above `RouteAnalysisBudget.boundedStep`'s span-covering
+    /// floor keeps every record window inside the per-search budget — it is
+    /// the step, not the relative window length, that bounds the work.
+    init(
+        fastest400mDistanceMeters: Double,
+        fastest400mStepMeters: Double,
+        oneKilometerDistanceMeters: Double,
+        oneKilometerStepMeters: Double,
+        oneMileDistanceMeters: Double = runplay.personal_record_one_mile_meters,
+        oneMileStepMeters: Double = 50,
+        fiveKilometerDistanceMeters: Double = runplay.personal_record_five_km_meters,
+        fiveKilometerStepMeters: Double = 50,
+        tenKilometerDistanceMeters: Double = runplay.personal_record_ten_km_meters,
+        tenKilometerStepMeters: Double = 50,
+        halfMarathonDistanceMeters: Double = runplay.personal_record_half_marathon_meters,
+        halfMarathonStepMeters: Double = 50,
+        marathonDistanceMeters: Double = runplay.personal_record_marathon_meters,
+        marathonStepMeters: Double = 50,
+        minimumValidPaceSecondsPerKilometer: Double,
+        maximumValidPaceSecondsPerKilometer: Double,
+        elevationEnabled: Bool,
+        elevationWindowDistanceMeters: Double,
+        elevationStepMeters: Double,
+        maximumEvaluationsPerSearch: UInt64
+    ) {
+        self.fastest400mDistanceMeters = fastest400mDistanceMeters
+        self.fastest400mStepMeters = fastest400mStepMeters
+        self.oneKilometerDistanceMeters = oneKilometerDistanceMeters
+        self.oneKilometerStepMeters = oneKilometerStepMeters
+        self.oneMileDistanceMeters = oneMileDistanceMeters
+        self.oneMileStepMeters = oneMileStepMeters
+        self.fiveKilometerDistanceMeters = fiveKilometerDistanceMeters
+        self.fiveKilometerStepMeters = fiveKilometerStepMeters
+        self.tenKilometerDistanceMeters = tenKilometerDistanceMeters
+        self.tenKilometerStepMeters = tenKilometerStepMeters
+        self.halfMarathonDistanceMeters = halfMarathonDistanceMeters
+        self.halfMarathonStepMeters = halfMarathonStepMeters
+        self.marathonDistanceMeters = marathonDistanceMeters
+        self.marathonStepMeters = marathonStepMeters
+        self.minimumValidPaceSecondsPerKilometer = minimumValidPaceSecondsPerKilometer
+        self.maximumValidPaceSecondsPerKilometer = maximumValidPaceSecondsPerKilometer
+        self.elevationEnabled = elevationEnabled
+        self.elevationWindowDistanceMeters = elevationWindowDistanceMeters
+        self.elevationStepMeters = elevationStepMeters
+        self.maximumEvaluationsPerSearch = maximumEvaluationsPerSearch
+    }
 }
 
 // MARK: - Bridge
 
 enum RunPlaySegmentDetectorBridge {
+    // Canonical personal-record window lengths, sourced from the engine
+    // constants so Swift record identity and the native searches can never
+    // drift. Internal because the public model re-exposes them as
+    // `PersonalRecordCategory.nominalWindowDistanceMeters`.
+    static let personalRecordOneMileMeters = runplay.personal_record_one_mile_meters
+    static let personalRecordFiveKmMeters = runplay.personal_record_five_km_meters
+    static let personalRecordTenKmMeters = runplay.personal_record_ten_km_meters
+    static let personalRecordHalfMarathonMeters = runplay.personal_record_half_marathon_meters
+    static let personalRecordMarathonMeters = runplay.personal_record_marathon_meters
+
     static func search(
         routePoints: [RoutePoint],
         timeline: WorkoutTimeline,
@@ -178,6 +253,16 @@ enum RunPlaySegmentDetectorBridge {
         nativeConfig.fastest_400m_step_meters = configuration.fastest400mStepMeters
         nativeConfig.one_kilometer_distance_meters = configuration.oneKilometerDistanceMeters
         nativeConfig.one_kilometer_step_meters = configuration.oneKilometerStepMeters
+        nativeConfig.one_mile_distance_meters = configuration.oneMileDistanceMeters
+        nativeConfig.one_mile_step_meters = configuration.oneMileStepMeters
+        nativeConfig.five_kilometer_distance_meters = configuration.fiveKilometerDistanceMeters
+        nativeConfig.five_kilometer_step_meters = configuration.fiveKilometerStepMeters
+        nativeConfig.ten_kilometer_distance_meters = configuration.tenKilometerDistanceMeters
+        nativeConfig.ten_kilometer_step_meters = configuration.tenKilometerStepMeters
+        nativeConfig.half_marathon_distance_meters = configuration.halfMarathonDistanceMeters
+        nativeConfig.half_marathon_step_meters = configuration.halfMarathonStepMeters
+        nativeConfig.marathon_distance_meters = configuration.marathonDistanceMeters
+        nativeConfig.marathon_step_meters = configuration.marathonStepMeters
         nativeConfig.minimum_valid_pace_seconds_per_kilometer = configuration.minimumValidPaceSecondsPerKilometer
         nativeConfig.maximum_valid_pace_seconds_per_kilometer = configuration.maximumValidPaceSecondsPerKilometer
         nativeConfig.elevation_window_distance_meters = configuration.elevationWindowDistanceMeters
@@ -185,7 +270,7 @@ enum RunPlaySegmentDetectorBridge {
         nativeConfig.maximum_evaluations_per_search = configuration.maximumEvaluationsPerSearch
         nativeConfig.elevation_enabled = configuration.elevationEnabled ? 1 : 0
 
-        // Allocate exactly five output candidates
+        // Allocate exactly one slot per candidate kind
         var output = ContiguousArray<runplay.SegmentWindowCandidate>(
             repeating: runplay.SegmentWindowCandidate(),
             count: Int(runplay.segment_detection_max_candidate_count)
@@ -274,7 +359,9 @@ enum RunPlaySegmentDetectorBridge {
             }
 
             switch kind {
-            case .fastest400m, .fastest1km, .slowest1km:
+            case .fastest400m, .fastest1km, .slowest1km,
+                    .fastestOneMile, .fastest5km, .fastest10km,
+                    .fastestHalfMarathon, .fastestMarathon:
                 let minPace = configuration.minimumValidPaceSecondsPerKilometer
                 let maxPace = configuration.maximumValidPaceSecondsPerKilometer
                 if value < minPace || value > maxPace {
@@ -296,6 +383,16 @@ enum RunPlaySegmentDetectorBridge {
                 expectedWindowDistance = configuration.fastest400mDistanceMeters
             case .fastest1km, .slowest1km:
                 expectedWindowDistance = configuration.oneKilometerDistanceMeters
+            case .fastestOneMile:
+                expectedWindowDistance = configuration.oneMileDistanceMeters
+            case .fastest5km:
+                expectedWindowDistance = configuration.fiveKilometerDistanceMeters
+            case .fastest10km:
+                expectedWindowDistance = configuration.tenKilometerDistanceMeters
+            case .fastestHalfMarathon:
+                expectedWindowDistance = configuration.halfMarathonDistanceMeters
+            case .fastestMarathon:
+                expectedWindowDistance = configuration.marathonDistanceMeters
             case .biggestClimb, .biggestDescent:
                 expectedWindowDistance = configuration.elevationWindowDistanceMeters
             }
@@ -312,9 +409,11 @@ enum RunPlaySegmentDetectorBridge {
             ))
         }
 
-        // Verify deterministic order (kinds appear in expected display-priority order)
+        // Verify deterministic order (kinds appear in expected emission order)
         let expectedOrder: [RunPlaySegmentWindowKind] = [
-            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent
+            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent,
+            .fastestOneMile, .fastest5km, .fastest10km, .fastestHalfMarathon,
+            .fastestMarathon
         ]
         var orderIndex = 0
         for candidate in candidates {
@@ -327,8 +426,12 @@ enum RunPlaySegmentDetectorBridge {
             }
         }
 
+        // Each of the seven pace searches is individually capped by the
+        // per-search budget, so the summed pace evaluation count is capped by
+        // seven times that budget.
         let (maximumPaceEvaluations, paceLimitOverflow) =
-            configuration.maximumEvaluationsPerSearch.multipliedReportingOverflow(by: 2)
+            configuration.maximumEvaluationsPerSearch.multipliedReportingOverflow(
+                by: UInt64(runplay.segment_pace_search_count))
         guard !paceLimitOverflow,
               summary.pace_window_evaluation_count <= maximumPaceEvaluations,
               summary.elevation_window_evaluation_count

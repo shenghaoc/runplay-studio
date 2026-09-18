@@ -40,8 +40,16 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             assertClose(b.selectionValue, o.selectionValue)
         }
 
-        XCTAssertEqual(bridgeResult.candidates.count, oracleResult.count,
-                       "Same candidate count")
+        // The 2 km pause fixture also attempts the one-mile record window,
+        // which the segment-only oracle never searches; compare segment kinds.
+        let oracleKinds: Set<RunPlaySegmentWindowKind> = [
+            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent
+        ]
+        XCTAssertEqual(
+            bridgeResult.candidates.filter { oracleKinds.contains($0.kind) }.count,
+            oracleResult.count,
+            "Same candidate count"
+        )
     }
 
     func testConstantPaceRoute() throws {
@@ -217,7 +225,9 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             isCancelled: { false }
         )
 
-        XCTAssertEqual(result.paceEvaluationCount, 28)
+        // 17 fastest-400m + 11 combined-1km + 8 one-mile evaluations; the
+        // route is 2 km so only the one-mile record window is attempted.
+        XCTAssertEqual(result.paceEvaluationCount, 36)
         XCTAssertGreaterThan(result.candidates.count, 0)
     }
 
@@ -268,22 +278,35 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
                 config: oracleConfig
             )
 
+            // The oracle preserves pre-migration segment behavior; it never
+            // searches the personal-record windows. Filter the bridge result
+            // down to the five segment kinds — record windows have dedicated
+            // end-to-end tests.
+            let oracleKinds: Set<RunPlaySegmentWindowKind> = [
+                .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent
+            ]
+            let segmentCandidates = bridgeResult.candidates.filter {
+                oracleKinds.contains($0.kind)
+            }
+
             // Same count
-            XCTAssertEqual(bridgeResult.candidates.count, oracleResult.count,
+            XCTAssertEqual(segmentCandidates.count, oracleResult.count,
                            "Fixture \(index): candidate count mismatch")
 
             // Each candidate matches
-            for (bi, bc) in bridgeResult.candidates.enumerated() {
+            for (bi, bc) in segmentCandidates.enumerated() {
                 let oc = oracleResult[bi]
-                let oracleKind = SwiftSegmentDetectorOracle.Candidate.Kind(rawValue: String(describing: bc.kind).replacingOccurrences(of: "RunPlay.", with: "")) ?? {
-                    switch bc.kind {
-                    case .fastest400m: return .fastest400m
-                    case .fastest1km: return .fastest1km
-                    case .slowest1km: return .slowest1km
-                    case .biggestClimb: return .biggestClimb
-                    case .biggestDescent: return .biggestDescent
-                    }
-                }()
+                let oracleKind: SwiftSegmentDetectorOracle.Candidate.Kind
+                switch bc.kind {
+                case .fastest400m: oracleKind = .fastest400m
+                case .fastest1km: oracleKind = .fastest1km
+                case .slowest1km: oracleKind = .slowest1km
+                case .biggestClimb: oracleKind = .biggestClimb
+                case .biggestDescent: oracleKind = .biggestDescent
+                case .fastestOneMile, .fastest5km, .fastest10km,
+                     .fastestHalfMarathon, .fastestMarathon:
+                    continue
+                }
                 XCTAssertEqual(oracleKind, oc.kind,
                                "Fixture \(index): kind mismatch at position \(bi)")
                 assertClose(bc.startDistanceMeters, oc.startDistanceMeters,
@@ -345,6 +368,10 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             preferredStep: 50, distanceSpan: distanceSpan,
             routePointCount: routeCount
         )
+        let boundedRecordStep = RouteAnalysisBudget.boundedStep(
+            preferredStep: 50, distanceSpan: distanceSpan,
+            routePointCount: routeCount
+        )
         let policy = RouteQualityPolicy.runningDefault
         let elevationEnabled = elevationProfile.hasMeaningfulElevation
             && timeline.totalDistanceMeters
@@ -374,6 +401,16 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         return SegmentDetectorSearchConfiguration(
             fastest400mDistanceMeters: 400, fastest400mStepMeters: bounded400Step,
             oneKilometerDistanceMeters: 1000, oneKilometerStepMeters: bounded1kmStep,
+            oneMileDistanceMeters: RunPlaySegmentDetectorBridge.personalRecordOneMileMeters,
+            oneMileStepMeters: boundedRecordStep,
+            fiveKilometerDistanceMeters: RunPlaySegmentDetectorBridge.personalRecordFiveKmMeters,
+            fiveKilometerStepMeters: boundedRecordStep,
+            tenKilometerDistanceMeters: RunPlaySegmentDetectorBridge.personalRecordTenKmMeters,
+            tenKilometerStepMeters: boundedRecordStep,
+            halfMarathonDistanceMeters: RunPlaySegmentDetectorBridge.personalRecordHalfMarathonMeters,
+            halfMarathonStepMeters: boundedRecordStep,
+            marathonDistanceMeters: RunPlaySegmentDetectorBridge.personalRecordMarathonMeters,
+            marathonStepMeters: boundedRecordStep,
             minimumValidPaceSecondsPerKilometer: 120,
             maximumValidPaceSecondsPerKilometer: 1200,
             elevationEnabled: elevationEnabled,
