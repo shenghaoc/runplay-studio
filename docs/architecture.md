@@ -533,6 +533,86 @@ restoration as of session version 3; older sessions decode with default
 selections and the validator repairs raw values, dangling collections, and
 unknown destinations.
 
+### Personal Records
+
+Personal Records is a **derived, library-level** table like Trends. Best
+fixed-distance windows are computed once per workout in the same analysis
+pass as segments (one native detection call produces both) and stored on the
+snapshot as `RunWorkout.personalRecords`. The field is decode-tolerant and
+**deliberately not gated on `analysisVersion`**: absence (`nil`) is the
+backfill marker, while a non-`nil` value with zero windows means the run
+attempted no window.
+
+| Layer | Responsibility |
+| --- | --- |
+| **RunPlayEngineCpp** | The five extra fixed-window fastest searches (1 mile, 5 km, 10 km, half marathon, marathon) inside the existing single segment-detection bulk call; canonical window lengths live in engine constants so Swift record identity cannot drift |
+| **RunPlayCore** | `PersonalRecordCategory`/`PersonalRecordWindow`/`WorkoutPersonalRecords` models, window finalization (HR averages, point ranges), `PersonalRecordsAggregator` (standing bests, strict-improvement progression capped at 10, longest run, corrected-else-raw biggest ascent), the resumable store-actor backfill, `PersonalRecordsAccessibilitySummary` |
+| **RunPlayPlatform** | `RouteMapLineStyle.highlight` and gap-split `highlightedRangeLines` for the map emphasis overlay |
+| **RunPlayStudio** | `PersonalRecordsViewModel` (scope, off-main aggregation, revision cache, inline backfill state), `PersonalRecordsView`, record click-through, Overview standing-record chips, session restoration (session version 4) |
+
+Semantics:
+
+- **Pause semantics match segments exactly.** Windows continue in cumulative
+  distance and may span a recording gap; pace uses the active clock, so
+  paused time never counts. Windows longer than the run are *not attempted*:
+  the row shows no value (em dash / "not attempted"), never zero.
+- **Standing bests and progression.** A record improves only on a strictly
+  better effort; an exactly equal effort never replaces the earlier holder.
+  The history list is the progression of set-or-beat events (oldest →
+  newest, capped at the last 10), and the standing best is always its last
+  event. Longest run uses summary distance; biggest single-run ascent uses
+  corrected ascent with the raw adjacent-delta fallback — the same rule
+  Trends uses.
+- **Scoping.** Scope reuses `WorkoutTrendsScopeResolver` verbatim: entire
+  library, the current All Runs query, or a smart collection, so a tagged
+  subset such as "race" gets its own record tables. Entering Records while
+  All Runs shows a smart collection preselects that collection on first open
+  only, exactly like Trends.
+- **Badges reflect only the current standing record, whole-library scope.**
+  A run whose record was later beaten shows no Overview chip by design — its
+  history lives in the Records progression. This is intended behaviour, not
+  a stale-data bug.
+- **One-off backfill.** Existing libraries never re-analyze at load: the
+  backfill runs through `WorkoutLibraryStoreActor.backfillPersonalRecords`
+  when the Records workspace first opens over snapshots missing records. It
+  walks the whole manifest and reports progress against that total, skipping
+  snapshots that already carry the marker, and honours task cancellation —
+  whether it arrives between workouts or inside a detection — by ending the
+  pass and returning the partial totals. Cancellation is never counted as a
+  failure: completed snapshots stay saved, the interrupted workout keeps its
+  unset marker, and the pass resumes on the next open. It yields between
+  workouts so library operations interleave, and is idempotent — a second
+  pass skips every workout that already carries the marker. Each computed
+  snapshot is applied in memory as it arrives, but the library is not rebuilt
+  per workout: entries and search documents derive from metadata and
+  summaries, never from record windows.
+- **Search cost.** Each fixed-window pace search is O(E log n) with
+  E = ⌊(total − window)/step⌋ + 1 — driven by the *spare* distance beyond the
+  window, not the window length (a marathon window on a marathon run is one
+  evaluation). Swift's `RouteAnalysisBudget.boundedStep` raises each step to
+  at least `distanceSpan / (maxEvals − 1)` before the native call, so a
+  compliant configuration can never exceed the per-search budget: exhaustion
+  degrades to a coarser step and a candidate is never silently dropped. The
+  native `resource_limit` pre-check remains a contract-violation safety net.
+- **Click-through.** Opening a record selects the workout, seeks replay to
+  the window start, and sets a transient `highlightedWorkoutRange` rendered
+  as a heavier same-hue route overlay (split per route segment, so it never
+  bridges a pause geographically) and a translucent chart band. Whole-run
+  records open the workout without a range. The highlight clears when
+  another workout is selected and is never persisted.
+- **Segments panel.** The panel still lists the original five segment kinds
+  first, then any long record window (1 mile and up) this run actually
+  attempted, shortest window first; windows longer than the run are absent,
+  not "not attempted" rows. Each record row takes its own display priority
+  and reuses its stored `PersonalRecordWindow` id, so the order does not
+  depend on sort stability and the row keeps one identity across view
+  updates.
+
+Records state (scope kind + collection) participates in session restoration
+as of session version 4; older sessions decode with the entire-library
+default and the validator repairs dangling scope collections and unknown
+destinations.
+
 ### Workspace navigation
 
 `AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`,
@@ -545,12 +625,17 @@ library interaction beyond heatmap-local loading indicators.
 
 Derived, library-level workspaces invalidate through lightweight revision
 tokens rather than by observing mutations: the Personal Heatmap cache key,
-the Trends request key. One rule governs all of them:
+the Trends request key, and the workout-detail records revision
+(`AppState.personalRecordsLibraryRevision`). One rule governs all of them:
 **a revision changes once per semantic pass, never per item inside a pass.**
-This shape has now been corrected once (heatmap
-refresh coalescing); treat it as a rule, not a
-per-feature decision. Progress a consumer must see per item (import counts)
-belongs to that feature's own published state, never to
+A backfill that computes records for N workouts mutates the in-memory
+library N times but bumps the revision exactly once, when the pass
+finishes; a per-item bump would make a visible view re-derive the whole
+library once per completed workout — quadratic work during one pass and
+visible re-render churn. This shape has now been corrected twice (heatmap
+refresh coalescing, the records backfill bump); treat it as a rule, not a
+per-feature decision. Progress a consumer must see per item (import counts,
+backfill progress) belongs to that feature's own published state, never to
 library-wide invalidation tokens.
 
 ### Application scene and session restoration

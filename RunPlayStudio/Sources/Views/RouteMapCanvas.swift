@@ -12,6 +12,8 @@ private extension RouteMapLineStyle {
             return AppDesign.comparisonOrange
         case .metric(let mode, let bucket):
             return AppDesign.RouteMetric.color(mode: mode, bucket: bucket)
+        case .highlight:
+            return AppDesign.primaryBlue
         }
     }
 
@@ -23,6 +25,8 @@ private extension RouteMapLineStyle {
             return 3.5
         case .metric:
             return 4
+        case .highlight:
+            return 7
         }
     }
 }

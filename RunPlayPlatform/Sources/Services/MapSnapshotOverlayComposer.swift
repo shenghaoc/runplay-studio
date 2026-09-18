@@ -146,6 +146,10 @@ public enum MapSnapshotOverlayComposer: Sendable {
             return RouteMetricPalette.nsColor(hex: 0xFF9F0A, alpha: 1)
         case .metric(let mode, let bucket):
             return RouteMetricPalette.nsColor(mode: mode, bucket: bucket)
+        case .highlight:
+            // Live-map emphasis only; the PNG snapshot never composes a
+            // highlight line, so fall back to the primary color.
+            return RouteMetricPalette.nsColor(hex: 0x0A84FF, alpha: 1)
         }
     }
 

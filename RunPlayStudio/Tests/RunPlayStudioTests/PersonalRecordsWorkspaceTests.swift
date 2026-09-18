@@ -259,6 +259,90 @@ final class PersonalRecordsWorkspaceTests: XCTestCase {
     }
 }
 
+// MARK: - Segments panel record rows
+
+final class LongRecordSegmentRowTests: XCTestCase {
+
+    private func window(
+        _ category: PersonalRecordCategory,
+        pace: Double = 300
+    ) -> PersonalRecordWindow {
+        let length = category.nominalWindowDistanceMeters ?? 0
+        return PersonalRecordWindow(
+            category: category,
+            startDistanceMeters: 0,
+            endDistanceMeters: length,
+            startElapsedSeconds: 0,
+            endElapsedSeconds: pace * length / 1_000,
+            activeSeconds: pace * length / 1_000,
+            paceSecondsPerKilometer: pace,
+            averageHeartRateBPM: nil,
+            sourcePointRange: 0..<2
+        )
+    }
+
+    func testRowsReuseTheStoredWindowIdentityAcrossEvaluations() {
+        // The rows are rebuilt on every body evaluation; minting a UUID there
+        // re-creates every ForEach row on each replay tick and drops the
+        // panel selection.
+        let records = WorkoutPersonalRecords(windows: [
+            window(.fastest1mile),
+            window(.fastest10km)
+        ])
+        let first = LongRecordSegmentRow.rows(for: records)
+        let second = LongRecordSegmentRow.rows(for: records)
+
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+        XCTAssertEqual(
+            Set(first.map(\.id)),
+            Set(records.windows.map(\.id)),
+            "each row carries its stored window's id"
+        )
+    }
+
+    func testRowsAreShortestFirstWithDistinctPriorities() {
+        // Deliberately unsorted, so a shared priority would leave the panel
+        // order to a sort that is not guaranteed stable.
+        let records = WorkoutPersonalRecords(windows: [
+            window(.fastestMarathon),
+            window(.fastest1mile),
+            window(.fastestHalfMarathon),
+            window(.fastest5km),
+            window(.fastest10km)
+        ])
+        let rows = LongRecordSegmentRow.rows(for: records)
+
+        XCTAssertEqual(
+            rows.map(\.title),
+            [
+                PersonalRecordCategory.fastest1mile,
+                .fastest5km,
+                .fastest10km,
+                .fastestHalfMarathon,
+                .fastestMarathon
+            ].map(\.displayName)
+        )
+        XCTAssertEqual(
+            rows.map(\.displayPriority),
+            Array(LongRecordSegmentRow.firstDisplayPriority
+                ..< (LongRecordSegmentRow.firstDisplayPriority + rows.count)),
+            "distinct, ascending priorities keep the panel order deterministic"
+        )
+    }
+
+    func testShortWindowsAndMissingRecordsContributeNoRows() {
+        // 400 m and 1 km already appear as their own detected segment kinds.
+        let records = WorkoutPersonalRecords(windows: [
+            window(.fastest400m),
+            window(.fastest1km)
+        ])
+        XCTAssertTrue(LongRecordSegmentRow.rows(for: records).isEmpty)
+        XCTAssertTrue(LongRecordSegmentRow.rows(for: nil).isEmpty)
+    }
+}
+
+// MARK: - Backfill result reporting
+
 final class PersonalRecordsBackfillMessageTests: XCTestCase {
 
     private func result(
@@ -310,5 +394,84 @@ final class PersonalRecordsBackfillMessageTests: XCTestCase {
             "2 runs could not be analyzed; they will be retried the next time you open Records. "
                 + "1 run was analyzed but could not be saved; it will be recomputed on the next launch."
         )
+    }
+}
+
+// MARK: - Overview standing chips
+
+final class StandingRecordBadgeTests: XCTestCase {
+
+    private func makeHolderWorkout(
+        name: String,
+        daysAgo: Int,
+        pace5k: Double,
+        distance: Double = 5_000
+    ) -> RunWorkout {
+        let start = Date(timeIntervalSince1970: 1_700_000_000 - Double(daysAgo) * 86_400)
+        var workout = RunWorkout(
+            metadata: WorkoutMetadata(name: name, activityType: "running", startDate: start),
+            routePoints: [
+                RoutePoint(timestamp: start, latitude: 1.3, longitude: 103.8, elapsedSeconds: 0),
+                RoutePoint(
+                    timestamp: start.addingTimeInterval(1_500),
+                    latitude: 1.31, longitude: 103.9,
+                    distanceFromStartMeters: distance, elapsedSeconds: 1_500
+                )
+            ],
+            summary: RunSummary(
+                totalDistanceMeters: distance,
+                totalElapsedSeconds: 1_560,
+                totalActiveSeconds: 1_500
+            )
+        )
+        workout.personalRecords = WorkoutPersonalRecords(windows: [
+            PersonalRecordWindow(
+                category: .fastest5km,
+                startDistanceMeters: 0,
+                endDistanceMeters: 5_000,
+                startElapsedSeconds: 0,
+                endElapsedSeconds: pace5k * 5,
+                activeSeconds: pace5k * 5,
+                paceSecondsPerKilometer: pace5k,
+                averageHeartRateBPM: nil,
+                sourcePointRange: 0..<2
+            )
+        ])
+        return workout
+    }
+
+    @MainActor
+    func testChipsShowOnlyCurrentStandingHolders() {
+        // Older run set every record first; a newer, strictly faster run
+        // beats the pace records, but the equal-distance longest run stays
+        // with the earlier holder (strict improvement only).
+        let first = makeHolderWorkout(name: "First", daysAgo: 20, pace5k: 300, distance: 5_000)
+        let faster = makeHolderWorkout(name: "Faster", daysAgo: 5, pace5k: 270, distance: 5_000)
+        let workouts = [first, faster]
+
+        let fasterBadges = StandingRecordBadge.standingBadges(
+            forWorkoutID: faster.id,
+            workouts: workouts
+        )
+        XCTAssertTrue(fasterBadges.contains {
+            $0.category == .fastest5km && $0.valueText == "4:30"
+        }, "the strictly faster run holds the 5 km chip (270 s/km = 4:30)")
+
+        let firstBadges = StandingRecordBadge.standingBadges(
+            forWorkoutID: first.id,
+            workouts: workouts
+        )
+        XCTAssertFalse(firstBadges.contains { $0.category == .fastest5km },
+                       "a beaten record shows no chip by design")
+        XCTAssertTrue(firstBadges.contains { $0.category == .longestRun },
+                      "an exactly equal distance keeps the earlier holder's chip")
+
+        // A workout holding nothing gets no chips at all.
+        let elsewhere = makeHolderWorkout(name: "Elsewhere", daysAgo: 1, pace5k: 320, distance: 3_000)
+        let allWorkouts = workouts + [elsewhere]
+        XCTAssertTrue(StandingRecordBadge.standingBadges(
+            forWorkoutID: elsewhere.id,
+            workouts: allWorkouts
+        ).isEmpty)
     }
 }
