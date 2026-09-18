@@ -182,4 +182,312 @@ final class PersonalRecordsTests: XCTestCase {
         ])
         XCTAssertTrue(records.windows.isEmpty)
     }
+
+    // MARK: - Analyzer stamping
+
+    func testAnalyzerStampsRecordsAndKeepsFiveSegmentKinds() {
+        var workout = RunWorkout(routePoints: makeRoute(totalDistance: 5_000))
+        WorkoutAnalyzer().analyze(&workout)
+        XCTAssertNotNil(workout.personalRecords,
+                        "analysis pass must stamp the records marker")
+        let categories = Set(workout.personalRecords?.windows.map(\.category) ?? [])
+        XCTAssertEqual(categories, [.fastest400m, .fastest1km, .fastest1mile, .fastest5km])
+        // The public segment list still exposes only the original five kinds.
+        let segmentTypes = Set(workout.segments.map(\.type))
+        XCTAssertTrue(segmentTypes.isSubset(of: [
+            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent
+        ]))
+    }
+
+    func testReanalyzePreservingRoutePointsKeepsRecords() {
+        var workout = RunWorkout(routePoints: makeRoute(totalDistance: 5_000))
+        WorkoutAnalyzer().reanalyzePreservingRoutePoints(&workout)
+        XCTAssertNotNil(workout.personalRecords)
+    }
+
+    // MARK: - Codable tolerance
+
+    func testSnapshotWithoutRecordsDecodesAsNil() throws {
+        var workout = RunWorkout(routePoints: makeRoute(totalDistance: 5_000))
+        WorkoutAnalyzer().analyze(&workout)
+        let data = try JSONEncoder().encode(workout)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNotNil(object.removeValue(forKey: "personalRecords"))
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(RunWorkout.self, from: legacyData)
+        XCTAssertNil(decoded.personalRecords,
+                     "legacy snapshots decode without records instead of failing")
+    }
+
+    func testRecordsRoundTripThroughCodable() throws {
+        let records = detectRecords(makeRoute(totalDistance: 5_000))
+        var workout = RunWorkout(routePoints: makeRoute(totalDistance: 5_000))
+        workout.personalRecords = records
+        let decoded = try JSONDecoder().decode(
+            RunWorkout.self,
+            from: JSONEncoder().encode(workout)
+        )
+        XCTAssertEqual(decoded.personalRecords, records)
+    }
+
+    // MARK: - Aggregation
+
+    private func makeAggregationWorkout(
+        id: UUID = UUID(),
+        name: String,
+        daysAgo: Int,
+        distance: Double = 5_000,
+        pace5k: Double? = nil,
+        ascentCorrected: Double = 0,
+        ascentRaw: Double? = nil,
+        hasRecords: Bool = true
+    ) -> RunWorkout {
+        let date = Date(timeIntervalSince1970: 1_700_000_000 - Double(daysAgo) * 86_400)
+        var windows: [PersonalRecordWindow] = []
+        if let pace5k {
+            windows.append(PersonalRecordWindow(
+                category: .fastest5km,
+                startDistanceMeters: 0,
+                endDistanceMeters: 5_000,
+                startElapsedSeconds: 0,
+                endElapsedSeconds: pace5k * 5,
+                activeSeconds: pace5k * 5,
+                paceSecondsPerKilometer: pace5k,
+                averageHeartRateBPM: 160,
+                sourcePointRange: 0..<10
+            ))
+        }
+        var workout = RunWorkout(
+            id: id,
+            metadata: WorkoutMetadata(name: name, startDate: date),
+            source: .gpx,
+            routePoints: makeRoute(totalDistance: distance, start: date),
+            summary: RunSummary(
+                totalDistanceMeters: distance,
+                totalElapsedSeconds: 1_800,
+                totalActiveSeconds: 1_800,
+                elevationGainMeters: ascentCorrected,
+                rawElevationGainMeters: ascentRaw
+            )
+        )
+        workout.personalRecords =
+            hasRecords ? WorkoutPersonalRecords(windows: windows) : nil
+        return workout
+    }
+
+    func testAggregationPicksBestAndBuildsProgression() {
+        // Oldest → newest: 300, 280 (new best), 290 (no improvement).
+        let workouts = [
+            makeAggregationWorkout(name: "A", daysAgo: 30, pace5k: 300),
+            makeAggregationWorkout(name: "B", daysAgo: 20, pace5k: 280),
+            makeAggregationWorkout(name: "C", daysAgo: 10, pace5k: 290)
+        ]
+        let snapshot = PersonalRecordsAggregator.aggregate(workouts: workouts)
+        let row = snapshot.row(for: .fastest5km)
+        XCTAssertEqual(row?.best?.workoutName, "B")
+        XCTAssertEqual(row?.history.map(\.workoutName), ["A", "B"],
+                       "only set-or-beat efforts appear in the progression")
+        // Best is always the latest progression event.
+        XCTAssertEqual(row?.best?.value, row?.history.last?.value)
+        // Attempted-vs-not rows exist for every category.
+        XCTAssertEqual(snapshot.rows.count, PersonalRecordCategory.allCases.count)
+    }
+
+    func testEqualEffortDoesNotReplaceStandingHolder() {
+        let workouts = [
+            makeAggregationWorkout(name: "First", daysAgo: 20, pace5k: 280),
+            makeAggregationWorkout(name: "Equal", daysAgo: 10, pace5k: 280)
+        ]
+        let row = PersonalRecordsAggregator.aggregate(workouts: workouts).row(for: .fastest5km)
+        XCTAssertEqual(row?.best?.workoutName, "First",
+                       "an exactly equal effort never replaces the earlier holder")
+        XCTAssertEqual(row?.history.count, 1)
+    }
+
+    func testLongestRunAndBiggestAscentUseSummariesWithRawFallback() {
+        let workouts = [
+            makeAggregationWorkout(
+                name: "Short Hilly", daysAgo: 20, distance: 8_000,
+                ascentCorrected: 0, ascentRaw: 300
+            ),
+            makeAggregationWorkout(
+                name: "Long Flat", daysAgo: 10, distance: 15_000,
+                ascentCorrected: 500, ascentRaw: nil
+            )
+        ]
+        let snapshot = PersonalRecordsAggregator.aggregate(workouts: workouts)
+        XCTAssertEqual(snapshot.row(for: .longestRun)?.best?.workoutName, "Long Flat")
+        XCTAssertEqual(snapshot.row(for: .longestRun)?.best?.value, 15_000)
+        XCTAssertEqual(snapshot.row(for: .biggestAscent)?.best?.workoutName, "Long Flat")
+        XCTAssertEqual(snapshot.row(for: .biggestAscent)?.best?.value, 500)
+        // The corrected-empty workout still contributes its raw ascent.
+        XCTAssertEqual(snapshot.row(for: .biggestAscent)?.history.count, 2)
+        // Whole-run categories carry no window.
+        XCTAssertNil(snapshot.row(for: .longestRun)?.best?.window)
+    }
+
+    func testNeverAttemptedCategoryHasNoBestAndEmptyHistory() {
+        let snapshot = PersonalRecordsAggregator.aggregate(
+            workouts: [makeAggregationWorkout(name: "A", daysAgo: 1, pace5k: 300)]
+        )
+        let marathon = snapshot.row(for: .fastestMarathon)
+        XCTAssertNil(marathon?.best)
+        XCTAssertTrue(marathon?.history.isEmpty ?? false)
+    }
+
+    func testHistoryIsCappedToLastTenImprovements() {
+        let workouts = (0..<12).map { index in
+            makeAggregationWorkout(
+                name: "Run \(index)",
+                daysAgo: 40 - index,
+                pace5k: 400 - Double(index) * 5
+            )
+        }
+        let row = PersonalRecordsAggregator.aggregate(workouts: workouts).row(for: .fastest5km)
+        XCTAssertEqual(row?.history.count, 10)
+        XCTAssertEqual(row?.best?.workoutName, "Run 11",
+                       "capping history never drops the current holder")
+    }
+
+    func testPendingBackfillCountTracksUncomputedSnapshots() {
+        let workouts = [
+            makeAggregationWorkout(name: "A", daysAgo: 1, pace5k: 300),
+            makeAggregationWorkout(name: "B", daysAgo: 2, pace5k: nil, hasRecords: false),
+            makeAggregationWorkout(name: "C", daysAgo: 3, pace5k: 320, hasRecords: false)
+        ]
+        let snapshot = PersonalRecordsAggregator.aggregate(workouts: workouts)
+        XCTAssertEqual(snapshot.includedWorkoutCount, 3)
+        XCTAssertEqual(snapshot.pendingBackfillWorkoutCount, 2)
+        XCTAssertEqual(snapshot.currentHolders[.fastest5km]?.workoutName, "A")
+    }
+
+    // MARK: - Accessibility
+
+    func testAccessibilitySummaryAnnouncesStandingRecords() {
+        let snapshot = PersonalRecordsAggregator.aggregate(
+            workouts: [makeAggregationWorkout(name: "A", daysAgo: 1, pace5k: 300)]
+        )
+        let summary = PersonalRecordsAccessibilitySummary(
+            scopeDescription: "entire library",
+            snapshot: snapshot
+        )
+        let spoken = summary.spokenSummary
+        XCTAssertTrue(spoken.contains("Personal records."))
+        XCTAssertTrue(spoken.contains("Fastest 5 km 5:00 per kilometre"))
+        XCTAssertTrue(spoken.contains("Fastest Marathon not attempted."))
+        XCTAssertTrue(spoken.contains("1 runs in scope."))
+    }
+
+    // MARK: - Backfill
+
+    private var tempDir: URL!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PersonalRecordsTests-\(UUID().uuidString)")
+    }
+
+    override func tearDown() {
+        if let tempDir {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        super.tearDown()
+    }
+
+    private func makeStoredLibrary(workoutCount: Int) async throws -> WorkoutLibraryStoreActor {
+        let store = WorkoutLibraryStoreActor(
+            store: FileWorkoutLibraryStore(rootURL: tempDir)
+        )
+        for index in 0..<workoutCount {
+            var workout = RunWorkout(
+                metadata: WorkoutMetadata(
+                    name: "Backfill \(index)",
+                    startDate: Date(timeIntervalSince1970: 1_700_000_000 + Double(index) * 86_400)
+                ),
+                source: .gpx,
+                routePoints: makeRoute(totalDistance: 5_000 + Double(index) * 100)
+            )
+            // Simulate a legacy snapshot: no analysis pass ever ran here.
+            workout.personalRecords = nil
+            try await store.addWorkout(workout, select: index == 0)
+        }
+        return store
+    }
+
+    func testBackfillComputesRecordsAndIsIdempotent() async throws {
+        let store = try await makeStoredLibrary(workoutCount: 3)
+
+        final class UpdateCollector: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [WorkoutLibraryStoreActor.PersonalRecordsBackfillUpdate] = []
+            func append(
+                _ update: WorkoutLibraryStoreActor.PersonalRecordsBackfillUpdate
+            ) {
+                lock.lock()
+                items.append(update)
+                lock.unlock()
+            }
+            var all: [WorkoutLibraryStoreActor.PersonalRecordsBackfillUpdate] {
+                lock.lock()
+                defer { lock.unlock() }
+                return items
+            }
+        }
+        let collector = UpdateCollector()
+        let first = await store.backfillPersonalRecords { update in
+            collector.append(update)
+        }
+        XCTAssertEqual(first.computedCount, 3)
+        XCTAssertEqual(first.skippedCount, 0)
+        let updates = collector.all
+        XCTAssertEqual(updates.count, 3)
+        XCTAssertTrue(updates.allSatisfy { $0.computedWorkout != nil })
+
+        // Saved snapshots now carry records.
+        for update in updates {
+            let workout = try XCTUnwrap(update.computedWorkout)
+            XCTAssertFalse(
+                workout.personalRecords?.windows.isEmpty ?? true,
+                "5 km synthetic routes must gain at least the 400 m and 1 km windows"
+            )
+        }
+
+        // Second pass is a pure skip: the nil marker is the idempotence key.
+        let second = await store.backfillPersonalRecords()
+        XCTAssertEqual(second.computedCount, 0)
+        XCTAssertEqual(second.skippedCount, 3)
+    }
+
+    func testCancelledBackfillIsResumable() async throws {
+        let store = try await makeStoredLibrary(workoutCount: 3)
+
+        final class CancelBox: @unchecked Sendable {
+            var cancel: (() -> Void)?
+        }
+        let box = CancelBox()
+        let task = Task {
+            await store.backfillPersonalRecords(policy: .runningDefault) { update in
+                if update.completedCount >= 1 {
+                    box.cancel?()
+                }
+            }
+        }
+        box.cancel = { task.cancel() }
+
+        let partial = await task.value
+        XCTAssertLessThan(partial.computedCount, 3,
+                          "cancellation must stop the pass before completion")
+        XCTAssertGreaterThan(partial.computedCount, 0,
+                             "work completed before cancelling stays applied")
+        XCTAssertEqual(partial.failedCount, 0,
+                       "cancelling is not a failure: a run interrupted mid-detection "
+                           + "keeps its unset marker for the next pass")
+        XCTAssertEqual(partial.saveFailureCount, 0)
+
+        // A later pass finishes the remainder.
+        let resume = await store.backfillPersonalRecords()
+        XCTAssertEqual(resume.computedCount, 3 - partial.computedCount)
+        XCTAssertEqual(resume.skippedCount, partial.computedCount)
+    }
 }

@@ -26,6 +26,11 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     public var recordedLaps: [RecordedLap]
     public var summary: RunSummary
     public var segments: [SegmentHighlight]
+    /// Best fixed-distance record windows, computed in the same analysis pass
+    /// as segments. `nil` on snapshots that predate record computation — that
+    /// absence is the backfill marker, while an empty value means the run
+    /// attempted no window. Deliberately not gated on `analysisVersion`.
+    public var personalRecords: WorkoutPersonalRecords?
     public var analysisVersion: Int
     public var normalizationVersion: Int
     /// Whether source-structure fields such as recorded laps were preserved at import.
@@ -80,6 +85,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         recordedLaps: [RecordedLap] = [],
         summary: RunSummary = RunSummary(),
         segments: [SegmentHighlight] = [],
+        personalRecords: WorkoutPersonalRecords? = nil,
         analysisVersion: Int,
         normalizationVersion: Int = RunWorkout.currentNormalizationVersion,
         sourceStructureVersion: Int = RunWorkout.currentSourceStructureVersion,
@@ -99,6 +105,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.recordedLaps = Self.sanitizedRecordedLaps(recordedLaps)
         self.summary = summary
         self.segments = segments
+        self.personalRecords = personalRecords
         self.analysisVersion = max(RunWorkout.legacyAnalysisVersion, analysisVersion)
         self.normalizationVersion = max(RunWorkout.legacyNormalizationVersion, normalizationVersion)
         self.sourceStructureVersion = max(RunWorkout.legacySourceStructureVersion, sourceStructureVersion)
@@ -162,6 +169,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, metadata, source, routePoints, splits, recordedLaps, summary, segments
+        case personalRecords
         case analysisVersion, normalizationVersion, sourceStructureVersion
         case analysisWarnings, movementDiagnostics
         case qualityDiagnostics, recordedLapDiagnostics
@@ -183,6 +191,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         let structurallyMalformedLapCount = decodedLapCollection?.malformedElementCount ?? 0
         summary = try container.decode(RunSummary.self, forKey: .summary)
         segments = try container.decode([SegmentHighlight].self, forKey: .segments)
+        personalRecords = try container.decodeIfPresent(
+            WorkoutPersonalRecords.self,
+            forKey: .personalRecords
+        )
         analysisVersion = try container.decodeIfPresent(Int.self, forKey: .analysisVersion)
             ?? RunWorkout.legacyAnalysisVersion
         normalizationVersion = try container.decodeIfPresent(Int.self, forKey: .normalizationVersion)
@@ -236,6 +248,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(recordedLaps, forKey: .recordedLaps)
         try container.encode(summary, forKey: .summary)
         try container.encode(segments, forKey: .segments)
+        try container.encodeIfPresent(personalRecords, forKey: .personalRecords)
         try container.encode(analysisVersion, forKey: .analysisVersion)
         try container.encode(normalizationVersion, forKey: .normalizationVersion)
         try container.encode(sourceStructureVersion, forKey: .sourceStructureVersion)
