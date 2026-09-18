@@ -539,6 +539,18 @@ exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
 
+### Library-level revision discipline
+
+Derived, library-level workspaces invalidate through lightweight revision
+tokens rather than by observing mutations: the Personal Heatmap cache key,
+the Trends request key. One rule governs all of them:
+**a revision changes once per semantic pass, never per item inside a pass.**
+This shape has now been corrected once (heatmap
+refresh coalescing); treat it as a rule, not a
+per-feature decision. Progress a consumer must see per item (import counts)
+belongs to that feature's own published state, never to
+library-wide invalidation tokens.
+
 ### Application scene and session restoration
 
 `RunPlayStudioApp` owns one stable-ID SwiftUI `Window`, one `AppState`, and one
