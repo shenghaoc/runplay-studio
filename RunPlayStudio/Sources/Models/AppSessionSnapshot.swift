@@ -8,6 +8,7 @@ enum AppSessionDestination: Equatable, Sendable {
     case smartCollection(UUID)
     case personalHeatmap
     case trends
+    case personalRecords
     case comparison
 }
 
@@ -23,6 +24,7 @@ extension AppSessionDestination: Codable {
         case smartCollection
         case personalHeatmap
         case trends
+        case personalRecords
         case comparison
     }
 
@@ -43,6 +45,8 @@ extension AppSessionDestination: Codable {
             self = .personalHeatmap
         case .trends:
             self = .trends
+        case .personalRecords:
+            self = .personalRecords
         case .comparison:
             self = .comparison
         case .none:
@@ -66,6 +70,8 @@ extension AppSessionDestination: Codable {
             try container.encode(Kind.personalHeatmap.rawValue, forKey: .kind)
         case .trends:
             try container.encode(Kind.trends.rawValue, forKey: .kind)
+        case .personalRecords:
+            try container.encode(Kind.personalRecords.rawValue, forKey: .kind)
         case .comparison:
             try container.encode(Kind.comparison.rawValue, forKey: .kind)
         }
@@ -150,6 +156,21 @@ struct AppSessionTrendsState: Codable, Equatable, Sendable {
     }
 }
 
+/// Durable Personal Records scope state. The aggregated table, history, and
+/// backfill progress are recomputed; only the scope selection persists.
+struct AppSessionPersonalRecordsState: Codable, Equatable, Sendable {
+    var scopeKindRaw: String
+    var scopeSmartCollectionID: UUID?
+
+    init(
+        scopeKindRaw: String = "entireLibrary",
+        scopeSmartCollectionID: UUID? = nil
+    ) {
+        self.scopeKindRaw = scopeKindRaw
+        self.scopeSmartCollectionID = scopeSmartCollectionID
+    }
+}
+
 /// Durable comparison context. The peer is validated against the current
 /// library before it is applied. Alignment anchors are never persisted.
 struct AppSessionComparisonState: Codable, Equatable, Sendable {
@@ -214,7 +235,9 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
     /// Version 1 sessions migrate to Distance alignment with zero aligned progress.
     /// Version 3 adds the Trends workspace destination and filter state;
     /// older sessions decode with default Trends selections.
-    static let currentVersion = 3
+    /// Version 4 adds the Personal Records workspace destination and scope
+    /// state; older sessions decode with the entire-library default.
+    static let currentVersion = 4
     static let minimumSupportedVersion = 1
 
     var version: Int
@@ -224,6 +247,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
     var library: AppSessionLibraryState
     var heatmap: AppSessionHeatmapState
     var trends: AppSessionTrendsState
+    var personalRecords: AppSessionPersonalRecordsState
     var comparison: AppSessionComparisonState?
     var replay: AppSessionReplayState?
 
@@ -235,6 +259,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         library: AppSessionLibraryState = AppSessionLibraryState(),
         heatmap: AppSessionHeatmapState = AppSessionHeatmapState(),
         trends: AppSessionTrendsState = AppSessionTrendsState(),
+        personalRecords: AppSessionPersonalRecordsState = AppSessionPersonalRecordsState(),
         comparison: AppSessionComparisonState? = nil,
         replay: AppSessionReplayState? = nil
     ) {
@@ -245,6 +270,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         self.library = library
         self.heatmap = heatmap
         self.trends = trends
+        self.personalRecords = personalRecords
         self.comparison = comparison
         self.replay = replay
     }
@@ -264,6 +290,11 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         heatmap = try container.decodeIfPresent(AppSessionHeatmapState.self, forKey: .heatmap) ?? AppSessionHeatmapState()
         // Version 3 adds Trends; older sessions decode with defaults.
         trends = try container.decodeIfPresent(AppSessionTrendsState.self, forKey: .trends) ?? AppSessionTrendsState()
+        // Version 4 adds Personal Records; older sessions decode with defaults.
+        personalRecords = try container.decodeIfPresent(
+            AppSessionPersonalRecordsState.self,
+            forKey: .personalRecords
+        ) ?? AppSessionPersonalRecordsState()
         var decodedComparison = try container.decodeIfPresent(AppSessionComparisonState.self, forKey: .comparison)
         // v1 → v2: missing alignment fields already default to Distance / 0.
         if decodedVersion < 2, var migrated = decodedComparison {
@@ -285,6 +316,7 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
         case library
         case heatmap
         case trends
+        case personalRecords
         case comparison
         case replay
     }

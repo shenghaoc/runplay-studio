@@ -33,6 +33,7 @@ enum CommandID: String, CaseIterable, Sendable, Equatable {
     case showAllRuns
     case showPersonalHeatmap
     case showTrends
+    case showPersonalRecords
     case focusLibrarySearch
     case openSelectedWorkout
     case editSelectedTags
@@ -185,6 +186,17 @@ enum CommandRegistry {
             workspace: .any,
             purpose: "Analyse the whole workout library over time by week, month, or year",
             accessibilityDescription: "Open Trends",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .showPersonalRecords,
+            menuTitle: "Records",
+            menu: "Library",
+            keyEquivalent: "P",
+            modifiers: [.command, .shift],
+            workspace: .any,
+            purpose: "Show personal records across the local workout library",
+            accessibilityDescription: "Open Records",
             localOnly: false
         ),
         CommandDefinition(

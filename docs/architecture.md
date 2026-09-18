@@ -536,7 +536,7 @@ unknown destinations.
 ### Workspace navigation
 
 `AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`,
-`.trends`, or `.workoutLibrary` (All Runs) — mutually
+`.trends`, `.personalRecords`, or `.workoutLibrary` (All Runs) — mutually
 exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
