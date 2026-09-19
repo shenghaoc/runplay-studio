@@ -17,11 +17,12 @@ Every public callable carries exactly one status:
 | `detect_segment_windows` | **production** | called by the segment detector via `RunPlaySegmentDetectorBridge` |
 | `build_elevation_profile` | **production** | called by the elevation profile builder via `RunPlayElevationProfileBridge` |
 | `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
+| `compute_training_load` | **production** | called by the training-load pass (analysis and backfill) via `RunPlayTrainingLoadBridge` |
 | `inspect_route_batch` | **parity/contract verification** | no production caller; consumed only by `RunPlayRouteBridge` for parity tests and validators |
 | `is_valid_coordinate`, `haversine_distance_meters`, `project_lat_lon_to_local_meters` | **parity/test utility** | production Swift geodesy uses `GeoDistance`; these pin the C++ implementations against it |
 | `engine_info` | **smoke/identity** | build/ABI identity probe; consumed by engine smoke tests and the external-consumer smoke |
 
-Six pointer-bearing boundaries are production; the seventh
+Seven pointer-bearing boundaries are production; the eighth
 (`inspect_route_batch`) is not. Its continued public exposure is deliberate: it
 is the value-contract verification boundary — the only callable that exercises
 the complete `RouteInputSample` field mapping (per-field value counts, segment
@@ -44,7 +45,7 @@ disagrees with the validators, the validators win.
 
 ## Headers
 
-Nine public headers live under `RunPlayEngineCpp/include/RunPlayEngineCpp/`:
+Ten public headers live under `RunPlayEngineCpp/include/RunPlayEngineCpp/`:
 
 | Header | Content |
 |---|---|
@@ -57,6 +58,7 @@ Nine public headers live under `RunPlayEngineCpp/include/RunPlayEngineCpp/`:
 | `SegmentDetection.hpp` | Segment window-search kernel |
 | `ElevationProfile.hpp` | Multi-pass elevation profile kernel |
 | `RouteMetricScaleBuckets.hpp` | Route-metric scale/bucket assignment kernel |
+| `TrainingLoad.hpp` | Banister TRIMP training-load kernel |
 
 There is no standalone step-distance header: the transitional bulk
 `compute_route_step_distances` boundary was removed. The route-quality kernel
@@ -91,9 +93,10 @@ the structs embedding these aliases can assert it.
 | `RouteQualityPipeline.hpp` | `RouteQualityGeometryPolicy`, `RouteQualityOutputSample`, `RouteQualityPipelineSummary` | `RouteQualityDistancePolicy`, `RouteSegmentDistanceSource`, `RouteQualityDistanceSource`, `RouteQualityPipelineStatus` | — |
 | `PersonalHeatmapCoverage.hpp` | `PersonalHeatmapRouteSample`, `PersonalHeatmapCellIndex`, `PersonalHeatmapCoverageSummary` | `PersonalHeatmapCoverageStatus` | `personal_heatmap_max_latitude_degrees`, max cells per interval |
 | `RouteAlignmentDtw.hpp` | `RouteAlignmentCostSample`, `RouteAlignmentDtwPolicy`, `RouteAlignmentDtwPathCell`, `RouteAlignmentDtwSummary` | `RouteAlignmentDtwStepKind`, `RouteAlignmentDtwStatus` | — |
-| `SegmentDetection.hpp` | `SegmentDetectionSample`, `SegmentDetectionConfiguration`, `SegmentWindowCandidate`, `SegmentDetectionSummary` | `SegmentWindowKind`, `SegmentDetectionStatus` | `segment_detection_max_candidate_count` (5) |
+| `SegmentDetection.hpp` | `SegmentDetectionSample`, `SegmentDetectionConfiguration`, `SegmentWindowCandidate`, `SegmentDetectionSummary` | `SegmentWindowKind`, `SegmentDetectionStatus` | `segment_detection_max_candidate_count` (10), `segment_pace_search_count` (7), personal-record window lengths |
 | `ElevationProfile.hpp` | `ElevationProfileInputSample`, `ElevationProfilePolicy`, `ElevationProfileOutputSample`, `ElevationProfileSummary` | `ElevationProfileStatus` | — |
 | `RouteMetricScaleBuckets.hpp` | `RouteMetricScaleBucketInputSample`, `RouteMetricScaleBucketWorkspaceSample`, `RouteMetricScaleBucketPolicy`, `RouteMetricScaleBucketOutputSample`, `RouteMetricScaleBucketSummary` | `RouteMetricScaleBucketStatus` | — |
+| `TrainingLoad.hpp` | `TrainingLoadSample`, `TrainingLoadPolicy`, `TrainingLoadSummary` | `TrainingLoadStatus` | `training_load_zone_count` (5) |
 
 `max_route_input_samples` is the engine's internal safety ceiling, deliberately
 25% above the product limit in `WorkoutImportResourceLimits` (1,000,000 route
@@ -102,7 +105,7 @@ test enforces that relationship.
 
 ## Pointer-bearing public functions
 
-Seven functions carry raw pointers across the Swift boundary. C++ borrows every
+Eight functions carry raw pointers across the Swift boundary. C++ borrows every
 buffer synchronously, retains nothing, and performs no callback. Swift owns
 every buffer. Each boundary is exactly one call per logical operation.
 
@@ -112,9 +115,10 @@ every buffer. Each boundary is exactly one call per logical operation.
 | `process_route_quality_geometry` | `const RouteInputSample*` + count; optional `const std::uint8_t*` selection + count | `RouteQualityOutputSample*` + capacity | per-sample: writes exactly `sample_count` entries on success |
 | `compute_personal_heatmap_workout_coverage` | `const PersonalHeatmapRouteSample*` + count + scalars | `PersonalHeatmapCellIndex*` + capacity | capacity-negotiated: writes `required_cell_count` on success, nothing + count on `insufficient_output_capacity` |
 | `compute_constrained_dtw_path` | `const RouteAlignmentCostSample*` ×2 + counts + scalars | `RouteAlignmentDtwPathCell*` + capacity | writes exactly `written_path_count` on success; upper bound proven (`primary + comparison + 1`); insufficient capacity is a contract violation |
-| `detect_segment_windows` | `const SegmentDetectionSample*` + count + config | `SegmentWindowCandidate*` + capacity | **not per-sample**: writes `candidate_count` entries, bounded by `segment_detection_max_candidate_count` (5), independent of `sample_count` |
+| `detect_segment_windows` | `const SegmentDetectionSample*` + count + config | `SegmentWindowCandidate*` + capacity | **not per-sample**: writes `candidate_count` entries, bounded by `segment_detection_max_candidate_count` (10), independent of `sample_count` |
 | `build_elevation_profile` | `const ElevationProfileInputSample*` + count + policy | `ElevationProfileOutputSample*` + capacity | writes exactly `sample_count` entries on success |
 | `assign_route_metric_scale_buckets` | `const RouteMetricScaleBucketInputSample*` + count + policy | `RouteMetricScaleBucketWorkspaceSample*` (typed workspace) + `RouteMetricScaleBucketOutputSample*` + capacities | writes exactly `sample_count` output entries on success |
+| `compute_training_load` | `const TrainingLoadSample*` + count + policy | — (return value) | **summary-only**: every product is a fixed-size aggregate returned by value; no output buffer exists and an error summary carries no partial values |
 
 Geodesy primitives (`is_valid_coordinate`, `haversine_distance_meters`,
 `project_lat_lon_to_local_meters`, `earth_radius_meters`) are scalar
@@ -146,6 +150,10 @@ route-quality geometry goes through the combined kernel.
     nothing and reports the size Swift must reallocate to.
   - **Proven-bound path** — `compute_constrained_dtw_path` writes exactly
     `written_path_count`, never more than `primary + comparison + 1`.
+  - **Summary-only** — `compute_training_load` has no output buffer at all:
+    every product of the pass (TRIMP, zone seconds, coverage, counts) fits in
+    fixed-size aggregates returned by value, and an error summary is zeroed
+    except for the status.
 
 ## Pointer/lifetime audit (workstream R3)
 
@@ -184,6 +192,10 @@ contract above. Findings:
   write; writes exactly `sample_count` output entries on success. The typed
   caller-owned workspace is an eligible-pair scratch area, not a Swift callback
   or heap allocation.
+- **`compute_training_load`** (`TrainingLoad.cpp`): input-only, value-returning.
+  Rejects a null buffer with a positive count and every invalid policy before
+  the loop; a per-sample contract violation returns a zeroed summary carrying
+  only the status, so no partial accumulation escapes an error path.
 - **Geodesy primitives** (`Geodesy.cpp`): scalar value returns, no raw
   pointers; parity/test-focused.
 - **Engine identity** (`RunPlayEngine.cpp`): `engine_info()` is a value return.
@@ -208,6 +220,7 @@ symbols directly.
 | `detect_segment_windows` | `RunPlaySegmentDetectorBridge` | segment detector |
 | `build_elevation_profile` | `RunPlayElevationProfileBridge` | elevation profile builder |
 | `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketBridge` | `RouteMetricProfileBuilder` (pace/HR path) |
+| `compute_training_load` | `RunPlayTrainingLoadBridge` | training-load pass (workout analysis and library backfill) |
 | scalar geodesy | `RunPlayGeodesyBridge` | parity/tests only |
 
 Corrected-elevation route-metric finalization intentionally stays in Swift
@@ -230,6 +243,7 @@ external package consumers.
 | `detect_segment_windows` | `SegmentDetectionTests.cpp` | `SwiftSegmentDetectorOracle` | `run-segment-detector-benchmark.sh` |
 | `build_elevation_profile` | `ElevationProfileTests.cpp` | `SwiftElevationProfileOracle` | `run-elevation-profile-benchmark.sh` |
 | `assign_route_metric_scale_buckets` | `RouteMetricScaleBucketTests.cpp` | `SwiftRouteMetricScaleBucketOracle` | `run-route-metric-scale-bucket-benchmark.sh` |
+| `compute_training_load` | `TrainingLoadTests.cpp` | `RunPlayTrainingLoadBridgeTests` (hand-computed parity through the bridge) | — |
 | scalar geodesy | `GeodesyTests.cpp` | `GeoDistance.swift` | — |
 | `engine_info` | `EngineInfoTests.cpp` | — (identity only) | — |
 
@@ -251,6 +265,7 @@ runner measures and how it is invoked.
 - Segment detection: 1 native call per search.
 - Elevation profile: 1 native call per build.
 - Pace/HR scale/bucket: 1 native call per finalization.
+- Training load: 1 native call per training-load pass (analysis or backfill).
 - Corrected-elevation finalization: 0 native calls.
 - Solid-mode (no analysis) route inspection: 0 analysis-native calls.
 
@@ -265,7 +280,7 @@ counter, no lock, and no mutable diagnostic state, and `NativeCallObserver
 ## Enforcement
 
 - `scripts/validate-cpp-public-ast.py` holds the approved-pointer allow-list
-  (7 pointer-bearing functions) and rejects any other public raw pointer,
+  (8 pointer-bearing functions) and rejects any other public raw pointer,
   non-`noexcept` callable, or exposed standard-library container type.
 - `scripts/validate-cpp-boundaries.sh` asserts each C++ symbol is invoked only
   from its designated bridge, that bridges stay under `Interop`, and that no
