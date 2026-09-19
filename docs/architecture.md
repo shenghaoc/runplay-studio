@@ -625,6 +625,45 @@ as of session version 4; older sessions decode with the entire-library
 default and the validator repairs dangling scope collections and unknown
 destinations.
 
+### Heart-rate training load
+
+Per-workout training load is a stored analysis product; the fitness/fatigue
+rollup over the library is derived and never persisted.
+
+| Layer | Responsibility |
+| --- | --- |
+| **RunPlayEngineCpp** | One summary-only bulk call per measured pass: interval-weighted Banister TRIMP, five-zone seconds, and coverage aggregates |
+| **RunPlayCore** | `AthleteProfile` (optional birth year, resting/max HR, custom zone bounds, coefficient set) with `FileAthleteProfileStore` at `<library-root>/athlete-profile.json`; `EffectiveTrainingLoadProfile` derivation (measured max wins, else Tanaka `208 − 0.7 × age`, else population default — always disclosed); `TrainingLoadCalculator` interval construction and measured-vs-estimated policy; `TrainingLoadSnapshot` on `RunWorkout.trainingLoad`; the resumable store-actor backfill |
+| **RunPlayPlatform** | None |
+| **RunPlayStudio** | Backfill orchestration and disclosure (layered in with the consuming workspace) |
+
+Semantics:
+
+- **Interval weights are active-time semantics.** The calculator builds one
+  interval per adjacent same-segment point pair; an interval's rate is the
+  mean of its endpoints when both are valid (30–230 bpm), and recording gaps
+  or pauses spanning a segment boundary contribute no weight at all.
+- **Measured requires real coverage.** Valid heart-rate time must reach both
+  300 seconds and half the covered active time; otherwise the load is an
+  estimate. Zone seconds and mean rate exist only on measured loads.
+- **Estimates are labelled, conservative, and never silent.** The estimator
+  maps average pace onto an assumed heart-rate reserve banded from 0.30 to a
+  0.75 cap (duration-only floor 0.50 when pace is unusable); the assumed
+  reserve and basis are stored on the snapshot. The bands deliberately
+  understate hard strapless efforts rather than inflating load.
+- **`analysisVersion` is unchanged.** `trainingLoad` follows the records
+  pattern: absence is the backfill marker, and a present snapshot whose
+  stored `profile` differs from the current `AthleteProfile` is the stale
+  marker. One rule covers both, drives the same resumable
+  `WorkoutLibraryStoreActor.backfillTrainingLoad` pass (yields between
+  workouts, cancellation keeps completed snapshots and never counts as a
+  failure), and leaves `loadLibrary` untouched. Importers and load-time
+  migration analyze with the default profile; those snapshots are stale by
+  exactly this rule whenever the user configures a profile.
+- **The profile is local-only.** It is the only Core-owned persistence
+  besides the library store, and a corrupt file falls back to the default
+  profile rather than blocking anything.
+
 ### Route grouping (Routes workspace)
 
 Automatic route grouping clusters runs that follow substantially the same

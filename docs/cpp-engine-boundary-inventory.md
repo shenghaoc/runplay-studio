@@ -265,7 +265,8 @@ runner measures and how it is invoked.
 - Segment detection: 1 native call per search.
 - Elevation profile: 1 native call per build.
 - Pace/HR scale/bucket: 1 native call per finalization.
-- Training load: 1 native call per training-load pass (analysis or backfill).
+- Training load: 1 native call per measured training-load pass; estimated
+  loads are Swift scalar arithmetic and make 0 native calls.
 - Corrected-elevation finalization: 0 native calls.
 - Solid-mode (no analysis) route inspection: 0 analysis-native calls.
 

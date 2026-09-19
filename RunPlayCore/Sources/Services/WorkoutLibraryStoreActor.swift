@@ -767,6 +767,148 @@ public actor WorkoutLibraryStoreActor {
         )
     }
 
+    // MARK: - Training load backfill
+
+    /// One training-load backfill step, reported after each workout so
+    /// callers can apply updated snapshots incrementally.
+    public struct TrainingLoadBackfillUpdate: Sendable, Equatable {
+        public let completedCount: Int
+        public let totalCount: Int
+        public let currentWorkoutName: String
+        /// The freshly computed snapshot to apply in memory, or `nil` when
+        /// this workout already carried a current load and was only counted.
+        public let computedWorkout: RunWorkout?
+
+        public init(
+            completedCount: Int,
+            totalCount: Int,
+            currentWorkoutName: String,
+            computedWorkout: RunWorkout?
+        ) {
+            self.completedCount = completedCount
+            self.totalCount = totalCount
+            self.currentWorkoutName = currentWorkoutName
+            self.computedWorkout = computedWorkout
+        }
+    }
+
+    /// Final totals for one training-load backfill pass.
+    public struct TrainingLoadBackfillResult: Sendable, Equatable {
+        public let computedCount: Int
+        public let skippedCount: Int
+        /// Workouts a compute failure left with their previous (or absent)
+        /// load. A cancelled pass never adds to this.
+        public let failedCount: Int
+        public let saveFailureCount: Int
+
+        public init(
+            computedCount: Int,
+            skippedCount: Int,
+            failedCount: Int,
+            saveFailureCount: Int
+        ) {
+            self.computedCount = computedCount
+            self.skippedCount = skippedCount
+            self.failedCount = failedCount
+            self.saveFailureCount = saveFailureCount
+        }
+    }
+
+    /// Compute and persist the heart-rate training load for every library
+    /// workout whose snapshot is missing one or carries a stale profile.
+    ///
+    /// One rule covers both targets: a snapshot is current when its stored
+    /// `trainingLoad.profile` equals `profile`; absence and a profile
+    /// mismatch both mean recompute. New imports and re-analyzed snapshots
+    /// already carry a load from the analysis pass (computed with the
+    /// analyzer's profile), so after a profile change those loads are stale
+    /// by exactly this rule and the pass corrects them. It is idempotent,
+    /// cooperative — the calling task's cancellation is checked before every
+    /// workout and inside each compute — and yields between workouts so
+    /// library operations interleave. Cancellation is never counted as a
+    /// failure: completed snapshots stay saved, the interrupted workout
+    /// keeps its previous marker, and the pass resumes. It never runs during
+    /// library load; callers trigger it explicitly.
+    public func backfillTrainingLoad(
+        profile: AthleteProfile,
+        referenceYear: Int = Calendar.current.component(.year, from: Date()),
+        progress: (@Sendable (TrainingLoadBackfillUpdate) -> Void)? = nil
+    ) async -> TrainingLoadBackfillResult {
+        let workoutIDs = (try? loadOrCreateManifest())?.workoutIDs ?? []
+        var computed = 0
+        var skipped = 0
+        var failed = 0
+        var saveFailures = 0
+
+        for (index, workoutID) in workoutIDs.enumerated() {
+            if Task.isCancelled { break }
+
+            await Task.yield()
+            if Task.isCancelled { break }
+
+            guard var workout = try? store.loadWorkout(id: workoutID) else {
+                failed += 1
+                continue
+            }
+            let name = workout.displayName
+            if workout.trainingLoad?.isCurrent(for: profile) == true {
+                skipped += 1
+                progress?(TrainingLoadBackfillUpdate(
+                    completedCount: index + 1,
+                    totalCount: workoutIDs.count,
+                    currentWorkoutName: name,
+                    computedWorkout: nil
+                ))
+                continue
+            }
+
+            do {
+                let load = try TrainingLoadCalculator.compute(
+                    routePoints: workout.routePoints,
+                    activeSeconds: workout.summary.totalActiveSeconds,
+                    averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
+                        ? workout.summary.averageSpeedMetersPerSecond
+                        : nil,
+                    profile: profile,
+                    referenceYear: referenceYear,
+                    isCancelled: { Task.isCancelled }
+                )
+                workout.trainingLoad = load
+            } catch is CancellationError {
+                // Not a failure: the previous marker stays, everything
+                // already saved stays, and the next pass resumes here.
+                break
+            } catch {
+                // Leave the previous (or absent) load so a later pass
+                // retries this workout.
+                failed += 1
+                continue
+            }
+
+            do {
+                try store.saveWorkout(workout)
+            } catch {
+                // Keep the in-memory update applicable but disclose that
+                // the disk snapshot is still stale; the next pass retries.
+                saveFailures += 1
+            }
+            computed += 1
+            progress?(TrainingLoadBackfillUpdate(
+                completedCount: index + 1,
+                totalCount: workoutIDs.count,
+                currentWorkoutName: name,
+                computedWorkout: workout
+            ))
+        }
+
+        return TrainingLoadBackfillResult(
+            computedCount: computed,
+            skippedCount: skipped,
+            failedCount: failed,
+            saveFailureCount: saveFailures
+        )
+    }
+
     // MARK: - Route groups
 
     /// Read-only organization snapshot of the persisted manifest. Returns
