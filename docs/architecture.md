@@ -73,9 +73,10 @@ RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
 engine identity (`runplay::engine_info`), a route value and inspection
 contract, allocation-free geodesy primitives, the production combined
 route-quality geometry
-kernel, the production per-workout personal heatmap coverage kernel, and the
-production constrained-DTW path solver for Route-Aware comparison, and the
-production SegmentDetector window-search kernel:
+kernel, the production per-workout personal heatmap coverage kernel, the
+production constrained-DTW path solver for Route-Aware comparison, the
+production SegmentDetector window-search kernel, and the production
+heart-rate training-load kernel:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -260,6 +261,17 @@ Approved pointer boundaries:
   UUIDs, public `ElevationProfile`/`ElevationProfileSample` models, all
   distance-query APIs, policy ownership, cancellation, diagnostics, and
   persistence.
+- heart-rate training load: `const TrainingLoadSample*` input samples plus a
+  by-value policy — and no output pointer. Every product of the pass (Banister
+  TRIMP, five-zone seconds, valid and covered time, interval counts) returns
+  by value in `TrainingLoadSummary`; an error summary is zeroed except for the
+  status. One native call occurs per training-load pass, and cancellation is
+  cooperative Swift work around it. C++23 performs interval-weighted TRIMP
+  accumulation, heart-rate-reserve clamping, and zone bucketing. Swift
+  retains interval construction from route points (same-segment active-time
+  weights that never span a recording gap or pause), the athlete-profile
+  policy, the measured-versus-estimated decision, the estimator, public
+  models, cancellation, and persistence.
 
 #### C++ policy defaults
 
