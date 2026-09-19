@@ -3,6 +3,10 @@ import XCTest
 @testable import RunPlayCore
 @testable import RunPlayPlatform
 
+#if DEBUG
+// The synthetic preparer these tests inject is compiled only in DEBUG
+// builds (see WorkoutVideoMapPreparation.swift); guard the whole suite so
+// release-mode test builds — used by every benchmark script — still compile.
 final class WorkoutVideoMapPreparerTests: XCTestCase {
     func testSyntheticPreparerMapsOnePixelPerValidPoint() async throws {
         let workout = sampleWorkout()
@@ -254,3 +258,4 @@ final class WorkoutVideoMapPreparerTests: XCTestCase {
         return RunWorkout(routePoints: points)
     }
 }
+#endif

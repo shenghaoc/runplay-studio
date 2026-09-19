@@ -4,6 +4,10 @@ import XCTest
 import RunPlayCore
 @testable import RunPlayPlatform
 
+#if DEBUG
+// The synthetic map preparer injected throughout this suite is compiled
+// only in DEBUG builds; guard the file so release-mode test builds — used
+// by every benchmark script — still compile.
 @MainActor
 final class WorkoutVideoExportViewModelTests: XCTestCase {
     func testInitialConfigurationAndFilename() {
@@ -629,3 +633,4 @@ private actor ExportCleanupGate {
         cleanupWaiters.removeAll()
     }
 }
+#endif

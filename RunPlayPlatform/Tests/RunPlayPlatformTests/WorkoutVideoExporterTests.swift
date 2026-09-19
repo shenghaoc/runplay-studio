@@ -5,6 +5,10 @@ import XCTest
 @testable import RunPlayCore
 @testable import RunPlayPlatform
 
+#if DEBUG
+// The synthetic preparer these tests inject is compiled only in DEBUG
+// builds (see WorkoutVideoMapPreparation.swift); guard the whole suite so
+// release-mode test builds — used by every benchmark script — still compile.
 final class WorkoutVideoExporterTests: XCTestCase {
     func testUnitPolicyExportWithMatchingDuration() async throws {
         // 15 s × 10 fps = 150 frames under a raised test ceiling.
@@ -371,3 +375,4 @@ private actor EncodingPauseGate {
         releaseWaiters.removeAll()
     }
 }
+#endif
