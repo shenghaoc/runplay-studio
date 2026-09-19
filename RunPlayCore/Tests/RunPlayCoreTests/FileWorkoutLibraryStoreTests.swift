@@ -1,3 +1,9 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+
 import XCTest
 @testable import RunPlayCore
 
@@ -434,6 +440,16 @@ final class FileWorkoutLibraryStoreTests: XCTestCase {
     // MARK: - Failed Write Does Not Destroy Prior Valid Data
 
     func testFailedWorkoutWritePreservesPriorValidData() throws {
+        // Failure injection relies on POSIX permission bits: a root process
+        // (CAP_DAC_OVERRIDE) bypasses them, so the write would succeed and
+        // this test would falsely fail. Real CI runs as a non-root user.
+        try XCTSkipUnless(
+            FileWorkoutLibraryStoreTests.processIsNotRoot,
+            "root bypasses POSIX permission bits, so 0o555 cannot inject a write failure; "
+                + "run the container as a non-root user (e.g. docker -u $(id -u):$(id -g) "
+                + "with a writable HOME)"
+        )
+
         let workout = makeWorkout(name: "Original")
         try store.saveWorkout(workout)
         try store.saveManifest(WorkoutLibraryManifest(workoutIDs: [workout.id]))
@@ -640,5 +656,15 @@ final class FileWorkoutLibraryStoreTests: XCTestCase {
             WorkoutLibraryError.workoutFileMissing(UUID()),
             WorkoutLibraryError.workoutFileMissing(UUID())
         )
+    }
+
+    // MARK: - Permission-Based Failure Injection Guard
+
+    /// A root process bypasses POSIX permission bits (CAP_DAC_OVERRIDE), so a
+    /// read-only directory cannot force a write failure under root. Tests that
+    /// inject failures this way skip instead of falsely failing when
+    /// `geteuid() == 0` (typically a container run without `-u`).
+    private static var processIsNotRoot: Bool {
+        geteuid() != 0
     }
 }
