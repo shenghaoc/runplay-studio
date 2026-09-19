@@ -14,6 +14,9 @@ struct WorkoutDetailView: View {
     /// Owns metric route map lines; must not rebuild on replay ticks.
     @State private var routeMapViewModel = WorkoutRouteMapViewModel()
     @State private var announcementPolicy = AccessibilityAnnouncementPolicy()
+    /// Whole-library standing records held by this workout, recomputed only
+    /// when the library's record windows change — never on replay ticks.
+    @State private var standingRecordBadges: [StandingRecordBadge] = []
 
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
@@ -71,6 +74,10 @@ struct WorkoutDetailView: View {
                 elevationAvailable: appState.analysisContext(for: workout)
                     .elevationProfile.hasMeaningfulElevation
             )
+
+            if !standingRecordBadges.isEmpty {
+                StandingRecordsBadgesRow(badges: standingRecordBadges)
+            }
 
             Divider()
 
@@ -136,9 +143,14 @@ struct WorkoutDetailView: View {
         }
         .onAppear {
             refreshRouteMapModel()
+            refreshStandingRecordBadges()
+        }
+        .onChange(of: appState.personalRecordsLibraryRevision) { _, _ in
+            refreshStandingRecordBadges()
         }
         .onChange(of: workout.id) { _, _ in
             refreshRouteMapModel()
+            refreshStandingRecordBadges()
         }
         .onChange(of: workout.routePoints.count) { _, _ in
             refreshRouteMapModel()
@@ -158,6 +170,35 @@ struct WorkoutDetailView: View {
         routeMapViewModel.update(
             workout: workout,
             analysisContext: appState.analysisContext(for: workout)
+        )
+    }
+
+    /// The active record-window highlight, when it belongs to this workout.
+    private var highlightedRangeMeters: ClosedRange<Double>? {
+        guard let range = appState.highlightedWorkoutRange,
+              range.workoutID == workout.id else {
+            return nil
+        }
+        return range.startDistanceMeters...range.endDistanceMeters
+    }
+
+    /// Segment panel rows: the detected highlights plus any long record
+    /// window this run actually attempted (1 mile and up). Windows shorter
+    /// than that already appear as their own segment kinds; windows longer
+    /// than the run are not attempted and never shown.
+    private var segmentPanelHighlights: [SegmentHighlight] {
+        let rows = appState.detectedSegments
+            + LongRecordSegmentRow.rows(for: workout.personalRecords)
+        return rows.sorted { $0.displayPriority < $1.displayPriority }
+    }
+
+    /// Whole-library standing records held by this workout. By design a run
+    /// whose record was later beaten shows nothing here — its history lives
+    /// in the Records workspace progression.
+    private func refreshStandingRecordBadges() {
+        standingRecordBadges = StandingRecordBadge.standingBadges(
+            forWorkoutID: workout.id,
+            workouts: appState.workouts
         )
     }
 
@@ -206,7 +247,8 @@ struct WorkoutDetailView: View {
                 workout: workout,
                 currentPointIndex: replayController.state.currentPointIndex,
                 mapViewModel: routeMapViewModel,
-                displayMode: mapDisplayModeBinding
+                displayMode: mapDisplayModeBinding,
+                highlightedRangeMeters: highlightedRangeMeters
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
@@ -218,7 +260,8 @@ struct WorkoutDetailView: View {
                 onSeek: { distance in
                     replayController.pause()
                     replayController.seekToDistance(distance)
-                }
+                },
+                highlightedRangeMeters: highlightedRangeMeters
             )
             .padding(.vertical, AppDesign.Spacing.large)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -238,7 +281,7 @@ struct WorkoutDetailView: View {
             .panelBackground()
         case .segments:
             SegmentHighlightsPanel(
-                segments: appState.detectedSegments,
+                segments: segmentPanelHighlights,
                 selectedSegment: $appState.selectedSegment,
                 onSelect: { segment in
                     seekToSegment(segment)
@@ -286,6 +329,122 @@ struct WorkoutDetailView: View {
 }
 
 // MARK: - Extracted Static Subviews
+
+/// Segment-panel rows contributed by a run's long record windows (1 mile and
+/// up). Extracted as a pure function so the row identity and ordering rules
+/// are unit-testable without rendering the view.
+enum LongRecordSegmentRow {
+
+    /// Display priority of the first long record window, after the five
+    /// detected segment kinds (1...5).
+    static let firstDisplayPriority = 6
+
+    static func rows(for records: WorkoutPersonalRecords?) -> [SegmentHighlight] {
+        guard let records else { return [] }
+        // Shortest window first, one display priority each: a shared priority
+        // would leave their order to a sort that is not guaranteed stable.
+        let windows = records.windows
+            .filter(\.category.isLongRecordWindow)
+            .sorted {
+                ($0.category.nominalWindowDistanceMeters ?? 0)
+                    < ($1.category.nominalWindowDistanceMeters ?? 0)
+            }
+        return windows.enumerated().map { offset, window in
+            SegmentHighlight(
+                // The stored window id, so a row keeps one identity across
+                // body evaluations. A fresh UUID per evaluation re-creates
+                // the ForEach rows on every replay tick and drops the panel
+                // selection.
+                id: window.id,
+                type: .custom,
+                title: window.category.displayName,
+                subtitle: DisplayFormatter.formatPace(window.paceSecondsPerKilometer),
+                startDistanceMeters: window.startDistanceMeters,
+                endDistanceMeters: window.endDistanceMeters,
+                startElapsedSeconds: window.startElapsedSeconds,
+                endElapsedSeconds: window.endElapsedSeconds,
+                durationSeconds: window.activeSeconds,
+                distanceMeters: window.endDistanceMeters - window.startDistanceMeters,
+                paceSecondsPerKilometer: window.paceSecondsPerKilometer,
+                averageHeartRate: window.averageHeartRateBPM,
+                sourcePointRange: window.sourcePointRange,
+                displayPriority: firstDisplayPriority + offset
+            )
+        }
+    }
+}
+
+/// One whole-library standing record held by the shown workout.
+struct StandingRecordBadge: Identifiable, Equatable {
+    let category: PersonalRecordCategory
+    let valueText: String
+
+    var id: PersonalRecordCategory { category }
+
+    /// Whole-library standing records held by one workout, formatted for the
+    /// Overview chips. Extracted as a pure function so the chip semantics
+    /// (current holders only; equal-valued ties keep the earlier holder) are
+    /// unit-testable without rendering the view.
+    static func standingBadges(
+        forWorkoutID workoutID: UUID,
+        workouts: [RunWorkout]
+    ) -> [StandingRecordBadge] {
+        let snapshot = PersonalRecordsAggregator.aggregate(workouts: workouts)
+        var badges: [StandingRecordBadge] = []
+        for (category, effort) in snapshot.currentHolders
+        where effort.workoutID == workoutID {
+            let valueText: String
+            if category.isPaceWindow {
+                valueText = DisplayFormatter.formatPaceShort(effort.value)
+            } else if category == .biggestAscent {
+                valueText = DisplayFormatter.formatElevation(effort.value)
+            } else {
+                valueText = DisplayFormatter.formatDistanceKm(effort.value)
+            }
+            badges.append(StandingRecordBadge(
+                category: category,
+                valueText: valueText
+            ))
+        }
+        return badges.sorted { $0.category.rawValue < $1.category.rawValue }
+    }
+}
+
+/// Restrained, factual record chips shown under the workout header when this
+/// run currently holds a whole-library record. Analytical styling only —
+/// semantic metric colors, monospaced digits, no trophy art or exclamations.
+private struct StandingRecordsBadgesRow: View {
+    let badges: [StandingRecordBadge]
+
+    var body: some View {
+        HStack(spacing: AppDesign.Spacing.medium) {
+            ForEach(badges) { badge in
+                HStack(spacing: AppDesign.Spacing.xxSmall) {
+                    Image(systemName: "stopwatch")
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                    Text("\(badge.category.displayName)")
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.secondary)
+                    Text(badge.valueText)
+                        .font(AppDesign.Typography.compactLabel.weight(.semibold).monospacedDigit())
+                }
+                .padding(.horizontal, AppDesign.Spacing.medium)
+                .padding(.vertical, AppDesign.Spacing.xxSmall)
+                .background(AppDesign.panelBackground)
+                .clipShape(Capsule())
+                .help("This run currently holds the whole-library \(badge.category.displayName.lowercased()) record. Runs whose records were later beaten show no badge; their history is in the Records workspace.")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(badge.category.displayName) record")
+                .accessibilityValue(badge.valueText)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.bottom, AppDesign.Spacing.medium)
+    }
+}
 
 /// Workout metrics header — isolated from replay controller so SwiftUI skips
 /// diffing this sub-tree during 30fps playback ticks.

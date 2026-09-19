@@ -26,6 +26,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Route metric coloring** — Color the single-workout map by solid, relative pace, relative heart rate, or corrected elevation (not HR zones; comparison and heatmap palettes stay separate)
 - **Personal heatmap** — Local density map of places you run most often across the workout library (distinct workouts per cell, not GPS sample density)
 - **Trends** — Whole-library trends by ISO week, month, or year: distance, active time, run count, active pace, heart rate, and ascent, with smart-collection scoping and click-through to the runs behind each period
+- **Personal records** — Cross-library records for fastest 400 m / 1 km / 1 mile / 5 km / 10 km / half marathon / marathon windows, longest run, and biggest single-run ascent, scoped to the whole library or any All Runs filter, with per-record improvement history and click-through that opens the workout at the record window highlighted on map and charts
 - **All Runs library** — Search, filter, sort, favourite, tag, and rename runs; save smart collections as dynamic queries; the sidebar shows bounded Favourites, Recent, and Smart Collections instead of every workout
 - **Synchronized views** — Map and charts stay in sync with the timeline
 - **Route comparison** — Distance or Route-Aware (constrained DTW) alignment, elapsed/active deltas, active-pace chart, and a shared 2D/3D Apple Maps overlay

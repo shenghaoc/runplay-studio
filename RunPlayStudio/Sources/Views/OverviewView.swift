@@ -21,13 +21,17 @@ struct OverviewView: View {
     let currentPointIndex: Int
     var mapViewModel: WorkoutRouteMapViewModel?
     var displayMode: Binding<RouteMapDisplayMode> = .constant(.twoD)
+    /// Cumulative-distance window emphasized on the route (personal-record
+    /// navigation); `nil` draws no overlay.
+    var highlightedRangeMeters: ClosedRange<Double>? = nil
 
     var body: some View {
         MapReferenceView(
             routePoints: workout.routePoints,
             currentPointIndex: currentPointIndex,
             mapViewModel: mapViewModel,
-            displayMode: displayMode
+            displayMode: displayMode,
+            highlightedRangeMeters: highlightedRangeMeters
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

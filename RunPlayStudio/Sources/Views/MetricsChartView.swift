@@ -87,6 +87,9 @@ struct MetricsChartView: View {
     var currentDistance: Double = 0
     var smoothingWindow: Int = 5
     var onSeek: ((Double) -> Void)? = nil
+    /// Cumulative-distance window emphasized as a translucent band
+    /// (personal-record navigation); `nil` draws no band.
+    var highlightedRangeMeters: ClosedRange<Double>? = nil
 
     @State private var selectedMetric: MetricType = .elevation
     @State private var isDragging: Bool = false
@@ -102,13 +105,15 @@ struct MetricsChartView: View {
         elevationProfile: ElevationProfile? = nil,
         currentDistance: Double = 0,
         smoothingWindow: Int = 5,
-        onSeek: ((Double) -> Void)? = nil
+        onSeek: ((Double) -> Void)? = nil,
+        highlightedRangeMeters: ClosedRange<Double>? = nil
     ) {
         self.routePoints = routePoints
         self.elevationProfile = elevationProfile ?? ElevationProfile(routePoints: routePoints)
         self.currentDistance = currentDistance
         self.smoothingWindow = smoothingWindow
         self.onSeek = onSeek
+        self.highlightedRangeMeters = highlightedRangeMeters
     }
 
     enum MetricType: String, CaseIterable {
@@ -193,6 +198,21 @@ struct MetricsChartView: View {
                         .foregroundStyle(chartColor)
                         .interpolationMethod(.catmullRom)
                         .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+
+                    // Highlighted record-window band. Decorative emphasis of a
+                    // distance range; the spoken summary and current-value
+                    // readout remain the accessibility surface.
+                    if let highlight = highlightedRangeMeters,
+                       let yRange = highlightYRange {
+                        RectangleMark(
+                            xStart: .value("Highlight start", highlight.lowerBound / 1000),
+                            xEnd: .value("Highlight end", highlight.upperBound / 1000),
+                            yStart: .value("Highlight y start", yRange.lowerBound),
+                            yEnd: .value("Highlight y end", yRange.upperBound)
+                        )
+                        .foregroundStyle(AppDesign.primaryBlue.opacity(0.08))
+                        .accessibilityHidden(true)
                     }
 
                     // Current position indicator
@@ -457,6 +477,18 @@ struct MetricsChartView: View {
         case .heartRate: return AppDesign.MetricColor.heartRate
         case .speed: return AppDesign.MetricColor.speed
         }
+    }
+
+    /// Vertical span for the highlight band: the current metric's data range
+    /// padded so the band always covers the plotted area without distorting
+    /// the y domain.
+    private var highlightYRange: ClosedRange<Double>? {
+        let values = chartData.map(\.value).filter { $0.isFinite }
+        guard let minimum = values.min(), let maximum = values.max(), maximum > minimum else {
+            return nil
+        }
+        let padding = (maximum - minimum) * 0.05
+        return (minimum - padding)...(maximum + padding)
     }
 
     private var noDataMessage: String {

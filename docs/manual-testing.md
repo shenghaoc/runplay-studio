@@ -228,6 +228,158 @@ was pre-existing and left alone there; it is fixed, and recorded in the
 onto one shared `fillsWorkspace()` container; the pending pass noted there
 covers Trends too.
 
+## Personal Records Workspace Checklist
+
+Use only synthetic or explicitly private, ignored local workout files. Cover
+at least one run shorter than 5 km, one at or beyond marathon length, one
+with a mid-run pause, and one without heart rate.
+
+The load-bearing interactions (gap-split highlight geometry, strict-improvement
+chip semantics, scoped re-ranking, backfill resume, seek-on-open) are covered
+by `RouteMapHighlightTests`, `StandingRecordBadgeTests`, `PersonalRecordsTests`,
+and `PersonalRecordsWorkspaceTests`; this pass verifies them visually plus the
+layout, timing, and VoiceOver behaviour automation cannot.
+
+### Prep: synthetic fixture set
+
+Generate the four fixtures and run against a throwaway library:
+
+```bash
+python3 - << 'PY'
+import json, datetime, os
+out = "/tmp/runplay-records-fixtures"
+os.makedirs(out, exist_ok=True)
+
+def route(total_m, s100, y, mo, d, hr=None, alt=None, pause_at=None, reloc=0.0):
+    t0 = datetime.datetime(y, mo, d)
+    pts, elapsed, seg = [], 0, 0
+    for i in range(total_m // 100 + 1):
+        dist = i * 100
+        lat = 37.70 + (reloc + (dist - (pause_at or 0)) / 111_000 if seg else dist / 111_000)
+        p = {"timestamp": (t0 + datetime.timedelta(seconds=elapsed)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "latitude": round(lat, 6), "longitude": round(-122.42 + dist / 90_000, 6),
+             "distanceFromStartMeters": dist, "elapsedSeconds": elapsed, "routeSegmentIndex": seg}
+        if hr: p["heartRateBPM"] = hr
+        if alt is not None: p["altitudeMeters"] = alt + dist / 1000 * 8
+        pts.append(p)
+        if pause_at and dist == pause_at and dist < total_m:
+            elapsed += 600; seg += 1
+        if dist < total_m: elapsed += s100
+    return pts
+
+def write(name, pts, y, mo, d):
+    json.dump({"metadata": {"name": name, "activityType": "running",
+                "startDate": f"{y:04d}-{mo:02d}-{d:02d}T07:30:00Z"},
+               "source": "json", "routePoints": pts},
+              open(f"{out}/{name}.json", "w"))
+
+write("city_marathon", route(42300, 25, 2026, 9, 13, hr=160, alt=20), 2026, 9, 13)   # 250 s/km
+write("first_marathon", route(42300, 26, 2026, 3, 15, hr=150, alt=20), 2026, 3, 15)  # 260 s/km, beaten
+write("trail_12k", route(12000, 24, 2026, 8, 20, hr=170, alt=50, pause_at=5000, reloc=0.5), 2026, 8, 20)
+write("morning_3k", route(3000, 23, 2026, 9, 1), 2026, 9, 1)                          # no HR, no ascent
+PY
+
+BIN=$(swift build --show-bin-path)
+./scripts/assemble-app-bundle.sh --output /tmp/dev/RunPlayStudio.app \
+  --bundle-identifier dev.local.runplay.records --skip-build --bin-dir "$BIN"
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-records-check open \
+  --env RUNPLAY_LIBRARY_ROOT=/tmp/runplay-records-check -a /tmp/dev/RunPlayStudio.app
+```
+
+Import the four JSON files (File → Import File…, ⌘I). To rehearse the
+backfill, quit, strip the marker from every saved snapshot, and relaunch:
+
+```bash
+python3 - << 'PY'
+import json, glob
+for path in glob.glob("/tmp/runplay-records-check/workouts/*.json"):
+    doc = json.load(open(path))
+    doc.pop("personalRecords", None)
+    json.dump(doc, open(path, "w"))
+PY
+```
+
+### Checks
+
+- [x] Records opens from the Library sidebar section (or Library → Records /
+      ⌘⇧P) with the table populated after the imports above.
+- [ ] Against the stripped snapshots, the first Records open runs the inline
+      backfill: determinate progress with a current-workout name, counted
+      against the whole library from the first frame (the denominator never
+      jumps); Cancel keeps completed runs and leaves no error banner behind;
+      a later open resumes and finishes without duplicating work. Watch an
+      open workout detail while a backfill runs: no per-workout badge
+      recompute churn (the revision bumps once per pass).
+- [x] Records fits the 720×500 minimum window: header, scope picker, backfill
+      banner, and table remain visible and usable.
+- [x] Morning 3K shows "—" / Not attempted for 5 km and everything longer —
+      never a zero pace; its rows have no HR value (em dash).
+- [x] With All Runs showing a search or smart collection, switching Records
+      scope re-ranks the tables (equal efforts keep the earlier holder).
+- [x] Select a row: the improvement history lists set-or-beat events (newest
+      first, at most 10) with dates and values.
+- [x] On Trail 12K, open the Fastest 10 km record: the workout opens on
+      Overview, replay seeks to the window start, the map shows the heavier
+      same-hue overlay **split at the pause** (two segments, no corridor
+      across the relocation), and the Charts tab shows the translucent band
+      over the same distance range on the pace chart.
+- [x] Selecting another workout clears the range highlight; relaunching does
+      not restore it.
+- [x] City Marathon shows the factual chips under the header; First Marathon
+      (beaten pace records, tied distance/ascent) shows only the chips it
+      still holds — beaten categories show none, by design.
+- [x] The Segments tab lists the original five highlights plus Trail 12K's
+      long record windows (1 mile and up), shortest window first; Morning 3K
+      shows none beyond the mile. Select a record row and let replay run: the
+      selection stays on that row and the list does not reorder.
+- [ ] Keyboard and VoiceOver: table selection plus View Workout and history
+      rows are reachable without a pointer; the spoken Records summary
+      announces standing records and not-attempted categories; ⌘⇧P appears
+      in Help → Keyboard Shortcuts.
+- [x] Relaunch with Records as the last workspace; destination and scope
+      restore.
+
+### 2026-09-18 pass
+
+Driven through Computer Use against the four synthetic fixtures above,
+launched from an `assemble-app-bundle.sh` bundle with `RUNPLAY_LIBRARY_ROOT`
+pointed at a throwaway library (the developer library was never opened).
+
+Verified: Records opens from the sidebar with the full nine-row table; Morning
+3K's not-attempted distances and its HR column render as em dashes with no
+zero pace; the scope picker re-ranks (a "marathon" All Runs search rescoped to
+two runs, and the tied Longest Run / Biggest Ascent stayed with the earlier
+First Marathon holder); the improvement-history inspector lists strict-set
+events newest-first with dates and values; the Fastest 10 km click-through
+opens Trail 12K on Overview, seeks replay to the window start, and draws the
+map overlay **split into two segments with nothing across the relocation**,
+with the Charts band ending exactly at the 10 km window edge and the trace
+breaking at the recording gap; selecting another workout clears the overlay
+(and relaunch does not restore it — the session JSON carries no highlight);
+City Marathon shows only Fastest Half Marathon / Fastest Marathon while First
+Marathon shows only its tied ascent and longest-run chips; the Segments tab
+appends attempted long windows shortest-first (Trail 12K through 10 km, City
+Marathon through the marathon, Morning 3K none beyond the mile) and keeps its
+selection and order while replay runs; ⌘⇧P is listed in Help → Keyboard
+Shortcuts and arrow keys move the table selection with View Workout and the
+history rows exposed as buttons; Records restores as the last workspace with
+its persisted scope (session JSON is version 4). The one-off backfill was
+exercised by stripping the `personalRecords` marker from all four snapshots
+and relaunching: the records recomputed and were written back to disk with
+their original window counts.
+
+Not verified here and left unchecked: the inline backfill progress banner,
+its Cancel, and resume — four synthetic fixtures backfill in milliseconds, too
+fast to observe the transient banner, so the progress/Cancel/resume/no-churn
+behaviour is left to `PersonalRecordsWorkspaceTests`; and a spoken VoiceOver
+pass of the Records summary (keyboard reachability and the AX button/label
+structure were inspected, but no VoiceOver spoken pass was run, per this
+document's standing rule). Light appearance could not be exercised: this
+scratch debug bundle rendered dark regardless of the system Light setting
+(app-wide, not Records-specific); dark mode was verified thoroughly. The 720×500
+pass is usable, with the trailing Workout column collapsing to "…" at that
+exact minimum width.
+
 ## Route Quality Checklist
 
 This checklist is intentionally unchecked. It defines the required GUI pass

@@ -44,6 +44,10 @@ public enum RouteMapLineStyle: Hashable, Sendable {
     case primary
     case comparison
     case metric(mode: WorkoutRouteColorMode, bucket: RouteMetricColorBucket)
+    /// Emphasis overlay for a sub-range of the primary route (a personal
+    /// record window). Rendered on top of the primary line in the same hue
+    /// family at a heavier weight; never a new semantic color.
+    case highlight
 }
 
 /// A route line for map display.
@@ -190,6 +194,120 @@ public enum RouteMapContent {
         }
 
         return lines
+    }
+
+    /// One `highlight` line per route segment covered by a cumulative
+    /// distance window, so an emphasis overlay for a personal-record window
+    /// never bridges a recording gap geographically.
+    ///
+    /// Boundaries that fall strictly inside a segment are interpolated so the
+    /// overlay matches the window exactly; boundaries that fall inside a gap
+    /// clamp to that gap's edge. Returns an empty array when fewer than two
+    /// coordinates fall inside the window.
+    public static func highlightedRangeLines(
+        idPrefix: String,
+        points: [RoutePoint],
+        startDistanceMeters: Double,
+        endDistanceMeters: Double
+    ) -> [RouteMapLine] {
+        guard points.count >= 2,
+              startDistanceMeters.isFinite,
+              endDistanceMeters.isFinite,
+              endDistanceMeters > startDistanceMeters else {
+            return []
+        }
+
+        struct Sample {
+            let coordinate: RouteMapCoordinate
+            let segment: Int
+            let distance: Double
+        }
+
+        var samples: [Sample] = []
+        for point in points {
+            let distance = point.distanceFromStartMeters
+            guard distance >= startDistanceMeters, distance <= endDistanceMeters,
+                  let coordinate = RouteMapCoordinate(point) else {
+                continue
+            }
+            samples.append(Sample(
+                coordinate: coordinate,
+                segment: point.routeSegmentIndex,
+                distance: distance
+            ))
+        }
+
+        // Interpolated boundary samples, only when the bracketing points lie
+        // in one segment (a boundary inside a gap clamps to the gap edge).
+        for boundary in [startDistanceMeters, endDistanceMeters] {
+            if let interpolated = interpolatedSample(at: boundary, points: points) {
+                samples.append(Sample(
+                    coordinate: interpolated.coordinate,
+                    segment: interpolated.segment,
+                    distance: interpolated.distance
+                ))
+            }
+        }
+
+        samples.sort { $0.distance < $1.distance }
+        guard samples.count >= 2 else { return [] }
+
+        var lines: [RouteMapLine] = []
+        var currentCoords: [RouteMapCoordinate] = []
+        var currentSegment = samples[0].segment
+        for sample in samples {
+            if sample.segment != currentSegment {
+                if currentCoords.count >= 2 {
+                    lines.append(RouteMapLine(
+                        id: "\(idPrefix)-highlight-seg-\(currentSegment)",
+                        coordinates: currentCoords,
+                        style: .highlight
+                    ))
+                }
+                currentSegment = sample.segment
+                currentCoords = []
+            }
+            currentCoords.append(sample.coordinate)
+        }
+        if currentCoords.count >= 2 {
+            lines.append(RouteMapLine(
+                id: "\(idPrefix)-highlight-seg-\(currentSegment)",
+                coordinates: currentCoords,
+                style: .highlight
+            ))
+        }
+        return lines
+    }
+
+    /// Linear lat/lon interpolation of one window boundary. The bracketing
+    /// points must share a route segment; a boundary inside a gap returns
+    /// `nil` (no synthetic cross-gap sample).
+    private static func interpolatedSample(
+        at distance: Double,
+        points: [RoutePoint]
+    ) -> (coordinate: RouteMapCoordinate, segment: Int, distance: Double)? {
+        guard let afterIndex = RoutePointInterpolator.firstIndex(atOrAfter: distance, in: points) else {
+            return nil
+        }
+        // Exact hit needs no interpolation.
+        if points[afterIndex].distanceFromStartMeters == distance {
+            return nil
+        }
+        guard afterIndex > 0 else { return nil }
+        let before = points[afterIndex - 1]
+        let after = points[afterIndex]
+        guard before.routeSegmentIndex == after.routeSegmentIndex else {
+            return nil
+        }
+        let span = after.distanceFromStartMeters - before.distanceFromStartMeters
+        guard span > 0 else { return nil }
+        let fraction = max(0, min(1, (distance - before.distanceFromStartMeters) / span))
+        let latitude = before.latitude + (after.latitude - before.latitude) * fraction
+        let longitude = before.longitude + (after.longitude - before.longitude) * fraction
+        guard let coordinate = RouteMapCoordinate(latitude: latitude, longitude: longitude) else {
+            return nil
+        }
+        return (coordinate, before.routeSegmentIndex, distance)
     }
 
     public static func endpointMarkers(

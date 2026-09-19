@@ -13,11 +13,17 @@ struct MapReferenceView: View {
     var showAnnotations: Bool = true
     /// When non-nil, drives metric route coloring. Solid primary color otherwise.
     var mapViewModel: WorkoutRouteMapViewModel?
+    /// Optional cumulative-distance window emphasized on the route
+    /// (personal-record navigation). Highlight lines are cached so replay
+    /// ticks never re-slice route points.
+    var highlightedRangeMeters: ClosedRange<Double>? = nil
 
     @AppStorage("routeColorMode") private var storedColorModeRaw: String = WorkoutRouteColorMode.solid.rawValue
     @Binding private var displayMode: RouteMapDisplayMode
     @State private var fitRequest = 0
     @State private var presentationRequest = 0
+    @State private var highlightLines: [RouteMapLine] = []
+    @State private var appliedHighlightKey: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -25,13 +31,15 @@ struct MapReferenceView: View {
         currentPointIndex: Int = 0,
         showAnnotations: Bool = true,
         mapViewModel: WorkoutRouteMapViewModel? = nil,
-        displayMode: Binding<RouteMapDisplayMode> = .constant(.twoD)
+        displayMode: Binding<RouteMapDisplayMode> = .constant(.twoD),
+        highlightedRangeMeters: ClosedRange<Double>? = nil
     ) {
         self.routePoints = routePoints
         self.currentPointIndex = currentPointIndex
         self.showAnnotations = showAnnotations
         self.mapViewModel = mapViewModel
         self._displayMode = displayMode
+        self.highlightedRangeMeters = highlightedRangeMeters
     }
 
     private var currentDistanceMeters: Double? {
@@ -56,10 +64,14 @@ struct MapReferenceView: View {
     }
 
     private var routes: [RouteMapLine] {
+        var lines: [RouteMapLine]
         if let presentation = mapViewModel?.presentation, !presentation.lines.isEmpty {
-            return presentation.lines
+            lines = presentation.lines
+        } else {
+            lines = RouteMapContent.segmentedRoutes(idPrefix: "route", points: routePoints, style: .primary)
         }
-        return RouteMapContent.segmentedRoutes(idPrefix: "route", points: routePoints, style: .primary)
+        lines.append(contentsOf: highlightLines)
+        return lines
     }
 
     private var markers: [RouteMapMarker] {
@@ -125,10 +137,38 @@ struct MapReferenceView: View {
         ))
         .onAppear {
             syncPreferredMode()
+            syncHighlightLines()
         }
         .onChange(of: storedColorModeRaw) { _, _ in
             syncPreferredMode()
         }
+        .onChange(of: highlightedRangeMeters) { _, _ in
+            syncHighlightLines()
+        }
+        .onChange(of: routePoints.count) { _, _ in
+            syncHighlightLines()
+        }
+    }
+
+    /// Re-slices the highlight overlay only when the window or route payload
+    /// changes; the 30 fps replay ticks never pay for it.
+    private func syncHighlightLines() {
+        let key = [
+            highlightedRangeMeters.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none",
+            "\(routePoints.count)"
+        ].joined(separator: "|")
+        guard key != appliedHighlightKey else { return }
+        appliedHighlightKey = key
+        guard let range = highlightedRangeMeters else {
+            highlightLines = []
+            return
+        }
+        highlightLines = RouteMapContent.highlightedRangeLines(
+            idPrefix: "route",
+            points: routePoints,
+            startDistanceMeters: range.lowerBound,
+            endDistanceMeters: range.upperBound
+        )
     }
 
     private var legendBottomInset: CGFloat {
