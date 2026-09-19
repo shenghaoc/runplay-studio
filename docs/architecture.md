@@ -680,6 +680,13 @@ clusters into the group. Because it never depends on join order,
 chronological incremental assignment and a full re-cluster produce
 identical partitions.
 
+**Durability and revision discipline.** A workout's assignment record is
+the nil marker: *absence* means assignment has not run and a later pass
+picks it up (the records-backfill argument); a present record with a `nil`
+group ID means evaluated and deliberately ungrouped (below participation
+minimums, or removed by the user — never auto re-added). Deletion repairs
+membership transactionally in the store actor.
+
 **Naming.** No geocoding — the privacy model forbids it. Unnamed groups
 derive a descriptive default from the representative's own geometry
 ("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure).
