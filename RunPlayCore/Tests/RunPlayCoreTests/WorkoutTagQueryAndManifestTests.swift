@@ -98,10 +98,10 @@ final class WorkoutTagQueryAndManifestTests: XCTestCase {
         )
     }
 
-    func testMigratePromotesToVersion3() {
+    func testMigratePromotesToVersion4() {
         var manifest = WorkoutLibraryManifest(version: 1, workoutIDs: [UUID()])
         manifest.migrateToCurrentVersionIfNeeded()
-        XCTAssertEqual(manifest.version, 3)
+        XCTAssertEqual(manifest.version, 4)
     }
 
     func testRepairRemovesMissingWorkoutAssignments() {
@@ -172,7 +172,7 @@ final class WorkoutTagQueryAndManifestTests: XCTestCase {
         }
     }
 
-    func testFileStoreLoadsV1AndSavesV3() throws {
+    func testFileStoreLoadsV1AndSavesV4() throws {
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("ManifestTagV1-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: temp) }
@@ -188,7 +188,7 @@ final class WorkoutTagQueryAndManifestTests: XCTestCase {
         XCTAssertEqual(loaded.version, WorkoutLibraryManifest.currentVersion)
         try store.saveManifest(loaded)
         let reloaded = try store.loadManifest()
-        XCTAssertEqual(reloaded.version, 3)
+        XCTAssertEqual(reloaded.version, 4)
         XCTAssertTrue(reloaded.tags.isEmpty)
     }
 
