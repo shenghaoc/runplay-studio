@@ -19,6 +19,10 @@ build/
 
 # Swift Package Manager
 .build/
+# Separate scratch path for the Linux container check (AGENTS.md), kept
+# apart from .build so container runs and host macOS builds do not
+# invalidate each other's caches.
+.build-linux/
 .swiftpm/
 Packages/
 Package.pins

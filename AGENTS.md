@@ -373,12 +373,42 @@ git diff --check
 ```
 
 RunPlayCore changes must verify the Linux build in a container before
-pushing — e.g. `docker run --rm -v "$PWD":/src -w /src swift:6.3-jammy
-swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors` —
-using the Swift version the Linux CI job verifies. Platform-API
-assumptions that look correct on macOS (`String(localized:defaultValue:)`,
-Mach VM probes) do not exist on corelibs-foundation; the container catches
-them before they burn a CI cycle.
+pushing, using the Swift version the Linux CI job verifies. Two properties
+are mandatory whatever container tool the host provides:
+
+1. The container user must be non-root and must own the mounted sources.
+   The default container user is root, and root bypasses POSIX permission
+   bits (CAP_DAC_OVERRIDE): filesystem-permission failure injection (for
+   example a 0o555 read-only directory) then never fails, and tests report
+   false "did not throw" failures.
+2. HOME must be writable. A non-root uid has no passwd entry, so HOME
+   resolves to `/` and SwiftPM fails with `invalid access to
+   /.cache/org.swift.swiftpm`; `-e HOME=/tmp` fixes it.
+
+docker (rootful; `-u` maps directly to the invoking host user):
+
+```text
+docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/src -w /src swift:6.3-jammy swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+```
+
+Caveat: this docker form is unverified (only the podman form below has
+been executed); drop this caveat once someone runs it successfully.
+
+rootless podman (`-u` would select a subordinate uid that does not own the
+mount; `--userns=keep-id` keeps the container uid equal to the host uid.
+On SELinux-enforcing hosts both tools need `:Z` on the volume):
+
+```text
+podman run --rm --userns=keep-id -e HOME=/tmp -v "$PWD":/src:Z -w /src swift:6.3-jammy swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+```
+
+`--scratch-path .build-linux` keeps the Linux build tree out of `.build`
+so container runs and host macOS builds do not invalidate each other's
+caches (alternating them would otherwise force a full rebuild each time).
+Platform-API assumptions that look correct on macOS
+(`String(localized:defaultValue:)`, Mach VM probes) do not exist on
+corelibs-foundation; the container catches them before they burn a CI
+cycle.
 
 Benchmark scripts need release-mode test builds; the CI "Release Test Build (macOS)" job guards them.
 
