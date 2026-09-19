@@ -460,6 +460,7 @@ class AppState: ObservableObject {
             selectedWorkoutID: selectedWorkout?.id,
             smartCollectionIDs: Set(smartCollections.map(\.id)),
             tagIDs: Set(tags.map(\.id)),
+            routeGroupIDs: Set(routeGroups.map(\.id)),
             replayDuration: replayController.state.totalDuration.isFinite
                 ? replayController.state.totalDuration
                 : selectedWorkout?.summary.totalElapsedSeconds,
