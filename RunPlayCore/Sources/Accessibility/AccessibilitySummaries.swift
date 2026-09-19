@@ -604,3 +604,64 @@ private func formatMetric(_ value: Double, unit: String) -> String {
     }
     return String(format: "%.2f %@", value, unit)
 }
+
+// MARK: - Personal records
+
+/// Spoken summary of the Personal Records workspace table.
+///
+/// Built from the derived `PersonalRecordsSnapshot`; announces only the
+/// standing records, never the full history, so it stays a single deliberate
+/// description rather than a per-row announcement stream.
+public struct PersonalRecordsAccessibilitySummary: Equatable, Sendable {
+    public let scopeDescription: String
+    public let snapshot: PersonalRecordsSnapshot
+
+    public init(
+        scopeDescription: String,
+        snapshot: PersonalRecordsSnapshot
+    ) {
+        self.scopeDescription = scopeDescription
+        self.snapshot = snapshot
+    }
+
+    public var spokenSummary: String {
+        var parts: [String] = [
+            "Personal records.",
+            "Scope \(scopeDescription).",
+            "\(snapshot.includedWorkoutCount) runs in scope."
+        ]
+        if snapshot.pendingBackfillWorkoutCount > 0 {
+            parts.append(
+                "\(snapshot.pendingBackfillWorkoutCount) runs still need record computation."
+            )
+        }
+        for row in snapshot.rows {
+            guard let best = row.best else {
+                parts.append("\(row.category.displayName) not attempted.")
+                continue
+            }
+            if row.category.isPaceWindow {
+                parts.append(
+                    "\(row.category.displayName) "
+                        + formatMetric(best.value, unit: "s/km")
+                        + ", set on \(spokenDate(best.date))."
+                )
+            } else if row.category == .biggestAscent {
+                parts.append(
+                    "Biggest single-run ascent \(formatMetric(best.value, unit: "m")) "
+                        + "on \(spokenDate(best.date))."
+                )
+            } else {
+                parts.append(
+                    "Longest run \(formatDistance(best.value)) "
+                        + "on \(spokenDate(best.date))."
+                )
+            }
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private func spokenDate(_ date: Date) -> String {
+        date.formatted(.dateTime.year().month(.wide).day())
+    }
+}

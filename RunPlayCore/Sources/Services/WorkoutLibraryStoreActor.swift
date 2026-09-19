@@ -579,6 +579,158 @@ public actor WorkoutLibraryStoreActor {
         activeBatch != nil
     }
 
+    // MARK: - Personal records backfill
+
+    /// One backfill step, reported after each workout so callers can apply
+    /// updated snapshots incrementally.
+    public struct PersonalRecordsBackfillUpdate: Sendable, Equatable {
+        public let completedCount: Int
+        public let totalCount: Int
+        public let currentWorkoutName: String
+        /// The freshly computed snapshot to apply in memory, or `nil` when
+        /// this workout already carried records and was only counted.
+        public let computedWorkout: RunWorkout?
+
+        public init(
+            completedCount: Int,
+            totalCount: Int,
+            currentWorkoutName: String,
+            computedWorkout: RunWorkout?
+        ) {
+            self.completedCount = completedCount
+            self.totalCount = totalCount
+            self.currentWorkoutName = currentWorkoutName
+            self.computedWorkout = computedWorkout
+        }
+    }
+
+    /// Final totals for one backfill pass.
+    public struct PersonalRecordsBackfillResult: Sendable, Equatable {
+        public let computedCount: Int
+        public let skippedCount: Int
+        /// Workouts an engine contract failure left without records. A
+        /// cancelled pass never adds to this: cancellation ends the pass and
+        /// returns the partial totals.
+        public let failedCount: Int
+        public let saveFailureCount: Int
+
+        public init(
+            computedCount: Int,
+            skippedCount: Int,
+            failedCount: Int,
+            saveFailureCount: Int
+        ) {
+            self.computedCount = computedCount
+            self.skippedCount = skippedCount
+            self.failedCount = failedCount
+            self.saveFailureCount = saveFailureCount
+        }
+    }
+
+    /// Compute and persist personal-record windows for every library workout
+    /// whose snapshot predates record computation.
+    ///
+    /// This is the one-off migration for existing libraries: new imports and
+    /// re-analyzed snapshots already carry records from the analysis pass, so
+    /// workouts with a non-`nil` `personalRecords` value are skipped and the
+    /// pass is idempotent. Progress is cooperative: the calling task's
+    /// cancellation is checked before every workout and again inside each
+    /// detection, and either one ends the pass early and returns the partial
+    /// totals rather than throwing. Cancellation is never counted as a
+    /// failure — the interrupted workout simply keeps its unset marker, and
+    /// every workout already saved stays saved, so the pass resumes. The loop
+    /// yields between workouts so other library operations are never starved.
+    /// It never runs during library load; callers trigger it explicitly (the
+    /// Records workspace starts it on first open).
+    public func backfillPersonalRecords(
+        policy: RouteQualityPolicy = .runningDefault,
+        progress: (@Sendable (PersonalRecordsBackfillUpdate) -> Void)? = nil
+    ) async -> PersonalRecordsBackfillResult {
+        let workoutIDs = (try? loadOrCreateManifest())?.workoutIDs ?? []
+        var computed = 0
+        var skipped = 0
+        var failed = 0
+        var saveFailures = 0
+
+        for (index, workoutID) in workoutIDs.enumerated() {
+            if Task.isCancelled { break }
+
+            // Yield so concurrent library operations interleave with a long
+            // backfill instead of waiting for the whole pass.
+            await Task.yield()
+            if Task.isCancelled { break }
+
+            guard var workout = try? store.loadWorkout(id: workoutID) else {
+                failed += 1
+                continue
+            }
+            let name = workout.displayName
+            if workout.personalRecords != nil {
+                skipped += 1
+                progress?(PersonalRecordsBackfillUpdate(
+                    completedCount: index + 1,
+                    totalCount: workoutIDs.count,
+                    currentWorkoutName: name,
+                    computedWorkout: nil
+                ))
+                continue
+            }
+
+            let elevationProfile = ElevationProfile(
+                routePoints: workout.routePoints,
+                policy: policy
+            )
+            let context = WorkoutAnalysisContext(
+                routePoints: workout.routePoints,
+                elevationProfile: elevationProfile
+            )
+            do {
+                let detection = try SegmentDetector.detectSegmentsAndPersonalRecords(
+                    from: workout,
+                    context: context,
+                    policy: policy,
+                    isCancelled: { Task.isCancelled }
+                )
+                workout.personalRecords = WorkoutPersonalRecords(
+                    windows: detection.records
+                )
+            } catch is CancellationError {
+                // Not a failure: the marker stays unset so the next pass
+                // recomputes this workout, and everything already saved
+                // stays saved.
+                break
+            } catch {
+                // An engine contract failure: leave this workout's marker
+                // unset so a later pass retries it.
+                failed += 1
+                continue
+            }
+
+            do {
+                try store.saveWorkout(workout)
+            } catch {
+                // Keep the in-memory update applicable but disclose that the
+                // disk snapshot is still missing records; the next launch's
+                // backfill retries it.
+                saveFailures += 1
+            }
+            computed += 1
+            progress?(PersonalRecordsBackfillUpdate(
+                completedCount: index + 1,
+                totalCount: workoutIDs.count,
+                currentWorkoutName: name,
+                computedWorkout: workout
+            ))
+        }
+
+        return PersonalRecordsBackfillResult(
+            computedCount: computed,
+            skippedCount: skipped,
+            failedCount: failed,
+            saveFailureCount: saveFailures
+        )
+    }
+
     // MARK: - Favourites
 
     /// Set or clear the favourite marker for a library workout.

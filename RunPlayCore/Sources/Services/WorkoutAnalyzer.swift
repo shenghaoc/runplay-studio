@@ -212,11 +212,15 @@ public struct WorkoutAnalyzer: Sendable {
         }
 
         try measurePhase(into: &profile, keyPath: \.segmentsNanoseconds) {
-            workout.segments = try SegmentDetector.detectSegments(
+            let detection = try SegmentDetector.detectSegmentsAndPersonalRecords(
                 from: workout,
                 context: ctx,
                 policy: policy,
                 isCancelled: isCancelled
+            )
+            workout.segments = detection.segments
+            workout.personalRecords = WorkoutPersonalRecords(
+                windows: detection.records
             )
         }
         try throwIfCancelled(isCancelled)
