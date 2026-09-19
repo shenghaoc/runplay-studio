@@ -26,9 +26,16 @@ struct RoutesView: View {
             } else {
                 HSplitView {
                     routeList
-                        .frame(minWidth: 300, idealWidth: 360)
+                        .frame(
+                            minWidth: AppDesign.WindowLayout.routeListMinWidth,
+                            idealWidth: 360
+                        )
                     routeDetail
-                        .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(
+                            minWidth: AppDesign.WindowLayout.routeDetailMinWidth,
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
                 }
             }
         }

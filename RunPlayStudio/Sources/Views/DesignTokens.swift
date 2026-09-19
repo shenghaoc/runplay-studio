@@ -98,6 +98,29 @@ enum AppDesign {
         static let xxxLarge: CGFloat = 24
     }
 
+    // MARK: - Window Layout
+
+    /// Window and split-pane minimums. A workspace's split minimums must fit
+    /// inside the window minimum alongside the navigation sidebar, or the
+    /// narrower pane is squeezed past its own minimum and its trailing
+    /// content clips off-window.
+    enum WindowLayout {
+        /// Minimum window content size declared by `ContentView`.
+        static let minimumContentWidth: CGFloat = 720
+        static let minimumContentHeight: CGFloat = 500
+        /// Width the navigation sidebar occupies at the minimum window size.
+        static let sidebarAllowance: CGFloat = 240
+
+        /// Space a workspace's own split panes may divide between them.
+        static var workspaceWidthBudget: CGFloat {
+            minimumContentWidth - sidebarAllowance
+        }
+
+        /// Routes workspace split minimums.
+        static let routeListMinWidth: CGFloat = 180
+        static let routeDetailMinWidth: CGFloat = 300
+    }
+
     // MARK: - Corner Radius
 
     enum Radius {

@@ -238,6 +238,27 @@ final class AppSessionPersistenceTests: XCTestCase {
         XCTAssertEqual(result.snapshot.heatmap.minimumWorkoutCount, 1)
     }
 
+    func testValidatorKeepsValidHeatmapRouteFilterAndDropsDangling() {
+        let knownRouteGroupID = UUID()
+        let keptResult = AppSessionValidator.validate(
+            AppSessionSnapshot(
+                heatmap: AppSessionHeatmapState(routeGroupID: knownRouteGroupID)
+            ),
+            context: AppSessionValidationContext(routeGroupIDs: [knownRouteGroupID])
+        )
+        XCTAssertFalse(keptResult.usedFallback)
+        XCTAssertEqual(keptResult.snapshot.heatmap.routeGroupID, knownRouteGroupID)
+
+        let danglingResult = AppSessionValidator.validate(
+            AppSessionSnapshot(
+                heatmap: AppSessionHeatmapState(routeGroupID: UUID())
+            ),
+            context: AppSessionValidationContext(routeGroupIDs: [knownRouteGroupID])
+        )
+        XCTAssertTrue(danglingResult.usedFallback)
+        XCTAssertNil(danglingResult.snapshot.heatmap.routeGroupID)
+    }
+
     func testValidatorFutureVersionUsesSafeDefault() {
         let selectedID = UUID()
         let result = AppSessionValidator.validate(

@@ -36,30 +36,47 @@ struct RouteGroupDetailView: View {
             }
             .padding(AppDesign.Spacing.xLarge)
         }
-        .frame(minWidth: 420, maxHeight: .infinity)
+        .frame(
+            minWidth: AppDesign.WindowLayout.routeDetailMinWidth,
+            maxHeight: .infinity
+        )
     }
 
     // MARK: - Title
 
     private func titleSection(_ row: RouteGroupRow) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
-                Text(row.displayName)
-                    .font(AppDesign.Typography.display)
-                Text(summaryLine(row))
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.secondary)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline) {
+                titleText(row)
+                Spacer()
+                renameButton(row)
             }
-            Spacer()
-            Button {
-                onRename(row)
-            } label: {
-                Label("Rename", systemImage: "pencil")
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+                titleText(row)
+                renameButton(row)
             }
-            .help("Rename this route")
-            .accessibilityLabel("Rename \(row.displayName)")
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func titleText(_ row: RouteGroupRow) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+            Text(row.displayName)
+                .font(AppDesign.Typography.display)
+            Text(summaryLine(row))
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func renameButton(_ row: RouteGroupRow) -> some View {
+        Button {
+            onRename(row)
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        .help("Rename this route")
+        .accessibilityLabel("Rename \(row.displayName)")
     }
 
     private func summaryLine(_ row: RouteGroupRow) -> String {
