@@ -1247,15 +1247,15 @@ same matcher paths the unit tests do.
 Reusable wholesale for other features needing a library-sized synthetic set (training
 load, watch-folder): adjust the family/filler parameters and re-run.
 
-- [ ] Import the same synthetic loop three times with different GPS jitter:
+- [x] Import the same synthetic loop three times with different GPS jitter:
       Routes (⌘⇧G) shows one route with 3 runs and best/median/latest active
       pace.
-- [ ] Import the loop reversed: it joins the same route and the run list
+- [x] Import the loop reversed: it joins the same route and the run list
       marks it "Reversed".
-- [ ] Import the loop plus an extra spur: it stays a separate route (mutual
+- [x] Import the loop plus an extra spur: it stays a separate route (mutual
       coverage decides — a run that covers a route plus extra distance is
       not the same route; Merge is the manual recovery path).
-- [ ] Import a loop sharing only part of the path with another: the two
+- [x] Import a loop sharing only part of the path with another: the two
       routes stay separate.
 - [ ] The representative route map draws the representative run's polyline
       with start/finish annotations; 2D/3D and Fit Route work.
@@ -1264,18 +1264,72 @@ load, watch-folder): adjust the family/filler parameters and re-run.
 - [ ] Rename a route (context menu and detail toolbar): the custom name
       sticks; clearing the name returns the derived "X km Loop/Route"
       default.
-- [ ] Merge two routes: members move and the target keeps its name.
+- [x] Merge two routes: members move and the target keeps its name.
 - [ ] Remove a run from a route: it disappears from the route, stays in All
       Runs, and is not re-added by later imports (only Re-cluster restores).
-- [ ] Pin a representative: the map overlay switches to that run.
+- [x] Pin a representative: the map overlay switches to that run.
 - [ ] Re-cluster Routes shows progress, cancels cleanly leaving the previous
       routes intact, and carries over names/pins on success.
-- [ ] All Runs filter menu: Route → specific route / Not on a Route filters
+- [x] All Runs filter menu: Route → specific route / Not on a Route filters
       the table; the filter survives into a saved smart collection.
 - [ ] Personal Heatmap route filter restricts cells to the selected route
       and resets with the other filters.
 - [ ] Deleting a member run repairs the route (representative refreshes;
       empty route disappears).
-- [ ] A fresh import shows up on its route shortly after the import
+- [x] A fresh import shows up on its route shortly after the import
       completes (asynchronous assignment), without blocking the import UI.
-- [ ] Relaunch mid-route: session restores the Routes destination (v5).
+- [x] Relaunch mid-route: session restores the Routes destination (v5).
+
+### Pass record 2026-09-20 (release configuration, synthetic 317-run library)
+
+The feature merged (#122 and the stack below it) before this pass finished, so
+this record is a post-merge verification, not a pre-merge gate.
+
+Verified on a release-configuration bundle against a throwaway library built by
+the generator above, light and dark appearance, at both a normal window size and
+720×500:
+
+- Grouping: the 8-run 5.2 km family grouped as one route with best/median/latest
+  active pace and a pace-over-date chart; both reversed members carried the
+  "Reversed" marker; the loop-plus-spur and the 5-in-6 prefix each stayed their
+  own route (named "Route", not "Loop", because their endpoints do not meet).
+- Manual controls: rename via the detail toolbar stuck; merge moved members and
+  kept one name (286 → 285 routes); pin switched the representative map overlay;
+  remove dropped the member and a later full re-cluster restored it, as the
+  checklist states it should.
+- Re-cluster: determinate progress (0/317 → 297/317), Cancel left the previous
+  routes untouched.
+- Filters: All Runs → Route → a named route and "Not on a Route" both filtered
+  correctly (1 of 317, and 21 of 317 — the fillers below the 20-point
+  participation minimum), and the route filter survived into a saved smart
+  collection across navigation.
+- Empty and loading states: a library with no repeats shows "No routes yet" with
+  the header distinguishing "0 routes · 2 runs awaiting analysis"; the heatmap
+  shows "Building heatmap…" while recomputing.
+- Session v5: relaunch restored the Routes destination, and (after the fix in
+  this PR) the Personal Heatmap route filter.
+
+Accessibility was inspected through the accessibility tree and the view source,
+not through a spoken VoiceOver session: the progression chart carries
+`accessibilityLabel`/`accessibilityValue` plus an `AXChartDescriptor` with titled
+date and pace axes; route rows read as one element (name, run count, best active
+pace); member rows read name, date, pace, "representative", "run in the opposite
+direction" — reversal is conveyed in words, not by the badge colour alone; and no
+announcement is posted from the Routes view, its view model, or AppState, so a
+re-cluster cannot announce per workout (progress is a labelled progress element).
+
+Not ticked, and why:
+
+- Representative map 2D/3D and Fit Route: the polyline, start/finish annotations
+  and both controls are present, but the controls were not exercised.
+- Chart via VoiceOver: the descriptor is verified in the tree and in source; no
+  spoken pass was run.
+- Rename: only the detail-toolbar path was exercised; the context-menu path and
+  clearing a name back to the derived default were not.
+- Remove from a route: "not re-added by later imports" was not exercised — no
+  import was performed after a removal.
+- Re-cluster carry-over: names survived a completed re-cluster; pin carry-over
+  was not isolated.
+- Heatmap route filter reset alongside the other filters was not exercised.
+- Deleting a member run (representative refresh, empty route disappears) was not
+  exercised.
