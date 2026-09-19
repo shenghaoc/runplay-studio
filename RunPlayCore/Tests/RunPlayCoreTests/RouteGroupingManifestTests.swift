@@ -166,3 +166,66 @@ final class RouteGroupingManifestTests: XCTestCase {
         XCTAssertNil(manifest.routeGroupID(forWorkoutID: workout))
     }
 }
+
+/// All Runs route filter evaluation.
+final class RouteGroupingQueryFilterTests: XCTestCase {
+    private func entry(_ id: UUID, groupID: UUID?) -> WorkoutLibraryEntry {
+        WorkoutLibraryEntry.make(
+            from: RunWorkout(id: id, routePoints: []),
+            manifestIndex: 0,
+            isFavorite: false,
+            routeGroupID: groupID
+        )
+    }
+
+    func testRouteFilterMatching() {
+        let group = UUID()
+        let grouped = entry(UUID(), groupID: group)
+        let ungrouped = entry(UUID(), groupID: nil)
+        let other = entry(UUID(), groupID: UUID())
+
+        XCTAssertTrue(WorkoutLibraryQueryService.matchesRouteFilter(entry: grouped, filter: .anyRoute))
+        XCTAssertTrue(WorkoutLibraryQueryService.matchesRouteFilter(entry: ungrouped, filter: .anyRoute))
+
+        XCTAssertTrue(WorkoutLibraryQueryService.matchesRouteFilter(entry: ungrouped, filter: .ungroupedOnly))
+        XCTAssertFalse(WorkoutLibraryQueryService.matchesRouteFilter(entry: grouped, filter: .ungroupedOnly))
+
+        XCTAssertTrue(WorkoutLibraryQueryService.matchesRouteFilter(entry: grouped, filter: .group(group)))
+        XCTAssertFalse(WorkoutLibraryQueryService.matchesRouteFilter(entry: other, filter: .group(group)))
+        XCTAssertFalse(WorkoutLibraryQueryService.matchesRouteFilter(entry: ungrouped, filter: .group(group)))
+    }
+
+    func testSavedQueryFilterDecodesLegacyJSONWithoutRouteField() throws {
+        // Saved queries from before the route filter have no "route" key;
+        // decoding must fall back to Any Route instead of failing.
+        let filter = WorkoutLibraryFilter(favorite: .favoritesOnly)
+        let data = try JSONEncoder().encode(filter)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        json.removeValue(forKey: "route")
+        let legacyData = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try JSONDecoder().decode(WorkoutLibraryFilter.self, from: legacyData)
+        XCTAssertEqual(decoded.route, .anyRoute)
+        XCTAssertEqual(decoded.favorite, .favoritesOnly)
+    }
+
+    func testSavedQueryFilterRoundTripsRoute() throws {
+        let group = UUID()
+        let filter = WorkoutLibraryFilter(route: .group(group))
+        let data = try JSONEncoder().encode(filter)
+        let decoded = try JSONDecoder().decode(WorkoutLibraryFilter.self, from: data)
+        XCTAssertEqual(decoded.route, .group(group))
+
+        let any = WorkoutLibraryFilter()
+        let anyData = try JSONEncoder().encode(any)
+        let anyDecoded = try JSONDecoder().decode(WorkoutLibraryFilter.self, from: anyData)
+        XCTAssertEqual(anyDecoded.route, .anyRoute)
+        XCTAssertTrue(anyDecoded.isDefault)
+    }
+
+    func testActiveFilterCountIncludesRoute() {
+        XCTAssertEqual(WorkoutLibraryFilter(route: .ungroupedOnly).activeFilterCount, 1)
+        XCTAssertEqual(WorkoutLibraryFilter().activeFilterCount, 0)
+        XCTAssertFalse(WorkoutLibraryFilter(route: .group(UUID())).isDefault)
+    }
+}

@@ -680,6 +680,10 @@ clusters into the group. Because it never depends on join order,
 chronological incremental assignment and a full re-cluster produce
 identical partitions.
 
+The All Runs query filter and the Personal Heatmap filter row both gain a
+"route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
+through the ordinary query service and is saved-query compatible.
+
 **Durability and revision discipline.** A workout's assignment record is
 the nil marker: *absence* means assignment has not run and a later pass
 picks it up (the records-backfill argument); a present record with a `nil`
