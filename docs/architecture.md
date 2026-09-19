@@ -613,6 +613,81 @@ as of session version 4; older sessions decode with the entire-library
 default and the validator repairs dangling scope collections and unknown
 destinations.
 
+### Route grouping (Routes workspace)
+
+Automatic route grouping clusters runs that follow substantially the same
+route. Two-stage matching, both owned by RunPlayCore:
+
+1. **Stage 1 — candidate filter (pure Swift arithmetic).** Per-workout
+   `RouteGroupingRouteFacts` (bounding box, endpoints, distance, valid point
+   count, discarded-point count) are computed from stored route points. A
+   pair is a candidate when the bounding boxes overlap with margin and one
+   route's start is near either endpoint of the other (admitting reversed
+   traversals). A historical distance-ratio bound was removed by
+   measurement: with mutual coverage as the guard it is redundant for
+   correctness, and on the 2,000-workout benchmark library it saved 1 of
+   1,760 stage-2 solves — the bounding-box and endpoint tests do the
+   filtering work.
+2. **Stage 2 — shape confirmation over the existing constrained-DTW
+   boundary.** The pair goes through `RouteAlignmentSampleBuilder` and the
+   same one-bulk-call `RunPlayRouteAlignmentDtwBridge` solve used by
+   Route-Aware comparison — there is no second DTW. A Swift scoring walk
+   over the returned path accumulates **diagonally matched** distance per
+   side and advance-weighted separations, exactly mirroring how the aligner
+   derives its diagnostics.
+
+Decision thresholds (all in `RouteGroupingPolicy`, documented values):
+**mutual coverage ≥ 0.90**, distance-weighted **median separation ≤ 35 m**,
+**p90 separation ≤ 100 m**, at a grouping unmatched budget of **100 m**.
+Mutual coverage is matched distance ÷ total distance evaluated on BOTH
+routes — the smaller of the two per-side coverages — from the single
+existing solve. It is the discriminating axis and is deliberately stricter
+than comparison acceptance; separation stays at the comparison "good" band
+because it is dominated by GPS quality — a false merge silently corrupts a
+progression chart while a false split is visible and fixable with Merge.
+
+**Containment.** A route that wholly contains another is not the same
+route, whether the extra distance is a spur, a warm-up, or a longer
+finish; the two runs do not group. Mutual coverage is the guard: the
+contained side can be fully covered while the containing side covers at
+most shared/total, so containment pairs cap at their geometric ratio
+(1/length-ratio) no matter how cleanly the shared section aligns, and no
+budget or separation setting can lift them above it. This is a deliberate
+product decision that reverses the original plan's superset rule
+(loop-plus-spur grouping with the loop); the measured grid behind the
+(budget, threshold) pair is `RouteGroupingMeasurementTests`
+(`RUNPLAY_ROUTE_GROUPING_MEASURE=1`). At 100 m / 0.90 the margins are
+0.038 below the line (loop-plus-spur at 0.862, the closest reject) and
+0.050 above (a 2 km identical pair at 0.950, the closest accept; the
+engine's 10 %-of-length fraction cap makes short routes the coverage
+floor, which is why the grid includes one). Prefixes never fail to solve
+at tight budgets — they solve with mutual coverage pinned at
+shorter/longer and, when the shared section is small, separation blown
+out (5-of-10 km: coverage 0.500, p90 ≈ 4.5 km). 40 %-shared loops are
+rejected by separation (median 400–520 m) at every budget. The recovery
+path for a genuine containment pair the user wants unified is the manual
+merge control.
+
+**Opposite direction** runs group with their route (no user toggle). The
+coarse ordered-sequence direction probe — the same one comparison uses —
+orients the solve.
+
+**Representatives.** The effective representative of a group is a pure
+function of its member set: highest route quality (fewest discarded
+coordinate points, then densest sampling), earliest canonical date
+tiebreak, with a user pin overriding until the pinned workout no longer
+clusters into the group. Because it never depends on join order,
+chronological incremental assignment and a full re-cluster produce
+identical partitions.
+
+**Naming.** No geocoding — the privacy model forbids it. Unnamed groups
+derive a descriptive default from the representative's own geometry
+("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure).
+
+`scripts/run-route-grouping-benchmark.sh` compares stage-1 candidate
+filtering against brute-force all-pairs matching on a 2,000-workout
+synthetic library, asserting both produce identical groups.
+
 ### Workspace navigation
 
 `AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`,
