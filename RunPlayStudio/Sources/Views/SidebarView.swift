@@ -8,6 +8,7 @@ enum SidebarSelection: Hashable {
     case personalHeatmap
     case trends
     case personalRecords
+    case routeGroups
     case smartCollection(UUID)
     case workout(UUID)
 }
@@ -90,6 +91,12 @@ struct SidebarView: View {
                     .help("Show your fastest fixed-distance windows, longest run, and biggest ascent across your local library (⌘⇧P)")
                     .accessibilityLabel("Records")
                     .accessibilityHint("Shows personal records across your workout library, scoped to the whole library or a filtered subset")
+
+                Label("Routes", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    .tag(SidebarSelection.routeGroups)
+                    .help("Group runs that follow the same route and show progression on each (⌘⇧G)")
+                    .accessibilityLabel("Routes")
+                    .accessibilityHint("Groups runs that follow substantially the same route and shows pace progression on each route")
             } header: {
                 Text("Library")
                     .font(AppDesign.Typography.compactLabel)

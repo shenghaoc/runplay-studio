@@ -20,6 +20,7 @@ struct AppWorkspaceActions {
     var showPersonalHeatmap: () -> Void
     var showTrends: () -> Void
     var showPersonalRecords: () -> Void
+    var showRouteGroups: () -> Void = {}
     var showAllRuns: () -> Void = {}
     var importFile: () -> Void = {}
     var importStravaArchive: () -> Void = {}
@@ -205,6 +206,20 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showPersonalRecords).purpose)
+            .disabled(isSheetBlocking)
+
+            Button(CommandRegistry.definition(for: .showRouteGroups).menuTitle) {
+                if let workspaceActions {
+                    workspaceActions.showRouteGroups()
+                } else {
+                    NotificationCenter.default.post(
+                        name: .runPlayWorkspaceCommand,
+                        object: AppWorkspaceCommand.showRouteGroups
+                    )
+                }
+            }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            .help(CommandRegistry.definition(for: .showRouteGroups).purpose)
             .disabled(isSheetBlocking)
 
             Divider()

@@ -9,6 +9,7 @@ enum AppSessionDestination: Equatable, Sendable {
     case personalHeatmap
     case trends
     case personalRecords
+    case routeGroups
     case comparison
 }
 
@@ -25,6 +26,7 @@ extension AppSessionDestination: Codable {
         case personalHeatmap
         case trends
         case personalRecords
+        case routeGroups
         case comparison
     }
 
@@ -47,6 +49,8 @@ extension AppSessionDestination: Codable {
             self = .trends
         case .personalRecords:
             self = .personalRecords
+        case .routeGroups:
+            self = .routeGroups
         case .comparison:
             self = .comparison
         case .none:
@@ -72,6 +76,8 @@ extension AppSessionDestination: Codable {
             try container.encode(Kind.trends.rawValue, forKey: .kind)
         case .personalRecords:
             try container.encode(Kind.personalRecords.rawValue, forKey: .kind)
+        case .routeGroups:
+            try container.encode(Kind.routeGroups.rawValue, forKey: .kind)
         case .comparison:
             try container.encode(Kind.comparison.rawValue, forKey: .kind)
         }
@@ -119,19 +125,43 @@ struct AppSessionHeatmapState: Codable, Equatable, Sendable {
     var customEndDate: Date?
     var resolutionRaw: String
     var minimumWorkoutCount: Int
+    /// Session v5: selected route-group filter, validated against the loaded
+    /// organization before apply.
+    var routeGroupID: UUID?
 
     init(
         datePresetRaw: String = "allTime",
         customStartDate: Date? = nil,
         customEndDate: Date? = nil,
         resolutionRaw: String = "standard",
-        minimumWorkoutCount: Int = 1
+        minimumWorkoutCount: Int = 1,
+        routeGroupID: UUID? = nil
     ) {
         self.datePresetRaw = datePresetRaw
         self.customStartDate = customStartDate
         self.customEndDate = customEndDate
         self.resolutionRaw = resolutionRaw
         self.minimumWorkoutCount = minimumWorkoutCount
+        self.routeGroupID = routeGroupID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        datePresetRaw = try container.decodeIfPresent(String.self, forKey: .datePresetRaw) ?? "allTime"
+        customStartDate = try container.decodeIfPresent(Date.self, forKey: .customStartDate)
+        customEndDate = try container.decodeIfPresent(Date.self, forKey: .customEndDate)
+        resolutionRaw = try container.decodeIfPresent(String.self, forKey: .resolutionRaw) ?? "standard"
+        minimumWorkoutCount = try container.decodeIfPresent(Int.self, forKey: .minimumWorkoutCount) ?? 1
+        routeGroupID = try container.decodeIfPresent(UUID.self, forKey: .routeGroupID)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case datePresetRaw
+        case customStartDate
+        case customEndDate
+        case resolutionRaw
+        case minimumWorkoutCount
+        case routeGroupID
     }
 }
 
@@ -237,7 +267,10 @@ struct AppSessionSnapshot: Codable, Equatable, Sendable {
     /// older sessions decode with default Trends selections.
     /// Version 4 adds the Personal Records workspace destination and scope
     /// state; older sessions decode with the entire-library default.
-    static let currentVersion = 4
+    /// Version 5 adds the Routes workspace destination; older sessions decode
+    /// with the workout destination. The selected route inside Routes is a
+    /// table selection and stays transient, like every other table selection.
+    static let currentVersion = 5
     static let minimumSupportedVersion = 1
 
     var version: Int

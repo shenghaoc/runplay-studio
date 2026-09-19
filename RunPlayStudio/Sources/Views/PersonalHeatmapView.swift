@@ -49,6 +49,10 @@ struct PersonalHeatmapView: View {
             viewModel.refresh(workouts: appState.workouts)
             appState.requestSessionSave()
         }
+        .onChange(of: viewModel.routeFilter) { _, _ in
+            viewModel.refresh(workouts: appState.workouts)
+            appState.requestSessionSave()
+        }
         .onChange(of: viewModel.customStartDate) { _, _ in
             if viewModel.datePreset == .custom {
                 viewModel.refresh(workouts: appState.workouts)
@@ -155,6 +159,8 @@ struct PersonalHeatmapView: View {
             .help("Hide cells visited by fewer than this many distinct workouts")
             .accessibilityLabel("Minimum runs per cell")
 
+            routePicker
+
             Spacer()
 
             Button {
@@ -166,6 +172,75 @@ struct PersonalHeatmapView: View {
             .accessibilityLabel("Fit Heatmap")
             .disabled(viewModel.mapAreas.isEmpty)
         }
+    }
+
+    /// Route restriction for the heatmap. Menu style (not a plain Picker) so
+    /// derived default names can be labelled without loading snapshots.
+    private var routePicker: some View {
+        Menu {
+            Button("Any Route") { viewModel.routeFilter = .anyRoute }
+                .accessibilityHint("Do not restrict the heatmap by route")
+            let candidates = viewModel.routeGroups.prefix(15)
+            if !candidates.isEmpty {
+                Divider()
+                ForEach(Array(candidates)) { group in
+                    Button {
+                        viewModel.routeFilter = .group(group.id)
+                    } label: {
+                        HStack {
+                            Text(heatmapRouteMenuName(for: group))
+                            if case .group(let selected) = viewModel.routeFilter, selected == group.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .accessibilityHint("Show heat only from runs on this route")
+                }
+            }
+        } label: {
+            Label(
+                heatmapRouteFilterTitle,
+                systemImage: "point.topleft.down.curvedto.point.bottomright.up"
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Restrict the heatmap to one route")
+        .accessibilityLabel("Route filter")
+        .accessibilityValue(heatmapRouteFilterTitle)
+    }
+
+    private var heatmapRouteFilterTitle: String {
+        switch viewModel.routeFilter {
+        case .anyRoute:
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route")
+        case .ungroupedOnly:
+            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route")
+        case .group(let groupID):
+            if let group = viewModel.routeGroups.first(where: { $0.id == groupID }) {
+                return heatmapRouteMenuName(for: group)
+            }
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route")
+        }
+    }
+
+    private func heatmapRouteMenuName(for group: WorkoutRouteGroup) -> String {
+        if let name = group.name, !name.isEmpty {
+            return name
+        }
+        guard let facts = group.representativeSummary?.facts else {
+            return String(localized: "route_group.filter.unnamed", defaultValue: "Route")
+        }
+        let closure = GeoDistance.distanceMeters(
+            fromLat: facts.startLatitude,
+            lon: facts.startLongitude,
+            toLat: facts.finishLatitude,
+            lon: facts.finishLongitude
+        )
+        return WorkoutRouteGroup.defaultDisplayName(
+            distanceMeters: facts.totalDistanceMeters,
+            closesLoop: closure <= RouteGroupsViewModel.loopClosureDistanceMeters
+        )
     }
 
     // Each picker is bounded by the other, so an inverted range cannot be

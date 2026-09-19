@@ -143,6 +143,12 @@ final class PersonalHeatmapViewModel: ObservableObject {
     @Published var customEndDate: Date
     @Published var resolution: PersonalHeatmapResolution = .standard
     @Published var minimumWorkoutCount: Int = 1
+    /// Route-group restriction. Membership filtering happens on the input
+    /// workout list before aggregation, so the existing cache key (which
+    /// covers the workout set) keys route-filtered builds correctly.
+    @Published var routeFilter: WorkoutLibraryRouteFilter = .anyRoute
+    /// Route groups offered by the filter menu.
+    @Published private(set) var routeGroups: [WorkoutRouteGroup] = []
 
     /// Fit-request counter for the map canvas.
     @Published var fitRequest: Int = 0
@@ -153,6 +159,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
     private var computeTask: Task<Void, Never>?
     private var cancelFlag: HeatmapCancelFlag?
     private var cache: [PersonalHeatmapRequestKey: PersonalHeatmapSnapshot] = [:]
+    private var routeGroupIDByWorkout: [UUID: UUID] = [:]
     private var lastKey: PersonalHeatmapRequestKey?
     /// Tracks whether the published snapshot has already been fitted for this key.
     private var fittedKey: PersonalHeatmapRequestKey?
@@ -182,6 +189,24 @@ final class PersonalHeatmapViewModel: ObservableObject {
         self.customEndDate = now
     }
 
+    /// Cache route-group membership for the route filter. Called with every
+    /// organization update; a stale group selection resets to Any Route.
+    func applyOrganization(_ organization: WorkoutLibraryOrganizationSnapshot) {
+        routeGroups = organization.routeGroups
+        var map: [UUID: UUID] = [:]
+        map.reserveCapacity(organization.routeGroupAssignments.count)
+        for assignment in organization.routeGroupAssignments {
+            if let groupID = assignment.groupID {
+                map[assignment.workoutID] = groupID
+            }
+        }
+        routeGroupIDByWorkout = map
+        if case .group(let groupID) = routeFilter,
+           !routeGroups.contains(where: { $0.id == groupID }) {
+            routeFilter = .anyRoute
+        }
+    }
+
     /// Apply durable filter selections without rebuilding generated map state.
     /// The visible heatmap workspace owns the subsequent refresh.
     func restoreSessionState(_ session: AppSessionHeatmapState) {
@@ -197,6 +222,12 @@ final class PersonalHeatmapViewModel: ObservableObject {
         minimumWorkoutCount = Self.minimumRepeatOptions.contains(session.minimumWorkoutCount)
             ? session.minimumWorkoutCount
             : 1
+        if let groupID = session.routeGroupID,
+           routeGroups.contains(where: { $0.id == groupID }) {
+            routeFilter = .group(groupID)
+        } else {
+            routeFilter = .anyRoute
+        }
     }
 
     deinit {
@@ -225,13 +256,22 @@ final class PersonalHeatmapViewModel: ObservableObject {
     /// cache entry.
     func refresh(workouts: [RunWorkout], force: Bool = false) {
         let now = nowProvider()
+        let inputWorkouts: [RunWorkout]
+        switch routeFilter {
+        case .anyRoute:
+            inputWorkouts = workouts
+        case .ungroupedOnly:
+            inputWorkouts = workouts.filter { routeGroupIDByWorkout[$0.id] == nil }
+        case .group(let groupID):
+            inputWorkouts = workouts.filter { routeGroupIDByWorkout[$0.id] == groupID }
+        }
         // Ordered the same way `makeConfiguration` orders them, so a range and
         // its inversion share one cache entry instead of building twice for
         // the same filter.
         let orderedStart = min(customStartDate, customEndDate)
         let orderedEnd = max(customStartDate, customEndDate)
         let key = PersonalHeatmapRequestKey(
-            workouts: workouts,
+            workouts: inputWorkouts,
             datePreset: datePreset,
             customStart: datePreset == .custom ? startOfDay(orderedStart) : nil,
             customEnd: datePreset == .custom ? endOfDay(orderedEnd) : nil,
@@ -272,7 +312,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
 
         let configuration = makeConfiguration(now: now)
         let builder = self.builder
-        let library = workouts
+        let library = inputWorkouts
 
         computeTask = Task { [weak self] in
             let result: Result<PersonalHeatmapSnapshot, Error> = await Task.detached(priority: .userInitiated) {
@@ -333,6 +373,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
         datePreset = .allTime
         resolution = .standard
         minimumWorkoutCount = 1
+        routeFilter = .anyRoute
         refresh(workouts: workouts)
     }
 
