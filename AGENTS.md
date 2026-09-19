@@ -305,6 +305,10 @@ See [docs/private-data.md](docs/private-data.md) and
 - Make the smallest coherent change that satisfies the assigned task.
 - Preserve public APIs unless the task explicitly changes them.
 - Add or update focused tests for behavior changes.
+- When an assertion looks GUI-only, first extract the underlying computation
+  (geometry, membership, formatting, ordering) from the view into a pure
+  helper and unit-test it; reserve GUI automation and manual passes for what
+  only eyes can judge — layout, timing feel, and VoiceOver output.
 - Do not claim GUI, format, platform, or workflow support without verification;
   report the actual command or manual boundary instead.
 - Keep documentation tied to durable behavior, never transient branch status.
