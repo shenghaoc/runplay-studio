@@ -282,7 +282,10 @@ struct ContentView: View {
                 await sessionController.pauseReplayAndFlush()
             }
         }
-        .frame(minWidth: 720, minHeight: 500)
+        .frame(
+            minWidth: AppDesign.WindowLayout.minimumContentWidth,
+            minHeight: AppDesign.WindowLayout.minimumContentHeight
+        )
     }
 
     /// The workspace shown in the detail column.

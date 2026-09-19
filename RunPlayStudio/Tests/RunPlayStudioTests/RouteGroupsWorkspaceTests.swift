@@ -144,4 +144,33 @@ final class RouteGroupsWorkspaceTests: XCTestCase {
         )
         XCTAssertFalse(RouteGroupsViewModel.representativeClosesLoop(line))
     }
+
+    // MARK: - Layout budget
+
+    /// The Routes split panes plus the navigation sidebar have to fit inside
+    /// the declared minimum window width. They previously summed to exactly
+    /// the window minimum (300 + 420 = 720), leaving nothing for the sidebar,
+    /// so at 720x500 the detail pane was squeezed below its own minimum and
+    /// the Latest Pace column and the Rename button clipped off-window.
+    func testRoutesSplitMinimumsFitTheMinimumWindowAlongsideTheSidebar() {
+        let panes = AppDesign.WindowLayout.routeListMinWidth
+            + AppDesign.WindowLayout.routeDetailMinWidth
+
+        XCTAssertLessThanOrEqual(
+            panes,
+            AppDesign.WindowLayout.workspaceWidthBudget,
+            """
+            Routes split minimums (\(panes)pt) exceed the workspace budget \
+            (\(AppDesign.WindowLayout.workspaceWidthBudget)pt = \
+            \(AppDesign.WindowLayout.minimumContentWidth)pt window minus \
+            \(AppDesign.WindowLayout.sidebarAllowance)pt sidebar).
+            """
+        )
+    }
+
+    /// The budget must not be met by shrinking a pane below usability.
+    func testRoutesSplitMinimumsStayUsable() {
+        XCTAssertGreaterThanOrEqual(AppDesign.WindowLayout.routeListMinWidth, 160)
+        XCTAssertGreaterThanOrEqual(AppDesign.WindowLayout.routeDetailMinWidth, 280)
+    }
 }
