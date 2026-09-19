@@ -489,6 +489,9 @@ struct WorkoutLibraryView: View {
             tagFilterMenu
 
             Divider()
+            routeFilterMenu
+
+            Divider()
             Button("Clear Filters") { viewModel.clearFilters() }
                 .help("Clear all active filters")
                 .accessibilityLabel("Clear all active filters")
@@ -560,6 +563,58 @@ struct WorkoutLibraryView: View {
         default:
             viewModel.tagFilter = .selected(tagIDs: [id], match: match)
         }
+    }
+
+    /// Route filter submenu: any route, runs not on a route, or one group.
+    /// Groups are capped to keep the menu usable; the Routes workspace is
+    /// the full browser.
+    @ViewBuilder
+    private var routeFilterMenu: some View {
+        Menu("Route") {
+            Button("Any Route") { viewModel.routeFilter = .anyRoute }
+                .accessibilityHint("Do not restrict by route")
+            Button("Not on a Route") { viewModel.routeFilter = .ungroupedOnly }
+                .accessibilityHint("Show runs that are not currently on any route")
+            let candidates = viewModel.routeGroups.prefix(15)
+            if !candidates.isEmpty {
+                Divider()
+                ForEach(Array(candidates)) { group in
+                    Button {
+                        viewModel.routeFilter = .group(group.id)
+                    } label: {
+                        HStack {
+                            Text(routeFilterMenuName(for: group))
+                            if case .group(let selected) = viewModel.routeFilter, selected == group.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .accessibilityHint("Show only runs on this route")
+                }
+            }
+        }
+    }
+
+    /// Menu label for one route group: the user name, else the derived
+    /// geometry default computed from the persisted representative summary
+    /// (no snapshot loads on the filter path).
+    private func routeFilterMenuName(for group: WorkoutRouteGroup) -> String {
+        if let name = group.name, !name.isEmpty {
+            return name
+        }
+        guard let facts = group.representativeSummary?.facts else {
+            return String(localized: "route_group.filter.unnamed", defaultValue: "Route")
+        }
+        let closure = GeoDistance.distanceMeters(
+            fromLat: facts.startLatitude,
+            lon: facts.startLongitude,
+            toLat: facts.finishLatitude,
+            lon: facts.finishLongitude
+        )
+        return WorkoutRouteGroup.defaultDisplayName(
+            distanceMeters: facts.totalDistanceMeters,
+            closesLoop: closure <= RouteGroupsViewModel.loopClosureDistanceMeters
+        )
     }
 
     // MARK: - Content
