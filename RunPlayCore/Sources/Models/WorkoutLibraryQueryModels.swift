@@ -237,6 +237,77 @@ extension WorkoutLibraryTagFilter: Codable {
     }
 }
 
+// MARK: - Route filter
+
+/// Route-group restriction combined with other library filters via AND.
+public enum WorkoutLibraryRouteFilter: Hashable, Sendable {
+    /// No route restriction.
+    case anyRoute
+    /// Workouts not currently on any route (pending assignment or
+    /// deliberately ungrouped).
+    case ungroupedOnly
+    /// Workouts belonging to the selected route group.
+    case group(UUID)
+
+    public static let `default` = WorkoutLibraryRouteFilter.anyRoute
+
+    public var isActive: Bool {
+        switch self {
+        case .anyRoute:
+            return false
+        case .ungroupedOnly, .group:
+            return true
+        }
+    }
+
+    public var activeFilterCount: Int {
+        isActive ? 1 : 0
+    }
+}
+
+extension WorkoutLibraryRouteFilter: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case groupID
+    }
+
+    private enum FilterType: String, Codable {
+        case anyRoute
+        case ungroupedOnly
+        case group
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawType = try container.decodeIfPresent(String.self, forKey: .type) ?? FilterType.anyRoute.rawValue
+        switch FilterType(rawValue: rawType) {
+        case .ungroupedOnly:
+            self = .ungroupedOnly
+        case .group:
+            if let groupID = try container.decodeIfPresent(UUID.self, forKey: .groupID) {
+                self = .group(groupID)
+            } else {
+                self = .anyRoute
+            }
+        case .anyRoute, .none:
+            self = .anyRoute
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .anyRoute:
+            try container.encode(FilterType.anyRoute.rawValue, forKey: .type)
+        case .ungroupedOnly:
+            try container.encode(FilterType.ungroupedOnly.rawValue, forKey: .type)
+        case .group(let groupID):
+            try container.encode(FilterType.group.rawValue, forKey: .type)
+            try container.encode(groupID, forKey: .groupID)
+        }
+    }
+}
+
 // MARK: - Filter aggregate
 
 public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
@@ -245,19 +316,22 @@ public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
     public var source: WorkoutLibrarySourceFilter
     public var data: WorkoutLibraryDataFilters
     public var tags: WorkoutLibraryTagFilter
+    public var route: WorkoutLibraryRouteFilter
 
     public init(
         favorite: WorkoutLibraryFavoriteFilter = .all,
         date: WorkoutLibraryDateFilter = .allTime,
         source: WorkoutLibrarySourceFilter = .all,
         data: WorkoutLibraryDataFilters = .none,
-        tags: WorkoutLibraryTagFilter = .anyTags
+        tags: WorkoutLibraryTagFilter = .anyTags,
+        route: WorkoutLibraryRouteFilter = .anyRoute
     ) {
         self.favorite = favorite
         self.date = date
         self.source = source
         self.data = data
         self.tags = tags
+        self.route = route
     }
 
     public static let `default` = WorkoutLibraryFilter()
@@ -268,6 +342,7 @@ public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
             && source == .all
             && !data.isActive
             && !tags.isActive
+            && !route.isActive
     }
 
     public var activeFilterCount: Int {
@@ -277,7 +352,51 @@ public struct WorkoutLibraryFilter: Hashable, Sendable, Codable {
         if source != .all { count += 1 }
         count += data.activeCount
         count += tags.activeFilterCount
+        count += route.activeFilterCount
         return count
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case favorite
+        case date
+        case source
+        case data
+        case tags
+        case route
+    }
+
+    /// Decodes with per-field defaults so saved queries and smart
+    /// collections from schema versions before the route filter still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        favorite = try container.decodeIfPresent(
+            WorkoutLibraryFavoriteFilter.self, forKey: .favorite
+        ) ?? .all
+        date = try container.decodeIfPresent(
+            WorkoutLibraryDateFilter.self, forKey: .date
+        ) ?? .allTime
+        source = try container.decodeIfPresent(
+            WorkoutLibrarySourceFilter.self, forKey: .source
+        ) ?? .all
+        data = try container.decodeIfPresent(
+            WorkoutLibraryDataFilters.self, forKey: .data
+        ) ?? .none
+        tags = try container.decodeIfPresent(
+            WorkoutLibraryTagFilter.self, forKey: .tags
+        ) ?? .anyTags
+        route = try container.decodeIfPresent(
+            WorkoutLibraryRouteFilter.self, forKey: .route
+        ) ?? .anyRoute
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(favorite, forKey: .favorite)
+        try container.encode(date, forKey: .date)
+        try container.encode(source, forKey: .source)
+        try container.encode(data, forKey: .data)
+        try container.encode(tags, forKey: .tags)
+        try container.encode(route, forKey: .route)
     }
 }
 

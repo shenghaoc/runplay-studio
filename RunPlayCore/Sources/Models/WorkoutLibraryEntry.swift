@@ -41,6 +41,11 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
     /// Revision of tag IDs + names for search-document invalidation.
     public let tagRevision: String
 
+    /// Route group this workout belongs to, when route assignment has placed
+    /// it on one. `nil` covers both pending assignment and deliberately
+    /// ungrouped workouts.
+    public let routeGroupID: UUID?
+
     /// Maximum chips shown in compact table cells before `+N`.
     public static let visibleTagChipLimit = 3
 
@@ -66,7 +71,8 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
         nameNotesRevision: String,
         tagIDs: Set<UUID> = [],
         tagNames: [String] = [],
-        tagRevision: String = ""
+        tagRevision: String = "",
+        routeGroupID: UUID? = nil
     ) {
         self.id = id
         self.manifestIndex = manifestIndex
@@ -92,6 +98,7 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
         self.tagRevision = tagRevision.isEmpty
             ? Self.makeTagRevision(tagIDs: tagIDs, tagNames: tagNames)
             : tagRevision
+        self.routeGroupID = routeGroupID
     }
 
     /// Build a search/filter entry without copying route-point storage.
@@ -100,7 +107,8 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
         manifestIndex: Int,
         isFavorite: Bool,
         tagIDs: Set<UUID> = [],
-        tagsByID: [UUID: WorkoutTag] = [:]
+        tagsByID: [UUID: WorkoutTag] = [:],
+        routeGroupID: UUID? = nil
     ) -> WorkoutLibraryEntry {
         let startDate = Self.canonicalStartDate(for: workout)
         let hasHeartRate =
@@ -135,7 +143,8 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
             hasRecordedLaps: !workout.recordedLaps.isEmpty,
             nameNotesRevision: "\(name ?? "")|\(notes ?? "")",
             tagIDs: tagIDs,
-            tagNames: orderedTagNames
+            tagNames: orderedTagNames,
+            routeGroupID: routeGroupID
         )
     }
 
@@ -145,6 +154,36 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
             return start
         }
         return workout.routePoints.first?.timestamp
+    }
+
+    /// Copy with a different route-group membership (organisation-only
+    /// update; identity and every other field are unchanged).
+    public func withRouteGroupID(_ routeGroupID: UUID?) -> WorkoutLibraryEntry {
+        WorkoutLibraryEntry(
+            id: id,
+            manifestIndex: manifestIndex,
+            isFavorite: isFavorite,
+            displayName: displayName,
+            metadataName: metadataName,
+            notes: notes,
+            activityType: activityType,
+            deviceName: deviceName,
+            source: source,
+            importProvider: importProvider,
+            originalFilename: originalFilename,
+            startDate: startDate,
+            totalDistanceMeters: totalDistanceMeters,
+            activePaceSecondsPerKilometer: activePaceSecondsPerKilometer,
+            totalElapsedSeconds: totalElapsedSeconds,
+            hasHeartRate: hasHeartRate,
+            hasCorrectedElevation: hasCorrectedElevation,
+            hasRecordedLaps: hasRecordedLaps,
+            nameNotesRevision: nameNotesRevision,
+            tagIDs: tagIDs,
+            tagNames: tagNames,
+            tagRevision: tagRevision,
+            routeGroupID: routeGroupID
+        )
     }
 
     public static func orderedTagNames(

@@ -18,6 +18,10 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
     case tagNotFound(UUID)
     /// A referenced smart collection ID is not in the library.
     case smartCollectionNotFound(UUID)
+    /// A referenced route group ID is not in the library.
+    case routeGroupNotFound(UUID)
+    /// Route group validation or mutation failed.
+    case invalidRouteGroup(String)
 
     public var errorDescription: String? {
         switch self {
@@ -37,6 +41,10 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
             return "Tag \(id) is not in the library"
         case .smartCollectionNotFound(let id):
             return "Smart collection \(id) is not in the library"
+        case .routeGroupNotFound(let id):
+            return "Route group \(id) is not in the library"
+        case .invalidRouteGroup(let detail):
+            return detail
         }
     }
 }
@@ -77,6 +85,8 @@ public actor WorkoutLibraryStoreActor {
                 repaired.selectedWorkoutID = nil
                 repaired.favoriteWorkoutIDs = []
                 repaired.tagAssignments = []
+                repaired.routeGroups = []
+                repaired.routeGroupAssignments = []
                 let organizationReport = repaired.repairOrganization()
                 repaired.upgradeSchemaVersionIfNeeded()
                 let needsPersist = hadAssignments
@@ -217,6 +227,8 @@ public actor WorkoutLibraryStoreActor {
                 workingManifest.tags != manifest.tags
                 || workingManifest.tagAssignments != manifest.tagAssignments
                 || workingManifest.smartCollections != manifest.smartCollections
+                || workingManifest.routeGroups != manifest.routeGroups
+                || workingManifest.routeGroupAssignments != manifest.routeGroupAssignments
             let manifestNeedsRepair = validIDs != manifest.workoutIDs
                 || selectedWorkoutID != manifest.selectedWorkoutID
                 || favoritesNeedRepair
@@ -256,7 +268,9 @@ public actor WorkoutLibraryStoreActor {
             let organization = WorkoutLibraryOrganizationSnapshot(
                 tags: workingManifest.tags,
                 tagAssignments: workingManifest.tagAssignments,
-                smartCollections: workingManifest.smartCollections
+                smartCollections: workingManifest.smartCollections,
+                routeGroups: workingManifest.routeGroups,
+                routeGroupAssignments: workingManifest.routeGroupAssignments
             )
             let warning = warnings.isEmpty
                 ? nil
@@ -369,6 +383,28 @@ public actor WorkoutLibraryStoreActor {
         manifest.workoutIDs.removeAll { $0 == id }
         manifest.favoriteWorkoutIDs.remove(id)
         manifest.removeTagAssignment(forWorkoutID: id)
+        // Drop the deleted workout's route-group record and repair the group
+        // it left (representative pin/summary and empty-group removal).
+        if let removedAssignment = manifest.routeGroupAssignment(forWorkoutID: id),
+           let removedGroupID = removedAssignment.groupID,
+           let groupIndex = manifest.routeGroups.firstIndex(where: { $0.id == removedGroupID }) {
+            manifest.routeGroupAssignments.removeAll { $0.workoutID == id }
+            let remainingMemberIDs = manifest.routeGroupMemberIDs(groupID: removedGroupID)
+            if remainingMemberIDs.isEmpty {
+                manifest.routeGroups.remove(at: groupIndex)
+            } else {
+                if manifest.routeGroups[groupIndex].pinnedRepresentativeWorkoutID == id {
+                    manifest.routeGroups[groupIndex].pinnedRepresentativeWorkoutID = nil
+                }
+                if manifest.routeGroups[groupIndex].representativeSummary?.workoutID == id {
+                    manifest.routeGroups[groupIndex].representativeSummary = bestSummary(
+                        amongWorkoutIDs: remainingMemberIDs,
+                        in: manifest
+                    )
+                }
+            }
+            manifest.sortRouteGroupAssignmentsDeterministically()
+        }
         if wasSelected {
             manifest.selectedWorkoutID = newSelectedID
         }
@@ -729,6 +765,368 @@ public actor WorkoutLibraryStoreActor {
             failedCount: failed,
             saveFailureCount: saveFailures
         )
+    }
+
+    // MARK: - Route groups
+
+    /// Read-only organization snapshot of the persisted manifest. Returns
+    /// `nil` when no manifest exists (bundled demos).
+    public func organizationSnapshot() -> WorkoutLibraryOrganizationSnapshot? {
+        guard let manifest = try? store.loadManifest() else {
+            return nil
+        }
+        return WorkoutLibraryOrganizationSnapshot(
+            tags: manifest.tags,
+            tagAssignments: manifest.tagAssignments,
+            smartCollections: manifest.smartCollections,
+            routeGroups: manifest.routeGroups,
+            routeGroupAssignments: manifest.routeGroupAssignments
+        )
+    }
+
+
+    /// Final totals for one incremental route-group assignment pass.
+    public struct RouteGroupAssignmentPassResult: Sendable, Equatable {
+        /// Complete group list after the pass.
+        public let groups: [WorkoutRouteGroup]
+        /// Complete assignment list after the pass (not just the new ones).
+        public let assignments: [WorkoutRouteGroupAssignment]
+        /// New workouts that joined an existing group.
+        public let joinedCount: Int
+        /// New workouts that founded a new group.
+        public let createdCount: Int
+        /// Workouts that could not be loaded and stay unassigned.
+        public let failedCount: Int
+
+        public init(
+            groups: [WorkoutRouteGroup],
+            assignments: [WorkoutRouteGroupAssignment],
+            joinedCount: Int,
+            createdCount: Int,
+            failedCount: Int
+        ) {
+            self.groups = groups
+            self.assignments = assignments
+            self.joinedCount = joinedCount
+            self.createdCount = createdCount
+            self.failedCount = failedCount
+        }
+    }
+
+    /// Final totals for one full route-group re-cluster pass.
+    public struct RouteGroupReclusterPassResult: Sendable, Equatable {
+        public let groups: [WorkoutRouteGroup]
+        public let assignments: [WorkoutRouteGroupAssignment]
+        /// Workouts included in the pass.
+        public let workoutCount: Int
+        /// Workouts that could not be loaded and stay unassigned.
+        public let failedCount: Int
+
+        public init(
+            groups: [WorkoutRouteGroup],
+            assignments: [WorkoutRouteGroupAssignment],
+            workoutCount: Int,
+            failedCount: Int
+        ) {
+            self.groups = groups
+            self.assignments = assignments
+            self.workoutCount = workoutCount
+            self.failedCount = failedCount
+        }
+    }
+
+    /// Incrementally assigns recently imported workouts to route groups,
+    /// matching each only against existing groups' effective representatives.
+    ///
+    /// The pass is the post-import durability hook: workouts without an
+    /// assignment record (the nil marker) are picked up here, and records
+    /// produced by the current algorithm version are skipped, so re-running
+    /// the pass is idempotent. The manifest is written once at the end of
+    /// the pass — a cancelled or crashed pass leaves every one of its
+    /// workouts unassigned, and the next pass retries them. Cancellation is
+    /// cooperative (task cancellation is checked between workouts and inside
+    /// matching) and surfaces as `CancellationError`.
+    public func assignRouteGroups(
+        for workoutIDs: [UUID],
+        policy: RouteGroupingPolicy = .default,
+        progress: (@Sendable (RouteGroupingPassProgress) -> Void)? = nil
+    ) async throws -> RouteGroupAssignmentPassResult {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+
+        // Skip workouts that already carry a current-version record; the
+        // pass only ever touches the nil-marker backlog and fresh imports.
+        var failed = 0
+        var newWorkouts: [RunWorkout] = []
+        for workoutID in workoutIDs {
+            if Task.isCancelled { throw CancellationError() }
+            guard manifest.workoutIDs.contains(workoutID) else {
+                failed += 1
+                continue
+            }
+            if let existing = manifest.routeGroupAssignment(forWorkoutID: workoutID),
+               existing.algorithmVersion == policy.algorithmVersion {
+                continue
+            }
+            guard let workout = try? store.loadWorkout(id: workoutID) else {
+                failed += 1
+                continue
+            }
+            newWorkouts.append(workout)
+        }
+        guard !newWorkouts.isEmpty else {
+            return RouteGroupAssignmentPassResult(
+                groups: manifest.routeGroups,
+                assignments: manifest.routeGroupAssignments,
+                joinedCount: 0,
+                createdCount: 0,
+                failedCount: failed
+            )
+        }
+
+        let service = RouteGroupingService()
+        let result = try await service.assign(
+            newWorkouts: newWorkouts,
+            existingGroups: manifest.routeGroups,
+            policy: policy,
+            progress: progress,
+            isCancelled: { Task.isCancelled },
+            representativeLoader: { [store] workoutID in
+                try store.loadWorkout(id: workoutID)
+            }
+        )
+
+        manifest.routeGroups = result.groups
+        for assignment in result.assignments {
+            manifest.setRouteGroupAssignment(assignment)
+        }
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+
+        return RouteGroupAssignmentPassResult(
+            groups: manifest.routeGroups,
+            assignments: manifest.routeGroupAssignments,
+            joinedCount: result.joinedCount,
+            createdCount: result.createdCount,
+            failedCount: failed
+        )
+    }
+
+    /// Backfills route-group assignment for every library workout whose
+    /// record is missing or produced by an older algorithm version.
+    ///
+    /// This is the one-off migration for existing libraries (schema v4 adds
+    /// no records on decode); new imports instead go through
+    /// `assignRouteGroups(for:)` right after their commit. Idempotent by the
+    /// same record-version rule.
+    public func backfillRouteGroupAssignments(
+        policy: RouteGroupingPolicy = .default,
+        progress: (@Sendable (RouteGroupingPassProgress) -> Void)? = nil
+    ) async throws -> RouteGroupAssignmentPassResult {
+        try Task.checkCancellation()
+        let manifest = try loadOrCreateManifest()
+        let pendingIDs = manifest.workoutIDs.filter { workoutID in
+            if let existing = manifest.routeGroupAssignment(forWorkoutID: workoutID) {
+                return existing.algorithmVersion != policy.algorithmVersion
+            }
+            return true
+        }
+        return try await assignRouteGroups(
+            for: pendingIDs,
+            policy: policy,
+            progress: progress
+        )
+    }
+
+    /// Recomputes every route group from scratch in one transactional pass.
+    ///
+    /// Workouts are processed chronologically against effective
+    /// representatives — the same greedy rule as incremental assignment.
+    /// User names and pinned representatives carry over when the referenced
+    /// workout still clusters into a group; deliberate removals are
+    /// recomputed. The manifest is replaced with one atomic write only when
+    /// the whole pass completes: a cancelled or failed re-cluster leaves the
+    /// previous groups untouched.
+    public func reclusterRouteGroups(
+        policy: RouteGroupingPolicy = .default,
+        progress: (@Sendable (RouteGroupingPassProgress) -> Void)? = nil
+    ) async throws -> RouteGroupReclusterPassResult {
+        try Task.checkCancellation()
+        var manifest = try loadOrCreateManifest()
+
+        var workouts: [RunWorkout] = []
+        var failed = 0
+        for workoutID in manifest.workoutIDs {
+            if Task.isCancelled { throw CancellationError() }
+            if let workout = try? store.loadWorkout(id: workoutID) {
+                workouts.append(workout)
+            } else {
+                failed += 1
+            }
+        }
+
+        let service = RouteGroupingService()
+        let result = try service.recluster(
+            workouts: workouts,
+            previousGroups: manifest.routeGroups,
+            policy: policy,
+            progress: progress,
+            isCancelled: { Task.isCancelled }
+        )
+
+        manifest.routeGroups = result.groups
+        manifest.routeGroupAssignments = result.assignments
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+
+        return RouteGroupReclusterPassResult(
+            groups: manifest.routeGroups,
+            assignments: manifest.routeGroupAssignments,
+            workoutCount: workouts.count,
+            failedCount: failed
+        )
+    }
+
+    /// Renames a route group. `nil` returns the group to its derived
+    /// default name.
+    public func renameRouteGroup(id: UUID, name: String?) throws {
+        var manifest = try loadOrCreateManifest()
+        guard let index = manifest.routeGroups.firstIndex(where: { $0.id == id }) else {
+            throw WorkoutLibraryStoreError.routeGroupNotFound(id)
+        }
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        manifest.routeGroups[index].name = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    /// Merges one route group into another. Members move to the target
+    /// group; the target keeps its own name and pin, and its derived
+    /// representative only changes when the source's outranks it.
+    public func mergeRouteGroups(sourceID: UUID, into targetID: UUID) throws {
+        var manifest = try loadOrCreateManifest()
+        guard sourceID != targetID else {
+            throw WorkoutLibraryStoreError.invalidRouteGroup("Cannot merge a route into itself.")
+        }
+        guard let sourceIndex = manifest.routeGroups.firstIndex(where: { $0.id == sourceID }) else {
+            throw WorkoutLibraryStoreError.routeGroupNotFound(sourceID)
+        }
+        guard let targetIndex = manifest.routeGroups.firstIndex(where: { $0.id == targetID }) else {
+            throw WorkoutLibraryStoreError.routeGroupNotFound(targetID)
+        }
+
+        for index in manifest.routeGroupAssignments.indices {
+            if manifest.routeGroupAssignments[index].groupID == sourceID {
+                manifest.routeGroupAssignments[index] = WorkoutRouteGroupAssignment(
+                    workoutID: manifest.routeGroupAssignments[index].workoutID,
+                    groupID: targetID,
+                    algorithmVersion: manifest.routeGroupAssignments[index].algorithmVersion
+                )
+            }
+        }
+        let sourceSummary = manifest.routeGroups[sourceIndex].representativeSummary
+        if manifest.routeGroups[targetIndex].pinnedRepresentativeWorkoutID == nil,
+           let sourceSummary,
+           let targetSummary = manifest.routeGroups[targetIndex].representativeSummary,
+           sourceSummary.ranksAbove(targetSummary) {
+            manifest.routeGroups[targetIndex].representativeSummary = sourceSummary
+        }
+        manifest.routeGroups.remove(at: sourceIndex)
+        manifest.sortRouteGroupAssignmentsDeterministically()
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    /// Removes one workout from its route group. The workout's record keeps
+    /// a `nil` group ID — evaluated and deliberately ungrouped — so no later
+    /// incremental pass silently re-adds it (only a full re-cluster
+    /// recomputes removals). An emptied group is removed.
+    public func removeWorkoutFromRouteGroup(workoutID: UUID) throws {
+        var manifest = try loadOrCreateManifest()
+        guard let assignment = manifest.routeGroupAssignment(forWorkoutID: workoutID),
+              let groupID = assignment.groupID,
+              let groupIndex = manifest.routeGroups.firstIndex(where: { $0.id == groupID })
+        else {
+            return
+        }
+
+        manifest.setRouteGroupAssignment(WorkoutRouteGroupAssignment(
+            workoutID: workoutID,
+            groupID: nil,
+            algorithmVersion: RouteGroupingPolicy.default.algorithmVersion
+        ))
+
+        // Repair the group's cached representative when the removed workout
+        // was it, by rescanning the remaining members' snapshots. Bounded by
+        // one group's membership; a manual action can afford it.
+        let remainingMemberIDs = manifest.routeGroupMemberIDs(groupID: groupID)
+        if remainingMemberIDs.isEmpty {
+            manifest.routeGroups.remove(at: groupIndex)
+        } else {
+            if manifest.routeGroups[groupIndex].pinnedRepresentativeWorkoutID == workoutID {
+                manifest.routeGroups[groupIndex].pinnedRepresentativeWorkoutID = nil
+            }
+            let needsNewRepresentative =
+                manifest.routeGroups[groupIndex].representativeSummary?.workoutID == workoutID
+                || manifest.routeGroups[groupIndex].representativeSummary == nil
+            if needsNewRepresentative, let replacement = bestSummary(
+                amongWorkoutIDs: remainingMemberIDs,
+                in: manifest
+            ) {
+                manifest.routeGroups[groupIndex].representativeSummary = replacement
+            }
+        }
+
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    /// Pins one member as the group's representative. The pin overrides the
+    /// derived rule until a re-cluster whose recomputed groups no longer
+    /// contain the pinned workout.
+    public func pinRouteGroupRepresentative(groupID: UUID, workoutID: UUID) throws {
+        var manifest = try loadOrCreateManifest()
+        guard let groupIndex = manifest.routeGroups.firstIndex(where: { $0.id == groupID }) else {
+            throw WorkoutLibraryStoreError.routeGroupNotFound(groupID)
+        }
+        guard manifest.routeGroupID(forWorkoutID: workoutID) == groupID else {
+            throw WorkoutLibraryStoreError.invalidRouteGroup(
+                "Only a member of the route can be its representative."
+            )
+        }
+        guard let workout = try? store.loadWorkout(id: workoutID) else {
+            throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+        }
+
+        manifest.routeGroups[groupIndex].pinnedRepresentativeWorkoutID = workoutID
+        manifest.routeGroups[groupIndex].representativeSummary = WorkoutRouteGroupSummary(
+            workoutID: workoutID,
+            startDate: WorkoutLibraryEntry.canonicalStartDate(for: workout),
+            facts: RouteGroupingRouteFacts(workout: workout)
+        )
+        manifest.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(manifest)
+    }
+
+    /// Derives the best representative summary among the given member IDs by
+    /// loading their snapshots. Returns `nil` when none can be loaded.
+    private func bestSummary(
+        amongWorkoutIDs workoutIDs: [UUID],
+        in manifest: WorkoutLibraryManifest
+    ) -> WorkoutRouteGroupSummary? {
+        var best: WorkoutRouteGroupSummary?
+        for workoutID in workoutIDs {
+            guard let workout = try? store.loadWorkout(id: workoutID) else { continue }
+            let summary = WorkoutRouteGroupSummary(
+                workoutID: workoutID,
+                startDate: WorkoutLibraryEntry.canonicalStartDate(for: workout),
+                facts: RouteGroupingRouteFacts(workout: workout)
+            )
+            if best == nil || summary.ranksAbove(best!) {
+                best = summary
+            }
+        }
+        return best
     }
 
     // MARK: - Favourites

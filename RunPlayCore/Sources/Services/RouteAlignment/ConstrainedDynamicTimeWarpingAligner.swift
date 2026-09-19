@@ -238,7 +238,9 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
 
     // MARK: - Direction probe
 
-    private func detectDirection(
+    /// Internal so route grouping can reuse the same coarse ordered-sequence
+    /// probe; it performs no native call.
+    func detectDirection(
         primary: [RouteAlignmentSample],
         comparison: [RouteAlignmentSample],
         policy: RouteAlignmentPolicy,

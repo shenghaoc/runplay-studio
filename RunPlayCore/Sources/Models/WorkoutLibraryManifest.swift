@@ -7,9 +7,12 @@ import Foundation
 /// snapshots or changing analysis / normalization versions.
 /// Schema version 3 adds user-defined tags, tag assignments, and smart
 /// collections (saved dynamic queries). Workout snapshots remain unchanged.
+/// Schema version 4 adds automatic route groups, their assignment records,
+/// and each group's cached representative summary. Membership lives in the
+/// assignment records; a workout with no record has not been assigned yet.
 public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
     /// Current schema version. Bump when the on-disk format changes.
-    public static let currentVersion = 3
+    public static let currentVersion = 4
 
     /// Oldest schema version this binary can decode and migrate.
     public static let minimumSupportedVersion = 1
@@ -21,6 +24,8 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         public static let maxTagIDsPerAssignment = WorkoutTagPolicy.default.maxTagsPerWorkout
         public static let maxSmartCollections = WorkoutSmartCollectionPolicy.default.maxCollections
         public static let maxSearchTextScalars = WorkoutLibrarySavedQuery.maxSearchTextScalars
+        public static let maxRouteGroups = 50_000
+        public static let maxRouteGroupAssignments = 50_000
     }
 
     /// Schema version of this manifest.
@@ -44,6 +49,15 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
     /// Ordered smart collections (saved dynamic queries).
     public var smartCollections: [WorkoutSmartCollection]
 
+    /// Automatic route groups. Membership is derived from
+    /// `routeGroupAssignments`, so a group never stores a member list.
+    public var routeGroups: [WorkoutRouteGroup]
+
+    /// Route-group assignment records (one per evaluated workout; empty
+    /// omitted). The absence of a record means assignment has not run for
+    /// that workout yet — the nil marker a later pass picks up.
+    public var routeGroupAssignments: [WorkoutRouteGroupAssignment]
+
     public init(
         version: Int = WorkoutLibraryManifest.currentVersion,
         workoutIDs: [UUID] = [],
@@ -51,7 +65,9 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         favoriteWorkoutIDs: Set<UUID> = [],
         tags: [WorkoutTag] = [],
         tagAssignments: [WorkoutTagAssignment] = [],
-        smartCollections: [WorkoutSmartCollection] = []
+        smartCollections: [WorkoutSmartCollection] = [],
+        routeGroups: [WorkoutRouteGroup] = [],
+        routeGroupAssignments: [WorkoutRouteGroupAssignment] = []
     ) {
         self.version = version
         self.workoutIDs = workoutIDs
@@ -60,6 +76,8 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         self.tags = tags
         self.tagAssignments = tagAssignments
         self.smartCollections = smartCollections
+        self.routeGroups = routeGroups
+        self.routeGroupAssignments = routeGroupAssignments
     }
 
     /// Whether a on-disk schema version is accepted for load + migration.
@@ -129,6 +147,47 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
 
     public mutating func sortAssignmentsDeterministically() {
         tagAssignments.sort {
+            $0.workoutID.uuidString.localizedStandardCompare($1.workoutID.uuidString) == .orderedAscending
+        }
+    }
+
+    // MARK: - Route group helpers
+
+    public func routeGroup(id: UUID) -> WorkoutRouteGroup? {
+        routeGroups.first { $0.id == id }
+    }
+
+    /// Assignment record for one workout, if assignment has run.
+    public func routeGroupAssignment(forWorkoutID workoutID: UUID) -> WorkoutRouteGroupAssignment? {
+        routeGroupAssignments.first { $0.workoutID == workoutID }
+    }
+
+    /// The group a workout belongs to, if any. A present record with a
+    /// `nil` group ID deliberately belongs to no group.
+    public func routeGroupID(forWorkoutID workoutID: UUID) -> UUID? {
+        routeGroupAssignment(forWorkoutID: workoutID)?.groupID
+    }
+
+    /// Member workout IDs of one group, in library order.
+    public func routeGroupMemberIDs(groupID: UUID) -> [UUID] {
+        let memberSet = Set(
+            routeGroupAssignments.compactMap { $0.groupID == groupID ? $0.workoutID : nil }
+        )
+        guard !memberSet.isEmpty else { return [] }
+        return workoutIDs.filter { memberSet.contains($0) }
+    }
+
+    /// Replace or add one workout's assignment record (no group mutation).
+    /// A record with a `nil` group ID is meaningful — evaluated and
+    /// deliberately ungrouped — and is stored like any other.
+    public mutating func setRouteGroupAssignment(_ assignment: WorkoutRouteGroupAssignment) {
+        routeGroupAssignments.removeAll { $0.workoutID == assignment.workoutID }
+        routeGroupAssignments.append(assignment)
+        sortRouteGroupAssignmentsDeterministically()
+    }
+
+    public mutating func sortRouteGroupAssignmentsDeterministically() {
+        routeGroupAssignments.sort {
             $0.workoutID.uuidString.localizedStandardCompare($1.workoutID.uuidString) == .orderedAscending
         }
     }
@@ -237,6 +296,85 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         tagAssignments = repairedAssignments
         sortAssignmentsDeterministically()
 
+        // Repair route groups and their assignment records. Only assignments
+        // whose workout is still in the library count towards membership —
+        // a group left only by deleted workouts is empty and unreachable.
+        var groupIDByAssignedWorkout: [UUID: UUID] = [:]
+        groupIDByAssignedWorkout.reserveCapacity(routeGroupAssignments.count)
+        for assignment in routeGroupAssignments {
+            if let groupID = assignment.groupID, workoutIDSet.contains(assignment.workoutID) {
+                groupIDByAssignedWorkout[assignment.workoutID] = groupID
+            }
+        }
+
+        // Deduplicate group IDs (keep first occurrence) and cap the count.
+        var seenGroupIDs = Set<UUID>()
+        var uniqueRouteGroups: [WorkoutRouteGroup] = []
+        uniqueRouteGroups.reserveCapacity(routeGroups.count)
+        for group in routeGroups {
+            if seenGroupIDs.insert(group.id).inserted {
+                uniqueRouteGroups.append(group)
+            } else {
+                report.warnings.append(
+                    "Removed duplicate route group \(group.id.uuidString.prefix(8))…"
+                )
+            }
+        }
+        if uniqueRouteGroups.count > ResourceLimits.maxRouteGroups {
+            uniqueRouteGroups = Array(uniqueRouteGroups.prefix(ResourceLimits.maxRouteGroups))
+            report.warnings.append("Truncated route groups to \(ResourceLimits.maxRouteGroups).")
+        }
+
+        // A pin or cached summary survives only while the referenced workout
+        // is still a member of this group.
+        for index in uniqueRouteGroups.indices {
+            let groupID = uniqueRouteGroups[index].id
+            if let pinned = uniqueRouteGroups[index].pinnedRepresentativeWorkoutID,
+               !workoutIDSet.contains(pinned)
+               || groupIDByAssignedWorkout[pinned] != groupID {
+                uniqueRouteGroups[index].pinnedRepresentativeWorkoutID = nil
+            }
+            if let summary = uniqueRouteGroups[index].representativeSummary,
+               !workoutIDSet.contains(summary.workoutID)
+               || groupIDByAssignedWorkout[summary.workoutID] != groupID {
+                uniqueRouteGroups[index].representativeSummary = nil
+            }
+        }
+
+        // Groups with no surviving members are unreachable; remove them.
+        let memberGroupIDs = Set(groupIDByAssignedWorkout.values)
+        let keptGroups = uniqueRouteGroups.filter { memberGroupIDs.contains($0.id) }
+        if keptGroups.count != uniqueRouteGroups.count {
+            report.warnings.append("Removed empty route groups.")
+        }
+        let keptGroupIDs = Set(keptGroups.map(\.id))
+        routeGroups = keptGroups
+
+        // Repair assignment records: drop workouts that left the library,
+        // drop references to groups that no longer exist, deduplicate by
+        // workout, and cap the count.
+        var repairedRouteGroupAssignments: [WorkoutRouteGroupAssignment] = []
+        repairedRouteGroupAssignments.reserveCapacity(
+            min(routeGroupAssignments.count, ResourceLimits.maxRouteGroupAssignments)
+        )
+        var seenAssignmentWorkoutIDs = Set<UUID>()
+        for assignment in routeGroupAssignments {
+            if repairedRouteGroupAssignments.count >= ResourceLimits.maxRouteGroupAssignments {
+                report.warnings.append(
+                    "Truncated route group assignments to \(ResourceLimits.maxRouteGroupAssignments)."
+                )
+                break
+            }
+            guard workoutIDSet.contains(assignment.workoutID) else { continue }
+            guard seenAssignmentWorkoutIDs.insert(assignment.workoutID).inserted else { continue }
+            if let groupID = assignment.groupID, !keptGroupIDs.contains(groupID) {
+                continue
+            }
+            repairedRouteGroupAssignments.append(assignment)
+        }
+        routeGroupAssignments = repairedRouteGroupAssignments
+        sortRouteGroupAssignmentsDeterministically()
+
         return report
     }
 
@@ -308,6 +446,8 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         case tags
         case tagAssignments
         case smartCollections
+        case routeGroups
+        case routeGroupAssignments
     }
 
     public init(from decoder: Decoder) throws {
@@ -344,6 +484,22 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
             forKey: .smartCollections,
             maxCount: ResourceLimits.maxSmartCollections
         )
+
+        // Version 1–3 manifests omit route groups. Decode only up to the
+        // resource caps so a malformed local manifest cannot allocate an
+        // unbounded route-group array before repair truncates it.
+        routeGroups = try Self.decodeCappedArray(
+            WorkoutRouteGroup.self,
+            from: container,
+            forKey: .routeGroups,
+            maxCount: ResourceLimits.maxRouteGroups
+        )
+        routeGroupAssignments = try Self.decodeCappedArray(
+            WorkoutRouteGroupAssignment.self,
+            from: container,
+            forKey: .routeGroupAssignments,
+            maxCount: ResourceLimits.maxRouteGroupAssignments
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -363,6 +519,15 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         }
         try container.encode(orderedAssignments, forKey: .tagAssignments)
         try container.encode(smartCollections, forKey: .smartCollections)
+        let orderedRouteGroups = routeGroups.sorted {
+            $0.id.uuidString.localizedStandardCompare($1.id.uuidString) == .orderedAscending
+        }
+        try container.encode(orderedRouteGroups, forKey: .routeGroups)
+        // Route-group assignments are expected pre-sorted; re-sort for safety.
+        let orderedRouteGroupAssignments = routeGroupAssignments.sorted {
+            $0.workoutID.uuidString.localizedStandardCompare($1.workoutID.uuidString) == .orderedAscending
+        }
+        try container.encode(orderedRouteGroupAssignments, forKey: .routeGroupAssignments)
     }
 
     private static func decodeCappedArray<Element: Decodable>(

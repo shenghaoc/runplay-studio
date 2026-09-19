@@ -180,6 +180,10 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
             return false
         }
 
+        guard matchesRouteFilter(entry: entry, filter: filter.route) else {
+            return false
+        }
+
         // Date filter
         if dateBounds.start == nil, dateBounds.end == nil, dateBounds.includeMissingDates {
             return true
@@ -219,6 +223,20 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
             case .all:
                 return tagIDs.isSubset(of: entry.tagIDs)
             }
+        }
+    }
+
+    public static func matchesRouteFilter(
+        entry: WorkoutLibraryEntry,
+        filter: WorkoutLibraryRouteFilter
+    ) -> Bool {
+        switch filter {
+        case .anyRoute:
+            return true
+        case .ungroupedOnly:
+            return entry.routeGroupID == nil
+        case .group(let groupID):
+            return entry.routeGroupID == groupID
         }
     }
 
