@@ -143,7 +143,14 @@ not import `RunPlayEngineCpp` directly.
   retains raw pace, heart-rate, and corrected-elevation extraction,
   distance-domain smoothing, scale direction, localized labels, public
   route-metric models, availability and caching, Platform line coalescing,
-  cancellation, diagnostics, UI state, and persistence.
+  cancellation, diagnostics, UI state, and persistence. For heart-rate training
+  load, C++23 performs interval-weighted Banister TRIMP accumulation and
+  five-zone time bucketing through one bulk call per training-load pass over a
+  Swift-built array of same-segment heart-rate intervals. Swift retains
+  interval construction from route points (active-time weights that never span
+  a recording gap or pause), the athlete-profile policy (resting/max heart
+  rate, coefficient set, zone bounds), the measured-versus-estimated decision,
+  the pace/duration estimator, public models, cancellation, and persistence.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -223,6 +230,11 @@ Approved pointer boundaries:
   * `RouteMetricScaleBucketWorkspaceSample*` caller-owned eligible workspace
   * `RouteMetricScaleBucketOutputSample*` caller-owned output
 
+- heart-rate training load:
+
+  * `const TrainingLoadSample*` input samples
+  * no output pointer — aggregates return by value in `TrainingLoadSummary`
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -271,6 +283,15 @@ sample, altitude run, smoothing window, or ascent/descent interval.
 Cancellation is cooperative Swift work during conversion, immediately before
 and after the native call, and during output translation — never inside the
 native call.
+
+The training-load boundary is summary-only: it takes `const TrainingLoadSample*`
+plus a count and a by-value policy, and returns every product of the pass
+(Banister TRIMP, five-zone seconds, valid and covered time, interval counts) in
+a `TrainingLoadSummary` by value. No output buffer exists, and an error summary
+carries no partial values — every numeric field is zero and only the status is
+set. One native call occurs per training-load pass; none occurs per interval.
+Cancellation is cooperative Swift work before and after the native call and
+during input conversion, never inside the native call.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route
