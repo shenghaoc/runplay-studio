@@ -249,6 +249,7 @@ struct ContentView: View {
             showPersonalHeatmap: { appState.showPersonalHeatmap() },
             showTrends: { appState.showTrends() },
             showPersonalRecords: { appState.showPersonalRecords() },
+            showRouteGroups: { appState.showRouteGroups() },
             showAllRuns: { appState.showWorkoutLibrary(restoreManualQuery: true) },
             importFile: { appState.showImporter = true },
             importStravaArchive: { appState.showArchiveImporter = true }
@@ -297,6 +298,8 @@ struct ContentView: View {
             TrendsView(appState: appState, viewModel: appState.trends)
         case .personalRecords:
             PersonalRecordsView(appState: appState, viewModel: appState.personalRecords)
+        case .routeGroups:
+            RoutesView(appState: appState, viewModel: appState.routeGroupsViewModel)
         case .workoutLibrary:
             WorkoutLibraryView(appState: appState, viewModel: appState.workoutLibrary)
         case .comparison:

@@ -670,7 +670,8 @@ merge control.
 
 **Opposite direction** runs group with their route (no user toggle). The
 coarse ordered-sequence direction probe — the same one comparison uses —
-orients the solve.
+orients the solve, and the Routes detail list marks reversed members (a
+hilly loop run backwards has a different pace profile).
 
 **Representatives.** The effective representative of a group is a pure
 function of its member set: highest route quality (fewest discarded
@@ -678,7 +679,10 @@ coordinate points, then densest sampling), earliest canonical date
 tiebreak, with a user pin overriding until the pinned workout no longer
 clusters into the group. Because it never depends on join order,
 chronological incremental assignment and a full re-cluster produce
-identical partitions.
+identical partitions. A cached `WorkoutRouteGroupSummary` (representative
+identity + stage-1 facts) persists with each group so a new import matches
+only against representatives without loading the library; drift is repaired
+by re-cluster.
 
 The All Runs query filter and the Personal Heatmap filter row both gain a
 "route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
@@ -688,12 +692,26 @@ through the ordinary query service and is saved-query compatible.
 the nil marker: *absence* means assignment has not run and a later pass
 picks it up (the records-backfill argument); a present record with a `nil`
 group ID means evaluated and deliberately ungrouped (below participation
-minimums, or removed by the user — never auto re-added). Deletion repairs
-membership transactionally in the store actor.
+minimums, or removed by the user — never auto re-added). New imports assign
+asynchronously after the commit; an interrupted pass simply leaves its
+workouts pending. The route-groups library revision bumps once per pass,
+never per workout; per-item progress lives in the Routes view model.
+Deletion repairs membership transactionally in the store actor.
 
 **Naming.** No geocoding — the privacy model forbids it. Unnamed groups
 derive a descriptive default from the representative's own geometry
-("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure).
+("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure); users
+can rename at any time.
+
+Manual controls: rename, merge two routes, remove a run from a route
+(evaluated-nil marker), and pin a representative. A full re-cluster action
+replays the greedy rule chronologically with progress and cancellation,
+replaces the manifest in one atomic write (cancelled or failed passes leave
+the previous groups untouched), and carries over user names and pins whose
+referenced workouts still cluster together.
+
+Routes state participates in session restoration as of session **v5**
+(destination only — the selected route is a transient table selection).
 
 `scripts/run-route-grouping-benchmark.sh` compares stage-1 candidate
 filtering against brute-force all-pairs matching on a 2,000-workout
@@ -702,8 +720,8 @@ synthetic library, asserting both produce identical groups.
 ### Workspace navigation
 
 `AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`,
-`.trends`, `.personalRecords`, or `.workoutLibrary` (All Runs) — mutually
-exclusive. Selecting a workout leaves heatmap; entering comparison leaves
+`.trends`, `.personalRecords`, `.routeGroups`, or `.workoutLibrary` (All
+Runs) — mutually exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
 
