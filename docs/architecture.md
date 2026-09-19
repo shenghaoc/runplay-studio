@@ -613,11 +613,101 @@ as of session version 4; older sessions decode with the entire-library
 default and the validator repairs dangling scope collections and unknown
 destinations.
 
+### Route grouping (Routes workspace)
+
+Automatic route grouping clusters runs that follow substantially the same
+route and shows progression on each route. It is derived library-level
+state: membership lives in the manifest (schema **v4**), while geometry
+never persists beyond each group's cached representative summary.
+
+Two-stage matching, both owned by RunPlayCore:
+
+1. **Stage 1 — candidate filter (pure Swift arithmetic).** Per-workout
+   `RouteGroupingRouteFacts` (bounding box, endpoints, distance, valid point
+   count, discarded-point count) are computed from stored route points. A
+   pair is a candidate when the total-distance ratio (shorter / longer) sits
+   inside `0.8...1.25`, the bounding boxes overlap with margin, and one
+   route's start is near either endpoint of the other (admitting reversed
+   traversals).
+2. **Stage 2 — shape confirmation over the existing constrained-DTW
+   boundary.** The pair goes through `RouteAlignmentSampleBuilder` and the
+   same one-bulk-call `RunPlayRouteAlignmentDtwBridge` solve used by
+   Route-Aware comparison — there is no second DTW. A Swift scoring walk
+   over the returned path accumulates matched distance per side and
+   advance-weighted separations, exactly mirroring how the aligner derives
+   its diagnostics.
+
+Decision thresholds (all in `RouteGroupingPolicy`, documented values):
+**coverage of the shorter route ≥ 0.85**, distance-weighted **median
+separation ≤ 35 m**, **p90 separation ≤ 100 m**. Coverage is the
+discriminating axis and is deliberately stricter than comparison
+acceptance; separation stays at the comparison "good" band because it is
+dominated by GPS quality — a false merge silently corrupts a progression
+chart while a false split is visible and fixable with Merge.
+
+**Subset guard.** Only coverage of the shorter route is evaluated, so a
+short route wholly contained in a longer one would otherwise score
+perfectly. The stage-1 distance-ratio bound is the guard: a 5 km prefix of
+a 10 km route (ratio 0.5) never reaches stage 2. A superset within the
+ratio bound — a loop plus a spur — groups with the loop because the DTW
+consumes the extra distance as warp steps; the grouping DTW policy variant
+therefore keeps the comparison unmatched budget (widening it would let a
+zero-cost identical-route path stop early and under-report coverage) and
+lifts only the consecutive-warp cap.
+
+**Opposite direction** runs group with their route (no user toggle). The
+coarse ordered-sequence direction probe — the same one comparison uses —
+orients the solve, and the Routes detail list marks reversed members (a
+hilly loop run backwards has a different pace profile).
+
+**Representatives.** The effective representative of a group is a pure
+function of its member set: highest route quality (fewest discarded
+coordinate points, then densest sampling), earliest canonical date
+tiebreak, with a user pin overriding until the pinned workout no longer
+clusters into the group. Because it never depends on join order,
+chronological incremental assignment and a full re-cluster produce
+identical partitions. A cached `WorkoutRouteGroupSummary` (representative
+identity + stage-1 facts) persists with each group so a new import matches
+only against representatives without loading the library; drift is repaired
+by re-cluster.
+
+**Durability and revision discipline.** A workout's assignment record is
+the nil marker: *absence* means assignment has not run and a later pass
+picks it up (the records-backfill argument); a present record with a `nil`
+group ID means evaluated and deliberately ungrouped (below participation
+minimums, or removed by the user — never auto re-added). New imports assign
+asynchronously after the commit; an interrupted pass simply leaves its
+workouts pending. The route-groups library revision bumps once per pass,
+never per workout; per-item progress lives in the Routes view model.
+Deletion repairs membership transactionally in the store actor.
+
+**Naming.** No geocoding — the privacy model forbids it. Unnamed groups
+derive a descriptive default from the representative's own geometry
+("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure); users
+can rename at any time.
+
+Manual controls: rename, merge two routes, remove a run from a route
+(evaluated-nil marker), and pin a representative. A full re-cluster action
+replays the greedy rule chronologically with progress and cancellation,
+replaces the manifest in one atomic write (cancelled or failed passes leave
+the previous groups untouched), and carries over user names and pins whose
+referenced workouts still cluster together.
+
+The All Runs query filter and the Personal Heatmap filter row both gain a
+"route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
+through the ordinary query service and is saved-query compatible. Routes
+state participates in session restoration as of session **v5**
+(destination only — the selected route is a transient table selection).
+
+`scripts/run-route-grouping-benchmark.sh` compares stage-1 candidate
+filtering against brute-force all-pairs matching on a 2,000-workout
+synthetic library, asserting both produce identical groups.
+
 ### Workspace navigation
 
 `AppWorkspaceMode` is `.workout`, `.comparison`, `.personalHeatmap`,
-`.trends`, `.personalRecords`, or `.workoutLibrary` (All Runs) — mutually
-exclusive. Selecting a workout leaves heatmap; entering comparison leaves
+`.trends`, `.personalRecords`, `.routeGroups`, or `.workoutLibrary` (All
+Runs) — mutually exclusive. Selecting a workout leaves heatmap; entering comparison leaves
 heatmap; heatmap calculation runs off the main actor and does not block normal
 library interaction beyond heatmap-local loading indicators.
 
