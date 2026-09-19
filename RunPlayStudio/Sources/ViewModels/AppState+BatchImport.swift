@@ -489,6 +489,9 @@ extension AppState {
             favoriteWorkoutIDs = favoriteIDs
             tags = organization.tags
             smartCollections = organization.smartCollections
+            routeGroups = organization.routeGroups
+            routeGroupAssignments = organization.routeGroupAssignments
+            personalHeatmap.applyOrganization(organization)
             libraryWorkoutIDs = Set(loaded.map(\.id))
             hasPersistedLibrary = true
             bumpPersonalRecordsLibraryRevision()
@@ -510,6 +513,14 @@ extension AppState {
                 refreshPersonalRecords()
                 startPersonalRecordsBackfillIfNeeded()
             }
+            if workspaceMode == .routeGroups {
+                refreshRouteGroups()
+            }
+            // Assign the whole committed batch asynchronously, exactly like
+            // the single-import path: durable first, grouped shortly after.
+            // The pass skips workouts that already carry records, so only
+            // the newly committed runs are matched.
+            startRouteGroupAssignment(for: Array(libraryWorkoutIDs))
             requestSessionSave()
         case .demos(let message, let organization, let manifestPresent):
             // Unexpected after a successful commit; fall back without wiping

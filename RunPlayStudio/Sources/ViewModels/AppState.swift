@@ -25,6 +25,7 @@ enum AppWorkspaceMode: Hashable, Sendable {
     case personalHeatmap
     case trends
     case personalRecords
+    case routeGroups
     case workoutLibrary
 }
 
@@ -34,6 +35,7 @@ enum AppWorkspaceCommand {
     case showPersonalHeatmap
     case showTrends
     case showPersonalRecords
+    case showRouteGroups
     case showAllRuns
 }
 
@@ -72,6 +74,23 @@ class AppState: ObservableObject {
     func bumpPersonalRecordsLibraryRevision() {
         personalRecordsLibraryRevision += 1
     }
+
+    /// Increments whenever route-group membership changes — once per pass
+    /// (assignment, backfill, re-cluster) or manual mutation, never per
+    /// workout inside a pass. See the library-level revision discipline in
+    /// docs/architecture.md.
+    @Published private(set) var routeGroupsLibraryRevision = 0
+
+    func bumpRouteGroupsLibraryRevision() {
+        routeGroupsLibraryRevision += 1
+    }
+
+    /// Route groups (library organisation; empty for demos).
+    @Published var routeGroups: [WorkoutRouteGroup] = []
+
+    /// Route-group assignment records, mirroring the manifest.
+    @Published var routeGroupAssignments: [WorkoutRouteGroupAssignment] = []
+
     @Published var operationState: LibraryOperationState = .idle
 
     /// Local favourite markers for library workouts (not demos).
@@ -151,6 +170,8 @@ class AppState: ObservableObject {
             return .trends
         case .personalRecords:
             return .personalRecords
+        case .routeGroups:
+            return .routeGroups
         case .workoutLibrary:
             if case .smartCollection(let id, _) = workoutLibrary.queryContext {
                 return .smartCollection(id)
@@ -175,6 +196,8 @@ class AppState: ObservableObject {
             showTrends()
         case .personalRecords:
             showPersonalRecords()
+        case .routeGroups:
+            showRouteGroups()
         case .smartCollection(let id):
             showSmartCollection(id: id)
         case .workout(let id):
@@ -191,6 +214,7 @@ class AppState: ObservableObject {
     let personalHeatmap: PersonalHeatmapViewModel
     let trends: TrendsViewModel
     let personalRecords: PersonalRecordsViewModel
+    let routeGroupsViewModel = RouteGroupsViewModel()
     let workoutLibrary: WorkoutLibraryViewModel
 
     struct CachedAnalysisContext {
@@ -315,6 +339,9 @@ class AppState: ObservableObject {
         archiveTask?.cancel()
         fitImportTask?.cancel()
         personalRecordsBackfillTask?.cancel()
+        routeGroupAssignmentTask?.cancel()
+        routeGroupReclusterTask?.cancel()
+        routeGroupBackfillTask?.cancel()
     }
 
     // MARK: - Application session
@@ -339,6 +366,8 @@ class AppState: ObservableObject {
             destination = .trends
         case .personalRecords:
             destination = .personalRecords
+        case .routeGroups:
+            destination = .routeGroups
         case .workoutLibrary:
             if case .smartCollection(let id, _) = workoutLibrary.queryContext {
                 destination = .smartCollection(id)
@@ -397,7 +426,11 @@ class AppState: ObservableObject {
                 customStartDate: personalHeatmap.customStartDate,
                 customEndDate: personalHeatmap.customEndDate,
                 resolutionRaw: personalHeatmap.resolution.rawValue,
-                minimumWorkoutCount: personalHeatmap.minimumWorkoutCount
+                minimumWorkoutCount: personalHeatmap.minimumWorkoutCount,
+                routeGroupID: {
+                    if case .group(let id) = personalHeatmap.routeFilter { return id }
+                    return nil
+                }()
             ),
             trends: AppSessionTrendsState(
                 periodRaw: trends.period.rawValue,
@@ -513,6 +546,17 @@ class AppState: ObservableObject {
             workspaceMode = .personalRecords
             refreshPersonalRecords()
             startPersonalRecordsBackfillIfNeeded()
+        case .routeGroups:
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            workspaceMode = .routeGroups
+            refreshRouteGroups()
+            startRouteGroupBackfillIfNeeded()
         case .comparison:
             workoutLibrary.restoreSessionState(
                 manualQuery: snapshot.library.manualQuery,
@@ -599,6 +643,8 @@ class AppState: ObservableObject {
             favoriteWorkoutIDs = []
             tags = organization.tags
             smartCollections = organization.smartCollections
+            routeGroups = organization.routeGroups
+            routeGroupAssignments = organization.routeGroupAssignments
             libraryWorkoutIDs = []
             // Empty persisted libraries still own organisation (and future imports).
             hasPersistedLibrary = manifestPresent
@@ -613,6 +659,9 @@ class AppState: ObservableObject {
             favoriteWorkoutIDs = favoriteIDs
             tags = organization.tags
             smartCollections = organization.smartCollections
+            routeGroups = organization.routeGroups
+            routeGroupAssignments = organization.routeGroupAssignments
+            personalHeatmap.applyOrganization(organization)
             libraryWorkoutIDs = Set(loaded.map(\.id))
             hasPersistedLibrary = true
             bumpPersonalRecordsLibraryRevision()
@@ -722,6 +771,10 @@ class AppState: ObservableObject {
                 favoriteIDs: favoriteWorkoutIDs,
                 organization: currentOrganizationSnapshot()
             )
+            // Route-group assignment runs asynchronously after the commit:
+            // the import is durable, the run appears on its route when the
+            // pass finishes, and an interrupted pass leaves the nil marker.
+            startRouteGroupAssignment(for: [workout.id])
             // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
             requestSessionSave()
@@ -801,7 +854,7 @@ class AppState: ObservableObject {
             highlightedWorkoutRange = nil
         }
         switch workspaceMode {
-        case .personalHeatmap, .trends, .personalRecords, .workoutLibrary:
+        case .personalHeatmap, .trends, .personalRecords, .routeGroups, .workoutLibrary:
             cancelActiveWorkspaceWork()
             workspaceMode = .workout
         case .workout, .comparison:
@@ -913,6 +966,11 @@ class AppState: ObservableObject {
             )
         }
         bumpPersonalRecordsLibraryRevision()
+        // The actor repaired route-group membership transactionally; mirror
+        // the persisted organization so Routes and the route filter agree.
+        Task { @MainActor in
+            await self.refreshRouteGroupOrganization()
+        }
         requestSessionSave()
     }
 
@@ -924,7 +982,7 @@ class AppState: ObservableObject {
         // workout workspace instead follows the selection.
         let libraryWorkspace: AppWorkspaceMode?
         switch workspaceMode {
-        case .personalHeatmap, .trends, .personalRecords, .workoutLibrary:
+        case .personalHeatmap, .trends, .personalRecords, .routeGroups, .workoutLibrary:
             libraryWorkspace = workspaceMode
         case .workout, .comparison:
             libraryWorkspace = nil
@@ -965,6 +1023,8 @@ class AppState: ObservableObject {
             refreshTrends()
         case .personalRecords:
             refreshPersonalRecords()
+        case .routeGroups:
+            refreshRouteGroups()
         case .workout, .comparison, .workoutLibrary:
             break
         }
@@ -981,6 +1041,8 @@ class AppState: ObservableObject {
             showTrends()
         case .showPersonalRecords:
             showPersonalRecords()
+        case .showRouteGroups:
+            showRouteGroups()
         case .showAllRuns:
             showWorkoutLibrary(restoreManualQuery: true)
         }
@@ -1044,7 +1106,9 @@ class AppState: ObservableObject {
         return WorkoutLibraryOrganizationSnapshot(
             tags: tags,
             tagAssignments: assignments,
-            smartCollections: smartCollections
+            smartCollections: smartCollections,
+            routeGroups: routeGroups,
+            routeGroupAssignments: routeGroupAssignments
         )
     }
 
@@ -1067,6 +1131,8 @@ class AppState: ObservableObject {
             trends.cancel()
         case .personalRecords:
             personalRecords.cancel()
+        case .routeGroups:
+            routeGroupReclusterTask?.cancel()
         case .workout, .comparison, .workoutLibrary:
             break
         }
@@ -1117,6 +1183,241 @@ class AppState: ObservableObject {
             smartCollections: smartCollections,
             currentQuery: workoutLibrary.currentRuntimeQuery()
         ))
+    }
+
+    // MARK: - Routes workspace
+
+    /// Open the Routes workspace. Does not change selected workout.
+    func showRouteGroups() {
+        cancelActiveWorkspaceWork()
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
+        workspaceMode = .routeGroups
+        refreshRouteGroups()
+        startRouteGroupBackfillIfNeeded()
+        requestSessionSave()
+    }
+
+    /// Re-derive route-group rows from the current library and organization.
+    func refreshRouteGroups() {
+        routeGroupsViewModel.refresh(
+            workouts: workouts,
+            organization: currentOrganizationSnapshot()
+        )
+    }
+
+    /// Handle for the active post-import assignment pass.
+    private var routeGroupAssignmentTask: Task<Void, Never>?
+
+    /// Handle for the active full re-cluster pass.
+    private var routeGroupReclusterTask: Task<Void, Never>?
+
+    /// Handle for the one-off assignment backfill.
+    private var routeGroupBackfillTask: Task<Void, Never>?
+
+    /// Asynchronously assign recently imported workouts to route groups.
+    ///
+    /// Runs after the import commit; an interrupted pass leaves those
+    /// workouts without assignment records (the nil marker), and the next
+    /// pass retries them. The library-wide route-groups revision bumps once,
+    /// when the pass finishes.
+    func startRouteGroupAssignment(for workoutIDs: [UUID]) {
+        guard routeGroupAssignmentTask == nil,
+              let storeActor,
+              hasPersistedLibrary,
+              !workoutIDs.isEmpty else {
+            return
+        }
+        routeGroupsViewModel.assignmentStarted()
+        let progress = makeRouteGroupProgressHandler()
+        routeGroupAssignmentTask = Task { [weak self] in
+            let result = try? await storeActor.assignRouteGroups(
+                for: workoutIDs,
+                progress: progress
+            )
+            self?.finishRouteGroupAssignmentPass(result)
+        }
+    }
+
+    /// Start the one-off backfill for workouts whose assignment record is
+    /// missing (schema v4 libraries) or produced by an older algorithm
+    /// version. Auto-starts the first time Routes opens with pending work.
+    func startRouteGroupBackfillIfNeeded() {
+        guard routeGroupBackfillTask == nil,
+              routeGroupAssignmentTask == nil,
+              let storeActor,
+              hasPersistedLibrary,
+              routeGroupsViewModel.pendingAssignmentCount > 0 else {
+            return
+        }
+        routeGroupsViewModel.assignmentStarted()
+        let progress = makeRouteGroupProgressHandler()
+        routeGroupBackfillTask = Task { [weak self] in
+            let result = try? await storeActor.backfillRouteGroupAssignments(progress: progress)
+            self?.routeGroupBackfillTask = nil
+            self?.finishRouteGroupAssignmentPass(result)
+        }
+    }
+
+    private func makeRouteGroupProgressHandler() -> @Sendable (RouteGroupingPassProgress) -> Void {
+        { [weak self] update in
+            guard let self else { return }
+            Task { @MainActor in
+                self.routeGroupsViewModel.assignmentProgress(
+                    currentWorkoutName: update.currentWorkoutName
+                )
+            }
+        }
+    }
+
+    private func finishRouteGroupAssignmentPass(
+        _ result: WorkoutLibraryStoreActor.RouteGroupAssignmentPassResult?
+    ) {
+        routeGroupAssignmentTask = nil
+        routeGroupsViewModel.assignmentFinished()
+        if let result {
+            applyRouteGroupPassResult(
+                groups: result.groups,
+                assignments: result.assignments
+            )
+        }
+        if !isRouteGroupPassRunning {
+            bumpRouteGroupsLibraryRevision()
+            refreshRouteGroups()
+        }
+    }
+
+    /// Run a full re-cluster with progress and cancellation. A cancelled or
+    /// failed pass leaves the previous groups untouched on disk and in
+    /// memory; the visible list is only replaced on success.
+    func reclusterRouteGroups() {
+        guard routeGroupReclusterTask == nil,
+              let storeActor,
+              hasPersistedLibrary,
+              !workouts.isEmpty else {
+            return
+        }
+        routeGroupsViewModel.reclusterStarted(totalCount: workouts.count)
+        let progress: @Sendable (RouteGroupingPassProgress) -> Void = { [weak self] update in
+            guard let self else { return }
+            Task { @MainActor in
+                self.routeGroupsViewModel.reclusterProgress(
+                    completedCount: update.completedCount,
+                    totalCount: update.totalCount,
+                    currentWorkoutName: update.currentWorkoutName
+                )
+            }
+        }
+        routeGroupReclusterTask = Task { [weak self] in
+            do {
+                let result = try await storeActor.reclusterRouteGroups(progress: progress)
+                self?.applyRouteGroupPassResult(
+                    groups: result.groups,
+                    assignments: result.assignments
+                )
+                self?.routeGroupsViewModel.reclusterFinished(summary: String(
+                    format: String(localized: "route_group.recluster.summary", defaultValue: "%d runs on %d routes"),
+                    result.workoutCount,
+                    result.groups.count
+                ))
+                self?.bumpRouteGroupsLibraryRevision()
+                self?.refreshRouteGroups()
+            } catch is CancellationError {
+                self?.routeGroupsViewModel.reclusterFinished(summary: nil)
+            } catch {
+                self?.routeGroupsViewModel.reclusterFinished(summary: nil)
+                self?.errorMessage = "Could not re-cluster routes; the previous routes are unchanged: \(error.localizedDescription)"
+                self?.showingError = true
+            }
+            self?.routeGroupReclusterTask = nil
+        }
+    }
+
+    /// Whether a route-group pass is currently running.
+    var isRouteGroupPassRunning: Bool {
+        routeGroupAssignmentTask != nil
+            || routeGroupBackfillTask != nil
+            || routeGroupReclusterTask != nil
+    }
+
+    /// Cancel the active full re-cluster. The previous groups stay intact.
+    func cancelRouteGroupRecluster() {
+        routeGroupReclusterTask?.cancel()
+    }
+
+    /// Apply a pass result to in-memory organization state and rebuild the
+    /// All Runs entries that carry route membership.
+    func applyRouteGroupPassResult(
+        groups: [WorkoutRouteGroup],
+        assignments: [WorkoutRouteGroupAssignment]
+    ) {
+        routeGroups = groups
+        routeGroupAssignments = assignments
+        workoutLibrary.replaceLibrary(
+            workouts: workouts,
+            favoriteIDs: favoriteWorkoutIDs,
+            organization: currentOrganizationSnapshot()
+        )
+    }
+
+    /// Reload route-group organization from the persisted manifest after the
+    /// actor mutated it (deletion, manual controls).
+    func refreshRouteGroupOrganization() async {
+        guard let storeActor else { return }
+        guard let organization = await storeActor.organizationSnapshot() else { return }
+        routeGroups = organization.routeGroups
+        routeGroupAssignments = organization.routeGroupAssignments
+        workoutLibrary.applyOrganizationSnapshot(
+            currentOrganizationSnapshot(),
+            schedule: true
+        )
+        personalHeatmap.applyOrganization(currentOrganizationSnapshot())
+        bumpRouteGroupsLibraryRevision()
+        refreshRouteGroups()
+    }
+
+    // MARK: - Route group manual controls
+
+    func renameRouteGroup(id: UUID, name: String?) async {
+        guard let storeActor else { return }
+        do {
+            try await storeActor.renameRouteGroup(id: id, name: name)
+            await refreshRouteGroupOrganization()
+        } catch {
+            organizationEditError = error.localizedDescription
+        }
+    }
+
+    func mergeRouteGroups(sourceID: UUID, into targetID: UUID) async {
+        guard let storeActor else { return }
+        do {
+            try await storeActor.mergeRouteGroups(sourceID: sourceID, into: targetID)
+            await refreshRouteGroupOrganization()
+        } catch {
+            organizationEditError = error.localizedDescription
+        }
+    }
+
+    func removeWorkoutFromRouteGroup(workoutID: UUID) async {
+        guard let storeActor else { return }
+        do {
+            try await storeActor.removeWorkoutFromRouteGroup(workoutID: workoutID)
+            await refreshRouteGroupOrganization()
+        } catch {
+            organizationEditError = error.localizedDescription
+        }
+    }
+
+    func pinRouteGroupRepresentative(groupID: UUID, workoutID: UUID) async {
+        guard let storeActor else { return }
+        do {
+            try await storeActor.pinRouteGroupRepresentative(groupID: groupID, workoutID: workoutID)
+            await refreshRouteGroupOrganization()
+        } catch {
+            organizationEditError = error.localizedDescription
+        }
     }
 
     // MARK: - Personal Records workspace
