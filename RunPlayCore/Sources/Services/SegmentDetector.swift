@@ -1,13 +1,16 @@
 import Foundation
 
-/// Detects notable segments using cumulative distance.
+/// Detects notable segments and personal-record windows using cumulative
+/// distance.
 ///
 /// Fastest and slowest windows use active pace. Windows may span recording
 /// gaps, but elevation never connects points from different route segments.
 ///
-/// The C++23 engine selects at most five winning distance windows through one
-/// bulk native call. Swift retains public highlight materialization, UUIDs,
-/// titles, subtitles, final range metadata, HR averages, and cancellation.
+/// The C++23 engine selects at most ten winning distance windows — the five
+/// segment highlights plus five fixed-distance personal-record windows —
+/// through one bulk native call per detection pass. Swift retains public
+/// highlight and record materialization, UUIDs, titles, subtitles, final
+/// range metadata, HR averages, and cancellation.
 public struct SegmentDetector {
 
     public static func detectSegments(from workout: RunWorkout) -> [SegmentHighlight] {
@@ -31,25 +34,67 @@ public struct SegmentDetector {
         from workout: RunWorkout,
         context: WorkoutAnalysisContext
     ) -> [SegmentHighlight] {
-        (try? detectSegments(
+        (try? detectSegmentsAndPersonalRecords(
             from: workout,
             context: context,
             policy: .runningDefault,
             isCancelled: { false }
-        )) ?? []
+        ))?.segments ?? []
     }
 
+    /// Computes the best fixed-distance personal-record windows for one
+    /// workout. Convenience for callers (such as the library backfill) that
+    /// only need records; it shares the same single native call per pass.
+    public static func detectPersonalRecords(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext
+    ) -> WorkoutPersonalRecords {
+        let records = (try? detectSegmentsAndPersonalRecords(
+            from: workout,
+            context: context,
+            policy: .runningDefault,
+            isCancelled: { false }
+        ))?.records ?? []
+        return WorkoutPersonalRecords(windows: records)
+    }
+
+    /// Segment-only throwing entry retained for parity tests and benchmarks.
+    /// Delegates to the combined pass, so a call remains exactly one native
+    /// detection invocation.
     static func detectSegments(
         from workout: RunWorkout,
         context: WorkoutAnalysisContext,
         policy: RouteQualityPolicy,
         isCancelled: @Sendable () -> Bool
     ) throws -> [SegmentHighlight] {
+        try detectSegmentsAndPersonalRecords(
+            from: workout,
+            context: context,
+            policy: policy,
+            isCancelled: isCancelled
+        ).segments
+    }
+
+    /// Result of one detection pass: the five segment highlights and the
+    /// fixed-distance record windows, both produced by one native call.
+    struct DetectionResult {
+        let segments: [SegmentHighlight]
+        let records: [PersonalRecordWindow]
+    }
+
+    static func detectSegmentsAndPersonalRecords(
+        from workout: RunWorkout,
+        context: WorkoutAnalysisContext,
+        policy: RouteQualityPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> DetectionResult {
         let points = workout.routePoints
         let timeline = context.timeline
         let elevationProfile = context.elevationProfile
 
-        guard points.count >= 2 else { return [] }
+        guard points.count >= 2 else {
+            return DetectionResult(segments: [], records: [])
+        }
 
         // Build search configuration from policy
         let config = searchConfiguration(
@@ -71,6 +116,7 @@ public struct SegmentDetector {
 
         // Finalize candidates in Swift
         var segments: [SegmentHighlight] = []
+        var records: [PersonalRecordWindow] = []
 
         for candidate in result.candidates {
             if isCancelled() { throw CancellationError() }
@@ -84,6 +130,12 @@ public struct SegmentDetector {
                     displayPriority: 1
                 ) {
                     segments.append(highlight)
+                    if let window = recordWindow(
+                        for: .fastest400m,
+                        highlight: highlight
+                    ) {
+                        records.append(window)
+                    }
                 }
             case .fastest1km:
                 if let highlight = finalizePaceCandidate(
@@ -93,6 +145,12 @@ public struct SegmentDetector {
                     displayPriority: 2
                 ) {
                     segments.append(highlight)
+                    if let window = recordWindow(
+                        for: .fastest1km,
+                        highlight: highlight
+                    ) {
+                        records.append(window)
+                    }
                 }
             case .slowest1km:
                 if let highlight = finalizePaceCandidate(
@@ -123,10 +181,94 @@ public struct SegmentDetector {
                 ) {
                     segments.append(highlight)
                 }
+            case .fastestOneMile:
+                appendRecordWindow(
+                    for: .fastest1mile,
+                    candidate: candidate,
+                    timeline: timeline,
+                    into: &records
+                )
+            case .fastest5km:
+                appendRecordWindow(
+                    for: .fastest5km,
+                    candidate: candidate,
+                    timeline: timeline,
+                    into: &records
+                )
+            case .fastest10km:
+                appendRecordWindow(
+                    for: .fastest10km,
+                    candidate: candidate,
+                    timeline: timeline,
+                    into: &records
+                )
+            case .fastestHalfMarathon:
+                appendRecordWindow(
+                    for: .fastestHalfMarathon,
+                    candidate: candidate,
+                    timeline: timeline,
+                    into: &records
+                )
+            case .fastestMarathon:
+                appendRecordWindow(
+                    for: .fastestMarathon,
+                    candidate: candidate,
+                    timeline: timeline,
+                    into: &records
+                )
             }
         }
 
-        return segments.sorted { $0.displayPriority < $1.displayPriority }
+        return DetectionResult(
+            segments: segments.sorted { $0.displayPriority < $1.displayPriority },
+            records: records
+        )
+    }
+
+    /// Revalidates one record candidate through the timeline and
+    /// materializes the public window model.
+    private static func appendRecordWindow(
+        for category: PersonalRecordCategory,
+        candidate: RunPlaySegmentWindowCandidate,
+        timeline: WorkoutTimeline,
+        into records: inout [PersonalRecordWindow]
+    ) {
+        guard let highlight = finalizePaceCandidate(
+            candidate,
+            type: .custom,
+            timeline: timeline,
+            displayPriority: 0
+        ) else {
+            return
+        }
+        guard let window = recordWindow(
+            for: category,
+            highlight: highlight
+        ) else {
+            return
+        }
+        records.append(window)
+    }
+
+    /// Materializes the public record window from a finalized pace highlight.
+    /// Returns `nil` without a pace rather than substituting one: a zero would
+    /// be a 0 s/km effort that wins every later comparison in the library.
+    private static func recordWindow(
+        for category: PersonalRecordCategory,
+        highlight: SegmentHighlight
+    ) -> PersonalRecordWindow? {
+        guard let pace = highlight.paceSecondsPerKilometer else { return nil }
+        return PersonalRecordWindow(
+            category: category,
+            startDistanceMeters: highlight.startDistanceMeters,
+            endDistanceMeters: highlight.endDistanceMeters,
+            startElapsedSeconds: highlight.startElapsedSeconds,
+            endElapsedSeconds: highlight.endElapsedSeconds,
+            activeSeconds: highlight.durationSeconds,
+            paceSecondsPerKilometer: pace,
+            averageHeartRateBPM: highlight.averageHeartRate,
+            sourcePointRange: highlight.sourcePointRange
+        )
     }
 
     // MARK: - Configuration
@@ -155,6 +297,25 @@ public struct SegmentDetector {
             distanceSpan: distanceSpan,
             routePointCount: routePointCount
         )
+
+        // Personal-record windows. One mile is the shortest of the five, and
+        // min(50, w/4) is 50 m for it and therefore for every longer window,
+        // so one bounded value serves all five searches. `boundedStep` never
+        // returns less than distanceSpan / (maximumEvaluations - 1), so each
+        // search fits the per-search evaluation budget regardless of window
+        // length and the engine pre-check cannot trip.
+        let oneMileDistance = PersonalRecordCategory.fastest1mile.nominalWindowDistanceMeters ?? 0
+        let preferredRecordStep = min(50.0, oneMileDistance / 4)
+        let boundedRecordStep = RouteAnalysisBudget.boundedStep(
+            preferredStep: preferredRecordStep,
+            distanceSpan: distanceSpan,
+            routePointCount: routePointCount
+        )
+        let fiveKmDistance = PersonalRecordCategory.fastest5km.nominalWindowDistanceMeters ?? 0
+        let tenKmDistance = PersonalRecordCategory.fastest10km.nominalWindowDistanceMeters ?? 0
+        let halfMarathonDistance =
+            PersonalRecordCategory.fastestHalfMarathon.nominalWindowDistanceMeters ?? 0
+        let marathonDistance = PersonalRecordCategory.fastestMarathon.nominalWindowDistanceMeters ?? 0
 
         // Elevation
         let elevationEnabled = elevationProfile.hasMeaningfulElevation
@@ -189,6 +350,16 @@ public struct SegmentDetector {
             fastest400mStepMeters: bounded400Step,
             oneKilometerDistanceMeters: 1_000,
             oneKilometerStepMeters: bounded1kmStep,
+            oneMileDistanceMeters: oneMileDistance,
+            oneMileStepMeters: boundedRecordStep,
+            fiveKilometerDistanceMeters: fiveKmDistance,
+            fiveKilometerStepMeters: boundedRecordStep,
+            tenKilometerDistanceMeters: tenKmDistance,
+            tenKilometerStepMeters: boundedRecordStep,
+            halfMarathonDistanceMeters: halfMarathonDistance,
+            halfMarathonStepMeters: boundedRecordStep,
+            marathonDistanceMeters: marathonDistance,
+            marathonStepMeters: boundedRecordStep,
             minimumValidPaceSecondsPerKilometer: 120,
             maximumValidPaceSecondsPerKilometer: 1_200,
             elevationEnabled: elevationEnabled,

@@ -10,7 +10,20 @@ namespace runplay {
 // Constants
 // ---------------------------------------------------------------------------
 
-inline constexpr std::size_t segment_detection_max_candidate_count = 5;
+inline constexpr std::size_t segment_detection_max_candidate_count = 10;
+
+// Number of independent pace-window searches per invocation: the fastest 400 m
+// search, the combined 1 km search, and the five personal-record windows.
+// Exposed so Swift can validate the summed pace evaluation budget exactly.
+inline constexpr std::size_t segment_pace_search_count = 7;
+
+// Canonical personal-record window lengths. Swift passes these same constants
+// so both sides share one source of truth for record identity.
+inline constexpr double personal_record_one_mile_meters = 1'609.344;
+inline constexpr double personal_record_five_km_meters = 5'000.0;
+inline constexpr double personal_record_ten_km_meters = 10'000.0;
+inline constexpr double personal_record_half_marathon_meters = 21'097.5;
+inline constexpr double personal_record_marathon_meters = 42'195.0;
 
 // ---------------------------------------------------------------------------
 // Input sample — one-to-one with route points
@@ -45,6 +58,21 @@ struct SegmentDetectionConfiguration final {
     double one_kilometer_distance_meters{1'000};
     double one_kilometer_step_meters{50};
 
+    double one_mile_distance_meters{personal_record_one_mile_meters};
+    double one_mile_step_meters{50};
+
+    double five_kilometer_distance_meters{personal_record_five_km_meters};
+    double five_kilometer_step_meters{50};
+
+    double ten_kilometer_distance_meters{personal_record_ten_km_meters};
+    double ten_kilometer_step_meters{50};
+
+    double half_marathon_distance_meters{personal_record_half_marathon_meters};
+    double half_marathon_step_meters{50};
+
+    double marathon_distance_meters{personal_record_marathon_meters};
+    double marathon_step_meters{50};
+
     double minimum_valid_pace_seconds_per_kilometer{120};
     double maximum_valid_pace_seconds_per_kilometer{1'200};
 
@@ -70,6 +98,11 @@ enum class SegmentWindowKind : std::uint8_t {
     slowest_1km = 2,
     biggest_climb = 3,
     biggest_descent = 4,
+    fastest_one_mile = 5,
+    fastest_5km = 6,
+    fastest_10km = 7,
+    fastest_half_marathon = 8,
+    fastest_marathon = 9,
 };
 
 // ---------------------------------------------------------------------------
@@ -133,7 +166,16 @@ static_assert(std::is_nothrow_copy_constructible_v<SegmentDetectionSummary>);
 // Bulk function
 // ---------------------------------------------------------------------------
 
-/// Bulk window search for the five bounded segment-detection highlights.
+/// Bulk window search for the ten bounded segment-detection highlights.
+///
+/// The five original segment kinds (fastest 400 m, fastest/slowest 1 km,
+/// biggest climb/descent) are joined by five fixed-distance personal-record
+/// windows (fastest 1 mile, 5 km, 10 km, half marathon, marathon). Every pace
+/// search is a distance-stepped sweep whose evaluation count is bounded by the
+/// spare distance beyond the window, not by the window length, and each search
+/// is independently capped by maximum_evaluations_per_search. A window longer
+/// than the route is simply not attempted: it is omitted from the output, never
+/// returned as a zero-valued candidate.
 ///
 /// samples          Swift-owned, immutable, borrowed synchronously
 /// output_candidates Swift-owned, mutable, borrowed synchronously
