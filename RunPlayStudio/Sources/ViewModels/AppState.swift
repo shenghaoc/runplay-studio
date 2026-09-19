@@ -24,6 +24,7 @@ enum AppWorkspaceMode: Hashable, Sendable {
     case comparison
     case personalHeatmap
     case trends
+    case personalRecords
     case workoutLibrary
 }
 
@@ -32,7 +33,15 @@ enum AppWorkspaceMode: Hashable, Sendable {
 enum AppWorkspaceCommand {
     case showPersonalHeatmap
     case showTrends
+    case showPersonalRecords
     case showAllRuns
+}
+
+/// A cumulative-distance range to emphasize on the workout map and charts.
+struct HighlightedWorkoutRange: Equatable, Sendable {
+    let workoutID: UUID
+    let startDistanceMeters: Double
+    let endDistanceMeters: Double
 }
 
 /// Main application state manager.
@@ -48,6 +57,21 @@ class AppState: ObservableObject {
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
     @Published var selectedSegment: SegmentHighlight?
+
+    /// A distance range highlighted on the workout map and charts, set by
+    /// Personal Records navigation. Transient: cleared when another workout is
+    /// selected; never persisted in the session.
+    @Published var highlightedWorkoutRange: HighlightedWorkoutRange?
+
+    /// Increments whenever the in-memory library's record windows change
+    /// (load, import, delete, backfill update), so derived UI such as the
+    /// workout Overview badges can recompute without walking the library on
+    /// replay ticks.
+    @Published private(set) var personalRecordsLibraryRevision = 0
+
+    func bumpPersonalRecordsLibraryRevision() {
+        personalRecordsLibraryRevision += 1
+    }
     @Published var operationState: LibraryOperationState = .idle
 
     /// Local favourite markers for library workouts (not demos).
@@ -125,6 +149,8 @@ class AppState: ObservableObject {
             return .personalHeatmap
         case .trends:
             return .trends
+        case .personalRecords:
+            return .personalRecords
         case .workoutLibrary:
             if case .smartCollection(let id, _) = workoutLibrary.queryContext {
                 return .smartCollection(id)
@@ -147,6 +173,8 @@ class AppState: ObservableObject {
             showPersonalHeatmap()
         case .trends:
             showTrends()
+        case .personalRecords:
+            showPersonalRecords()
         case .smartCollection(let id):
             showSmartCollection(id: id)
         case .workout(let id):
@@ -162,6 +190,7 @@ class AppState: ObservableObject {
     let comparisonService = WorkoutComparisonService()
     let personalHeatmap: PersonalHeatmapViewModel
     let trends: TrendsViewModel
+    let personalRecords: PersonalRecordsViewModel
     let workoutLibrary: WorkoutLibraryViewModel
 
     struct CachedAnalysisContext {
@@ -248,6 +277,9 @@ class AppState: ObservableObject {
         self.trends = TrendsViewModel(
             announcementPolicy: announcementPolicy
         )
+        self.personalRecords = PersonalRecordsViewModel(
+            announcementPolicy: announcementPolicy
+        )
         self.workoutLibrary = WorkoutLibraryViewModel(
             announcementPolicy: announcementPolicy
         )
@@ -282,6 +314,7 @@ class AppState: ObservableObject {
         selectionTask?.cancel()
         archiveTask?.cancel()
         fitImportTask?.cancel()
+        personalRecordsBackfillTask?.cancel()
     }
 
     // MARK: - Application session
@@ -304,6 +337,8 @@ class AppState: ObservableObject {
             destination = .personalHeatmap
         case .trends:
             destination = .trends
+        case .personalRecords:
+            destination = .personalRecords
         case .workoutLibrary:
             if case .smartCollection(let id, _) = workoutLibrary.queryContext {
                 destination = .smartCollection(id)
@@ -373,6 +408,13 @@ class AppState: ObservableObject {
                     return nil
                 }()
             ),
+            personalRecords: AppSessionPersonalRecordsState(
+                scopeKindRaw: personalRecords.scope.sessionKindRawValue,
+                scopeSmartCollectionID: {
+                    if case .smartCollection(let id) = personalRecords.scope { return id }
+                    return nil
+                }()
+            ),
             comparison: comparison,
             replay: replay
         )
@@ -404,6 +446,7 @@ class AppState: ObservableObject {
         sidebarVisibilityRaw = snapshot.sidebarVisibilityRaw
         personalHeatmap.restoreSessionState(snapshot.heatmap)
         trends.restoreSessionState(snapshot.trends)
+        personalRecords.restoreSessionState(snapshot.personalRecords)
 
         workoutLibrary.replaceLibrary(
             workouts: workouts,
@@ -459,6 +502,17 @@ class AppState: ObservableObject {
             )
             workspaceMode = .trends
             refreshTrends()
+        case .personalRecords:
+            clearComparison()
+            workoutLibrary.restoreSessionState(
+                manualQuery: snapshot.library.manualQuery,
+                activeSmartCollectionID: nil,
+                activeSmartCollectionModified: false,
+                modifiedWorkingQuery: nil
+            )
+            workspaceMode = .personalRecords
+            refreshPersonalRecords()
+            startPersonalRecordsBackfillIfNeeded()
         case .comparison:
             workoutLibrary.restoreSessionState(
                 manualQuery: snapshot.library.manualQuery,
@@ -561,6 +615,7 @@ class AppState: ObservableObject {
             smartCollections = organization.smartCollections
             libraryWorkoutIDs = Set(loaded.map(\.id))
             hasPersistedLibrary = true
+            bumpPersonalRecordsLibraryRevision()
             workoutLibrary.replaceLibrary(
                 workouts: loaded,
                 favoriteIDs: favoriteIDs,
@@ -661,6 +716,7 @@ class AppState: ObservableObject {
                 libraryWorkoutIDs.insert(workout.id)
             }
             hasPersistedLibrary = true
+            bumpPersonalRecordsLibraryRevision()
             workoutLibrary.replaceLibrary(
                 workouts: workouts,
                 favoriteIDs: favoriteWorkoutIDs,
@@ -741,8 +797,11 @@ class AppState: ObservableObject {
     func selectWorkout(_ workout: RunWorkout?, persistSelection: Bool = true) {
         selectedWorkout = workout
         selectedSegment = nil
+        if workout?.id != highlightedWorkoutRange?.workoutID {
+            highlightedWorkoutRange = nil
+        }
         switch workspaceMode {
-        case .personalHeatmap, .trends, .workoutLibrary:
+        case .personalHeatmap, .trends, .personalRecords, .workoutLibrary:
             cancelActiveWorkspaceWork()
             workspaceMode = .workout
         case .workout, .comparison:
@@ -853,6 +912,7 @@ class AppState: ObservableObject {
                 deletingComparisonWorkout: deletingComparisonWorkout
             )
         }
+        bumpPersonalRecordsLibraryRevision()
         requestSessionSave()
     }
 
@@ -864,7 +924,7 @@ class AppState: ObservableObject {
         // workout workspace instead follows the selection.
         let libraryWorkspace: AppWorkspaceMode?
         switch workspaceMode {
-        case .personalHeatmap, .trends, .workoutLibrary:
+        case .personalHeatmap, .trends, .personalRecords, .workoutLibrary:
             libraryWorkspace = workspaceMode
         case .workout, .comparison:
             libraryWorkspace = nil
@@ -903,6 +963,8 @@ class AppState: ObservableObject {
             personalHeatmap.refresh(workouts: workouts)
         case .trends:
             refreshTrends()
+        case .personalRecords:
+            refreshPersonalRecords()
         case .workout, .comparison, .workoutLibrary:
             break
         }
@@ -917,6 +979,8 @@ class AppState: ObservableObject {
             showPersonalHeatmap()
         case .showTrends:
             showTrends()
+        case .showPersonalRecords:
+            showPersonalRecords()
         case .showAllRuns:
             showWorkoutLibrary(restoreManualQuery: true)
         }
@@ -1001,6 +1065,8 @@ class AppState: ObservableObject {
             personalHeatmap.cancel()
         case .trends:
             trends.cancel()
+        case .personalRecords:
+            personalRecords.cancel()
         case .workout, .comparison, .workoutLibrary:
             break
         }
@@ -1051,6 +1117,174 @@ class AppState: ObservableObject {
             smartCollections: smartCollections,
             currentQuery: workoutLibrary.currentRuntimeQuery()
         ))
+    }
+
+    // MARK: - Personal Records workspace
+
+    /// Open the Personal Records workspace. Does not change selected workout.
+    ///
+    /// When All Runs currently shows a smart collection and Records is still
+    /// on the entire-library default, the scope preselects that collection so
+    /// records respect the active filter (same first-open rule as Trends).
+    func showPersonalRecords() {
+        cancelActiveWorkspaceWork()
+        if !personalRecordsHasBeenOpened,
+           case .entireLibrary = personalRecords.scope,
+           case .smartCollection(let id, _) = workoutLibrary.queryContext {
+            personalRecords.scope = .smartCollection(id)
+        }
+        personalRecordsHasBeenOpened = true
+        comparisonWorkout = nil
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = 0
+        comparisonViewModel.clear()
+        workspaceMode = .personalRecords
+        refreshPersonalRecords()
+        startPersonalRecordsBackfillIfNeeded()
+        requestSessionSave()
+    }
+
+    /// Whether Records has been opened with a user-selected scope this
+    /// process. See `TrendsViewModel.hasBeenOpened` for the preselect rule.
+    private var personalRecordsHasBeenOpened = false
+
+    /// Gather current library/query state and re-aggregate Personal Records.
+    func refreshPersonalRecords() {
+        personalRecords.refresh(inputs: PersonalRecordsRefreshInputs(
+            workouts: workouts,
+            entries: workoutLibrary.entries,
+            documents: workoutLibrary.searchDocuments,
+            smartCollections: smartCollections,
+            currentQuery: workoutLibrary.currentRuntimeQuery()
+        ))
+    }
+
+    /// Open the workout behind one record effort, seek the replay position to
+    /// the window start, and highlight the window range on the map and charts.
+    /// Whole-run records (longest run, biggest ascent) open the workout
+    /// without a range highlight.
+    func openPersonalRecord(_ effort: PersonalRecordEffort) {
+        guard let workout = workouts.first(where: { $0.id == effort.workoutID }) else {
+            return
+        }
+        highlightedWorkoutRange = effort.window.map {
+            HighlightedWorkoutRange(
+                workoutID: effort.workoutID,
+                startDistanceMeters: $0.startDistanceMeters,
+                endDistanceMeters: $0.endDistanceMeters
+            )
+        }
+        selectWorkout(workout)
+        workoutDetailTabRaw = "Overview"
+        if let window = effort.window {
+            replayController.seekToDistance(window.startDistanceMeters)
+        }
+    }
+
+    /// Handle for the active one-off records backfill.
+    private var personalRecordsBackfillTask: Task<Void, Never>?
+
+    /// Start the one-off library backfill for snapshots that predate record
+    /// computation. Auto-starts the first time the Records workspace opens
+    /// with pending work; never runs during library load. Each computed
+    /// snapshot is applied in memory as it arrives so no work is lost, and
+    /// the table re-aggregates once when the pass ends; cancellation keeps
+    /// every completed snapshot and the pass resumes on the next open.
+    func startPersonalRecordsBackfillIfNeeded() {
+        guard personalRecordsBackfillTask == nil,
+              let storeActor,
+              hasPersistedLibrary,
+              workouts.contains(where: { $0.personalRecords == nil }) else {
+            return
+        }
+        // The pass walks the whole manifest, skipping snapshots that already
+        // carry records, and reports progress against that total. Seeding the
+        // banner with the pending count instead would make the first real
+        // update jump to a different denominator.
+        personalRecords.backfillStarted(totalCount: workouts.count)
+        let applyUpdate: @Sendable (
+            WorkoutLibraryStoreActor.PersonalRecordsBackfillUpdate
+        ) -> Void = { [weak self] update in
+            guard let self else { return }
+            Task { @MainActor in
+                self.applyPersonalRecordsBackfillUpdate(update)
+            }
+        }
+        personalRecordsBackfillTask = Task { [weak self] in
+            let result = await storeActor.backfillPersonalRecords(progress: applyUpdate)
+            self?.finishPersonalRecordsBackfill(result)
+        }
+    }
+
+    private func applyPersonalRecordsBackfillUpdate(
+        _ update: WorkoutLibraryStoreActor.PersonalRecordsBackfillUpdate
+    ) {
+        guard workspaceMode == .personalRecords || personalRecordsBackfillTask != nil else {
+            return
+        }
+        personalRecords.backfillProgress(
+            completedCount: update.completedCount,
+            totalCount: update.totalCount,
+            currentWorkoutName: update.currentWorkoutName
+        )
+        guard let computed = update.computedWorkout,
+              let index = workouts.firstIndex(where: { $0.id == computed.id }) else {
+            return
+        }
+        workouts[index] = computed
+        // No library rebuild here: library entries and search documents are
+        // derived from metadata and summaries, never from record windows, so
+        // a per-workout replaceLibrary would rebuild every entry and re-run
+        // the All Runs query once per backfilled run for no visible change.
+        //
+        // The records-library revision deliberately does not bump here
+        // either: a backfill updates workouts one at a time, and each bump
+        // would make the visible workout detail re-aggregate the whole
+        // library. The single bump in finishPersonalRecordsBackfill covers
+        // the pass.
+    }
+
+    private func finishPersonalRecordsBackfill(
+        _ result: WorkoutLibraryStoreActor.PersonalRecordsBackfillResult
+    ) {
+        personalRecordsBackfillTask = nil
+        let failureMessage = Self.personalRecordsBackfillFailureMessage(result)
+        personalRecords.backfillFinished(failureMessage: failureMessage)
+        bumpPersonalRecordsLibraryRevision()
+        refreshPersonalRecords()
+        requestSessionSave()
+    }
+
+    /// The inline banner text for a finished pass, or `nil` when every
+    /// workout was analyzed and saved. Analysis failures are retried the next
+    /// time Records opens; a save failure leaves the in-memory snapshot
+    /// complete, so only a later launch re-reads the incomplete file.
+    static func personalRecordsBackfillFailureMessage(
+        _ result: WorkoutLibraryStoreActor.PersonalRecordsBackfillResult
+    ) -> String? {
+        var clauses: [String] = []
+        if result.failedCount > 0 {
+            clauses.append(
+                result.failedCount == 1
+                    ? "1 run could not be analyzed; it will be retried the next time you open Records"
+                    : "\(result.failedCount) runs could not be analyzed; they will be retried the next time you open Records"
+            )
+        }
+        if result.saveFailureCount > 0 {
+            clauses.append(
+                result.saveFailureCount == 1
+                    ? "1 run was analyzed but could not be saved; it will be recomputed on the next launch"
+                    : "\(result.saveFailureCount) runs were analyzed but could not be saved; they will be recomputed on the next launch"
+            )
+        }
+        guard !clauses.isEmpty else { return nil }
+        return clauses.joined(separator: ". ") + "."
+    }
+
+    /// Cancel the active records backfill (Records-view Cancel button).
+    /// Completed snapshots stay saved; the pass resumes on the next open.
+    func cancelPersonalRecordsBackfill() {
+        personalRecordsBackfillTask?.cancel()
     }
 
     /// Navigate from a Trends period to All Runs filtered to that period.

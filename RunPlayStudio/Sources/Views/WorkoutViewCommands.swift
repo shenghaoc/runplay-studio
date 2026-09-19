@@ -19,6 +19,7 @@ extension FocusedValues {
 struct AppWorkspaceActions {
     var showPersonalHeatmap: () -> Void
     var showTrends: () -> Void
+    var showPersonalRecords: () -> Void
     var showAllRuns: () -> Void = {}
     var importFile: () -> Void = {}
     var importStravaArchive: () -> Void = {}
@@ -190,6 +191,20 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showTrends).purpose)
+            .disabled(isSheetBlocking)
+
+            Button(CommandRegistry.definition(for: .showPersonalRecords).menuTitle) {
+                if let workspaceActions {
+                    workspaceActions.showPersonalRecords()
+                } else {
+                    NotificationCenter.default.post(
+                        name: .runPlayWorkspaceCommand,
+                        object: AppWorkspaceCommand.showPersonalRecords
+                    )
+                }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .help(CommandRegistry.definition(for: .showPersonalRecords).purpose)
             .disabled(isSheetBlocking)
 
             Divider()

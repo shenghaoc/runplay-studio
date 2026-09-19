@@ -209,6 +209,32 @@ enum AppSessionValidator {
             scopeSmartCollectionID: trendsScopeCollectionID
         )
 
+        // Records scope repair mirrors the Trends scope: the raw kinds are the
+        // same shared scope enum, so the same allowed set applies.
+        var recordsScopeCollectionID = snapshot.personalRecords.scopeSmartCollectionID
+        if let existingCollectionID = recordsScopeCollectionID,
+           !context.smartCollectionIDs.contains(existingCollectionID) {
+            recordsScopeCollectionID = nil
+            issues.append("Missing Records scope collection.")
+            usedFallback = true
+        }
+        var recordsScopeKindRaw = repairedRaw(
+            snapshot.personalRecords.scopeKindRaw,
+            allowed: AppSessionPolicy.validTrendsScopeKinds,
+            fallback: "entireLibrary",
+            issues: &issues,
+            usedFallback: &usedFallback
+        )
+        if recordsScopeKindRaw == "smartCollection", recordsScopeCollectionID == nil {
+            recordsScopeKindRaw = "entireLibrary"
+            issues.append("Records smart-collection scope without a collection.")
+            usedFallback = true
+        }
+        let personalRecords = AppSessionPersonalRecordsState(
+            scopeKindRaw: recordsScopeKindRaw,
+            scopeSmartCollectionID: recordsScopeCollectionID
+        )
+
         var comparison: AppSessionComparisonState?
         if let persistedComparison = snapshot.comparison {
             let validPrimary = context.selectedWorkoutID
@@ -333,6 +359,7 @@ enum AppSessionValidator {
                 ),
                 heatmap: heatmap,
                 trends: trends,
+                personalRecords: personalRecords,
                 comparison: comparison,
                 replay: replay
             ),

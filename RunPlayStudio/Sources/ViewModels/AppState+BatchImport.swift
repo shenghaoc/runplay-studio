@@ -491,6 +491,7 @@ extension AppState {
             smartCollections = organization.smartCollections
             libraryWorkoutIDs = Set(loaded.map(\.id))
             hasPersistedLibrary = true
+            bumpPersonalRecordsLibraryRevision()
             workoutLibrary.replaceLibrary(
                 workouts: loaded,
                 favoriteIDs: favoriteIDs,
@@ -504,6 +505,10 @@ extension AppState {
             }
             if workspaceMode == .trends {
                 refreshTrends()
+            }
+            if workspaceMode == .personalRecords {
+                refreshPersonalRecords()
+                startPersonalRecordsBackfillIfNeeded()
             }
             requestSessionSave()
         case .demos(let message, let organization, let manifestPresent):
