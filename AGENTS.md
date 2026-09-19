@@ -372,6 +372,16 @@ swift test -Xswiftc -warnings-as-errors                               # macOS fu
 git diff --check
 ```
 
+RunPlayCore changes must verify the Linux build in a container before
+pushing — e.g. `docker run --rm -v "$PWD":/src -w /src swift:6.3-jammy
+swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors` —
+using the Swift version the Linux CI job verifies. Platform-API
+assumptions that look correct on macOS (`String(localized:defaultValue:)`,
+Mach VM probes) do not exist on corelibs-foundation; the container catches
+them before they burn a CI cycle.
+
+Benchmark scripts need release-mode test builds; the CI "Release Test Build (macOS)" job guards them.
+
 GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
 

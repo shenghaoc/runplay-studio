@@ -87,6 +87,35 @@ jobs:
       - name: Verify full package
         run: swift test -Xswiftc -warnings-as-errors
 
+  # Release-mode compile check for every test target. Benchmark scripts
+  # build tests in release, but no other job compiles the suites in that
+  # configuration, so DEBUG-only test helpers (e.g. #101's synthetic map
+  # preparer, caught only after a benchmark failed in #121) slip through
+  # a debug-only CI. Build only; nothing is executed in release.
+  release-test-build-macos:
+    name: Release Test Build (macOS)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode 26.4
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+      - name: Verify Swift 6.3
+        run: |
+          swift --version
+          swift --version | grep -q 'Swift version 6.3'
+      - name: Build test targets in release
+        # `swift build -c release --build-tests` is not a valid gate: it
+        # fails on clean main with a pre-existing testability error
+        # ("unable to resolve Swift module dependency to a compatible
+        # module: 'RunPlayCore'"). `swift test -c release --filter` with a
+        # deliberately non-matching pattern compiles every test target in
+        # release and then runs zero tests — the compile is the check, so
+        # the warning "No matching test cases were run" is expected and
+        # harmless. Verified on clean main: with #121's `#if DEBUG` guards
+        # reverted this command fails at `SyntheticWorkoutVideoMapPreparer`
+        # not being in scope; with them present it passes.
+        run: swift test -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
+
   # Release packaging: script contracts plus a real end-to-end build of both
   # credential-free artifacts. Separate from the full-stack job so the two run
   # concurrently instead of extending PR wall-clock time. Credential-free by
