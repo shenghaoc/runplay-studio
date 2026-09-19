@@ -372,6 +372,8 @@ swift test -Xswiftc -warnings-as-errors                               # macOS fu
 git diff --check
 ```
 
+Benchmark scripts need release-mode test builds; the CI "Release Test Build (macOS)" job guards them.
+
 GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
 
