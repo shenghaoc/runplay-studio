@@ -1084,3 +1084,40 @@ returned to the workout cleanly. The imported run appeared in Personal Heatmap
 warning-clean suite covers cancellation rollback and library deletion. The
 synthetic app-library record was then removed through the native delete
 confirmation; the original ZIP remained untouched.
+
+## Routes workspace (automatic route grouping)
+
+Synthetic library required (never dogfood private data):
+
+- [ ] Import the same synthetic loop three times with different GPS jitter:
+      Routes (⌘⇧G) shows one route with 3 runs and best/median/latest active
+      pace.
+- [ ] Import the loop reversed: it joins the same route and the run list
+      marks it "Reversed".
+- [ ] Import the loop plus an extra spur: it stays a separate route (mutual
+      coverage decides — a run that covers a route plus extra distance is
+      not the same route; Merge is the manual recovery path).
+- [ ] Import a loop sharing only part of the path with another: the two
+      routes stay separate.
+- [ ] The representative route map draws the representative run's polyline
+      with start/finish annotations; 2D/3D and Fit Route work.
+- [ ] The pace-over-date chart renders for groups with ≥ 2 paced runs, and
+      VoiceOver reads the chart via its descriptor and spoken summary.
+- [ ] Rename a route (context menu and detail toolbar): the custom name
+      sticks; clearing the name returns the derived "X km Loop/Route"
+      default.
+- [ ] Merge two routes: members move and the target keeps its name.
+- [ ] Remove a run from a route: it disappears from the route, stays in All
+      Runs, and is not re-added by later imports (only Re-cluster restores).
+- [ ] Pin a representative: the map overlay switches to that run.
+- [ ] Re-cluster Routes shows progress, cancels cleanly leaving the previous
+      routes intact, and carries over names/pins on success.
+- [ ] All Runs filter menu: Route → specific route / Not on a Route filters
+      the table; the filter survives into a saved smart collection.
+- [ ] Personal Heatmap route filter restricts cells to the selected route
+      and resets with the other filters.
+- [ ] Deleting a member run repairs the route (representative refreshes;
+      empty route disappears).
+- [ ] A fresh import shows up on its route shortly after the import
+      completes (asynchronous assignment), without blocking the import UI.
+- [ ] Relaunch mid-route: session restores the Routes destination (v5).

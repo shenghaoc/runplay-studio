@@ -30,6 +30,7 @@ private struct ManualQuerySnapshot: Equatable {
     var customDateEnd: Date
     var dataFilters: WorkoutLibraryDataFilters
     var tagFilter: WorkoutLibraryTagFilter
+    var routeFilter: WorkoutLibraryRouteFilter
 }
 
 /// Dedicated view model for All Runs search, filter, sort, and result state.
@@ -45,6 +46,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
     @Published private(set) var favoriteIDs: Set<UUID> = []
     @Published private(set) var tags: [WorkoutTag] = []
     @Published private(set) var smartCollections: [WorkoutSmartCollection] = []
+    /// Route groups used by the route filter menu (names resolve here).
+    @Published private(set) var routeGroups: [WorkoutRouteGroup] = []
     @Published private(set) var queryContext: WorkoutLibraryQueryContext = .manual
 
     @Published var searchText: String = "" {
@@ -74,6 +77,9 @@ final class WorkoutLibraryViewModel: ObservableObject {
     @Published var tagFilter: WorkoutLibraryTagFilter = .anyTags {
         didSet { handleQueryMutation() }
     }
+    @Published var routeFilter: WorkoutLibraryRouteFilter = .anyRoute {
+        didSet { handleQueryMutation() }
+    }
 
     /// Multi-select table selection (Command/Shift-click).
     @Published var tableSelection: Set<UUID> = []
@@ -82,6 +88,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
     private var documents: [UUID: WorkoutLibrarySearchDocument] = [:]
     private var entryByID: [UUID: WorkoutLibraryEntry] = [:]
     private var tagAssignmentsByWorkout: [UUID: Set<UUID>] = [:]
+    private var routeGroupIDByWorkout: [UUID: UUID] = [:]
     private var queryTask: Task<Void, Never>?
     private var queryGeneration: UInt64 = 0
     private var lastPublishedKey: QueryCacheKey?
@@ -148,7 +155,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
             manifestIndex: entries[index].manifestIndex,
             isFavorite: favoriteIDs.contains(workout.id),
             tagIDs: tagIDs,
-            tagsByID: tagsByID
+            tagsByID: tagsByID,
+            routeGroupID: routeGroupIDByWorkout[workout.id]
         )
         entries[index] = entry
         entryByID[entry.id] = entry
@@ -249,16 +257,51 @@ final class WorkoutLibraryViewModel: ObservableObject {
         tags = organization.tags
         smartCollections = organization.smartCollections
         tagAssignmentsByWorkout = organization.tagIDsByWorkout
+        routeGroups = organization.routeGroups
+        var mappedRouteGroupIDs: [UUID: UUID] = [:]
+        mappedRouteGroupIDs.reserveCapacity(organization.routeGroupAssignments.count)
+        for assignment in organization.routeGroupAssignments {
+            if let groupID = assignment.groupID {
+                mappedRouteGroupIDs[assignment.workoutID] = groupID
+            }
+        }
+        routeGroupIDByWorkout = mappedRouteGroupIDs
         if schedule {
             // Entries may already exist (e.g. live organisation-only update).
             rebuildTagsOnEntries(workoutIDs: Set(entries.map(\.id)))
+            rebuildRouteMembershipOnEntries()
             scheduleQuery(force: true)
+        }
+    }
+
+    /// Re-apply current route-group membership onto existing entries after an
+    /// organization-only update (pass result, manual mutation).
+    private func rebuildRouteMembershipOnEntries() {
+        guard !entries.isEmpty else { return }
+        var rebuilt = false
+        for index in entries.indices {
+            let id = entries[index].id
+            let membership = routeGroupIDByWorkout[id]
+            if entries[index].routeGroupID != membership {
+                entries[index] = entries[index].withRouteGroupID(membership)
+                entryByID[id] = entries[index]
+                rebuilt = true
+            }
+        }
+        if rebuilt {
+            // A route filter restricting to a removed group must not keep
+            // matching nothing silently.
+            if case .group(let groupID) = routeFilter,
+               !routeGroups.contains(where: { $0.id == groupID }) {
+                routeFilter = .anyRoute
+            }
         }
     }
 
     func removeWorkout(id: UUID) {
         favoriteIDs.remove(id)
         tagAssignmentsByWorkout.removeValue(forKey: id)
+        routeGroupIDByWorkout.removeValue(forKey: id)
         entries.removeAll { $0.id == id }
         entryByID.removeValue(forKey: id)
         documents.removeValue(forKey: id)
@@ -320,6 +363,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             dateFilter = .allTime
             dataFilters = .none
             tagFilter = .anyTags
+            routeFilter = .anyRoute
         }
     }
 
@@ -331,6 +375,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             dateFilter = .allTime
             dataFilters = .none
             tagFilter = .anyTags
+            routeFilter = .anyRoute
         }
     }
 
@@ -347,6 +392,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             dateFilter = .allTime
             dataFilters = .none
             tagFilter = .anyTags
+            routeFilter = .anyRoute
         }
     }
 
@@ -448,7 +494,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
                 date: manualQuerySnapshot.dateFilter,
                 source: manualQuerySnapshot.sourceFilter,
                 data: manualQuerySnapshot.dataFilters,
-                tags: manualQuerySnapshot.tagFilter
+                tags: manualQuerySnapshot.tagFilter,
+                route: manualQuerySnapshot.routeFilter
             ),
             sort: manualQuerySnapshot.sort
         )
@@ -537,7 +584,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
             date: date,
             source: sourceFilter,
             data: dataFilters,
-            tags: tagFilter
+            tags: tagFilter,
+            route: routeFilter
         )
     }
 
@@ -551,7 +599,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
             customDateStart: customDateStart,
             customDateEnd: customDateEnd,
             dataFilters: dataFilters,
-            tagFilter: tagFilter
+            tagFilter: tagFilter,
+            routeFilter: routeFilter
         )
     }
 
@@ -566,6 +615,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             customDateEnd = snapshot.customDateEnd
             dataFilters = snapshot.dataFilters
             tagFilter = snapshot.tagFilter
+            routeFilter = snapshot.routeFilter
         }
     }
 
@@ -588,7 +638,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
             customDateStart: customBounds.0,
             customDateEnd: customBounds.1,
             dataFilters: query.filter.data,
-            tagFilter: query.filter.tags
+            tagFilter: query.filter.tags,
+            routeFilter: query.filter.route
         )
     }
 
@@ -605,6 +656,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
         sourceFilter = query.filter.source
         dataFilters = query.filter.data
         tagFilter = query.filter.tags
+        routeFilter = query.filter.route
         switch query.filter.date {
         case .custom(let start, let end):
             dateFilter = .custom(start: start, end: end)
@@ -640,7 +692,8 @@ final class WorkoutLibraryViewModel: ObservableObject {
                 manifestIndex: index,
                 isFavorite: favoriteIDs.contains(workout.id),
                 tagIDs: tagIDs,
-                tagsByID: tagMap
+                tagsByID: tagMap,
+                routeGroupID: routeGroupIDByWorkout[workout.id]
             )
             built.append(entry)
             byID[entry.id] = entry

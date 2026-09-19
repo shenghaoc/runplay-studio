@@ -616,7 +616,11 @@ destinations.
 ### Route grouping (Routes workspace)
 
 Automatic route grouping clusters runs that follow substantially the same
-route. Two-stage matching, both owned by RunPlayCore:
+route and shows progression on each route. It is derived library-level
+state: membership lives in the manifest (schema **v4**), while geometry
+never persists beyond each group's cached representative summary.
+
+Two-stage matching, both owned by RunPlayCore:
 
 1. **Stage 1 — candidate filter (pure Swift arithmetic).** Per-workout
    `RouteGroupingRouteFacts` (bounding box, endpoints, distance, valid point
@@ -684,10 +688,6 @@ identity + stage-1 facts) persists with each group so a new import matches
 only against representatives without loading the library; drift is repaired
 by re-cluster.
 
-The All Runs query filter and the Personal Heatmap filter row both gain a
-"route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
-through the ordinary query service and is saved-query compatible.
-
 **Durability and revision discipline.** A workout's assignment record is
 the nil marker: *absence* means assignment has not run and a later pass
 picks it up (the records-backfill argument); a present record with a `nil`
@@ -710,7 +710,10 @@ replaces the manifest in one atomic write (cancelled or failed passes leave
 the previous groups untouched), and carries over user names and pins whose
 referenced workouts still cluster together.
 
-Routes state participates in session restoration as of session **v5**
+The All Runs query filter and the Personal Heatmap filter row both gain a
+"route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
+through the ordinary query service and is saved-query compatible. Routes
+state participates in session restoration as of session **v5**
 (destination only — the selected route is a transient table selection).
 
 `scripts/run-route-grouping-benchmark.sh` compares stage-1 candidate
