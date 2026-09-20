@@ -165,6 +165,23 @@ enum RouteGroupingFixtures {
         return points
     }
 
+    /// Straight line due east from the same start point — pairs with
+    /// `straightLine` for same-distance point-to-point name fixtures.
+    static func eastLine(
+        distanceMeters: Double,
+        stepMeters: Double = 20,
+        date: Date = epoch.addingTimeInterval(0)
+    ) -> [RoutePoint] {
+        var points: [RoutePoint] = []
+        var travelled = 0.0
+        while travelled <= distanceMeters {
+            points.append(point(east: travelled, north: 0, travelled: travelled, date: date))
+            if travelled >= distanceMeters { break }
+            travelled = min(distanceMeters, travelled + stepMeters)
+        }
+        return points
+    }
+
     /// A shared northbound prefix followed by a diverging straight tail —
     /// the boundary fixture for the mutual-coverage threshold. Two routes
     /// built with the same `sharedMeters` and `totalMeters` but opposite
@@ -282,6 +299,29 @@ enum RouteGroupingFixtures {
             points: seededNoise(on: clean, noiseMeters: noiseMeters, seed: UInt64(1_000 + index)),
             date: date,
             name: "Loop run \(index)"
+        )
+    }
+
+    // MARK: - Groups
+
+    /// An unnamed route group whose persisted representative summary is
+    /// built from `points` exactly the way the store builds one: facts from
+    /// the route points, canonical start date from the workout.
+    static func group(
+        representative points: [RoutePoint],
+        date: Date,
+        id: UUID = UUID(),
+        name: String? = nil
+    ) -> WorkoutRouteGroup {
+        let representative = workout(points: points, date: date)
+        return WorkoutRouteGroup(
+            id: id,
+            name: name,
+            representativeSummary: WorkoutRouteGroupSummary(
+                workoutID: representative.id,
+                startDate: WorkoutLibraryEntry.canonicalStartDate(for: representative),
+                facts: RouteGroupingRouteFacts(workout: representative)
+            )
         )
     }
 }

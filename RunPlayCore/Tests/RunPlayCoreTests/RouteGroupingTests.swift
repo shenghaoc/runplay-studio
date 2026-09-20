@@ -404,4 +404,305 @@ final class RouteGroupingTests: XCTestCase {
         XCTAssertTrue(route.hasSuffix("Route"))
         XCTAssertTrue(route.hasPrefix("10.1 km") || route.hasPrefix("10,1 km"))
     }
+
+    // MARK: - Collision-aware derived names
+
+    private func derivedNames(
+        _ groups: [WorkoutRouteGroup]
+    ) -> [UUID: String] {
+        WorkoutRouteGroup.derivedDisplayNames(
+            for: groups,
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )
+    }
+
+    private func derivedName(
+        of group: WorkoutRouteGroup,
+        in names: [UUID: String],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        try XCTUnwrap(names[group.id], file: file, line: line)
+    }
+
+    /// `%.1f km` rounding widens collisions: 1.16 km and 1.24 km both render
+    /// "1.2 km". Two such loops sharing start AND finish points must still
+    /// be distinguishable — the token is the start-to-extent-centre bearing,
+    /// never the start-to-finish bearing, which for a loop is atan2(0, 0)
+    /// noise.
+    func testSameRoundedDistanceLoopsWithSharedEndpointsGetDistinctTokens() throws {
+        let north = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 200, heightMeters: 1_200, date: RouteGroupingFixtures.epoch),
+            date: RouteGroupingFixtures.epoch
+        )
+        let east = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 1_200, heightMeters: 200, mirrored: true, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)
+        )
+        // The loop-degeneracy premise, asserted so the fixture cannot drift
+        // into something a start-to-finish bearing would accidentally
+        // distinguish.
+        for group in [north, east] {
+            let facts = try XCTUnwrap(group.representativeSummary).facts
+            XCTAssertEqual(facts.startLatitude, facts.finishLatitude, accuracy: 1e-12)
+            XCTAssertEqual(facts.startLongitude, facts.finishLongitude, accuracy: 1e-12)
+        }
+
+        let names = derivedNames([north, east])
+
+        let northName = try derivedName(of: north, in: names)
+        let eastName = try derivedName(of: east, in: names)
+        XCTAssertTrue(northName.hasSuffix("Loop (N)"), "got \(northName)")
+        XCTAssertTrue(eastName.hasSuffix("Loop (E)"), "got \(eastName)")
+        XCTAssertNotEqual(northName, eastName)
+    }
+
+    func testPointToPointCollisionsUseDirectionTokens() throws {
+        let north = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.straightLine(distanceMeters: 6_000),
+            date: RouteGroupingFixtures.epoch
+        )
+        let east = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.eastLine(distanceMeters: 6_000, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)
+        )
+
+        let names = derivedNames([north, east])
+
+        let northName = try derivedName(of: north, in: names)
+        let eastName = try derivedName(of: east, in: names)
+        XCTAssertTrue(northName.hasSuffix("Route (N)"), "got \(northName)")
+        XCTAssertTrue(eastName.hasSuffix("Route (E)"), "got \(eastName)")
+        XCTAssertNotEqual(northName, eastName)
+    }
+
+    /// A group whose base name nobody else holds is emitted unchanged —
+    /// byte-identical to `defaultDisplayName`, composed not replaced.
+    func testUncollidedNamesAreUnchanged() throws {
+        let loop = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250),
+            date: RouteGroupingFixtures.epoch
+        )
+        let route = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.straightLine(distanceMeters: 10_000, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)
+        )
+
+        let names = derivedNames([loop, route])
+
+        XCTAssertEqual(
+            try derivedName(of: loop, in: names),
+            WorkoutRouteGroup.defaultDisplayName(distanceMeters: 5_000, closesLoop: true)
+        )
+        XCTAssertEqual(
+            try derivedName(of: route, in: names),
+            WorkoutRouteGroup.defaultDisplayName(distanceMeters: 10_000, closesLoop: false)
+        )
+        for name in names.values {
+            XCTAssertFalse(name.contains("("), "uncollided names must carry no suffix: \(name)")
+        }
+    }
+
+    func testUserNamesAreVerbatimAndNeverParticipate() throws {
+        let renamed = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250),
+            date: RouteGroupingFixtures.epoch,
+            name: "Morning Run"
+        )
+        // A user name that equals another group's derived base must not
+        // push that group into disambiguation: user names never participate.
+        let shadowing = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400),
+            name: WorkoutRouteGroup.defaultDisplayName(distanceMeters: 5_000, closesLoop: true)
+        )
+        let derived = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250, date: RouteGroupingFixtures.epoch.addingTimeInterval(172_800)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(172_800)
+        )
+
+        let names = derivedNames([renamed, shadowing, derived])
+
+        XCTAssertEqual(try derivedName(of: renamed, in: names), "Morning Run")
+        XCTAssertEqual(
+            try derivedName(of: shadowing, in: names),
+            WorkoutRouteGroup.defaultDisplayName(distanceMeters: 5_000, closesLoop: true)
+        )
+        XCTAssertEqual(
+            try derivedName(of: derived, in: names),
+            WorkoutRouteGroup.defaultDisplayName(distanceMeters: 5_000, closesLoop: true)
+        )
+    }
+
+    /// Two identically user-named groups stay identical — the user's choice,
+    /// not a collision the rule repairs.
+    func testIdenticallyUserNamedGroupsStayIdentical() throws {
+        let first = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250),
+            date: RouteGroupingFixtures.epoch,
+            name: "Home"
+        )
+        let second = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.straightLine(distanceMeters: 6_000, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400),
+            name: "Home"
+        )
+
+        let names = derivedNames([first, second])
+
+        XCTAssertEqual(try derivedName(of: first, in: names), "Home")
+        XCTAssertEqual(try derivedName(of: second, in: names), "Home")
+    }
+
+    /// Three routes whose distances all round to "1.2 km" and share loop
+    /// closure resolve to three distinct compass tokens.
+    func testThreeWayCollisionResolvesToDistinctNames() throws {
+        let northeast = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 290),
+            date: RouteGroupingFixtures.epoch
+        )
+        let east = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 480, heightMeters: 100, mirrored: true, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)
+        )
+        let north = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 100, heightMeters: 480, date: RouteGroupingFixtures.epoch.addingTimeInterval(172_800)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(172_800)
+        )
+
+        let names = derivedNames([northeast, east, north])
+
+        XCTAssertTrue(try derivedName(of: northeast, in: names).hasSuffix("Loop (NE)"))
+        XCTAssertTrue(try derivedName(of: east, in: names).hasSuffix("Loop (E)"))
+        XCTAssertTrue(try derivedName(of: north, in: names).hasSuffix("Loop (N)"))
+        XCTAssertEqual(Set(names.values).count, 3, "names: \(names)")
+    }
+
+    /// The terminal fallback: same base name AND same compass token still
+    /// never collides — a numeric ordinal separates them, assigned by the
+    /// stable order (earliest representative start date keeps the bare
+    /// token).
+    func testTokenCollisionFallsBackToNumericOrdinals() throws {
+        let day = RouteGroupingFixtures.epoch
+        let oldest = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 290, date: day),
+            date: day
+        )
+        let middle = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 300, date: day.addingTimeInterval(86_400)),
+            date: day.addingTimeInterval(86_400)
+        )
+        let newest = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 310, date: day.addingTimeInterval(172_800)),
+            date: day.addingTimeInterval(172_800)
+        )
+
+        let names = derivedNames([oldest, middle, newest])
+
+        XCTAssertTrue(try derivedName(of: oldest, in: names).hasSuffix("Loop (NE)"))
+        XCTAssertTrue(try derivedName(of: middle, in: names).hasSuffix("Loop (NE 2)"))
+        XCTAssertTrue(try derivedName(of: newest, in: names).hasSuffix("Loop (NE 3)"))
+        XCTAssertEqual(Set(names.values).count, 3, "names: \(names)")
+    }
+
+    /// Pure function of the input set: shuffling the input array must not
+    /// change a single entry.
+    func testNamesAreInputOrderIndependent() {
+        let day = RouteGroupingFixtures.epoch
+        let a = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 290, date: day),
+            date: day
+        )
+        let b = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 480, heightMeters: 100, mirrored: true, date: day.addingTimeInterval(86_400)),
+            date: day.addingTimeInterval(86_400)
+        )
+        let c = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 100, heightMeters: 480, date: day.addingTimeInterval(172_800)),
+            date: day.addingTimeInterval(172_800)
+        )
+
+        let reference = derivedNames([a, b, c])
+
+        XCTAssertEqual(derivedNames([a, b, c]), reference)
+        XCTAssertEqual(derivedNames([c, a, b]), reference)
+        XCTAssertEqual(derivedNames([b, c, a]), reference)
+        XCTAssertEqual(derivedNames([c, b, a]), reference)
+    }
+
+    /// Re-running on the same set is identical, and adding a group that
+    /// does not collide renames nothing.
+    func testNamesAreStableAcrossRunsAndUnrelatedAdditions() throws {
+        let day = RouteGroupingFixtures.epoch
+        let loop = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250, date: day),
+            date: day
+        )
+        let line = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.straightLine(distanceMeters: 6_000, date: day.addingTimeInterval(86_400)),
+            date: day.addingTimeInterval(86_400)
+        )
+        let set = [loop, line]
+
+        let first = derivedNames(set)
+        XCTAssertEqual(derivedNames(set), first)
+
+        let unrelated = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 2_000, date: day.addingTimeInterval(172_800)),
+            date: day.addingTimeInterval(172_800)
+        )
+        var grown = derivedNames(set + [unrelated])
+        grown[unrelated.id] = nil
+
+        XCTAssertEqual(grown, first, "adding a non-colliding group must not rename existing ones")
+    }
+
+    /// Ordinary GPS jitter on the representative must not flip the compass
+    /// sector: the token is a property of the route's extent, and sectors
+    /// are 45° wide.
+    func testTokenStableAcrossRepresentativeGPSNoise() throws {
+        let day = RouteGroupingFixtures.epoch
+        let clean = RouteGroupingFixtures.squareLoop(sideMeters: 1_250, date: day)
+        let noisy = RouteGroupingFixtures.seededNoise(on: clean, noiseMeters: 12, seed: 4_242)
+        // Same base name, different compass sector — the collision partner
+        // that forces the token to appear at all.
+        let partner = RouteGroupingFixtures.rectangleLoop(widthMeters: 2_400, heightMeters: 100, mirrored: true, date: day.addingTimeInterval(86_400))
+
+        let cleanGroup = RouteGroupingFixtures.group(representative: clean, date: day)
+        let noisyGroup = RouteGroupingFixtures.group(representative: noisy, date: day)
+        let partnerGroup = RouteGroupingFixtures.group(
+            representative: partner,
+            date: day.addingTimeInterval(86_400)
+        )
+
+        let withClean = try derivedName(of: cleanGroup, in: derivedNames([cleanGroup, partnerGroup]))
+        let withNoisy = try derivedName(of: noisyGroup, in: derivedNames([noisyGroup, partnerGroup]))
+
+        XCTAssertTrue(withClean.hasSuffix("Loop (NE)"), "got \(withClean)")
+        XCTAssertEqual(withNoisy, withClean)
+    }
+
+    func testMissingRepresentativeSummaryFallsBackWithoutCrashing() throws {
+        let plain = WorkoutRouteGroup()
+        let healthy = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250),
+            date: RouteGroupingFixtures.epoch
+        )
+
+        let names = derivedNames([plain, healthy])
+
+        XCTAssertEqual(try derivedName(of: plain, in: names), "Route")
+        XCTAssertEqual(
+            try derivedName(of: healthy, in: names),
+            WorkoutRouteGroup.defaultDisplayName(distanceMeters: 5_000, closesLoop: true)
+        )
+
+        // Two summary-less groups still never collide: the numeric terminal
+        // fallback applies to the plain fallback name too. Their relative
+        // order is id-tiebroken, so assert the pair, not the assignment.
+        let other = WorkoutRouteGroup()
+        let pair = derivedNames([plain, other])
+        let pairNames = Set(pair.values)
+        XCTAssertEqual(pairNames, ["Route", "Route (2)"])
+    }
 }

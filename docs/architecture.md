@@ -780,7 +780,22 @@ membership transactionally in the store actor.
 **Naming.** No geocoding — the privacy model forbids it. Unnamed groups
 derive a descriptive default from the representative's own geometry
 ("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure); users
-can rename at any time.
+can rename at any time. Because `%.1f km` rounding widens name collisions
+(1.16 km and 1.24 km both render "1.2 km"), surfaces that list groups
+derive names for the whole set at once through
+`WorkoutRouteGroup.derivedDisplayNames(for:loopClosureDistanceMeters:)`:
+colliding base names gain an eight-point compass token — the bearing from
+the representative's start point to the centre of its bounding box, never
+start-to-finish, which for a loop is numerical noise — computed only from
+facts already persisted in the group's representative summary. The token
+is stable across imports (geometry, not run counts or dates); if it still
+collides, a numeric ordinal separates the remainder ("1.2 km Loop (NE
+2)"), so two derived names are never identical. User-assigned names are
+returned verbatim and never participate in disambiguating others. The
+derivation is a pure function of the input set — ordered by representative
+start date with the group id as tiebreak, so input order decides nothing.
+The loop-closure threshold (`defaultLoopClosureDistanceMeters`, 100 m)
+lives on `WorkoutRouteGroup`, the single product copy of the number.
 
 Manual controls: rename, merge two routes, remove a run from a route
 (evaluated-nil marker), and pin a representative. A full re-cluster action
