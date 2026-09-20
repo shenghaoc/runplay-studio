@@ -8,9 +8,19 @@ import Foundation
 /// Loop") — and `%.1f km` rounding widens the collision, since 1.16 km and
 /// 1.24 km both render as 1.2 km. This extension derives names for a *set*
 /// of groups at once so colliding siblings can disambiguate one another,
-/// using only facts already persisted in `WorkoutRouteGroupSummary`: no
-/// geocoding, no network, no new storage (the privacy model forbids the
-/// first two).
+/// using only data already persisted in `WorkoutRouteGroupSummary` plus the
+/// group's own persisted id: no geocoding, no network, no new storage (the
+/// privacy model forbids the first two).
+/// One derived-naming candidate: the base name plus both compass tiers
+/// for a group that needs disambiguation (`nil` tokens for the
+/// summary-less fallback).
+private struct RouteGroupDerivedNameCandidate {
+    let groupID: UUID
+    let baseName: String
+    let coarseToken: String?
+    let fineToken: String?
+}
+
 extension WorkoutRouteGroup {
     /// Start-to-finish distance under which a representative counts as a
     /// loop for a derived name. The single product copy of the number; the
@@ -32,33 +42,42 @@ extension WorkoutRouteGroup {
     ///    the user's choice, not a collision to repair.
     /// 2. A group with no `representativeSummary` keeps today's plain
     ///    fallback name ("Route"): no facts can be read, so it carries no
-    ///    token.
+    ///    compass token.
     /// 3. Every other group's base name is exactly
     ///    `defaultDisplayName(distanceMeters:closesLoop:)` over its
     ///    persisted facts — loop closure from the persisted start/finish
     ///    pair measured with `GeoDistance` against
     ///    `loopClosureDistanceMeters`.
-    /// 4. A base name held by only one group is emitted unchanged. A base
-    ///    name held by several is disambiguated with an eight-point compass
-    ///    token: the bearing from the representative's start point to the
-    ///    centre of its bounding box (see `compassToken(for:)` for why not
-    ///    start-to-finish). The token is stable across imports — it does
-    ///    not depend on run count or dates, which change as a group gains
-    ///    members, only on geometry the user learns to recognise.
-    /// 5. Terminal fallback: within one base name, repeated tokens (or
-    ///    repeated fallback names) are separated by a numeric ordinal in
-    ///    parentheses — "1.2 km Loop (NE 2)", "Route (2)" — so no two
-    ///    derived names are ever identical.
+    /// 4. A base name held by only one group is emitted unchanged.
+    ///    Otherwise the base name is disambiguated by escalating intrinsic
+    ///    discriminators until the names differ, coarsest first:
     ///
-    /// The result is a pure function of the input *set*: before any suffix
-    /// or ordinal is assigned, the derived groups are ordered by
-    /// representative start date (earlier first, missing last — the
-    /// longest-known route keeps the cleanest name) with the group id as
-    /// the final tiebreak, so input order never decides anything and the
-    /// same set always yields the same names. Adding a group that does not
-    /// collide leaves every existing name untouched; adding one that does
-    /// legitimately shifts the bare name to a tokened one, which is the
-    /// disambiguation working.
+    ///       a. an eight-point compass token — the bearing from the
+    ///          representative's start point to the centre of its bounding
+    ///          box (see `compassToken(for:fine:)` for why not
+    ///          start-to-finish);
+    ///       b. a sixteen-point sector, when the eight-point token still
+    ///          collides within the base name;
+    ///       c. a stable digest of the group's own id ("1.2 km Loop
+    ///          (NE·7f3)") — the persisted identity, immune to import
+    ///          order and membership churn — when even the fine sector
+    ///          collides.
+    ///
+    ///    Every discriminator is intrinsic to the group, never its position
+    ///    in a sorted list: no rank, count, or sort order participates
+    ///    anywhere. Importing another colliding group — including the
+    ///    historically earlier workouts a bulk archive import injects by
+    ///    construction — therefore never renames the groups already named;
+    ///    a name only ever *refines* (bare → coarse token → fine token →
+    ///    digest) when a new collision forces it, and reverts when the
+    ///    collision goes away.
+    ///
+    /// The result is a pure function of the input set: no assignment
+    /// depends on iteration or input order, so the same set always yields
+    /// the same names in any order. (The one remaining name-changing path
+    /// is inherent to facts-derived names: the store may re-pick a group's
+    /// representative when membership changes, which legitimately moves
+    /// that group's own base name and compass token.)
     public static func derivedDisplayNames(
         for groups: [WorkoutRouteGroup],
         loopClosureDistanceMeters: Double
@@ -66,13 +85,7 @@ extension WorkoutRouteGroup {
         var names: [UUID: String] = [:]
         names.reserveCapacity(groups.count)
 
-        struct Derived: Hashable {
-            let groupID: UUID
-            let startDate: Date?
-            let baseName: String
-            let token: String?
-        }
-        var derived: [Derived] = []
+        var derived: [RouteGroupDerivedNameCandidate] = []
         derived.reserveCapacity(groups.count)
 
         for group in groups {
@@ -81,11 +94,11 @@ extension WorkoutRouteGroup {
                 continue
             }
             guard let summary = group.representativeSummary else {
-                derived.append(Derived(
+                derived.append(RouteGroupDerivedNameCandidate(
                     groupID: group.id,
-                    startDate: nil,
                     baseName: unnamedFallbackName,
-                    token: nil
+                    coarseToken: nil,
+                    fineToken: nil
                 ))
                 continue
             }
@@ -96,37 +109,23 @@ extension WorkoutRouteGroup {
                 toLat: facts.finishLatitude,
                 lon: facts.finishLongitude
             ) <= loopClosureDistanceMeters
-            derived.append(Derived(
+            derived.append(RouteGroupDerivedNameCandidate(
                 groupID: group.id,
-                startDate: summary.startDate,
                 baseName: defaultDisplayName(
                     distanceMeters: facts.totalDistanceMeters,
                     closesLoop: closesLoop
                 ),
-                token: compassToken(for: facts)
+                coarseToken: compassToken(for: facts),
+                fineToken: compassToken(for: facts, fine: true)
             ))
         }
 
-        // Deterministic ordinal assignment: never let input order or
-        // dictionary iteration decide who keeps the cleaner name. Earlier
-        // representative start date first (missing dates last), then the
-        // group id's canonical string as the total-order tiebreak.
-        derived.sort { lhs, rhs in
-            switch (lhs.startDate, rhs.startDate) {
-            case (let left?, let right?) where left != right:
-                return left < right
-            case (_?, nil):
-                return true
-            case (nil, _?):
-                return false
-            default:
-                return lhs.groupID.uuidString < rhs.groupID.uuidString
-            }
-        }
-
-        // Clusters by base name; members arrive in the sorted order above,
-        // so first-seen counts and ordinals are reproducible.
-        var clusters: [String: [Derived]] = [:]
+        // Escalate per base-name cluster: coarse token, then fine sector,
+        // then the identity digest. Nothing here reads a sort order — the
+        // discriminator a group ends up with is a function of its own
+        // persisted data plus which siblings collide with it, so inserting
+        // a group can only force a refinement, never a re-ranking.
+        var clusters: [String: [RouteGroupDerivedNameCandidate]] = [:]
         clusters.reserveCapacity(derived.count)
         for candidate in derived {
             clusters[candidate.baseName, default: []].append(candidate)
@@ -137,27 +136,80 @@ extension WorkoutRouteGroup {
                 names[cluster[0].groupID] = baseName
                 continue
             }
-            var occurrences: [String: Int] = [:]
+            var byCoarseToken: [String: [RouteGroupDerivedNameCandidate]] = [:]
             for candidate in cluster {
-                // Fallback candidates have no token; they keep the bare
-                // fallback unless another fallback shares it, in which case
-                // the ordinal alone ("Route (2)") separates them.
-                let key = candidate.token ?? ""
-                occurrences[key, default: 0] += 1
-                let occurrence = occurrences[key] ?? 0
-                guard let token = candidate.token else {
-                    names[candidate.groupID] = occurrence == 1
-                        ? baseName
-                        : baseName + disambiguatedSuffix(String(occurrence))
+                byCoarseToken[candidate.coarseToken ?? "", default: []].append(candidate)
+            }
+            for (_, coarseGroup) in byCoarseToken {
+                guard coarseGroup.count > 1 else {
+                    let candidate = coarseGroup[0]
+                    names[candidate.groupID] = candidate.coarseToken
+                        .map { baseName + disambiguatedSuffix($0) }
+                        ?? baseName
                     continue
                 }
-                names[candidate.groupID] = baseName + disambiguatedSuffix(
-                    occurrence == 1 ? token : "\(token) \(occurrence)"
-                )
+                var byFineToken: [String: [RouteGroupDerivedNameCandidate]] = [:]
+                for candidate in coarseGroup {
+                    byFineToken[candidate.fineToken ?? "", default: []].append(candidate)
+                }
+                for (_, fineGroup) in byFineToken {
+                    guard fineGroup.count > 1 else {
+                        let candidate = fineGroup[0]
+                        names[candidate.groupID] = candidate.fineToken
+                            .map { baseName + disambiguatedSuffix($0) }
+                            ?? baseName
+                        continue
+                    }
+                    assignIdentityDigestNames(fineGroup, baseName: baseName, into: &names)
+                }
             }
         }
 
         return names
+    }
+
+    /// Appends the final-tier discriminator to every member of a group that
+    /// shares one base name and one fine sector: a digest of the group's
+    /// own id, at the shortest prefix length (3, 6, then 8 hex digits)
+    /// that separates the members; the full UUID string in the
+    /// ~2⁻³²-per-pair corner where even the full digest matches. Fallback
+    /// candidates with no compass token get the digest alone ("Route
+    /// (7f3)").
+    private static func assignIdentityDigestNames(
+        _ members: [RouteGroupDerivedNameCandidate],
+        baseName: String,
+        into names: inout [UUID: String]
+    ) {
+        let fullDigests = members.map { stableDigestHex(for: $0.groupID) }
+        var length = 8
+        for candidate in [3, 6, 8]
+        where Set(fullDigests.map { String($0.prefix(candidate)) }).count == members.count {
+            length = candidate
+            break
+        }
+        var discriminators = fullDigests.map { String($0.prefix(length)) }
+        if Set(discriminators).count != members.count {
+            // Distinct ids cannot share a canonical UUID string, so this
+            // terminates the ladder with guaranteed-unique names.
+            discriminators = members.map { $0.groupID.uuidString }
+        }
+        for (candidate, discriminator) in zip(members, discriminators) {
+            let disambiguator = candidate.fineToken
+                .map { "\($0)·\(discriminator)" }
+                ?? discriminator
+            names[candidate.groupID] = baseName + disambiguatedSuffix(disambiguator)
+        }
+    }
+
+    /// Short stable hex digest of a group id (FNV-1a over the canonical
+    /// UUID string). Internal so the collision tests can construct
+    /// worst-case fixtures deterministically.
+    static func stableDigestHex(for groupID: UUID) -> String {
+        var hash: UInt32 = 0x811C_9DC5
+        for byte in groupID.uuidString.utf8 {
+            hash = (hash ^ UInt32(byte)) &* 0x0100_0193
+        }
+        return String(format: "%08x", hash)
     }
 
     /// Today's plain fallback for a group whose representative summary is
@@ -170,7 +222,8 @@ extension WorkoutRouteGroup {
         #endif
     }
 
-    /// Eight-point compass token for one route's facts.
+    /// Compass token for one route's facts — eight points, or sixteen when
+    /// `fine`.
     ///
     /// The bearing runs from the representative's start point to the centre
     /// of the route's bounding box — deliberately not start-to-finish. A
@@ -181,14 +234,16 @@ extension WorkoutRouteGroup {
     /// extending north yields "N" while one extending east yields "E". For
     /// point-to-point routes the same vector reads as the direction headed
     /// overall. Ordinary GPS jitter moves the centre by metres while the
-    /// sectors are 45° wide, so the token is stable across repeats. The
-    /// degenerate case — a start that already sits at its extent centre —
-    /// resolves to `atan2(0, 0)` (north) and stays deterministic; any
-    /// residual collision is settled by the numeric terminal fallback.
+    /// coarse sectors are 45° wide (22.5° fine — the fine tier only ever
+    /// separates routes that already share a coarse sector), so the token
+    /// is stable across repeats. The degenerate case — a start that already
+    /// sits at its extent centre — resolves to `atan2(0, 0)`, which is 0
+    /// (north) by definition and stays deterministic; any residual
+    /// collision is settled by the identity-digest tier.
     ///
     /// Computed through `GeoDistance.latLonToMeters`, the one shared local
     /// metre projection, so no second distance implementation exists here.
-    private static func compassToken(for facts: RouteGroupingRouteFacts) -> String {
+    private static func compassToken(for facts: RouteGroupingRouteFacts, fine: Bool = false) -> String {
         let centreLatitude = (facts.minLatitude + facts.maxLatitude) / 2
         let centreLongitude = (facts.minLongitude + facts.maxLongitude) / 2
         let local = GeoDistance.latLonToMeters(
@@ -198,14 +253,20 @@ extension WorkoutRouteGroup {
             centerLon: facts.startLongitude
         )
         let bearingDegrees = atan2(local.x, local.z) * 180 / .pi
+        // Non-finite bearing means corrupt persisted coordinates (the
+        // start-at-centre degenerate case needs no guard — atan2(0, 0) is
+        // a defined 0); map it to north rather than trap in the Int
+        // conversion below.
         guard bearingDegrees.isFinite else {
-            return compassAbbreviation(forSector: 0)
+            return compassAbbreviation(forSector: 0, fine: fine)
         }
-        // Sector 0 is centred on north, so 0° ± 22.5° maps to "N"; the
-        // double remainder keeps negative bearings (west of north) in range.
-        let sector = Int(floor((bearingDegrees + 22.5) / 45))
-        let wrapped = ((sector % 8) + 8) % 8
-        return compassAbbreviation(forSector: wrapped)
+        // Sector 0 is centred on north; the double remainder keeps
+        // negative bearings (west of north) in range.
+        let sectorCount = fine ? 16 : 8
+        let sectorWidth = 360.0 / Double(sectorCount)
+        let sector = Int(floor((bearingDegrees + sectorWidth / 2) / sectorWidth))
+        let wrapped = ((sector % sectorCount) + sectorCount) % sectorCount
+        return compassAbbreviation(forSector: wrapped, fine: fine)
     }
 
     /// `String(localized:defaultValue:)` takes literal-only
@@ -213,29 +274,41 @@ extension WorkoutRouteGroup {
     /// case rather than in a key-building helper (same limitation the
     /// `defaultDisplayName` comment records); the English default is the
     /// Linux fallback.
-    private static func compassAbbreviation(forSector sector: Int) -> String {
+    private static func compassAbbreviation(forSector sector: Int, fine: Bool) -> String {
         #if canImport(Darwin)
-        switch sector {
-        case 0: return String(localized: "route_group.compass.north", defaultValue: "N")
-        case 1: return String(localized: "route_group.compass.northeast", defaultValue: "NE")
-        case 2: return String(localized: "route_group.compass.east", defaultValue: "E")
-        case 3: return String(localized: "route_group.compass.southeast", defaultValue: "SE")
-        case 4: return String(localized: "route_group.compass.south", defaultValue: "S")
-        case 5: return String(localized: "route_group.compass.southwest", defaultValue: "SW")
-        case 6: return String(localized: "route_group.compass.west", defaultValue: "W")
-        default: return String(localized: "route_group.compass.northwest", defaultValue: "NW")
+        switch (fine, sector) {
+        case (false, 0), (true, 0): return String(localized: "route_group.compass.north", defaultValue: "N")
+        case (false, 1): return String(localized: "route_group.compass.northeast", defaultValue: "NE")
+        case (false, 2): return String(localized: "route_group.compass.east", defaultValue: "E")
+        case (false, 3): return String(localized: "route_group.compass.southeast", defaultValue: "SE")
+        case (false, 4): return String(localized: "route_group.compass.south", defaultValue: "S")
+        case (false, 5): return String(localized: "route_group.compass.southwest", defaultValue: "SW")
+        case (false, 6): return String(localized: "route_group.compass.west", defaultValue: "W")
+        case (false, _): return String(localized: "route_group.compass.northwest", defaultValue: "NW")
+        case (true, 1): return String(localized: "route_group.compass.north_northeast", defaultValue: "NNE")
+        case (true, 2): return String(localized: "route_group.compass.northeast", defaultValue: "NE")
+        case (true, 3): return String(localized: "route_group.compass.east_northeast", defaultValue: "ENE")
+        case (true, 4): return String(localized: "route_group.compass.east", defaultValue: "E")
+        case (true, 5): return String(localized: "route_group.compass.east_southeast", defaultValue: "ESE")
+        case (true, 6): return String(localized: "route_group.compass.southeast", defaultValue: "SE")
+        case (true, 7): return String(localized: "route_group.compass.south_southeast", defaultValue: "SSE")
+        case (true, 8): return String(localized: "route_group.compass.south", defaultValue: "S")
+        case (true, 9): return String(localized: "route_group.compass.south_southwest", defaultValue: "SSW")
+        case (true, 10): return String(localized: "route_group.compass.southwest", defaultValue: "SW")
+        case (true, 11): return String(localized: "route_group.compass.west_southwest", defaultValue: "WSW")
+        case (true, 12): return String(localized: "route_group.compass.west", defaultValue: "W")
+        case (true, 13): return String(localized: "route_group.compass.west_northwest", defaultValue: "WNW")
+        case (true, 14): return String(localized: "route_group.compass.northwest", defaultValue: "NW")
+        default: return String(localized: "route_group.compass.north_northwest", defaultValue: "NNW")
         }
         #else
-        switch sector {
-        case 0: return "N"
-        case 1: return "NE"
-        case 2: return "E"
-        case 3: return "SE"
-        case 4: return "S"
-        case 5: return "SW"
-        case 6: return "W"
-        default: return "NW"
-        }
+        let coarse = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        let fineWind = [
+            "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"
+        ]
+        let names = fine ? fineWind : coarse
+        return names[min(max(sector, 0), names.count - 1)]
         #endif
     }
 

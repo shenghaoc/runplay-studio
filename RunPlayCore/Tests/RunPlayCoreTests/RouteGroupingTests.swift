@@ -578,31 +578,164 @@ final class RouteGroupingTests: XCTestCase {
         XCTAssertEqual(Set(names.values).count, 3, "names: \(names)")
     }
 
-    /// The terminal fallback: same base name AND same compass token still
-    /// never collides — a numeric ordinal separates them, assigned by the
-    /// stable order (earliest representative start date keeps the bare
-    /// token).
-    func testTokenCollisionFallsBackToNumericOrdinals() throws {
+    /// The final tier: same base name AND same compass sector still never
+    /// collides — every member gains a stable digest of its own group id
+    /// ("NE·7f3"), the persisted identity. No rank or sort order
+    /// participates, so nothing here depends on the dates.
+    func testTokenCollisionFallsBackToStableIdentityDigest() throws {
         let day = RouteGroupingFixtures.epoch
-        let oldest = RouteGroupingFixtures.group(
+        let first = RouteGroupingFixtures.group(
             representative: RouteGroupingFixtures.squareLoop(sideMeters: 290, date: day),
+            date: day,
+            id: try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
+        )
+        let second = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 300, date: day.addingTimeInterval(86_400)),
+            date: day.addingTimeInterval(86_400),
+            id: try XCTUnwrap(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
+        )
+        let third = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 310, date: day.addingTimeInterval(172_800)),
+            date: day.addingTimeInterval(172_800),
+            id: try XCTUnwrap(UUID(uuidString: "33333333-3333-3333-3333-333333333333"))
+        )
+
+        let names = derivedNames([first, second, third])
+
+        XCTAssertEqual(Set(names.values).count, 3, "names: \(names)")
+        for name in names.values {
+            XCTAssertNotNil(
+                name.range(of: #"Loop \(NE·[0-9a-f]{3,}\)$"#, options: .regularExpression),
+                "expected an identity-digest suffix, got \(name)"
+            )
+        }
+    }
+
+    /// The regression the rank-based scheme could not pass: a bulk archive
+    /// import injects historically earlier workouts, so inserting a
+    /// colliding group with an *earlier* start date must not rename any
+    /// group already named — every discriminator is intrinsic, none is a
+    /// position in a sorted list.
+    func testAddingCollidingGroupDoesNotRenameExistingGroups() throws {
+        let day = RouteGroupingFixtures.epoch
+        let existing = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 290, date: day),
+            date: day,
+            id: try XCTUnwrap(UUID(uuidString: "44444444-4444-4444-4444-444444444444"))
+        )
+        let neighbour = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 310, date: day.addingTimeInterval(86_400)),
+            date: day.addingTimeInterval(86_400),
+            id: try XCTUnwrap(UUID(uuidString: "55555555-5555-5555-5555-555555555555"))
+        )
+
+        let before = derivedNames([existing, neighbour])
+        XCTAssertNotEqual(before[existing.id], before[neighbour.id])
+
+        // Same base name, same compass sector, start date earlier than
+        // both — under a rank-based scheme this shifts every ordinal.
+        let historical = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 280, date: day.addingTimeInterval(-2_592_000)),
+            date: day.addingTimeInterval(-2_592_000),
+            id: try XCTUnwrap(UUID(uuidString: "66666666-6666-6666-6666-666666666666"))
+        )
+        let after = derivedNames([existing, neighbour, historical])
+
+        XCTAssertEqual(after[existing.id], before[existing.id], "an earlier-dated colliding group must not rename an existing one")
+        XCTAssertEqual(after[neighbour.id], before[neighbour.id], "an earlier-dated colliding group must not rename an existing one")
+        XCTAssertEqual(Set(after.values).count, 3, "names: \(after)")
+    }
+
+    /// The one rename a set-level rule cannot avoid: the first collision
+    /// refines a bare name to a tokened one. Unrelated groups stay put.
+    func testAddingFirstCollisionRefinesBareNameToToken() throws {
+        let day = RouteGroupingFixtures.epoch
+        let loop = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 1_250, date: day),
             date: day
         )
-        let middle = RouteGroupingFixtures.group(
-            representative: RouteGroupingFixtures.squareLoop(sideMeters: 300, date: day.addingTimeInterval(86_400)),
+        let unrelated = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.straightLine(distanceMeters: 10_000, date: day.addingTimeInterval(86_400)),
             date: day.addingTimeInterval(86_400)
         )
-        let newest = RouteGroupingFixtures.group(
-            representative: RouteGroupingFixtures.squareLoop(sideMeters: 310, date: day.addingTimeInterval(172_800)),
+
+        let alone = derivedNames([loop, unrelated])
+
+        let colliding = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 2_400, heightMeters: 100, mirrored: true, date: day.addingTimeInterval(172_800)),
             date: day.addingTimeInterval(172_800)
         )
+        let grown = derivedNames([loop, unrelated, colliding])
 
-        let names = derivedNames([oldest, middle, newest])
+        XCTAssertNotEqual(grown[loop.id], alone[loop.id], "the first collision must refine the bare name")
+        XCTAssertTrue(grown[loop.id]?.hasSuffix("Loop (NE)") == true, "got \(String(describing: grown[loop.id]))")
+        XCTAssertTrue(grown[colliding.id]?.hasSuffix("Loop (E)") == true, "got \(String(describing: grown[colliding.id]))")
+        XCTAssertEqual(grown[unrelated.id], alone[unrelated.id], "a non-colliding group must not move")
+    }
 
-        XCTAssertTrue(try derivedName(of: oldest, in: names).hasSuffix("Loop (NE)"))
-        XCTAssertTrue(try derivedName(of: middle, in: names).hasSuffix("Loop (NE 2)"))
-        XCTAssertTrue(try derivedName(of: newest, in: names).hasSuffix("Loop (NE 3)"))
-        XCTAssertEqual(Set(names.values).count, 3, "names: \(names)")
+    /// Two routes sharing a coarse NE sector split at the sixteen-point
+    /// tier — still pure geometry, still learnable.
+    func testSameCoarseSectorRefinesToFineSectors() throws {
+        let northNortheast = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 184, heightMeters: 396, date: RouteGroupingFixtures.epoch),
+            date: RouteGroupingFixtures.epoch
+        )
+        let eastNortheast = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.rectangleLoop(widthMeters: 396, heightMeters: 184, date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)),
+            date: RouteGroupingFixtures.epoch.addingTimeInterval(86_400)
+        )
+
+        let names = derivedNames([northNortheast, eastNortheast])
+
+        let fineName = try derivedName(of: northNortheast, in: names)
+        let otherFineName = try derivedName(of: eastNortheast, in: names)
+        XCTAssertTrue(fineName.hasSuffix("Loop (NNE)"), "got \(fineName)")
+        XCTAssertTrue(otherFineName.hasSuffix("Loop (ENE)"), "got \(otherFineName)")
+        XCTAssertNotEqual(fineName, otherFineName)
+    }
+
+    /// The digest prefix grows only far enough to separate: two ids found
+    /// (seeded search over the real digest) to share their 3-hex prefix
+    /// but differ at 6 must both render the 6-hex form.
+    func testDigestTierExtendsWhenPrefixesCollide() throws {
+        var generator = SplitMix64RouteGrouping(seed: 9_913)
+        var byPrefix: [String: UUID] = [:]
+        var pair: (UUID, UUID)?
+        for _ in 0..<200_000 {
+            let bytes = (0..<16).map { _ in UInt8(truncatingIfNeeded: generator.next()) }
+            let id = UUID(uuid: (
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+            ))
+            let digest = WorkoutRouteGroup.stableDigestHex(for: id)
+            let short = String(digest.prefix(3))
+            if let other = byPrefix[short], String(digest.prefix(6)) != String(WorkoutRouteGroup.stableDigestHex(for: other).prefix(6)) {
+                pair = (other, id)
+                break
+            }
+            byPrefix[short] = id
+        }
+        let (firstID, secondID) = try XCTUnwrap(pair, "seeded search must find a 3-hex digest collision")
+
+        let day = RouteGroupingFixtures.epoch
+        let first = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 290, date: day),
+            date: day,
+            id: firstID
+        )
+        let second = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 300, date: day.addingTimeInterval(86_400)),
+            date: day.addingTimeInterval(86_400),
+            id: secondID
+        )
+
+        let names = derivedNames([first, second])
+
+        let firstName = try derivedName(of: first, in: names)
+        let secondName = try derivedName(of: second, in: names)
+        XCTAssertNotEqual(firstName, secondName)
+        XCTAssertNotNil(firstName.range(of: #"Loop \(NE·[0-9a-f]{6}\)$"#, options: .regularExpression), "got \(firstName)")
+        XCTAssertNotNil(secondName.range(of: #"Loop \(NE·[0-9a-f]{6}\)$"#, options: .regularExpression), "got \(secondName)")
     }
 
     /// Pure function of the input set: shuffling the input array must not
@@ -697,12 +830,19 @@ final class RouteGroupingTests: XCTestCase {
             WorkoutRouteGroup.defaultDisplayName(distanceMeters: 5_000, closesLoop: true)
         )
 
-        // Two summary-less groups still never collide: the numeric terminal
-        // fallback applies to the plain fallback name too. Their relative
-        // order is id-tiebroken, so assert the pair, not the assignment.
+        // Two summary-less groups still never collide: the identity-digest
+        // tier applies to the plain fallback name too. Both carry a digest
+        // — which one gets which is intrinsic to the id, so assert the
+        // pair, not the assignment.
         let other = WorkoutRouteGroup()
         let pair = derivedNames([plain, other])
         let pairNames = Set(pair.values)
-        XCTAssertEqual(pairNames, ["Route", "Route (2)"])
+        XCTAssertEqual(pairNames.count, 2, "names: \(pair)")
+        for name in pairNames {
+            XCTAssertNotNil(
+                name.range(of: #"^Route \([0-9a-f]{3,}\)$"#, options: .regularExpression),
+                "expected a digest-suffixed fallback, got \(name)"
+            )
+        }
     }
 }
