@@ -113,8 +113,57 @@ fatigue, the direction that matters to someone training. So they don't:
 - People who mostly run without a strap can opt in on the Trends chart;
   the caveat is stated there and in Settings, not buried here.
 
+### What an unknown-load day does to the model, and which way it lies
+
+This is the model's sharpest edge, so it is stated plainly rather than left
+to be inferred.
+
+A day whose runs carry no usable heart rate has **no load the model can
+use**. The recursion still runs for that day, with `load_d = 0`. That is
+arithmetically identical to what a rest day does — and it is not the same
+thing at all. A rest day is a *measured* zero: you did not run, and the
+library has no workout record for it. An unknown-load day is an
+*unmeasured* one: you did run, the library has the workout, and only the
+heart rate is missing. The app can tell the two apart; the recursion
+cannot.
+
+The error this produces has a direction, and it is the unhelpful one:
+
+- Fitness (CTL) **decays** across the stretch, as if the training had not
+  happened. You read as less fit than you are.
+- Fatigue (ATL) decays faster, because its time constant is shorter. You
+  read as fresher than you are.
+- Form is fitness minus fatigue, so it **rises** — the reading that says
+  "you are rested, go hard" — precisely when the app has the least idea
+  what you have been doing.
+
+In short: **a stretch of strapless running reads as lost fitness and gained
+freshness.** If you train by form, that is the direction that flatters a
+hard-session decision instead of cautioning it.
+
+Two things mitigate it, neither of which removes it:
+
+- The Trends chart **shades** the span behind the fitness, fatigue, and
+  form lines. The values are unchanged; the shading marks them as resting
+  on input nobody recorded. The shading does not depend on the
+  estimated-load opt-in — an invented value standing in for a missing
+  measurement does not make the day measured.
+- The heart-rate coverage percentage tells you how much of the window the
+  curve is actually built on.
+
+The bias also outlives the span. Once heart rate returns, the model is
+correct again day by day, but it restarts from a state the gap pushed down,
+and it takes on the order of the time constant — 42 days for fitness, 7 for
+fatigue — to recover. A shaded fortnight is not a fortnight of doubt; it is
+a fortnight of doubt plus a tail.
+
+The honest fix is wearing the strap, not a better estimator.
+
 ## Limits
 
+- Unknown-load days decay the model as if you had rested, so a stretch of
+  strapless running reads as lost fitness and gained freshness, and the
+  effect persists past the gap. The chart shades those spans; see above.
 - TRIMP is one linear-ish summary of a nonlinear system. Two very different
   runs can share a value.
 - The model knows only the runs in this library and this scope; it cannot
