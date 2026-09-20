@@ -206,6 +206,27 @@ public enum RoutePointInterpolator {
             paceSecondsPerKilometer: interpolateOptional(before.paceSecondsPerKilometer, after.paceSecondsPerKilometer, fraction),
             heartRateBPM: interpolateOptional(before.heartRateBPM, after.heartRateBPM, fraction),
             cadence: interpolateOptional(before.cadence, after.cadence, fraction),
+            powerWatts: interpolateOptional(before.powerWatts, after.powerWatts, fraction),
+            groundContactTimeMilliseconds: interpolateOptional(
+                before.groundContactTimeMilliseconds,
+                after.groundContactTimeMilliseconds,
+                fraction),
+            verticalOscillationMillimeters: interpolateOptional(
+                before.verticalOscillationMillimeters,
+                after.verticalOscillationMillimeters,
+                fraction),
+            verticalRatioPercent: interpolateOptional(
+                before.verticalRatioPercent,
+                after.verticalRatioPercent,
+                fraction),
+            stanceTimeBalancePercent: interpolateOptional(
+                before.stanceTimeBalancePercent,
+                after.stanceTimeBalancePercent,
+                fraction),
+            stepLengthMeters: interpolateOptional(
+                before.stepLengthMeters,
+                after.stepLengthMeters,
+                fraction),
             horizontalAccuracy: interpolateOptional(before.horizontalAccuracy, after.horizontalAccuracy, fraction),
             routeSegmentIndex: before.routeSegmentIndex
         )

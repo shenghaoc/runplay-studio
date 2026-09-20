@@ -66,6 +66,12 @@ enum RunPlayRouteInputBuffer {
             nativeOptional(point.paceSecondsPerKilometer),
             nativeOptional(point.heartRateBPM),
             nativeOptional(point.cadence),
+            nativeOptional(point.powerWatts),
+            nativeOptional(point.groundContactTimeMilliseconds),
+            nativeOptional(point.verticalOscillationMillimeters),
+            nativeOptional(point.verticalRatioPercent),
+            nativeOptional(point.stanceTimeBalancePercent),
+            nativeOptional(point.stepLengthMeters),
             nativeOptional(point.horizontalAccuracy),
             routeSegmentIndex
         )

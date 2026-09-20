@@ -42,6 +42,12 @@ struct RouteInputSample final {
     RouteOptionalDouble pace_seconds_per_kilometer;
     RouteOptionalDouble heart_rate_bpm;
     RouteOptionalDouble cadence;
+    RouteOptionalDouble power_watts;
+    RouteOptionalDouble ground_contact_time_milliseconds;
+    RouteOptionalDouble vertical_oscillation_millimeters;
+    RouteOptionalDouble vertical_ratio_percent;
+    RouteOptionalDouble stance_time_balance_percent;
+    RouteOptionalDouble step_length_meters;
     RouteOptionalDouble horizontal_accuracy;
     std::int64_t route_segment_index;
 
@@ -57,6 +63,12 @@ struct RouteInputSample final {
         RouteOptionalDouble pace_seconds_per_kilometer_value,
         RouteOptionalDouble heart_rate_bpm_value,
         RouteOptionalDouble cadence_value,
+        RouteOptionalDouble power_watts_value,
+        RouteOptionalDouble ground_contact_time_milliseconds_value,
+        RouteOptionalDouble vertical_oscillation_millimeters_value,
+        RouteOptionalDouble vertical_ratio_percent_value,
+        RouteOptionalDouble stance_time_balance_percent_value,
+        RouteOptionalDouble step_length_meters_value,
         RouteOptionalDouble horizontal_accuracy_value,
         std::int64_t route_segment_index_value
     ) noexcept
@@ -72,6 +84,14 @@ struct RouteInputSample final {
           pace_seconds_per_kilometer(pace_seconds_per_kilometer_value),
           heart_rate_bpm(heart_rate_bpm_value),
           cadence(cadence_value),
+          power_watts(power_watts_value),
+          ground_contact_time_milliseconds(
+              ground_contact_time_milliseconds_value),
+          vertical_oscillation_millimeters(
+              vertical_oscillation_millimeters_value),
+          vertical_ratio_percent(vertical_ratio_percent_value),
+          stance_time_balance_percent(stance_time_balance_percent_value),
+          step_length_meters(step_length_meters_value),
           horizontal_accuracy(horizontal_accuracy_value),
           route_segment_index(route_segment_index_value) {}
 };
@@ -96,6 +116,12 @@ struct RouteBatchInspection final {
     std::uint64_t pace_value_count;
     std::uint64_t heart_rate_value_count;
     std::uint64_t cadence_value_count;
+    std::uint64_t power_value_count;
+    std::uint64_t ground_contact_time_value_count;
+    std::uint64_t vertical_oscillation_value_count;
+    std::uint64_t vertical_ratio_value_count;
+    std::uint64_t stance_time_balance_value_count;
+    std::uint64_t step_length_value_count;
     std::uint64_t horizontal_accuracy_value_count;
 
     std::uint64_t segment_transition_count;

@@ -13,6 +13,12 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         XCTAssertEqual(inspection.paceValueCount, 0)
         XCTAssertEqual(inspection.heartRateValueCount, 0)
         XCTAssertEqual(inspection.cadenceValueCount, 0)
+        XCTAssertEqual(inspection.powerValueCount, 0)
+        XCTAssertEqual(inspection.groundContactTimeValueCount, 0)
+        XCTAssertEqual(inspection.verticalOscillationValueCount, 0)
+        XCTAssertEqual(inspection.verticalRatioValueCount, 0)
+        XCTAssertEqual(inspection.stanceTimeBalanceValueCount, 0)
+        XCTAssertEqual(inspection.stepLengthValueCount, 0)
         XCTAssertEqual(inspection.horizontalAccuracyValueCount, 0)
         XCTAssertEqual(inspection.segmentTransitionCount, 0)
         XCTAssertNil(inspection.firstSourceIndex)
@@ -33,6 +39,12 @@ final class RunPlayRouteBridgeTests: XCTestCase {
             paceSecondsPerKilometer: 242.25,
             heartRateBPM: 151.5,
             cadence: 176.25,
+            powerWatts: 245.5,
+            groundContactTimeMilliseconds: 251.25,
+            verticalOscillationMillimeters: 9.75,
+            verticalRatioPercent: 6.25,
+            stanceTimeBalancePercent: 49.75,
+            stepLengthMeters: 1.125,
             horizontalAccuracy: 3.75,
             routeSegmentIndex: 4
         )
@@ -46,6 +58,12 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         XCTAssertEqual(inspection.paceValueCount, 1)
         XCTAssertEqual(inspection.heartRateValueCount, 1)
         XCTAssertEqual(inspection.cadenceValueCount, 1)
+        XCTAssertEqual(inspection.powerValueCount, 1)
+        XCTAssertEqual(inspection.groundContactTimeValueCount, 1)
+        XCTAssertEqual(inspection.verticalOscillationValueCount, 1)
+        XCTAssertEqual(inspection.verticalRatioValueCount, 1)
+        XCTAssertEqual(inspection.stanceTimeBalanceValueCount, 1)
+        XCTAssertEqual(inspection.stepLengthValueCount, 1)
         XCTAssertEqual(inspection.horizontalAccuracyValueCount, 1)
         XCTAssertEqual(inspection.firstSourceIndex, 0)
         XCTAssertEqual(inspection.lastSourceIndex, 0)
@@ -65,6 +83,12 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         XCTAssertEqual(inspection.paceValueCount, 0)
         XCTAssertEqual(inspection.heartRateValueCount, 0)
         XCTAssertEqual(inspection.cadenceValueCount, 0)
+        XCTAssertEqual(inspection.powerValueCount, 0)
+        XCTAssertEqual(inspection.groundContactTimeValueCount, 0)
+        XCTAssertEqual(inspection.verticalOscillationValueCount, 0)
+        XCTAssertEqual(inspection.verticalRatioValueCount, 0)
+        XCTAssertEqual(inspection.stanceTimeBalanceValueCount, 0)
+        XCTAssertEqual(inspection.stepLengthValueCount, 0)
         XCTAssertEqual(inspection.horizontalAccuracyValueCount, 0)
         assertParity(for: points)
     }
@@ -116,6 +140,12 @@ final class RunPlayRouteBridgeTests: XCTestCase {
             paceSecondsPerKilometer: -.infinity,
             heartRateBPM: canonicalNaN,
             cadence: -0.0,
+            powerWatts: .infinity,
+            groundContactTimeMilliseconds: canonicalNaN,
+            verticalOscillationMillimeters: -0.0,
+            verticalRatioPercent: .infinity,
+            stanceTimeBalancePercent: canonicalNaN,
+            stepLengthMeters: -0.0,
             horizontalAccuracy: .infinity,
             routeSegmentIndex: -7
         )
@@ -158,6 +188,18 @@ final class RunPlayRouteBridgeTests: XCTestCase {
                         index.isMultiple(of: 7) ? 120.0 + Double(index % 80) : nil,
                     cadence:
                         index.isMultiple(of: 11) ? 160.0 + Double(index % 30) : nil,
+                    powerWatts:
+                        index.isMultiple(of: 17) ? 210.0 + Double(index % 90) : nil,
+                    groundContactTimeMilliseconds:
+                        index.isMultiple(of: 19) ? 230.0 + Double(index % 60) : nil,
+                    verticalOscillationMillimeters:
+                        index.isMultiple(of: 23) ? 7.0 + Double(index % 25) : nil,
+                    verticalRatioPercent:
+                        index.isMultiple(of: 29) ? 5.0 + Double(index % 20) : nil,
+                    stanceTimeBalancePercent:
+                        index.isMultiple(of: 31) ? 48.0 + Double(index % 5) : nil,
+                    stepLengthMeters:
+                        index.isMultiple(of: 37) ? 0.9 + Double(index % 40) * 0.01 : nil,
                     horizontalAccuracy:
                         index.isMultiple(of: 13) ? 2.0 + Double(index % 10) : nil,
                     routeSegmentIndex: index / 25_000
@@ -225,6 +267,42 @@ final class RunPlayRouteBridgeTests: XCTestCase {
             line: line
         )
         XCTAssertEqual(
+            actual.powerValueCount,
+            expected.powerValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.groundContactTimeValueCount,
+            expected.groundContactTimeValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.verticalOscillationValueCount,
+            expected.verticalOscillationValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.verticalRatioValueCount,
+            expected.verticalRatioValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.stanceTimeBalanceValueCount,
+            expected.stanceTimeBalanceValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.stepLengthValueCount,
+            expected.stepLengthValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
             actual.horizontalAccuracyValueCount,
             expected.horizontalAccuracyValueCount,
             file: file,
@@ -271,6 +349,12 @@ private struct SwiftRouteInspection {
     let paceValueCount: UInt64
     let heartRateValueCount: UInt64
     let cadenceValueCount: UInt64
+    let powerValueCount: UInt64
+    let groundContactTimeValueCount: UInt64
+    let verticalOscillationValueCount: UInt64
+    let verticalRatioValueCount: UInt64
+    let stanceTimeBalanceValueCount: UInt64
+    let stepLengthValueCount: UInt64
     let horizontalAccuracyValueCount: UInt64
     let segmentTransitionCount: UInt64
     let firstSourceIndex: UInt64?
@@ -290,6 +374,12 @@ private enum SwiftRouteInspectionOracle {
         var paceValueCount: UInt64 = 0
         var heartRateValueCount: UInt64 = 0
         var cadenceValueCount: UInt64 = 0
+        var powerValueCount: UInt64 = 0
+        var groundContactTimeValueCount: UInt64 = 0
+        var verticalOscillationValueCount: UInt64 = 0
+        var verticalRatioValueCount: UInt64 = 0
+        var stanceTimeBalanceValueCount: UInt64 = 0
+        var stepLengthValueCount: UInt64 = 0
         var horizontalAccuracyValueCount: UInt64 = 0
         var segmentTransitionCount: UInt64 = 0
         var digest = digestOffset
@@ -331,6 +421,27 @@ private enum SwiftRouteInspectionOracle {
             )
             mixOptional(point.heartRateBPM, valueCount: &heartRateValueCount)
             mixOptional(point.cadence, valueCount: &cadenceValueCount)
+            mixOptional(point.powerWatts, valueCount: &powerValueCount)
+            mixOptional(
+                point.groundContactTimeMilliseconds,
+                valueCount: &groundContactTimeValueCount
+            )
+            mixOptional(
+                point.verticalOscillationMillimeters,
+                valueCount: &verticalOscillationValueCount
+            )
+            mixOptional(
+                point.verticalRatioPercent,
+                valueCount: &verticalRatioValueCount
+            )
+            mixOptional(
+                point.stanceTimeBalancePercent,
+                valueCount: &stanceTimeBalanceValueCount
+            )
+            mixOptional(
+                point.stepLengthMeters,
+                valueCount: &stepLengthValueCount
+            )
             mixOptional(
                 point.horizontalAccuracy,
                 valueCount: &horizontalAccuracyValueCount
@@ -345,6 +456,12 @@ private enum SwiftRouteInspectionOracle {
             paceValueCount: paceValueCount,
             heartRateValueCount: heartRateValueCount,
             cadenceValueCount: cadenceValueCount,
+            powerValueCount: powerValueCount,
+            groundContactTimeValueCount: groundContactTimeValueCount,
+            verticalOscillationValueCount: verticalOscillationValueCount,
+            verticalRatioValueCount: verticalRatioValueCount,
+            stanceTimeBalanceValueCount: stanceTimeBalanceValueCount,
+            stepLengthValueCount: stepLengthValueCount,
             horizontalAccuracyValueCount: horizontalAccuracyValueCount,
             segmentTransitionCount: segmentTransitionCount,
             firstSourceIndex: points.isEmpty ? nil : 0,

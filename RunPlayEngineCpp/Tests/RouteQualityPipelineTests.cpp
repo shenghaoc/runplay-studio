@@ -92,6 +92,12 @@ RouteInputSample make_sample(
         std::nullopt,
         std::nullopt,
         std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
         accuracy,
         segment,
     };

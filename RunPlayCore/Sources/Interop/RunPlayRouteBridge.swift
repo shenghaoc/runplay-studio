@@ -20,6 +20,12 @@ struct RunPlayRouteBatchInspection: Equatable, Sendable {
     let paceValueCount: UInt64
     let heartRateValueCount: UInt64
     let cadenceValueCount: UInt64
+    let powerValueCount: UInt64
+    let groundContactTimeValueCount: UInt64
+    let verticalOscillationValueCount: UInt64
+    let verticalRatioValueCount: UInt64
+    let stanceTimeBalanceValueCount: UInt64
+    let stepLengthValueCount: UInt64
     let horizontalAccuracyValueCount: UInt64
 
     let segmentTransitionCount: UInt64
@@ -69,6 +75,15 @@ enum RunPlayRouteBridge {
                 paceValueCount: native.pace_value_count,
                 heartRateValueCount: native.heart_rate_value_count,
                 cadenceValueCount: native.cadence_value_count,
+                powerValueCount: native.power_value_count,
+                groundContactTimeValueCount:
+                    native.ground_contact_time_value_count,
+                verticalOscillationValueCount:
+                    native.vertical_oscillation_value_count,
+                verticalRatioValueCount: native.vertical_ratio_value_count,
+                stanceTimeBalanceValueCount:
+                    native.stance_time_balance_value_count,
+                stepLengthValueCount: native.step_length_value_count,
                 horizontalAccuracyValueCount:
                     native.horizontal_accuracy_value_count,
                 segmentTransitionCount: native.segment_transition_count,
