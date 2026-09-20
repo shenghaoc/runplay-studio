@@ -120,6 +120,8 @@
 ### Phase: Expanded Import
 - [x] Strava export (.zip) importer
 - [x] Multi-session FIT batch import
+- [x] FIT developer data: field_description/developer_data_id decode, name-based recognition with provenance, running power + dynamics on route points, per-field metadata/statistics retention (no per-point series, 16-field cap)
+- [x] Running power + dynamics surfaces: power chart, replay badge, split/segment means, Power map coloring (warm-yellow ramp), best 20-min power (segment-safe time window in Swift), dynamics detail panel, JSON/CSV export fields with explicit units
 - [ ] iPhone companion exporter (future)
 
 ### Phase: Portable C++23 Engine Migration
@@ -304,3 +306,18 @@ Import FIT Sessions review sheet, where supported running sessions become
 separate workouts committed in one staged transaction. Sport policy, boundary
 resolution, attribution, identity, and limits are documented in
 [import-formats.md](import-formats.md).
+
+## FIT developer data import (implemented)
+
+FIT developer data fields are decoded (field_description 206,
+developer_data_id 207, record developer payloads resolved after parse so
+out-of-order descriptions work), recognized by field name with the
+application identity retained as provenance, and mapped onto route-point
+power and running-dynamics fields. Unrecognized fields persist as metadata
+plus min/max/mean statistics — never per-point value series — capped at 16
+retained fields with truncation notes. Native record power also decodes and
+loses to a developer power field with the conflict reported. No snapshot
+version changes: legacy snapshots decode the new keys as nil and reimporting
+the source file adds the data, exactly like recorded laps and training load.
+See [import-formats.md](import-formats.md) for the decode, recognition, and
+retention policy.

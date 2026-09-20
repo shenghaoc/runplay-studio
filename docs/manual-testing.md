@@ -738,6 +738,277 @@ exports were saved through the native panels and inspected for the estimated
 fields. The packaged app was quit and relaunched; it loaded the reanalysed
 snapshots without repeating migration.
 
+## FIT Developer Data Checklist
+
+Use only synthetic fixtures for automated checks. The one real-device check
+below uses a file under `local-workouts/` (git-ignored) and is never
+committed.
+
+- [x] Import a synthetic FIT file with Stryd-style developer fields (power, ground time, vertical oscillation, plus one unknown field) and verify the Power chart, the Power replay badge, the Power splits column, and the Power & Running Dynamics panel all appear with sane values. *(2026-09-20)*
+- [ ] Import the same workout and verify map coloring by Power: mode enabled, legend reads Lower → Higher with watts, no-data sections stay neutral, and the palette reads cool → warm yellow at higher effort.
+- [ ] Verify warm-yellow power text (#FFD60A) is legible on the light appearance for the chart line, metrics badge, and splits column; power state is never conveyed by colour alone (labels and values accompany every colour use).
+- [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table omits the Power column (it is the only conditional column) while keeping every other column, and the dynamics panel is absent.
+- [x] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column at normal width. *(2026-09-20)* **At 720pt width the table clips: Power, HR and Elev are unreachable — tracked as [#146](https://github.com/shenghaoc/runplay-studio/issues/146); see the dated record below.**
+- [ ] Right-click the splits table header and verify the column menu appears; hide a column, confirm it disappears, relaunch the app and confirm the choice persisted; re-show it and confirm it returns.
+- [ ] VoiceOver: the Power chart exposes a series-level descriptor (title, range, average, current value); the dynamics panel reads as combined label/value rows; nothing announces per replay frame.
+- [ ] Export JSON and CSV from a power workout and confirm `averagePowerWatts`, `best20MinutePowerWatts`, the `runningDynamics` block, `Avg_Power_W` columns, and the `# Running Dynamics` section with explicit units; a plain workout omits them.
+- [ ] Re-import the same developer-fields FIT file after editing nothing and confirm identity/duplicate behaviour is unchanged.
+- [ ] On a real watch file whose dynamics are **native record fields** (Garmin writes 39/41/83/84/85, not developer fields), verify the dynamics panel shows them with sane units (GCT in hundreds of ms, VO in tens of mm, vertical ratio single-digit percent) and the provenance line reads "Running dynamics from the watch's native record fields."
+
+### Real-device check (owner, local-only)
+
+- [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units) and power values are plausible against the watch's own summary. Check the workout's developer-field notes for the **non-default scale or offset** diagnostic: developer values are decoded as `raw / scale - offset`, the sign every official Garmin SDK applies (see the developer-data section of [import-formats.md](import-formats.md)). The note fires only when a field declares scale ≠ 1 or offset ≠ 0, which is rare — if one appears, confirm the decoded value is sane, because those are the only cases where the official C++ and Swift SDKs would report different numbers.
+
+
+### Manual pass 2026-09-20 — FIT power and running dynamics
+
+Release-configuration bundle assembled from the #138–#141 stack plus the two
+import fixes now on #143, launched with `RUNPLAY_LIBRARY_ROOT` against a
+throwaway library. Fixtures: four synthetic files from
+`FITMultiSessionFixtureBuilder` (Stryd-shaped power + dynamics; Garmin-style
+native record power; 21 developer fields to trip the 16-field cap; no power at
+all) and one real Garmin activity file from the owner's watch, kept in ignored
+`local-workouts/`. No screenshot taken of the real file's map.
+
+**Verified**
+
+| item | result |
+|---|---|
+| Splits table shows Power **and** Elapsed Pace at normal width | PASS — all 11 columns render: Split, Distance, Elapsed, Active, Moving (est.), Moving Pace (est.), Active Pace, Elapsed Pace, Power, HR, Elev |
+| Power chart renders, axis and units correct | PASS — yellow series, W axis, km domain; descriptor reads "Power chart. Distance in km. Power in W. Range 180.00 W to 329.00 W. Average 263.25 W…" |
+| Power chart no-data state honest | PASS — no-power workout shows "No power data available", not an empty or zeroed chart |
+| Dynamics panel opens, values unit-labelled | PASS — Average Power 263 W, Max Power 329 W, Avg Ground Contact Time 255 ms, Avg Vertical Oscillation 88.3 mm, Avg Vertical Ratio 8.0 % |
+| Dynamics units sane | PASS — GCT in hundreds of ms, VO in tens of mm, vertical ratio single-digit percent |
+| Provenance shown | PASS — developer-data case names the application id; real Garmin file reads "Power from the watch's native power field." |
+| Best 20-min power present | PASS — 378 W on the 68-minute real file. Absent on the 10-minute fixtures, correctly: no 20-minute window exists |
+| Honest empty state without dynamics | PASS — real file shows "Power & Running Dynamics (3 metrics)" with power rows only, no zeroed dynamics rows; no-power workout shows no panel at all |
+| Developer-field truncation note | PASS — 21 developer fields produced "5 additional developer field(s) not retained (cap 16)." |
+| Segment cards show mean power | PASS — fastest 400 m 423 W, fastest km 401 W, slowest km 292 W, biggest climb 354 W; power tracks effort as expected |
+| Power not conveyed by colour alone | PASS — every power value carries a "W" unit and a labelled column or row |
+| Power chart accessibility descriptor | PASS — series-level descriptor with title, range, average and current value (read from the accessibility tree, not heard) |
+
+**Failed**
+
+- **Splits table at 720pt width clips.** Power, HR and Elev are unreachable:
+  horizontal scrolling stops before them. Eleven columns at fixed widths total
+  840pt against roughly 700pt of usable content width. This predates Power —
+  the table already exceeded that width — and a `min:ideal:` attempt did not
+  compress the columns, so it was reverted rather than shipped. Note the window
+  also has a 552pt minimum height, so "720x500" is not reachable; 720x552 is.
+  Filed as [#146](https://github.com/shenghaoc/runplay-studio/issues/146)
+  rather than holding the stack; `TableColumnCustomization` (hide a wide
+  column) is the workaround.
+
+**Not verified**
+
+- Power map colouring (picker availability, legend, light/dark legibility) —
+  the Route Color control is an in-window pop-up menu, which cannot be opened
+  while the app is in the background, and it has no menu-bar equivalent.
+- PNG export power mode availability — same reason.
+- Replay badge and current-metrics panel *during playback* — the metrics bar
+  was confirmed to show power at rest (255 W), but playback was not driven.
+- VoiceOver spoken output — the chart descriptor and panel labels were read
+  from the accessibility tree; **no spoken pass was performed and none is
+  claimed**. Per-frame announcement behaviour during replay was not exercised.
+- Registry recognition against real vendor data — see below.
+
+**Real-file findings**
+
+The owner's Garmin activity file (manufacturer 1, product 4315; 4,115 records,
+8.44 km, 1:08:33) carries **no developer fields at all** — zero
+`field_description` (206) and zero `developer_data_id` (207) messages. Power is
+the native record field 7 on every record. So:
+
+- recognised developer fields: none; retained raw: none; skipped: none
+- non-zero offset diagnostic: did not fire, correctly — there are no developer
+  fields to carry an offset
+- power plausibility: median 349 W, mean 347 W, max 704 W over 68 minutes —
+  plausible for the effort, and the GUI's Average 347 W / Max 704 W match the
+  decoder exactly
+- dynamics: **absent from the app**, though the file does record
+  `vertical_oscillation`, `vertical_ratio`, `step_length` and `stance_time` on
+  ~3,990 records as **native** record fields (profile 39, 83, 85, 41). The
+  importer parses 12 record fields and none of those six, so a real Garmin
+  watch's dynamics never reach the panel
+
+**The recognition registry therefore remains unverified against real vendor
+data.** It is exact-match against hard-coded spellings, so "Stryd Power",
+"Power (w)" or "power_watts" would all miss. A Stryd or Connect IQ file is
+still needed to exercise it.
+
+### Manual pass 2026-09-20 (2) — FIT power and running dynamics, current #141 head
+
+Independent re-verification on the rebased #141 head `e8beff3` (this is the
+head the previous entry ticked twelve items on, but the fixture set and
+`FITMultiSessionFixtureBuilder` paths were carried from an earlier session so
+the numbers below replace the earlier ones for the acceptance items — do not
+merge the two records). Bundle rebuilt from scratch via
+`assemble-app-bundle.sh` at 2026-09-20 22:02; version `0.1.0` build 1; bundle
+id `dev.local.runplay.fitgui`; throwaway library at `/tmp/runplay-fit-gui/library`.
+Fixture used: one real Garmin activity file from the owner's watch
+(`local-workouts/20044331971_ACTIVITY.fit`, kept in ignored `local-workouts/`).
+No screenshot of the real file's map is shared or committed.
+
+**Stage 2a acceptance — verified on the real Garmin file**
+
+The previous 2026-09-20 pass recorded: "dynamics: **absent from the app** …
+The importer parses 12 record fields and none of [39, 41, 83, 84, 85], so a
+real Garmin watch's dynamics never reach the panel." Stage 2a was added
+exactly for this. On this head:
+
+| item | result on `e8beff3` |
+|---|---|
+| Native dynamics reach the Power & Running Dynamics panel | PASS — panel header reads "Power & Running Dynamics (7 metrics)" |
+| Average Ground Contact Time | **347 ms** (present) |
+| Average Vertical Oscillation | **78.0 mm** (present) |
+| Average Vertical Ratio | **9.0 %** (present) |
+| Average Step Length | **0.87 m** (present) |
+| Stance Time Balance | **absent** — honest nil; field 84 is sentinel-only on this file, no fake zero |
+| Per-metric provenance line | PASS — reads "Power from the watch's native power field. Running dynamics from the watch's native record fields." — both origins named independently |
+
+The previous "dynamics absent from panel" finding on this real file is
+**fixed on this head by stage 2a**.
+
+**Also verified in-app on this head**
+
+| item | result |
+|---|---|
+| Power chart on Charts tab | PASS — yellow line, W y-axis 0–1500, km x-axis 0–8 |
+| Power chart accessibility descriptor | PASS — reads "Power chart. Distance in km. Power in W. Range 0.00 W to 685.20 W. Average 346.55 W. At current replay position 0.00 W. Distance 8.44 kilometres." |
+| Chart-scale vs raw-max reconciliation | The chart descriptor's range max (685.20 W) is post-smoothing; the panel's Max Power (704 W) is raw — both are correct |
+| Best 20-min power | PASS — 378 W (68-minute file so a 20-minute window exists) |
+| Average / Max power in panel | PASS — 347 W avg, 704 W max — matches the decoder |
+| Splits — Distance Splits | PASS — Power **and** Elapsed Pace columns both present at normal width (~1200pt); values 352 W, 373 W, 364 W, 340 W, 349 W, 328 W, 354 W, 294 W, 419 W across the 9 splits |
+| Splits — Recorded Laps | PASS — **9 laps survive** (8 × 1.00 km distance + 1 × 0.44 km session end), monotonic, contiguous, elapsed 8:02 → 3:18. HR column populated 135–163 bpm. Recorded Laps has no Power column, which is expected (recorded-lap power is a non-goal). This confirms #143's lap-window fix on this real file's shape |
+| Segments — mean power on cards | PASS — Fastest 400m 423 W, Fastest 1 km 401 W, Slowest 1 km 292 W visible; Biggest Climb, Fastest 1 mile, Fastest 5 km, Biggest Descent visible in the row |
+| Non-default scale/offset diagnostic | Correctly did not fire — the real file has zero developer fields to carry a scale or offset (registry check therefore still unverified on real vendor data — same gap as the prior pass) |
+| Summary stats sanity | 8.44 km, 1:08:33 elapsed, 151 bpm avg, 30 m elevation, 7:55/km moving pace, 8:07/km overall pace, Biggest single-run ascent 30 m, Fastest 1 km 7:03, Fastest 1 mile 7:13, Fastest 400m 6:46, Fastest 5 km 7:46 |
+
+**Discrepancies from the earlier handover's stated numbers**
+
+- Handover said "mean 346.6 W, 0–704 W" for power. Panel shows Avg 347 W / Max
+  704 W (matches). Chart descriptor's post-smoothing range is 0.00 W – 685.20 W
+  (the panel's raw max is the honest one for the workout).
+- Handover said "9 recorded laps survive — eight 1-km distance laps + one
+  sessionEnd lap". Verified: exactly that shape.
+- Handover said "GCT 3,989 pts mean 346.9 ms". Panel shows 347 ms (rounded to
+  integer for display).
+
+**Not verified on this head, and why**
+
+- **Route metric colouring by Power** (picker availability with Power offered
+  only when power exists, legend, light/dark legibility, ramp reading cool →
+  warm yellow, colour never the only channel). The Route Color control is a
+  SwiftUI `Menu` popover attached to a map overlay button, so it can only be
+  opened by clicking that button. In this session the display-scope input path
+  (`computer_batch left_click`) was granted (`request_full_control` approved)
+  and hover produced visible feedback (a Dock icon tooltip appeared under the
+  cursor), but synthetic clicks did NOT register in RunPlay Studio's window or
+  the Dock even after many attempts — repeated `left_click` at the correct
+  point (verified by `cursor_position`) left the UI unchanged. `app_click` is
+  explicitly refused for menu-presenting controls in background mode.
+  Full-screen consent was granted but click delivery is unreliable at the
+  macOS level in this session, so the item stopped after >2 attempts per the
+  precondition rule.
+- **PNG export power mode availability**. Same reason as Route Color — the
+  export mode picker is an in-window pop-up menu with no menu-bar equivalent.
+- **Replay playback with Power badge live during playback**. The Power badge
+  in the current-metrics bar is visible at rest (reads "0 W" at replay
+  position 0, as expected for the first record of this file). Play/pause was
+  not driven in this session — playback controls are not exposed on the
+  accessibility tree by title, and driving them would need the same
+  display-scope click path that is broken here.
+- **Splits at the minimum window width** (720x552). Window resize needs the
+  same display-scope path that failed above. #146 is the pre-existing bug for
+  this and its reproduction is documented on the previous pass — nothing this
+  head added or removed changes that.
+- **Spoken VoiceOver pass** — descriptor and labels were read from the
+  accessibility tree (quoted above); **no spoken pass was performed and none
+  is claimed**. Per-frame announcement behaviour during replay was not
+  exercised.
+- **Synthetic developer-field fixture** (developer provenance line, 16-field
+  truncation note). The prior pass's "Stryd-shaped" and "21 developer fields"
+  fixtures were produced by `FITMultiSessionFixtureBuilder` inside a running
+  test, not as files on disk. Producing an on-disk developer-field FIT file
+  would need a new small executable target linked against the test-only
+  builder, which was out of scope for this pass.
+- **Recognition registry against real vendor data** — same gap as before: the
+  owner's file has no developer fields, so the exact-match spellings in the
+  registry are still not exercised against a real Stryd or Connect IQ device.
+
+**Explicit corrections to the earlier 2026-09-20 pass**
+
+That pass reported "12 items PASS, 1 FAIL, 5 NOT VERIFIED" for what it called
+"this head", but the head has since been rebased and stage 2a landed on top of
+the code it exercised. The numbers above are what was measured on the current
+head — do not carry the earlier "12 / 1 / 5" figures into any comment or
+verdict tied to `e8beff3`.
+
+### Manual pass 2026-09-20 (3) — keyboard-first retry of the unverified items
+
+Fresh bundle rebuilt after two fixes on this session's head (`2c076e2`):
+
+- `fix(a11y): power chart descriptor reports raw min/max/avg, not smoothed`
+  — descriptor's Range/Average now match `RunSummary.maxPowerWatts` /
+  `averagePowerWatts`. Verified on the real Garmin file: descriptor now
+  reads **"Range 0.00 W to 704.00 W. Average 346.57 W."**, matching the
+  panel's Avg 347 W / Max 704 W. Pass (2)'s "685.20 W" number was the
+  smoothed-series max; that was the bug the fix removes.
+- `fix(a11y): include Power in the Route Color button tooltip` — the outer
+  `.help()` string on the Route Color button was written before PR 3 added
+  the Power route color mode and was never updated. Sighted users hovering
+  the button on a power workout read a summary of the modes; on this head
+  the summary now includes "power", matching the popover's actual options.
+
+**Newly verified in this pass**
+
+| item | result |
+|---|---|
+| Replay playback with the live Power badge | PASS — driven from `Replay > Play/Pause` (menu-bar accessible; no display-scope required). Timeline advanced 0:00 → 0:42; the current-metrics bar's Power badge went 0 W → ~450 W as playback entered the running phase; every other tile ticks too (Elapsed 0:42, Active 0:42, Pace, Elev 16 m, HR ~120, Cad ~72). Replay > Seek Forward 5 also keyboard-accessible. |
+| Splits table at 720x552 minimum window width | PASS — reproduces the pre-existing #146 behaviour and nothing on this head changed it. Resized via AppleScript (`set size of window 1 to {720, 552}`); with the sidebar visible the visible splits columns are `Elapsed, Active, Moving (est.), Moving Pace (est.), Active Pace` while `Elapsed Pace, Power, HR, Elev` fall off the right edge; a horizontal scroller exists but does not reach them. `TableColumnCustomization` (right-click header, hide a column) is still the workaround #146 documents. |
+| Power chart descriptor consistency after the fix above | PASS — quoted verbatim above; panel and descriptor now name the same Max Power (704 W) |
+| Route Color button tooltip mentions Power after the fix above | PASS — read from the accessibility tree on hover |
+
+**Findings from the keyboard retry — file these**
+
+- **Route Color popover has no menu-bar equivalent and no keyboard
+  shortcut.** With the macOS default `AppleKeyboardUIMode = 0`
+  (Full Keyboard Access off), Tab does not visit `.borderlessButton` menu
+  buttons like Route Color, so a keyboard-only user cannot reach it. Enabling
+  Full Keyboard Access (`defaults write NSGlobalDomain AppleKeyboardUIMode -int 2`)
+  lets a real user Tab to the button and press Space to open the popover; the
+  synthetic key events available from the background-mode tools here focused
+  the button (blue ring appeared) but did not open its popover, so the retry
+  cannot claim a keyboard drive of the popover itself.
+  → File: add a menu-bar entry (e.g. `View > Route Color >` with all modes)
+  or a keyboard shortcut so the picker is reachable from the default macOS
+  keyboard state.
+- **PNG summary card export has no menu-bar equivalent and no keyboard
+  shortcut.** `ExportView` is a SwiftUI `Menu` in the toolbar (the pull-down
+  next to the share button); with the same FKA-default caveat above, a
+  keyboard-only user has no path to it. The `File` menu carries only
+  `Import File…`, `Import Strava Archive…`, `Close`, `Close All` — no export
+  path at all.
+  → File: add `File > Export Summary (JSON)…`, `File > Export Summary Card
+  (PNG)…`, `File > Export Route Replay (MP4)…` etc. so the pull-down's items
+  are all reachable from the menu bar.
+
+**Still not verified, and why**
+
+- **Spoken VoiceOver pass** — enabling VoiceOver is a system-wide change
+  that requires the user's action and would announce itself. Descriptor and
+  labels have been read from the accessibility tree (quoted above); **no
+  spoken pass was performed and none is claimed**.
+- **Synthetic developer-field FIT fixture on disk** —
+  `FITMultiSessionFixtureBuilder` is a test-target type, and the retry did
+  not add a small executable to write one to disk. The Core test suite
+  exercises the developer-provenance path in-process; verifying the panel's
+  developer-field wording on a real live fixture is still open.
+- **Recognition registry against real vendor data** — the owner's file
+  still carries no developer fields, so the exact-match spellings in the
+  registry are still not exercised against a real Stryd or Connect IQ
+  device.
+
 ## FIT Import Checklist
 
 Use synthetic FIT fixtures only. These are manual checks to perform in a GUI

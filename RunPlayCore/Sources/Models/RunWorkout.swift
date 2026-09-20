@@ -173,6 +173,12 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         }
     }
 
+    public var hasPowerData: Bool {
+        routePoints.contains { point in
+            point.powerWatts.map(MetricValidation.isValidPower) ?? false
+        }
+    }
+
     /// Whether this snapshot may be missing discarded source laps.
     public var mayRequireReimportForRecordedLaps: Bool {
         sourceStructureVersion < RunWorkout.currentSourceStructureVersion

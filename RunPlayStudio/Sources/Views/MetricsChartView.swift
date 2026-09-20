@@ -78,8 +78,8 @@ enum MetricChartDataBuilder {
 
 /// Displays running metrics as interactive charts using Swift Charts.
 ///
-/// Shows pace, elevation, and heart rate over distance with
-/// optional current position indicator and click/drag to seek.
+/// Shows elevation, active pace, heart rate, power, and speed over distance
+/// with optional current position indicator and click/drag to seek.
 /// Uses semantic colors from the design system for each metric type.
 struct MetricsChartView: View {
     let routePoints: [RoutePoint]
@@ -120,6 +120,7 @@ struct MetricsChartView: View {
         case elevation = "Elevation"
         case pace = "Active Pace"
         case heartRate = "Heart Rate"
+        case power = "Power"
         case speed = "Speed"
 
         var unit: String {
@@ -127,6 +128,7 @@ struct MetricsChartView: View {
             case .elevation: return "m"
             case .pace: return "s/km"
             case .heartRate: return "bpm"
+            case .power: return "W"
             case .speed: return "m/s"
             }
         }
@@ -397,9 +399,17 @@ struct MetricsChartView: View {
 
     // MARK: - No Data Overlay
 
+    private var noDataIcon: String {
+        switch selectedMetric {
+        case .heartRate: return "heart.slash"
+        case .power: return "bolt.slash"
+        default: return "chart.line.downtrend.xyaxis"
+        }
+    }
+
     private var noDataOverlay: some View {
         VStack(spacing: AppDesign.Spacing.small) {
-            Image(systemName: selectedMetric == .heartRate ? "heart.slash" : "chart.line.downtrend.xyaxis")
+            Image(systemName: noDataIcon)
                 .font(.title2)
                 .foregroundStyle(.tertiary)
             Text(noDataMessage)
@@ -450,6 +460,8 @@ struct MetricsChartView: View {
             smoothedValues = MetricSmoother.smoothPace(from: routePoints, windowSize: smoothingWindow)
         case .heartRate:
             smoothedValues = MetricSmoother.smoothHeartRate(from: routePoints, windowSize: smoothingWindow)
+        case .power:
+            smoothedValues = MetricSmoother.smoothPower(from: routePoints, windowSize: smoothingWindow)
         case .speed:
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
@@ -459,13 +471,26 @@ struct MetricsChartView: View {
             values: smoothedValues
         )
         chartData = updatedData
+        // Power's chart line is smoothed but the Power & Running Dynamics
+        // panel shows raw Max Power, so the descriptor summary reports the
+        // raw series' min/max/average — otherwise a VoiceOver user hears a
+        // smoothed maximum that contradicts the panel a sighted user reads
+        // on the same screen.
+        let aggregatesFromValues: [Double]? = selectedMetric == .power
+            ? routePoints.compactMap { point in
+                guard let watts = point.powerWatts,
+                      MetricValidation.isValidPower(watts) else { return nil }
+                return watts
+            }
+            : nil
         chartAccessibilityBaseModel = ChartAccessibilityModel.make(
             metricName: selectedMetric.rawValue,
             unit: selectedMetric.unit,
             values: updatedData.map(\.value),
             seriesIDs: updatedData.map(\.seriesID),
             currentValue: nil,
-            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
+            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0,
+            aggregatesFromValues: aggregatesFromValues
         )
         downsampledChartSamples = MetricChartAccessibilityBuilder.downsample(updatedData)
     }
@@ -475,6 +500,7 @@ struct MetricsChartView: View {
         case .elevation: return AppDesign.MetricColor.elevation
         case .pace: return AppDesign.MetricColor.pace
         case .heartRate: return AppDesign.MetricColor.heartRate
+        case .power: return AppDesign.MetricColor.power
         case .speed: return AppDesign.MetricColor.speed
         }
     }
@@ -492,7 +518,11 @@ struct MetricsChartView: View {
     }
 
     private var noDataMessage: String {
-        selectedMetric == .heartRate ? "No heart rate data available" : "No chart data available"
+        switch selectedMetric {
+        case .heartRate: return "No heart rate data available"
+        case .power: return "No power data available"
+        default: return "No chart data available"
+        }
     }
 
     private func valueForDistance(_ distance: Double) -> Double? {
@@ -509,6 +539,7 @@ struct MetricsChartView: View {
             )
         case .pace: return routePoints[index].paceSecondsPerKilometer
         case .heartRate: return routePoints[index].heartRateBPM
+        case .power: return routePoints[index].powerWatts
         case .speed: return routePoints[index].speedMetersPerSecond
         }
     }
@@ -519,6 +550,7 @@ struct MetricsChartView: View {
             case .elevation: return "No elevation data"
             case .pace: return "No pace data"
             case .heartRate: return "No HR data"
+            case .power: return "No power data"
             case .speed: return "No speed data"
             }
         }
@@ -531,6 +563,7 @@ struct MetricsChartView: View {
         case .heartRate:
             guard value.isFinite else { return "No HR data" }
             return "\(Int(value)) bpm"
+        case .power: return "\(Int(value)) W"
         case .speed: return String(format: "%.1f m/s", value)
         }
     }
@@ -543,6 +576,7 @@ struct MetricsChartView: View {
             let secs = Int(value) % 60
             return "\(mins):\(String(format: "%02d", secs))"
         case .heartRate: return "\(Int(value))"
+        case .power: return "\(Int(value))"
         case .speed: return String(format: "%.1f", value)
         }
     }

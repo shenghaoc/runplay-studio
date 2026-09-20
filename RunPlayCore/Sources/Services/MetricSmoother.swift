@@ -1,6 +1,6 @@
 import Foundation
 
-/// Smooths noisy metrics like pace and heart rate.
+/// Smooths noisy metrics like pace, heart rate, and power.
 public struct MetricSmoother {
 
     /// Apply simple moving average smoothing to an array of values.
@@ -54,6 +54,47 @@ public struct MetricSmoother {
         var result: [Double?] = Array(repeating: nil, count: points.count)
         for (idx, smoothedVal) in zip(validIndices, smoothed) {
             result[idx] = smoothedVal
+        }
+
+        return result
+    }
+
+    /// Smooth running power values without compacting away route-point
+    /// alignment. Does not smooth across route segment boundaries.
+    public static func smoothPower(from points: [RoutePoint], windowSize: Int = 5) -> [Double?] {
+        let window = max(1, windowSize)
+        let halfWindow = window / 2
+        var result: [Double?] = Array(repeating: nil, count: points.count)
+
+        for index in points.indices {
+            guard let current = points[index].powerWatts,
+                  MetricValidation.isValidPower(current)
+            else {
+                continue
+            }
+
+            let segmentIndex = points[index].routeSegmentIndex
+
+            let start = max(points.startIndex, index - halfWindow)
+            let end = min(points.endIndex, index + halfWindow + 1)
+
+            var sum = 0.0
+            var count = 0
+
+            for j in start..<end {
+                let point = points[j]
+                guard point.routeSegmentIndex == segmentIndex else { continue }
+                guard let power = point.powerWatts,
+                      MetricValidation.isValidPower(power)
+                else {
+                    continue
+                }
+                sum += power
+                count += 1
+            }
+
+            guard count > 0 else { continue }
+            result[index] = sum / Double(count)
         }
 
         return result

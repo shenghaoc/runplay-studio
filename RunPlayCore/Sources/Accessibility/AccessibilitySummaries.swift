@@ -365,23 +365,34 @@ public struct ChartAccessibilityModel: Equatable, Sendable {
     }
 
     /// Builds a model from precomputed finite chart samples (already gap-split).
+    ///
+    /// `aggregatesFromValues`, when non-nil, is the series used to compute
+    /// the spoken minimum/maximum/average. `values` still drives the plot
+    /// structure (point count, gap detection, missing-data flag). Pass this
+    /// when the plotted line is a smoothed derivative and the descriptor
+    /// must report the raw series' extremes so it doesn't contradict a
+    /// panel showing the same metric on the same screen (e.g. the Power
+    /// chart's smoothed line vs. the Power & Running Dynamics panel's raw
+    /// Max Power).
     public static func make(
         metricName: String,
         unit: String,
         values: [Double],
         seriesIDs: [Int],
         currentValue: Double?,
-        totalDistanceMeters: Double
+        totalDistanceMeters: Double,
+        aggregatesFromValues: [Double]? = nil
     ) -> ChartAccessibilityModel {
         let finite = values.filter(\.isFinite)
         let missing = finite.isEmpty
-        let minV = finite.min()
-        let maxV = finite.max()
+        let aggregateFinite = (aggregatesFromValues ?? values).filter(\.isFinite)
+        let minV = aggregateFinite.min()
+        let maxV = aggregateFinite.max()
         let avg: Double? = {
-            guard !finite.isEmpty else { return nil }
+            guard !aggregateFinite.isEmpty else { return nil }
             // Pace averages can be misleading physiologically; still report
-            // arithmetic mean of displayed samples for orientation only.
-            return finite.reduce(0, +) / Double(finite.count)
+            // arithmetic mean of the aggregate source for orientation only.
+            return aggregateFinite.reduce(0, +) / Double(aggregateFinite.count)
         }()
         let uniqueSeries = Set(seriesIDs).count
         let gapCount = max(0, uniqueSeries - 1)

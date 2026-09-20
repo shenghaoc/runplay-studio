@@ -264,6 +264,13 @@ struct WorkoutDetailView: View {
                 highlightedRangeMeters: highlightedRangeMeters
             )
             .padding(.vertical, AppDesign.Spacing.large)
+
+            if workout.hasPowerData || workout.developerFieldSummary != nil {
+                RunningDynamicsPanel(workout: workout)
+                    .padding(.bottom, AppDesign.Spacing.large)
+            }
+
+            Spacer(minLength: 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .panelBackground()
         case .splits:
@@ -301,7 +308,8 @@ struct WorkoutDetailView: View {
             CurrentMetricsPanel(
                 metrics: replayController.selectedMetrics,
                 hasHeartRate: workout.hasHeartRateData,
-                hasCadence: workout.hasCadenceData
+                hasCadence: workout.hasCadenceData,
+                hasPower: workout.hasPowerData
             )
             .frame(maxWidth: 620)
 

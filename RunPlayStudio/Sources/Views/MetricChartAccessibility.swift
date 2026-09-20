@@ -74,6 +74,7 @@ struct MetricChartDescriptor: AXChartDescriptorRepresentable {
                 let secs = Int(value) % 60
                 return String(format: "%d:%02d /km", mins, secs)
             case .heartRate: return "\(Int(value)) bpm"
+            case .power: return "\(Int(value)) W"
             case .speed: return String(format: "%.1f m/s", value)
             }
         }

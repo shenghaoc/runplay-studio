@@ -2,8 +2,8 @@ import Foundation
 
 /// Builds a deterministic route metric profile for native map coloring.
 ///
-/// Single source of truth for pace, heart-rate, and corrected-elevation interval
-/// semantics. Platform and UI must not recompute metrics independently.
+/// Single source of truth for pace, heart-rate, power, and corrected-elevation
+/// interval semantics. Platform and UI must not recompute metrics independently.
 public struct RouteMetricProfileBuilder: Sendable {
     public init() {}
 

@@ -903,8 +903,21 @@ record, event, lap, session, activity, and device-info messages in source order.
 unambiguous GPS-bearing running session, filters its records and timer events,
 and assigns `routeSegmentIndex` values so normalization, analysis, replay, and
 map rendering do not bridge pause/resume gaps. The implementation targets common
-running activities from Garmin FIT SDK Profile 21.205.0; developer metrics and
-other unsupported FIT profile features remain skipped rather than interpreted.
+running activities from Garmin FIT SDK Profile 21.205.0. Developer data
+fields are decoded: `field_description` (206) and `developer_data_id` (207)
+messages are parsed with their official profile layouts, record developer
+payloads are captured raw and resolved after parse against the file-wide
+description table (so out-of-order descriptions resolve identically), and
+recognition is name-based with the application identity retained as
+provenance. Recognized running power and running dynamics map onto
+`RoutePoint` fields; unrecognised fields persist as metadata plus statistics
+(`WorkoutDeveloperFieldSummary`); component accumulation stays out of scope
+with accumulating fields decoded as instantaneous samples. Native record
+running dynamics (fields 39/41/83/84/85) and native power (field 7) also
+decode, under the same per-metric precedence — a developer value wins and
+the native field fills what the developer path left absent — with the
+summary recording which source supplied each. Other unsupported
+FIT profile features remain skipped rather than interpreted.
 Selected-session `total_elapsed_time` and `total_timer_time` are validation
 signals only. Route timestamps and timer-derived segment indexes remain the
 cross-format source of truth. A difference greater than five seconds or two
