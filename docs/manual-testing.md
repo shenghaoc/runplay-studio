@@ -944,6 +944,71 @@ the code it exercised. The numbers above are what was measured on the current
 head — do not carry the earlier "12 / 1 / 5" figures into any comment or
 verdict tied to `e8beff3`.
 
+### Manual pass 2026-09-20 (3) — keyboard-first retry of the unverified items
+
+Fresh bundle rebuilt after two fixes on this session's head (`2c076e2`):
+
+- `fix(a11y): power chart descriptor reports raw min/max/avg, not smoothed`
+  — descriptor's Range/Average now match `RunSummary.maxPowerWatts` /
+  `averagePowerWatts`. Verified on the real Garmin file: descriptor now
+  reads **"Range 0.00 W to 704.00 W. Average 346.57 W."**, matching the
+  panel's Avg 347 W / Max 704 W. Pass (2)'s "685.20 W" number was the
+  smoothed-series max; that was the bug the fix removes.
+- `fix(a11y): include Power in the Route Color button tooltip` — the outer
+  `.help()` string on the Route Color button was written before PR 3 added
+  the Power route color mode and was never updated. Sighted users hovering
+  the button on a power workout read a summary of the modes; on this head
+  the summary now includes "power", matching the popover's actual options.
+
+**Newly verified in this pass**
+
+| item | result |
+|---|---|
+| Replay playback with the live Power badge | PASS — driven from `Replay > Play/Pause` (menu-bar accessible; no display-scope required). Timeline advanced 0:00 → 0:42; the current-metrics bar's Power badge went 0 W → ~450 W as playback entered the running phase; every other tile ticks too (Elapsed 0:42, Active 0:42, Pace, Elev 16 m, HR ~120, Cad ~72). Replay > Seek Forward 5 also keyboard-accessible. |
+| Splits table at 720x552 minimum window width | PASS — reproduces the pre-existing #146 behaviour and nothing on this head changed it. Resized via AppleScript (`set size of window 1 to {720, 552}`); with the sidebar visible the visible splits columns are `Elapsed, Active, Moving (est.), Moving Pace (est.), Active Pace` while `Elapsed Pace, Power, HR, Elev` fall off the right edge; a horizontal scroller exists but does not reach them. `TableColumnCustomization` (right-click header, hide a column) is still the workaround #146 documents. |
+| Power chart descriptor consistency after the fix above | PASS — quoted verbatim above; panel and descriptor now name the same Max Power (704 W) |
+| Route Color button tooltip mentions Power after the fix above | PASS — read from the accessibility tree on hover |
+
+**Findings from the keyboard retry — file these**
+
+- **Route Color popover has no menu-bar equivalent and no keyboard
+  shortcut.** With the macOS default `AppleKeyboardUIMode = 0`
+  (Full Keyboard Access off), Tab does not visit `.borderlessButton` menu
+  buttons like Route Color, so a keyboard-only user cannot reach it. Enabling
+  Full Keyboard Access (`defaults write NSGlobalDomain AppleKeyboardUIMode -int 2`)
+  lets a real user Tab to the button and press Space to open the popover; the
+  synthetic key events available from the background-mode tools here focused
+  the button (blue ring appeared) but did not open its popover, so the retry
+  cannot claim a keyboard drive of the popover itself.
+  → File: add a menu-bar entry (e.g. `View > Route Color >` with all modes)
+  or a keyboard shortcut so the picker is reachable from the default macOS
+  keyboard state.
+- **PNG summary card export has no menu-bar equivalent and no keyboard
+  shortcut.** `ExportView` is a SwiftUI `Menu` in the toolbar (the pull-down
+  next to the share button); with the same FKA-default caveat above, a
+  keyboard-only user has no path to it. The `File` menu carries only
+  `Import File…`, `Import Strava Archive…`, `Close`, `Close All` — no export
+  path at all.
+  → File: add `File > Export Summary (JSON)…`, `File > Export Summary Card
+  (PNG)…`, `File > Export Route Replay (MP4)…` etc. so the pull-down's items
+  are all reachable from the menu bar.
+
+**Still not verified, and why**
+
+- **Spoken VoiceOver pass** — enabling VoiceOver is a system-wide change
+  that requires the user's action and would announce itself. Descriptor and
+  labels have been read from the accessibility tree (quoted above); **no
+  spoken pass was performed and none is claimed**.
+- **Synthetic developer-field FIT fixture on disk** —
+  `FITMultiSessionFixtureBuilder` is a test-target type, and the retry did
+  not add a small executable to write one to disk. The Core test suite
+  exercises the developer-provenance path in-process; verifying the panel's
+  developer-field wording on a real live fixture is still open.
+- **Recognition registry against real vendor data** — the owner's file
+  still carries no developer fields, so the exact-match spellings in the
+  registry are still not exercised against a real Stryd or Connect IQ
+  device.
+
 ## FIT Import Checklist
 
 Use synthetic FIT fixtures only. These are manual checks to perform in a GUI
