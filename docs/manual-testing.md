@@ -748,15 +748,16 @@ committed.
 - [ ] Import the same workout and verify map coloring by Power: mode enabled, legend reads Lower → Higher with watts, no-data sections stay neutral, and the palette reads cool → warm yellow at higher effort.
 - [ ] Verify warm-yellow power text (#FFD60A) is legible on the light appearance for the chart line, metrics badge, and splits column; power state is never conveyed by colour alone (labels and values accompany every colour use).
 - [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table omits the Power column (it is the only conditional column) while keeping every other column, and the dynamics panel is absent.
-- [x] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column at normal width. *(2026-09-20)* **At 720pt width the table clips: Power, HR and Elev are unreachable — see the dated record below.**
+- [x] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column at normal width. *(2026-09-20)* **At 720pt width the table clips: Power, HR and Elev are unreachable — tracked as [#146](https://github.com/shenghaoc/runplay-studio/issues/146); see the dated record below.**
 - [ ] Right-click the splits table header and verify the column menu appears; hide a column, confirm it disappears, relaunch the app and confirm the choice persisted; re-show it and confirm it returns.
 - [ ] VoiceOver: the Power chart exposes a series-level descriptor (title, range, average, current value); the dynamics panel reads as combined label/value rows; nothing announces per replay frame.
 - [ ] Export JSON and CSV from a power workout and confirm `averagePowerWatts`, `best20MinutePowerWatts`, the `runningDynamics` block, `Avg_Power_W` columns, and the `# Running Dynamics` section with explicit units; a plain workout omits them.
 - [ ] Re-import the same developer-fields FIT file after editing nothing and confirm identity/duplicate behaviour is unchanged.
+- [ ] On a real watch file whose dynamics are **native record fields** (Garmin writes 39/41/83/84/85, not developer fields), verify the dynamics panel shows them with sane units (GCT in hundreds of ms, VO in tens of mm, vertical ratio single-digit percent) and the provenance line reads "Running dynamics from the watch's native record fields."
 
 ### Real-device check (owner, local-only)
 
-- [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units) and power values are plausible against the watch's own summary. Check the workout's developer-field notes for the **non-zero offset** diagnostic: developer offsets are decoded as `raw / scale - offset`, the sign every official Garmin SDK uses (see the developer-data section of [import-formats.md](import-formats.md)). The note fires only when a field declares a non-zero offset, which is rare — if one appears, confirm the decoded value is sane, because that is the one case where the official C++ and Swift SDKs would report different numbers.
+- [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units) and power values are plausible against the watch's own summary. Check the workout's developer-field notes for the **non-default scale or offset** diagnostic: developer values are decoded as `raw / scale - offset`, the sign every official Garmin SDK applies (see the developer-data section of [import-formats.md](import-formats.md)). The note fires only when a field declares scale ≠ 1 or offset ≠ 0, which is rare — if one appears, confirm the decoded value is sane, because those are the only cases where the official C++ and Swift SDKs would report different numbers.
 
 
 ### Manual pass 2026-09-20 — FIT power and running dynamics
@@ -794,6 +795,9 @@ all) and one real Garmin activity file from the owner's watch, kept in ignored
   the table already exceeded that width — and a `min:ideal:` attempt did not
   compress the columns, so it was reverted rather than shipped. Note the window
   also has a 552pt minimum height, so "720x500" is not reachable; 720x552 is.
+  Filed as [#146](https://github.com/shenghaoc/runplay-studio/issues/146)
+  rather than holding the stack; `TableColumnCustomization` (hide a wide
+  column) is the workaround.
 
 **Not verified**
 

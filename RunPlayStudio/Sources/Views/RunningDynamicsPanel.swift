@@ -84,21 +84,53 @@ struct RunningDynamicsPanel: View {
             : "Power & Running Dynamics (\(count) metrics)"
     }
 
-    /// Which device or application produced the power data.
+    /// Which device or application produced the power and dynamics data.
+    /// Each metric's origin is stated independently: the most common
+    /// hardware writes both natively, a pod or Connect IQ app supplies
+    /// developer fields, and a mixed file states both.
     static func provenanceText(for workout: RunWorkout) -> String? {
-        guard let summary = workout.developerFieldSummary else {
-            return workout.hasPowerData ? "Power from the watch's native power field." : nil
-        }
-        if summary.powerSourceIsNativeRecordField {
-            return "Power from the watch's native power field."
-        }
-        if let index = summary.powerSourceDeveloperDataIndex {
-            let application = summary.sources.first { $0.developerDataIndex == index }
-            if let applicationID = application?.applicationIDHex {
-                return "Power from developer data index \(index) (application id \(applicationID))."
+        var parts: [String] = []
+
+        func powerPart() -> String? {
+            guard let summary = workout.developerFieldSummary else {
+                return workout.hasPowerData ? "Power from the watch's native power field." : nil
             }
-            return "Power from developer data index \(index)."
+            if summary.powerSourceIsNativeRecordField {
+                return "Power from the watch's native power field."
+            }
+            if let index = summary.powerSourceDeveloperDataIndex {
+                let application = summary.sources.first { $0.developerDataIndex == index }
+                if let applicationID = application?.applicationIDHex {
+                    return "Power from developer data index \(index) (application id \(applicationID))."
+                }
+                return "Power from developer data index \(index)."
+            }
+            return nil
         }
-        return nil
+
+        func dynamicsPart() -> String? {
+            guard let summary = workout.developerFieldSummary else { return nil }
+            if summary.dynamicsSourceIsNativeRecordField {
+                return "Running dynamics from the watch's native record fields."
+            }
+            let carriesDeveloperDynamics = summary.fields.contains {
+                $0.mappedMetric != nil
+                    && $0.mappedMetric != "powerWatts"
+                    && $0.sampleCount > 0
+            }
+            if let index = summary.powerSourceDeveloperDataIndex,
+               carriesDeveloperDynamics,
+               summary.sources.first(where: { $0.developerDataIndex == index }) != nil {
+                return "Running dynamics from developer data index \(index)."
+            }
+            if carriesDeveloperDynamics {
+                return "Running dynamics from developer data."
+            }
+            return nil
+        }
+
+        parts.append(contentsOf: [powerPart(), dynamicsPart()].compactMap { $0 })
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " ")
     }
 }

@@ -84,6 +84,7 @@ final class RunningDynamicsPanelTests: XCTestCase {
             fields: [],
             powerSourceDeveloperDataIndex: 0,
             powerSourceIsNativeRecordField: false,
+            dynamicsSourceIsNativeRecordField: false,
             notes: []
         )
 
@@ -97,6 +98,70 @@ final class RunningDynamicsPanelTests: XCTestCase {
     func testProvenanceNamesNativeFieldWithoutSummary() {
         let provenance = RunningDynamicsPanel.provenanceText(for: powerWorkout())
         XCTAssertEqual(provenance, "Power from the watch's native power field.")
+    }
+
+    /// The most common hardware writes power and dynamics natively; the
+    /// panel states both origins, independently.
+    func testProvenanceStatesNativePowerAndDynamicsOrigins() {
+        var workout = powerWorkout()
+        workout.developerFieldSummary = WorkoutDeveloperFieldSummary(
+            sources: [],
+            fields: [],
+            powerSourceDeveloperDataIndex: nil,
+            powerSourceIsNativeRecordField: true,
+            dynamicsSourceIsNativeRecordField: true,
+            notes: []
+        )
+
+        XCTAssertEqual(
+            RunningDynamicsPanel.provenanceText(for: workout),
+            "Power from the watch's native power field. "
+                + "Running dynamics from the watch's native record fields."
+        )
+    }
+
+    /// A file with native power but developer-only dynamics states each
+    /// origin separately rather than collapsing to one source.
+    func testProvenanceDistinguishesMixedPowerAndDynamicsOrigins() {
+        var workout = powerWorkout()
+        workout.developerFieldSummary = WorkoutDeveloperFieldSummary(
+            sources: [
+                WorkoutDeveloperFieldSummary.Source(
+                    developerDataIndex: 0,
+                    developerIDHex: nil,
+                    applicationIDHex: nil,
+                    manufacturerID: nil,
+                    applicationVersion: nil
+                )
+            ],
+            fields: [
+                WorkoutDeveloperFieldSummary.Field(
+                    fieldName: "ground time",
+                    unit: "ms",
+                    baseType: "uint16",
+                    scale: 1,
+                    offset: 0,
+                    developerDataIndex: 0,
+                    mappedMetric: "groundContactTimeMilliseconds",
+                    status: .mapped,
+                    sampleCount: 10,
+                    coverage: 1,
+                    minimum: 240,
+                    maximum: 300,
+                    mean: 262
+                )
+            ],
+            powerSourceDeveloperDataIndex: nil,
+            powerSourceIsNativeRecordField: true,
+            dynamicsSourceIsNativeRecordField: false,
+            notes: []
+        )
+
+        XCTAssertEqual(
+            RunningDynamicsPanel.provenanceText(for: workout),
+            "Power from the watch's native power field. "
+                + "Running dynamics from developer data."
+        )
     }
 
     func testSmoothPowerPreservesAlignmentAndSegments() {

@@ -912,7 +912,11 @@ recognition is name-based with the application identity retained as
 provenance. Recognized running power and running dynamics map onto
 `RoutePoint` fields; unrecognised fields persist as metadata plus statistics
 (`WorkoutDeveloperFieldSummary`); component accumulation stays out of scope
-with accumulating fields decoded as instantaneous samples. Other unsupported
+with accumulating fields decoded as instantaneous samples. Native record
+running dynamics (fields 39/41/83/84/85) and native power (field 7) also
+decode, under the same per-metric precedence — a developer value wins and
+the native field fills what the developer path left absent — with the
+summary recording which source supplied each. Other unsupported
 FIT profile features remain skipped rather than interpreted.
 Selected-session `total_elapsed_time` and `total_timer_time` are validation
 signals only. Route timestamps and timer-derived segment indexes remain the
