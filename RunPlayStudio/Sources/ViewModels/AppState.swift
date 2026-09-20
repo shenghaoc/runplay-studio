@@ -76,6 +76,10 @@ class AppState: ObservableObject {
     @Published private(set) var athleteProfile = AthleteProfile()
     private let profileStore: FileAthleteProfileStore?
 
+    /// Settings-scene progress for an explicit training-load recompute.
+    /// Feature-local published state, never a library-wide token.
+    @Published private(set) var trainingLoadRecomputeState: TrainingLoadRecomputeState = .idle
+
     func bumpPersonalRecordsLibraryRevision() {
         personalRecordsLibraryRevision += 1
     }
@@ -1745,6 +1749,75 @@ class AppState: ObservableObject {
             return "Training load could not be saved for \(result.saveFailureCount) run(s). They will be retried next time Trends opens."
         }
         return nil
+    }
+
+    /// Whether a training-load pass (backfill or recompute) is running.
+    var trainingLoadBackfillTaskActive: Bool {
+        trainingLoadBackfillTask != nil
+    }
+
+    /// Workouts whose stored load is missing or was computed under a
+    /// different profile — exactly what an explicit recompute would fix.
+    var staleTrainingLoadCount: Int {
+        workouts.count { $0.trainingLoad?.isCurrent(for: athleteProfile) != true }
+    }
+
+    /// Explicit, user-triggered recompute over the whole library under the
+    /// current profile. The same resumable store-actor pass as the backfill;
+    /// progress reports to the Settings scene instead of the Trends banner.
+    func recomputeTrainingLoads() {
+        guard trainingLoadBackfillTask == nil,
+              let storeActor,
+              hasPersistedLibrary else {
+            return
+        }
+        trainingLoadRecomputeState = .running(
+            completedCount: 0,
+            totalCount: workouts.count,
+            currentWorkoutName: ""
+        )
+        let applyUpdate: @Sendable (
+            WorkoutLibraryStoreActor.TrainingLoadBackfillUpdate
+        ) -> Void = { [weak self] update in
+            guard let self else { return }
+            Task { @MainActor in
+                self.applyTrainingLoadRecomputeUpdate(update)
+            }
+        }
+        let profile = athleteProfile
+        trainingLoadBackfillTask = Task { [weak self] in
+            let result = await storeActor.backfillTrainingLoad(
+                profile: profile,
+                progress: applyUpdate
+            )
+            self?.finishTrainingLoadRecompute(result)
+        }
+    }
+
+    /// Cancel the active pass; completed snapshots stay saved and the pass
+    /// resumes on the next trigger.
+    func cancelTrainingLoadPass() {
+        trainingLoadBackfillTask?.cancel()
+    }
+
+    private func applyTrainingLoadRecomputeUpdate(
+        _ update: WorkoutLibraryStoreActor.TrainingLoadBackfillUpdate
+    ) {
+        applyTrainingLoadBackfillUpdate(update)
+        trainingLoadRecomputeState = .running(
+            completedCount: update.completedCount,
+            totalCount: update.totalCount,
+            currentWorkoutName: update.currentWorkoutName
+        )
+    }
+
+    private func finishTrainingLoadRecompute(
+        _ result: WorkoutLibraryStoreActor.TrainingLoadBackfillResult
+    ) {
+        trainingLoadRecomputeState = Self.trainingLoadBackfillFailureMessage(result)
+            .map { .failed($0) } ?? .idle
+        // Shared completion (resets the task, refreshes Trends once).
+        finishTrainingLoadBackfill(result)
     }
 
     /// Persist a profile edit. Loads computed under a different profile are

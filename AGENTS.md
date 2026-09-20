@@ -441,6 +441,7 @@ GUI changes additionally require the relevant honest manual check in
 - [README.md](README.md) — product overview and local build entrypoint
 - [docs/architecture.md](docs/architecture.md) — data flow and abstractions
 - [docs/import-formats.md](docs/import-formats.md) — supported formats and limits
+- [docs/training-load.md](docs/training-load.md) — training-load model, defaults, estimator, and limits
 - [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene
 - [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth

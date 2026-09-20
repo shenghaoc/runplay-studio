@@ -402,6 +402,17 @@ range, VoiceOver by ear, and the coefficient-set picker's contents — a
 background-mode click cannot open a pop-up menu.
 
 
+### Athlete Profile Settings Checklist (⌘,)
+
+- [ ] Open Settings: the Athlete section shows blank-optional fields with the Tanaka-derived maximum preview once a birth year is entered.
+- [ ] Enter birth year only; the estimated-maximum caption appears and updates with the year.
+- [ ] Enter a measured maximum; the estimate caption disappears (measured wins).
+- [ ] Leave the zone fields blank: effective bounds preview shows the derived 60/70/80/90% bounds; enter five ascending custom bounds and the preview follows; malformed input keeps the saved zones.
+- [ ] Coefficient picker lists both cohort sets with the magnitude-vs-shape explanation; switching does not gate anything.
+- [ ] Update Profile: the saved profile round-trips (reopen Settings after relaunch).
+- [ ] With a stale or un-backfilled library, the stale count is shown; Recompute Training Loads shows progress, honours Cancel (completed work stays, retry resumes), and finishes with the count at zero.
+- [ ] Keyboard: tab through every field and control; VoiceOver reads labels, footers (including the estimated-exclusion caveat and the not-medical-guidance note), and the recompute progress.
+
 ### 2026-09-15 pass
 
 Driven through computer use against a synthetic 12-run library (15 months,

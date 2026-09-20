@@ -242,6 +242,15 @@ it prints are independent diagnostics and are not additive components of that
 total. It also runs the opt-in same-binary aggregation comparison. Profile the
 remaining active production hotspots before selecting another C++ migration.
 
+### Phase: Heart-Rate Training Load
+
+Delivered as a four-PR stack (engine kernel → Core profile/calculator/backfill → Trends panel → Settings + docs):
+
+- [x] Engine: one summary-only `compute_training_load` bulk call (Banister TRIMP, five-zone seconds, coverage) with native hand-computed tests, bridge parity, and validator wiring
+- [x] Core: `AthleteProfile` + local store, `TrainingLoadCalculator` (same-segment intervals, 300 s / 50% measured floors, conservative pace/duration estimator), `RunWorkout.trainingLoad` records-pattern marker (nil = backfill, profile mismatch = stale; no `analysisVersion` bump, `loadLibrary` untouched), resumable store-actor backfill
+- [x] Trends: `TrainingLoadRollup` daily series with the zero-contribution rule (no-HR days flagged, never rest days), CTL/ATL/TSB recursion (42/7 defaults), estimated-excluded-by-default with explicit opt-in, HR-coverage disclosure, hover/VoiceOver summaries, one-pass backfill trigger honouring the library-level revision discipline
+- [x] Settings: athlete profile form with derived-value disclosure (Tanaka estimate, population defaults), coefficient set offered but never required, explicit "Recompute Training Loads" with progress/cancel, and docs/training-load.md
+
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs
 - [x] Automatic route grouping (Routes workspace) — two-stage matching (Swift facts filter + the existing constrained-DTW boundary, no second DTW), mutual coverage ≥ 0.90 at a 100 m unmatched budget (matched distance on both routes from the single solve; containment deliberately not grouped — the superset rule was reversed by product decision, manual merge is the recovery path) / median ≤ 35 m / p90 ≤ 100 m thresholds, opposite-direction grouping with reversed-member marking, derived-plus-pinnable representatives, manifest schema v4 with nil-marker assignment records, asynchronous post-import assignment and one-write re-cluster under the library-level revision discipline, descriptive no-geocoding names, rename/merge/remove/pin controls, All Runs + Personal Heatmap route filters, and a filtered-vs-brute-force benchmark on a 2,000-workout synthetic library
