@@ -1,3 +1,4 @@
+// Route-scene projection helpers shared by replay and comparison.
 extension Array where Element == RouteScenePoint {
     /// Finds the projected point that best represents a source route-point index.
     ///
