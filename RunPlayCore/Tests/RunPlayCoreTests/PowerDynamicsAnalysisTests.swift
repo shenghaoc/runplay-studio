@@ -261,6 +261,7 @@ final class PowerDynamicsAnalysisTests: XCTestCase {
             fields: [],
             powerSourceDeveloperDataIndex: 0,
             powerSourceIsNativeRecordField: false,
+            dynamicsSourceIsNativeRecordField: false,
             notes: []
         )
 
