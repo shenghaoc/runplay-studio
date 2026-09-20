@@ -800,6 +800,30 @@ final class RouteGroupingTests: XCTestCase {
             }
             XCTAssertFalse(tiers.contains(.fullID), "seed \(seed): the full-UUID corner must stay unreached")
 
+            // No discriminator in one cluster is a proper prefix of
+            // another — stronger than "mixed lengths compare safely as
+            // whole strings": a group keeping L digits has, by
+            // construction, no sibling sharing them, so no longer
+            // discriminator can begin with its either. The ambiguity
+            // that occasionally makes short git object names awkward
+            // cannot arise here, and this pins the same-length
+            // comparison the rule depends on.
+            var digestClusters: [String: [String]] = [:]
+            for entry in derived where entry.tier == .digest {
+                digestClusters["\(entry.baseName)|\(entry.fineToken ?? "")", default: []]
+                    .append(entry.digestDiscriminator ?? "")
+            }
+            for (cluster, discriminators) in digestClusters {
+                for discriminator in discriminators {
+                    for other in discriminators where other != discriminator {
+                        XCTAssertFalse(
+                            other.hasPrefix(discriminator),
+                            "seed \(seed): '\(discriminator)' is a prefix of '\(other)' in \(cluster)"
+                        )
+                    }
+                }
+            }
+
             // Order independence: a seeded shuffle changes nothing.
             XCTAssertEqual(
                 WorkoutRouteGroup.derivedNameDetails(

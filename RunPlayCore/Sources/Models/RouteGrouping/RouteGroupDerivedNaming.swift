@@ -56,7 +56,11 @@ extension WorkoutRouteGroup {
     ///          abbreviated-object-name rule, as with short git object
     ///          names); a member whose full digest still collides falls
     ///          back to its own UUID string while its siblings keep
-    ///          their short forms.
+    ///          their short forms. Because a group only keeps L digits
+    ///          when no sibling shares them, no discriminator in a
+    ///          cluster is a proper prefix of another — the ambiguity
+    ///          that occasionally makes short git object names awkward
+    ///          cannot arise.
     ///
     ///    Every discriminator is intrinsic to the group, never its position
     ///    in a sorted list: no rank, count, or sort order participates
@@ -108,6 +112,7 @@ extension WorkoutRouteGroup {
                     baseName: name,
                     tier: .bare,
                     digestDiscriminator: nil,
+                    fineToken: nil,
                     isUserAssigned: true
                 )
                 continue
@@ -158,6 +163,7 @@ extension WorkoutRouteGroup {
                     baseName: baseName,
                     tier: .bare,
                     digestDiscriminator: nil,
+                    fineToken: nil,
                     isUserAssigned: false
                 )
                 continue
@@ -176,6 +182,7 @@ extension WorkoutRouteGroup {
                             baseName: baseName,
                             tier: .coarseToken,
                             digestDiscriminator: nil,
+                            fineToken: candidate.fineToken,
                             isUserAssigned: false
                         )
                     } else {
@@ -185,6 +192,7 @@ extension WorkoutRouteGroup {
                             baseName: baseName,
                             tier: .bare,
                             digestDiscriminator: nil,
+                            fineToken: candidate.fineToken,
                             isUserAssigned: false
                         )
                     }
@@ -204,6 +212,7 @@ extension WorkoutRouteGroup {
                                 baseName: baseName,
                                 tier: .fineToken,
                                 digestDiscriminator: nil,
+                                fineToken: candidate.fineToken,
                                 isUserAssigned: false
                             )
                         } else {
@@ -213,6 +222,7 @@ extension WorkoutRouteGroup {
                                 baseName: baseName,
                                 tier: .bare,
                                 digestDiscriminator: nil,
+                                fineToken: candidate.fineToken,
                                 isUserAssigned: false
                             )
                         }
@@ -268,6 +278,7 @@ extension WorkoutRouteGroup {
                 baseName: baseName,
                 tier: tier,
                 digestDiscriminator: discriminator,
+                fineToken: candidate.fineToken,
                 isUserAssigned: false
             )
         }
@@ -431,5 +442,10 @@ struct RouteGroupDerivedName: Equatable {
     let baseName: String
     let tier: RouteGroupDerivedNameTier
     let digestDiscriminator: String?
+    /// The sixteen-point token of the cluster a digest-tier name sits in
+    /// (`nil` for fallback candidates with no compass token) — with the
+    /// base name it identifies the cluster, so the property tests can
+    /// assert discriminator prefix-freeness per cluster.
+    let fineToken: String?
     let isUserAssigned: Bool
 }
