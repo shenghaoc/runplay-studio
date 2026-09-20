@@ -49,6 +49,18 @@ public enum RouteMetricPalette: Sendable {
         0xD4780A, // warm brown-orange — higher
     ]
 
+    // Power: cool blues (low effort) → violet → warm yellow/orange (high).
+    // Warm yellow is the power metric's semantic accent; see DESIGN.md.
+    public static let powerHexStops: [UInt] = [
+        0x64D2FF, // light blue — lower
+        0x0A84FF, // blue
+        0x5E5CE6, // indigo
+        0xBF5AF2, // violet — mid
+        0xFFD60A, // warm yellow
+        0xFF9F0A, // orange
+        0xFF6B00, // deep orange — higher
+    ]
+
     public static func hexStops(for mode: WorkoutRouteColorMode) -> [UInt] {
         switch mode {
         case .solid:
@@ -57,6 +69,8 @@ public enum RouteMetricPalette: Sendable {
             return paceHexStops
         case .heartRate:
             return heartRateHexStops
+        case .power:
+            return powerHexStops
         case .correctedElevation:
             return elevationHexStops
         }

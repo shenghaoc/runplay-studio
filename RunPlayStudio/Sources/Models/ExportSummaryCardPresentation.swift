@@ -13,7 +13,7 @@ struct RouteMetricLegendModel: Hashable, Sendable {
     var lowerEndLabel: String {
         switch mode {
         case .pace: return "Faster"
-        case .heartRate, .correctedElevation: return "Lower"
+        case .heartRate, .power, .correctedElevation: return "Lower"
         case .solid: return ""
         }
     }
@@ -21,7 +21,7 @@ struct RouteMetricLegendModel: Hashable, Sendable {
     var upperEndLabel: String {
         switch mode {
         case .pace: return "Slower"
-        case .heartRate, .correctedElevation: return "Higher"
+        case .heartRate, .power, .correctedElevation: return "Higher"
         case .solid: return ""
         }
     }
@@ -30,6 +30,7 @@ struct RouteMetricLegendModel: Hashable, Sendable {
         switch mode {
         case .pace: return "Faster → Slower"
         case .heartRate: return "Lower HR → Higher HR"
+        case .power: return "Lower Power → Higher Power"
         case .correctedElevation: return "Lower Elevation → Higher Elevation"
         case .solid: return ""
         }

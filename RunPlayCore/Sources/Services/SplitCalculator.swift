@@ -95,6 +95,7 @@ public struct SplitCalculator {
                 paceSecondsPerKilometer: activePace,
                 elapsedPaceSecondsPerKilometer: elapsedPace,
                 averageHeartRateBPM: timeline.averageHeartRate(from: splitStart, to: splitEnd),
+                averagePowerWatts: timeline.averagePower(from: splitStart, to: splitEnd),
                 elevationGainMeters: context.elevationProfile.ascent(from: splitStart, to: splitEnd),
                 startDistanceMeters: splitStart,
                 endDistanceMeters: splitEnd

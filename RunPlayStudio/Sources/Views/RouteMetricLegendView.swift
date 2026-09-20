@@ -80,6 +80,7 @@ struct RouteMetricLegendView: View {
         switch mode {
         case .pace: return String(localized: "Faster")
         case .heartRate: return String(localized: "Lower")
+        case .power: return String(localized: "Lower")
         case .correctedElevation: return String(localized: "Lower")
         case .solid: return ""
         }
@@ -89,6 +90,7 @@ struct RouteMetricLegendView: View {
         switch mode {
         case .pace: return String(localized: "Slower")
         case .heartRate: return String(localized: "Higher")
+        case .power: return String(localized: "Higher")
         case .correctedElevation: return String(localized: "Higher")
         case .solid: return ""
         }
@@ -99,6 +101,8 @@ struct RouteMetricLegendView: View {
         switch mode {
         case .heartRate:
             return String(localized: "Heart-rate data covers \(percent)% of route distance.")
+        case .power:
+            return String(localized: "Power data covers \(percent)% of route distance.")
         case .correctedElevation:
             return String(localized: "Corrected elevation covers \(percent)% of route distance.")
         case .pace:

@@ -579,6 +579,8 @@ public struct WorkoutAnalyzer: Sendable {
         }
         let averageHeartRate = countHR > 0 ? sumHR / Double(countHR) : nil
 
+        let powerDynamics = Self.powerAndDynamicsAverages(in: points)
+
         return RunSummary(
             totalDistanceMeters: totalDistance,
             totalElapsedSeconds: timeline.totalElapsedSeconds,
@@ -596,9 +598,151 @@ public struct WorkoutAnalyzer: Sendable {
             elevationLossMeters: elevationLoss,
             averageHeartRateBPM: averageHeartRate,
             maxHeartRateBPM: maxHR,
+            averagePowerWatts: powerDynamics.averagePowerWatts,
+            maxPowerWatts: powerDynamics.maxPowerWatts,
+            best20MinutePowerWatts: powerDynamics.best20MinutePowerWatts,
+            averageGroundContactTimeMilliseconds: powerDynamics.averageGroundContactTimeMilliseconds,
+            averageVerticalOscillationMillimeters: powerDynamics.averageVerticalOscillationMillimeters,
+            averageVerticalRatioPercent: powerDynamics.averageVerticalRatioPercent,
+            averageStanceTimeBalancePercent: powerDynamics.averageStanceTimeBalancePercent,
+            averageStepLengthMeters: powerDynamics.averageStepLengthMeters,
             rawElevationGainMeters: rawElevation.gain,
             rawElevationLossMeters: rawElevation.loss
         )
+    }
+
+    /// Power and running-dynamics averages over valid route points, plus the
+    /// best 1200-second mean power.
+    ///
+    /// Same ownership bucket as raw heart-rate/elevation extraction: linear
+    /// Swift passes that run once per analysis, never per view. The best
+    /// window is time-domain by definition (unlike the distance-domain record
+    /// windows in `SegmentDetector`), computed from prefix sums with a
+    /// two-pointer window that resets at route-segment boundaries so a pause
+    /// can never inflate a "20-minute" effort.
+    static func powerAndDynamicsAverages(in points: [RoutePoint]) -> PowerAndDynamicsAverages {
+        struct RunningMean {
+            var sum: Double = 0
+            var count: Int = 0
+            mutating func add(_ value: Double) {
+                sum += value
+                count += 1
+            }
+            var mean: Double? { count > 0 ? sum / Double(count) : nil }
+        }
+
+        var powerMean = RunningMean()
+        var maxPower: Double?
+        var groundContactMean = RunningMean()
+        var verticalOscillationMean = RunningMean()
+        var verticalRatioMean = RunningMean()
+        var stanceTimeBalanceMean = RunningMean()
+        var stepLengthMean = RunningMean()
+
+        for point in points {
+            if let power = point.powerWatts, MetricValidation.isValidPower(power) {
+                powerMean.add(power)
+                if let currentMax = maxPower {
+                    maxPower = max(currentMax, power)
+                } else {
+                    maxPower = power
+                }
+            }
+            if let value = point.groundContactTimeMilliseconds,
+               MetricValidation.isValidGroundContactTime(value) {
+                groundContactMean.add(value)
+            }
+            if let value = point.verticalOscillationMillimeters,
+               MetricValidation.isValidVerticalOscillation(value) {
+                verticalOscillationMean.add(value)
+            }
+            if let value = point.verticalRatioPercent,
+               MetricValidation.isValidVerticalRatio(value) {
+                verticalRatioMean.add(value)
+            }
+            if let value = point.stanceTimeBalancePercent,
+               MetricValidation.isValidStanceTimeBalance(value) {
+                stanceTimeBalanceMean.add(value)
+            }
+            if let value = point.stepLengthMeters,
+               MetricValidation.isValidStepLength(value) {
+                stepLengthMean.add(value)
+            }
+        }
+
+        return PowerAndDynamicsAverages(
+            averagePowerWatts: powerMean.mean,
+            maxPowerWatts: maxPower,
+            best20MinutePowerWatts: bestTimeWindowMeanPower(in: points, windowSeconds: 1_200),
+            averageGroundContactTimeMilliseconds: groundContactMean.mean,
+            averageVerticalOscillationMillimeters: verticalOscillationMean.mean,
+            averageVerticalRatioPercent: verticalRatioMean.mean,
+            averageStanceTimeBalancePercent: stanceTimeBalanceMean.mean,
+            averageStepLengthMeters: stepLengthMean.mean
+        )
+    }
+
+    struct PowerAndDynamicsAverages: Sendable, Equatable {
+        var averagePowerWatts: Double?
+        var maxPowerWatts: Double?
+        var best20MinutePowerWatts: Double?
+        var averageGroundContactTimeMilliseconds: Double?
+        var averageVerticalOscillationMillimeters: Double?
+        var averageVerticalRatioPercent: Double?
+        var averageStanceTimeBalancePercent: Double?
+        var averageStepLengthMeters: Double?
+    }
+
+    /// Highest mean valid power over any `windowSeconds` window that fits
+    /// inside one route segment. Windows never span a segment boundary, so a
+    /// pause cannot contribute empty time to a best-effort mean; runs shorter
+    /// than the window inside every segment return nil.
+    static func bestTimeWindowMeanPower(
+        in points: [RoutePoint],
+        windowSeconds: Double
+    ) -> Double? {
+        guard windowSeconds > 0, points.count >= 2 else { return nil }
+
+        // Prefix sums of valid power make each window evaluation O(1).
+        var powerPrefix = [Double](repeating: 0, count: points.count + 1)
+        var countPrefix = [Int](repeating: 0, count: points.count + 1)
+        for (index, point) in points.enumerated() {
+            var value = 0.0
+            var validCount = 0
+            if let power = point.powerWatts, MetricValidation.isValidPower(power) {
+                value = power
+                validCount = 1
+            }
+            powerPrefix[index + 1] = powerPrefix[index] + value
+            countPrefix[index + 1] = countPrefix[index] + validCount
+        }
+
+        var bestMean: Double?
+        var windowStart = 0
+
+        for endIndex in points.indices {
+            if points[endIndex].routeSegmentIndex != points[windowStart].routeSegmentIndex {
+                windowStart = endIndex
+            }
+            let endTime = points[endIndex].timestamp.timeIntervalSinceReferenceDate
+            while windowStart < endIndex,
+                   endTime - points[windowStart].timestamp.timeIntervalSinceReferenceDate > windowSeconds {
+                windowStart += 1
+            }
+            let span = endTime
+                - points[windowStart].timestamp.timeIntervalSinceReferenceDate
+            guard span >= windowSeconds else { continue }
+
+            let sum = powerPrefix[endIndex + 1] - powerPrefix[windowStart]
+            let count = countPrefix[endIndex + 1] - countPrefix[windowStart]
+            guard count > 0 else { continue }
+            let mean = sum / Double(count)
+            if mean.isFinite {
+                bestMean = max(bestMean ?? 0, mean)
+            }
+        }
+
+        return bestMean
     }
 
     /// Raw adjacent-delta elevation totals over source-altitude pairs.

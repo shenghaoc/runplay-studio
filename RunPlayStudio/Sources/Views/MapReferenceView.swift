@@ -281,6 +281,8 @@ struct MapReferenceView: View {
             return String(localized: "Color the route by relative pace within this workout.")
         case .heartRate:
             return String(localized: "Color the route by relative heart rate within this workout.")
+        case .power:
+            return String(localized: "Color the route by relative running power within this workout.")
         case .correctedElevation:
             return String(localized: "Color the route by corrected elevation within this workout.")
         }

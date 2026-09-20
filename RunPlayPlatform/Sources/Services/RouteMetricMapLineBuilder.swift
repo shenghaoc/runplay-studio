@@ -72,7 +72,7 @@ public struct RouteMetricMapLineBuilder: Sendable {
                     policyVersion: policy.policyVersion
                 )
             )
-        case .pace, .heartRate, .correctedElevation:
+        case .pace, .heartRate, .power, .correctedElevation:
             break
         }
 

@@ -17,7 +17,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertFalse(lines.isEmpty)
         XCTAssertEqual(
             lines[0],
-            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Moving_Duration_Estimated_s,Stopped_Duration_Estimated_s,Moving_Pace_Estimated_min_km,Active_Pace_min_km,Elapsed_Pace_min_km,Corrected_Elevation_Gain_m,Avg_HR_bpm"
+            "Split,Start_km,End_km,Distance_km,Elapsed_Duration_s,Active_Duration_s,Moving_Duration_Estimated_s,Stopped_Duration_Estimated_s,Moving_Pace_Estimated_min_km,Active_Pace_min_km,Elapsed_Pace_min_km,Corrected_Elevation_Gain_m,Avg_HR_bpm,Avg_Power_W"
         )
     }
 
@@ -255,7 +255,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNotNil(json)
 
         XCTAssertEqual(json?["appName"] as? String, "RunPlay Studio")
-        XCTAssertEqual(json?["exportVersion"] as? String, "4.0")
+        XCTAssertEqual(json?["exportVersion"] as? String, "4.1")
         XCTAssertNotNil(json?["privacyNote"])
         XCTAssertNotNil(json?["workoutTitle"])
         XCTAssertEqual(
@@ -516,9 +516,9 @@ final class ExportServiceTests: XCTestCase {
         let rows = csv.split(separator: "\n").map(String.init)
         let fields = rows[1].split(separator: ",", omittingEmptySubsequences: false)
 
-        XCTAssertEqual(fields.count, 13)
+        XCTAssertEqual(fields.count, 14)
         // NaN/inf fields are at indices 4,5,9,10,11,12.
-        // Fields 6...8 retain their initial moving values.
+        // Fields 6...8 retain their initial moving values; 13 is empty power.
         let nanFields: Set<Int> = [4, 5, 9, 10, 11, 12]
         for idx in nanFields where idx < fields.count {
             XCTAssertTrue(fields[idx].isEmpty, "Field \(idx) should be empty but was '\(fields[idx])'")

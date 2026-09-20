@@ -25,6 +25,24 @@ public struct RunSummary: Codable, Hashable, Sendable {
     public var averageHeartRateBPM: Double?
     public var maxHeartRateBPM: Double?
     public var caloriesEstimate: Double?
+    /// Mean valid running power in watts. Nil when the source carried none.
+    public var averagePowerWatts: Double?
+    /// Maximum valid running power in watts.
+    public var maxPowerWatts: Double?
+    /// Highest mean power over any 1200-second window that fits entirely
+    /// inside one route segment. A time-domain effort metric (unlike the
+    /// distance-domain record windows); nil when no qualifying window exists.
+    public var best20MinutePowerWatts: Double?
+    /// Mean ground contact time in milliseconds across valid samples.
+    public var averageGroundContactTimeMilliseconds: Double?
+    /// Mean vertical oscillation in millimeters across valid samples.
+    public var averageVerticalOscillationMillimeters: Double?
+    /// Mean vertical ratio in percent across valid samples.
+    public var averageVerticalRatioPercent: Double?
+    /// Mean stance time balance in percent across valid samples.
+    public var averageStanceTimeBalancePercent: Double?
+    /// Mean step length in meters across valid samples.
+    public var averageStepLengthMeters: Double?
     /// Raw ascent: sum of positive adjacent altitude deltas within one route
     /// segment, with no spike rejection, smoothing, or deadband. `nil` when no
     /// two adjacent points carry finite altitude. Trends uses this as the
@@ -83,6 +101,14 @@ public struct RunSummary: Codable, Hashable, Sendable {
         averageHeartRateBPM: Double? = nil,
         maxHeartRateBPM: Double? = nil,
         caloriesEstimate: Double? = nil,
+        averagePowerWatts: Double? = nil,
+        maxPowerWatts: Double? = nil,
+        best20MinutePowerWatts: Double? = nil,
+        averageGroundContactTimeMilliseconds: Double? = nil,
+        averageVerticalOscillationMillimeters: Double? = nil,
+        averageVerticalRatioPercent: Double? = nil,
+        averageStanceTimeBalancePercent: Double? = nil,
+        averageStepLengthMeters: Double? = nil,
         rawElevationGainMeters: Double? = nil,
         rawElevationLossMeters: Double? = nil
     ) {
@@ -120,6 +146,24 @@ public struct RunSummary: Codable, Hashable, Sendable {
         self.averageHeartRateBPM = Self.finiteOptional(averageHeartRateBPM)
         self.maxHeartRateBPM = Self.finiteOptional(maxHeartRateBPM)
         self.caloriesEstimate = Self.nonNegativeFiniteOptional(caloriesEstimate)
+        self.averagePowerWatts = Self.nonNegativeFiniteOptional(averagePowerWatts)
+        self.maxPowerWatts = Self.nonNegativeFiniteOptional(maxPowerWatts)
+        self.best20MinutePowerWatts = Self.nonNegativeFiniteOptional(best20MinutePowerWatts)
+        self.averageGroundContactTimeMilliseconds = Self.nonNegativeFiniteOptional(
+            averageGroundContactTimeMilliseconds
+        )
+        self.averageVerticalOscillationMillimeters = Self.nonNegativeFiniteOptional(
+            averageVerticalOscillationMillimeters
+        )
+        self.averageVerticalRatioPercent = Self.nonNegativeFiniteOptional(
+            averageVerticalRatioPercent
+        )
+        self.averageStanceTimeBalancePercent = Self.nonNegativeFiniteOptional(
+            averageStanceTimeBalancePercent
+        )
+        self.averageStepLengthMeters = Self.nonNegativeFiniteOptional(
+            averageStepLengthMeters
+        )
         self.rawElevationGainMeters = Self.nonNegativeFiniteOptional(rawElevationGainMeters)
         self.rawElevationLossMeters = Self.nonNegativeFiniteOptional(rawElevationLossMeters)
     }
@@ -192,6 +236,14 @@ public struct RunSummary: Codable, Hashable, Sendable {
         case averageHeartRateBPM
         case maxHeartRateBPM
         case caloriesEstimate
+        case averagePowerWatts
+        case maxPowerWatts
+        case best20MinutePowerWatts
+        case averageGroundContactTimeMilliseconds
+        case averageVerticalOscillationMillimeters
+        case averageVerticalRatioPercent
+        case averageStanceTimeBalancePercent
+        case averageStepLengthMeters
         case rawElevationGainMeters
         case rawElevationLossMeters
     }
@@ -221,6 +273,14 @@ public struct RunSummary: Codable, Hashable, Sendable {
             averageHeartRateBPM: try container.decodeIfPresent(Double.self, forKey: .averageHeartRateBPM),
             maxHeartRateBPM: try container.decodeIfPresent(Double.self, forKey: .maxHeartRateBPM),
             caloriesEstimate: try container.decodeIfPresent(Double.self, forKey: .caloriesEstimate),
+            averagePowerWatts: try container.decodeIfPresent(Double.self, forKey: .averagePowerWatts),
+            maxPowerWatts: try container.decodeIfPresent(Double.self, forKey: .maxPowerWatts),
+            best20MinutePowerWatts: try container.decodeIfPresent(Double.self, forKey: .best20MinutePowerWatts),
+            averageGroundContactTimeMilliseconds: try container.decodeIfPresent(Double.self, forKey: .averageGroundContactTimeMilliseconds),
+            averageVerticalOscillationMillimeters: try container.decodeIfPresent(Double.self, forKey: .averageVerticalOscillationMillimeters),
+            averageVerticalRatioPercent: try container.decodeIfPresent(Double.self, forKey: .averageVerticalRatioPercent),
+            averageStanceTimeBalancePercent: try container.decodeIfPresent(Double.self, forKey: .averageStanceTimeBalancePercent),
+            averageStepLengthMeters: try container.decodeIfPresent(Double.self, forKey: .averageStepLengthMeters),
             rawElevationGainMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationGainMeters),
             rawElevationLossMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationLossMeters)
         )
@@ -245,6 +305,14 @@ public struct RunSummary: Codable, Hashable, Sendable {
         try container.encodeIfPresent(averageHeartRateBPM, forKey: .averageHeartRateBPM)
         try container.encodeIfPresent(maxHeartRateBPM, forKey: .maxHeartRateBPM)
         try container.encodeIfPresent(caloriesEstimate, forKey: .caloriesEstimate)
+        try container.encodeIfPresent(averagePowerWatts, forKey: .averagePowerWatts)
+        try container.encodeIfPresent(maxPowerWatts, forKey: .maxPowerWatts)
+        try container.encodeIfPresent(best20MinutePowerWatts, forKey: .best20MinutePowerWatts)
+        try container.encodeIfPresent(averageGroundContactTimeMilliseconds, forKey: .averageGroundContactTimeMilliseconds)
+        try container.encodeIfPresent(averageVerticalOscillationMillimeters, forKey: .averageVerticalOscillationMillimeters)
+        try container.encodeIfPresent(averageVerticalRatioPercent, forKey: .averageVerticalRatioPercent)
+        try container.encodeIfPresent(averageStanceTimeBalancePercent, forKey: .averageStanceTimeBalancePercent)
+        try container.encodeIfPresent(averageStepLengthMeters, forKey: .averageStepLengthMeters)
         try container.encodeIfPresent(rawElevationGainMeters, forKey: .rawElevationGainMeters)
         try container.encodeIfPresent(rawElevationLossMeters, forKey: .rawElevationLossMeters)
     }

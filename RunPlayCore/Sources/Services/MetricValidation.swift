@@ -13,6 +13,25 @@ public enum MetricValidation {
     /// fields are byte-sized; the small margin keeps validation format-neutral.
     public static let validCadenceRange: ClosedRange<Double> = 0...300
 
+    /// Valid running power range in watts (0–5,000 W covers running meters
+    /// and cycling-scale headroom; negative values are sensor noise).
+    public static let validPowerRange: ClosedRange<Double> = 0...5_000
+
+    /// Valid ground contact time range in milliseconds.
+    public static let validGroundContactTimeRange: ClosedRange<Double> = 0...1_000
+
+    /// Valid vertical oscillation range in millimeters.
+    public static let validVerticalOscillationRange: ClosedRange<Double> = 0...100
+
+    /// Valid vertical ratio range in percent.
+    public static let validVerticalRatioRange: ClosedRange<Double> = 0...100
+
+    /// Valid stance time balance range in percent.
+    public static let validStanceTimeBalanceRange: ClosedRange<Double> = 0...100
+
+    /// Valid step length range in meters.
+    public static let validStepLengthRange: ClosedRange<Double> = 0...5
+
     /// Check whether a heart rate value is within the valid range.
     public static func isValidHeartRate(_ bpm: Double) -> Bool {
         bpm.isFinite && validHeartRateRange.contains(bpm)
@@ -22,6 +41,37 @@ public enum MetricValidation {
     /// the supported source formats.
     public static func isValidCadence(_ stepsPerMinute: Double) -> Bool {
         stepsPerMinute.isFinite && validCadenceRange.contains(stepsPerMinute)
+    }
+
+    /// Check whether a power value is finite and inside the plausible
+    /// running-power range.
+    public static func isValidPower(_ watts: Double) -> Bool {
+        watts.isFinite && validPowerRange.contains(watts)
+    }
+
+    /// Check whether a running-dynamics value is finite and plausible.
+    public static func isValidGroundContactTime(_ milliseconds: Double) -> Bool {
+        milliseconds.isFinite && validGroundContactTimeRange.contains(milliseconds)
+    }
+
+    /// Check whether a running-dynamics value is finite and plausible.
+    public static func isValidVerticalOscillation(_ millimeters: Double) -> Bool {
+        millimeters.isFinite && validVerticalOscillationRange.contains(millimeters)
+    }
+
+    /// Check whether a running-dynamics value is finite and plausible.
+    public static func isValidVerticalRatio(_ percent: Double) -> Bool {
+        percent.isFinite && validVerticalRatioRange.contains(percent)
+    }
+
+    /// Check whether a running-dynamics value is finite and plausible.
+    public static func isValidStanceTimeBalance(_ percent: Double) -> Bool {
+        percent.isFinite && validStanceTimeBalanceRange.contains(percent)
+    }
+
+    /// Check whether a running-dynamics value is finite and plausible.
+    public static func isValidStepLength(_ meters: Double) -> Bool {
+        meters.isFinite && validStepLengthRange.contains(meters)
     }
 }
 
@@ -150,6 +200,46 @@ public enum DisplayFormatter {
     public static func formatCadence(_ spm: Double?) -> String {
         guard let value = spm, value.isFinite, value >= 0 else { return "--- spm" }
         return String(format: "%.0f spm", value)
+    }
+
+    // MARK: - Power
+
+    /// Format running power in watts.
+    public static func formatPower(_ watts: Double?) -> String {
+        guard let value = watts, value.isFinite, value >= 0 else { return "--- W" }
+        return String(format: "%.0f W", value)
+    }
+
+    // MARK: - Running dynamics
+
+    /// Format ground contact time in milliseconds.
+    public static func formatGroundContactTime(_ milliseconds: Double?) -> String {
+        guard let value = milliseconds, value.isFinite, value >= 0 else { return "--- ms" }
+        return String(format: "%.0f ms", value)
+    }
+
+    /// Format vertical oscillation in millimeters.
+    public static func formatVerticalOscillation(_ millimeters: Double?) -> String {
+        guard let value = millimeters, value.isFinite, value >= 0 else { return "--- mm" }
+        return String(format: "%.1f mm", value)
+    }
+
+    /// Format vertical ratio in percent.
+    public static func formatVerticalRatio(_ percent: Double?) -> String {
+        guard let value = percent, value.isFinite, value >= 0 else { return "--- %" }
+        return String(format: "%.1f %%", value)
+    }
+
+    /// Format stance time balance in percent.
+    public static func formatStanceTimeBalance(_ percent: Double?) -> String {
+        guard let value = percent, value.isFinite, value >= 0 else { return "--- %" }
+        return String(format: "%.1f %%", value)
+    }
+
+    /// Format step length in meters.
+    public static func formatStepLength(_ meters: Double?) -> String {
+        guard let value = meters, value.isFinite, value >= 0 else { return "--- m" }
+        return String(format: "%.2f m", value)
     }
 
     // MARK: - Numbers
