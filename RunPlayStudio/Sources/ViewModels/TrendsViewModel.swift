@@ -20,6 +20,15 @@ enum TrendsEmptyReason: Equatable {
     case scopeExcludedAll
 }
 
+/// Inline one-off training-load backfill state, driven by `AppState` so a
+/// resumable pass survives leaving the workspace. Mirrors the records
+/// backfill banner contract.
+enum TrainingLoadBackfillState: Equatable {
+    case idle
+    case running(completedCount: Int, totalCount: Int, currentWorkoutName: String)
+    case failed(String)
+}
+
 extension WorkoutTrendsPeriod {
     var title: String {
         switch self {
@@ -139,6 +148,10 @@ private struct TrendsRequestKey: Hashable {
         let analysisVersion: Int
         let startDate: Date?
         let recordedUTCOffsetSeconds: Int?
+        /// Training-load snapshots do not bump `analysisVersion`; this
+        /// in-session digest is what makes a backfilled or recomputed load
+        /// visible to the cache.
+        let trainingLoadRevision: Int?
     }
 
     let workouts: [WorkoutRevision]
@@ -151,6 +164,9 @@ private struct TrendsRequestKey: Hashable {
     let range: WorkoutTrendsRange
     let scopeKind: String
     let scopeCollectionID: UUID?
+    let ctlTimeConstantDays: Double
+    let atlTimeConstantDays: Double
+    let includeEstimatedLoads: Bool
     /// Hour-floored so relative range anchors stay stable within a session hour.
     let now: Date
 }
@@ -168,6 +184,7 @@ private struct TrendsResult: Sendable {
     /// with the aggregation so a cache hit restores the same explanation.
     let emptyReason: TrendsEmptyReason?
     let chartPoints: [TrendsMetric: [TrendsChartPoint]]
+    let trainingLoad: FitnessFatigueSeries?
 
     /// Period keys present in this window, for O(1) membership tests.
     var bucketKeys: Set<WorkoutTrendsPeriodKey> {
@@ -190,6 +207,19 @@ final class TrendsViewModel: ObservableObject {
     @Published var period: WorkoutTrendsPeriod = .month
     @Published var range: WorkoutTrendsRange = .last12Months
     @Published var scope: WorkoutTrendsScope = .entireLibrary
+
+    /// Fitness/fatigue time constants and the estimated-inclusion opt-in.
+    /// Presentation preferences: they never touch stored snapshots, so they
+    /// live here rather than in the athlete profile.
+    @Published var ctlTimeConstantDays = TrainingLoadRollup.defaultCTLTimeConstantDays
+    @Published var atlTimeConstantDays = TrainingLoadRollup.defaultATLTimeConstantDays
+    @Published var includeEstimatedLoads = false
+
+    /// The applied training-load series for the panel.
+    @Published private(set) var trainingLoad: FitnessFatigueSeries?
+
+    /// Feature-local backfill progress (never a library-wide token).
+    @Published private(set) var trainingLoadBackfillState: TrainingLoadBackfillState = .idle
 
     private let queryService: any WorkoutLibraryQuerying
     private let calendar: Calendar
@@ -316,7 +346,8 @@ final class TrendsViewModel: ObservableObject {
                     id: $0.id,
                     analysisVersion: $0.analysisVersion,
                     startDate: $0.metadata.startDate ?? $0.routePoints.first?.timestamp,
-                    recordedUTCOffsetSeconds: $0.metadata.recordedUTCOffsetSeconds
+                    recordedUTCOffsetSeconds: $0.metadata.recordedUTCOffsetSeconds,
+                    trainingLoadRevision: $0.trainingLoad.map(\.hashValue)
                 )
             },
             entriesDigest: Self.entriesDigest(inputs.entries),
@@ -329,6 +360,9 @@ final class TrendsViewModel: ObservableObject {
                 if case .smartCollection(let id) = self.scope { return id }
                 return nil
             }(),
+            ctlTimeConstantDays: ctlTimeConstantDays,
+            atlTimeConstantDays: atlTimeConstantDays,
+            includeEstimatedLoads: includeEstimatedLoads,
             now: cacheNow(for: range, now: now)
         )
 
@@ -347,6 +381,9 @@ final class TrendsViewModel: ObservableObject {
         let displayTimeZone = self.displayTimeZone
         let calendar = self.calendar
         let queryService = self.queryService
+        let ctlTimeConstantDays = self.ctlTimeConstantDays
+        let atlTimeConstantDays = self.atlTimeConstantDays
+        let includeEstimatedLoads = self.includeEstimatedLoads
 
         isComputing = true
         loadState = .loading
@@ -365,7 +402,10 @@ final class TrendsViewModel: ObservableObject {
                     now: now,
                     displayTimeZone: displayTimeZone,
                     calendar: calendar,
-                    queryService: queryService
+                    queryService: queryService,
+                    ctlTimeConstantDays: ctlTimeConstantDays,
+                    atlTimeConstantDays: atlTimeConstantDays,
+                    includeEstimatedLoads: includeEstimatedLoads
                 )
                 guard let self, self.lastKey == key, !Task.isCancelled else { return }
                 self.store(result: result, for: key)
@@ -397,7 +437,10 @@ final class TrendsViewModel: ObservableObject {
         now: Date,
         displayTimeZone: TimeZone,
         calendar: Calendar,
-        queryService: any WorkoutLibraryQuerying
+        queryService: any WorkoutLibraryQuerying,
+        ctlTimeConstantDays: Double,
+        atlTimeConstantDays: Double,
+        includeEstimatedLoads: Bool
     ) async throws -> TrendsResult {
         try Task.checkCancellation()
         let allRows = inputs.workouts.compactMap { WorkoutTrendsSummaryRow.make(from: $0) }
@@ -432,6 +475,35 @@ final class TrendsViewModel: ObservableObject {
         )
         try Task.checkCancellation()
 
+        // Training-load series over the same scope resolution; "all time"
+        // spans every scoped day, month-count ranges slice by anchor day.
+        let trainingLoadSeries: FitnessFatigueSeries?
+        if let matching = resolution.matchingWorkoutIDs {
+            let scopedWorkouts = inputs.workouts.filter { matching.contains($0.id) }
+            trainingLoadSeries = Self.trainingLoadSeries(
+                workouts: scopedWorkouts,
+                range: range,
+                now: now,
+                displayTimeZone: displayTimeZone,
+                calendar: calendar,
+                ctlTimeConstantDays: ctlTimeConstantDays,
+                atlTimeConstantDays: atlTimeConstantDays,
+                includeEstimatedLoads: includeEstimatedLoads
+            )
+        } else {
+            trainingLoadSeries = Self.trainingLoadSeries(
+                workouts: inputs.workouts,
+                range: range,
+                now: now,
+                displayTimeZone: displayTimeZone,
+                calendar: calendar,
+                ctlTimeConstantDays: ctlTimeConstantDays,
+                atlTimeConstantDays: atlTimeConstantDays,
+                includeEstimatedLoads: includeEstimatedLoads
+            )
+        }
+        try Task.checkCancellation()
+
         let emptyReason: TrendsEmptyReason?
         if allRows.isEmpty {
             emptyReason = .noDatedWorkouts
@@ -444,8 +516,57 @@ final class TrendsViewModel: ObservableObject {
             aggregation: aggregation,
             undatedRunCount: undated,
             emptyReason: emptyReason,
-            chartPoints: chartPoints(for: aggregation, displayTimeZone: displayTimeZone)
+            chartPoints: chartPoints(for: aggregation, displayTimeZone: displayTimeZone),
+            trainingLoad: trainingLoadSeries
         )
+    }
+
+    /// Daily load series + fitness/fatigue model over the scoped workouts,
+    /// sliced to the range anchor day for month-count ranges.
+    private nonisolated static func trainingLoadSeries(
+        workouts: [RunWorkout],
+        range: WorkoutTrendsRange,
+        now: Date,
+        displayTimeZone: TimeZone,
+        calendar: Calendar,
+        ctlTimeConstantDays: Double,
+        atlTimeConstantDays: Double,
+        includeEstimatedLoads: Bool
+    ) -> FitnessFatigueSeries? {
+        let contributions: [(date: Date, recordedUTCOffsetSeconds: Int?, load: TrainingLoadSnapshot?)] =
+            workouts.compactMap { workout in
+                guard let start = WorkoutLibraryEntry.canonicalStartDate(for: workout) else {
+                    return nil
+                }
+                return (
+                    start,
+                    workout.metadata.recordedUTCOffsetSeconds,
+                    workout.trainingLoad
+                )
+            }
+        guard !contributions.isEmpty else { return nil }
+        var full = TrainingLoadRollup.series(
+            contributions: contributions,
+            fallbackTimeZone: displayTimeZone,
+            ctlTimeConstantDays: ctlTimeConstantDays,
+            atlTimeConstantDays: atlTimeConstantDays,
+            includeEstimatedLoads: includeEstimatedLoads
+        )
+        guard let monthCount = range.monthCount else { return full }
+        let anchor = calendar.date(byAdding: .month, value: -monthCount, to: now) ?? now
+        var anchorCalendar = calendar
+        anchorCalendar.timeZone = displayTimeZone
+        let anchorDay = anchorCalendar.startOfDay(for: anchor)
+        let cutoff = full.loadDays.firstIndex { $0.date >= anchorDay } ?? full.loadDays.count
+        guard cutoff > 0 else { return nil }
+        guard cutoff < full.loadDays.count else { return full }
+        full = FitnessFatigueSeries(
+            loadDays: Array(full.loadDays[cutoff...]),
+            modelDays: Array(full.modelDays[cutoff...]),
+            hrCoverageFraction: full.hrCoverageFraction,
+            includesEstimatedLoads: full.includesEstimatedLoads
+        )
+        return full
     }
 
     /// Builds every metric's chart points in one pass over the buckets.
@@ -553,6 +674,53 @@ final class TrendsViewModel: ObservableObject {
         return aggregation.currentPeriodKey != nil
     }
 
+    // MARK: - Training-load backfill progress (driven by AppState)
+
+    /// The pass survives leaving Trends: ownership lives with `AppState`,
+    /// which keeps running it and reports progress here.
+    func trainingLoadBackfillStarted(totalCount: Int) {
+        trainingLoadBackfillState = .running(
+            completedCount: 0,
+            totalCount: totalCount,
+            currentWorkoutName: ""
+        )
+    }
+
+    func trainingLoadBackfillProgress(
+        completedCount: Int,
+        totalCount: Int,
+        currentWorkoutName: String
+    ) {
+        trainingLoadBackfillState = .running(
+            completedCount: completedCount,
+            totalCount: totalCount,
+            currentWorkoutName: currentWorkoutName
+        )
+    }
+
+    func trainingLoadBackfillFinished(failureMessage: String?) {
+        trainingLoadBackfillState = failureMessage.map { .failed($0) } ?? .idle
+    }
+
+    /// Spoken chart summary for the training-load panel.
+    func trainingLoadChartAccessibilitySummary() -> TrainingLoadChartAccessibilitySummary? {
+        guard let series = trainingLoad else { return nil }
+        let lastLoad = series.loadDays.last?.contribution == .hrDay
+            ? series.loadDays.last?.measuredLoad
+            : nil
+        return TrainingLoadChartAccessibilitySummary(
+            includesEstimatedLoads: series.includesEstimatedLoads,
+            hrCoverageFraction: series.hrCoverageFraction,
+            dayCount: series.loadDays.count,
+            hrDayCount: series.loadDays.filter { $0.contribution == .hrDay }.count,
+            noHRDataDayCount: series.loadDays.filter { $0.contribution == .noHRData }.count,
+            latestLoad: lastLoad,
+            latestCTL: series.modelDays.last?.ctl,
+            latestATL: series.modelDays.last?.atl,
+            latestTSB: series.modelDays.last?.tsb
+        )
+    }
+
     // MARK: - Private
 
     private func store(result: TrendsResult, for key: TrendsRequestKey) {
@@ -569,6 +737,7 @@ final class TrendsViewModel: ObservableObject {
     private func apply(result: TrendsResult, inputs: TrendsRefreshInputs) {
         aggregation = result.aggregation
         undatedRunCount = result.undatedRunCount
+        trainingLoad = result.trainingLoad
         appliedChartPoints = result.chartPoints
         appliedBucketKeys = result.bucketKeys
         appliedPeriodLabels = Dictionary(

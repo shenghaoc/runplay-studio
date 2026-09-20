@@ -665,3 +665,98 @@ public struct PersonalRecordsAccessibilitySummary: Equatable, Sendable {
         date.formatted(.dateTime.year().month(.wide).day())
     }
 }
+
+// MARK: - Training load
+
+/// Spoken summary of the training-load fitness/fatigue/form chart.
+///
+/// The disclosure rules mirror the model's honesty contract: estimated loads
+/// are named as excluded unless opted in, and HR coverage over the displayed
+/// window is spoken so the curve's trustworthiness is audible, not just
+/// visible.
+public struct TrainingLoadChartAccessibilitySummary: Equatable, Sendable {
+    public let includesEstimatedLoads: Bool
+    /// Measured days ÷ days with runs, or `nil` when no day carries a run.
+    public let hrCoverageFraction: Double?
+    public let dayCount: Int
+    public let hrDayCount: Int
+    public let noHRDataDayCount: Int
+    public let latestLoad: Double?
+    public let latestCTL: Double?
+    public let latestATL: Double?
+    public let latestTSB: Double?
+
+    public init(
+        includesEstimatedLoads: Bool,
+        hrCoverageFraction: Double?,
+        dayCount: Int,
+        hrDayCount: Int,
+        noHRDataDayCount: Int,
+        latestLoad: Double?,
+        latestCTL: Double?,
+        latestATL: Double?,
+        latestTSB: Double?
+    ) {
+        self.includesEstimatedLoads = includesEstimatedLoads
+        self.hrCoverageFraction = hrCoverageFraction
+        self.dayCount = dayCount
+        self.hrDayCount = hrDayCount
+        self.noHRDataDayCount = noHRDataDayCount
+        self.latestLoad = latestLoad
+        self.latestCTL = latestCTL
+        self.latestATL = latestATL
+        self.latestTSB = latestTSB
+    }
+
+    public var spokenSummary: String {
+        var parts = ["Training load by day."]
+        guard dayCount > 0, let latestCTL else {
+            parts.append("No data.")
+            return parts.joined(separator: " ")
+        }
+        if let latestLoad {
+            parts.append("Latest daily load \(Int(latestLoad.rounded())) TRIMP.")
+        }
+        parts.append("Fitness \(Int(latestCTL.rounded())).")
+        if let latestATL {
+            parts.append("Fatigue \(Int(latestATL.rounded())).")
+        }
+        if let latestTSB {
+            let signed = latestTSB >= 0 ? "+" : ""
+            parts.append("Form \(signed)\(Int(latestTSB.rounded())).")
+        }
+        if includesEstimatedLoads {
+            parts.append("Estimated loads are included in the model on your explicit request; they are invented values and make the curve less trustworthy.")
+        } else if noHRDataDayCount > 0 {
+            parts.append("\(noHRDataDayCount) days with runs have no heart rate and contribute nothing to the model.")
+        }
+        if let coverage = hrCoverageFraction {
+            parts.append("Heart-rate coverage \(Int((coverage * 100).rounded())) percent of days with runs.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    /// Hover/scrub phrase for one day.
+    public static func dayPhrase(
+        load: Double,
+        estimatedLoad: Bool,
+        ctl: Double,
+        atl: Double,
+        tsb: Double,
+        hasHRData: Bool
+    ) -> String {
+        var parts: [String] = []
+        if estimatedLoad {
+            parts.append("Load \(Int(load.rounded())) TRIMP, estimated, not in model")
+        } else if hasHRData {
+            parts.append("Load \(Int(load.rounded())) TRIMP")
+        } else {
+            parts.append("No heart-rate load")
+        }
+        parts.append("fitness \(Int(ctl.rounded()))")
+        parts.append("fatigue \(Int(atl.rounded()))")
+        let signed = tsb >= 0 ? "+" : ""
+        parts.append("form \(signed)\(Int(tsb.rounded()))")
+        return parts.joined(separator: ", ")
+    }
+}

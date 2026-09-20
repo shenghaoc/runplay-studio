@@ -182,6 +182,10 @@ Use only synthetic or explicitly private, ignored local workout files.
 - [ ] Use the inspector period picker and View Runs button with keyboard and VoiceOver.
 - [ ] Import a workout; totals update on return to Trends. Delete while Trends visible; workspace stays on Trends.
 - [x] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
+- [ ] Training Load panel: with a backfillable library, opening Trends shows the computing banner once; it progresses, finishes, and the daily bars + Fitness/Fatigue/Form lines appear without a manual refresh.
+- [ ] Training Load honesty rules: a run without heart rate shows a lighter estimated bar that the captions exclude from the model; the "Include estimated loads" toggle redraws the curve and changes the caption; HR coverage percentage is shown for the window.
+- [ ] Hover the training-load chart; the readout shows the day's load (labelled "estimated, not in model" on HR-less days), fitness, fatigue, and form.
+- [ ] Adjust the Fitness/Fatigue time-constant steppers; the curve reshapes without touching stored data. Verify VoiceOver speaks the chart summary (fitness, fatigue, form, no-HR-day count, coverage).
 - [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
 
 ### 2026-09-15 pass
