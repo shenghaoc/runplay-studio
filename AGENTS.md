@@ -394,8 +394,20 @@ git diff --check
 ```
 
 RunPlayCore changes must verify the Linux build in a container before
-pushing, using the Swift version the Linux CI job verifies. Two properties
-are mandatory whatever container tool the host provides:
+pushing. Linux CI is Docker-only by policy: the CI job runs inside the
+official Swift image pinned by the single `container:` line in
+[.github/workflows/ci.yml](.github/workflows/ci.yml), and local
+verification must use that exact image, read from the same pin so the
+two cannot drift (currently `swift:6.4.0-resolute@sha256:bb6e5d…a91dc`,
+an Ubuntu 26.04 userspace):
+
+```bash
+IMAGE="$(grep -oE 'swift:[^[:space:]]+' .github/workflows/ci.yml | head -n1)"
+docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/src -w /src \
+  "${IMAGE}" swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+```
+
+Two properties are mandatory:
 
 1. The container user must be non-root and must own the mounted sources.
    The default container user is root, and root bypasses POSIX permission
@@ -406,22 +418,9 @@ are mandatory whatever container tool the host provides:
    resolves to `/` and SwiftPM fails with `invalid access to
    /.cache/org.swift.swiftpm`; `-e HOME=/tmp` fixes it.
 
-docker (rootful; `-u` maps directly to the invoking host user):
-
-```text
-docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/src -w /src swift:6.3-jammy swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
-```
-
-Caveat: this docker form is unverified (only the podman form below has
-been executed); drop this caveat once someone runs it successfully.
-
-rootless podman (`-u` would select a subordinate uid that does not own the
-mount; `--userns=keep-id` keeps the container uid equal to the host uid.
-On SELinux-enforcing hosts both tools need `:Z` on the volume):
-
-```text
-podman run --rm --userns=keep-id -e HOME=/tmp -v "$PWD":/src:Z -w /src swift:6.3-jammy swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
-```
+Caveats: this invocation has been executed with a Docker-compatible CLI
+(podman) rather than the docker binary itself, and on SELinux-enforcing
+hosts the volume needs `:Z`.
 
 `--scratch-path .build-linux` keeps the Linux build tree out of `.build`
 so container runs and host macOS builds do not invalidate each other's
