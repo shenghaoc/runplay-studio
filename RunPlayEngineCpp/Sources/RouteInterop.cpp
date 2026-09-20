@@ -40,6 +40,12 @@ RouteBatchInspection empty_inspection(RouteInteropStatus status) noexcept {
         /*.pace_value_count=*/0u,
         /*.heart_rate_value_count=*/0u,
         /*.cadence_value_count=*/0u,
+        /*.power_value_count=*/0u,
+        /*.ground_contact_time_value_count=*/0u,
+        /*.vertical_oscillation_value_count=*/0u,
+        /*.vertical_ratio_value_count=*/0u,
+        /*.stance_time_balance_value_count=*/0u,
+        /*.step_length_value_count=*/0u,
         /*.horizontal_accuracy_value_count=*/0u,
         /*.segment_transition_count=*/0u,
         /*.first_source_index=*/std::nullopt,
@@ -110,6 +116,30 @@ RouteBatchInspection inspect_route_batch(
             result.field_digest,
             sample.cadence,
             result.cadence_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.power_watts,
+            result.power_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.ground_contact_time_milliseconds,
+            result.ground_contact_time_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.vertical_oscillation_millimeters,
+            result.vertical_oscillation_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.vertical_ratio_percent,
+            result.vertical_ratio_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.stance_time_balance_percent,
+            result.stance_time_balance_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.step_length_meters,
+            result.step_length_value_count);
         mix_optional_double(
             result.field_digest,
             sample.horizontal_accuracy,

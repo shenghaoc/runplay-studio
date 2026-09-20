@@ -34,6 +34,12 @@ runplay::RouteInputSample make_sample(
         std::nullopt,
         std::nullopt,
         std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
         segment_index,
     };
 }
@@ -48,6 +54,12 @@ void test_empty_batch() {
     expect(result.pace_value_count == 0u, "empty pace count");
     expect(result.heart_rate_value_count == 0u, "empty heart-rate count");
     expect(result.cadence_value_count == 0u, "empty cadence count");
+    expect(result.power_value_count == 0u, "empty power count");
+    expect(result.ground_contact_time_value_count == 0u, "empty ground-contact-time count");
+    expect(result.vertical_oscillation_value_count == 0u, "empty vertical-oscillation count");
+    expect(result.vertical_ratio_value_count == 0u, "empty vertical-ratio count");
+    expect(result.stance_time_balance_value_count == 0u, "empty stance-time-balance count");
+    expect(result.step_length_value_count == 0u, "empty step-length count");
     expect(
         result.horizontal_accuracy_value_count == 0u,
         "empty horizontal-accuracy count");
@@ -89,6 +101,12 @@ void test_complete_sample_and_explicit_digest() {
         std::optional<double>{200.0},
         std::optional<double>{150.0},
         std::optional<double>{180.0},
+        std::optional<double>{245.5},
+        std::optional<double>{251.25},
+        std::optional<double>{9.75},
+        std::optional<double>{6.25},
+        std::optional<double>{49.75},
+        std::optional<double>{1.125},
         std::optional<double>{3.0},
         -2,
     };
@@ -102,6 +120,12 @@ void test_complete_sample_and_explicit_digest() {
     expect(result.pace_value_count == 1u, "complete pace count");
     expect(result.heart_rate_value_count == 1u, "complete heart-rate count");
     expect(result.cadence_value_count == 1u, "complete cadence count");
+    expect(result.power_value_count == 1u, "complete power count");
+    expect(result.ground_contact_time_value_count == 1u, "complete ground-contact-time count");
+    expect(result.vertical_oscillation_value_count == 1u, "complete vertical-oscillation count");
+    expect(result.vertical_ratio_value_count == 1u, "complete vertical-ratio count");
+    expect(result.stance_time_balance_value_count == 1u, "complete stance-time-balance count");
+    expect(result.step_length_value_count == 1u, "complete step-length count");
     expect(
         result.horizontal_accuracy_value_count == 1u,
         "complete horizontal-accuracy count");
@@ -109,7 +133,7 @@ void test_complete_sample_and_explicit_digest() {
     expect(result.first_source_index == 7u, "complete first source index");
     expect(result.last_source_index == 7u, "complete last source index");
     expect(
-        result.field_digest == 2357175563209802308ULL,
+        result.field_digest == 4617272057486931324ULL,
         "complete fixture digest must match the independent constant");
 }
 
@@ -134,6 +158,12 @@ void test_absent_optionals_and_segment_transitions() {
     expect(first.pace_value_count == 0u, "absent pace count");
     expect(first.heart_rate_value_count == 0u, "absent heart-rate count");
     expect(first.cadence_value_count == 0u, "absent cadence count");
+    expect(first.power_value_count == 0u, "absent power count");
+    expect(first.ground_contact_time_value_count == 0u, "absent ground-contact-time count");
+    expect(first.vertical_oscillation_value_count == 0u, "absent vertical-oscillation count");
+    expect(first.vertical_ratio_value_count == 0u, "absent vertical-ratio count");
+    expect(first.stance_time_balance_value_count == 0u, "absent stance-time-balance count");
+    expect(first.step_length_value_count == 0u, "absent step-length count");
     expect(
         first.horizontal_accuracy_value_count == 0u,
         "absent horizontal-accuracy count");

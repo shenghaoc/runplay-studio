@@ -13,6 +13,20 @@ public struct RoutePoint: Identifiable, Hashable, Sendable {
     public var paceSecondsPerKilometer: Double?
     public var heartRateBPM: Double?
     public var cadence: Double?
+    /// Running power in watts, when the source recorded it (native FIT record
+    /// power or a recognized developer field such as Stryd or Garmin running
+    /// power). `nil` when the source carried no power data.
+    public var powerWatts: Double?
+    /// Running dynamics: ground contact time in milliseconds.
+    public var groundContactTimeMilliseconds: Double?
+    /// Running dynamics: vertical oscillation in millimeters.
+    public var verticalOscillationMillimeters: Double?
+    /// Running dynamics: vertical ratio in percent.
+    public var verticalRatioPercent: Double?
+    /// Running dynamics: stance time balance in percent.
+    public var stanceTimeBalancePercent: Double?
+    /// Running dynamics: step length in meters.
+    public var stepLengthMeters: Double?
     public var horizontalAccuracy: Double?
     /// Index of the continuous route segment this point belongs to.
     /// The first segment uses index 0. Each GPX `<trkseg>` or TCX `<Track>`
@@ -32,6 +46,12 @@ public struct RoutePoint: Identifiable, Hashable, Sendable {
         paceSecondsPerKilometer: Double? = nil,
         heartRateBPM: Double? = nil,
         cadence: Double? = nil,
+        powerWatts: Double? = nil,
+        groundContactTimeMilliseconds: Double? = nil,
+        verticalOscillationMillimeters: Double? = nil,
+        verticalRatioPercent: Double? = nil,
+        stanceTimeBalancePercent: Double? = nil,
+        stepLengthMeters: Double? = nil,
         horizontalAccuracy: Double? = nil,
         routeSegmentIndex: Int = 0
     ) {
@@ -46,6 +66,12 @@ public struct RoutePoint: Identifiable, Hashable, Sendable {
         self.paceSecondsPerKilometer = paceSecondsPerKilometer
         self.heartRateBPM = heartRateBPM
         self.cadence = cadence
+        self.powerWatts = powerWatts
+        self.groundContactTimeMilliseconds = groundContactTimeMilliseconds
+        self.verticalOscillationMillimeters = verticalOscillationMillimeters
+        self.verticalRatioPercent = verticalRatioPercent
+        self.stanceTimeBalancePercent = stanceTimeBalancePercent
+        self.stepLengthMeters = stepLengthMeters
         self.horizontalAccuracy = horizontalAccuracy
         self.routeSegmentIndex = routeSegmentIndex
     }
@@ -57,7 +83,10 @@ extension RoutePoint: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, timestamp, latitude, longitude, altitudeMeters
         case distanceFromStartMeters, elapsedSeconds, speedMetersPerSecond
-        case paceSecondsPerKilometer, heartRateBPM, cadence, horizontalAccuracy
+        case paceSecondsPerKilometer, heartRateBPM, cadence
+        case powerWatts, groundContactTimeMilliseconds
+        case verticalOscillationMillimeters, verticalRatioPercent
+        case stanceTimeBalancePercent, stepLengthMeters, horizontalAccuracy
         case routeSegmentIndex
     }
 
@@ -74,6 +103,17 @@ extension RoutePoint: Codable {
         paceSecondsPerKilometer = try container.decodeIfPresent(Double.self, forKey: .paceSecondsPerKilometer)
         heartRateBPM = try container.decodeIfPresent(Double.self, forKey: .heartRateBPM)
         cadence = try container.decodeIfPresent(Double.self, forKey: .cadence)
+        powerWatts = try container.decodeIfPresent(Double.self, forKey: .powerWatts)
+        groundContactTimeMilliseconds = try container.decodeIfPresent(
+            Double.self, forKey: .groundContactTimeMilliseconds)
+        verticalOscillationMillimeters = try container.decodeIfPresent(
+            Double.self, forKey: .verticalOscillationMillimeters)
+        verticalRatioPercent = try container.decodeIfPresent(
+            Double.self, forKey: .verticalRatioPercent)
+        stanceTimeBalancePercent = try container.decodeIfPresent(
+            Double.self, forKey: .stanceTimeBalancePercent)
+        stepLengthMeters = try container.decodeIfPresent(
+            Double.self, forKey: .stepLengthMeters)
         horizontalAccuracy = try container.decodeIfPresent(Double.self, forKey: .horizontalAccuracy)
         // Backward compatibility: older snapshots lack routeSegmentIndex; default to 0.
         routeSegmentIndex = try container.decodeIfPresent(Int.self, forKey: .routeSegmentIndex) ?? 0
