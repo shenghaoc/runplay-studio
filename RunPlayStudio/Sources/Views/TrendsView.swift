@@ -497,7 +497,9 @@ struct TrendsView: View {
 /// bars), green for fitness, orange for fatigue (the strain axis), blue for
 /// form. Estimated days render lighter and are never part of the model
 /// unless explicitly opted in; days with runs but no heart rate draw a
-/// hollow marker so zero-contribution never reads as a rest day.
+/// hollow marker so zero-contribution never reads as a rest day, and the
+/// stretches they form are shaded so the model lines are not drawn as
+/// confident through input nobody recorded.
 private struct TrainingLoadChartPanel: View {
     let series: FitnessFatigueSeries
     let spokenSummary: String
@@ -511,6 +513,20 @@ private struct TrainingLoadChartPanel: View {
     private var fitnessColor: Color { AppDesign.MetricColor.elevation }
     private var fatigueColor: Color { AppDesign.MetricColor.speed }
     private var formColor: Color { AppDesign.MetricColor.distance }
+
+    private var uncertaintySpans: [TrainingLoadUncertaintySpan] {
+        TrainingLoadUncertainty.spans(in: series.loadDays)
+    }
+
+    /// The bias direction, stated wherever the curve is explained. Unknown
+    /// load decays the model exactly as rest does, and that error runs in the
+    /// direction that flatters a training decision.
+    private static let uncertaintyBiasCopy = """
+        Shaded spans are days with runs but no usable heart rate. The model \
+        has no load for them and decays as if you had rested, so a stretch of \
+        strapless running reads as lost fitness and gained freshness. The \
+        values are unchanged — only the confidence is shown.
+        """
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
@@ -550,6 +566,9 @@ private struct TrainingLoadChartPanel: View {
         if let coverage = series.hrCoverageFraction {
             parts.append("Heart-rate coverage: \(Int((coverage * 100).rounded()))% of days with runs.")
         }
+        if !uncertaintySpans.isEmpty {
+            parts.append(Self.uncertaintyBiasCopy)
+        }
         return Text(parts.joined(separator: " "))
             .font(AppDesign.Typography.compactLabel)
             .foregroundStyle(.secondary)
@@ -558,6 +577,19 @@ private struct TrainingLoadChartPanel: View {
 
     private var chart: some View {
         Chart {
+            // Drawn before every other mark so the shading sits behind the
+            // bars and lines rather than dimming them. Dashing the model
+            // lines was the alternative, but form already owns a dash, so a
+            // dashed fitness line and a dashed form line would encode two
+            // unrelated things in one channel.
+            ForEach(uncertaintySpans, id: \.self) { span in
+                RectangleMark(
+                    xStart: .value("Unknown load from", span.start),
+                    xEnd: .value("Unknown load until", span.endExclusive)
+                )
+                .foregroundStyle(loadColor.opacity(0.10))
+                .accessibilityHidden(true)
+            }
             ForEach(series.loadDays.indices, id: \.self) { index in
                 let day = series.loadDays[index]
                 let model = series.modelDays[index]
@@ -648,6 +680,11 @@ private struct TrainingLoadChartPanel: View {
                     }
             }
         }
+        .help(
+            uncertaintySpans.isEmpty
+                ? "Daily TRIMP with the fitness, fatigue, and form model. Fitness and fatigue are exponentially weighted averages of daily load; form is fitness minus fatigue."
+                : Self.uncertaintyBiasCopy
+        )
         .accessibilityLabel("Training load by day")
         .accessibilityValue(spokenSummary)
         .accessibilityChartDescriptor(

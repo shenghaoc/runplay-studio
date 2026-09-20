@@ -725,10 +725,18 @@ public struct TrainingLoadChartAccessibilitySummary: Equatable, Sendable {
             let signed = latestTSB >= 0 ? "+" : ""
             parts.append("Form \(signed)\(Int(latestTSB.rounded())).")
         }
+        // The bias disclosure is spoken in both modes. The shading on the
+        // chart does not depend on the opt-in — an unmeasured day is still
+        // unmeasured when an invented value is standing in for it — so the
+        // spoken channel must not disclose it in only one mode.
         if includesEstimatedLoads {
             parts.append("Estimated loads are included in the model on your explicit request; they are invented values and make the curve less trustworthy.")
+            if noHRDataDayCount > 0 {
+                parts.append("\(noHRDataDayCount) days with runs have no measured heart rate; where no estimate stands in, the model decays as if you had rested.")
+            }
         } else if noHRDataDayCount > 0 {
             parts.append("\(noHRDataDayCount) days with runs have no heart rate and contribute nothing to the model.")
+            parts.append("The model has no load for those days and decays as if you had rested, so that stretch reads as lost fitness and gained freshness.")
         }
         if let coverage = hrCoverageFraction {
             parts.append("Heart-rate coverage \(Int((coverage * 100).rounded())) percent of days with runs.")
@@ -751,7 +759,7 @@ public struct TrainingLoadChartAccessibilitySummary: Equatable, Sendable {
         } else if hasHRData {
             parts.append("Load \(Int(load.rounded())) TRIMP")
         } else {
-            parts.append("No heart-rate load")
+            parts.append("No heart-rate load, modelled as rest")
         }
         parts.append("fitness \(Int(ctl.rounded()))")
         parts.append("fatigue \(Int(atl.rounded()))")

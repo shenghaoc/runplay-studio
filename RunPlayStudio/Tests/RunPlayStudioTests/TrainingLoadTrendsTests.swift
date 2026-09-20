@@ -351,4 +351,127 @@ final class TrainingLoadTrendsTests: XCTestCase {
         XCTAssertTrue(phrase.contains("estimated, not in model"))
         XCTAssertTrue(phrase.contains("form +10"))
     }
+
+    // MARK: - Uncertainty spans
+
+    /// Dense day series: one entry per day from `start`, contribution taken
+    /// from `marks` (h = measured HR day, n = runs but no usable HR, r =
+    /// rest).
+    private func days(from start: Date, _ marks: String) -> [TrainingLoadDay] {
+        marks.enumerated().map { offset, mark in
+            let contribution: TrainingLoadDay.Contribution
+            switch mark {
+            case "h": contribution = .hrDay
+            case "n": contribution = .noHRData
+            default: contribution = .restDay
+            }
+            return TrainingLoadDay(
+                date: start.addingTimeInterval(Double(offset) * 86_400),
+                measuredLoad: contribution == .hrDay ? 50 : 0,
+                estimatedLoad: 0,
+                contribution: contribution,
+                runCount: contribution == .restDay ? 0 : 1
+            )
+        }
+    }
+
+    func testUncertaintySpansMergeConsecutiveUnknownDays() {
+        let start = utcDate(2026, 3, 1)
+        let spans = TrainingLoadUncertainty.spans(in: days(from: start, "hnnnh"))
+
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertEqual(spans.first?.dayCount, 3)
+        XCTAssertEqual(spans.first?.start, start.addingTimeInterval(86_400))
+        // Exclusive end is the following day's own day start, so the band
+        // covers the third unknown day in full.
+        XCTAssertEqual(spans.first?.endExclusive, start.addingTimeInterval(4 * 86_400))
+    }
+
+    func testUncertaintySpansSplitOnMeasuredOrRestDays() {
+        let start = utcDate(2026, 3, 1)
+
+        let splitByMeasured = TrainingLoadUncertainty.spans(in: days(from: start, "nnhnn"))
+        XCTAssertEqual(splitByMeasured.map(\.dayCount), [2, 2])
+
+        // A rest day is a *measured* zero, so it ends a span just as a
+        // measured load day does — that distinction is the whole point.
+        let splitByRest = TrainingLoadUncertainty.spans(in: days(from: start, "nrn"))
+        XCTAssertEqual(splitByRest.map(\.dayCount), [1, 1])
+    }
+
+    func testUncertaintySpanAtSeriesEndClosesOnItsOwnLastDay() {
+        let start = utcDate(2026, 3, 1)
+        let spans = TrainingLoadUncertainty.spans(in: days(from: start, "hnn"))
+
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertEqual(spans.first?.endExclusive, start.addingTimeInterval(3 * 86_400))
+    }
+
+    func testUncertaintySpansAreEmptyWithoutUnknownDays() {
+        let start = utcDate(2026, 3, 1)
+        XCTAssertTrue(TrainingLoadUncertainty.spans(in: days(from: start, "hhrh")).isEmpty)
+        XCTAssertTrue(TrainingLoadUncertainty.spans(in: []).isEmpty)
+    }
+
+    func testUncertaintySpansIgnoreEstimatedLoads() {
+        let start = utcDate(2026, 3, 1)
+        // An estimated value standing in for a missing measurement does not
+        // make the day measured, so the span is unchanged whether or not the
+        // user opted estimates into the model.
+        let withEstimates = days(from: start, "hnnh").map { day in
+            TrainingLoadDay(
+                date: day.date,
+                measuredLoad: day.measuredLoad,
+                estimatedLoad: day.contribution == .noHRData ? 35 : 0,
+                contribution: day.contribution,
+                runCount: day.runCount
+            )
+        }
+        XCTAssertEqual(TrainingLoadUncertainty.spans(in: withEstimates).map(\.dayCount), [2])
+    }
+
+    func testSpokenSummaryStatesBiasDirectionInBothModes() {
+        let excluded = TrainingLoadChartAccessibilitySummary(
+            includesEstimatedLoads: false,
+            hrCoverageFraction: 0.5,
+            dayCount: 20,
+            hrDayCount: 6,
+            noHRDataDayCount: 4,
+            latestLoad: 30,
+            latestCTL: 25,
+            latestATL: 20,
+            latestTSB: 5
+        )
+        XCTAssertTrue(excluded.spokenSummary.contains("decays as if you had rested"))
+        XCTAssertTrue(excluded.spokenSummary.contains("lost fitness and gained freshness"))
+
+        // Opting estimates in does not silence the disclosure: days with no
+        // estimate at all are still decayed as rest.
+        let optedIn = TrainingLoadChartAccessibilitySummary(
+            includesEstimatedLoads: true,
+            hrCoverageFraction: 0.5,
+            dayCount: 20,
+            hrDayCount: 6,
+            noHRDataDayCount: 4,
+            latestLoad: 30,
+            latestCTL: 25,
+            latestATL: 20,
+            latestTSB: 5
+        )
+        XCTAssertTrue(optedIn.spokenSummary.contains("invented values"))
+        XCTAssertTrue(optedIn.spokenSummary.contains("decays as if you had rested"))
+    }
+
+    func testDayPhraseMarksUnknownLoadAsModelledRest() {
+        let phrase = TrainingLoadChartAccessibilitySummary.dayPhrase(
+            load: 0,
+            estimatedLoad: false,
+            ctl: 30,
+            atl: 22,
+            tsb: 8,
+            hasHRData: false
+        )
+        XCTAssertTrue(phrase.contains("No heart-rate load, modelled as rest"))
+        XCTAssertTrue(phrase.contains("fitness 30"))
+    }
 }

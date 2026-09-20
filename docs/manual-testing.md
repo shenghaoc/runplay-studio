@@ -186,6 +186,10 @@ Use only synthetic or explicitly private, ignored local workout files.
 - [ ] Training Load honesty rules: a run without heart rate shows a lighter estimated bar that the captions exclude from the model; the "Include estimated loads" toggle redraws the curve and changes the caption; HR coverage percentage is shown for the window.
 - [ ] Hover the training-load chart; the readout shows the day's load (labelled "estimated, not in model" on HR-less days), fitness, fatigue, and form.
 - [ ] Adjust the Fitness/Fatigue time-constant steppers; the curve reshapes without touching stored data. Verify VoiceOver speaks the chart summary (fitness, fatigue, form, no-HR-day count, coverage).
+- [ ] Unknown-load shading: a stretch of runs with no usable heart rate draws a shaded band behind the Fitness/Fatigue/Form lines, the band starts and ends on the right days, and a single unknown day still gets a full day's width. A rest day inside the stretch splits the band in two.
+- [ ] Zero-contribution days stay visibly distinct from rest days inside the shaded band (floor marker present on the run day, absent on the rest day) at both the default window and the 720x500 minimum.
+- [ ] The shading's caption and the chart's tooltip both state the bias direction — unknown-load days decay the model as if rested — and the caption appears only while such a stretch is in range.
+- [ ] Toggle "Include estimated loads": the shading stays (an invented value does not make a day measured) and VoiceOver still speaks the bias disclosure in both modes.
 - [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
 
 ### 2026-09-15 pass
