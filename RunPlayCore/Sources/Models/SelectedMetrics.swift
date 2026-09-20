@@ -17,6 +17,7 @@ public struct SelectedMetrics: Sendable {
     public var heartRateBPM: Double?
     public var speedMetersPerSecond: Double?
     public var cadence: Double?
+    public var powerWatts: Double?
     public var splitIndex: Int?
     /// Zero-based index into `workout.recordedLaps`, if any.
     public var recordedLapIndex: Int?
@@ -29,6 +30,7 @@ public struct SelectedMetrics: Sendable {
         heartRateBPM: Double? = nil,
         speedMetersPerSecond: Double? = nil,
         cadence: Double? = nil,
+        powerWatts: Double? = nil,
         splitIndex: Int? = nil,
         recordedLapIndex: Int? = nil
     ) {
@@ -45,6 +47,7 @@ public struct SelectedMetrics: Sendable {
             heartRateBPM: heartRateBPM,
             speedMetersPerSecond: speedMetersPerSecond,
             cadence: cadence,
+            powerWatts: powerWatts,
             splitIndex: splitIndex,
             recordedLapIndex: recordedLapIndex
         )
@@ -63,6 +66,7 @@ public struct SelectedMetrics: Sendable {
         heartRateBPM: Double? = nil,
         speedMetersPerSecond: Double? = nil,
         cadence: Double? = nil,
+        powerWatts: Double? = nil,
         splitIndex: Int? = nil,
         recordedLapIndex: Int? = nil
     ) {
@@ -78,6 +82,7 @@ public struct SelectedMetrics: Sendable {
         self.heartRateBPM = heartRateBPM
         self.speedMetersPerSecond = speedMetersPerSecond
         self.cadence = cadence
+        self.powerWatts = powerWatts
         self.splitIndex = splitIndex
         self.recordedLapIndex = recordedLapIndex
     }
@@ -130,6 +135,10 @@ public struct SelectedMetrics: Sendable {
 
     public var formattedCadence: String {
         DisplayFormatter.formatCadence(cadence)
+    }
+
+    public var formattedPower: String {
+        DisplayFormatter.formatPower(powerWatts)
     }
 
     public var formattedSplit: String {

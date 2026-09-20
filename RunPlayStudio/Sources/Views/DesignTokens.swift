@@ -40,6 +40,8 @@ enum AppDesign {
         static let elevation = energeticGreen
         static let heartRate = alertRed
         static let cadence = softPurple
+        /// Warm yellow is the power metric's semantic accent (DESIGN.md).
+        static let power = Color(hex: 0xFFD60A)
         static let split = comparisonOrange
     }
 

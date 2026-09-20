@@ -97,6 +97,9 @@ struct SegmentCard: View {
                 if !segment.formattedElevation.isEmpty {
                     Label(segment.formattedElevation, systemImage: "mountain.2")
                 }
+                if let power = segment.averagePowerWatts {
+                    Label(DisplayFormatter.formatPower(power), systemImage: "bolt.fill")
+                }
             }
             .font(AppDesign.Typography.compactLabel)
             .foregroundStyle(.secondary)

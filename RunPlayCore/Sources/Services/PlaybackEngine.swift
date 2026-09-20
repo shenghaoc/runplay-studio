@@ -181,6 +181,7 @@ public class PlaybackEngine {
             heartRateBPM: point.heartRateBPM,
             speedMetersPerSecond: point.speedMetersPerSecond,
             cadence: point.cadence,
+            powerWatts: point.powerWatts,
             splitIndex: findCurrentSplitIndex(),
             recordedLapIndex: findCurrentRecordedLapIndex()
         )

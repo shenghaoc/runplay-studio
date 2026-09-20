@@ -10,6 +10,7 @@ struct CurrentMetricsPanel: View {
     let metrics: SelectedMetrics
     let hasHeartRate: Bool
     let hasCadence: Bool
+    var hasPower: Bool = false
 
     var body: some View {
         HStack(spacing: AppDesign.Spacing.large) {
@@ -32,6 +33,11 @@ struct CurrentMetricsPanel: View {
 
             if hasCadence {
                 MetricDisplay(label: "Cad", value: metrics.formattedCadence, icon: "shoeprints.fill", color: AppDesign.MetricColor.cadence)
+            }
+
+            if hasPower {
+                MetricDisplay(label: "Power", value: metrics.formattedPower, icon: "bolt.fill", color: AppDesign.MetricColor.power)
+                    .help("Running power in watts at the replay position.")
             }
 
             MetricDisplay(label: "Split", value: metrics.formattedSplit, icon: "flag", color: AppDesign.MetricColor.split)

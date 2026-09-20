@@ -46,7 +46,8 @@ struct SplitTableView: View {
             case .distanceSplits:
                 DistanceSplitsTableView(
                     splits: splits,
-                    currentSplitIndex: currentSplitIndex
+                    currentSplitIndex: currentSplitIndex,
+                    showsPower: splits.contains { $0.averagePowerWatts != nil }
                 )
             case .recordedLaps:
                 RecordedLapsTableView(
@@ -79,6 +80,7 @@ struct SplitTableView: View {
 private struct DistanceSplitsTableView: View {
     let splits: [RunSplit]
     var currentSplitIndex: Int? = nil
+    var showsPower: Bool = false
 
     var body: some View {
         let activeSplitID = currentSplitIndex.flatMap { index in
@@ -145,11 +147,21 @@ private struct DistanceSplitsTableView: View {
                 }
                 .width(85)
 
-                TableColumn("Elapsed Pace") { split in
-                    Text(split.formattedElapsedPace)
-                        .monospacedDigit()
+                // Power and Elapsed Pace are mutually exclusive so the table
+                // stays within SwiftUI's 10-column limit. Active pace is the
+                // canonical pace; elapsed pace remains in CSV/JSON exports.
+                if showsPower {
+                    TableColumn("Power") { split in
+                        optionalPower(split.averagePowerWatts)
+                    }
+                    .width(70)
+                } else {
+                    TableColumn("Elapsed Pace") { split in
+                        Text(split.formattedElapsedPace)
+                            .monospacedDigit()
+                    }
+                    .width(90)
                 }
-                .width(90)
 
                 TableColumn("HR") { split in
                     optionalBPM(split.averageHeartRateBPM)
@@ -191,6 +203,17 @@ private struct DistanceSplitsTableView: View {
         .accessibilityValue(
             "Active pace \(split.formattedPace), active time \(split.formattedActive), elapsed time \(split.formattedElapsed)"
         )
+    }
+
+    @ViewBuilder
+    private func optionalPower(_ value: Double?) -> some View {
+        if let value {
+            Text(DisplayFormatter.formatPower(value))
+                .monospacedDigit()
+                .foregroundStyle(AppDesign.MetricColor.power)
+        } else {
+            Text("—").foregroundStyle(.quaternary)
+        }
     }
 
     @ViewBuilder

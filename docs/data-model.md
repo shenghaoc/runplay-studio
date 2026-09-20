@@ -110,6 +110,12 @@ struct RoutePoint: Identifiable, Codable {
     var paceSecondsPerKilometer: Double?
     var heartRateBPM: Double?
     var cadence: Double?
+    var powerWatts: Double?
+    var groundContactTimeMilliseconds: Double?
+    var verticalOscillationMillimeters: Double?
+    var verticalRatioPercent: Double?
+    var stanceTimeBalancePercent: Double?
+    var stepLengthMeters: Double?
     var horizontalAccuracy: Double?
     var routeSegmentIndex: Int
 }
@@ -123,6 +129,11 @@ field and decode with index `0` for backward compatibility.
 `elapsedSeconds` always means elapsed time since the workout's first route
 timestamp. It is never rewritten to remove pauses. Active time is derived by
 `WorkoutTimeline`.
+
+The power and running-dynamics fields are optional source data populated by
+FIT import (native record power or recognized developer fields). Older
+snapshots omit the keys and decode with `nil`; reimporting the source file is
+the upgrade path, and no snapshot version gates them.
 
 `altitudeMeters` is finite source altitude supplied by the imported workout. It
 is not replaced with a smoothed value. Corrected presentation and analysis

@@ -738,6 +738,24 @@ exports were saved through the native panels and inspected for the estimated
 fields. The packaged app was quit and relaunched; it loaded the reanalysed
 snapshots without repeating migration.
 
+## FIT Developer Data Checklist
+
+Use only synthetic fixtures for automated checks. The one real-device check
+below uses a file under `local-workouts/` (git-ignored) and is never
+committed.
+
+- [ ] Import a synthetic FIT file with Stryd-style developer fields (power, ground time, vertical oscillation, plus one unknown field) and verify the Power chart, the Power replay badge, the Power splits column, and the Power & Running Dynamics panel all appear with sane values.
+- [ ] Import the same workout and verify map coloring by Power: mode enabled, legend reads Lower → Higher with watts, no-data sections stay neutral, and the palette reads cool → warm yellow at higher effort.
+- [ ] Verify warm-yellow power text (#FFD60A) is legible on the light appearance for the chart line, metrics badge, and splits column; power state is never conveyed by colour alone (labels and values accompany every colour use).
+- [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table keeps its Elapsed Pace column (Power column is conditional), and the dynamics panel is absent.
+- [ ] VoiceOver: the Power chart exposes a series-level descriptor (title, range, average, current value); the dynamics panel reads as combined label/value rows; nothing announces per replay frame.
+- [ ] Export JSON and CSV from a power workout and confirm `averagePowerWatts`, `best20MinutePowerWatts`, the `runningDynamics` block, `Avg_Power_W` columns, and the `# Running Dynamics` section with explicit units; a plain workout omits them.
+- [ ] Re-import the same developer-fields FIT file after editing nothing and confirm identity/duplicate behaviour is unchanged.
+
+### Real-device check (owner, local-only)
+
+- [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units), power values are plausible against the watch's own summary, and — specifically — that a developer field with a **non-zero offset** converts as `raw / scale + offset`. There is no official worked example for the developer-offset sign; if this file disagrees, flip the convention in `FITDeveloperFieldResolver.physicalValue` and update the pinned test.
+
 ## FIT Import Checklist
 
 Use synthetic FIT fixtures only. These are manual checks to perform in a GUI

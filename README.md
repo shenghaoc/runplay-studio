@@ -51,7 +51,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, enhanced metrics, and developer data fields (running power and running dynamics with provenance); importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -370,7 +370,7 @@ To build a local `.app` bundle:
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, enhanced metrics, and developer data fields (running power and running dynamics with provenance); importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -492,7 +492,7 @@ Compare two completed runs side by side:
 - Route-Aware alignment is GPS shape matching, not road-level map matching or survey-grade geometry
 - Opposite-direction runs and large cyclic start rotations are unavailable or limited in Route-Aware mode
 - Moving-time estimation remains an estimate; Active is recorded time inside continuous route segments
-- FIT support targets common running activities rather than the full FIT profile; developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported
+- FIT support targets common running activities rather than the full FIT profile; developer data fields (running power, running dynamics) are decoded, while component accumulation, subfield expansion, and course/workout files remain unsupported
 - A Strava archive entry that itself contains several running sessions is reported as unsupported rather than opening a nested review sheet
 - No HealthKit integration (placeholder importer exists but is not yet functional)
 - No cloud sync, accounts, or web interface
