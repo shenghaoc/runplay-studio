@@ -35,7 +35,7 @@ concurrency:
 jobs:
   validate-and-package:
     name: Validate and package
-    runs-on: macos-26
+    runs-on: xcode-27
     # Production tag path uses the `release` environment; every other trigger
     # resolves to the empty string, which GitHub treats as "no environment".
     # Verified on an isolated probe branch: an empty name neither fails the run
@@ -51,13 +51,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
-
-      - name: Verify Swift 6.3
+      # The xcode-27 image carries exactly one Xcode (27.0, the default), so
+      # there is no developer-dir selection to pin. The parity gate fails
+      # the job when the runner's Swift marketing version drifts from the
+      # Linux container pin in ci.yml.
+      - name: Verify Swift toolchain parity
         run: |
+          xcodebuild -version
           swift --version
-          swift --version | grep -q 'Swift version 6.3'
+          ./scripts/check-toolchain-parity.sh
 
       - name: Resolve release metadata
         id: meta
@@ -271,7 +273,7 @@ jobs:
     name: Publish GitHub Release
     needs: validate-and-package
     if: needs.validate-and-package.outputs.is_production == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     environment: release

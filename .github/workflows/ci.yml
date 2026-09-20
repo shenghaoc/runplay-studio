@@ -10,16 +10,45 @@ permissions:
   contents: read
 
 jobs:
-  # RunPlayCore + portable C++ engine — test on Linux for cross-platform validation
+  # RunPlayCore + portable C++ engine — test on Linux for cross-platform
+  # validation. Linux CI is container-only by policy: every Linux job that
+  # needs Swift runs the one official Swift image pinned below (Ubuntu
+  # 26.04 "resolute" userspace, Swift 6.4), so the tag lives in exactly one
+  # place and bumping it is a one-line change. The ubuntu-26.04 host
+  # contributes only the kernel and the Docker daemon; nothing from the
+  # runner image exists inside the container, which is why the explicit
+  # python3 install below is required (validate-cpp-boundaries.sh drives
+  # its AST checks with it) — do not remove it. The digest pins the exact
+  # image manifest; refresh it together with the tag on every bump.
+  # Dependabot cannot track this (its github-actions ecosystem only
+  # updates `uses:`); Renovate can, via a regex manager anchored here.
+  # Both suites (tests and ASan+UBSan sanitizers) share this one job so
+  # the image pin stays single-sourced; the matrix keeps them as separate
+  # parallel checks.
   core-linux:
-    name: RunPlayCore (Linux)
-    runs-on: ubuntu-24.04
+    name: RunPlayCore (Linux, ${{ matrix.suite }})
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [tests, sanitizers]
+    runs-on: ubuntu-26.04
+    # Single source of truth for the Linux Swift toolchain. Its exact text
+    # is parsed by scripts/check-toolchain-parity.sh (and grepped by the
+    # AGENTS.md local-verification recipe), so do not reformat this line;
+    # keep the shape `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
+    # Bumping the image means editing this line and refreshing the digest
+    # in the same change.
+    container: swift:6.4.0-resolute@sha256:bb6e5d5f2a97bc07cf8022c1a3e062f8164b8fd078698327ce2ab097e02a91dc
     steps:
       - uses: actions/checkout@v7
-      - name: Verify Swift 6.3
+      - name: Install container dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends python3
+      - name: Verify Swift toolchain parity
         run: |
           swift --version
-          swift --version | grep -q 'Swift version 6.3'
+          ./scripts/check-toolchain-parity.sh
       - name: Print Clang version
         run: |
           clang --version || true
@@ -36,41 +65,36 @@ jobs:
           -Xcxx -Wsign-conversion
           -Xcxx -Wshadow
       - name: Run native C++ engine tests
+        if: matrix.suite == 'tests'
         run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+      - name: Native C++ tests under ASan + UBSan
+        if: matrix.suite == 'sanitizers'
+        run: ./scripts/run-cpp-engine-tests.sh --sanitize
       - name: Verify RunPlayCore
+        if: matrix.suite == 'tests'
         run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
       # Building alone would not exercise the smoke test's runtime
       # `precondition`s, so run the binary as well.
       - name: Verify external RunPlayCore consumer
+        if: matrix.suite == 'tests'
         run: |
           swift build --package-path Tests/PackageConsumerSmoke
           swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
 
-  # AddressSanitizer + UndefinedBehaviorSanitizer on the native C++ test binary
-  core-linux-sanitizers:
-    name: RunPlayEngineCpp Sanitizers (Linux)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify Swift 6.3
-        run: |
-          swift --version
-          swift --version | grep -q 'Swift version 6.3'
-      - name: Native C++ tests under ASan + UBSan
-        run: ./scripts/run-cpp-engine-tests.sh --sanitize
-
-  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++ engine
+  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++ engine.
+  # The xcode-27 image carries exactly one Xcode (27.0, the default), so there
+  # is no developer-dir selection to pin. The parity gate fails the job when
+  # the runner's Swift marketing version drifts from the Linux container pin.
   macos:
     name: macOS (Full Stack)
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
-      - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
-      - name: Verify Swift 6.3
+      - name: Verify Swift toolchain parity
         run: |
+          xcodebuild -version
           swift --version
-          swift --version | grep -q 'Swift version 6.3'
+          ./scripts/check-toolchain-parity.sh
       - name: Validate C++ architecture boundaries
         run: ./scripts/validate-cpp-boundaries.sh
       - name: Build RunPlayEngineCpp
@@ -94,15 +118,14 @@ jobs:
   # a debug-only CI. Build only; nothing is executed in release.
   release-test-build-macos:
     name: Release Test Build (macOS)
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
-      - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
-      - name: Verify Swift 6.3
+      - name: Verify Swift toolchain parity
         run: |
+          xcodebuild -version
           swift --version
-          swift --version | grep -q 'Swift version 6.3'
+          ./scripts/check-toolchain-parity.sh
       - name: Build test targets in release
         # `swift build -c release --build-tests` is not a valid gate: it
         # fails on clean main with a pre-existing testability error
@@ -122,15 +145,14 @@ jobs:
   # construction: no signing identity, no notarization, no GitHub Release.
   packaging-macos:
     name: Release Packaging (macOS)
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
-      - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
-      - name: Verify Swift 6.3
+      - name: Verify Swift toolchain parity
         run: |
+          xcodebuild -version
           swift --version
-          swift --version | grep -q 'Swift version 6.3'
+          ./scripts/check-toolchain-parity.sh
       - name: Packaging tooling syntax
         run: |
           bash -n scripts/lib/release-common.sh
