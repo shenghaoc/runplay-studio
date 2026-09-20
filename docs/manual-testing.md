@@ -182,15 +182,225 @@ Use only synthetic or explicitly private, ignored local workout files.
 - [ ] Use the inspector period picker and View Runs button with keyboard and VoiceOver.
 - [ ] Import a workout; totals update on return to Trends. Delete while Trends visible; workspace stays on Trends.
 - [x] Relaunch with Trends as the last workspace; destination, period, range, and scope restore.
-- [ ] Training Load panel: with a backfillable library, opening Trends shows the computing banner once; it progresses, finishes, and the daily bars + Fitness/Fatigue/Form lines appear without a manual refresh.
-- [ ] Training Load honesty rules: a run without heart rate shows a lighter estimated bar that the captions exclude from the model; the "Include estimated loads" toggle redraws the curve and changes the caption; HR coverage percentage is shown for the window.
-- [ ] Hover the training-load chart; the readout shows the day's load (labelled "estimated, not in model" on HR-less days), fitness, fatigue, and form.
-- [ ] Adjust the Fitness/Fatigue time-constant steppers; the curve reshapes without touching stored data. Verify VoiceOver speaks the chart summary (fitness, fatigue, form, no-HR-day count, coverage).
-- [ ] Unknown-load shading: a stretch of runs with no usable heart rate draws a shaded band behind the Fitness/Fatigue/Form lines, the band starts and ends on the right days, and a single unknown day still gets a full day's width. A rest day inside the stretch splits the band in two.
-- [ ] Zero-contribution days stay visibly distinct from rest days inside the shaded band (floor marker present on the run day, absent on the rest day) at both the default window and the 720x500 minimum.
-- [ ] The shading's caption and the chart's tooltip both state the bias direction — unknown-load days decay the model as if rested — and the caption appears only while such a stretch is in range.
-- [ ] Toggle "Include estimated loads": the shading stays (an invented value does not make a day measured) and VoiceOver still speaks the bias disclosure in both modes.
-- [ ] Verify VoiceOver chart descriptors, spoken summaries, and ⌘⇧R in Help → Keyboard Shortcuts.
+- [x] Training Load panel: with a backfillable library, opening Trends shows the computing banner once; it progresses, finishes, and the daily bars + Fitness/Fatigue/Form lines appear without a manual refresh.
+- [x] Training Load honesty rules: a run without heart rate shows a lighter estimated bar that the captions exclude from the model; the "Include estimated loads" toggle redraws the curve and changes the caption; HR coverage percentage is shown for the window.
+- [x] Hover the training-load chart; the readout shows the day's load (labelled "estimated, not in model" on HR-less days), fitness, fatigue, and form.
+- [x] Hovering a genuine rest day reads "Rest day", not "No heart-rate load" — the two zeroes must not share a phrase.
+- [x] Adjust the Fitness/Fatigue time-constant steppers; the curve reshapes without touching stored data.
+- [x] Quit mid-backfill, then relaunch straight back into the restored Trends workspace: the pass resumes on its own, without navigating away and back.
+- [x] Unknown-load shading: a stretch of runs with no usable heart rate draws a shaded band behind the Fitness/Fatigue/Form lines, the band starts and ends on the right days, and a single unknown day still gets a full day's width. A rest day inside the stretch splits the band in two.
+- [x] Zero-contribution days stay visibly distinct from rest days inside the shaded band (floor marker present on the run day, absent on the rest day) at both the default window and the 720x500 minimum.
+- [x] The shading's caption and the chart's tooltip both state the bias direction — unknown-load days decay the model as if rested.
+- [x] Toggle "Include estimated loads": the shading stays (an invented value does not make a day measured) and the caption switches to the wording that is true in that mode.
+- [ ] The shading caption disappears when no unknown-load stretch is in the displayed range. (Needs a scope or range containing no such day; the fixture set below puts one in every range the picker offers.)
+- [ ] VoiceOver speaks the chart summary (fitness, fatigue, form, no-HR-day count, coverage) and the bias disclosure in both opt-in modes. **Not verified by ear.** The strings are unit-tested and the chart carries them as its accessibility value, but the chart element is not exposed to an accessibility-tree walk from outside, and switching VoiceOver on is a system-settings change.
+- [ ] Verify VoiceOver chart descriptors and ⌘⇧R in Help → Keyboard Shortcuts.
+
+### Prep: synthetic training-load fixture set
+
+The Routes fixtures do not exercise training load: the model needs months of
+dated runs, a controlled stretch with no heart rate, and rest days in the right
+places. Two properties matter and are easy to get wrong.
+
+1. **Filler runs must stay out of the designed window.** A filler run *with*
+   heart rate landing on a day you meant to be unknown makes that day measured
+   and splits the band you are trying to observe. Keep fillers before the
+   design window. The first attempt at these fixtures scattered 260 fillers
+   across the whole timeline and produced a row of meaningless one-day bands.
+2. **The backfill banner only appears for workouts with no stored snapshot.**
+   Importing with this build stamps every workout on import, so a fresh import
+   never shows the banner. Import with a **pre-feature build** first, then point
+   the feature build at the same library — that is the real upgrade path, and
+   the only way to see the banner, the progress, and the resume.
+
+```bash
+python3 - << 'FIXTURES'
+import csv, io, math, os, random, zipfile
+from datetime import datetime, timedelta, timezone
+
+BASE_LAT, BASE_LON = 37.7749, -122.4194
+M_PER_DEG_LAT = 111_320.0
+OUT_DIR = os.environ.get("OUT_DIR", "/tmp/runplay-hrload-fixtures")
+
+def to_latlon(e, n, lat=BASE_LAT, lon=BASE_LON):
+    return lat + n / M_PER_DEG_LAT, lon + e / (111_320.0 * math.cos(math.radians(lat)))
+
+def loop(side_m, step_m=25.0):
+    per, pts, t = side_m * 4, [], 0.0
+    while t <= per:
+        p = t % per
+        if p < side_m: e, n = p, 0.0
+        elif p < 2 * side_m: e, n = side_m, p - side_m
+        elif p < 3 * side_m: e, n = side_m - (p - 2 * side_m), side_m
+        else: e, n = 0.0, side_m - (p - 3 * side_m)
+        pts.append((e, n, t))
+        if t >= per: break
+        t = min(per, t + step_m)
+    return pts
+
+def gpx(name, pts, start, pace_s_per_km, hr_profile, lat=BASE_LAT, lon=BASE_LON):
+    # hr_profile None -> no <hr> elements at all; else (mean, swing).
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<gpx version="1.1" creator="RunPlayFixtureGenerator" '
+           'xmlns="http://www.topografix.com/GPX/1/1">',
+           f"  <trk><name>{name}</name><trkseg>"]
+    total = pts[-1][2]
+    for e, n, travelled in pts:
+        la, lo = to_latlon(e, n, lat, lon)
+        ts = (start + timedelta(seconds=travelled / 1000.0 * pace_s_per_km)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        alt = 15.0 + 3.0 * math.sin(travelled / 400.0)
+        if hr_profile is None:
+            ext = ""
+        else:
+            mean, swing = hr_profile
+            frac = travelled / total if total else 0.0
+            ramp = min(1.0, frac * 5.0)
+            bpm = mean - swing + 2 * swing * ramp * (0.85 + 0.15 * math.sin(frac * 6.0))
+            ext = ("<extensions><gpxtpx:TrackPointExtension "
+                   'xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">'
+                   f"<gpxtpx:hr>{int(round(bpm))}</gpxtpx:hr>"
+                   "</gpxtpx:TrackPointExtension></extensions>")
+        out.append(f'    <trkpt lat="{la:.7f}" lon="{lo:.7f}"><ele>{alt:.1f}</ele>'
+                   f"<time>{ts}</time>{ext}</trkpt>")
+    return "\n".join(out + ["  </trkseg></trk>", "</gpx>"])
+
+acts, nid = [], [7000]
+def add(name, pts, start, pace, hr, lat=BASE_LAT, lon=BASE_LON):
+    acts.append((nid[0], name, gpx(name, pts, start, pace, hr, lat, lon), start)); nid[0] += 1
+def D(y, m, d, h=7): return datetime(y, m, d, h, 0, tzinfo=timezone.utc)
+
+rnd = random.Random(4242)
+base_loop, short_loop = loop(1250.0, 3.0), loop(700.0, 3.0)
+
+# Base period: measured HR, ~4 runs/week, Aug 2025 - Jun 2026.
+day, i = D(2025, 8, 1), 0
+while day < D(2026, 7, 1):
+    if day.weekday() in (0, 2, 4, 6):
+        pts = [(e + rnd.uniform(-6, 6), n + rnd.uniform(-6, 6), t)
+               for e, n, t in (base_loop if i % 3 else short_loop)]
+        add(f"Base Run {i+1:03d}", pts, day, rnd.uniform(285, 330), (rnd.uniform(140, 152), 12))
+        i += 1
+    day += timedelta(days=1)
+
+# The designed unknown-load window. 6-8 Jul is one span; 9 Jul is a REST day
+# that must split it; 10-13 Jul is the next; 14 Jul is MEASURED and must split
+# again; 15-16 Jul is the last.
+for d in (6, 7, 8):        add(f"Strapless {d} Jul", base_loop, D(2026, 7, d), 300, None)
+for d in (10, 11, 12, 13): add(f"Strapless {d} Jul", base_loop, D(2026, 7, d), 305, None)
+add("Strapped 14 Jul", base_loop, D(2026, 7, 14), 295, (148, 12))
+for d in (15, 16):         add(f"Strapless {d} Jul", base_loop, D(2026, 7, d), 310, None)
+for d in (20, 23, 26, 29): add(f"Recovery {d} Jul", base_loop, D(2026, 7, d), 300, (146, 12))
+for d in (1, 3, 8, 11, 14, 17, 22, 25, 28, 31):
+    add(f"August {d:02d}", base_loop, D(2026, 8, d), rnd.uniform(285, 305), (rnd.uniform(142, 150), 12))
+
+# One isolated unknown day (full-day band width) and one with no usable
+# estimate at all (floor marker, no bar) - a stationary near-zero-distance run.
+add("Strapless 05 Aug", base_loop, D(2026, 8, 5), 300, None)
+add("Treadmill No Signal 19 Aug",
+    [(0.0, 0.0, 0.0), (0.4, 0.0, 0.4), (0.8, 0.0, 0.8)], D(2026, 8, 19), 300, None)
+for d in (2, 5, 9, 12, 16, 19):
+    add(f"September {d:02d}", base_loop, D(2026, 9, d), rnd.uniform(280, 300), (rnd.uniform(144, 152), 12))
+
+# Fillers: dense enough that a backfill pass can be interrupted, and stopped
+# before 20 Jun 2026 so none of them lands in the designed window above.
+for k in range(260):
+    pts = [(e + rnd.uniform(-8, 8), n + rnd.uniform(-8, 8), t) for e, n, t in loop(900.0, 2.0)]
+    dt = D(2025, 8, 1) + timedelta(days=rnd.uniform(0, 322), minutes=rnd.uniform(0, 600))
+    add(f"Filler {k+1:03d}", pts, dt, rnd.uniform(270, 340),
+        None if k % 17 == 0 else (rnd.uniform(138, 156), 14),
+        BASE_LAT + rnd.uniform(-0.4, 0.4), BASE_LON + rnd.uniform(-0.4, 0.4))
+
+os.makedirs(OUT_DIR, exist_ok=True)
+buf = io.StringIO(); w = csv.writer(buf)
+w.writerow(["Activity ID", "Activity Name", "Activity Type", "Activity Date", "Filename"])
+for aid, name, _, dt in acts:
+    w.writerow([aid, name, "Run", dt.strftime("%Y-%m-%dT%H:%M:%SZ"), f"activities/{aid}.gpx"])
+zp = os.path.join(OUT_DIR, "hrload_fixtures.zip")
+with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr("export/activities.csv", buf.getvalue())
+    for aid, _, g, _ in acts:
+        zf.writestr(f"export/activities/{aid}.gpx", g)
+print(f"Wrote {zp}: {len(acts)} activities")
+FIXTURES
+
+LIB=/tmp/runplay-hrload-check
+rm -rf "$LIB" && mkdir -p "$LIB"
+
+# 1. Pre-feature build, from any commit before this stack, to produce a library
+#    with no stored training load.
+git worktree add --detach /tmp/runplay-prefeature <commit-before-this-stack>
+(cd /tmp/runplay-prefeature && ./scripts/assemble-app-bundle.sh \
+   --output /tmp/dev-prefeature/RunPlayStudio.app \
+   --bundle-identifier dev.local.runplay.hrload)
+open --env RUNPLAY_LIBRARY_ROOT="$LIB" -a /tmp/dev-prefeature/RunPlayStudio.app
+# File -> Import Strava Archive..., pick the ZIP, Import 483 Runs, Done, quit.
+cp -R "$LIB" "$LIB-pristine"   # so the backfill can be re-run from scratch
+
+# 2. Feature build, same library root.
+./scripts/assemble-app-bundle.sh --output /tmp/dev-feature/RunPlayStudio.app \
+  --bundle-identifier dev.local.runplay.hrload
+open --env RUNPLAY_LIBRARY_ROOT="$LIB" -a /tmp/dev-feature/RunPlayStudio.app
+```
+
+483 activities, ~790k route points, ~216 MB archive. Backfill progress is
+observable from outside the app without guessing at the UI:
+
+```bash
+grep -rl trainingLoad "$LIB/workouts" | wc -l   # of 483
+```
+
+Set **Range -> Last 3 Months** before reading the chart: at Last 12 Months a
+day is under two points wide and band boundaries cannot be judged.
+
+### 2026-09-20 pass: training load
+
+Driven through computer use against the synthetic library above (483 runs,
+never dogfood data), release-configuration bundle, throwaway library root.
+
+**The backfill.** Opening Trends on the pre-feature library showed
+`Computing training load for earlier runs - 0 of 483` with a progress bar, and
+it finished without a manual refresh. ⌘Q during the pass left 116 of 483
+snapshots on disk. This found a defect: relaunching restored straight into
+Trends and the pass did **not** resume — it sat at 116 with no banner, and the
+chart modelled only those 116 while drawing every remaining run day as
+unknown-load. Navigating to All Runs and back completed it (116 -> 483), a
+workaround nobody would guess. `startTrainingLoadBackfillIfNeeded()` was called
+only from `showTrends()`, the navigation path, never from session restore.
+Fixed, with a regression test that restores via `applySessionSnapshot`, and
+re-verified in the running app: quit at 116, relaunch resumed to 483.
+
+**The shading.** The designed July window rendered exactly as laid out: a
+three-day band, a gap at the 9 Jul rest day, a four-day band, a gap at the
+14 Jul measured run, then a two-day band. The isolated 5 Aug unknown day drew a
+full day's width. 19 Aug — a run with no usable estimate — drew the floor marker
+with no bar inside its own one-day band, and stayed distinguishable from the
+plain gaps of neighbouring rest days at the 720x500 minimum as well as at full
+size. Across the shaded stretch fitness fell and form rose, which is the bias
+the caption describes.
+
+**The hover readout.** Three states read distinctly: `Load 31 TRIMP, estimated,
+not in model, fitness 38, fatigue 6, form +32 · 11 Jul 2026`; `No heart-rate
+load, modelled as rest, fitness 23, fatigue 13, form +10 · 19 Aug 2026`; and
+`Rest day, fitness 39, fatigue 8, form +32 · 9 Jul 2026`. The last is a second
+defect this pass found and fixed: `dayPhrase` took a `hasHRData` flag, so a
+genuine rest day and a strapless run produced the identical phrase — erasing
+the exact distinction the shading exists to make.
+
+**The opt-in.** Toggling *Include estimated loads* moved the curve live
+(9 Jul: fitness 39 -> 42, fatigue 8 -> 17, form +32 -> +24) and the shading
+stayed, correctly: an invented value does not make a day measured. That exposed
+a third problem, in the amendment's own copy — the caption asserted "the model
+has no load for them" in both modes, which is false once estimates are in. The
+wording now splits by mode; both were read back in the running app.
+
+**The steppers.** Fitness 42 -> 45 days reshaped the curve (9 Jul form +24 ->
++25) and the panel header followed (`TRIMP by day · Fitness 45 d · Fatigue 7`).
+Stored data untouched.
+
+Still open here: the caption's disappearance when no unknown stretch is in
+range, VoiceOver by ear, and the coefficient-set picker's contents — a
+background-mode click cannot open a pop-up menu.
+
 
 ### 2026-09-15 pass
 
