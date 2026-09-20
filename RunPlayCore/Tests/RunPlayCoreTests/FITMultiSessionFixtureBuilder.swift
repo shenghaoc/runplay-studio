@@ -216,7 +216,7 @@ enum FITMultiSessionFixtureBuilder {
         data.append(16)                                  // protocol version
         data.append(contentsOf: [0x40, 0x01])            // profile version
         data.append(contentsOf: withUnsafeBytes(of: UInt32(content.count).littleEndian) { Array($0) })
-        data.append(contentsOf: [0x46, 0x49, 0x54, 0x20]) // "FIT "
+        data.append(contentsOf: [0x2E, 0x46, 0x49, 0x54]) // ".FIT"
         data.append(contentsOf: [0x00, 0x00])            // header CRC placeholder
 
         let headerCRC = FITParser.crc16(over: data[0..<12])

@@ -110,7 +110,13 @@ public struct FITParser {
     public init() {}
 
     // FIT constants
-    static let fitDataType: [UInt8] = [0x46, 0x49, 0x54, 0x20] // "FIT "
+    /// Bytes 8..<12 of every FIT file. The FIT specification spells this
+    /// ".FIT" — period first — not "FIT " with a trailing space.
+    /// Official SDKs: C `example-sdk/fit.h:199`
+    /// (`FIT_UINT8 data_type[4]; // ".FIT"`) and C++
+    /// `src/fit_encode.cpp:118`
+    /// (`memcpy( ( FIT_UINT8 * )&file_header.data_type, ".FIT", 4 );`).
+    static let fitDataType: [UInt8] = [0x2E, 0x46, 0x49, 0x54] // ".FIT"
     static let fitEpoch: TimeInterval = 631065600 // 1989-12-31 00:00:00 UTC
 
     // Compressed timestamp constants

@@ -267,7 +267,7 @@ final class FITParserTests: XCTestCase {
         data.append(16)
         data.append(contentsOf: [0x40, 0x01])
         append(UInt32(content.count), to: &data)
-        data.append(contentsOf: [0x46, 0x49, 0x54, 0x20])
+        data.append(contentsOf: [0x2E, 0x46, 0x49, 0x54]) // ".FIT"
         if headerLength == 14 {
             // Placeholder header CRC — will be patched below
             data.append(contentsOf: [0x00, 0x00])
