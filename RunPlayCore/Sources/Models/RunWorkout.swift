@@ -31,6 +31,12 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// absence is the backfill marker, while an empty value means the run
     /// attempted no window. Deliberately not gated on `analysisVersion`.
     public var personalRecords: WorkoutPersonalRecords?
+    /// Heart-rate training load. `nil` on snapshots that predate training-load
+    /// computation — that absence is the backfill marker, while a present
+    /// value whose `profile` differs from the current athlete profile is the
+    /// stale marker that drives recompute. Deliberately not gated on
+    /// `analysisVersion`, exactly like `personalRecords`.
+    public var trainingLoad: TrainingLoadSnapshot?
     public var analysisVersion: Int
     public var normalizationVersion: Int
     /// Whether source-structure fields such as recorded laps were preserved at import.
@@ -86,6 +92,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         summary: RunSummary = RunSummary(),
         segments: [SegmentHighlight] = [],
         personalRecords: WorkoutPersonalRecords? = nil,
+        trainingLoad: TrainingLoadSnapshot? = nil,
         analysisVersion: Int,
         normalizationVersion: Int = RunWorkout.currentNormalizationVersion,
         sourceStructureVersion: Int = RunWorkout.currentSourceStructureVersion,
@@ -106,6 +113,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.summary = summary
         self.segments = segments
         self.personalRecords = personalRecords
+        self.trainingLoad = trainingLoad
         self.analysisVersion = max(RunWorkout.legacyAnalysisVersion, analysisVersion)
         self.normalizationVersion = max(RunWorkout.legacyNormalizationVersion, normalizationVersion)
         self.sourceStructureVersion = max(RunWorkout.legacySourceStructureVersion, sourceStructureVersion)
@@ -169,7 +177,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, metadata, source, routePoints, splits, recordedLaps, summary, segments
-        case personalRecords
+        case personalRecords, trainingLoad
         case analysisVersion, normalizationVersion, sourceStructureVersion
         case analysisWarnings, movementDiagnostics
         case qualityDiagnostics, recordedLapDiagnostics
@@ -194,6 +202,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         personalRecords = try container.decodeIfPresent(
             WorkoutPersonalRecords.self,
             forKey: .personalRecords
+        )
+        trainingLoad = try container.decodeIfPresent(
+            TrainingLoadSnapshot.self,
+            forKey: .trainingLoad
         )
         analysisVersion = try container.decodeIfPresent(Int.self, forKey: .analysisVersion)
             ?? RunWorkout.legacyAnalysisVersion
@@ -249,6 +261,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(summary, forKey: .summary)
         try container.encode(segments, forKey: .segments)
         try container.encodeIfPresent(personalRecords, forKey: .personalRecords)
+        try container.encodeIfPresent(trainingLoad, forKey: .trainingLoad)
         try container.encode(analysisVersion, forKey: .analysisVersion)
         try container.encode(normalizationVersion, forKey: .normalizationVersion)
         try container.encode(sourceStructureVersion, forKey: .sourceStructureVersion)

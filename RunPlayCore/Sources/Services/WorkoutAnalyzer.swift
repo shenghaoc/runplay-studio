@@ -3,7 +3,24 @@ import Foundation
 /// Analyzes a normalized workout and populates derived metrics.
 public struct WorkoutAnalyzer: Sendable {
 
-    public init() {}
+    /// Athlete inputs for the training-load pass. Importers and load-time
+    /// migration construct the analyzer without a profile, so their snapshots
+    /// carry a default-profile load; the staleness rule (stored profile
+    /// differs from the current one) routes those through recompute exactly
+    /// like never-computed snapshots.
+    private let athleteProfile: AthleteProfile
+
+    /// Reference year for age-derived maximum heart rate. Injectable so the
+    /// derivation is testable.
+    private let referenceYear: Int
+
+    public init(
+        athleteProfile: AthleteProfile = AthleteProfile(),
+        referenceYear: Int = Calendar.current.component(.year, from: Date())
+    ) {
+        self.athleteProfile = athleteProfile
+        self.referenceYear = referenceYear
+    }
 
     public static let validHeartRateRange: ClosedRange<Double> = 30...230
 
@@ -176,6 +193,20 @@ public struct WorkoutAnalyzer: Sendable {
         measurePhase(into: &profile, keyPath: \.summaryNanoseconds) {
             workout.summary = calculateSummary(workout, context: ctx, policy: policy)
         }
+        try throwIfCancelled(isCancelled)
+
+        // Training load depends on the summary (active time and speed) and
+        // one native call over same-segment heart-rate intervals.
+        workout.trainingLoad = try TrainingLoadCalculator.compute(
+            routePoints: workout.routePoints,
+            activeSeconds: workout.summary.totalActiveSeconds,
+            averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
+                ? workout.summary.averageSpeedMetersPerSecond
+                : nil,
+            profile: athleteProfile,
+            referenceYear: referenceYear,
+            isCancelled: isCancelled
+        )
         try throwIfCancelled(isCancelled)
 
         try measurePhase(into: &profile, keyPath: \.splitsNanoseconds) {
