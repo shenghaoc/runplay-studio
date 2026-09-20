@@ -238,6 +238,9 @@ jobs:
     if: github.event_name == 'push' || needs.changes.outputs.packaging == 'true'
     runs-on: xcode-27
     steps:
+      # A local action resolves from the workspace, so checkout must precede
+      # the setup composite.
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-macos-build
       - name: Packaging contract tests
         run: ./scripts/test-release-packaging.sh

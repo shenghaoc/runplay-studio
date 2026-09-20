@@ -142,6 +142,9 @@ jobs:
       artifact_dir: release-artifacts
 
     steps:
+      # A local action resolves from the workspace, so checkout must precede
+      # the setup composite.
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-macos-build
 
       - name: Packaging tooling syntax
