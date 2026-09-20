@@ -427,17 +427,28 @@ official Swift image pinned by the single `container:` line in
 [.github/workflows/ci.yml](.github/workflows/ci.yml), and local
 verification must use that exact image, read from the same pin so the
 two cannot drift (currently `swift:6.4.0-resolute@sha256:bb6e5d…a91dc`,
-an Ubuntu 26.04 userspace). The grep below is anchored on `container:`
-and requires the digit-plus-digest image shape, so it cannot resolve the
-placeholder text inside a comment:
+an Ubuntu 26.04 userspace). Read the pin by its key and fail fast — the
+comment block above the line documents the required *shape* and that
+literal matches a plain `swift:` grep, so `grep 'swift:' | head -n1`
+silently extracts the placeholder instead of the pin
+(`scripts/check-toolchain-parity.sh` anchors on the same key and has
+never had this problem):
 
 ```bash
-IMAGE="$(grep -oE 'container:[[:space:]]*swift:[0-9][^[:space:]]*@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1 | sed -E 's/^container:[[:space:]]*//')"
-docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/src -w /src \
-  "${IMAGE}" swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+IMAGE="$(awk '$1 == "container:" { print $2; exit }' .github/workflows/ci.yml)"
+case "${IMAGE}" in
+  swift:*@sha256:*[0-9a-f]) ;;
+  *)
+    echo "error: could not read the Swift container pin from .github/workflows/ci.yml" >&2
+    echo "expected a job-level line of the shape 'container: swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>'" >&2
+    exit 1
+    ;;
+esac
+mkdir -p .build-linux/container-home   # writable HOME, same filesystem as the workspace
 ```
 
-Two properties are mandatory:
+Two properties are mandatory, and both runtime blocks below preserve
+them:
 
 1. The container user must be non-root and must own the mounted sources.
    The default container user is root, and root bypasses POSIX permission
@@ -446,17 +457,43 @@ Two properties are mandatory:
    false "did not throw" failures.
 2. HOME must be writable. A non-root uid has no passwd entry, so HOME
    resolves to `/` and SwiftPM fails with `invalid access to
-   /.cache/org.swift.swiftpm`; `-e HOME=/tmp` fixes it.
+   /.cache/org.swift.swiftpm`. HOME lives at
+   `/src/.build-linux/container-home` — inside the already-ignored
+   `.build-linux/` tree (`.gitignore` covers it, so the run still leaves
+   `git status --porcelain` empty) — so the SwiftPM cache shares the
+   workspace filesystem; a host whose root filesystem is full fails a
+   `HOME=/tmp` form before any test runs, with only that opaque SwiftPM
+   error as the clue.
 
-Caveats: this invocation has been executed with a Docker-compatible CLI
-(podman) rather than the docker binary itself, and on SELinux-enforcing
-hosts the volume needs `:Z`. On *rootless* podman, `-u $(id -u):$(id -g)`
-maps the container uid into the subuid range, which cannot write the
-mounted checkout — use `--userns=keep-id` instead. The package has a
+docker:
+
+```bash
+docker run --rm -u $(id -u):$(id -g) -e HOME=/src/.build-linux/container-home \
+  -v "$PWD":/src:Z -w /src "${IMAGE}" \
+  swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+```
+
+rootless podman — `--userns=keep-id` is required, not optional: without
+it the container uid maps into the subuid range, `/src` appears
+root-owned, and the non-root user cannot write the checkout (the failure
+surfaces as SwiftPM `invalid access to /src/.build-linux/repositories`).
+`--userns=keep-id` is podman-specific and rejected by docker, which is
+why there are two blocks instead of one:
+
+```bash
+podman run --rm --userns=keep-id -u $(id -u):$(id -g) -e HOME=/src/.build-linux/container-home \
+  -v "$PWD":/src:Z -w /src "${IMAGE}" \
+  swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+```
+
+`:Z` relabels the volume for SELinux-enforcing hosts and is accepted as
+a no-op elsewhere; both runtimes above have been used on this
+repository's hosts (rootless podman on SELinux). The package has a
 remote dependency (ZIPFoundation, exact-pinned in `Package.swift`), so
 the first build or `swift package resolve` inside the container needs
 network access and `git` (the resolute image ships it); it fetches into
-`.build/` and commits nothing beyond the checked-in `Package.resolved`.
+the scratch tree and commits nothing beyond the checked-in
+`Package.resolved`.
 
 CI enforces macOS/Linux toolchain parity with
 `scripts/check-toolchain-parity.sh`, which every Swift-building job runs

@@ -157,8 +157,9 @@ jobs:
       run:
         shell: bash
     # Single source of truth for the Linux Swift toolchain. Its exact text
-    # is parsed by scripts/check-toolchain-parity.sh (and grepped by the
-    # AGENTS.md local-verification recipe), so do not reformat this line;
+    # is parsed by scripts/check-toolchain-parity.sh, and the AGENTS.md
+    # local-verification recipe reads this line by its `container:` key
+    # (then checks the @sha256: shape), so do not reformat this line;
     # keep the shape `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
     # Bumping the image means editing this line and refreshing the digest
     # in the same change.
