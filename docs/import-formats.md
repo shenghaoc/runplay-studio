@@ -348,16 +348,50 @@ metrics to record messages. RunPlay Studio decodes them as follows.
   description table, so descriptions that appear **after** the records using
   them (out-of-order files) resolve identically.
 - Values convert with the FIT protocol formula
-  `physical = raw / scale + offset` (defaults scale 1, offset 0). Base-type
+  `physical = raw / scale - offset` (defaults scale 1, offset 0). Base-type
   invalid sentinels (0xFF…, 0x7FFF for signed, NaN for floats, 0 for z-types)
-  are treated as missing, never as real values. **Verification note:** the
-  offset sign convention for developer fields has no single official worked
-  example; real-device files with a non-zero developer offset are an explicit
-  manual-test checkpoint, and flipping the convention is a one-line change if
-  one disagrees.
-- Units come from the description's `units` string when populated; an
-  unresolvable `fit_base_unit_id` is retained raw (`fit_base_unit:<id>`)
-  rather than guessed through an unverified enum table.
+  are treated as missing, never as real values.
+- **The sign is unanimous** across the official Garmin SDKs — offset is
+  subtracted, and no binding adds it. C++ SDK `src/fit_field_base.cpp:440`:
+  `return float64Value / GetScale(subFieldIndex) - GetOffset(subFieldIndex);`
+  (inverse encode at `:974`: `(value + GetOffset(...)) * GetScale(...)`).
+  Swift SDK `Sources/FITSwiftSDK/FieldBase.swift:99`:
+  `value = Float64(fitValue: value) / scale - offset`. This matches the
+  convention the importer already applies to profile fields —
+  `FITParser.scaledAltitudeToMeters` is `(raw / 5.0) - 500.0` for the
+  profile's altitude scale 5 / offset 500. The rejected alternative,
+  `raw / scale + offset`, is implemented by no official binding and would
+  decode a non-zero-offset field wrong by exactly `2 × offset`.
+- **The SDKs disagree on whether developer fields are scaled at all**, and
+  that disagreement is reported rather than resolved:
+  - The **C++ SDK declines**. `src/fit_developer_field.cpp:100-110` hard-codes
+    `DeveloperField::GetScale()` to `1.0` and `GetOffset()` to `0`, commented
+    "Developer fields do not currently support scale/offset" — developer
+    values are returned raw.
+  - The **Swift SDK applies**. `Sources/FITSwiftSDK/DeveloperField.swift:54-60`
+    returns `fieldDescriptionMesg?.getScale() ?? 1` and `...getOffset() ?? 0`,
+    feeding the description's values into the subtract above.
+  - The **C SDK abstains**: it decodes no developer fields at all.
+
+  This importer applies the conversion, matching the Swift SDK as the binding
+  closest to RunPlayCore's decoding. Because the choice is contested, it is
+  not allowed to be silent: see the diagnostic below. Pinned by
+  `testDeveloperFieldOffsetIsSubtractedNotAdded`.
+- A non-zero developer offset is rare — nearly every field ships offset 0 —
+  and it is the only case where either the sign or the apply/don't-apply
+  choice is observable. Any developer field declaring a non-zero offset is
+  therefore flagged in the workout's developer-field notes, so the first real
+  file carrying one makes the assumption visible instead of quietly decoding
+  wrong.
+- The `field_description` (206) and `developer_data_id` (207) field layouts
+  and the `fit_base_unit` enum are verified against the official C++ and
+  Swift SDK Profile sources (Profile 21.214.0). `fit_base_unit` is
+  `other = 0`, `kilogram = 1`, `pound = 2`, `invalid = 0xFFFF`.
+- Units come from the description's `units` string when populated; otherwise
+  the `fit_base_unit_id` resolves through the verified enum (`1` → `kg`,
+  `2` → `lb`). `other = 0` names no unit and resolves to nothing; an id
+  outside the enum is retained raw (`fit_base_unit:<id>`) so a future profile
+  addition stays visible instead of being silently dropped.
 
 ### Recognition
 

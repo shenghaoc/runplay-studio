@@ -60,6 +60,11 @@ public struct WorkoutDeveloperFieldSummary: Codable, Sendable, Hashable {
     /// are counted in `notes` rather than retained.
     public static let maximumRetainedFieldCount = 16
 
+    /// Bounded number of field names spelled out in the non-zero-offset
+    /// note; the rest are summarised as a count so one odd file cannot
+    /// produce an unbounded diagnostic string.
+    static let maximumNamedOffsetFields = 4
+
     public init(
         sources: [Source],
         fields: [Field],
@@ -146,6 +151,26 @@ extension WorkoutDeveloperFieldSummary {
                     "\"\(stat.fieldName)\" declares accumulation; values were decoded as instantaneous samples."
                 )
             }
+        }
+
+        // A non-zero developer offset is rare in the wild (nearly every
+        // field ships offset 0), which is exactly why it must be surfaced:
+        // it is the only case where the subtract-vs-add sign convention is
+        // observable, so the first real file carrying one should make the
+        // assumption visible instead of silently decoding wrong. Scanned
+        // across every stat, not just the retained ones, so a field beyond
+        // the retention cap still gets flagged.
+        let offsetFieldNames = orderedStats
+            .filter { $0.offset != 0 }
+            .map(\.fieldName)
+        if !offsetFieldNames.isEmpty {
+            let named = offsetFieldNames.prefix(maximumNamedOffsetFields)
+            let remainder = offsetFieldNames.count - named.count
+            let list = named.map { "\"\($0)\"" }.joined(separator: ", ")
+            let suffix = remainder > 0 ? " and \(remainder) more" : ""
+            notes.append(
+                "\(offsetFieldNames.count) developer field(s) declare a non-zero offset (\(list)\(suffix)); decoded as raw / scale - offset, matching the FIT profile convention."
+            )
         }
 
         if report.missingDescriptionValueCount > 0 {

@@ -88,7 +88,97 @@ final class FITDeveloperDataTests: XCTestCase {
 
     // MARK: - Value conversion
 
-    func testScaleAndOffsetConvertRawValues() throws {
+    /// Pins the developer-field scale/offset sign convention:
+    /// `physical = raw / scale - offset`. Offset is SUBTRACTED.
+    ///
+    /// Derived from the official Garmin SDKs closest to this codebase (see
+    /// AGENTS.md "FIT reference implementations"), in order of authority.
+    ///
+    /// THE SIGN IS UNANIMOUS — no official binding adds the offset:
+    ///  - C++ SDK, `src/fit_field_base.cpp:440`:
+    ///        return float64Value / GetScale(subFieldIndex) - GetOffset(subFieldIndex);
+    ///    and `:342` for FIT_FLOAT32; the inverse encode at `:974` and
+    ///    `:1037` confirms the direction:
+    ///        FIT_FLOAT64 recalculatedValue = (value + GetOffset(subFieldIndex)) * GetScale(subFieldIndex);
+    ///  - Swift SDK, `Sources/FITSwiftSDK/FieldBase.swift:99`:
+    ///        value = Float64(fitValue: value) / scale - offset
+    ///  - This repo already decodes profile fields the same way:
+    ///    `FITParser.scaledAltitudeToMeters` is `(raw / 5.0) - 500.0` for the
+    ///    profile's altitude scale 5 / offset 500.
+    ///
+    /// REJECTED ALTERNATIVE: `raw / scale + offset`. Implemented by no
+    /// official binding; decodes a non-zero-offset field wrong by exactly
+    /// `2 * offset` — silently, because both readings look plausible.
+    ///
+    /// REPORTED, NOT RESOLVED — the C++ and Swift SDKs genuinely disagree on
+    /// whether developer fields are scaled at all:
+    ///  - C++ declines. `src/fit_developer_field.cpp:100-110`:
+    ///        FIT_FLOAT64 DeveloperField::GetScale() const
+    ///        {
+    ///            // Developer fields do not currently support scale
+    ///            return 1.0;
+    ///        }
+    ///    …and `GetOffset()` likewise returns 0. Values come back raw.
+    ///  - Swift applies. `Sources/FITSwiftSDK/DeveloperField.swift:54-60`:
+    ///        override func getScale() -> Float64 {
+    ///            return Float64(developerFieldDefinition.fieldDescriptionMesg?.getScale() ?? 1)
+    ///        }
+    ///    …and `getOffset()` likewise, feeding the subtract above.
+    ///  - The C SDK abstains: it decodes no developer fields at all.
+    ///
+    /// This importer applies the conversion, matching the Swift SDK as the
+    /// binding closest to RunPlayCore. That choice is contested, so it is not
+    /// load-bearing in silence: `testNonZeroOffsetIsFlaggedInImportReport`
+    /// pins that a non-zero offset — exactly the case where the two bindings
+    /// would disagree numerically — is surfaced in the import report.
+    func testDeveloperFieldOffsetIsSubtractedNotAdded() throws {
+        // scale 10, offset 20, raw 2500.
+        //   subtract (correct): 2500 / 10 - 20 = 230 W
+        //   add      (rejected): 2500 / 10 + 20 = 270 W
+        // Both are physiologically plausible running-power values, which is
+        // precisely why the wrong sign would never announce itself.
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: [
+                RecordSpec(
+                    offsetSeconds: 0,
+                    coordinateStep: 0,
+                    developerFields: [
+                        DeveloperValueSpec(
+                            developerDataIndex: 0,
+                            fieldNumber: 0,
+                            baseType: .uint16,
+                            value: .uint16(2500)
+                        )
+                    ]
+                )
+            ],
+            sessions: [SessionSpec(startOffsetSeconds: 0, endOffsetSeconds: 0)],
+            fieldDescriptions: [
+                FieldDescriptionSpec(
+                    developerDataIndex: 0,
+                    fieldDefinitionNumber: 0,
+                    baseType: .uint16,
+                    fieldName: "power",
+                    units: "watts",
+                    scale: 10,
+                    offset: 20
+                )
+            ]
+        )
+        let workout = try importFixture(data)
+
+        XCTAssertEqual(workout.routePoints.first?.powerWatts, 230)
+        XCTAssertNotEqual(
+            workout.routePoints.first?.powerWatts,
+            270,
+            "270 W is the rejected raw / scale + offset reading"
+        )
+    }
+
+    /// The same convention with a negative offset, which subtracts to a
+    /// larger value. Preserves the coverage of the original scale/offset
+    /// test while reading against the pinned sign.
+    func testNegativeDeveloperOffsetAlsoSubtracts() throws {
         let data = FITMultiSessionFixtureBuilder.build(
             records: [
                 RecordSpec(
@@ -119,8 +209,91 @@ final class FITDeveloperDataTests: XCTestCase {
         )
         let workout = try importFixture(data)
 
-        // FIT protocol: physical = raw / scale + offset → 250 / 10 − 5 = 20.
-        XCTAssertEqual(workout.routePoints.first?.powerWatts, 20)
+        // 250 / 10 - (-5) = 30. The rejected add convention would give 20.
+        XCTAssertEqual(workout.routePoints.first?.powerWatts, 30)
+    }
+
+    /// A non-zero offset is the only case where the sign convention is
+    /// observable, and almost no real field ships one — so its arrival must
+    /// be visible in the import report rather than silently assumed.
+    func testNonZeroOffsetIsFlaggedInImportReport() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: [
+                RecordSpec(
+                    offsetSeconds: 0,
+                    coordinateStep: 0,
+                    developerFields: [
+                        DeveloperValueSpec(
+                            developerDataIndex: 0,
+                            fieldNumber: 0,
+                            baseType: .uint16,
+                            value: .uint16(2500)
+                        )
+                    ]
+                )
+            ],
+            sessions: [SessionSpec(startOffsetSeconds: 0, endOffsetSeconds: 0)],
+            fieldDescriptions: [
+                FieldDescriptionSpec(
+                    developerDataIndex: 0,
+                    fieldDefinitionNumber: 0,
+                    baseType: .uint16,
+                    fieldName: "power",
+                    units: "watts",
+                    scale: 10,
+                    offset: 20
+                )
+            ]
+        )
+        let workout = try importFixture(data)
+        let summary = try XCTUnwrap(workout.developerFieldSummary)
+
+        let note = try XCTUnwrap(
+            summary.notes.first { $0.contains("non-zero offset") },
+            "expected a non-zero offset diagnostic in \(summary.notes)"
+        )
+        XCTAssertTrue(note.contains("\"power\""), note)
+        XCTAssertTrue(note.contains("raw / scale - offset"), note)
+    }
+
+    /// The common case must stay quiet: offset 0 is not worth a note.
+    func testZeroOffsetProducesNoOffsetNote() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: [
+                RecordSpec(
+                    offsetSeconds: 0,
+                    coordinateStep: 0,
+                    developerFields: [
+                        DeveloperValueSpec(
+                            developerDataIndex: 0,
+                            fieldNumber: 0,
+                            baseType: .uint16,
+                            value: .uint16(240)
+                        )
+                    ]
+                )
+            ],
+            sessions: [SessionSpec(startOffsetSeconds: 0, endOffsetSeconds: 0)],
+            fieldDescriptions: [
+                FieldDescriptionSpec(
+                    developerDataIndex: 0,
+                    fieldDefinitionNumber: 0,
+                    baseType: .uint16,
+                    fieldName: "power",
+                    units: "watts",
+                    scale: 1,
+                    offset: 0
+                )
+            ]
+        )
+        let workout = try importFixture(data)
+        let summary = try XCTUnwrap(workout.developerFieldSummary)
+
+        XCTAssertEqual(workout.routePoints.first?.powerWatts, 240)
+        XCTAssertFalse(
+            summary.notes.contains { $0.contains("non-zero offset") },
+            "offset 0 must not emit a diagnostic: \(summary.notes)"
+        )
     }
 
     func testSignedAndFloatBaseTypesDecode() throws {
@@ -480,6 +653,75 @@ final class FITDeveloperDataTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    // MARK: - Profile parity
+
+    /// Pins the `field_description` (206) and `developer_data_id` (207) field
+    /// numbers against the official Garmin SDK Profile sources
+    /// (Profile 21.214.0), verified in both bindings:
+    ///  - C SDK `example-sdk/fit_example.h`, e.g.
+    ///    `#define FIT_FIELD_DESCRIPTION_FIELD_NUM_OFFSET (FIT_CAST(FIT_FIELD_DESCRIPTION_FIELD_NUM, 7))`
+    ///  - Swift SDK `Sources/FITSwiftSDK/Profile/Mesgs/FieldDescriptionMesg.swift:14-27`
+    ///    and `DeveloperDataIdMesg.swift:14-18`.
+    ///
+    /// These numbers are wire format: a drift here silently misreads every
+    /// developer field in every file, so they are pinned rather than trusted.
+    func testFieldDescriptionAndDeveloperDataIDFieldNumbersMatchProfile() {
+        XCTAssertEqual(FITFieldDescriptionField.developerDataIndex.rawValue, 0)
+        XCTAssertEqual(FITFieldDescriptionField.fieldDefinitionNumber.rawValue, 1)
+        XCTAssertEqual(FITFieldDescriptionField.fitBaseTypeID.rawValue, 2)
+        XCTAssertEqual(FITFieldDescriptionField.fieldName.rawValue, 3)
+        XCTAssertEqual(FITFieldDescriptionField.array.rawValue, 4)
+        XCTAssertEqual(FITFieldDescriptionField.components.rawValue, 5)
+        XCTAssertEqual(FITFieldDescriptionField.scale.rawValue, 6)
+        XCTAssertEqual(FITFieldDescriptionField.offset.rawValue, 7)
+        XCTAssertEqual(FITFieldDescriptionField.units.rawValue, 8)
+        XCTAssertEqual(FITFieldDescriptionField.bits.rawValue, 9)
+        XCTAssertEqual(FITFieldDescriptionField.accumulate.rawValue, 10)
+        XCTAssertEqual(FITFieldDescriptionField.fitBaseUnitID.rawValue, 13)
+        XCTAssertEqual(FITFieldDescriptionField.nativeMesgNum.rawValue, 14)
+        XCTAssertEqual(FITFieldDescriptionField.nativeFieldNum.rawValue, 15)
+
+        XCTAssertEqual(FITDeveloperDataIDField.developerID.rawValue, 0)
+        XCTAssertEqual(FITDeveloperDataIDField.applicationID.rawValue, 1)
+        XCTAssertEqual(FITDeveloperDataIDField.manufacturerID.rawValue, 2)
+        XCTAssertEqual(FITDeveloperDataIDField.developerDataIndex.rawValue, 3)
+        XCTAssertEqual(FITDeveloperDataIDField.applicationVersion.rawValue, 4)
+    }
+
+    /// `fit_base_unit`, verified against the Swift SDK's generated
+    /// `Profile/Types/FitBaseUnit.swift` (Profile 21.214.0):
+    /// `other = 0`, `kilogram = 1`, `pound = 2`, `invalid = 0xFFFF`.
+    /// A populated `units` string always wins; the enum is only the fallback.
+    func testResolvedUnitUsesVerifiedFitBaseUnitEnum() {
+        func description(units: String?, baseUnitID: UInt16?) -> FITFieldDescriptionMessage {
+            var message = FITFieldDescriptionMessage()
+            message.units = units
+            message.baseUnitID = baseUnitID
+            return message
+        }
+
+        // The device's own units string is authoritative.
+        XCTAssertEqual(description(units: "Watts", baseUnitID: 1).resolvedUnit, "Watts")
+
+        // Fallback to the verified enum.
+        XCTAssertEqual(description(units: nil, baseUnitID: 1).resolvedUnit, "kg")
+        XCTAssertEqual(description(units: "", baseUnitID: 2).resolvedUnit, "lb")
+
+        // "other" names no unit, so it must not invent a placeholder string.
+        XCTAssertNil(description(units: nil, baseUnitID: 0).resolvedUnit)
+
+        // Absent and invalid resolve to nothing.
+        XCTAssertNil(description(units: nil, baseUnitID: nil).resolvedUnit)
+        XCTAssertNil(description(units: nil, baseUnitID: 0xFFFF).resolvedUnit)
+
+        // An id outside the enum stays visible rather than being dropped, so
+        // a future profile addition surfaces instead of vanishing.
+        XCTAssertEqual(
+            description(units: nil, baseUnitID: 7).resolvedUnit,
+            "fit_base_unit:7"
+        )
+    }
 
     private func importFixture(_ data: Data) throws -> RunWorkout {
         try FITImporter().importWorkout(data: data, suggestedName: "Developer Fields Fixture")

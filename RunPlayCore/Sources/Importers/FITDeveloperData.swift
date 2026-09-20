@@ -53,14 +53,25 @@ public struct FITFieldDescriptionMessage: Sendable, Equatable {
     }
 
     /// Resolved display unit. The `units` string is authoritative when the
-    /// device populated it; otherwise the raw `fit_base_unit_id` is retained
-    /// as-is rather than resolved through an unverified enum table.
+    /// device populated it; otherwise the `fit_base_unit_id` is resolved
+    /// through the official `fit_base_unit` enum, verified against the
+    /// Garmin Swift SDK's generated `Profile/Types/FitBaseUnit.swift`
+    /// (Profile 21.214.0): `other = 0`, `kilogram = 1`, `pound = 2`,
+    /// `invalid = 0xFFFF`. `other` carries no unit information, so it
+    /// resolves to nil rather than a placeholder string; an id outside the
+    /// enum is retained raw so a future profile addition stays visible
+    /// instead of being silently dropped.
     public var resolvedUnit: String? {
         if let units, !units.isEmpty {
             return units
         }
         guard let baseUnitID, baseUnitID != FITParser.invalidUint16 else { return nil }
-        return "fit_base_unit:\(baseUnitID)"
+        switch baseUnitID {
+        case 0: return nil          // fit_base_unit "other": no unit named
+        case 1: return "kg"
+        case 2: return "lb"
+        default: return "fit_base_unit:\(baseUnitID)"
+        }
     }
 }
 
@@ -209,7 +220,11 @@ struct FITDeveloperFieldResolution: Sendable {
 /// file-wide field-description table, and aggregates per-field statistics.
 ///
 /// Conversion follows the FIT protocol convention
-/// `physical = raw / scale + offset` (scale defaults to 1, offset to 0).
+/// `physical = raw / scale - offset` (scale defaults to 1, offset to 0) —
+/// the same convention this importer already applies to profile fields such
+/// as altitude (`FITParser.scaledAltitudeToMeters`). The sign is unanimous
+/// across the official SDKs; whether the conversion applies to developer
+/// fields at all is not. See `physicalValue(of:description:)`.
 /// Invalid sentinels per base type are treated as missing values.
 enum FITDeveloperFieldResolver {
 
@@ -330,6 +345,38 @@ enum FITDeveloperFieldResolver {
     /// description's base type (with per-type invalid sentinels) and its
     /// scale/offset. Returns nil for invalid sentinels, non-numeric types,
     /// and non-finite results.
+    ///
+    /// Offset is **subtracted**. Derived from the official Garmin SDKs whose
+    /// bindings this codebase resembles (see AGENTS.md "FIT reference
+    /// implementations"), in order of authority:
+    ///
+    /// 1. **C++ SDK** — the sign, for fields it scales at all, is subtract:
+    ///    `fit_field_base.cpp:440`
+    ///    `return float64Value / GetScale(subFieldIndex) - GetOffset(subFieldIndex);`
+    ///    (inverse, `:974`: `(value + GetOffset(...)) * GetScale(...)`).
+    /// 2. **Swift SDK** — agrees exactly: `FieldBase.swift:99`
+    ///    `value = Float64(fitValue: value) / scale - offset`.
+    ///
+    /// No official binding implements `raw / scale + offset`; that was the
+    /// rejected alternative, and it decodes a non-zero-offset field wrong by
+    /// exactly `2 * offset`.
+    ///
+    /// The two SDKs DO disagree on a separate question — whether developer
+    /// fields are scaled at all — and that disagreement is reported, not
+    /// resolved, here:
+    ///  - C++ declines. `fit_developer_field.cpp:100-110` hard-codes
+    ///    `GetScale()` to `1.0` and `GetOffset()` to `0`, commented
+    ///    "Developer fields do not currently support scale/offset".
+    ///  - Swift applies. `DeveloperField.swift:54-60` returns
+    ///    `fieldDescriptionMesg?.getScale() ?? 1` and `...getOffset() ?? 0`,
+    ///    feeding the description's values into the subtract above.
+    ///  - The C SDK abstains: it decodes no developer fields at all.
+    ///
+    /// This importer applies the conversion, matching the Swift SDK — the
+    /// binding closest to RunPlayCore's decoding. Because that choice is
+    /// contested, every non-zero offset is surfaced in the import report
+    /// (`WorkoutDeveloperFieldSummary`): a non-zero offset is precisely the
+    /// case where the two bindings would report different numbers.
     static func physicalValue(
         of raw: FITRecordDeveloperFieldValue,
         description: FITFieldDescriptionMessage
@@ -351,7 +398,7 @@ enum FITDeveloperFieldResolver {
             return nil
         }
         let physical = numeric / description.effectiveScale
-            + description.effectiveOffset
+            - description.effectiveOffset
         return physical.isFinite ? physical : nil
     }
 

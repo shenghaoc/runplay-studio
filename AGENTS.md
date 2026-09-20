@@ -489,3 +489,31 @@ GUI changes additionally require the relevant honest manual check in
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene
 - [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior
+
+## FIT Reference Implementations
+
+When a question about the FIT protocol needs settling — field layouts, base
+types, enums, scale/offset semantics — derive the answer from the official
+Garmin SDKs whose bindings this codebase resembles, in this order of
+authority, and quote the specific file and line:
+
+1. <https://github.com/garmin/fit-cpp-sdk> — official C++ SDK, closest to
+   `RunPlayEngineCpp`.
+2. <https://github.com/garmin/fit-c-sdk> — official C SDK.
+3. <https://github.com/garmin/fit-swift-sdk> — official Swift SDK, closest to
+   `RunPlayCore`'s decoding.
+
+Their generated `Profile` sources are the authority for message field
+layouts and enums — not a third-party port and not a trimmed table copied
+from another binding.
+
+Do **not** settle FIT questions from the Python or Java bindings. Whether a
+binding applies scale/offset to developer fields is that binding's own
+choice, not the protocol's, and those two diverge from the SDKs above on
+exactly that point. They may be cited as corroboration, never as authority.
+
+If the C++ and Swift SDKs disagree, report the disagreement and the code that
+shows it rather than silently picking one; record which this repo follows and
+why, and make the contested case observable at runtime. Worked example:
+`FITDeveloperFieldResolver.physicalValue(of:description:)` and the
+developer-data section of [docs/import-formats.md](docs/import-formats.md).
