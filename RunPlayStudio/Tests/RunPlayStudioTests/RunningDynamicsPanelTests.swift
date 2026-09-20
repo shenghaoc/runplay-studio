@@ -4,6 +4,14 @@ import XCTest
 
 /// Running-dynamics panel presentation: pure row derivation, provenance
 /// wording, and the power chart/table data path.
+///
+/// `@MainActor` because the helpers under test are statics on a SwiftUI
+/// `View`, which is main-actor isolated. Swift 6.4 infers the isolation for
+/// these calls and compiles without it; Swift 6.3.1 — the version CI pins and
+/// verifies — does not, and rejects them as actor-isolated calls from a
+/// nonisolated context. Matching the 28 other main-actor suites here keeps it
+/// correct on both.
+@MainActor
 final class RunningDynamicsPanelTests: XCTestCase {
 
     private func powerWorkout() -> RunWorkout {
