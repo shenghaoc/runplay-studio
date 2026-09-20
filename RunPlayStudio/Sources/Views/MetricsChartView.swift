@@ -471,13 +471,26 @@ struct MetricsChartView: View {
             values: smoothedValues
         )
         chartData = updatedData
+        // Power's chart line is smoothed but the Power & Running Dynamics
+        // panel shows raw Max Power, so the descriptor summary reports the
+        // raw series' min/max/average — otherwise a VoiceOver user hears a
+        // smoothed maximum that contradicts the panel a sighted user reads
+        // on the same screen.
+        let aggregatesFromValues: [Double]? = selectedMetric == .power
+            ? routePoints.compactMap { point in
+                guard let watts = point.powerWatts,
+                      MetricValidation.isValidPower(watts) else { return nil }
+                return watts
+            }
+            : nil
         chartAccessibilityBaseModel = ChartAccessibilityModel.make(
             metricName: selectedMetric.rawValue,
             unit: selectedMetric.unit,
             values: updatedData.map(\.value),
             seriesIDs: updatedData.map(\.seriesID),
             currentValue: nil,
-            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0
+            totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0,
+            aggregatesFromValues: aggregatesFromValues
         )
         downsampledChartSamples = MetricChartAccessibilityBuilder.downsample(updatedData)
     }
