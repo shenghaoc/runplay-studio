@@ -68,6 +68,32 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(decoded.records.count, 2)
     }
 
+    /// This suite's own inline builder, pinned against the specification.
+    ///
+    /// FIT file-header layout (C SDK `example-sdk/fit.h:193-201`): 12/14-byte
+    /// header of `header_size`, `protocol_version`, `profile_version`,
+    /// `data_size`, `data_type[4]` — bytes 8..<12 — and an optional header
+    /// `crc`. The data-type bytes are the ASCII string ".FIT". Asserted as a
+    /// literal, never via `FITParser.fitDataType`: the original header bug
+    /// survived because this builder and the parser agreed on the same wrong
+    /// spelling, so parser-referencing tests passed while real files were
+    /// rejected. Both header lengths must carry the same magic.
+    func testInlineFixtureBuilderEmitsSpecifiedDataTypeBytes() {
+        let specDataType: [UInt8] = [0x2E, 0x46, 0x49, 0x54] // ".", "F", "I", "T"
+        let wrongSpelling: [UInt8] = [0x46, 0x49, 0x54, 0x20] // the old "FIT "
+        let shortHeader = Self.fitData(rawContent: Data(), headerLength: 12)
+        let fullHeader = Self.fitData(rawContent: Data(), headerLength: 14)
+
+        for (name, data) in [("12-byte", shortHeader), ("14-byte", fullHeader)] {
+            XCTAssertEqual(
+                Array(data[8..<12]),
+                specDataType,
+                "\(name) header must carry \".FIT\" at bytes 8..<12"
+            )
+            XCTAssertNotEqual(Array(data[8..<12]), wrongSpelling, name)
+        }
+    }
+
     func testCRC16KnownAnswer() {
         // Standard CRC-16/ARC test vector: "123456789" = 0xBB3D
         let input: [UInt8] = Array("123456789".utf8)

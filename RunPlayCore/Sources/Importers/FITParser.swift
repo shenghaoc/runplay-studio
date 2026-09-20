@@ -24,7 +24,7 @@ public enum FITError: Error, LocalizedError, Sendable {
         case .emptyFile: return "FIT file is empty"
         case .invalidHeader: return "Invalid FIT file header"
         case .unsupportedProtocol(let v): return "Unsupported FIT protocol version: \(v)"
-        case .invalidDataType: return "Invalid FIT data type (expected 'FIT ')"
+        case .invalidDataType: return "Invalid FIT data type (expected '.FIT')"
         case .unexpectedEndOfFile: return "Unexpected end of FIT file"
         case .missingDefinition(let t): return "Missing definition for message type \(t)"
         case .noRecordMessages: return "No record messages found in FIT file"

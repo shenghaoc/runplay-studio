@@ -82,4 +82,34 @@ final class FITHeaderDataTypeTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Fixture writers emit the specified bytes
+
+    /// FIT file-header layout (C SDK `example-sdk/fit.h:193-201`): a 12- or
+    /// 14-byte header of `header_size`, `protocol_version`, `profile_version`,
+    /// `data_size`, then `data_type[4]` — bytes 8..<12 — and an optional
+    /// header `crc`. The data-type bytes are the ASCII string ".FIT".
+    ///
+    /// Each fixture writer that emits a header is pinned here against those
+    /// literal bytes. This is the check the original bug lacked: when all
+    /// three writers spelled the magic wrong together with the parser, every
+    /// fixture-based test still passed. Reading the bytes back out of a built
+    /// container — not consulting `FITParser.fitDataType` — is what makes a
+    /// re-convergence fail loudly instead of silently.
+    func testMultiSessionFixtureBuilderEmitsSpecifiedDataTypeBytes() throws {
+        for (name, data) in [
+            ("singleRunningSession", FITMultiSessionFixtureBuilder.singleRunningSession()),
+            ("twoSequentialRuns", FITMultiSessionFixtureBuilder.twoSequentialRuns()),
+            ("legacyNoSessions", FITMultiSessionFixtureBuilder.legacyNoSessions())
+        ] {
+            XCTAssertEqual(
+                Array(data[8..<12]),
+                specDataType,
+                "\(name) must emit data-type bytes 8..<12 as \".FIT\""
+            )
+            // The writer emits the 14-byte header shape, so the bytes sit
+            // behind a declared length that itself must stay at 12 or 14.
+            XCTAssertTrue(data[0] == 12 || data[0] == 14, "\(name) header size")
+        }
+    }
 }
