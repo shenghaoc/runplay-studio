@@ -475,6 +475,24 @@ final class TrainingLoadTrendsTests: XCTestCase {
         XCTAssertEqual(TrainingLoadUncertainty.spans(in: withEstimates).map(\.dayCount), [2])
     }
 
+    func testShadingCopyDescribesEachModeCorrectly() {
+        let excluded = TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: false)
+        XCTAssertTrue(excluded.contains("The model has no load for them"))
+        XCTAssertTrue(excluded.contains("lost fitness and gained freshness"))
+
+        // Opted in, a shaded day carrying an estimate does contribute, so the
+        // blanket "no load for them" sentence would misdescribe the chart.
+        let included = TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: true)
+        XCTAssertTrue(included.contains("invented value"))
+        XCTAssertTrue(included.contains("decays as if you had rested"))
+        XCTAssertFalse(included.contains("The model has no load for them"))
+
+        for copy in [excluded, included] {
+            XCTAssertTrue(copy.contains("Shaded spans are days with runs but no usable heart rate"))
+            XCTAssertTrue(copy.contains("only the confidence is shown"))
+        }
+    }
+
     func testSpokenSummaryStatesBiasDirectionInBothModes() {
         let excluded = TrainingLoadChartAccessibilitySummary(
             includesEstimatedLoads: false,

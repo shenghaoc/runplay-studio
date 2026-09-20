@@ -518,15 +518,6 @@ private struct TrainingLoadChartPanel: View {
         TrainingLoadUncertainty.spans(in: series.loadDays)
     }
 
-    /// The bias direction, stated wherever the curve is explained. Unknown
-    /// load decays the model exactly as rest does, and that error runs in the
-    /// direction that flatters a training decision.
-    private static let uncertaintyBiasCopy = """
-        Shaded spans are days with runs but no usable heart rate. The model \
-        has no load for them and decays as if you had rested, so a stretch of \
-        strapless running reads as lost fitness and gained freshness. The \
-        values are unchanged — only the confidence is shown.
-        """
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
@@ -567,7 +558,7 @@ private struct TrainingLoadChartPanel: View {
             parts.append("Heart-rate coverage: \(Int((coverage * 100).rounded()))% of days with runs.")
         }
         if !uncertaintySpans.isEmpty {
-            parts.append(Self.uncertaintyBiasCopy)
+            parts.append(TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: includeEstimatedLoads))
         }
         return Text(parts.joined(separator: " "))
             .font(AppDesign.Typography.compactLabel)
@@ -683,7 +674,7 @@ private struct TrainingLoadChartPanel: View {
         .help(
             uncertaintySpans.isEmpty
                 ? "Daily TRIMP with the fitness, fatigue, and form model. Fitness and fatigue are exponentially weighted averages of daily load; form is fitness minus fatigue."
-                : Self.uncertaintyBiasCopy
+                : TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: includeEstimatedLoads)
         )
         .accessibilityLabel("Training load by day")
         .accessibilityValue(spokenSummary)
