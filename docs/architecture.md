@@ -633,9 +633,9 @@ rollup over the library is derived and never persisted.
 | Layer | Responsibility |
 | --- | --- |
 | **RunPlayEngineCpp** | One summary-only bulk call per measured pass: interval-weighted Banister TRIMP, five-zone seconds, and coverage aggregates |
-| **RunPlayCore** | `AthleteProfile` (optional birth year, resting/max HR, custom zone bounds, coefficient set) with `FileAthleteProfileStore` at `<library-root>/athlete-profile.json`; `EffectiveTrainingLoadProfile` derivation (measured max wins, else Tanaka `208 − 0.7 × age`, else population default — always disclosed); `TrainingLoadCalculator` interval construction and measured-vs-estimated policy; `TrainingLoadSnapshot` on `RunWorkout.trainingLoad`; the resumable store-actor backfill |
+| **RunPlayCore** | `AthleteProfile` (optional birth year, resting/max HR, custom zone bounds, coefficient set) with `FileAthleteProfileStore` at `<library-root>/athlete-profile.json`; `EffectiveTrainingLoadProfile` derivation (measured max wins, else Tanaka `208 − 0.7 × age`, else population default — always disclosed); `TrainingLoadCalculator` interval construction and measured-vs-estimated policy; `TrainingLoadSnapshot` on `RunWorkout.trainingLoad`; the resumable store-actor backfill; `TrainingLoadRollup` daily aggregation and the CTL/ATL/TSB recursion; `TrainingLoadChartAccessibilitySummary` spoken disclosures |
 | **RunPlayPlatform** | None |
-| **RunPlayStudio** | Backfill orchestration and disclosure (layered in with the consuming workspace) |
+| **RunPlayStudio** | `TrendsViewModel` training-load compute stage (scope-resolution reuse, range-anchored day slicing, revision-keyed cache with a per-snapshot training-load digest), `TrendsView` training-load panel with daily bars + fitness/fatigue/form lines, model preference controls, inline backfill banner, and `AppState` orchestration (profile ownership, import re-stamp, one-pass backfill trigger on first Trends open) |
 
 Semantics:
 
@@ -663,6 +663,25 @@ Semantics:
 - **The profile is local-only.** It is the only Core-owned persistence
   besides the library store, and a corrupt file falls back to the default
   profile rather than blocking anything.
+- **The rollup is daily scalar Swift work.** `TrainingLoadRollup` aggregates
+  per-day measured and estimated loads (a day with runs but only estimated
+  loads is flagged `noHRData` — zero-contribution, never a rest day), fills
+  the contiguous span with rest days, and runs the standard first-order
+  recursion `state_d = state_{d−1} + (load_d − state_{d−1})/τ` for fitness
+  (default 42 days) and fatigue (default 7); form is the same-day
+  difference. Estimated loads are excluded from the model unless explicitly
+  opted in, and HR coverage over the window is disclosed in captions,
+  hover, and spoken summaries. The Trends panel charts daily load bars
+  (estimated days visually distinct and never merged into the model) plus
+  the three lines; time constants and the opt-in are presentation
+  preferences and never touch stored snapshots.
+- **Trends invalidation follows the library-level revision discipline.** The
+  backfill bumps no revision per workout; the pass-end `refreshTrends`
+  recomputes once, and the Trends request key carries a per-snapshot
+  training-load digest so the cache cannot serve a pre-backfill result.
+  Import re-stamping happens before the in-memory library update, so the
+  normal revision hash (which includes each workout's training load) covers
+  it.
 
 ### Route grouping (Routes workspace)
 

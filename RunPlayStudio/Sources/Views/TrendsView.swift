@@ -33,6 +33,7 @@ struct TrendsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     chartPanels
+                    trainingLoadSection
                     inspector
                     notes
                 }
@@ -62,6 +63,15 @@ struct TrendsView: View {
             appState.refreshTrends()
             appState.requestSessionSave()
         }
+        .onChange(of: viewModel.ctlTimeConstantDays) { _, _ in
+            appState.refreshTrends()
+        }
+        .onChange(of: viewModel.atlTimeConstantDays) { _, _ in
+            appState.refreshTrends()
+        }
+        .onChange(of: viewModel.includeEstimatedLoads) { _, _ in
+            appState.refreshTrends()
+        }
         .onDisappear {
             viewModel.cancel()
         }
@@ -79,6 +89,7 @@ struct TrendsView: View {
             hasher.combine(workout.analysisVersion)
             hasher.combine(workout.metadata.startDate)
             hasher.combine(workout.metadata.recordedUTCOffsetSeconds)
+            hasher.combine(workout.trainingLoad)
         }
         return hasher.finalize()
     }
@@ -284,6 +295,52 @@ struct TrendsView: View {
         appState.showWorkoutsInTrendsPeriod(key)
     }
 
+    // MARK: - Training load
+
+    /// Backfill banner, the fitness/fatigue/form chart, its honesty
+    /// captions, and the model preference controls.
+    @ViewBuilder
+    private var trainingLoadSection: some View {
+        trainingLoadBackfillBanner
+        if let series = viewModel.trainingLoad {
+            TrainingLoadChartPanel(
+                series: series,
+                spokenSummary: viewModel.trainingLoadChartAccessibilitySummary()?.spokenSummary ?? "Training load.",
+                ctlTimeConstantDays: $viewModel.ctlTimeConstantDays,
+                atlTimeConstantDays: $viewModel.atlTimeConstantDays,
+                includeEstimatedLoads: $viewModel.includeEstimatedLoads
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var trainingLoadBackfillBanner: some View {
+        switch viewModel.trainingLoadBackfillState {
+        case .idle:
+            EmptyView()
+        case .running(let completed, let total, let name):
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+                Text("Computing training load for earlier runs")
+                    .font(AppDesign.Typography.compactLabel)
+                ProgressView(value: total > 0 ? Double(completed) / Double(total) : 0) {
+                    Text("\(completed) of \(total) runs\(name.isEmpty ? "" : " — \(name)")")
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(AppDesign.Spacing.large)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .accessibilityElement(children: .combine)
+        case .failed(let message):
+            Text(message)
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+                .padding(AppDesign.Spacing.large)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .accessibilityElement(children: .combine)
+        }
+    }
+
     // MARK: - Inspector
 
     /// Hover-driven period detail plus a keyboard/VoiceOver navigation path.
@@ -431,6 +488,328 @@ struct TrendsView: View {
                 Text("The selected scope matches no workouts. Try All Workouts or another collection.")
             }
         }
+    }
+}
+
+/// Daily load bars plus fitness, fatigue, and form lines.
+///
+/// Colors stay inside the semantic palette: red for heart-rate effort (the
+/// bars), green for fitness, orange for fatigue (the strain axis), blue for
+/// form. Estimated days render lighter and are never part of the model
+/// unless explicitly opted in; days with runs but no heart rate draw a
+/// hollow marker so zero-contribution never reads as a rest day, and the
+/// stretches they form are shaded so the model lines are not drawn as
+/// confident through input nobody recorded.
+private struct TrainingLoadChartPanel: View {
+    let series: FitnessFatigueSeries
+    let spokenSummary: String
+    @Binding var ctlTimeConstantDays: Double
+    @Binding var atlTimeConstantDays: Double
+    @Binding var includeEstimatedLoads: Bool
+
+    @State private var hoveredDayIndex: Int?
+
+    private var loadColor: Color { AppDesign.MetricColor.heartRate }
+    private var fitnessColor: Color { AppDesign.MetricColor.elevation }
+    private var fatigueColor: Color { AppDesign.MetricColor.speed }
+    private var formColor: Color { AppDesign.MetricColor.distance }
+
+    private var uncertaintySpans: [TrainingLoadUncertaintySpan] {
+        TrainingLoadUncertainty.spans(in: series.loadDays)
+    }
+
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Training Load")
+                    .font(AppDesign.Typography.sectionHeadline)
+                Spacer()
+                Text("TRIMP by day · Fitness \(Int(ctlTimeConstantDays)) d · Fatigue \(Int(atlTimeConstantDays)) d")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.secondary)
+            }
+            captions
+            if series.loadDays.contains(where: { $0.runCount > 0 }) {
+                chart
+            } else {
+                Text("No dated runs in this scope.")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
+            }
+            hoveredReadout
+            controls
+        }
+        .padding(AppDesign.Spacing.large)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Honesty captions: estimated exclusion and HR coverage.
+    private var captions: some View {
+        var parts: [String] = []
+        if series.includesEstimatedLoads {
+            parts.append("Estimated loads are included in the model at your request — they are invented values and make the curve less trustworthy.")
+        } else {
+            parts.append("Fitness, fatigue, and form use measured heart-rate loads only. Estimated loads are shown on the bars but excluded from the model.")
+        }
+        if let coverage = series.hrCoverageFraction {
+            parts.append("Heart-rate coverage: \(Int((coverage * 100).rounded()))% of days with runs.")
+        }
+        if !uncertaintySpans.isEmpty {
+            parts.append(TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: includeEstimatedLoads))
+        }
+        return Text(parts.joined(separator: " "))
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var chart: some View {
+        Chart {
+            // Drawn before every other mark so the shading sits behind the
+            // bars and lines rather than dimming them. Dashing the model
+            // lines was the alternative, but form already owns a dash, so a
+            // dashed fitness line and a dashed form line would encode two
+            // unrelated things in one channel.
+            ForEach(uncertaintySpans, id: \.self) { span in
+                RectangleMark(
+                    xStart: .value("Unknown load from", span.start),
+                    xEnd: .value("Unknown load until", span.endExclusive)
+                )
+                .foregroundStyle(loadColor.opacity(0.10))
+                .accessibilityHidden(true)
+            }
+            ForEach(series.loadDays.indices, id: \.self) { index in
+                let day = series.loadDays[index]
+                let model = series.modelDays[index]
+                if day.runCount > 0 {
+                    if day.contribution == .hrDay {
+                        BarMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Load", day.measuredLoad)
+                        )
+                        .foregroundStyle(loadColor.opacity(0.55))
+                        .cornerRadius(1)
+                    }
+                    // Estimated load always draws at its height — the
+                    // caption promises the bars show it — but far lighter
+                    // than measured, and it never joins the model unless
+                    // opted in.
+                    if day.estimatedLoad > 0 {
+                        BarMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Load", day.estimatedLoad)
+                        )
+                        .foregroundStyle(loadColor.opacity(0.18))
+                        .cornerRadius(1)
+                    }
+                    // A run day with no load at all (un-backfilled) still
+                    // gets a floor marker so it never reads as a rest day.
+                    if day.contribution == .noHRData, day.estimatedLoad == 0 {
+                        PointMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Load", 0)
+                        )
+                        .symbol(.circle)
+                        .foregroundStyle(loadColor.opacity(0.35))
+                    }
+                }
+                LineMark(
+                    x: .value("Day", model.date, unit: .day),
+                    y: .value("Fitness", model.ctl),
+                    series: .value("Series", "fitness")
+                )
+                .foregroundStyle(fitnessColor)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                LineMark(
+                    x: .value("Day", model.date, unit: .day),
+                    y: .value("Fatigue", model.atl),
+                    series: .value("Series", "fatigue")
+                )
+                .foregroundStyle(fatigueColor)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                LineMark(
+                    x: .value("Day", model.date, unit: .day),
+                    y: .value("Form", model.tsb),
+                    series: .value("Series", "form")
+                )
+                .foregroundStyle(formColor.opacity(0.8))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .month, count: 1)) { value in
+                AxisValueLabel(format: .dateTime.month(.abbreviated).year(), centered: false)
+            }
+        }
+        .chartYAxis {
+            AxisMarks { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let numeric = value.as(Double.self) {
+                        Text("\(Int(numeric))")
+                    }
+                }
+            }
+        }
+        .chartLegend(position: .bottom, spacing: AppDesign.Spacing.medium)
+        .frame(minHeight: 220)
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            hoveredDayIndex = dayIndex(at: location, proxy: proxy, geometry: geometry)
+                        case .ended:
+                            hoveredDayIndex = nil
+                        }
+                    }
+            }
+        }
+        .help(
+            uncertaintySpans.isEmpty
+                ? "Daily TRIMP with the fitness, fatigue, and form model. Fitness and fatigue are exponentially weighted averages of daily load; form is fitness minus fatigue."
+                : TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: includeEstimatedLoads)
+        )
+        .accessibilityLabel("Training load by day")
+        .accessibilityValue(spokenSummary)
+        .accessibilityChartDescriptor(
+            TrainingLoadChartDescriptor(series: series, summary: spokenSummary)
+        )
+    }
+
+    /// Hover / scrub readout: the values the user most needs spoken or read.
+    private var hoveredReadout: some View {
+        Group {
+            if let index = hoveredDayIndex,
+               index < series.loadDays.count, index < series.modelDays.count {
+                let day = series.loadDays[index]
+                let model = series.modelDays[index]
+                Text(TrainingLoadChartAccessibilitySummary.dayPhrase(
+                    contribution: day.contribution,
+                    load: day.contribution == .hrDay ? day.measuredLoad : day.estimatedLoad,
+                    estimatedLoad: day.estimatedLoad > 0,
+                    ctl: model.ctl,
+                    atl: model.atl,
+                    tsb: model.tsb
+                ) + " · " + day.date.formatted(.dateTime.month(.abbreviated).day().year()))
+                    .font(AppDesign.Typography.compactLabel)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Hover the chart to read one day's load, fitness, fatigue, and form.")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Time constants and the estimated-inclusion opt-in.
+    private var controls: some View {
+        HStack(spacing: AppDesign.Spacing.large) {
+            Stepper(
+                "Fitness \(Int(ctlTimeConstantDays)) days",
+                value: $ctlTimeConstantDays,
+                in: 7...90,
+                step: 1
+            )
+            .frame(maxWidth: 180)
+            .help("Chronic (fitness) time constant in days; Banister's default is 42")
+            .accessibilityLabel("Fitness time constant in days")
+            Stepper(
+                "Fatigue \(Int(atlTimeConstantDays)) days",
+                value: $atlTimeConstantDays,
+                in: 3...30,
+                step: 1
+            )
+            .frame(maxWidth: 180)
+            .help("Acute (fatigue) time constant in days; Banister's default is 7")
+            .accessibilityLabel("Fatigue time constant in days")
+            Toggle("Include estimated loads", isOn: $includeEstimatedLoads)
+                .help("Mostly running without a strap? Estimated loads can join the model, but they are invented values and bias the curve downward.")
+                .accessibilityLabel("Include estimated loads in the model")
+            Spacer()
+        }
+    }
+
+    private func dayIndex(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> Int? {
+        guard let plotFrame = proxy.plotFrame else { return nil }
+        let origin = geometry[plotFrame].origin
+        let x = location.x - origin.x
+        guard x >= 0, let instant: Date = proxy.value(atX: x) else { return nil }
+        var nearest = 0
+        for index in series.loadDays.indices where
+            abs(series.loadDays[index].date.timeIntervalSince(instant))
+                < abs(series.loadDays[nearest].date.timeIntervalSince(instant)) {
+            nearest = index
+        }
+        return nearest
+    }
+}
+
+/// Audio-graph descriptor for the training-load chart: the fitness series on
+/// the y axis with the spoken summary as the chart summary.
+private struct TrainingLoadChartDescriptor: AXChartDescriptorRepresentable {
+    let series: FitnessFatigueSeries
+    let summary: String
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let xScale = AXNumericDataAxisDescriptor(
+            title: "Day",
+            range: xRange,
+            gridlinePositions: []
+        ) { value in
+            Date(timeIntervalSince1970: value)
+                .formatted(.dateTime.month(.abbreviated).day())
+        }
+        let yScale = AXNumericDataAxisDescriptor(
+            title: "Fitness (CTL)",
+            range: yRange,
+            gridlinePositions: []
+        ) { value in
+            String(Int(value))
+        }
+        let seriesDescriptor = AXDataSeriesDescriptor(
+            name: "Fitness",
+            isContinuous: true,
+            dataPoints: series.modelDays.map { day in
+                AXDataPoint(x: day.date.timeIntervalSince1970, y: day.ctl)
+            }
+        )
+        return AXChartDescriptor(
+            title: "Training load by day",
+            summary: summary,
+            xAxis: xScale,
+            yAxis: yScale,
+            series: [seriesDescriptor]
+        )
+    }
+
+    private var xRange: ClosedRange<Double> {
+        let stamps = series.modelDays.map(\.date.timeIntervalSince1970)
+        guard let minimum = stamps.min(), let maximum = stamps.max(), minimum < maximum else {
+            return 0...1
+        }
+        return minimum...maximum
+    }
+
+    private var yRange: ClosedRange<Double> {
+        let values = series.modelDays.map(\.ctl) + series.modelDays.map(\.atl)
+        guard let minimum = values.min(), let maximum = values.max(), minimum < maximum else {
+            return 0...1
+        }
+        return minimum...maximum
     }
 }
 

@@ -71,6 +71,11 @@ class AppState: ObservableObject {
     /// replay ticks.
     @Published private(set) var personalRecordsLibraryRevision = 0
 
+    /// Local-only athlete profile for training-load computation. Loaded once
+    /// at startup; edits go through `updateAthleteProfile`.
+    @Published private(set) var athleteProfile = AthleteProfile()
+    private let profileStore: FileAthleteProfileStore?
+
     func bumpPersonalRecordsLibraryRevision() {
         personalRecordsLibraryRevision += 1
     }
@@ -285,12 +290,17 @@ class AppState: ObservableObject {
         importService: WorkoutImportServicing? = nil,
         archiveService: StravaArchiveService? = nil,
         fitSessionService: FITSessionImportService? = nil,
+        profileStore: FileAthleteProfileStore? = nil,
         accessibilityAnnouncer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
     ) {
         let announcementPolicy = AccessibilityAnnouncementPolicy(
             announcer: accessibilityAnnouncer
         )
         self.storeActor = storeActor
+        self.profileStore = profileStore
+        if let profileStore {
+            athleteProfile = profileStore.loadOrDefault()
+        }
         self.importService = importService
         self.archiveService = archiveService
         self.fitSessionService = fitSessionService
@@ -330,7 +340,8 @@ class AppState: ObservableObject {
             storeActor: actor,
             importService: importService,
             archiveService: archiveService,
-            fitSessionService: fitSessionService
+            fitSessionService: fitSessionService,
+            profileStore: FileAthleteProfileStore(rootURL: libraryRoot)
         )
     }
 
@@ -339,6 +350,7 @@ class AppState: ObservableObject {
         archiveTask?.cancel()
         fitImportTask?.cancel()
         personalRecordsBackfillTask?.cancel()
+        trainingLoadBackfillTask?.cancel()
         routeGroupAssignmentTask?.cancel()
         routeGroupReclusterTask?.cancel()
         routeGroupBackfillTask?.cancel()
@@ -536,6 +548,14 @@ class AppState: ObservableObject {
             )
             workspaceMode = .trends
             refreshTrends()
+            // Restoring into Trends is an open, not a navigation, so it never
+            // passes through `showTrends()`. Without this, a pass interrupted
+            // by a quit never resumes for someone who relaunches straight
+            // back into Trends: the chart silently models only the workouts
+            // that happened to finish. Session restore runs after the
+            // library-first startup sequence, so the `hasPersistedLibrary`
+            // guard inside is already satisfiable here.
+            startTrainingLoadBackfillIfNeeded()
         case .personalRecords:
             clearComparison()
             workoutLibrary.restoreSessionState(
@@ -746,8 +766,15 @@ class AppState: ObservableObject {
         defer { operationState = .idle }
 
         do {
-            let workout = try await importService.importWorkout(from: url)
+            var workout = try await importService.importWorkout(from: url)
             try Task.checkCancellation()
+            // Importers analyze with the default profile; re-stamp the load
+            // with the current one so fresh imports are never stale. One
+            // native call, skipped entirely when the profile is default.
+            workout.trainingLoad = try recomputeTrainingLoad(
+                for: workout,
+                profile: athleteProfile
+            )
             try await storeActor.addWorkout(workout, select: true)
             try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
@@ -1172,6 +1199,7 @@ class AppState: ObservableObject {
         comparisonViewModel.clear()
         workspaceMode = .trends
         refreshTrends()
+        startTrainingLoadBackfillIfNeeded()
         requestSessionSave()
     }
 
@@ -1630,6 +1658,125 @@ class AppState: ObservableObject {
         cancelActiveWorkspaceWork()
         workspaceMode = .comparison
         requestSessionSave()
+    }
+
+    // MARK: - Training load
+
+    /// Handle for the active one-off training-load backfill.
+    private var trainingLoadBackfillTask: Task<Void, Never>?
+
+    /// Start the one-off library backfill for snapshots that predate
+    /// training-load computation. Auto-starts the first time Trends opens
+    /// with pending work; never runs during library load. Profile-change
+    /// recomputes go through the same store-actor pass but are
+    /// user-triggered, so a custom profile never forces a full disk walk on
+    /// every open. Each computed snapshot is applied in memory as it
+    /// arrives; Trends recomputes once when the pass ends. Cancellation
+    /// keeps every completed snapshot and the pass resumes on the next open.
+    func startTrainingLoadBackfillIfNeeded() {
+        guard trainingLoadBackfillTask == nil,
+              let storeActor,
+              hasPersistedLibrary,
+              workouts.contains(where: { $0.trainingLoad == nil }) else {
+            return
+        }
+        trends.trainingLoadBackfillStarted(totalCount: workouts.count)
+        let applyUpdate: @Sendable (
+            WorkoutLibraryStoreActor.TrainingLoadBackfillUpdate
+        ) -> Void = { [weak self] update in
+            guard let self else { return }
+            Task { @MainActor in
+                self.applyTrainingLoadBackfillUpdate(update)
+            }
+        }
+        let profile = athleteProfile
+        trainingLoadBackfillTask = Task { [weak self] in
+            let result = await storeActor.backfillTrainingLoad(
+                profile: profile,
+                progress: applyUpdate
+            )
+            self?.finishTrainingLoadBackfill(result)
+        }
+    }
+
+    private func applyTrainingLoadBackfillUpdate(
+        _ update: WorkoutLibraryStoreActor.TrainingLoadBackfillUpdate
+    ) {
+        guard workspaceMode == .trends || trainingLoadBackfillTask != nil else {
+            return
+        }
+        trends.trainingLoadBackfillProgress(
+            completedCount: update.completedCount,
+            totalCount: update.totalCount,
+            currentWorkoutName: update.currentWorkoutName
+        )
+        guard let computed = update.computedWorkout,
+              let index = workouts.firstIndex(where: { $0.id == computed.id }) else {
+            return
+        }
+        workouts[index] = computed
+        // No library rebuild and no revision bump per workout: entries and
+        // search documents derive from metadata and summaries, never from
+        // training loads. The single refresh after the pass covers Trends,
+        // whose cache key carries each snapshot's training-load digest.
+    }
+
+    private func finishTrainingLoadBackfill(
+        _ result: WorkoutLibraryStoreActor.TrainingLoadBackfillResult
+    ) {
+        trainingLoadBackfillTask = nil
+        trends.trainingLoadBackfillFinished(
+            failureMessage: Self.trainingLoadBackfillFailureMessage(result)
+        )
+        refreshTrends()
+        requestSessionSave()
+    }
+
+    private static func trainingLoadBackfillFailureMessage(
+        _ result: WorkoutLibraryStoreActor.TrainingLoadBackfillResult
+    ) -> String? {
+        if result.failedCount > 0 && result.saveFailureCount > 0 {
+            return "Training load could not be computed for \(result.failedCount) run(s) and could not be saved for \(result.saveFailureCount) run(s). They will be retried next time Trends opens."
+        }
+        if result.failedCount > 0 {
+            return "Training load could not be computed for \(result.failedCount) run(s). They will be retried next time Trends opens."
+        }
+        if result.saveFailureCount > 0 {
+            return "Training load could not be saved for \(result.saveFailureCount) run(s). They will be retried next time Trends opens."
+        }
+        return nil
+    }
+
+    /// Persist a profile edit. Loads computed under a different profile are
+    /// stale by the snapshot's own rule; recompute is explicit so a profile
+    /// edit never kicks off silent background work.
+    func updateAthleteProfile(_ profile: AthleteProfile) {
+        athleteProfile = profile
+        if let profileStore {
+            do {
+                try profileStore.save(profile)
+            } catch {
+                errorMessage = "Athlete profile could not be saved: \(error.localizedDescription)"
+                showingError = true
+            }
+        }
+    }
+
+    /// Recompute one workout's load under `profile` (import re-stamp).
+    private func recomputeTrainingLoad(
+        for workout: RunWorkout,
+        profile: AthleteProfile
+    ) throws -> TrainingLoadSnapshot? {
+        guard profile != AthleteProfile() else { return workout.trainingLoad }
+        return try TrainingLoadCalculator.compute(
+            routePoints: workout.routePoints,
+            activeSeconds: workout.summary.totalActiveSeconds,
+            averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
+                ? workout.summary.averageSpeedMetersPerSecond
+                : nil,
+            profile: profile,
+            referenceYear: Calendar.current.component(.year, from: Date())
+        )
     }
 
     // MARK: - Favourites & metadata
