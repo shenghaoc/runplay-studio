@@ -700,12 +700,12 @@ private struct TrainingLoadChartPanel: View {
                 let day = series.loadDays[index]
                 let model = series.modelDays[index]
                 Text(TrainingLoadChartAccessibilitySummary.dayPhrase(
+                    contribution: day.contribution,
                     load: day.contribution == .hrDay ? day.measuredLoad : day.estimatedLoad,
-                    estimatedLoad: day.contribution != .hrDay && day.estimatedLoad > 0,
+                    estimatedLoad: day.estimatedLoad > 0,
                     ctl: model.ctl,
                     atl: model.atl,
-                    tsb: model.tsb,
-                    hasHRData: day.contribution == .hrDay
+                    tsb: model.tsb
                 ) + " · " + day.date.formatted(.dateTime.month(.abbreviated).day().year()))
                     .font(AppDesign.Typography.compactLabel)
                     .monospacedDigit()

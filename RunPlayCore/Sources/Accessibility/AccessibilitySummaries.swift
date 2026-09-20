@@ -745,21 +745,30 @@ public struct TrainingLoadChartAccessibilitySummary: Equatable, Sendable {
     }
 
     /// Hover/scrub phrase for one day.
+    ///
+    /// The day's kind is passed rather than a `hasHRData` flag because the
+    /// readout has to separate the two zeroes the model cannot: a rest day is
+    /// a measured zero — no run happened — while an unknown-load day is an
+    /// unmeasured one, a run the model has no load for. Both integrate as
+    /// zero; only one of them is a fact about the training.
     public static func dayPhrase(
+        contribution: TrainingLoadDay.Contribution,
         load: Double,
         estimatedLoad: Bool,
         ctl: Double,
         atl: Double,
-        tsb: Double,
-        hasHRData: Bool
+        tsb: Double
     ) -> String {
         var parts: [String] = []
-        if estimatedLoad {
-            parts.append("Load \(Int(load.rounded())) TRIMP, estimated, not in model")
-        } else if hasHRData {
+        switch contribution {
+        case .hrDay:
             parts.append("Load \(Int(load.rounded())) TRIMP")
-        } else {
+        case .noHRData where estimatedLoad:
+            parts.append("Load \(Int(load.rounded())) TRIMP, estimated, not in model")
+        case .noHRData:
             parts.append("No heart-rate load, modelled as rest")
+        case .restDay:
+            parts.append("Rest day")
         }
         parts.append("fitness \(Int(ctl.rounded()))")
         parts.append("fatigue \(Int(atl.rounded()))")

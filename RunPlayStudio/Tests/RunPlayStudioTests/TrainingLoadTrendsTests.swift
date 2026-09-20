@@ -386,12 +386,12 @@ final class TrainingLoadTrendsTests: XCTestCase {
         XCTAssertTrue(optIn.spokenSummary.contains("invented values"))
 
         let phrase = TrainingLoadChartAccessibilitySummary.dayPhrase(
+            contribution: .noHRData,
             load: 40,
             estimatedLoad: true,
             ctl: 30,
             atl: 20,
-            tsb: 10,
-            hasHRData: false
+            tsb: 10
         )
         XCTAssertTrue(phrase.contains("estimated, not in model"))
         XCTAssertTrue(phrase.contains("form +10"))
@@ -509,14 +509,40 @@ final class TrainingLoadTrendsTests: XCTestCase {
 
     func testDayPhraseMarksUnknownLoadAsModelledRest() {
         let phrase = TrainingLoadChartAccessibilitySummary.dayPhrase(
+            contribution: .noHRData,
             load: 0,
             estimatedLoad: false,
             ctl: 30,
             atl: 22,
-            tsb: 8,
-            hasHRData: false
+            tsb: 8
         )
         XCTAssertTrue(phrase.contains("No heart-rate load, modelled as rest"))
         XCTAssertTrue(phrase.contains("fitness 30"))
+    }
+
+    /// A rest day and an unknown-load day integrate identically but must not
+    /// read identically: one is a measured zero, the other an unmeasured one.
+    func testDayPhraseSeparatesRestDaysFromUnknownLoadDays() {
+        let rest = TrainingLoadChartAccessibilitySummary.dayPhrase(
+            contribution: .restDay,
+            load: 0,
+            estimatedLoad: false,
+            ctl: 30,
+            atl: 22,
+            tsb: 8
+        )
+        XCTAssertTrue(rest.contains("Rest day"))
+        XCTAssertFalse(rest.contains("No heart-rate load"))
+
+        let unknown = TrainingLoadChartAccessibilitySummary.dayPhrase(
+            contribution: .noHRData,
+            load: 0,
+            estimatedLoad: false,
+            ctl: 30,
+            atl: 22,
+            tsb: 8
+        )
+        XCTAssertTrue(unknown.contains("No heart-rate load, modelled as rest"))
+        XCTAssertNotEqual(rest, unknown)
     }
 }
