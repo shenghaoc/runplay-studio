@@ -548,6 +548,14 @@ class AppState: ObservableObject {
             )
             workspaceMode = .trends
             refreshTrends()
+            // Restoring into Trends is an open, not a navigation, so it never
+            // passes through `showTrends()`. Without this, a pass interrupted
+            // by a quit never resumes for someone who relaunches straight
+            // back into Trends: the chart silently models only the workouts
+            // that happened to finish. Session restore runs after the
+            // library-first startup sequence, so the `hasPersistedLibrary`
+            // guard inside is already satisfiable here.
+            startTrainingLoadBackfillIfNeeded()
         case .personalRecords:
             clearComparison()
             workoutLibrary.restoreSessionState(

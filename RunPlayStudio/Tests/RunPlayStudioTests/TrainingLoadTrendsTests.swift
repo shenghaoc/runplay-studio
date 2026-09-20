@@ -302,6 +302,51 @@ final class TrainingLoadTrendsTests: XCTestCase {
         XCTAssertEqual(appState.workouts.first?.trainingLoad?.kind, .estimated)
     }
 
+    /// Restoring into Trends must resume an interrupted pass.
+    ///
+    /// Relaunching lands in the last workspace without going through
+    /// `showTrends()`, so before this the pass only resumed if the user
+    /// navigated away from Trends and back — someone who quit mid-pass and
+    /// reopened straight into Trends got a chart modelling only the workouts
+    /// that happened to finish, with no banner and nothing restarting it.
+    func testRestoringIntoTrendsResumesPendingBackfill() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TrainingLoadRestore-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = FileWorkoutLibraryStore(rootURL: tempDir)
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+
+        let pending = makeWorkout(
+            name: "Pending",
+            start: utcDate(2026, 8, 20),
+            trainingLoad: nil
+        )
+        try store.saveWorkout(pending)
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [pending.id],
+            selectedWorkoutID: pending.id
+        ))
+
+        let appState = AppState(storeActor: storeActor)
+        appState.workouts = [pending]
+        appState.hasPersistedLibrary = true
+
+        // Restore, not navigate.
+        appState.applySessionSnapshot(AppSessionSnapshot(destination: .trends))
+        XCTAssertEqual(appState.workspaceMode, .trends)
+
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if appState.workouts.first?.trainingLoad != nil { break }
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertNotNil(
+            appState.workouts.first?.trainingLoad,
+            "restoring into Trends should resume the interrupted backfill"
+        )
+    }
+
     // MARK: - Accessibility summary
 
     func testChartAccessibilitySummarySpeaksDisclosures() {
