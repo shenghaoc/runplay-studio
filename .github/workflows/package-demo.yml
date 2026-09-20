@@ -6,19 +6,22 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Dispatch-only workflow: a repeated dispatch on the same ref supersedes
+  # the previous run instead of stacking another macOS job behind it.
+  group: package-demo-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package:
     name: Build demo .app artifact
     runs-on: xcode-27
 
     steps:
+    # A local action resolves from the workspace, so checkout must precede
+    # the setup composite.
     - uses: actions/checkout@v7
-
-    - name: Verify Swift toolchain parity
-      run: |
-        xcodebuild -version
-        swift --version
-        ./scripts/check-toolchain-parity.sh
+    - uses: ./.github/actions/setup-macos-build
 
     - name: Build and package
       run: ./scripts/package-demo.sh .build/artifacts
