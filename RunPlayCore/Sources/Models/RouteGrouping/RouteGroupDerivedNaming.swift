@@ -11,16 +11,6 @@ import Foundation
 /// using only data already persisted in `WorkoutRouteGroupSummary` plus the
 /// group's own persisted id: no geocoding, no network, no new storage (the
 /// privacy model forbids the first two).
-/// One derived-naming candidate: the base name plus both compass tiers
-/// for a group that needs disambiguation (`nil` tokens for the
-/// summary-less fallback).
-private struct RouteGroupDerivedNameCandidate {
-    let groupID: UUID
-    let baseName: String
-    let coarseToken: String?
-    let fineToken: String?
-}
-
 extension WorkoutRouteGroup {
     /// Start-to-finish distance under which a representative counts as a
     /// loop for a derived name. The single product copy of the number; the
@@ -82,15 +72,37 @@ extension WorkoutRouteGroup {
         for groups: [WorkoutRouteGroup],
         loopClosureDistanceMeters: Double
     ) -> [UUID: String] {
-        var names: [UUID: String] = [:]
-        names.reserveCapacity(groups.count)
+        derivedNameDetails(
+            for: groups,
+            loopClosureDistanceMeters: loopClosureDistanceMeters
+        ).mapValues(\.name)
+    }
+
+    /// The derivation with its structure exposed: same inputs, same
+    /// behaviour as `derivedDisplayNames`, plus the tier each name reached,
+    /// the base name it was built on, and — for digest-tier names — the
+    /// discriminator itself. Internal, not public: consumed by the
+    /// property tests that assert a name only ever refines.
+    static func derivedNameDetails(
+        for groups: [WorkoutRouteGroup],
+        loopClosureDistanceMeters: Double
+    ) -> [UUID: RouteGroupDerivedName] {
+        var details: [UUID: RouteGroupDerivedName] = [:]
+        details.reserveCapacity(groups.count)
 
         var derived: [RouteGroupDerivedNameCandidate] = []
         derived.reserveCapacity(groups.count)
 
         for group in groups {
             if let name = group.name, !name.isEmpty {
-                names[group.id] = name
+                details[group.id] = RouteGroupDerivedName(
+                    groupID: group.id,
+                    name: name,
+                    baseName: name,
+                    tier: .bare,
+                    digestDiscriminator: nil,
+                    isUserAssigned: true
+                )
                 continue
             }
             guard let summary = group.representativeSummary else {
@@ -133,7 +145,14 @@ extension WorkoutRouteGroup {
 
         for (baseName, cluster) in clusters {
             guard cluster.count > 1 else {
-                names[cluster[0].groupID] = baseName
+                details[cluster[0].groupID] = RouteGroupDerivedName(
+                    groupID: cluster[0].groupID,
+                    name: baseName,
+                    baseName: baseName,
+                    tier: .bare,
+                    digestDiscriminator: nil,
+                    isUserAssigned: false
+                )
                 continue
             }
             var byCoarseToken: [String: [RouteGroupDerivedNameCandidate]] = [:]
@@ -143,9 +162,25 @@ extension WorkoutRouteGroup {
             for (_, coarseGroup) in byCoarseToken {
                 guard coarseGroup.count > 1 else {
                     let candidate = coarseGroup[0]
-                    names[candidate.groupID] = candidate.coarseToken
-                        .map { baseName + disambiguatedSuffix($0) }
-                        ?? baseName
+                    if let coarseToken = candidate.coarseToken {
+                        details[candidate.groupID] = RouteGroupDerivedName(
+                            groupID: candidate.groupID,
+                            name: baseName + disambiguatedSuffix(coarseToken),
+                            baseName: baseName,
+                            tier: .coarseToken,
+                            digestDiscriminator: nil,
+                            isUserAssigned: false
+                        )
+                    } else {
+                        details[candidate.groupID] = RouteGroupDerivedName(
+                            groupID: candidate.groupID,
+                            name: baseName,
+                            baseName: baseName,
+                            tier: .bare,
+                            digestDiscriminator: nil,
+                            isUserAssigned: false
+                        )
+                    }
                     continue
                 }
                 var byFineToken: [String: [RouteGroupDerivedNameCandidate]] = [:]
@@ -155,17 +190,33 @@ extension WorkoutRouteGroup {
                 for (_, fineGroup) in byFineToken {
                     guard fineGroup.count > 1 else {
                         let candidate = fineGroup[0]
-                        names[candidate.groupID] = candidate.fineToken
-                            .map { baseName + disambiguatedSuffix($0) }
-                            ?? baseName
+                        if let fineToken = candidate.fineToken {
+                            details[candidate.groupID] = RouteGroupDerivedName(
+                                groupID: candidate.groupID,
+                                name: baseName + disambiguatedSuffix(fineToken),
+                                baseName: baseName,
+                                tier: .fineToken,
+                                digestDiscriminator: nil,
+                                isUserAssigned: false
+                            )
+                        } else {
+                            details[candidate.groupID] = RouteGroupDerivedName(
+                                groupID: candidate.groupID,
+                                name: baseName,
+                                baseName: baseName,
+                                tier: .bare,
+                                digestDiscriminator: nil,
+                                isUserAssigned: false
+                            )
+                        }
                         continue
                     }
-                    assignIdentityDigestNames(fineGroup, baseName: baseName, into: &names)
+                    assignIdentityDigestNames(fineGroup, baseName: baseName, into: &details)
                 }
             }
         }
 
-        return names
+        return details
     }
 
     /// Appends the final-tier discriminator to every member of a group that
@@ -178,7 +229,7 @@ extension WorkoutRouteGroup {
     private static func assignIdentityDigestNames(
         _ members: [RouteGroupDerivedNameCandidate],
         baseName: String,
-        into names: inout [UUID: String]
+        into details: inout [UUID: RouteGroupDerivedName]
     ) {
         let fullDigests = members.map { stableDigestHex(for: $0.groupID) }
         var length = 8
@@ -197,7 +248,14 @@ extension WorkoutRouteGroup {
             let disambiguator = candidate.fineToken
                 .map { "\($0)·\(discriminator)" }
                 ?? discriminator
-            names[candidate.groupID] = baseName + disambiguatedSuffix(disambiguator)
+            details[candidate.groupID] = RouteGroupDerivedName(
+                groupID: candidate.groupID,
+                name: baseName + disambiguatedSuffix(disambiguator),
+                baseName: baseName,
+                tier: discriminator == candidate.groupID.uuidString ? .fullID : .digest,
+                digestDiscriminator: discriminator,
+                isUserAssigned: false
+            )
         }
     }
 
@@ -321,4 +379,43 @@ extension WorkoutRouteGroup {
         #endif
         return String(format: format, disambiguator)
     }
+}
+
+/// One derived-naming candidate: the base name plus both compass tiers
+/// for a group that needs disambiguation (`nil` tokens for the
+/// summary-less fallback).
+private struct RouteGroupDerivedNameCandidate {
+    let groupID: UUID
+    let baseName: String
+    let coarseToken: String?
+    let fineToken: String?
+}
+
+/// Disambiguation tier a derived name reached, coarsest to finest —
+/// the property tests assert a group's tier never decreases when new
+/// groups arrive. Internal, not public.
+enum RouteGroupDerivedNameTier: Int, Comparable {
+    case bare = 0
+    case coarseToken = 1
+    case fineToken = 2
+    case digest = 3
+    case fullID = 4
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+/// One derived name plus the pieces the property tests reason about: the
+/// base name it was built on, the tier reached, and — for digest-tier
+/// names — the discriminator itself (hex prefix, or the UUID string at
+/// the terminal corner). User-assigned names are flagged rather than
+/// tiered, because they take no part in the rule. Internal, not public.
+struct RouteGroupDerivedName: Equatable {
+    let groupID: UUID
+    let name: String
+    let baseName: String
+    let tier: RouteGroupDerivedNameTier
+    let digestDiscriminator: String?
+    let isUserAssigned: Bool
 }

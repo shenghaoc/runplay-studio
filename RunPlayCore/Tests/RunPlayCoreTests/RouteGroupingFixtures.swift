@@ -324,6 +324,182 @@ enum RouteGroupingFixtures {
             )
         )
     }
+
+    // MARK: - Derived-name populations
+
+    /// Deterministic UUID from the seeded source — the derived-name
+    /// property tests must never touch the system RNG (`UUID()`,
+    /// `shuffled()`), so ids and permutations come from here.
+    static func uuid(from generator: inout SplitMix64RouteGrouping) -> UUID {
+        let bytes = (0..<16).map { _ in UInt8(truncatingIfNeeded: generator.next()) }
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
+
+    /// Facts for a synthetic route whose extent centre sits
+    /// `centreMeters` from the start point at `bearingDegrees` (0 = north,
+    /// clockwise), with a square bounding box of `extentMeters`. The
+    /// derived-name derivation reads only persisted facts, so populations
+    /// are built straight from facts — no route points needed — with the
+    /// bearing controlling the compass token exactly.
+    static func namingFacts(
+        bearingDegrees: Double,
+        centreMeters: Double,
+        extentMeters: Double,
+        totalDistanceMeters: Double,
+        closesLoop: Bool
+    ) -> RouteGroupingRouteFacts {
+        let bearing = bearingDegrees * .pi / 180
+        let centreEast = centreMeters * sin(bearing)
+        let centreNorth = centreMeters * cos(bearing)
+        let half = extentMeters / 2
+        let finishEast = closesLoop ? 0.0 : 2 * centreEast
+        let finishNorth = closesLoop ? 0.0 : 2 * centreNorth
+        return RouteGroupingRouteFacts(
+            minLatitude: baseLatitude + (centreNorth - half) / metersPerDegreeLatitude,
+            maxLatitude: baseLatitude + (centreNorth + half) / metersPerDegreeLatitude,
+            minLongitude: baseLongitude + (centreEast - half) / metersPerDegreeLongitude,
+            maxLongitude: baseLongitude + (centreEast + half) / metersPerDegreeLongitude,
+            startLatitude: baseLatitude,
+            startLongitude: baseLongitude,
+            finishLatitude: baseLatitude + finishNorth / metersPerDegreeLatitude,
+            finishLongitude: baseLongitude + finishEast / metersPerDegreeLongitude,
+            totalDistanceMeters: totalDistanceMeters,
+            routePointCount: 200,
+            discardedCoordinatePointCount: 0
+        )
+    }
+
+    /// One synthetic group for the derived-name populations.
+    static func namingGroup(
+        id: UUID,
+        bearingDegrees: Double,
+        totalDistanceMeters: Double,
+        closesLoop: Bool = true,
+        centreMeters: Double = 600,
+        extentMeters: Double = 800,
+        date: Date,
+        name: String? = nil
+    ) -> WorkoutRouteGroup {
+        WorkoutRouteGroup(
+            id: id,
+            name: name,
+            representativeSummary: WorkoutRouteGroupSummary(
+                workoutID: id,
+                startDate: date,
+                facts: namingFacts(
+                    bearingDegrees: bearingDegrees,
+                    centreMeters: centreMeters,
+                    extentMeters: extentMeters,
+                    totalDistanceMeters: totalDistanceMeters,
+                    closesLoop: closesLoop
+                )
+            )
+        )
+    }
+
+    /// A deterministic population at the scale issue #130 produced (286
+    /// routes from 317 activities), built so base names collide heavily
+    /// and clusters reach every tier:
+    ///
+    /// - unique-distance loners (bare names);
+    /// - sparse pairs across different coarse sectors (coarse-token tier);
+    /// - triples sharing a coarse sector but split at the sixteen-point
+    ///   tier (fine-token tier);
+    /// - dense buckets — the bulk — whose members mostly share one fine
+    ///   sector (digest tier), the rest spread over the compass;
+    /// - a sprinkle of user-named groups, some sharing names.
+    ///
+    /// Bucket distances are chosen so the constructs do not bleed into
+    /// each other's base names. Every id, date, and angle draw comes from
+    /// the seeded source, so the population is reproducible from the seed
+    /// alone.
+    static func derivedNamePopulation(seed: UInt64, count: Int) -> [WorkoutRouteGroup] {
+        var generator = SplitMix64RouteGrouping(seed: seed)
+        var groups: [WorkoutRouteGroup] = []
+        groups.reserveCapacity(count)
+        func nextDate() -> Date {
+            epoch.addingTimeInterval(Double(generator.next() % 100_000_000))
+        }
+        // Fine-sector-centre-ish angles, every one ≥4° from a compass
+        // boundary, so the fixture/projection scale mismatch (≈0.3°)
+        // cannot flip a sector.
+        let angles: [Double] = [3, 27, 45, 63, 93, 117, 135, 159, 183, 207, 225, 249, 273, 297, 315, 339]
+
+        // Loners: unique distances, bare names, alternating loop/route.
+        for index in 0..<24 {
+            groups.append(namingGroup(
+                id: uuid(from: &generator),
+                bearingDegrees: angles[Int(generator.next() % 16)],
+                totalDistanceMeters: 9_000 + Double(index) * 1_000,
+                closesLoop: index.isMultiple(of: 2),
+                date: nextDate()
+            ))
+        }
+
+        // Sparse pairs: shared distance, coarse sectors 90° apart.
+        let pairBuckets: [Double] = [1_160, 1_240, 2_800, 3_400, 5_000, 6_200, 7_500, 10_100]
+        for bucket in pairBuckets {
+            let first = Int(generator.next() % 16)
+            for angle in [first, (first + 4) % 16] {
+                groups.append(namingGroup(
+                    id: uuid(from: &generator),
+                    bearingDegrees: angles[angle],
+                    totalDistanceMeters: bucket,
+                    date: nextDate()
+                ))
+            }
+        }
+
+        // Triples: shared distance and coarse sector (NE), distinct fine
+        // sectors (NNE / NE / ENE).
+        let tripleBuckets: [Double] = [1_320, 2_100, 2_900, 4_200, 5_400, 6_600, 8_800, 10_200]
+        for bucket in tripleBuckets {
+            for angle in [27.0, 45.0, 63.0] {
+                groups.append(namingGroup(
+                    id: uuid(from: &generator),
+                    bearingDegrees: angle,
+                    totalDistanceMeters: bucket,
+                    date: nextDate()
+                ))
+            }
+        }
+
+        // User-named sprinkle, with repeated names — their choice.
+        let userNames = ["Morning Run", "Home", "Commute", "Long One"]
+        let userDistances: [Double] = [1_600, 2_400, 3_200]
+        for index in 0..<10 {
+            groups.append(namingGroup(
+                id: uuid(from: &generator),
+                bearingDegrees: angles[Int(generator.next() % 16)],
+                totalDistanceMeters: userDistances[index % userDistances.count],
+                date: nextDate(),
+                name: userNames[index % userNames.count]
+            ))
+        }
+
+        // Dense buckets: the bulk of the population. Distance jitter
+        // stays within ±40 m so the %.1f base name cannot split.
+        let denseBuckets: [Double] = [1_600, 2_400, 3_200, 4_800, 5_800, 7_200]
+        let denseCount = max(0, count - groups.count)
+        for bucketIndex in 0..<denseBuckets.count {
+            let dominant = angles[Int(generator.next() % 16)]
+            let members = denseCount / denseBuckets.count + (bucketIndex < denseCount % denseBuckets.count ? 1 : 0)
+            for _ in 0..<members {
+                let isDominant = generator.next() % 100 < 60
+                groups.append(namingGroup(
+                    id: uuid(from: &generator),
+                    bearingDegrees: isDominant ? dominant : angles[Int(generator.next() % 16)],
+                    totalDistanceMeters: denseBuckets[bucketIndex] + generator.symmetric(40),
+                    date: nextDate()
+                ))
+            }
+        }
+
+        return groups
+    }
 }
 
 /// Deterministic pseudo-random source for fixture jitter (SplitMix64, same

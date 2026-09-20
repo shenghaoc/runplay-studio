@@ -694,28 +694,31 @@ final class RouteGroupingTests: XCTestCase {
         XCTAssertNotEqual(fineName, otherFineName)
     }
 
-    /// The digest prefix grows only far enough to separate: two ids found
-    /// (seeded search over the real digest) to share their 3-hex prefix
-    /// but differ at 6 must both render the 6-hex form.
-    func testDigestTierExtendsWhenPrefixesCollide() throws {
+    /// Per-member digest lengths: two ids found (seeded search over the
+    /// real digest) to share a 3-hex prefix but differ at 6 lengthen to
+    /// the 6-hex form, while a third member of the same cluster whose
+    /// 3-hex prefix is already unique keeps it — only the groups that
+    /// actually collide pay for a longer discriminator.
+    func testDigestTierExtendsOnlyForCollidingMembers() throws {
         var generator = SplitMix64RouteGrouping(seed: 9_913)
         var byPrefix: [String: UUID] = [:]
         var pair: (UUID, UUID)?
+        var outsider: UUID?
         for _ in 0..<200_000 {
-            let bytes = (0..<16).map { _ in UInt8(truncatingIfNeeded: generator.next()) }
-            let id = UUID(uuid: (
-                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-                bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
-            ))
+            let id = RouteGroupingFixtures.uuid(from: &generator)
             let digest = WorkoutRouteGroup.stableDigestHex(for: id)
             let short = String(digest.prefix(3))
-            if let other = byPrefix[short], String(digest.prefix(6)) != String(WorkoutRouteGroup.stableDigestHex(for: other).prefix(6)) {
+            if pair == nil, let other = byPrefix[short],
+               String(digest.prefix(6)) != String(WorkoutRouteGroup.stableDigestHex(for: other).prefix(6)) {
                 pair = (other, id)
-                break
+            } else if pair != nil, outsider == nil, !byPrefix.keys.contains(short) {
+                outsider = id
             }
             byPrefix[short] = id
+            if pair != nil, outsider != nil { break }
         }
         let (firstID, secondID) = try XCTUnwrap(pair, "seeded search must find a 3-hex digest collision")
+        let thirdID = try XCTUnwrap(outsider, "seeded search must find a unique 3-hex digest")
 
         let day = RouteGroupingFixtures.epoch
         let first = RouteGroupingFixtures.group(
@@ -728,14 +731,184 @@ final class RouteGroupingTests: XCTestCase {
             date: day.addingTimeInterval(86_400),
             id: secondID
         )
+        let third = RouteGroupingFixtures.group(
+            representative: RouteGroupingFixtures.squareLoop(sideMeters: 310, date: day.addingTimeInterval(172_800)),
+            date: day.addingTimeInterval(172_800),
+            id: thirdID
+        )
 
-        let names = derivedNames([first, second])
+        let names = derivedNames([first, second, third])
 
         let firstName = try derivedName(of: first, in: names)
         let secondName = try derivedName(of: second, in: names)
+        let thirdName = try derivedName(of: third, in: names)
         XCTAssertNotEqual(firstName, secondName)
         XCTAssertNotNil(firstName.range(of: #"Loop \(NE·[0-9a-f]{6}\)$"#, options: .regularExpression), "got \(firstName)")
         XCTAssertNotNil(secondName.range(of: #"Loop \(NE·[0-9a-f]{6}\)$"#, options: .regularExpression), "got \(secondName)")
+        XCTAssertNotNil(
+            thirdName.range(of: #"Loop \(NE·[0-9a-f]{3}\)$"#, options: .regularExpression),
+            "a member whose 3-hex prefix is unique must keep it, got \(thirdName)"
+        )
+    }
+
+    // MARK: - Derived-name invariants over a generated population
+
+    /// Seeded Fisher–Yates — the order-independence property must not draw
+    /// from the system RNG.
+    private func shuffledGroups(_ groups: [WorkoutRouteGroup], seed: UInt64) -> [WorkoutRouteGroup] {
+        var generator = SplitMix64RouteGrouping(seed: seed)
+        var array = groups
+        for index in stride(from: array.count - 1, through: 1, by: -1) {
+            array.swapAt(index, Int(generator.next() % UInt64(index + 1)))
+        }
+        return array
+    }
+
+    /// The scheme's whole value is its invariants, so they are asserted
+    /// over generated populations at the scale issue #130 produced (286
+    /// routes from 317 activities), not only over hand-picked examples.
+    /// Seeds are fixed and listed — a failure is reproducible from the
+    /// test name alone — and three seeds cost no measurable runtime (the
+    /// derivation over 300 groups is microseconds).
+    func testDerivedNameInvariantsOverGeneratedPopulation() throws {
+        for seed: UInt64 in [7, 21, 404] {
+            let population = RouteGroupingFixtures.derivedNamePopulation(seed: seed, count: 300)
+            let details = WorkoutRouteGroup.derivedNameDetails(
+                for: population,
+                loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+            )
+
+            // Every input group is keyed exactly once.
+            XCTAssertEqual(details.count, population.count, "seed \(seed)")
+
+            // Uniqueness over derived names; user-assigned names may
+            // repeat — that is the user's choice.
+            let derived = details.values.filter { !$0.isUserAssigned }
+            XCTAssertEqual(
+                Set(derived.map(\.name)).count,
+                derived.count,
+                "seed \(seed): derived names must be pairwise distinct"
+            )
+
+            // Every tier is reachable at this scale, and the full-UUID
+            // corner is not: a 300-group population reaching it means the
+            // digest ladder is mis-tuned — better to learn that from a
+            // test than from a menu.
+            let tiers = Set(derived.map(\.tier))
+            for tier in [RouteGroupDerivedNameTier.bare, .coarseToken, .fineToken, .digest] {
+                XCTAssertTrue(tiers.contains(tier), "seed \(seed): expected \(tier) coverage")
+            }
+            XCTAssertFalse(tiers.contains(.fullID), "seed \(seed): the full-UUID corner must stay unreached")
+
+            // Order independence: a seeded shuffle changes nothing.
+            XCTAssertEqual(
+                WorkoutRouteGroup.derivedNameDetails(
+                    for: shuffledGroups(population, seed: seed &+ 1),
+                    loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+                ),
+                details,
+                "seed \(seed): input order must not change a single entry"
+            )
+
+            // Insertion refines, never re-labels. A non-colliding arrival
+            // changes nothing at all; colliding arrivals (including the
+            // historically earlier workouts a bulk archive import injects)
+            // leave every pre-existing name unchanged or refined — and a
+            // digest-tier group the newcomer does not collide with must
+            // be untouched, byte for byte.
+            let anchor = try XCTUnwrap(
+                derived
+                    .filter { $0.tier == .digest && $0.digestDiscriminator?.count == 3 }
+                    .sorted { $0.groupID.uuidString < $1.groupID.uuidString }
+                    .first,
+                "seed \(seed): expected a 3-hex digest cluster to aim a colliding newcomer at"
+            )
+            let anchorGroup = try XCTUnwrap(population.first { $0.id == anchor.groupID })
+            let anchorDiscriminator = try XCTUnwrap(anchor.digestDiscriminator)
+            var newcomerSearch = SplitMix64RouteGrouping(seed: seed &+ 55)
+
+            func collidingID() throws -> UUID {
+                for _ in 0..<1_000_000 {
+                    let id = RouteGroupingFixtures.uuid(from: &newcomerSearch)
+                    if String(WorkoutRouteGroup.stableDigestHex(for: id).prefix(3)) == anchorDiscriminator {
+                        return id
+                    }
+                }
+                return try XCTUnwrap(nil as UUID?, "seed \(seed): digest-prefix search exhausted")
+            }
+
+            func newcomerInAnchorCluster(id: UUID, deltaSeconds: TimeInterval) -> WorkoutRouteGroup {
+                // Facts copied verbatim from the anchor, so the newcomer
+                // lands in exactly its base-name and fine-sector cluster.
+                WorkoutRouteGroup(
+                    id: id,
+                    representativeSummary: WorkoutRouteGroupSummary(
+                        workoutID: id,
+                        startDate: anchorGroup.representativeSummary?.startDate?.addingTimeInterval(deltaSeconds),
+                        facts: anchorGroup.representativeSummary?.facts
+                            ?? RouteGroupingRouteFacts(
+                                minLatitude: 0, maxLatitude: 0,
+                                minLongitude: 0, maxLongitude: 0,
+                                startLatitude: 0, startLongitude: 0,
+                                finishLatitude: 0, finishLongitude: 0,
+                                totalDistanceMeters: 0,
+                                routePointCount: 0,
+                                discardedCoordinatePointCount: 0
+                            )
+                    )
+                )
+            }
+
+            let newcomers: [(group: WorkoutRouteGroup, colliding: Bool)] = [
+                (
+                    RouteGroupingFixtures.namingGroup(
+                        id: RouteGroupingFixtures.uuid(from: &newcomerSearch),
+                        bearingDegrees: 207,
+                        totalDistanceMeters: 40_000,
+                        closesLoop: false,
+                        date: RouteGroupingFixtures.epoch.addingTimeInterval(50_000_000)
+                    ),
+                    false
+                ),
+                (newcomerInAnchorCluster(id: try collidingID(), deltaSeconds: 1_000), true),
+                (newcomerInAnchorCluster(id: try collidingID(), deltaSeconds: -315_360_000), true)
+            ]
+
+            for newcomer in newcomers {
+                let after = WorkoutRouteGroup.derivedNameDetails(
+                    for: population + [newcomer.group],
+                    loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+                )
+                let newcomerDigest = WorkoutRouteGroup.stableDigestHex(for: newcomer.group.id)
+                for old in details.values {
+                    let new = try XCTUnwrap(after[old.groupID], "seed \(seed)")
+                    if old.isUserAssigned {
+                        XCTAssertEqual(new, old, "seed \(seed): user names never move")
+                        continue
+                    }
+                    if !newcomer.colliding {
+                        XCTAssertEqual(new, old, "seed \(seed): a non-colliding arrival must change nothing")
+                        continue
+                    }
+                    XCTAssertGreaterThanOrEqual(new.tier, old.tier, "seed \(seed): a group's tier never decreases")
+                    XCTAssertEqual(new.baseName, old.baseName, "seed \(seed): a group's base name never changes")
+                    guard old.tier == .digest, new.tier == .digest,
+                          let oldDiscriminator = old.digestDiscriminator else { continue }
+                    if newcomerDigest.hasPrefix(oldDiscriminator) {
+                        XCTAssertTrue(
+                            new.digestDiscriminator?.hasPrefix(oldDiscriminator) == true,
+                            "seed \(seed): a colliding digest may only lengthen by prefix, \(String(describing: old.digestDiscriminator)) → \(String(describing: new.digestDiscriminator))"
+                        )
+                    } else {
+                        XCTAssertEqual(
+                            new,
+                            old,
+                            "seed \(seed): an arrival cannot change a name it does not collide with"
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /// Pure function of the input set: shuffling the input array must not
