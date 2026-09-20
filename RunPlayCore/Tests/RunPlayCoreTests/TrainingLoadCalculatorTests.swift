@@ -269,7 +269,14 @@ final class TrainingLoadCalculatorTests: XCTestCase {
         )))
     }
 
+    #if DEBUG
     /// Estimated passes make zero native calls; measured passes exactly one.
+    ///
+    /// Counts come from `NativeCallObserver.observing`, which scopes a tally
+    /// to the closure, so a concurrently running test cannot contribute to
+    /// these numbers. The observer exists only in DEBUG builds, so this one
+    /// test is gated while the rest of the suite still compiles and runs in
+    /// the release test build.
     func testMeasuredPassMakesOneNativeCallEstimatedMakesNone() throws {
         let measured = (0...40).map { point(elapsed: Double($0) * 30, rate: 100) }
         let (_, measuredCounts) = try NativeCallObserver.observing {
@@ -295,4 +302,5 @@ final class TrainingLoadCalculatorTests: XCTestCase {
         }
         XCTAssertEqual(estimatedCounts.trainingLoad, 0)
     }
+    #endif
 }
