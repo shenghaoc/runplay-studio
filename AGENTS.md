@@ -427,28 +427,22 @@ official Swift image pinned by the single `container:` line in
 [.github/workflows/ci.yml](.github/workflows/ci.yml), and local
 verification must use that exact image, read from the same pin so the
 two cannot drift (currently `swift:6.4.0-resolute@sha256:bb6e5d…a91dc`,
-an Ubuntu 26.04 userspace). Read the pin by its key and fail fast — the
-comment block above the line documents the required *shape* and that
-literal matches a plain `swift:` grep, so `grep 'swift:' | head -n1`
-silently extracts the placeholder instead of the pin
-(`scripts/check-toolchain-parity.sh` anchors on the same key and has
-never had this problem):
+an Ubuntu 26.04 userspace). The invocation is single-sourced in
+[scripts/linux-container-verify.sh](scripts/linux-container-verify.sh),
+which reads the pin by its `container:` key (the shape-documenting
+comment above the line matches a plain `swift:` grep — the same reason
+`scripts/check-toolchain-parity.sh` anchors on the key) and fails fast
+if the line moves:
 
 ```bash
-IMAGE="$(awk '$1 == "container:" { print $2; exit }' .github/workflows/ci.yml)"
-case "${IMAGE}" in
-  swift:*@sha256:*[0-9a-f]) ;;
-  *)
-    echo "error: could not read the Swift container pin from .github/workflows/ci.yml" >&2
-    echo "expected a job-level line of the shape 'container: swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>'" >&2
-    exit 1
-    ;;
-esac
-mkdir -p .build-linux/container-home   # writable HOME, same filesystem as the workspace
+./scripts/linux-container-verify.sh                                # full RunPlayCoreTests
+./scripts/linux-container-verify.sh --filter RouteGroupingTests     # a narrower filter
+./scripts/linux-container-verify.sh podman ...                      # force the runtime
 ```
 
-Two properties are mandatory, and both runtime blocks below preserve
-them:
+Without a forced runtime the first available one wins. The script
+always runs `swift test` warning-clean with the scratch tree at
+`.build-linux`, and preserves two mandatory properties:
 
 1. The container user must be non-root and must own the mounted sources.
    The default container user is root, and root bypasses POSIX permission
@@ -465,35 +459,18 @@ them:
    `HOME=/tmp` form before any test runs, with only that opaque SwiftPM
    error as the clue.
 
-docker:
-
-```bash
-docker run --rm -u $(id -u):$(id -g) -e HOME=/src/.build-linux/container-home \
-  -v "$PWD":/src:Z -w /src "${IMAGE}" \
-  swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
-```
-
-rootless podman — `--userns=keep-id` is required, not optional: without
-it the container uid maps into the subuid range, `/src` appears
-root-owned, and the non-root user cannot write the checkout (the failure
-surfaces as SwiftPM `invalid access to /src/.build-linux/repositories`).
-`--userns=keep-id` is podman-specific and rejected by docker, which is
-why there are two blocks instead of one:
-
-```bash
-podman run --rm --userns=keep-id -u $(id -u):$(id -g) -e HOME=/src/.build-linux/container-home \
-  -v "$PWD":/src:Z -w /src "${IMAGE}" \
-  swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
-```
-
-`:Z` relabels the volume for SELinux-enforcing hosts and is accepted as
-a no-op elsewhere; both runtimes above have been used on this
-repository's hosts (rootless podman on SELinux). The package has a
-remote dependency (ZIPFoundation, exact-pinned in `Package.swift`), so
-the first build or `swift package resolve` inside the container needs
-network access and `git` (the resolute image ships it); it fetches into
-the scratch tree and commits nothing beyond the checked-in
-`Package.resolved`.
+Runtime specifics the script applies: the volume is mounted `:Z`
+(relabels for SELinux-enforcing hosts, a no-op elsewhere), and rootless
+podman runs with `--userns=keep-id` — without it the container uid maps
+into the subuid range, `/src` appears root-owned, and the non-root user
+cannot write the checkout (the failure surfaces as SwiftPM `invalid
+access to /src/.build-linux/repositories`); `--userns=keep-id` is
+podman-specific and rejected by docker, which is why the runtimes
+differ. The package has a remote dependency (ZIPFoundation, exact-pinned
+in `Package.swift`), so the first build or `swift package resolve`
+inside the container needs network access and `git` (the resolute image
+ships it); it fetches into the scratch tree and commits nothing beyond
+the checked-in `Package.resolved`.
 
 CI enforces macOS/Linux toolchain parity with
 `scripts/check-toolchain-parity.sh`, which every Swift-building job runs
