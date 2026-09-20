@@ -9,7 +9,111 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Keyed on the ref: each PR and the main branch get one group, so a
+  # superseded PR run cancels instead of burning contended macOS runners.
+  # Superseded main-push runs are deliberately NOT cancelled: the packaging
+  # lane runs unconditionally on push, and cancelling a merged commit's run
+  # would let that commit skip packaging verification permanently.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Packaging-relevant change detection for the pull_request event. The
+  # packaging lane below runs on every push to main but only on PRs whose
+  # diff touches something that can actually break packaging; typical
+  # Swift/C++ PRs skip it. Never filter the whole workflow on paths — the
+  # gate job must always run so branch protection sees "CI".
+  changes:
+    name: Detect packaging-relevant changes
+    runs-on: ubuntu-26.04
+    outputs:
+      packaging: ${{ steps.detect.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect packaging-relevant paths
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            # push (and any future trigger): the packaging lane runs unconditionally.
+            echo "packaging=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${BASE_SHA}"
+          fi
+          # Paths that can break packaging: the packaging scripts themselves,
+          # the package manifest and lockfile, the Info.plist bundle template,
+          # the release workflow, and the shared setup composite.
+          if git diff --name-only "${BASE_SHA}..HEAD" | grep -qE \
+            '^(scripts/|script/|Packaging/|Package\.swift$|Package\.resolved$|\.github/workflows/release\.yml$|\.github/actions/setup-macos-build/)'; then
+            echo "packaging=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "packaging=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Free, runner-cheap lint lane: packaging script syntax plus actionlint
+  # over the workflows. Runs on every PR and every main push.
+  lint:
+    name: Lint
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Packaging tooling syntax
+        run: |
+          bash -n scripts/lib/release-common.sh
+          bash -n scripts/assemble-app-bundle.sh
+          bash -n scripts/package-demo.sh
+          bash -n scripts/package-release.sh
+          bash -n scripts/verify-app-bundle.sh
+          bash -n scripts/test-release-packaging.sh
+          bash -n script/build_and_run.sh
+      # actionlint is third-party tooling: pinned by exact version with the
+      # published tarball checksum verified, never a floating tag.
+      - name: Install actionlint (pinned)
+        run: |
+          set -euo pipefail
+          VERSION="1.7.12"
+          SHA256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  actionlint.tar.gz" | sha256sum -c
+          tar xzf actionlint.tar.gz actionlint
+      - name: Lint GitHub Actions workflows
+        run: ./actionlint -color
+
+  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++
+  # engine, split into parallel matrix legs that all share the reusable
+  # macOS verification workflow (the same one the Release lane calls).
+  # Sharding beyond these two legs is deliberately not done: observed
+  # xcode-27 concurrency is ~2 jobs at a time, so more legs would queue
+  # instead of parallelize.
+  macos-matrix:
+    name: macOS (${{ matrix.suite }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: full-tests
+            engine: true
+            full-tests: true
+            release-compile: false
+          - suite: release-compile
+            engine: false
+            full-tests: false
+            release-compile: true
+    uses: ./.github/workflows/macos-verify.yml
+    with:
+      engine: ${{ matrix.engine }}
+      full-tests: ${{ matrix.full-tests }}
+      release-compile: ${{ matrix.release-compile }}
+
   # RunPlayCore + portable C++ engine — test on Linux for cross-platform
   # validation. Linux CI is container-only by policy: every Linux job that
   # needs Swift runs the one official Swift image pinned below (Ubuntu
@@ -38,9 +142,33 @@ jobs:
     # keep the shape `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
     # Bumping the image means editing this line and refreshing the digest
     # in the same change.
+    #
+    # TODO(ci): check-toolchain-parity.sh greps THIS file by path for the
+    # `container: swift:...` pin below. Moving this Linux lane into its own
+    # workflow file later requires updating that script (and the AGENTS.md
+    # recipe references) first, or every parity check fails with "no pin
+    # found".
     container: swift:6.4.0-resolute@sha256:bb6e5d5f2a97bc07cf8022c1a3e062f8164b8fd078698327ce2ab097e02a91dc
     steps:
       - uses: actions/checkout@v7
+      - name: Record Swift toolchain identity
+        id: toolchain
+        run: |
+          set -euo pipefail
+          VERSION="$(swift --version | grep -oE 'Swift version [0-9]+(\.[0-9]+)+' | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | tail -n1)"
+          if [[ -z "${VERSION}" ]]; then
+            echo "could not read a Swift marketing version from 'swift --version'" >&2
+            swift --version >&2 || true
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Restore SwiftPM dependency cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/org.swift.swiftpm
+          key: ${{ runner.image }}-swift-${{ steps.toolchain.outputs.version }}-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.image }}-swift-${{ steps.toolchain.outputs.version }}-spm-
       - name: Install container dependencies
         run: |
           apt-get update -qq
@@ -96,94 +224,28 @@ jobs:
             exit 1
           fi
 
-  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++ engine.
-  # The xcode-27 image carries exactly one Xcode (27.0, the default), so there
-  # is no developer-dir selection to pin. The parity gate fails the job when
-  # the runner's Swift marketing version drifts from the Linux container pin.
-  macos:
-    name: macOS (Full Stack)
-    runs-on: xcode-27
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify Swift toolchain parity
-        run: |
-          xcodebuild -version
-          swift --version
-          ./scripts/check-toolchain-parity.sh
-      - name: Validate C++ architecture boundaries
-        run: ./scripts/validate-cpp-boundaries.sh
-      - name: Build RunPlayEngineCpp
-        run: >-
-          swift build --target RunPlayEngineCpp
-          -Xcxx -Wall
-          -Xcxx -Wextra
-          -Xcxx -Wpedantic
-          -Xcxx -Wconversion
-          -Xcxx -Wsign-conversion
-          -Xcxx -Wshadow
-      - name: Run native C++ engine tests
-        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
-      - name: Verify full package
-        run: swift test -Xswiftc -warnings-as-errors
-
-  # Release-mode compile check for every test target. Benchmark scripts
-  # build tests in release, but no other job compiles the suites in that
-  # configuration, so DEBUG-only test helpers (e.g. #101's synthetic map
-  # preparer, caught only after a benchmark failed in #121) slip through
-  # a debug-only CI. Build only; nothing is executed in release.
-  release-test-build-macos:
-    name: Release Test Build (macOS)
-    runs-on: xcode-27
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify Swift toolchain parity
-        run: |
-          xcodebuild -version
-          swift --version
-          ./scripts/check-toolchain-parity.sh
-      - name: Build test targets in release
-        # `swift build -c release --build-tests` is not a valid gate: it
-        # fails on clean main with a pre-existing testability error
-        # ("unable to resolve Swift module dependency to a compatible
-        # module: 'RunPlayCore'"). `swift test -c release --filter` with a
-        # deliberately non-matching pattern compiles every test target in
-        # release and then runs zero tests — the compile is the check, so
-        # the warning "No matching test cases were run" is expected and
-        # harmless. Verified on clean main: with #121's `#if DEBUG` guards
-        # reverted this command fails at `SyntheticWorkoutVideoMapPreparer`
-        # not being in scope; with them present it passes.
-        run: swift test -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
-
   # Release packaging: script contracts plus a real end-to-end build of both
-  # credential-free artifacts. Separate from the full-stack job so the two run
-  # concurrently instead of extending PR wall-clock time. Credential-free by
-  # construction: no signing identity, no notarization, no GitHub Release.
+  # credential-free artifacts. On pull requests this lane is path-filtered
+  # (see the changes job): only PRs that touch the packaging scripts, the
+  # package manifest/lock, the bundle template, the release workflow, or the
+  # setup composite pay for it. On push to main it runs unconditionally, so
+  # every merged commit is packaging-verified before any tag exists.
+  # Credential-free by construction: no signing identity, no notarization,
+  # no GitHub Release.
   packaging-macos:
     name: Release Packaging (macOS)
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.packaging == 'true'
     runs-on: xcode-27
     steps:
-      - uses: actions/checkout@v7
-      - name: Verify Swift toolchain parity
-        run: |
-          xcodebuild -version
-          swift --version
-          ./scripts/check-toolchain-parity.sh
-      - name: Packaging tooling syntax
-        run: |
-          bash -n scripts/lib/release-common.sh
-          bash -n scripts/assemble-app-bundle.sh
-          bash -n scripts/package-demo.sh
-          bash -n scripts/package-release.sh
-          bash -n scripts/verify-app-bundle.sh
-          bash -n scripts/test-release-packaging.sh
-          bash -n script/build_and_run.sh
+      - uses: ./.github/actions/setup-macos-build
       - name: Packaging contract tests
         run: ./scripts/test-release-packaging.sh
       - name: Unsigned demo package (end to end)
         run: ./scripts/package-demo.sh "${RUNNER_TEMP}/demo-artifacts"
       - name: Ad-hoc dry-run release package (end to end)
         # Byte-for-byte the invocation the Release workflow runs on its
-        # non-production path, so a regression there fails on the PR instead.
+        # non-production path, so a regression there fails here instead.
         run: >-
           ./scripts/package-release.sh
           --signing-mode adhoc
@@ -209,3 +271,43 @@ jobs:
             git status --porcelain >&2
             exit 1
           fi
+
+  # The single status check branch protection requires. Every verification
+  # lane MUST appear in `needs:` below AND in the expected-lanes list inside
+  # the gate script: this job is the only thing branch protection looks at,
+  # so a lane accidentally dropped from needs: must leave the gate red, not
+  # silently green. `skipped` counts as success because packaging-macos is
+  # path-filtered on pull requests; every other non-success result,
+  # including `cancelled`, is a failure.
+  gate:
+    name: CI
+    needs: [changes, lint, macos-matrix, core-linux, packaging-macos]
+    if: always()
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Check every lane
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for lane in changes lint macos-matrix core-linux packaging-macos; do
+            result="$(printf '%s' "${NEEDS}" | jq -r --arg lane "${lane}" '.[$lane].result // ""')"
+            case "${result}" in
+              success|skipped)
+                echo "lane ${lane}: ${result}"
+                ;;
+              "")
+                echo "GATE BUG: lane '${lane}' did not report a result." >&2
+                echo "It is missing from this job's needs: — branch protection would stay" >&2
+                echo "green without it. Restore the needs: entry, or, if the lane was" >&2
+                echo "deliberately removed, update this list in the same change." >&2
+                failed=1
+                ;;
+              *)
+                echo "lane ${lane}: ${result} — treating as failure" >&2
+                failed=1
+                ;;
+            esac
+          done
+          exit "${failed}"
