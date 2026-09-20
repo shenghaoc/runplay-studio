@@ -1,6 +1,6 @@
 import Foundation
 
-/// Smooths noisy metrics like pace and heart rate.
+/// Smooths noisy metrics like pace, heart rate, and power.
 public struct MetricSmoother {
 
     /// Apply simple moving average smoothing to an array of values.

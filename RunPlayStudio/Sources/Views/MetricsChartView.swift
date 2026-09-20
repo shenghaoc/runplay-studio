@@ -78,8 +78,8 @@ enum MetricChartDataBuilder {
 
 /// Displays running metrics as interactive charts using Swift Charts.
 ///
-/// Shows pace, elevation, and heart rate over distance with
-/// optional current position indicator and click/drag to seek.
+/// Shows elevation, active pace, heart rate, power, and speed over distance
+/// with optional current position indicator and click/drag to seek.
 /// Uses semantic colors from the design system for each metric type.
 struct MetricsChartView: View {
     let routePoints: [RoutePoint]

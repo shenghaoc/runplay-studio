@@ -209,7 +209,7 @@ struct PNGExportService {
         let profile: RouteMetricProfile
         if preferredMode == .solid {
             // Solid rendering does not need metric availability or metric
-            // profiles, so avoid calculating pace, heart rate, and elevation.
+            // profiles, so avoid calculating pace, heart rate, power, and elevation.
             effective = .solid
             profile = try profileBuilder.build(
                 routePoints: workout.routePoints,
