@@ -788,12 +788,15 @@ a colliding base name gains an eight-point compass token — the bearing
 from the representative's start point to the centre of its bounding box,
 never start-to-finish, which for a loop is numerical noise — refined to a
 sixteen-point sector, then to a stable digest of the group id ("1.2 km
-Loop (NE·7f3)"), until the names differ. Every discriminator is
-intrinsic to the group (persisted facts or the persisted id): no rank,
-count, or sort order participates, so importing another colliding group —
-bulk historical imports included — never renames groups already named; a
-name only refines when a new collision forces it, and reverts when the
-collision goes away. (The store may re-pick a representative when
+Loop (NE·7f3)"), each group at the shortest of 3, 6, 8 hex digits that
+no sibling shares — the abbreviated-object-name rule, as with short git
+object names — until the names differ. Every discriminator is intrinsic
+to the group (persisted facts or the persisted id): no rank, count, or
+sort order participates, so importing another colliding group — bulk
+historical imports included — never renames groups already named; a
+discriminator lengthens only for the groups that share its prefix, so an
+arrival cannot change a name it does not collide with, and names revert
+when the collision goes away. (The store may re-pick a representative when
 membership changes, which can legitimately move that group's own
 geometry-derived base name and token.) User-assigned names are returned
 verbatim and never participate in disambiguating others, and the

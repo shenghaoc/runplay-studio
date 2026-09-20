@@ -51,16 +51,23 @@ extension WorkoutRouteGroup {
     ///       c. a stable digest of the group's own id ("1.2 km Loop
     ///          (NE·7f3)") — the persisted identity, immune to import
     ///          order and membership churn — when even the fine sector
-    ///          collides.
+    ///          collides. Digest lengths are per group, at the shortest
+    ///          of 3, 6, 8 hex digits that no sibling shares (the
+    ///          abbreviated-object-name rule, as with short git object
+    ///          names); a member whose full digest still collides falls
+    ///          back to its own UUID string while its siblings keep
+    ///          their short forms.
     ///
     ///    Every discriminator is intrinsic to the group, never its position
     ///    in a sorted list: no rank, count, or sort order participates
     ///    anywhere. Importing another colliding group — including the
     ///    historically earlier workouts a bulk archive import injects by
-    ///    construction — therefore never renames the groups already named;
+    ///    construction — therefore never renames the groups already named:
     ///    a name only ever *refines* (bare → coarse token → fine token →
-    ///    digest) when a new collision forces it, and reverts when the
-    ///    collision goes away.
+    ///    digest) when a new collision forces it, a discriminator
+    ///    lengthens only for the groups that share its prefix, and an
+    ///    arrival cannot change a name it does not collide with. Names
+    ///    revert when the collision goes away.
     ///
     /// The result is a pure function of the input set: no assignment
     /// depends on iteration or input order, so the same set always yields
@@ -221,30 +228,37 @@ extension WorkoutRouteGroup {
 
     /// Appends the final-tier discriminator to every member of a group that
     /// shares one base name and one fine sector: a digest of the group's
-    /// own id, at the shortest prefix length (3, 6, then 8 hex digits)
-    /// that separates the members; the full UUID string in the
-    /// ~2⁻³²-per-pair corner where even the full digest matches. Fallback
-    /// candidates with no compass token get the digest alone ("Route
-    /// (7f3)").
+    /// own id, at the *shortest* of 3, 6, 8 hex digits at which no other
+    /// member shares this member's prefix — the abbreviated-object-name
+    /// rule, applied per member. Only the groups that actually collide pay
+    /// for a longer discriminator, so an arrival lengthens at most the
+    /// digests it collides with; mixed lengths sit side by side safely
+    /// because names compare as whole strings, exactly as with short git
+    /// object names. A member whose full digest still collides (~2⁻³² per
+    /// pair) falls back to its own UUID string alone, while its siblings
+    /// keep their short forms. Fallback candidates with no compass token
+    /// get the digest alone ("Route (7f3)").
     private static func assignIdentityDigestNames(
         _ members: [RouteGroupDerivedNameCandidate],
         baseName: String,
         into details: inout [UUID: RouteGroupDerivedName]
     ) {
         let fullDigests = members.map { stableDigestHex(for: $0.groupID) }
-        var length = 8
-        for candidate in [3, 6, 8]
-        where Set(fullDigests.map { String($0.prefix(candidate)) }).count == members.count {
-            length = candidate
-            break
-        }
-        var discriminators = fullDigests.map { String($0.prefix(length)) }
-        if Set(discriminators).count != members.count {
-            // Distinct ids cannot share a canonical UUID string, so this
-            // terminates the ladder with guaranteed-unique names.
-            discriminators = members.map { $0.groupID.uuidString }
-        }
-        for (candidate, discriminator) in zip(members, discriminators) {
+        for index in members.indices {
+            var discriminator = members[index].groupID.uuidString
+            var tier = RouteGroupDerivedNameTier.fullID
+            for length in [3, 6, 8] {
+                let prefix = String(fullDigests[index].prefix(length))
+                let collides = members.indices.contains { other in
+                    other != index && String(fullDigests[other].prefix(length)) == prefix
+                }
+                if !collides {
+                    discriminator = prefix
+                    tier = .digest
+                    break
+                }
+            }
+            let candidate = members[index]
             let disambiguator = candidate.fineToken
                 .map { "\($0)·\(discriminator)" }
                 ?? discriminator
@@ -252,7 +266,7 @@ extension WorkoutRouteGroup {
                 groupID: candidate.groupID,
                 name: baseName + disambiguatedSuffix(disambiguator),
                 baseName: baseName,
-                tier: discriminator == candidate.groupID.uuidString ? .fullID : .digest,
+                tier: tier,
                 digestDiscriminator: discriminator,
                 isUserAssigned: false
             )
