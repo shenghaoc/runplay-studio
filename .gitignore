@@ -26,7 +26,6 @@ build/
 .swiftpm/
 Packages/
 Package.pins
-Package.resolved
 *.xcodeproj
 
 # macOS

@@ -483,14 +483,13 @@ final class StravaArchiveImportTests: XCTestCase {
 
     // MARK: - Archive URL Validation
 
-    func testArchiveInitRejectsNonFileURL() throws {
-        let httpURL = try XCTUnwrap(URL(string: "https://example.com/archive.zip"))
-        XCTAssertThrowsError(try Archive(url: httpURL, accessMode: .read)) { error in
-            let cocoaError = error as? CocoaError
-            XCTAssertNotNil(cocoaError, "Expected CocoaError, got \(type(of: error))")
-            XCTAssertEqual(cocoaError?.code, .fileReadUnsupportedScheme)
-        }
-    }
+    // Non-file-URL rejection is asserted at the service boundary — before
+    // the archive is opened — by testScanRejectsNonFileURLBeforeFilesystemAccess
+    // and testImportRejectsNonFileURL. The upstream ZIPFoundation 0.9.20
+    // release does not itself reject non-file URL schemes in Archive init;
+    // the vendored copy this package replaces carried a local patch that
+    // did, and this test pinned that patch's CocoaError
+    // (.fileReadUnsupportedScheme), so it was removed with the vendoring.
 
     func testArchiveInitAcceptsFileURL() throws {
         let url = tempDir.appendingPathComponent("test.zip")
