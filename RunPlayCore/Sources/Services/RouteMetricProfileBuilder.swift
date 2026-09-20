@@ -107,6 +107,13 @@ public struct RouteMetricProfileBuilder: Sendable {
                 isCancelled: isCancelled,
                 profile: &profile
             )
+        case .power:
+            return try powerProfile(
+                routePoints: routePoints,
+                context: context,
+                policy: policy,
+                isCancelled: isCancelled
+            )
         case .correctedElevation:
             return try elevationProfile(
                 routePoints: routePoints,
@@ -158,6 +165,14 @@ public struct RouteMetricProfileBuilder: Sendable {
             isCancelled: isCancelled
         )
         if isCancelled() { throw CancellationError() }
+        let power = try build(
+            routePoints: routePoints,
+            context: context,
+            mode: .power,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+        if isCancelled() { throw CancellationError() }
         let elev = try build(
             routePoints: routePoints,
             context: context,
@@ -174,6 +189,11 @@ public struct RouteMetricProfileBuilder: Sendable {
                 policy: policy,
                 coverageFloor: policy.minimumHeartRateCoverageFraction
             ),
+            power: isModeEnabled(
+                profile: power,
+                policy: policy,
+                coverageFloor: policy.minimumPowerCoverageFraction
+            ),
             correctedElevation: isModeEnabled(
                 profile: elev,
                 policy: policy,
@@ -181,12 +201,14 @@ public struct RouteMetricProfileBuilder: Sendable {
             ),
             heartRateCoverageFraction: hr.validCoverageFraction,
             elevationCoverageFraction: elev.validCoverageFraction,
-            paceCoverageFraction: pace.validCoverageFraction
+            paceCoverageFraction: pace.validCoverageFraction,
+            powerCoverageFraction: power.validCoverageFraction
         )
         return RouteMetricProfileProbe(
             availability: availability,
             paceProfile: pace,
             heartRateProfile: hr,
+            powerProfile: power,
             correctedElevationProfile: elev
         )
     }
@@ -460,6 +482,96 @@ public struct RouteMetricProfileBuilder: Sendable {
         let endElapsed = timeline.elapsedSeconds(atPointIndex: endIndex) ?? end.elapsedSeconds
         let gap = abs(endElapsed - startElapsed)
         guard gap.isFinite, gap <= policy.maximumHeartRateEndpointGapSeconds else {
+            return nil
+        }
+        return single
+    }
+
+    // MARK: - Power
+
+    /// Shared no-scale placeholder used when a probe cannot produce a power
+    /// profile; keeps direct `RouteMetricProfileProbe` construction simple.
+    public static let emptyPowerProfile = RouteMetricProfile(
+        mode: .power,
+        intervals: [],
+        scale: nil,
+        validCoverageDistanceMeters: 0,
+        totalRouteDistanceMeters: 0,
+        diagnostics: RouteMetricDiagnostics(
+            intervalCount: 0,
+            validIntervalCount: 0,
+            noDataIntervalCount: 0,
+            validCoverageFraction: 0,
+            bucketCount: RouteMetricColorPolicy.runningDefault.bucketCount,
+            policyVersion: RouteMetricColorPolicy.runningDefault.policyVersion
+        )
+    )
+
+    /// Power interval profile, mirroring heart rate: endpoint mean with a
+    /// single-endpoint gap guard, distance-domain smoothing, then the shared
+    /// native scale/bucket finalization with `higherIsMore` direction.
+    private func powerProfile(
+        routePoints: [RoutePoint],
+        context: WorkoutAnalysisContext,
+        policy: RouteMetricColorPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RouteMetricProfile {
+        let timeline = context.timeline
+        let raw = try rawIntervals(routePoints: routePoints, isCancelled: isCancelled) {
+            startPoint, endPoint, startIndex, endIndex in
+            Self.powerMetric(
+                start: startPoint,
+                end: endPoint,
+                startIndex: startIndex,
+                endIndex: endIndex,
+                timeline: timeline,
+                policy: policy,
+                validatedPower: { self.validatedPower($0, policy: policy) }
+            )
+        }
+
+        let smoothed = try smoothDistanceDomain(
+            rawValues: raw.map(\.metricValue),
+            intervals: raw,
+            halfWindowMeters: policy.powerSmoothingHalfWindowMeters,
+            isCancelled: isCancelled
+        )
+
+        return try finalizeProfile(
+            mode: .power,
+            routePoints: routePoints,
+            rawIntervals: raw,
+            smoothedValues: smoothed,
+            direction: .higherIsMore,
+            policy: policy,
+            formatLower: { DisplayFormatter.formatPower($0) },
+            formatMedian: { DisplayFormatter.formatPower($0) },
+            formatUpper: { DisplayFormatter.formatPower($0) },
+            isCancelled: isCancelled
+        )
+    }
+
+    private static func powerMetric(
+        start: RoutePoint,
+        end: RoutePoint,
+        startIndex: Int,
+        endIndex: Int,
+        timeline: WorkoutTimeline,
+        policy: RouteMetricColorPolicy,
+        validatedPower: (Double?) -> Double?
+    ) -> Double? {
+        let power1 = validatedPower(start.powerWatts)
+        let power2 = validatedPower(end.powerWatts)
+
+        if let p1 = power1, let p2 = power2 {
+            return (p1 + p2) / 2
+        }
+
+        guard let single = power1 ?? power2 else { return nil }
+        let startElapsed = timeline.elapsedSeconds(atPointIndex: startIndex) ?? start.elapsedSeconds
+        let endElapsed = timeline.elapsedSeconds(atPointIndex: endIndex) ?? end.elapsedSeconds
+        let gap = abs(endElapsed - startElapsed)
+        guard gap.isFinite, gap <= policy.maximumPowerEndpointGapSeconds else {
             return nil
         }
         return single
@@ -1038,6 +1150,15 @@ public struct RouteMetricProfileBuilder: Sendable {
               value.isFinite,
               policy.validHeartRateRange.contains(value),
               MetricValidation.isValidHeartRate(value)
+        else { return nil }
+        return value
+    }
+
+    private func validatedPower(_ value: Double?, policy: RouteMetricColorPolicy) -> Double? {
+        guard let value,
+              value.isFinite,
+              policy.validPowerRange.contains(value),
+              MetricValidation.isValidPower(value)
         else { return nil }
         return value
     }

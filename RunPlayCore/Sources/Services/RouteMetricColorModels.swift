@@ -22,6 +22,7 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
     case solid
     case pace
     case heartRate
+    case power
     case correctedElevation
 
     public var displayName: String {
@@ -29,6 +30,7 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
         case .solid: return routeMetricLocalized("Solid")
         case .pace: return routeMetricLocalized("Pace")
         case .heartRate: return routeMetricLocalized("Heart Rate")
+        case .power: return routeMetricLocalized("Power")
         case .correctedElevation: return routeMetricLocalized("Elevation")
         }
     }
@@ -39,6 +41,7 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
         case .solid: return ""
         case .pace: return routeMetricLocalized("Relative pace within this workout")
         case .heartRate: return routeMetricLocalized("Relative heart rate within this workout")
+        case .power: return routeMetricLocalized("Relative power within this workout")
         case .correctedElevation: return routeMetricLocalized("Corrected elevation within this workout")
         }
     }
@@ -52,6 +55,8 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
             return routeMetricLocalized("Pace coloring needs more valid active distance and time in this workout.")
         case .heartRate:
             return routeMetricLocalized("Heart-rate coloring needs meaningful HR coverage in this workout.")
+        case .power:
+            return routeMetricLocalized("Power coloring needs meaningful power coverage in this workout.")
         case .correctedElevation:
             return routeMetricLocalized("Elevation coloring needs meaningful corrected elevation in this workout.")
         }
@@ -219,27 +224,33 @@ public struct RouteMetricModeAvailability: Hashable, Sendable {
     public let solid: Bool
     public let pace: Bool
     public let heartRate: Bool
+    public let power: Bool
     public let correctedElevation: Bool
     public let heartRateCoverageFraction: Double
     public let elevationCoverageFraction: Double
     public let paceCoverageFraction: Double
+    public let powerCoverageFraction: Double
 
     public init(
         solid: Bool = true,
         pace: Bool,
         heartRate: Bool,
+        power: Bool = false,
         correctedElevation: Bool,
         heartRateCoverageFraction: Double = 0,
         elevationCoverageFraction: Double = 0,
-        paceCoverageFraction: Double = 0
+        paceCoverageFraction: Double = 0,
+        powerCoverageFraction: Double = 0
     ) {
         self.solid = solid
         self.pace = pace
         self.heartRate = heartRate
+        self.power = power
         self.correctedElevation = correctedElevation
         self.heartRateCoverageFraction = heartRateCoverageFraction
         self.elevationCoverageFraction = elevationCoverageFraction
         self.paceCoverageFraction = paceCoverageFraction
+        self.powerCoverageFraction = powerCoverageFraction
     }
 
     public func isAvailable(_ mode: WorkoutRouteColorMode) -> Bool {
@@ -247,6 +258,7 @@ public struct RouteMetricModeAvailability: Hashable, Sendable {
         case .solid: return solid
         case .pace: return pace
         case .heartRate: return heartRate
+        case .power: return power
         case .correctedElevation: return correctedElevation
         }
     }
@@ -260,17 +272,20 @@ public struct RouteMetricProfileProbe: Hashable, Sendable {
     public let availability: RouteMetricModeAvailability
     public let paceProfile: RouteMetricProfile
     public let heartRateProfile: RouteMetricProfile
+    public let powerProfile: RouteMetricProfile
     public let correctedElevationProfile: RouteMetricProfile
 
     public init(
         availability: RouteMetricModeAvailability,
         paceProfile: RouteMetricProfile,
         heartRateProfile: RouteMetricProfile,
+        powerProfile: RouteMetricProfile = RouteMetricProfileBuilder.emptyPowerProfile,
         correctedElevationProfile: RouteMetricProfile
     ) {
         self.availability = availability
         self.paceProfile = paceProfile
         self.heartRateProfile = heartRateProfile
+        self.powerProfile = powerProfile
         self.correctedElevationProfile = correctedElevationProfile
     }
 
@@ -279,6 +294,7 @@ public struct RouteMetricProfileProbe: Hashable, Sendable {
         case .solid: return nil
         case .pace: return paceProfile
         case .heartRate: return heartRateProfile
+        case .power: return powerProfile
         case .correctedElevation: return correctedElevationProfile
         }
     }

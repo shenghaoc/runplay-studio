@@ -139,7 +139,7 @@ public struct ExportService: Sendable {
             "Moving_Duration_Estimated_s", "Stopped_Duration_Estimated_s",
             "Moving_Pace_Estimated_min_km",
             "Active_Pace_min_km", "Elapsed_Pace_min_km",
-            "Corrected_Elevation_Gain_m", "Avg_HR_bpm"
+            "Corrected_Elevation_Gain_m", "Avg_HR_bpm", "Avg_Power_W"
         ]))
 
         // Data rows
@@ -157,7 +157,8 @@ public struct ExportService: Sendable {
                 formatNumber(split.paceSecondsPerKilometer / 60),
                 formatNumber(split.elapsedPaceSecondsPerKilometer / 60),
                 split.elevationGainMeters.map { formatNumber($0) } ?? "",
-                split.averageHeartRateBPM.map { formatNumber($0) } ?? ""
+                split.averageHeartRateBPM.map { formatNumber($0) } ?? "",
+                split.averagePowerWatts.map { formatNumber($0) } ?? ""
             ]))
         }
 
@@ -172,7 +173,7 @@ public struct ExportService: Sendable {
             "Type", "Title", "Start_km", "End_km", "Distance_km",
             "Start_Elapsed_s", "End_Elapsed_s", "Active_Duration_s", "Elapsed_Duration_s",
             "Active_Pace_min_km", "Elevation_Metric", "Corrected_Elevation_Value_m",
-            "Avg_HR_bpm", "Description"
+            "Avg_HR_bpm", "Avg_Power_W", "Description"
         ]))
 
         // Data rows
@@ -193,6 +194,7 @@ public struct ExportService: Sendable {
                 semanticExport.elevationMetric ?? "",
                 semanticExport.correctedElevationValueMeters.map { formatNumber($0) } ?? "",
                 seg.averageHeartRate.map { formatNumber($0) } ?? "",
+                seg.averagePowerWatts.map { formatNumber($0) } ?? "",
                 seg.subtitle
             ]))
         }
@@ -264,8 +266,42 @@ public struct ExportService: Sendable {
         sections.append("")
         sections.append("# Segment Highlights")
         sections.append(generateSegmentsCSV(segments: segments))
+        if let dynamics = combinedRunningDynamicsRows(workout: workout) {
+            sections.append("")
+            sections.append(dynamics)
+        }
 
         return sections.joined(separator: "\n")
+    }
+
+    /// "# Running Dynamics" summary section for the combined CSV. Metric,
+    /// value, and explicit unit per row; omitted entirely when the workout
+    /// carries no power or dynamics.
+    private func combinedRunningDynamicsRows(workout: RunWorkout) -> String? {
+        let summary = workout.summary
+        var rows: [(String, Double?, String)] = []
+        rows.append(("Average Power", summary.averagePowerWatts, "W"))
+        rows.append(("Max Power", summary.maxPowerWatts, "W"))
+        rows.append(("Best 20 Minute Power", summary.best20MinutePowerWatts, "W"))
+        rows.append(("Average Ground Contact Time", summary.averageGroundContactTimeMilliseconds, "ms"))
+        rows.append(("Average Vertical Oscillation", summary.averageVerticalOscillationMillimeters, "mm"))
+        rows.append(("Average Vertical Ratio", summary.averageVerticalRatioPercent, "%"))
+        rows.append(("Average Stance Time Balance", summary.averageStanceTimeBalancePercent, "%"))
+        rows.append(("Average Step Length", summary.averageStepLengthMeters, "m"))
+
+        let populated = rows.filter { $0.1 != nil }
+        guard !populated.isEmpty else { return nil }
+
+        var lines = ["# Running Dynamics"]
+        lines.append(CSVRow.joined(["Metric", "Value", "Unit"]))
+        for (name, value, unit) in populated {
+            lines.append(CSVRow.joined([
+                name,
+                value.map { formatNumber($0) } ?? "",
+                unit
+            ]))
+        }
+        return lines.joined(separator: "\n") + "\n"
     }
 
     // MARK: - Helpers

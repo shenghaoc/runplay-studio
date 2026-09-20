@@ -28,6 +28,18 @@ public struct RouteMetricColorPolicy: Hashable, Sendable {
     /// Minimum route-distance fraction of valid HR for the mode to be available.
     public let minimumHeartRateCoverageFraction: Double
 
+    // MARK: Power
+
+    /// Uses shared `MetricValidation` range by default.
+    public let validPowerRange: ClosedRange<Double>
+    /// Distance-domain smoothing half-window for power (metres each side).
+    public let powerSmoothingHalfWindowMeters: Double
+    /// Maximum elapsed gap (seconds) allowing a single-endpoint power sample
+    /// to stand for the interval. Longer gaps remain no-data.
+    public let maximumPowerEndpointGapSeconds: Double
+    /// Minimum route-distance fraction of valid power for the mode to be available.
+    public let minimumPowerCoverageFraction: Double
+
     // MARK: Elevation
 
     /// Minimum route-distance fraction of corrected elevation for availability.
@@ -65,6 +77,10 @@ public struct RouteMetricColorPolicy: Hashable, Sendable {
         /// Allows sparse GPS (tens of seconds) while still rejecting multi-minute holes.
         maximumHeartRateEndpointGapSeconds: Double = 45,
         minimumHeartRateCoverageFraction: Double = 0.08,
+        validPowerRange: ClosedRange<Double> = MetricValidation.validPowerRange,
+        powerSmoothingHalfWindowMeters: Double = 40,
+        maximumPowerEndpointGapSeconds: Double = 45,
+        minimumPowerCoverageFraction: Double = 0.08,
         minimumElevationCoverageFraction: Double = 0.08,
         minimumElevationSpanMeters: Double = 1.0,
         lowerQuantile: Double = 0.10,
@@ -84,6 +100,10 @@ public struct RouteMetricColorPolicy: Hashable, Sendable {
         self.heartRateSmoothingHalfWindowMeters = heartRateSmoothingHalfWindowMeters
         self.maximumHeartRateEndpointGapSeconds = maximumHeartRateEndpointGapSeconds
         self.minimumHeartRateCoverageFraction = minimumHeartRateCoverageFraction
+        self.validPowerRange = validPowerRange
+        self.powerSmoothingHalfWindowMeters = powerSmoothingHalfWindowMeters
+        self.maximumPowerEndpointGapSeconds = maximumPowerEndpointGapSeconds
+        self.minimumPowerCoverageFraction = minimumPowerCoverageFraction
         self.minimumElevationCoverageFraction = minimumElevationCoverageFraction
         self.minimumElevationSpanMeters = minimumElevationSpanMeters
         self.lowerQuantile = lowerQuantile

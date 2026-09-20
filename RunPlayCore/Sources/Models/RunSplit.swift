@@ -19,6 +19,8 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
     public var paceSecondsPerKilometer: Double
     public var elapsedPaceSecondsPerKilometer: Double
     public var averageHeartRateBPM: Double?
+    /// Mean valid power in watts across the split's samples, when carried.
+    public var averagePowerWatts: Double?
     public var elevationGainMeters: Double?
     public var startDistanceMeters: Double
     public var endDistanceMeters: Double
@@ -30,6 +32,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         elapsedSeconds: Double,
         paceSecondsPerKilometer: Double,
         averageHeartRateBPM: Double? = nil,
+        averagePowerWatts: Double? = nil,
         elevationGainMeters: Double? = nil,
         startDistanceMeters: Double,
         endDistanceMeters: Double
@@ -46,6 +49,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
             paceSecondsPerKilometer: paceSecondsPerKilometer,
             elapsedPaceSecondsPerKilometer: paceSecondsPerKilometer,
             averageHeartRateBPM: averageHeartRateBPM,
+            averagePowerWatts: averagePowerWatts,
             elevationGainMeters: elevationGainMeters,
             startDistanceMeters: startDistanceMeters,
             endDistanceMeters: endDistanceMeters
@@ -64,6 +68,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         paceSecondsPerKilometer: Double,
         elapsedPaceSecondsPerKilometer: Double? = nil,
         averageHeartRateBPM: Double? = nil,
+        averagePowerWatts: Double? = nil,
         elevationGainMeters: Double? = nil,
         startDistanceMeters: Double,
         endDistanceMeters: Double
@@ -90,6 +95,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
             elapsedPaceSecondsPerKilometer ?? paceSecondsPerKilometer
         )
         self.averageHeartRateBPM = Self.finiteOptional(averageHeartRateBPM)
+        self.averagePowerWatts = Self.finiteOptional(averagePowerWatts)
         self.elevationGainMeters = Self.finiteOptional(elevationGainMeters)
         self.startDistanceMeters = Self.nonNegativeFinite(startDistanceMeters)
         self.endDistanceMeters = max(self.startDistanceMeters, Self.nonNegativeFinite(endDistanceMeters))
@@ -130,7 +136,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         case id, splitIndex, distanceMeters, elapsedSeconds, activeSeconds
         case movingSeconds, stoppedSeconds, movingPaceSecondsPerKilometer
         case paceSecondsPerKilometer, elapsedPaceSecondsPerKilometer
-        case averageHeartRateBPM, elevationGainMeters
+        case averageHeartRateBPM, averagePowerWatts, elevationGainMeters
         case startDistanceMeters, endDistanceMeters
     }
 
@@ -151,6 +157,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
             paceSecondsPerKilometer: activePace,
             elapsedPaceSecondsPerKilometer: try container.decodeIfPresent(Double.self, forKey: .elapsedPaceSecondsPerKilometer) ?? activePace,
             averageHeartRateBPM: try container.decodeIfPresent(Double.self, forKey: .averageHeartRateBPM),
+            averagePowerWatts: try container.decodeIfPresent(Double.self, forKey: .averagePowerWatts),
             elevationGainMeters: try container.decodeIfPresent(Double.self, forKey: .elevationGainMeters),
             startDistanceMeters: try container.decode(Double.self, forKey: .startDistanceMeters),
             endDistanceMeters: try container.decode(Double.self, forKey: .endDistanceMeters)
@@ -170,6 +177,7 @@ public struct RunSplit: Identifiable, Codable, Hashable, Sendable {
         try container.encode(paceSecondsPerKilometer, forKey: .paceSecondsPerKilometer)
         try container.encode(elapsedPaceSecondsPerKilometer, forKey: .elapsedPaceSecondsPerKilometer)
         try container.encodeIfPresent(averageHeartRateBPM, forKey: .averageHeartRateBPM)
+        try container.encodeIfPresent(averagePowerWatts, forKey: .averagePowerWatts)
         try container.encodeIfPresent(elevationGainMeters, forKey: .elevationGainMeters)
         try container.encode(startDistanceMeters, forKey: .startDistanceMeters)
         try container.encode(endDistanceMeters, forKey: .endDistanceMeters)

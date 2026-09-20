@@ -39,10 +39,11 @@ final class RouteMetricScaleBucketParityTests: XCTestCase {
             try nativeAssignCount { _ = try builder.build(workout: workout, context: context, mode: .solid) },
             0
         )
-        // Probe builds pace + HR + elevation; only pace and HR call native.
+        // Probe builds pace + HR + power + elevation; pace, HR, and power
+        // call native (elevation owns the Swift numeric finalizer).
         XCTAssertEqual(
             try nativeAssignCount { _ = try builder.probe(routePoints: workout.routePoints, context: context) },
-            2
+            3
         )
     }
     #endif
@@ -176,6 +177,11 @@ final class RouteMetricScaleBucketParityTests: XCTestCase {
             XCTAssertEqual(scale.lowerLabel, DisplayFormatter.formatHeartRate(scale.lowerBound))
             XCTAssertEqual(scale.medianLabel, DisplayFormatter.formatHeartRate(scale.median))
             XCTAssertEqual(scale.upperLabel, DisplayFormatter.formatHeartRate(scale.upperBound))
+        case .power:
+            XCTAssertEqual(scale.direction, .higherIsMore)
+            XCTAssertEqual(scale.lowerLabel, DisplayFormatter.formatPower(scale.lowerBound))
+            XCTAssertEqual(scale.medianLabel, DisplayFormatter.formatPower(scale.median))
+            XCTAssertEqual(scale.upperLabel, DisplayFormatter.formatPower(scale.upperBound))
         case .correctedElevation:
             XCTAssertEqual(scale.direction, .higherIsMore)
             XCTAssertEqual(scale.lowerLabel, DisplayFormatter.formatElevation(scale.lowerBound))

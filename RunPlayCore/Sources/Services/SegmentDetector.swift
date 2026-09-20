@@ -378,6 +378,7 @@ public struct SegmentDetector {
         let pace: Double
         let elevationDelta: Double?
         let averageHeartRate: Double?
+        let averagePower: Double?
     }
 
     private static func finalizePaceCandidate(
@@ -430,7 +431,8 @@ public struct SegmentDetector {
             range: range,
             pace: pace,
             elevationDelta: timeline.signedElevationChange(from: startDistance, to: endDistance),
-            averageHeartRate: timeline.averageHeartRate(from: startDistance, to: endDistance)
+            averageHeartRate: timeline.averageHeartRate(from: startDistance, to: endDistance),
+            averagePower: timeline.averagePower(from: startDistance, to: endDistance)
         )
     }
 
@@ -455,6 +457,7 @@ public struct SegmentDetector {
             paceSecondsPerKilometer: result.pace,
             elevationDeltaMeters: result.elevationDelta,
             averageHeartRate: result.averageHeartRate,
+            averagePowerWatts: result.averagePower,
             sourcePointRange: result.range.sourcePointRange,
             displayPriority: displayPriority
         )
@@ -515,6 +518,10 @@ public struct SegmentDetector {
             distanceMeters: candidate.endDistanceMeters - candidate.startDistanceMeters,
             elevationDeltaMeters: delta,
             averageHeartRate: timeline.averageHeartRate(
+                from: candidate.startDistanceMeters,
+                to: candidate.endDistanceMeters
+            ),
+            averagePowerWatts: timeline.averagePower(
                 from: candidate.startDistanceMeters,
                 to: candidate.endDistanceMeters
             ),

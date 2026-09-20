@@ -16,6 +16,8 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
     public var paceSecondsPerKilometer: Double?
     public var elevationDeltaMeters: Double?
     public var averageHeartRate: Double?
+    /// Mean valid power in watts across the segment's samples, when carried.
+    public var averagePowerWatts: Double?
     public var sourcePointRange: Range<Int>
     public var displayPriority: Int
 
@@ -33,6 +35,7 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
         paceSecondsPerKilometer: Double? = nil,
         elevationDeltaMeters: Double? = nil,
         averageHeartRate: Double? = nil,
+        averagePowerWatts: Double? = nil,
         sourcePointRange: Range<Int>,
         displayPriority: Int = 0
     ) {
@@ -49,6 +52,7 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
         self.paceSecondsPerKilometer = paceSecondsPerKilometer
         self.elevationDeltaMeters = elevationDeltaMeters
         self.averageHeartRate = averageHeartRate
+        self.averagePowerWatts = averagePowerWatts
         self.sourcePointRange = sourcePointRange
         self.displayPriority = displayPriority
     }

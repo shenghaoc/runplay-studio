@@ -391,6 +391,27 @@ public struct WorkoutTimeline: Sendable {
         return sumHR / Double(countHR)
     }
 
+    /// Unweighted average of valid recorded power samples inside a range.
+    /// Samples from every covered route segment are included.
+    public func averagePower(from startDistance: Double, to endDistance: Double) -> Double? {
+        guard let range = distanceRange(from: startDistance, to: endDistance) else {
+            return nil
+        }
+
+        var sumPower: Double = 0
+        var countPower: Int = 0
+
+        for point in routePoints[range.sourcePointRange] {
+            if let value = point.powerWatts, MetricValidation.isValidPower(value) {
+                sumPower += value
+                countPower += 1
+            }
+        }
+
+        guard countPower > 0 else { return nil }
+        return sumPower / Double(countPower)
+    }
+
     /// Cumulative positive elevation change inside a distance range, never
     /// connecting the endpoint of one route segment to the next segment.
     public func elevationGain(from startDistance: Double, to endDistance: Double) -> Double? {
