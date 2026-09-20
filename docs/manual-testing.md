@@ -747,14 +747,16 @@ committed.
 - [ ] Import a synthetic FIT file with Stryd-style developer fields (power, ground time, vertical oscillation, plus one unknown field) and verify the Power chart, the Power replay badge, the Power splits column, and the Power & Running Dynamics panel all appear with sane values.
 - [ ] Import the same workout and verify map coloring by Power: mode enabled, legend reads Lower → Higher with watts, no-data sections stay neutral, and the palette reads cool → warm yellow at higher effort.
 - [ ] Verify warm-yellow power text (#FFD60A) is legible on the light appearance for the chart line, metrics badge, and splits column; power state is never conveyed by colour alone (labels and values accompany every colour use).
-- [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table keeps its Elapsed Pace column (Power column is conditional), and the dynamics panel is absent.
+- [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table omits the Power column (it is the only conditional column) while keeping every other column, and the dynamics panel is absent.
+- [ ] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column. Check at normal width and at 720x500 with no clipping.
+- [ ] Right-click the splits table header and verify the column menu appears; hide a column, confirm it disappears, relaunch the app and confirm the choice persisted; re-show it and confirm it returns.
 - [ ] VoiceOver: the Power chart exposes a series-level descriptor (title, range, average, current value); the dynamics panel reads as combined label/value rows; nothing announces per replay frame.
 - [ ] Export JSON and CSV from a power workout and confirm `averagePowerWatts`, `best20MinutePowerWatts`, the `runningDynamics` block, `Avg_Power_W` columns, and the `# Running Dynamics` section with explicit units; a plain workout omits them.
 - [ ] Re-import the same developer-fields FIT file after editing nothing and confirm identity/duplicate behaviour is unchanged.
 
 ### Real-device check (owner, local-only)
 
-- [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units), power values are plausible against the watch's own summary, and — specifically — that a developer field with a **non-zero offset** converts as `raw / scale + offset`. There is no official worked example for the developer-offset sign; if this file disagrees, flip the convention in `FITDeveloperFieldResolver.physicalValue` and update the pinned test.
+- [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units) and power values are plausible against the watch's own summary. Check the workout's developer-field notes for the **non-zero offset** diagnostic: developer offsets are decoded as `raw / scale - offset`, the sign every official Garmin SDK uses (see the developer-data section of [import-formats.md](import-formats.md)). The note fires only when a field declares a non-zero offset, which is rare — if one appears, confirm the decoded value is sane, because that is the one case where the official C++ and Swift SDKs would report different numbers.
 
 ## FIT Import Checklist
 

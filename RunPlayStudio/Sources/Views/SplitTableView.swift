@@ -82,6 +82,21 @@ private struct DistanceSplitsTableView: View {
     var currentSplitIndex: Int? = nil
     var showsPower: Bool = false
 
+    /// Single source of truth for which columns this table renders, so the
+    /// decision is unit-testable rather than buried in the view body.
+    private var columns: [SplitTableColumn] {
+        SplitTableColumn.visibleColumns(showsPower: showsPower)
+    }
+
+    /// Which columns the user has chosen to show or hide, and in what order.
+    /// Every column starts visible, so Power is visible by default whenever
+    /// the workout carries power; hiding is the user's decision, never the
+    /// app's. Persisted so the choice survives switching workouts, switching
+    /// to Recorded Laps and back, and relaunching.
+    @State private var columnCustomization = TableColumnCustomization<RunSplit>()
+    @AppStorage(SplitTableColumn.customizationDefaultsKey)
+    private var storedColumnCustomization: Data = Data()
+
     var body: some View {
         let activeSplitID = currentSplitIndex.flatMap { index in
             index >= 0 && index < splits.count ? splits[index].id : nil
@@ -93,87 +108,121 @@ private struct DistanceSplitsTableView: View {
                 currentSplitBanner(split)
             }
 
-            Table(splits) {
-                TableColumn("Split") { split in
-                    HStack(spacing: AppDesign.Spacing.small) {
-                        Image(systemName: "circle.fill")
-                            .font(AppDesign.Typography.compactLabel)
-                            .foregroundStyle(AppDesign.comparisonOrange)
-                            .opacity(split.id == activeSplitID ? 1 : 0)
-                            .accessibilityHidden(true)
-                        Text("\(split.splitIndex)")
+            Table(splits, columnCustomization: $columnCustomization) {
+                Group {
+                    TableColumn("Split") { (split: RunSplit) in
+                        HStack(spacing: AppDesign.Spacing.small) {
+                            Image(systemName: "circle.fill")
+                                .font(AppDesign.Typography.compactLabel)
+                                .foregroundStyle(AppDesign.comparisonOrange)
+                                .opacity(split.id == activeSplitID ? 1 : 0)
+                                .accessibilityHidden(true)
+                            Text("\(split.splitIndex)")
+                                .monospacedDigit()
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(
+                            "Split \(split.splitIndex), distance \(String(format: "%.2f km", split.distanceMeters / 1000)), elapsed \(split.formattedElapsed), active \(split.formattedActive), active pace \(split.formattedPace)"
+                        )
+                    }
+                    .width(50)
+                    .customizationID(SplitTableColumn.split.rawValue)
+
+                    TableColumn("Distance") { (split: RunSplit) in
+                        Text(String(format: "%.2f km", split.distanceMeters / 1000))
                             .monospacedDigit()
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(
-                        "Split \(split.splitIndex), distance \(String(format: "%.2f km", split.distanceMeters / 1000)), elapsed \(split.formattedElapsed), active \(split.formattedActive), active pace \(split.formattedPace)"
-                    )
-                }
-                .width(50)
+                    .width(80)
+                    .customizationID(SplitTableColumn.distance.rawValue)
 
-                TableColumn("Distance") { split in
-                    Text(String(format: "%.2f km", split.distanceMeters / 1000))
-                        .monospacedDigit()
-                }
-                .width(80)
-
-                TableColumn("Elapsed") { split in
-                    Text(split.formattedElapsed)
-                        .monospacedDigit()
-                }
-                .width(60)
-
-                TableColumn("Active") { split in
-                    Text(split.formattedActive)
-                        .monospacedDigit()
-                }
-                .width(60)
-
-                TableColumn("Moving (est.)") { split in
-                    Text(split.formattedMoving)
-                        .monospacedDigit()
-                }
-                .width(90)
-
-                TableColumn("Moving Pace (est.)") { split in
-                    Text(split.formattedMovingPace)
-                        .monospacedDigit()
-                }
-                .width(115)
-
-                TableColumn("Active Pace") { split in
-                    Text(split.formattedPace)
-                        .monospacedDigit()
-                }
-                .width(85)
-
-                // Power and Elapsed Pace are mutually exclusive so the table
-                // stays within SwiftUI's 10-column limit. Active pace is the
-                // canonical pace; elapsed pace remains in CSV/JSON exports.
-                if showsPower {
-                    TableColumn("Power") { split in
-                        optionalPower(split.averagePowerWatts)
+                    TableColumn("Elapsed") { (split: RunSplit) in
+                        Text(split.formattedElapsed)
+                            .monospacedDigit()
                     }
-                    .width(70)
-                } else {
-                    TableColumn("Elapsed Pace") { split in
+                    .width(60)
+                    .customizationID(SplitTableColumn.elapsed.rawValue)
+
+                    TableColumn("Active") { (split: RunSplit) in
+                        Text(split.formattedActive)
+                            .monospacedDigit()
+                    }
+                    .width(60)
+                    .customizationID(SplitTableColumn.active.rawValue)
+
+                    TableColumn("Moving (est.)") { (split: RunSplit) in
+                        Text(split.formattedMoving)
+                            .monospacedDigit()
+                    }
+                    .width(90)
+                    .customizationID(SplitTableColumn.moving.rawValue)
+
+                    TableColumn("Moving Pace (est.)") { (split: RunSplit) in
+                        Text(split.formattedMovingPace)
+                            .monospacedDigit()
+                    }
+                    .width(115)
+                    .customizationID(SplitTableColumn.movingPace.rawValue)
+
+                    TableColumn("Active Pace") { (split: RunSplit) in
+                        Text(split.formattedPace)
+                            .monospacedDigit()
+                    }
+                    .width(85)
+                    .customizationID(SplitTableColumn.activePace.rawValue)
+                }
+
+                // `Group` is what lets this table exceed ten columns.
+                // TableColumnBuilder caps DIRECT children at ten; the table
+                // itself has no such limit, so grouping raises the ceiling
+                // without changing rendering or column order. Power is
+                // therefore additive: it no longer displaces Elapsed Pace.
+                Group {
+                    TableColumn("Elapsed Pace") { (split: RunSplit) in
                         Text(split.formattedElapsedPace)
                             .monospacedDigit()
                     }
                     .width(90)
-                }
+                    .customizationID(SplitTableColumn.elapsedPace.rawValue)
 
-                TableColumn("HR") { split in
-                    optionalBPM(split.averageHeartRateBPM)
-                }
-                .width(70)
+                    if columns.contains(.power) {
+                        TableColumn("Power") { (split: RunSplit) in
+                            optionalPower(split.averagePowerWatts)
+                        }
+                        .width(70)
+                        .customizationID(SplitTableColumn.power.rawValue)
+                    }
 
-                TableColumn("Elev") { split in
-                    optionalElev(split.elevationGainMeters)
+                    TableColumn("HR") { (split: RunSplit) in
+                        optionalBPM(split.averageHeartRateBPM)
+                    }
+                    .width(70)
+                    .customizationID(SplitTableColumn.heartRate.rawValue)
+
+                    TableColumn("Elev") { (split: RunSplit) in
+                        optionalElev(split.elevationGainMeters)
+                    }
+                    .width(70)
+                    .customizationID(SplitTableColumn.elevation.rawValue)
                 }
-                .width(70)
+            }
+            .onAppear(perform: restoreColumnCustomization)
+            .onChange(of: columnCustomization) { _, updated in
+                storedColumnCustomization =
+                    (try? JSONEncoder().encode(updated)) ?? Data()
             }
         }
+    }
+
+    /// Restore the saved column choice. A decode failure is not worth an
+    /// error path: the table simply opens with every column visible, which
+    /// is the correct default anyway.
+    private func restoreColumnCustomization() {
+        guard !storedColumnCustomization.isEmpty else { return }
+        guard let restored = try? JSONDecoder().decode(
+            TableColumnCustomization<RunSplit>.self,
+            from: storedColumnCustomization
+        ) else { return }
+        columnCustomization = restored
     }
 
     private func currentSplitBanner(_ split: RunSplit) -> some View {
