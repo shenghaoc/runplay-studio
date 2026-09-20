@@ -26,7 +26,19 @@ build/
 .swiftpm/
 Packages/
 Package.pins
-Package.resolved
+# The root Package.resolved is committed: it pins the package's single
+# remote dependency (ZIPFoundation, exact) and is a reviewable artifact.
+# The PackageConsumerSmoke harness consumes only the RunPlayCore
+# product, yet on macOS SwiftPM still resolves ZIPFoundation through
+# the root path dependency and writes a lockfile here — pinned but
+# never compiled. SwiftPM prunes unused package dependencies
+# per-product at build planning but per-package at resolution, so a
+# consumer pins transitive remotes it never links; on Linux the same
+# graph is pruned earlier and no lockfile is written. This rule is
+# load-bearing on macOS: do not remove it because Linux-only testing
+# never sees the file. A committed lockfile for a disposable
+# verification package would be sync burden with no benefit.
+Tests/PackageConsumerSmoke/Package.resolved
 *.xcodeproj
 
 # macOS

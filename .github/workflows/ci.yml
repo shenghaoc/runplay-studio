@@ -80,6 +80,21 @@ jobs:
         run: |
           swift build --package-path Tests/PackageConsumerSmoke
           swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
+      # Mirrors the Release Packaging job's end-of-job assertion. Every
+      # Swift-invoking step above may only write under ignored paths
+      # (.build/, Tests/PackageConsumerSmoke/.build/, the ignored smoke
+      # lockfile); anything else — e.g. an unexpected lockfile or other
+      # resolver-written file — must fail the job instead of hiding in an
+      # ephemeral runner. Gated to the tests suite, the leg whose steps
+      # mutate the workspace beyond the engine build tree.
+      - name: Fail on workspace dirtiness
+        if: matrix.suite == 'tests'
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "job left the workspace dirty:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
 
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++ engine.
   # The xcode-27 image carries exactly one Xcode (27.0, the default), so there

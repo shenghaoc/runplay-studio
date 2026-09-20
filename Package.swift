@@ -1,6 +1,17 @@
 // swift-tools-version:6.4
 import PackageDescription
 
+// Remote dependencies, exact-pinned; bumps are manual, reviewable edits.
+// The entries are deliberately NOT platform-gated, even though only macOS
+// targets consume ZIPFoundation's product: a manifest whose dependencies
+// array differs per host resolves differently on macOS and in the Linux
+// container, and Package.resolved would churn between the two. Linux
+// resolves (and therefore fetches) the package but compiles none of it;
+// only the target-level product dependency below sits inside #if os(macOS).
+let remoteDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/weichsel/ZIPFoundation", exact: "0.9.20"),
+]
+
 let engineCppSettings: [CXXSetting] = [
     .treatAllWarnings(as: .error),
 ]
@@ -72,22 +83,6 @@ var products: [Product] = [
 // macOS-only layers are absent from the Linux package graph.
 #if os(macOS)
 targets.append(contentsOf: [
-    // Vendored ZIPFoundation 0.9.20 (MIT). Kept as a first-party target so
-    // `swift test -Xswiftc -warnings-as-errors` does not conflict with SPM's
-    // automatic `-suppress-warnings` for external package products.
-    // Sources are unmodified; see THIRD_PARTY_NOTICES.md.
-    // No C++ dependency and no C++ interop.
-    .target(
-        name: "ZIPFoundation",
-        path: "ThirdParty/ZIPFoundation",
-        exclude: ["LICENSE"],
-        resources: [
-            .process("Resources")
-        ],
-        swiftSettings: [
-            .swiftLanguageMode(.v5)
-        ]
-    ),
     // macOS non-UI platform layer: SceneKit, AppKit value types, MapKit,
     // and Combine are allowed; SwiftUI, Charts, and presentation code are not.
     // ZIP access is confined here — never imported by RunPlayCore.
@@ -97,7 +92,7 @@ targets.append(contentsOf: [
         name: "RunPlayPlatform",
         dependencies: [
             "RunPlayCore",
-            "ZIPFoundation",
+            .product(name: "ZIPFoundation", package: "ZIPFoundation"),
         ],
         path: "RunPlayPlatform/Sources",
         swiftSettings: cxxInteropSettings
@@ -137,7 +132,7 @@ let package = Package(
         .macOS(.v26),
     ],
     products: products,
-    dependencies: [],
+    dependencies: remoteDependencies,
     targets: targets,
     swiftLanguageModes: [.v6],
     // Typed SPM C++23 setting. Emits -std=c++2b on current toolchains; Apple

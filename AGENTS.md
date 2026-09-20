@@ -393,6 +393,34 @@ swift test -Xswiftc -warnings-as-errors                               # macOS fu
 git diff --check
 ```
 
+The smoke-consumer entry is platform-asymmetric, and the ignore rule
+covering it is load-bearing: SwiftPM prunes unused package
+dependencies per-product at build planning but per-package at
+resolution. The consumer uses only the `RunPlayCore` product, so on
+macOS `swift build --package-path Tests/PackageConsumerSmoke` still
+resolves ZIPFoundation through the root path dependency and writes an
+ignored `Tests/PackageConsumerSmoke/Package.resolved` pinning it — the
+library itself is never compiled. On Linux the same graph is pruned
+before resolution and no lockfile is written. Testing on Linux alone
+therefore cannot show this rule working; do not remove it as dead code.
+
+One warning is expected and accepted: while SwiftPM compiles
+ZIPFoundation's own `Package@swift-5.9.swift` manifest it emits a
+watchOS `.v4` deprecation warning (`'v4' is deprecated: watchOS 9.0 is
+the oldest supported version`). It appears on macOS and Linux alike,
+only in cold workspaces — every fresh CI runner, not local warm
+builds — and `-Xswiftc -warnings-as-errors` cannot catch it because it
+is a dependency-manifest diagnostic, not target compilation. It is
+upstream's to fix; do not re-investigate.
+
+Isolated verification runs: Swift 6.4 SwiftPM has no
+`--manifest-cache-path` (rejected at every command level) and keeps
+the manifest cache under `--cache-path`, so redirecting `--cache-path`
+covers both. `swift build` and `swift test` accept `--scratch-path` as
+a direct option, but `show-dependencies` and `resolve` accept it (and
+`--cache-path`) only before the subcommand:
+`swift package --scratch-path X --cache-path Y <subcommand>`.
+
 RunPlayCore changes must verify the Linux build in a container before
 pushing. Linux CI is Docker-only by policy: the CI job runs inside the
 official Swift image pinned by the single `container:` line in
@@ -420,7 +448,13 @@ Two properties are mandatory:
 
 Caveats: this invocation has been executed with a Docker-compatible CLI
 (podman) rather than the docker binary itself, and on SELinux-enforcing
-hosts the volume needs `:Z`.
+hosts the volume needs `:Z`. On *rootless* podman, `-u $(id -u):$(id -g)`
+maps the container uid into the subuid range, which cannot write the
+mounted checkout — use `--userns=keep-id` instead. The package has a
+remote dependency (ZIPFoundation, exact-pinned in `Package.swift`), so
+the first build or `swift package resolve` inside the container needs
+network access and `git` (the resolute image ships it); it fetches into
+`.build/` and commits nothing beyond the checked-in `Package.resolved`.
 
 CI enforces macOS/Linux toolchain parity with
 `scripts/check-toolchain-parity.sh`, which every Swift-building job runs

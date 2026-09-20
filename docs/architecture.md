@@ -1303,7 +1303,8 @@ interpolates selected-distance markers without introducing another renderer.
 - **RunPlayCore** owns archive-independent candidate models, RFC 4180 CSV parsing,
   GZIP envelope decoding, path validation, sport policy, `WorkoutImportInput`
   data importers, `WorkoutImportProvenance`, and staged batch library APIs.
-- **RunPlayPlatform** owns ZIP access via vendored ZIPFoundation 0.9.20,
+- **RunPlayPlatform** owns ZIP access via the exact-pinned ZIPFoundation
+  0.9.20 SwiftPM dependency,
   SHA-256 content hashing (CryptoKit), and `StravaArchiveService` (actor).
 - **RunPlayStudio** owns the file picker, review/progress/report sheet, and
   AppState orchestration. Archive parsing never runs on `@MainActor`.
