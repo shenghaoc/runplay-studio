@@ -262,7 +262,12 @@ public struct FITDecoder {
             guard let candidate = firstTimestamp(atOrAfter: sessionStart, in: gpsTimestamps) else {
                 continue
             }
-            if let sessionEnd = FITParser.timestampIfValid(session.timestamp),
+            // The derived end, not the literal `timestamp`: devices that write
+            // `session.timestamp == session.start_time` would otherwise count
+            // as GPS-less whenever the first fix arrives after the start, and
+            // a multi-session container would silently fall back to the
+            // whole-file route.
+            if let sessionEnd = FITSessionAttribution.resolveDeclaredEnd(of: session),
                candidate > sessionEnd {
                 continue
             }

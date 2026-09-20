@@ -10,7 +10,7 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | JSON | Full support | Native fixture format with route points, metadata, biometrics, optional recorded laps, versioned route normalization, and versioned derived analysis. Legacy snapshots are normalized before they are reanalysed. |
 | GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. Standard GPX does **not** define device laps — `recordedLaps` stays empty and `<trkseg>` is never treated as a lap. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
 | TCX | Track support | Parses one GPS-bearing activity's laps (including summary fields and `TriggerMethod`), tracks, trackpoints, distance, elevation, heart rate, and cadence. A `<Lap>` boundary alone does **not** create a route gap; multi-`<Track>` continuity is resolved deterministically. Files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
-| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. |
+| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. Importing real device activity files landed in #143 — earlier releases rejected every genuine file at the header. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
 ## Workout size limits
@@ -91,9 +91,14 @@ Strava bulk-export metadata rows rather than to FIT session messages.
 
 - Start prefers a valid `start_time`, then a valid end timestamp minus a valid
   `total_elapsed_time`.
-- End prefers the session's own `timestamp`, then the **next session in FIT
-  source order** (not time-sorted) when that next session's resolved start is
-  ≥ this session's start — used as a bounded exclusive fallback.
+- End prefers the session's own `timestamp` when it is strictly after the
+  start, then `start_time + total_elapsed_time` when the declared end is
+  missing or degenerate (real devices exist that write
+  `session.timestamp == session.start_time` and carry the duration only in
+  `total_elapsed_time`; taken literally such a session collapses to a
+  single-point window), then the **next session in FIT source order** (not
+  time-sorted) when that next session's resolved start is ≥ this session's
+  start — used as a bounded exclusive fallback.
 - A session with no reliable start, or no reliable end and no next boundary, is
   not importable. The first or last record of the whole file is never used as a
   silent fallback in a multi-session container.
@@ -104,6 +109,10 @@ Strava bulk-export metadata rows rather than to FIT session messages.
 - Materially overlapping ranges mark every affected session ambiguous. Records
   inside an overlap are not assigned by guesswork and the sessions are not
   selected by default. Lap index metadata never resolves time-range overlap.
+- The GPS-bearing-session containment check uses the derived end, never the
+  literal `timestamp`, so a degenerate session whose first GPS fix arrives
+  after its start is still selected instead of silently falling back to the
+  whole-file route.
 
 ### Record, event, and lap attribution
 
@@ -116,6 +125,11 @@ Strava bulk-export metadata rows rather than to FIT session messages.
   12 bits of `message_index`, then by lap timestamp range, then not at all.
   Conflicting index claims are dropped for every claimant. A lap array index is
   claimed at most once across the whole container.
+- A lap's end prefers its `timestamp` when that is strictly after the lap's
+  `start_time`, then `start_time + total_elapsed_time` — the same degenerate
+  device shape as sessions writes lap end timestamps at or before the lap's own
+  start. A missing end still falls back to the next lap's start, then the
+  session/route end.
 - Malformed laps inside a session that declares them are retained provisionally
   so `RecordedLapAnalyzer` can diagnose them; one malformed lap does not reject
   an otherwise valid session.

@@ -36,6 +36,34 @@ final class FITImporterTests: XCTestCase {
         XCTAssertThrowsError(try importer.importWorkout(from: url))
     }
 
+    /// `FITFixtureBuilder` is the third fixture writer that emits a FIT
+    /// header, pinned here like the other two.
+    ///
+    /// FIT file-header layout (C SDK `example-sdk/fit.h:193-201`): a 12/14-byte
+    /// header of `header_size`, `protocol_version`, `profile_version`,
+    /// `data_size`, `data_type[4]` — bytes 8..<12 — and an optional header
+    /// `crc`. The data-type bytes are the ASCII string ".FIT". Asserted as a
+    /// literal, never through `FITParser.fitDataType`: the original header bug
+    /// survived precisely because every fixture writer and the parser agreed
+    /// on the same wrong spelling, so fixture-referencing tests passed while
+    /// real files were rejected at the header.
+    func testFixtureBuilderEmitsSpecifiedDataTypeBytes() {
+        let specDataType: [UInt8] = [0x2E, 0x46, 0x49, 0x54] // ".", "F", "I", "T"
+        let fixtures: [(String, Data)] = [
+            ("buildSampleRun", FITFixtureBuilder.buildSampleRun()),
+            ("buildSampleRunWithLaps", FITFixtureBuilder.buildSampleRunWithLaps()),
+            ("buildTwoRunningSessions", FITFixtureBuilder.buildTwoRunningSessions())
+        ]
+        for (name, data) in fixtures {
+            XCTAssertEqual(
+                Array(data[8..<12]),
+                specDataType,
+                "\(name) must carry \".FIT\" at header bytes 8..<12"
+            )
+            XCTAssertEqual(data[0], 14, "\(name) header length")
+        }
+    }
+
     // MARK: - Valid Import
 
     func testValidFixtureImports() throws {
@@ -317,6 +345,39 @@ final class FITImporterTests: XCTestCase {
         XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 1)
         XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 1)
         XCTAssertTrue(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+    }
+
+    /// The lap mirror of the real-file session defect: a device that writes
+    /// `session.timestamp == session.start_time` also writes lap end
+    /// timestamps at or before the lap's own `start_time`, carrying the true
+    /// duration only in `total_elapsed_time`. Taken literally every such lap
+    /// inverts and is skipped as malformed; the derived end must keep them.
+    func testDegenerateLapTimestampsDeriveEndsAndKeepEveryLap() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithDegenerateLapTimestamps()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertFalse(workout.routePoints.isEmpty)
+        XCTAssertEqual(workout.recordedLaps.count, 2, "no lap may be lost to the degenerate window")
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 2)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 0)
+        XCTAssertFalse(workout.analysisWarnings.contains(.recordedLapsMalformedSkipped))
+
+        // Derived windows carry the file's own lap durations, not the literal
+        // (zero or negative) timestamp spread.
+        XCTAssertEqual(workout.recordedLaps[0].elapsedSeconds, 140, accuracy: 0.001)
+        XCTAssertEqual(workout.recordedLaps[1].elapsedSeconds, 150, accuracy: 0.001)
+        XCTAssertEqual(workout.recordedLaps[1].reportedMetrics?.calories, 190)
+    }
+
+    /// The same degenerate session shape end to end: `timestamp ==
+    /// start_time` with the duration only in `total_elapsed_time`. The
+    /// pre-fix importer attributed exactly one record to the window.
+    func testSessionWithDegenerateEndImportsWholeRoute() throws {
+        let data = FITFixtureBuilder.buildSampleRunWithDegenerateLapTimestamps()
+        let workout = try importer.importWorkout(from: writeTempFIT(data: data))
+
+        XCTAssertEqual(workout.routePoints.count, 30, "every record belongs to the derived window")
+        XCTAssertEqual(workout.summary.totalElapsedSeconds, 290, accuracy: 0.001)
     }
 
     // MARK: - Shared canonical builder

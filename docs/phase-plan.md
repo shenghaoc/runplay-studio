@@ -32,6 +32,11 @@
 - Timer pause/resume boundaries → route segment indexes
 - Enhanced altitude/speed, supplied distance rebasing per segment
 - Resource limits and cancellation cooperative checks
+- Real-device-file import landed in #143: before it, the header data-type
+  check required `"FIT "` instead of `".FIT"` and rejected every genuine file,
+  and a device writing `session.timestamp == start_time` (duration only in
+  `total_elapsed_time`) collapsed a whole run to a single route point. Degenerate
+  lap end timestamps derive from `start_time + total_elapsed_time` the same way.
 
 ### Synchronized Replay ✅
 - Unified ReplayController as single source of truth

@@ -121,9 +121,40 @@ public enum FITSessionAttribution {
         return endTime - elapsedSeconds
     }
 
-    /// The session's own end timestamp, if the profile supplied a valid one.
+    /// The session's end timestamp.
+    ///
+    /// Normally this is the session message's own `timestamp` (field 253),
+    /// which the FIT profile defines as the end of the session. Real devices
+    /// do not all honour that: some write `timestamp == start_time` and put
+    /// the true duration only in `total_elapsed_time`. Taking `timestamp`
+    /// literally there yields a zero-length session window, and a multi-hour
+    /// run imports as a single route point.
+    ///
+    /// So when the declared end is not strictly after the start, fall back to
+    /// `start_time + total_elapsed_time` — the mirror of `resolveStart`,
+    /// which already derives a missing start from the end and the same
+    /// elapsed time. Returning nil when neither is usable keeps imports
+    /// fail-safe rather than inventing a window.
     public static func resolveDeclaredEnd(of session: FITSessionMessage) -> UInt32? {
-        FITParser.timestampIfValid(session.timestamp)
+        let declared = FITParser.timestampIfValid(session.timestamp)
+        guard let start = FITParser.timestampIfValid(session.startTime) else {
+            // With no start to compare against, the declared end is all there
+            // is; `prepare` validates ordering.
+            return declared
+        }
+        if let declared, declared > start {
+            return declared
+        }
+        guard let totalElapsedMilliseconds = session.totalElapsedTime,
+              totalElapsedMilliseconds != FITParser.invalidUint32
+        else {
+            return declared
+        }
+        let elapsedSeconds = totalElapsedMilliseconds / 1_000
+        guard elapsedSeconds > 0 else { return declared }
+        let (derivedEnd, overflowed) = start.addingReportingOverflow(elapsedSeconds)
+        guard !overflowed else { return declared }
+        return derivedEnd
     }
 
     /// Resolve every session range, detect material overlap, and apply the
