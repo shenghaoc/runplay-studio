@@ -2,6 +2,10 @@ name: Release
 
 # Production publication: tag push matching v* (requires release environment secrets).
 # Dry run: workflow_dispatch with dry_run=true (default) — no credentials, no GitHub Release.
+#
+# The macOS verification body is NOT duplicated here: the verify job below
+# calls the same reusable macos-verify.yml workflow the CI PR lane calls, so
+# a release can never be validated by a drifted copy of the build.
 
 on:
   workflow_dispatch:
@@ -33,33 +37,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
-  validate-and-package:
-    name: Validate and package
-    runs-on: xcode-27
-    # Production tag path uses the `release` environment; every other trigger
-    # resolves to the empty string, which GitHub treats as "no environment".
-    # Verified on an isolated probe branch: an empty name neither fails the run
-    # nor creates an environment named "".
-    environment: ${{ github.event_name == 'push' && 'release' || '' }}
+  # Fast pre-gate: resolve and validate all release metadata (VERSION file,
+  # tag form, annotated tag at HEAD, origin/main reachability, build number)
+  # on a cheap Linux runner, so a malformed tag fails in seconds instead of
+  # after a full macOS verification run.
+  resolve-metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      build_number: ${{ steps.meta.outputs.build_number }}
       is_production: ${{ steps.meta.outputs.is_production }}
-      artifact_dir: release-artifacts
 
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      # The xcode-27 image carries exactly one Xcode (27.0, the default), so
-      # there is no developer-dir selection to pin. The parity gate fails
-      # the job when the runner's Swift marketing version drifts from the
-      # Linux container pin in ci.yml.
-      - name: Verify Swift toolchain parity
-        run: |
-          xcodebuild -version
-          swift --version
-          ./scripts/check-toolchain-parity.sh
 
       - name: Resolve release metadata
         id: meta
@@ -123,26 +116,35 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Resolved version=${VERSION} build=${BUILD_NUMBER} production=${IS_PRODUCTION}"
 
-      - name: Validate C++ architecture boundaries
-        run: ./scripts/validate-cpp-boundaries.sh
+  # Shared macOS verification: engine warning build + engine tests + full
+  # package tests + release-config test compile, through the same reusable
+  # workflow the CI PR lane uses. Gated on the metadata pre-gate so a bad
+  # tag never spends macOS build time.
+  verify:
+    name: Verify (macOS)
+    needs: resolve-metadata
+    uses: ./.github/workflows/macos-verify.yml
+    with:
+      engine: true
+      full-tests: true
+      release-compile: true
 
-      - name: Build RunPlayEngineCpp (warnings-as-errors)
-        run: >-
-          swift build --target RunPlayEngineCpp
-          -Xcxx -Wall
-          -Xcxx -Wextra
-          -Xcxx -Wpedantic
-          -Xcxx -Wconversion
-          -Xcxx -Wsign-conversion
-          -Xcxx -Wshadow
+  validate-and-package:
+    name: Validate and package
+    needs: [resolve-metadata, verify]
+    runs-on: xcode-27
+    # Production tag path uses the `release` environment; every other trigger
+    # resolves to the empty string, which GitHub treats as "no environment".
+    # Verified on an isolated probe branch: an empty name neither fails the run
+    # nor creates an environment named "".
+    environment: ${{ github.event_name == 'push' && 'release' || '' }}
+    outputs:
+      artifact_dir: release-artifacts
 
-      - name: Run native C++ engine tests
-        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+    steps:
+      - uses: ./.github/actions/setup-macos-build
 
-      - name: Full package tests
-        run: swift test -Xswiftc -warnings-as-errors
-
-      - name: Package tooling syntax
+      - name: Packaging tooling syntax
         run: |
           bash -n scripts/lib/release-common.sh
           bash -n scripts/assemble-app-bundle.sh
@@ -153,9 +155,9 @@ jobs:
           bash -n script/build_and_run.sh
 
       - name: Ad-hoc dry-run package
-        if: steps.meta.outputs.is_production != 'true'
+        if: needs.resolve-metadata.outputs.is_production != 'true'
         env:
-          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          BUILD_NUMBER: ${{ needs.resolve-metadata.outputs.build_number }}
         run: |
           set -euo pipefail
           ./scripts/package-release.sh \
@@ -166,7 +168,7 @@ jobs:
             --output-dir "${GITHUB_WORKSPACE}/release-artifacts"
 
       - name: Import Developer ID certificate into temporary keychain
-        if: steps.meta.outputs.is_production == 'true'
+        if: needs.resolve-metadata.outputs.is_production == 'true'
         env:
           DEVELOPER_ID_CERT_P12_BASE64: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
           DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
@@ -196,7 +198,7 @@ jobs:
           security find-identity -p codesigning -v "${KEYCHAIN_PATH}"
 
       - name: Write App Store Connect API key
-        if: steps.meta.outputs.is_production == 'true'
+        if: needs.resolve-metadata.outputs.is_production == 'true'
         env:
           APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -211,10 +213,10 @@ jobs:
           chmod 600 "${KEY_PATH}"
 
       - name: Production package (Developer ID + notarize + staple)
-        if: steps.meta.outputs.is_production == 'true'
+        if: needs.resolve-metadata.outputs.is_production == 'true'
         env:
-          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          BUILD_NUMBER: ${{ needs.resolve-metadata.outputs.build_number }}
+          VERSION: ${{ needs.resolve-metadata.outputs.version }}
           DEVELOPER_ID_APPLICATION_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -246,7 +248,7 @@ jobs:
       - name: Upload packaging artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: RunPlayStudio-${{ steps.meta.outputs.version }}-macos-arm64
+          name: RunPlayStudio-${{ needs.resolve-metadata.outputs.version }}-macos-arm64
           path: |
             release-artifacts/*.zip
             release-artifacts/*-release.json
@@ -272,7 +274,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: validate-and-package
-    if: needs.validate-and-package.outputs.is_production == 'true'
+    if: needs.resolve-metadata.outputs.is_production == 'true'
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -285,12 +287,12 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v7
         with:
-          name: RunPlayStudio-${{ needs.validate-and-package.outputs.version }}-macos-arm64
+          name: RunPlayStudio-${{ needs.resolve-metadata.outputs.version }}-macos-arm64
           path: release-artifacts
 
       - name: Validate downloaded release set
         env:
-          VERSION: ${{ needs.validate-and-package.outputs.version }}
+          VERSION: ${{ needs.resolve-metadata.outputs.version }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -328,7 +330,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.validate-and-package.outputs.version }}
+          VERSION: ${{ needs.resolve-metadata.outputs.version }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
