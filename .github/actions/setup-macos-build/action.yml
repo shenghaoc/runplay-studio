@@ -34,15 +34,17 @@ runs:
     # The cache key carries the toolchain identity, not just the resolved
     # dependency set: repository policy is to track the newest runner images
     # and toolchains, so a key that silently survives an Xcode or container
-    # bump would restore artifacts built by a different compiler. Both the
-    # runner image and the Swift marketing version must match for a hit.
+    # bump would restore artifacts built by a different compiler. OS, arch,
+    # and the Swift marketing version must all match for a hit — an image
+    # roll that moves the bundled Swift changes the version even when the
+    # runner label does not move.
     - name: Restore SwiftPM dependency cache
       uses: actions/cache@v6
       with:
         path: ~/Library/Caches/org.swift.swiftpm
-        key: ${{ runner.image }}-swift-${{ steps.toolchain.outputs.version }}-spm-${{ hashFiles('Package.resolved') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-spm-${{ hashFiles('Package.resolved') }}
         restore-keys: |
-          ${{ runner.image }}-swift-${{ steps.toolchain.outputs.version }}-spm-
+          ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-spm-
 
     - name: Verify Swift toolchain parity
       shell: bash
