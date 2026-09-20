@@ -303,22 +303,31 @@ Never commit `.p12` / `.p8` files. Never print decoded keys or passwords.
 
 ### PR CI packaging coverage
 
-The `Release Packaging (macOS)` job in
-[.github/workflows/ci.yml](../.github/workflows/ci.yml) runs on every pull
-request and every push to `main`, entirely credential-free:
+Packaging coverage is split between two always-on lanes and one
+path-filtered job, all credential-free:
 
-1. `bash -n` over every packaging script.
-2. `scripts/test-release-packaging.sh` — the packaging contract suite.
-3. `scripts/package-demo.sh` — builds a real unsigned `.app` plus its zip.
-4. `scripts/package-release.sh --signing-mode adhoc --skip-notarization
-   --dry-run` — the same invocation the Release workflow runs on its
-   non-production path.
-5. Artifact presence, `shasum -a 256 -c SHA256SUMS`, and a check that packaging
-   left the checkout clean.
+- The `Lint` job in [.github/workflows/ci.yml](../.github/workflows/ci.yml)
+  runs `bash -n` over every packaging script on every pull request and
+  every push to `main`.
+- The `Release Packaging (macOS)` job runs unconditionally on every push
+  to `main`, so each merged commit is packaging-verified before any tag
+  exists. On pull requests it is path-filtered: it runs only when the diff
+  touches `scripts/**`, `script/**`, `Package.swift`, `Package.resolved`,
+  `Packaging/**` (the bundle template), the release workflow, or the
+  shared setup composite. Typical Swift/C++ PRs skip it; PRs that can
+  actually break packaging still run:
+  1. `scripts/test-release-packaging.sh` — the packaging contract suite.
+  2. `scripts/package-demo.sh` — builds a real unsigned `.app` plus its zip.
+  3. `scripts/package-release.sh --signing-mode adhoc --skip-notarization
+     --dry-run` — the same invocation the Release workflow runs on its
+     non-production path.
+  4. Artifact presence, `shasum -a 256 -c SHA256SUMS`, and a check that
+     packaging left the checkout clean.
 
-Steps 3 and 4 share one `swift build -c release`, so the second is cache-warm
-and near-free. The job runs concurrently with `macOS (Full Stack)` rather than
-extending it.
+Steps 2 and 3 share one `swift build -c release`, so the second is
+cache-warm and near-free. The job runs concurrently with the macOS test
+matrix rather than extending it. When the job is skipped, the `CI` gate
+treats `skipped` as success, so path-filtered PRs cannot wedge merging.
 
 It never signs with a Developer ID, never notarizes, never uploads app
 artifacts, and never creates a GitHub Release. The Developer ID → notarize →

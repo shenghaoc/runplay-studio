@@ -474,7 +474,7 @@ Platform-API assumptions that look correct on macOS
 corelibs-foundation; the container catches them before they burn a CI
 cycle.
 
-Benchmark scripts need release-mode test builds; the CI "Release Test Build (macOS)" job guards them.
+Benchmark scripts need release-mode test builds; the CI "macOS (release-compile)" matrix leg (via the reusable macos-verify.yml workflow) guards them.
 
 GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
