@@ -1,0 +1,52 @@
+name: "Set up macOS build"
+description: >-
+  The shared step sequence of every macOS CI job: checkout, the Swift
+  toolchain parity gate, and the SwiftPM dependency cache restore. The
+  xcode-27 runner image carries exactly one Xcode as its default, so there is
+  no developer-dir selection to perform — the parity check below is the
+  Xcode verification.
+
+inputs:
+  fetch-depth:
+    description: "actions/checkout fetch depth."
+    default: "1"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Record Swift toolchain identity
+      id: toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="$(swift --version | grep -oE 'Swift version [0-9]+(\.[0-9]+)+' | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | tail -n1)"
+        if [[ -z "${VERSION}" ]]; then
+          echo "could not read a Swift marketing version from 'swift --version'" >&2
+          swift --version >&2 || true
+          exit 1
+        fi
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    # The cache key carries the toolchain identity, not just the resolved
+    # dependency set: repository policy is to track the newest runner images
+    # and toolchains, so a key that silently survives an Xcode or container
+    # bump would restore artifacts built by a different compiler. Both the
+    # runner image and the Swift marketing version must match for a hit.
+    - name: Restore SwiftPM dependency cache
+      uses: actions/cache@v6
+      with:
+        path: ~/Library/Caches/org.swift.swiftpm
+        key: ${{ runner.image }}-swift-${{ steps.toolchain.outputs.version }}-spm-${{ hashFiles('Package.resolved') }}
+        restore-keys: |
+          ${{ runner.image }}-swift-${{ steps.toolchain.outputs.version }}-spm-
+
+    - name: Verify Swift toolchain parity
+      shell: bash
+      run: |
+        xcodebuild -version
+        swift --version
+        ./scripts/check-toolchain-parity.sh
