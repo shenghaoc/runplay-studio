@@ -140,6 +140,12 @@ public struct FITParser {
     static let maxFieldSize: Int = 255
     static let maxDeveloperFieldCount: Int = 64
     static let maxDecodedMessageCount: Int = 1_000_000
+    /// Bounded capacity of the retained field-description table.
+    static let maxFieldDescriptions: Int = 256
+    /// Upper bound on captured record developer field payloads per file.
+    /// A realistic 1 Hz five-hour run carries roughly 10^5 values; the bound
+    /// keeps a pathological file from structuring one retained value per byte.
+    static let maxRetainedDeveloperFieldValues: Int = 2_000_000
 
     /// Checkpoint interval for cancellation checks (every N records).
     static let cancellationCheckInterval: Int = 1000
@@ -189,6 +195,7 @@ public struct FITParser {
         var messageIndex = 0
         var lastTimestamp: UInt32 = 0
         var hasBaselineTimestamp = false
+        var developerRetention = DeveloperValueRetention()
 
         while offset < dataEndOffset {
             // Cooperative cancellation check
@@ -264,10 +271,14 @@ public struct FITParser {
                     }
                 }
 
-                // Skip developer fields
-                for field in def.developerFields {
-                    try reader.skip(Int(field.size))
-                }
+                // Capture developer field payloads on records; skip them on
+                // every other message. Resolution happens after parsing.
+                let developerFieldValues = try readDeveloperFieldValues(
+                    reader: &reader,
+                    definition: def,
+                    isRecord: def.globalMessageNumber == FITGlobalMessage.record.rawValue,
+                    retention: &developerRetention
+                )
 
                 offset = reader.offset
 
@@ -276,6 +287,7 @@ public struct FITParser {
                 appendDecodedMessage(
                     globalMessageNumber: def.globalMessageNumber,
                     fieldValues: fieldValues,
+                    developerFieldValues: developerFieldValues,
                     timestampOverride: timestamp,
                     decodedFile: &decodedFile
                 )
@@ -320,12 +332,15 @@ public struct FITParser {
                         lastTimestamp: &lastTimestamp,
                         hasBaselineTimestamp: &hasBaselineTimestamp,
                         messageIndex: &messageIndex,
+                        developerRetention: &developerRetention,
                         decodedFile: &decodedFile,
                         maximumDecodedMessageCount: maximumDecodedMessageCount
                     )
                 }
             }
         }
+
+        decodedFile.droppedDeveloperFieldValueCount = developerRetention.droppedCount
 
         return decodedFile
     }
@@ -519,6 +534,47 @@ public struct FITParser {
 
     // MARK: - Data Message Parsing
 
+    /// Budget tracking for retained record developer field payloads.
+    struct DeveloperValueRetention {
+        var retainedCount = 0
+        var droppedCount = 0
+    }
+
+    /// Read the developer field payloads of one data message.
+    ///
+    /// Record messages retain their payloads for post-parse resolution;
+    /// every other message keeps the historical skip. Payloads beyond the
+    /// file-wide retention budget are skipped and counted as dropped.
+    private static func readDeveloperFieldValues(
+        reader: inout FITBinaryReader,
+        definition: FITDefinitionMessage,
+        isRecord: Bool,
+        retention: inout DeveloperValueRetention
+    ) throws -> [FITRecordDeveloperFieldValue] {
+        guard !definition.developerFields.isEmpty else { return [] }
+        var values: [FITRecordDeveloperFieldValue] = []
+        values.reserveCapacity(definition.developerFields.count)
+
+        for field in definition.developerFields {
+            if isRecord && retention.retainedCount < maxRetainedDeveloperFieldValues {
+                let bytes = try reader.readBytes(Int(field.size))
+                retention.retainedCount += 1
+                values.append(FITRecordDeveloperFieldValue(
+                    developerDataIndex: field.developerDataIndex,
+                    fieldNumber: field.fieldNumber,
+                    bytes: bytes,
+                    littleEndian: definition.architecture == 0
+                ))
+            } else {
+                if isRecord {
+                    retention.droppedCount += 1
+                }
+                try reader.skip(Int(field.size))
+            }
+        }
+        return values
+    }
+
     /// Parse a normal (non-compressed) data message.
     private static func parseDataMessage(
         data: Data,
@@ -529,6 +585,7 @@ public struct FITParser {
         lastTimestamp: inout UInt32,
         hasBaselineTimestamp: inout Bool,
         messageIndex: inout Int,
+        developerRetention: inout DeveloperValueRetention,
         decodedFile: inout FITDecodedFile,
         maximumDecodedMessageCount: Int
     ) throws {
@@ -559,10 +616,13 @@ public struct FITParser {
             }
         }
 
-        // Skip developer fields
-        for field in definition.developerFields {
-            try reader.skip(Int(field.size))
-        }
+        // Capture developer field payloads on records; skip them elsewhere.
+        let developerFieldValues = try readDeveloperFieldValues(
+            reader: &reader,
+            definition: definition,
+            isRecord: definition.globalMessageNumber == FITGlobalMessage.record.rawValue,
+            retention: &developerRetention
+        )
 
         offset = reader.offset
 
@@ -583,6 +643,7 @@ public struct FITParser {
         appendDecodedMessage(
             globalMessageNumber: definition.globalMessageNumber,
             fieldValues: fieldValues,
+            developerFieldValues: developerFieldValues,
             timestampOverride: nil,
             decodedFile: &decodedFile
         )
@@ -594,6 +655,7 @@ public struct FITParser {
     private static func appendDecodedMessage(
         globalMessageNumber: UInt16,
         fieldValues: [UInt8: FITFieldValue],
+        developerFieldValues: [FITRecordDeveloperFieldValue],
         timestampOverride: UInt32?,
         decodedFile: inout FITDecodedFile
     ) {
@@ -624,7 +686,15 @@ public struct FITParser {
             record.enhancedSpeed = fieldValues[FITRecordField.enhancedSpeed.rawValue]?.uint32Value
             record.heartRate = fieldValues[FITRecordField.heartRate.rawValue]?.uint8Value
             record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
+            record.power = fieldValues[FITRecordField.power.rawValue]?.uint16Value
+            record.verticalOscillation = fieldValues[FITRecordField.verticalOscillation.rawValue]?.uint16Value
+            record.stanceTimePercent = fieldValues[FITRecordField.stanceTimePercent.rawValue]?.uint16Value
+            record.stanceTime = fieldValues[FITRecordField.stanceTime.rawValue]?.uint16Value
+            record.verticalRatio = fieldValues[FITRecordField.verticalRatio.rawValue]?.uint16Value
+            record.stanceTimeBalance = fieldValues[FITRecordField.stanceTimeBalance.rawValue]?.uint16Value
+            record.stepLength = fieldValues[FITRecordField.stepLength.rawValue]?.uint16Value
             record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
+            record.developerFields = developerFieldValues
             decodedFile.records.append(record)
             decodedFile.orderedMessages.append(.record(record))
 
@@ -724,6 +794,39 @@ public struct FITParser {
             deviceInfo.productName = fieldValues[FITDeviceInfoField.productName.rawValue]?.stringValue
             decodedFile.deviceInfo.append(deviceInfo)
             decodedFile.orderedMessages.append(.deviceInfo(deviceInfo))
+
+        case FITGlobalMessage.fieldDescription.rawValue:
+            var message = FITFieldDescriptionMessage()
+            message.developerDataIndex = fieldValues[FITFieldDescriptionField.developerDataIndex.rawValue]?.uint8Value
+            message.fieldDefinitionNumber = fieldValues[FITFieldDescriptionField.fieldDefinitionNumber.rawValue]?.uint8Value
+            message.baseTypeID = fieldValues[FITFieldDescriptionField.fitBaseTypeID.rawValue]?.uint8Value
+            message.fieldName = fieldValues[FITFieldDescriptionField.fieldName.rawValue]?.stringValue
+            message.array = fieldValues[FITFieldDescriptionField.array.rawValue]?.uint8Value
+            message.components = fieldValues[FITFieldDescriptionField.components.rawValue]?.stringValue
+            message.scale = fieldValues[FITFieldDescriptionField.scale.rawValue]?.uint8Value
+            message.offset = fieldValues[FITFieldDescriptionField.offset.rawValue]?.int8Value
+            message.units = fieldValues[FITFieldDescriptionField.units.rawValue]?.stringValue
+            message.bits = fieldValues[FITFieldDescriptionField.bits.rawValue]?.stringValue
+            message.accumulate = fieldValues[FITFieldDescriptionField.accumulate.rawValue]?.stringValue
+            message.baseUnitID = fieldValues[FITFieldDescriptionField.fitBaseUnitID.rawValue]?.uint16Value
+            message.nativeMesgNum = fieldValues[FITFieldDescriptionField.nativeMesgNum.rawValue]?.uint16Value
+            message.nativeFieldNum = fieldValues[FITFieldDescriptionField.nativeFieldNum.rawValue]?.uint8Value
+            if decodedFile.fieldDescriptions.count < maxFieldDescriptions {
+                decodedFile.fieldDescriptions.append(message)
+                decodedFile.orderedMessages.append(.fieldDescription(message))
+            } else {
+                decodedFile.droppedFieldDescriptionCount += 1
+            }
+
+        case FITGlobalMessage.developerDataId.rawValue:
+            var message = FITDeveloperDataIDMessage()
+            message.developerID = fieldValues[FITDeveloperDataIDField.developerID.rawValue]?.bytesValue
+            message.applicationID = fieldValues[FITDeveloperDataIDField.applicationID.rawValue]?.bytesValue
+            message.manufacturerID = fieldValues[FITDeveloperDataIDField.manufacturerID.rawValue]?.uint16Value
+            message.developerDataIndex = fieldValues[FITDeveloperDataIDField.developerDataIndex.rawValue]?.uint8Value
+            message.applicationVersion = fieldValues[FITDeveloperDataIDField.applicationVersion.rawValue]?.uint32Value
+            decodedFile.developerDataIDs.append(message)
+            decodedFile.orderedMessages.append(.developerDataID(message))
 
         default:
             // Unknown messages are skipped silently
@@ -841,5 +944,59 @@ extension FITParser {
     /// Enhanced speed uses scale 1000, same as legacy.
     public static func enhancedSpeedToMPS(_ scaled: UInt32) -> Double {
         Double(scaled) / 1000.0
+    }
+
+    // Native running-dynamics record fields, scaled per the official Garmin
+    // FIT SDK Profile 21.214.0. Every binding agrees on the field numbers,
+    // base types, scales, offsets (all zero), and units; all are `uint16`
+    // with invalid sentinel 0xFFFF:
+    //
+    //   field 39 vertical_oscillation  scale 10   unit mm
+    //     C++    src/fit_profile.cpp:1079
+    //     Swift  Sources/FITSwiftSDK/Profile/Mesgs/RecordMesg.swift:1158
+    //   field 41 stance_time           scale 10   unit ms
+    //     C++    src/fit_profile.cpp:1081
+    //     Swift  RecordMesg.swift:1160
+    //   field 83 vertical_ratio        scale 100  unit percent
+    //     C++    src/fit_profile.cpp:1111
+    //     Swift  RecordMesg.swift:1190
+    //   field 84 stance_time_balance   scale 100  unit percent
+    //     C++    src/fit_profile.cpp:1112
+    //     Swift  RecordMesg.swift:1191
+    //   field 85 step_length           scale 10   unit mm
+    //     C++    src/fit_profile.cpp:1113
+    //     Swift  RecordMesg.swift:1192
+    //
+    // (Field 40, stance_time_percent, has no RoutePoint home and is decoded
+    // no further than the raw record field.) The getters' documented units —
+    // `fit_record_mesg.hpp:943-947` mm, `:1009-1013` ms, `:2053-2057`
+    // percent, `:2086-2090` percent, `:2119-2123` mm — and the Objective-C
+    // bindings (`FITRecordMesg.h:121-132, 253-264`, all `FITFloat32`)
+    // match the same table.
+
+    /// Convert native vertical oscillation (field 39) to millimetres.
+    public static func nativeVerticalOscillationToMillimeters(_ scaled: UInt16) -> Double {
+        Double(scaled) / 10.0
+    }
+
+    /// Convert native stance time / ground contact time (field 41) to
+    /// milliseconds.
+    public static func nativeStanceTimeToMilliseconds(_ scaled: UInt16) -> Double {
+        Double(scaled) / 10.0
+    }
+
+    /// Convert native vertical ratio (field 83) to percent.
+    public static func nativeVerticalRatioToPercent(_ scaled: UInt16) -> Double {
+        Double(scaled) / 100.0
+    }
+
+    /// Convert native stance time balance (field 84) to percent.
+    public static func nativeStanceTimeBalanceToPercent(_ scaled: UInt16) -> Double {
+        Double(scaled) / 100.0
+    }
+
+    /// Convert native step length (field 85) from millimetres to metres.
+    public static func nativeStepLengthToMeters(_ scaled: UInt16) -> Double {
+        (Double(scaled) / 10.0) / 1000.0
     }
 }

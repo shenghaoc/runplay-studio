@@ -161,6 +161,12 @@ public struct FITImporter: WorkoutImporting {
             workout.analysisWarnings.append(warning)
         }
 
+        // Developer-field provenance and diagnostics (recognised, retained,
+        // skipped). Nil when the source carried no developer data at all.
+        workout.developerFieldSummary = WorkoutDeveloperFieldSummary.make(
+            from: decodedRoute.developerFieldReport
+        )
+
         return workout
     }
 

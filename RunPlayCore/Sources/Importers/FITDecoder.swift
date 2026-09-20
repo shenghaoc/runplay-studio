@@ -6,10 +6,18 @@ import Foundation
 public struct FITDecodedRouteResult: Sendable {
     public let routePoints: [RoutePoint]
     public let invalidCoordinatePointCount: Int
+    /// Developer-field decoding outcome for this session, including native
+    /// record power accounting. Empty when the source carried none.
+    public let developerFieldReport: FITDeveloperFieldReport
 
-    public init(routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
+    public init(
+        routePoints: [RoutePoint],
+        invalidCoordinatePointCount: Int,
+        developerFieldReport: FITDeveloperFieldReport = .empty
+    ) {
         self.routePoints = routePoints
         self.invalidCoordinatePointCount = invalidCoordinatePointCount
+        self.developerFieldReport = developerFieldReport
     }
 }
 
@@ -84,7 +92,8 @@ public struct FITDecoder {
         try decodeRecordsToRoutePoints(
             records: decodedFile.records,
             segments: [],
-            usesTimerSegmentation: false
+            usesTimerSegmentation: false,
+            developerContext: FITDeveloperDataContext(decodedFile: decodedFile)
         )
     }
 
@@ -109,11 +118,13 @@ public struct FITDecoder {
         index: FITSessionMessageIndex,
         sessionIndex: Int
     ) throws -> FITDecodedRouteResult {
+        let developerContext = FITDeveloperDataContext(decodedFile: index.decodedFile)
         guard index.mode != .legacyNoSessions else {
             return try decodeRecordsToRoutePoints(
                 records: index.decodedFile.records,
                 segments: [],
-                usesTimerSegmentation: false
+                usesTimerSegmentation: false,
+                developerContext: developerContext
             )
         }
         guard index.decodedFile.sessions.indices.contains(sessionIndex) else {
@@ -132,7 +143,8 @@ public struct FITDecoder {
         return try decodeRecordsToRoutePoints(
             records: records,
             segments: segments,
-            usesTimerSegmentation: usesTimerSegmentation
+            usesTimerSegmentation: usesTimerSegmentation,
+            developerContext: developerContext
         )
     }
 
@@ -504,7 +516,8 @@ public struct FITDecoder {
     private static func decodeRecordsToRoutePoints(
         records: [FITRecordMessage],
         segments: [RouteSegment],
-        usesTimerSegmentation: Bool
+        usesTimerSegmentation: Bool,
+        developerContext: FITDeveloperDataContext
     ) throws -> FITDecodedRouteResult {
         var validRecords: [(record: FITRecordMessage, segmentIndex: Int)] = []
         validRecords.reserveCapacity(records.count)
@@ -563,8 +576,20 @@ public struct FITDecoder {
             )
         }
 
+        // Developer fields resolve against the file-wide description table
+        // after parsing, so out-of-order descriptions are handled uniformly.
+        let developerResolution = FITDeveloperFieldResolver.resolve(
+            records: validRecords.map { $0.record },
+            descriptions: developerContext.descriptions
+        )
+
         var routePoints: [RoutePoint] = []
         routePoints.reserveCapacity(validRecords.count)
+        var developerPowerPointCount = 0
+        var nativeRecordPowerPointCount = 0
+        var powerDeveloperDataIndex: UInt8?
+        var developerDynamicsPointCount = 0
+        var nativeRecordDynamicsPointCount = 0
 
         for (index, entry) in validRecords.enumerated() {
             let record = entry.record
@@ -592,6 +617,44 @@ public struct FITDecoder {
                 cadence = nil
             }
 
+            let developerValues = developerResolution.pointValues[index]
+            if developerValues.powerWatts != nil {
+                developerPowerPointCount += 1
+                if powerDeveloperDataIndex == nil {
+                    powerDeveloperDataIndex = developerValues.powerDeveloperDataIndex
+                }
+            }
+            // A recognized developer power field wins over the native record
+            // field; the native field fills power only when no developer
+            // field supplied one for this point.
+            let nativePower = decodeNativePower(record: record)
+            let powerWatts = developerValues.powerWatts ?? nativePower
+            if developerValues.powerWatts == nil, nativePower != nil {
+                nativeRecordPowerPointCount += 1
+            }
+
+            // Native running dynamics fill the same RoutePoint fields the
+            // developer path populates, under the same precedence: a
+            // developer value wins per field, and the native record field
+            // fills what the developer path left absent on that point.
+            let nativeDynamics = decodeNativeDynamics(record: record)
+            let groundContactTime = developerValues.groundContactTimeMilliseconds
+                ?? nativeDynamics.groundContactTimeMilliseconds
+            let verticalOscillation = developerValues.verticalOscillationMillimeters
+                ?? nativeDynamics.verticalOscillationMillimeters
+            let verticalRatio = developerValues.verticalRatioPercent
+                ?? nativeDynamics.verticalRatioPercent
+            let stanceTimeBalance = developerValues.stanceTimeBalancePercent
+                ?? nativeDynamics.stanceTimeBalancePercent
+            let stepLength = developerValues.stepLengthMeters
+                ?? nativeDynamics.stepLengthMeters
+            if developerValues.hasAnyDynamics {
+                developerDynamicsPointCount += 1
+            }
+            if nativeDynamics.suppliedAnyValue(preferredOver: developerValues) {
+                nativeRecordDynamicsPointCount += 1
+            }
+
             let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
@@ -607,15 +670,87 @@ public struct FITDecoder {
                 speedMetersPerSecond: speed,
                 heartRateBPM: heartRate,
                 cadence: cadence,
+                powerWatts: powerWatts,
+                groundContactTimeMilliseconds: groundContactTime,
+                verticalOscillationMillimeters: verticalOscillation,
+                verticalRatioPercent: verticalRatio,
+                stanceTimeBalancePercent: stanceTimeBalance,
+                stepLengthMeters: stepLength,
                 routeSegmentIndex: entry.segmentIndex
             )
             routePoints.append(point)
         }
 
+        let developerReport = FITDeveloperFieldReport(
+            sources: referencedDeveloperSources(
+                identities: developerContext.identities,
+                records: records
+            ),
+            fieldStats: developerResolution.fieldStats,
+            totalPointCount: routePoints.count,
+            missingDescriptionValueCount: developerResolution.missingDescriptionValueCount,
+            invalidValueCount: developerResolution.invalidValueCount,
+            conflictingPowerValueCount: developerResolution.conflictingPowerValueCount,
+            droppedValueCount: developerContext.droppedValueCount,
+            droppedDescriptionCount: developerContext.droppedDescriptionCount,
+            nativeRecordPowerPointCount: nativeRecordPowerPointCount,
+            developerPowerPointCount: developerPowerPointCount,
+            powerDeveloperDataIndex: powerDeveloperDataIndex,
+            nativeRecordDynamicsPointCount: nativeRecordDynamicsPointCount,
+            developerDynamicsPointCount: developerDynamicsPointCount
+        )
+
         return FITDecodedRouteResult(
             routePoints: routePoints,
-            invalidCoordinatePointCount: invalidCoordinatePointCount
+            invalidCoordinatePointCount: invalidCoordinatePointCount,
+            developerFieldReport: developerReport
         )
+    }
+
+    /// Provenance for the developer data indexes this session's records
+    /// actually reference. Sibling sessions' identities stay out.
+    private static func referencedDeveloperSources(
+        identities: [FITDeveloperDataIDMessage],
+        records: [FITRecordMessage]
+    ) -> [FITDeveloperFieldReport.Source] {
+        var referencedIndexes = Set<UInt8>()
+        for record in records {
+            for value in record.developerFields {
+                referencedIndexes.insert(value.developerDataIndex)
+            }
+        }
+        guard !referencedIndexes.isEmpty else { return [] }
+
+        var sources: [FITDeveloperFieldReport.Source] = []
+        var seen = Set<UInt8>()
+        for identity in identities {
+            guard let developerDataIndex = identity.developerDataIndex,
+                  referencedIndexes.contains(developerDataIndex),
+                  !seen.contains(developerDataIndex)
+            else {
+                continue
+            }
+            seen.insert(developerDataIndex)
+            sources.append(FITDeveloperFieldReport.Source(
+                developerDataIndex: developerDataIndex,
+                developerIDHex: identity.developerID?.fitDeveloperHex,
+                applicationIDHex: identity.applicationID?.fitDeveloperHex,
+                manufacturerID: identity.manufacturerID,
+                applicationVersion: identity.applicationVersion
+            ))
+        }
+        // Referenced indexes without an identity message still belong in the
+        // provenance list so the diagnostics can name them.
+        for index in referencedIndexes.sorted() where !seen.contains(index) {
+            sources.append(FITDeveloperFieldReport.Source(
+                developerDataIndex: index,
+                developerIDHex: nil,
+                applicationIDHex: nil,
+                manufacturerID: nil,
+                applicationVersion: nil
+            ))
+        }
+        return sources
     }
 
     // MARK: - Enhanced Metric Decoding
@@ -648,5 +783,62 @@ public struct FITDecoder {
             return FITParser.scaledSpeedToMPS(speed)
         }
         return nil
+    }
+
+    /// Native record power (field 7), scale 1, invalid sentinel 0xFFFF.
+    private static func decodeNativePower(record: FITRecordMessage) -> Double? {
+        guard let power = record.power, power != FITParser.invalidUint16 else { return nil }
+        return Double(power)
+    }
+
+    /// Native running-dynamics values decoded from one record. All fields
+    /// are `uint16` with sentinel `0xFFFF`; scales and units are pinned by
+    /// the comments on the `FITParser.native*` conversion helpers.
+    private struct FITNativeDynamicsValues {
+        var groundContactTimeMilliseconds: Double?
+        var verticalOscillationMillimeters: Double?
+        var verticalRatioPercent: Double?
+        var stanceTimeBalancePercent: Double?
+        var stepLengthMeters: Double?
+
+        /// Whether the native fields supplied any value the developer path
+        /// had not already supplied on the same point.
+        func suppliedAnyValue(preferredOver developer: FITDeveloperPointValues) -> Bool {
+            if groundContactTimeMilliseconds != nil,
+               developer.groundContactTimeMilliseconds == nil { return true }
+            if verticalOscillationMillimeters != nil,
+               developer.verticalOscillationMillimeters == nil { return true }
+            if verticalRatioPercent != nil,
+               developer.verticalRatioPercent == nil { return true }
+            if stanceTimeBalancePercent != nil,
+               developer.stanceTimeBalancePercent == nil { return true }
+            if stepLengthMeters != nil,
+               developer.stepLengthMeters == nil { return true }
+            return false
+        }
+    }
+
+    private static func decodeNativeDynamics(record: FITRecordMessage) -> FITNativeDynamicsValues {
+        var values = FITNativeDynamicsValues()
+        if let stanceTime = record.stanceTime, stanceTime != FITParser.invalidUint16 {
+            values.groundContactTimeMilliseconds =
+                FITParser.nativeStanceTimeToMilliseconds(stanceTime)
+        }
+        if let oscillation = record.verticalOscillation,
+           oscillation != FITParser.invalidUint16 {
+            values.verticalOscillationMillimeters =
+                FITParser.nativeVerticalOscillationToMillimeters(oscillation)
+        }
+        if let ratio = record.verticalRatio, ratio != FITParser.invalidUint16 {
+            values.verticalRatioPercent = FITParser.nativeVerticalRatioToPercent(ratio)
+        }
+        if let balance = record.stanceTimeBalance, balance != FITParser.invalidUint16 {
+            values.stanceTimeBalancePercent =
+                FITParser.nativeStanceTimeBalanceToPercent(balance)
+        }
+        if let stepLength = record.stepLength, stepLength != FITParser.invalidUint16 {
+            values.stepLengthMeters = FITParser.nativeStepLengthToMeters(stepLength)
+        }
+        return values
     }
 }

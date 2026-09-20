@@ -50,6 +50,11 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     public var routeDistanceProvenance: RouteDistanceProvenance
     /// Optional import provenance (provider, content hash). Nil for legacy snapshots.
     public var importProvenance: WorkoutImportProvenance?
+    /// FIT developer-field provenance and diagnostics. Nil for legacy
+    /// snapshots and workouts whose source carried no developer data.
+    /// Deliberately not gated on any snapshot version: the fields decode as
+    /// nil on older snapshots and reimport is the upgrade path.
+    public var developerFieldSummary: WorkoutDeveloperFieldSummary?
 
     public init(
         id: UUID = UUID(),
@@ -102,7 +107,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         recordedLapDiagnostics: RecordedLapDiagnostics = .empty,
         routeDistanceSource: RouteDistanceSource = .coordinateDerived,
         routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown,
-        importProvenance: WorkoutImportProvenance? = nil
+        importProvenance: WorkoutImportProvenance? = nil,
+        developerFieldSummary: WorkoutDeveloperFieldSummary? = nil
     ) {
         self.id = id
         self.metadata = metadata
@@ -124,6 +130,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.routeDistanceSource = routeDistanceSource
         self.routeDistanceProvenance = routeDistanceProvenance
         self.importProvenance = importProvenance
+        self.developerFieldSummary = developerFieldSummary
     }
 
     /// Cached medium-date/short-time formatter for the unnamed-workout fallback.
@@ -182,6 +189,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         case analysisWarnings, movementDiagnostics
         case qualityDiagnostics, recordedLapDiagnostics
         case routeDistanceSource, routeDistanceProvenance, importProvenance
+        case developerFieldSummary
     }
 
     public init(from decoder: any Decoder) throws {
@@ -248,6 +256,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             WorkoutImportProvenance.self,
             forKey: .importProvenance
         )
+        developerFieldSummary = try container.decodeIfPresent(
+            WorkoutDeveloperFieldSummary.self,
+            forKey: .developerFieldSummary
+        )
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -272,6 +284,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(routeDistanceSource, forKey: .routeDistanceSource)
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)
         try container.encodeIfPresent(importProvenance, forKey: .importProvenance)
+        try container.encodeIfPresent(developerFieldSummary, forKey: .developerFieldSummary)
     }
 
     private static func sanitizedRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {

@@ -11,6 +11,16 @@ public struct FITDecodedFile: Sendable {
     public var events: [FITEventMessage]
     public var records: [FITRecordMessage]
     public var activities: [FITActivityMessage]
+    /// Field descriptions (global message 206) in source order.
+    public var fieldDescriptions: [FITFieldDescriptionMessage]
+    /// Developer data identities (global message 207) in source order.
+    public var developerDataIDs: [FITDeveloperDataIDMessage]
+    /// Developer field values dropped because the retention budget was
+    /// exhausted before their description was known to be absent or present.
+    public var droppedDeveloperFieldValueCount: Int
+    /// Field description messages dropped because the description table
+    /// reached its bounded capacity.
+    public var droppedFieldDescriptionCount: Int
     /// All supported standard messages in their original on-disk order.
     public var orderedMessages: [FITOrderedMessage]
 
@@ -22,6 +32,10 @@ public struct FITDecodedFile: Sendable {
         events: [FITEventMessage] = [],
         records: [FITRecordMessage] = [],
         activities: [FITActivityMessage] = [],
+        fieldDescriptions: [FITFieldDescriptionMessage] = [],
+        developerDataIDs: [FITDeveloperDataIDMessage] = [],
+        droppedDeveloperFieldValueCount: Int = 0,
+        droppedFieldDescriptionCount: Int = 0,
         orderedMessages: [FITOrderedMessage] = []
     ) {
         self.fileID = fileID
@@ -31,6 +45,10 @@ public struct FITDecodedFile: Sendable {
         self.events = events
         self.records = records
         self.activities = activities
+        self.fieldDescriptions = fieldDescriptions
+        self.developerDataIDs = developerDataIDs
+        self.droppedDeveloperFieldValueCount = droppedDeveloperFieldValueCount
+        self.droppedFieldDescriptionCount = droppedFieldDescriptionCount
         self.orderedMessages = orderedMessages
     }
 }
@@ -45,6 +63,8 @@ public enum FITOrderedMessage: Sendable {
     case session(FITSessionMessage)
     case activity(FITActivityMessage)
     case deviceInfo(FITDeviceInfoMessage)
+    case fieldDescription(FITFieldDescriptionMessage)
+    case developerDataID(FITDeveloperDataIDMessage)
 }
 
 // MARK: - File ID (Global Message 0)
@@ -73,9 +93,45 @@ public struct FITRecordMessage: Sendable {
     public var enhancedSpeed: UInt32?
     public var heartRate: UInt8?
     public var cadence: UInt8?
+    /// Native running/cycling power in watts (field 7, scale 1).
+    public var power: UInt16?
+    /// Native running-dynamics record fields, all `uint16` with invalid
+    /// sentinel `0xFFFF`. Field numbers, scales, and units per the official
+    /// Garmin FIT SDK Profile (21.214.0), identical in the C++, Swift, and
+    /// Objective-C bindings:
+    ///
+    /// - field 39 `vertical_oscillation`: scale 10, unit mm
+    ///   (C++ `src/fit_profile.cpp:1079`, Swift
+    ///   `Sources/FITSwiftSDK/Profile/Mesgs/RecordMesg.swift:1158`)
+    /// - field 40 `stance_time_percent`: scale 100, unit percent
+    ///   (C++ `src/fit_profile.cpp:1080`, Swift `RecordMesg.swift:1159`)
+    /// - field 41 `stance_time`: scale 10, unit ms
+    ///   (C++ `src/fit_profile.cpp:1081`, Swift `RecordMesg.swift:1160`)
+    /// - field 83 `vertical_ratio`: scale 100, unit percent
+    ///   (C++ `src/fit_profile.cpp:1111`, Swift `RecordMesg.swift:1190`)
+    /// - field 84 `stance_time_balance`: scale 100, unit percent
+    ///   (C++ `src/fit_profile.cpp:1112`, Swift `RecordMesg.swift:1191`)
+    /// - field 85 `step_length`: scale 10, unit mm
+    ///   (C++ `src/fit_profile.cpp:1113`, Swift `RecordMesg.swift:1192`)
+    ///
+    /// Raw values are retained here; scale conversion happens in
+    /// `FITDecoder`, which maps them onto the same `RoutePoint` fields the
+    /// developer-field path populates.
+    public var verticalOscillation: UInt16?
+    public var stanceTimePercent: UInt16?
+    public var stanceTime: UInt16?
+    public var verticalRatio: UInt16?
+    public var stanceTimeBalance: UInt16?
+    public var stepLength: UInt16?
     public var temperature: Int8?
+    /// Raw developer field payloads captured from this record. Values are
+    /// resolved against `FITDecodedFile.fieldDescriptions` after parsing
+    /// because descriptions may appear after the records that use them.
+    public var developerFields: [FITRecordDeveloperFieldValue]
 
-    public init() {}
+    public init() {
+        developerFields = []
+    }
 }
 
 // MARK: - Event (Global Message 21)
@@ -220,6 +276,8 @@ public enum FITGlobalMessage: UInt16, Sendable {
     case event = 21
     case deviceInfo = 23
     case activity = 34
+    case fieldDescription = 206
+    case developerDataId = 207
 }
 
 /// FIT base type encoding values from the protocol spec.
@@ -267,9 +325,45 @@ public enum FITRecordField: UInt8 {
     case cadence = 4
     case distance = 5
     case speed = 6
+    case power = 7
+    case verticalOscillation = 39
+    case stanceTimePercent = 40
+    case stanceTime = 41
+    case verticalRatio = 83
+    case stanceTimeBalance = 84
+    case stepLength = 85
     case enhancedAltitude = 78
     case enhancedSpeed = 73
     case temperature = 13
+}
+
+/// Known field numbers for field_description messages (global message 206),
+/// from the official FIT profile.
+public enum FITFieldDescriptionField: UInt8 {
+    case developerDataIndex = 0
+    case fieldDefinitionNumber = 1
+    case fitBaseTypeID = 2
+    case fieldName = 3
+    case array = 4
+    case components = 5
+    case scale = 6
+    case offset = 7
+    case units = 8
+    case bits = 9
+    case accumulate = 10
+    case fitBaseUnitID = 13
+    case nativeMesgNum = 14
+    case nativeFieldNum = 15
+}
+
+/// Known field numbers for developer_data_id messages (global message 207),
+/// from the official FIT profile.
+public enum FITDeveloperDataIDField: UInt8 {
+    case developerID = 0
+    case applicationID = 1
+    case manufacturerID = 2
+    case developerDataIndex = 3
+    case applicationVersion = 4
 }
 
 /// Known field numbers for event messages (global message 21).
