@@ -210,6 +210,60 @@ struct FITFixtureBuilder {
         return data
     }
 
+    /// Build a valid route whose session and both laps write the real-file
+    /// degenerate shape: `timestamp == start_time` on the session (duration
+    /// only in `total_elapsed_time`) and lap end timestamps that sit at or
+    /// before their own `start_time`. Synthetic values; only the message
+    /// shape mirrors the device file that motivated the fallbacks.
+    static func buildSampleRunWithDegenerateLapTimestamps() -> Data {
+        var content = Data()
+        writeDefinitionMessage(to: &content)
+
+        let recordCount = 30
+        for index in 0..<recordCount {
+            writeRecordMessage(to: &content, index: index, total: recordCount)
+        }
+
+        writeSessionDefinitionMessage(to: &content)
+        writeSessionMessage(
+            elapsedSeconds: 290,
+            timerSeconds: 290,
+            numberOfLaps: 2,
+            startOffset: 0,
+            endOffset: 0, // session timestamp == session start_time
+            to: &content
+        )
+
+        writeLapDefinitionMessage(to: &content)
+        // Lap 1: end timestamp == its own start_time.
+        writeLapMessage(
+            messageIndex: 0,
+            startOffset: 0,
+            endOffset: 0,
+            elapsedSeconds: 140,
+            timerSeconds: 140,
+            distanceMeters: 2_500,
+            calories: 180,
+            trigger: 0,
+            to: &content
+        )
+        // Lap 2: end timestamp before its own start_time (the decoded shape
+        // of the motivating file, whose laps carry the session start).
+        writeLapMessage(
+            messageIndex: 1,
+            startOffset: 140,
+            endOffset: 0,
+            elapsedSeconds: 150,
+            timerSeconds: 150,
+            distanceMeters: 2_500,
+            calories: 190,
+            trigger: 2,
+            to: &content
+        )
+
+        return finalize(content: content)
+    }
+
     /// Build a valid route with one selected-session lap whose start and totals
     /// cannot establish a safe boundary. Import should keep the route and report
     /// the skipped malformed lap.

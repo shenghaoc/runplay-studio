@@ -51,7 +51,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
@@ -370,12 +370,12 @@ To build a local `.app` bundle:
 | JSON   | ✅ Full support | Native format, all fields supported |
 | GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
-| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; see limitations below |
+| FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, and enhanced metrics; importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
 | HealthKit | 📋 Research only | Requires entitlements, future work |
 
 **File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
 
-**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. A file with zero or one session message imports directly; a file with several session messages opens the **Import FIT Sessions** review sheet, where supported running sessions become separate workouts committed in one transaction. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported.
+**FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. A file with zero or one session message imports directly; a file with several session messages opens the **Import FIT Sessions** review sheet, where supported running sessions become separate workouts committed in one transaction. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported. Real-device-file import landed in #143: before it, the parser required the wrong header data-type magic and rejected every genuine FIT file at the header, and a device writing `session.timestamp == start_time` collapsed a whole run to a single route point.
 
 ## App Features
 

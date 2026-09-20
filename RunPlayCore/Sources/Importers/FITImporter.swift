@@ -194,6 +194,20 @@ public struct FITImporter: WorkoutImporting {
             let startDate = fitDate(lap.startTime)
             var endDate = fitDate(lap.timestamp)
 
+            // Degenerate-end fallback, the lap mirror of
+            // FITSessionAttribution.resolveDeclaredEnd: the same devices that
+            // write `session.timestamp == session.start_time` can write a lap
+            // end timestamp at or before the lap's own `start_time`, carrying
+            // the true duration only in `total_elapsed_time`. Taken literally
+            // the window inverts and RecordedLapAnalyzer skips the lap as
+            // malformed, losing every lap in such a file. A missing end keeps
+            // the next-lap-start/session-end fallback below.
+            if let start = startDate,
+               let end = endDate, end <= start,
+               let elapsed = decodedSeconds(lap.totalElapsedTime), elapsed > 0 {
+                endDate = start.addingTimeInterval(elapsed)
+            }
+
             // Safe end fallback: next lap start, else selected session/route end.
             if endDate == nil {
                 if lapIndex + 1 < sessionLaps.count {

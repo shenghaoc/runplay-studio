@@ -113,4 +113,133 @@ final class FITSessionEndDerivationTests: XCTestCase {
 
         XCTAssertEqual(FITSessionAttribution.resolveDeclaredEnd(of: s), start)
     }
+
+    // MARK: - Multi-session containers
+
+    /// Each session of a multi-session container derives its own end; the
+    /// windows must not collapse into each other or into overlap.
+    func testMultiSessionDegenerateEndsDerivePerSession() {
+        let first = session(start: 100, timestamp: 100, elapsedMilliseconds: 200_000) // == start
+        let second = session(start: 400, timestamp: 350, elapsedMilliseconds: 100_000) // < start
+        let prepared = FITSessionAttribution.prepare(sessions: [first, second])
+
+        XCTAssertEqual(prepared.range(at: 0)?.start, 100)
+        XCTAssertEqual(prepared.range(at: 0)?.end, 300)
+        XCTAssertEqual(prepared.range(at: 1)?.start, 400)
+        XCTAssertEqual(prepared.range(at: 1)?.end, 500)
+        XCTAssertFalse(prepared.ambiguousIndexes.contains(0))
+        XCTAssertFalse(prepared.ambiguousIndexes.contains(1))
+
+        let timestamps: [UInt32?] = [150, 320, 450]
+        let owners = FITSessionAttribution.attributeOwners(
+            timestamps: timestamps,
+            orderedRanges: prepared.orderedRanges
+        )
+        XCTAssertEqual(owners[0], 0)
+        XCTAssertEqual(owners[1], FITSessionAttribution.unattributed, "the gap between windows owns nothing")
+        XCTAssertEqual(owners[2], 1)
+    }
+
+    /// GPS-bearing-session detection must use the derived end: a session
+    /// whose first GPS fix arrives strictly after a degenerate
+    /// `timestamp == start_time` is still a GPS session, not a legacy
+    /// whole-file fallback.
+    func testDegenerateEndDoesNotHideSessionGPSRecords() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: (0..<10).map {
+                FITMultiSessionFixtureBuilder.RecordSpec(
+                    offsetSeconds: 10 + UInt32($0 * 10),
+                    coordinateStep: Int32($0) * 2_000,
+                    distanceMeters: Double($0) * 100
+                )
+            },
+            sessions: [
+                FITMultiSessionFixtureBuilder.SessionSpec(
+                    startOffsetSeconds: 0,
+                    endOffsetSeconds: 0,
+                    elapsedSeconds: 200,
+                    timerSeconds: 200
+                )
+            ]
+        )
+        let decoded = try FITParser.parse(data: data)
+
+        XCTAssertEqual(try FITDecoder.selectedSessionIndex(from: decoded), 0)
+    }
+
+    /// Laps of such a file anchor at their `start_time`, which lands inside
+    /// the derived session windows even though every lap `timestamp` is
+    /// degenerate.
+    func testLapsAnchorAtStartTimeInsideDerivedMultiSessionRanges() {
+        let sessions = [
+            session(start: 100, timestamp: 100, elapsedMilliseconds: 200_000),
+            session(start: 400, timestamp: 400, elapsedMilliseconds: 100_000)
+        ]
+        let prepared = FITSessionAttribution.prepare(sessions: sessions)
+
+        var lapZero = FITLapMessage()
+        lapZero.startTime = 150
+        lapZero.timestamp = 100 // degenerate: precedes its own start
+        var lapOne = FITLapMessage()
+        lapOne.startTime = 450
+        lapOne.timestamp = 100
+
+        let attributed = FITSessionAttribution.attributeLaps(
+            laps: [lapZero, lapOne],
+            sessions: sessions,
+            prepared: prepared
+        )
+        XCTAssertEqual(attributed[0], [0])
+        XCTAssertEqual(attributed[1], [1])
+    }
+
+    // MARK: - End to end
+
+    /// A synthetic container with the real file's exact message shape —
+    /// session `timestamp == start_time` with the duration only in
+    /// `total_elapsed_time`, lap end timestamps at or before their own
+    /// `start_time` — must import with every record and every lap retained.
+    /// Values are synthetic; only the shape mirrors the device file.
+    func testRealFileShapeContainerImportsEveryRecordAndLap() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: (0..<30).map {
+                FITMultiSessionFixtureBuilder.RecordSpec(
+                    offsetSeconds: UInt32($0 * 10),
+                    coordinateStep: Int32($0) * 2_000,
+                    distanceMeters: Double($0) * 100
+                )
+            },
+            laps: [
+                FITMultiSessionFixtureBuilder.LapSpec(
+                    messageIndex: 0,
+                    startOffsetSeconds: 0,
+                    endOffsetSeconds: 0,
+                    elapsedSeconds: 140
+                ),
+                FITMultiSessionFixtureBuilder.LapSpec(
+                    messageIndex: 1,
+                    startOffsetSeconds: 140,
+                    endOffsetSeconds: 0,
+                    elapsedSeconds: 150
+                )
+            ],
+            sessions: [
+                FITMultiSessionFixtureBuilder.SessionSpec(
+                    startOffsetSeconds: 0,
+                    endOffsetSeconds: 0,
+                    elapsedSeconds: 290,
+                    timerSeconds: 290
+                )
+            ]
+        )
+
+        let workout = try FITImporter().importWorkout(data: data, suggestedName: "degenerate.fit")
+
+        XCTAssertEqual(workout.routePoints.count, 30, "the whole run, not a single point")
+        XCTAssertEqual(workout.recordedLaps.count, 2, "no lap may be lost to the degenerate window")
+        XCTAssertEqual(workout.recordedLapDiagnostics.sourceLapCount, 2)
+        XCTAssertEqual(workout.recordedLapDiagnostics.malformedLapCount, 0)
+        XCTAssertEqual(workout.recordedLaps[0].elapsedSeconds, 140, accuracy: 0.001)
+        XCTAssertEqual(workout.recordedLaps[1].elapsedSeconds, 150, accuracy: 0.001)
+    }
 }
