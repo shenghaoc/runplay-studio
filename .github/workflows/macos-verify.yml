@@ -1,0 +1,75 @@
+name: macOS verification
+
+# Reusable macOS verification body, called by BOTH lanes so the PR lane and
+# the Release lane can never drift apart:
+#   - ci.yml      calls it per matrix leg (full-stack tests / release compile)
+#   - release.yml calls it with every suite enabled before packaging
+# Not triggered directly by any event.
+
+on:
+  workflow_call:
+    inputs:
+      engine:
+        description: "Run the C++ engine warning build and native engine tests."
+        type: boolean
+        default: true
+      full-tests:
+        description: "Run the full package test suite (swift test)."
+        type: boolean
+        default: true
+      release-compile:
+        description: "Compile every test target in release configuration."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (macOS)
+    runs-on: xcode-27
+    steps:
+      - uses: ./.github/actions/setup-macos-build
+
+      - name: Validate C++ architecture boundaries
+        run: ./scripts/validate-cpp-boundaries.sh
+
+      - name: Build RunPlayEngineCpp
+        if: inputs.engine
+        run: >-
+          swift build --target RunPlayEngineCpp
+          -Xcxx -Wall
+          -Xcxx -Wextra
+          -Xcxx -Wpedantic
+          -Xcxx -Wconversion
+          -Xcxx -Wsign-conversion
+          -Xcxx -Wshadow
+
+      - name: Run native C++ engine tests
+        if: inputs.engine
+        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+
+      - name: Verify full package
+        if: inputs.full-tests
+        run: swift test -Xswiftc -warnings-as-errors
+
+      # Release-mode compile check for every test target. Benchmark scripts
+      # build tests in release, but no other suite compiles the test targets
+      # in that configuration, so DEBUG-only test helpers (e.g. #101's
+      # synthetic map preparer, caught only after a benchmark failed in
+      # #121) slip through a debug-only CI. Build only; nothing is executed
+      # in release.
+      - name: Build test targets in release
+        if: inputs.release-compile
+        # `swift build -c release --build-tests` is not a valid gate: it
+        # fails on clean main with a pre-existing testability error
+        # ("unable to resolve Swift module dependency to a compatible
+        # module: 'RunPlayCore'"). `swift test -c release --filter` with a
+        # deliberately non-matching pattern compiles every test target in
+        # release and then runs zero tests — the compile is the check, so
+        # the warning "No matching test cases were run" is expected and
+        # harmless. Verified on clean main: with #121's `#if DEBUG` guards
+        # reverted this command fails at `SyntheticWorkoutVideoMapPreparer`
+        # not being in scope; with them present it passes.
+        run: swift test -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
