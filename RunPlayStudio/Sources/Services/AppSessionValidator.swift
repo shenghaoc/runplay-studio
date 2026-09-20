@@ -6,6 +6,7 @@ struct AppSessionValidationContext: Equatable, Sendable {
     var selectedWorkoutID: UUID?
     var smartCollectionIDs: Set<UUID>
     var tagIDs: Set<UUID>
+    var routeGroupIDs: Set<UUID>
     var replayDuration: Double?
     var comparisonDistanceLimit: Double?
     var workoutDistanceMetersByID: [UUID: Double]
@@ -16,6 +17,7 @@ struct AppSessionValidationContext: Equatable, Sendable {
         selectedWorkoutID: UUID? = nil,
         smartCollectionIDs: Set<UUID> = [],
         tagIDs: Set<UUID> = [],
+        routeGroupIDs: Set<UUID> = [],
         replayDuration: Double? = nil,
         comparisonDistanceLimit: Double? = nil,
         workoutDistanceMetersByID: [UUID: Double] = [:],
@@ -25,6 +27,7 @@ struct AppSessionValidationContext: Equatable, Sendable {
         self.selectedWorkoutID = selectedWorkoutID
         self.smartCollectionIDs = smartCollectionIDs
         self.tagIDs = tagIDs
+        self.routeGroupIDs = routeGroupIDs
         self.replayDuration = replayDuration
         self.comparisonDistanceLimit = comparisonDistanceLimit
         self.workoutDistanceMetersByID = workoutDistanceMetersByID
@@ -153,6 +156,13 @@ enum AppSessionValidator {
             issues.append("Custom heatmap range was empty.")
             usedFallback = true
         }
+        var heatmapRouteGroupID = snapshot.heatmap.routeGroupID
+        if let existingRouteGroupID = heatmapRouteGroupID,
+           !context.routeGroupIDs.contains(existingRouteGroupID) {
+            heatmapRouteGroupID = nil
+            issues.append("Missing heatmap route filter.")
+            usedFallback = true
+        }
         let heatmap = AppSessionHeatmapState(
             datePresetRaw: heatmapDatePreset,
             customStartDate: heatmapDates.start,
@@ -168,7 +178,8 @@ enum AppSessionValidator {
                 snapshot.heatmap.minimumWorkoutCount,
                 issues: &issues,
                 usedFallback: &usedFallback
-            )
+            ),
+            routeGroupID: heatmapRouteGroupID
         )
 
         var trendsScopeCollectionID = snapshot.trends.scopeSmartCollectionID

@@ -1087,17 +1087,175 @@ confirmation; the original ZIP remained untouched.
 
 ## Routes workspace (automatic route grouping)
 
-Synthetic library required (never dogfood private data):
+Synthetic library required (never dogfood private data).
 
-- [ ] Import the same synthetic loop three times with different GPS jitter:
+### Prep: synthetic fixture set
+
+The Personal Records fixtures above are too small to show route grouping (progression
+needs repeats, containment needs near-miss geometry, and Re-cluster needs enough
+workouts to show progress). Generate one Strava-archive-style ZIP and bulk-import it in
+a single action instead of importing files one at a time:
+
+```bash
+python3 - << 'PY'
+import csv, io, math, os, random, sys, zipfile
+from datetime import datetime, timedelta, timezone
+
+BASE_LAT, BASE_LON = 37.7749, -122.4194
+M_PER_DEG_LAT = 111_320.0
+def m_per_deg_lon(lat): return 111_320.0 * math.cos(math.radians(lat))
+def to_latlon(base_lat, base_lon, e, n):
+    return base_lat + n / M_PER_DEG_LAT, base_lon + e / m_per_deg_lon(base_lat)
+
+def square_loop(side_m, step_m=20.0):
+    perimeter, pts, t = side_m * 4, [], 0.0
+    while t <= perimeter:
+        pos = t % perimeter
+        if pos < side_m: e, n = pos, 0.0
+        elif pos < 2 * side_m: e, n = side_m, pos - side_m
+        elif pos < 3 * side_m: e, n = side_m - (pos - 2 * side_m), side_m
+        else: e, n = 0.0, side_m - (pos - 3 * side_m)
+        pts.append((e, n, t))
+        if t >= perimeter: break
+        t = min(perimeter, t + step_m)
+    return pts
+
+def with_spur(loop_pts, spur_m, step_m=20.0):
+    pts, base_t, along = list(loop_pts), loop_pts[-1][2], 0.0
+    while along <= spur_m:
+        pts.append((along, 0.0, base_t + along))
+        if along >= spur_m: break
+        along = min(spur_m, along + step_m)
+    return pts
+
+def prefix(loop_pts, fraction):
+    cutoff = loop_pts[-1][2] * fraction
+    return [p for p in loop_pts if p[2] <= cutoff]
+
+def reverse_route(pts):
+    total = pts[-1][2]
+    return [(e, n, total - t) for e, n, t in reversed(pts)]
+
+def jitter(pts, noise_m, seed):
+    rnd = random.Random(seed)
+    return [(e + rnd.uniform(-noise_m, noise_m), n + rnd.uniform(-noise_m, noise_m), t) for e, n, t in pts]
+
+class Activity:
+    def __init__(self, id_, name, gpx, date): self.id, self.name, self.gpx, self.date = id_, name, gpx, date
+
+def build_gpx(name, base_lat, base_lon, pts, start_dt, pace_s_per_km):
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<gpx version="1.1" creator="RunPlayFixtureGenerator">',
+             f"  <trk><name>{name}</name><trkseg>"]
+    for e, n, travelled in pts:
+        lat, lon = to_latlon(base_lat, base_lon, e, n)
+        elapsed_s = travelled / 1000.0 * pace_s_per_km
+        ts = (start_dt + timedelta(seconds=elapsed_s)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        alt = 15.0 + 3.0 * math.sin(travelled / 400.0)
+        lines.append(f'    <trkpt lat="{lat:.7f}" lon="{lon:.7f}"><ele>{alt:.1f}</ele><time>{ts}</time></trkpt>')
+    lines += ["  </trkseg></trk>", "</gpx>"]
+    return "\n".join(lines)
+
+out_dir = "/tmp/runplay-routes-fixtures"
+os.makedirs(out_dir, exist_ok=True)
+activities, next_id = [], [1000]
+def add(name, lat, lon, pts, start_dt, pace):
+    activities.append(Activity(next_id[0], name, build_gpx(name, lat, lon, pts, start_dt, pace), start_dt))
+    next_id[0] += 1
+
+# Family A: 5.2 km loop, 8 repeats, 2 reversed, improving pace over ~7 months.
+a_lat, a_lon, a_side = BASE_LAT, BASE_LON, 1300.0
+a_clean = square_loop(a_side, step_m=25.0)
+a_dates = [datetime(2026, 2, 15, 7, 30, tzinfo=timezone.utc), datetime(2026, 3, 8, 7, 30, tzinfo=timezone.utc),
+           datetime(2026, 4, 2, 7, 30, tzinfo=timezone.utc), datetime(2026, 4, 27, 7, 30, tzinfo=timezone.utc),
+           datetime(2026, 5, 30, 7, 30, tzinfo=timezone.utc), datetime(2026, 6, 25, 7, 30, tzinfo=timezone.utc),
+           datetime(2026, 7, 28, 7, 30, tzinfo=timezone.utc), datetime(2026, 8, 22, 7, 30, tzinfo=timezone.utc)]
+a_paces = [320, 310, 305, 295, 300, 285, 275, 265]
+for i, (d, pace) in enumerate(zip(a_dates, a_paces)):
+    pts = jitter(a_clean, 9.0, 1000 + i)
+    reversed_ = i in (2, 5)
+    if reversed_: pts = reverse_route(pts)
+    add(f"Loop A Run {i + 1}" + (" (Reversed)" if reversed_ else ""), a_lat, a_lon, pts, d, pace)
+
+# Family B: 1.2 km loop, 4 repeats, different location.
+b_lat, b_lon, b_side = BASE_LAT + 0.035, BASE_LON + 0.035, 300.0
+b_clean = square_loop(b_side, step_m=20.0)
+b_dates = [datetime(2026, 7, 1, 6, 45, tzinfo=timezone.utc), datetime(2026, 7, 14, 6, 45, tzinfo=timezone.utc),
+           datetime(2026, 7, 29, 6, 45, tzinfo=timezone.utc), datetime(2026, 8, 12, 6, 45, tzinfo=timezone.utc)]
+for i, (d, pace) in enumerate(zip(b_dates, [295, 292, 288, 290])):
+    add(f"Loop B Run {i + 1}", b_lat, b_lon, jitter(b_clean, 6.0, 2000 + i), d, pace)
+
+# Containment: loop+spur and a 5-in-6 prefix of Family A's loop — each must
+# land as its own route (mutual coverage below 0.90 rejects both).
+add("Loop A Run + Spur", a_lat, a_lon, jitter(with_spur(a_clean, 1000.0, 25.0), 9.0, 3001),
+    datetime(2026, 5, 5, 7, 30, tzinfo=timezone.utc), 300)
+add("Loop A Run (Cut Short)", a_lat, a_lon, jitter(prefix(a_clean, 5.0 / 6.0), 9.0, 3002),
+    datetime(2026, 6, 3, 7, 30, tzinfo=timezone.utc), 300)
+
+# Singletons: 3 spatially separate one-off runs.
+for i, (lat, lon, dist, d) in enumerate([
+    (BASE_LAT + 0.12, BASE_LON - 0.10, 4200.0, datetime(2026, 3, 20, 8, 0, tzinfo=timezone.utc)),
+    (BASE_LAT - 0.15, BASE_LON + 0.08, 6800.0, datetime(2026, 6, 10, 8, 0, tzinfo=timezone.utc)),
+    (BASE_LAT + 0.20, BASE_LON + 0.20, 3400.0, datetime(2026, 8, 1, 8, 0, tzinfo=timezone.utc)),
+]):
+    add(f"Singleton Run {i + 1}", lat, lon, jitter(square_loop(dist / 4.0, 25.0), 8.0, 4000 + i), d, 300)
+
+# Filler: enough scattered runs that a full Re-cluster is observable and
+# cancellable. Bump filler_count for a bigger library (training load,
+# watch-folder, etc. can reuse this generator wholesale).
+rnd, filler_count = random.Random(99), 300
+filler_start = datetime(2026, 1, 5, 6, 0, tzinfo=timezone.utc)
+for i in range(filler_count):
+    lat, lon = BASE_LAT + rnd.uniform(-0.6, 0.6), BASE_LON + rnd.uniform(-0.6, 0.6)
+    dist = rnd.uniform(600.0, 2200.0)
+    pts = jitter(square_loop(dist / 4.0, step_m=40.0), 10.0, 5000 + i)
+    d = filler_start + timedelta(days=rnd.uniform(0, 260), minutes=rnd.uniform(0, 600))
+    add(f"Filler Run {i + 1:03d}", lat, lon, pts, d, rnd.uniform(270, 340))
+
+csv_buf = io.StringIO()
+writer = csv.writer(csv_buf)
+writer.writerow(["Activity ID", "Activity Name", "Activity Type", "Activity Date", "Filename"])
+for a in activities:
+    writer.writerow([a.id, a.name, "Run", a.date.strftime("%Y-%m-%dT%H:%M:%SZ"), f"activities/{a.id}.gpx"])
+zip_path = os.path.join(out_dir, "routes_fixtures.zip")
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr("export/activities.csv", csv_buf.getvalue())
+    for a in activities:
+        zf.writestr(f"export/activities/{a.id}.gpx", a.gpx)
+print(f"Wrote {zip_path}: {len(activities)} activities")
+PY
+
+BIN=$(swift build -c release --show-bin-path)
+./scripts/assemble-app-bundle.sh --output /tmp/dev/RunPlayStudio.app \
+  --bundle-identifier dev.local.runplay.routes --skip-build --bin-dir "$BIN"
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-routes-check open \
+  --env RUNPLAY_LIBRARY_ROOT=/tmp/runplay-routes-check -a /tmp/dev/RunPlayStudio.app
+```
+
+Import via **File → Import Strava Archive…**, select
+`/tmp/runplay-routes-fixtures/routes_fixtures.zip`, **Select All Importable**, then
+**Import N Runs**. This produces: an 8-run 5.2 km loop family (2 reversed, improving
+pace, spread across ~7 months) for the progression chart and reversed-member marking; a
+4-run 1.2 km loop family at a different location for the route list and filter menus; a
+loop-plus-1 km-spur and a 5-in-6 prefix of the main loop — each must land as its own
+route, since mutual coverage (≈0.84 and ≈0.83) sits below the 0.90 grouping threshold —
+making the containment decision visible; three spatially separate singleton runs; and
+300 scattered filler runs so a full Re-cluster takes long enough to observe progress and
+press Cancel. Geometry mirrors `RouteGroupingFixtures.swift` so fixtures exercise the
+same matcher paths the unit tests do.
+
+Reusable wholesale for other features needing a library-sized synthetic set (training
+load, watch-folder): adjust the family/filler parameters and re-run.
+
+- [x] Import the same synthetic loop three times with different GPS jitter:
       Routes (⌘⇧G) shows one route with 3 runs and best/median/latest active
       pace.
-- [ ] Import the loop reversed: it joins the same route and the run list
+- [x] Import the loop reversed: it joins the same route and the run list
       marks it "Reversed".
-- [ ] Import the loop plus an extra spur: it stays a separate route (mutual
+- [x] Import the loop plus an extra spur: it stays a separate route (mutual
       coverage decides — a run that covers a route plus extra distance is
       not the same route; Merge is the manual recovery path).
-- [ ] Import a loop sharing only part of the path with another: the two
+- [x] Import a loop sharing only part of the path with another: the two
       routes stay separate.
 - [ ] The representative route map draws the representative run's polyline
       with start/finish annotations; 2D/3D and Fit Route work.
@@ -1106,18 +1264,72 @@ Synthetic library required (never dogfood private data):
 - [ ] Rename a route (context menu and detail toolbar): the custom name
       sticks; clearing the name returns the derived "X km Loop/Route"
       default.
-- [ ] Merge two routes: members move and the target keeps its name.
+- [x] Merge two routes: members move and the target keeps its name.
 - [ ] Remove a run from a route: it disappears from the route, stays in All
       Runs, and is not re-added by later imports (only Re-cluster restores).
-- [ ] Pin a representative: the map overlay switches to that run.
+- [x] Pin a representative: the map overlay switches to that run.
 - [ ] Re-cluster Routes shows progress, cancels cleanly leaving the previous
       routes intact, and carries over names/pins on success.
-- [ ] All Runs filter menu: Route → specific route / Not on a Route filters
+- [x] All Runs filter menu: Route → specific route / Not on a Route filters
       the table; the filter survives into a saved smart collection.
 - [ ] Personal Heatmap route filter restricts cells to the selected route
       and resets with the other filters.
 - [ ] Deleting a member run repairs the route (representative refreshes;
       empty route disappears).
-- [ ] A fresh import shows up on its route shortly after the import
+- [x] A fresh import shows up on its route shortly after the import
       completes (asynchronous assignment), without blocking the import UI.
-- [ ] Relaunch mid-route: session restores the Routes destination (v5).
+- [x] Relaunch mid-route: session restores the Routes destination (v5).
+
+### Pass record 2026-09-20 (release configuration, synthetic 317-run library)
+
+The feature merged (#122 and the stack below it) before this pass finished, so
+this record is a post-merge verification, not a pre-merge gate.
+
+Verified on a release-configuration bundle against a throwaway library built by
+the generator above, light and dark appearance, at both a normal window size and
+720×500:
+
+- Grouping: the 8-run 5.2 km family grouped as one route with best/median/latest
+  active pace and a pace-over-date chart; both reversed members carried the
+  "Reversed" marker; the loop-plus-spur and the 5-in-6 prefix each stayed their
+  own route (named "Route", not "Loop", because their endpoints do not meet).
+- Manual controls: rename via the detail toolbar stuck; merge moved members and
+  kept one name (286 → 285 routes); pin switched the representative map overlay;
+  remove dropped the member and a later full re-cluster restored it, as the
+  checklist states it should.
+- Re-cluster: determinate progress (0/317 → 297/317), Cancel left the previous
+  routes untouched.
+- Filters: All Runs → Route → a named route and "Not on a Route" both filtered
+  correctly (1 of 317, and 21 of 317 — the fillers below the 20-point
+  participation minimum), and the route filter survived into a saved smart
+  collection across navigation.
+- Empty and loading states: a library with no repeats shows "No routes yet" with
+  the header distinguishing "0 routes · 2 runs awaiting analysis"; the heatmap
+  shows "Building heatmap…" while recomputing.
+- Session v5: relaunch restored the Routes destination, and (after the fix in
+  this PR) the Personal Heatmap route filter.
+
+Accessibility was inspected through the accessibility tree and the view source,
+not through a spoken VoiceOver session: the progression chart carries
+`accessibilityLabel`/`accessibilityValue` plus an `AXChartDescriptor` with titled
+date and pace axes; route rows read as one element (name, run count, best active
+pace); member rows read name, date, pace, "representative", "run in the opposite
+direction" — reversal is conveyed in words, not by the badge colour alone; and no
+announcement is posted from the Routes view, its view model, or AppState, so a
+re-cluster cannot announce per workout (progress is a labelled progress element).
+
+Not ticked, and why:
+
+- Representative map 2D/3D and Fit Route: the polyline, start/finish annotations
+  and both controls are present, but the controls were not exercised.
+- Chart via VoiceOver: the descriptor is verified in the tree and in source; no
+  spoken pass was run.
+- Rename: only the detail-toolbar path was exercised; the context-menu path and
+  clearing a name back to the derived default were not.
+- Remove from a route: "not re-added by later imports" was not exercised — no
+  import was performed after a removal.
+- Re-cluster carry-over: names survived a completed re-cluster; pin carry-over
+  was not isolated.
+- Heatmap route filter reset alongside the other filters was not exercised.
+- Deleting a member run (representative refresh, empty route disappears) was not
+  exercised.
