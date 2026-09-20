@@ -10,7 +10,7 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | JSON | Full support | Native fixture format with route points, metadata, biometrics, optional recorded laps, versioned route normalization, and versioned derived analysis. Legacy snapshots are normalized before they are reanalysed. |
 | GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. Standard GPX does **not** define device laps — `recordedLaps` stays empty and `<trkseg>` is never treated as a lap. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
 | TCX | Track support | Parses one GPS-bearing activity's laps (including summary fields and `TriggerMethod`), tracks, trackpoints, distance, elevation, heart rate, and cadence. A `<Lap>` boundary alone does **not** create a route gap; multi-`<Track>` continuity is resolved deterministically. Files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
-| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, device-info, field_description (206), and developer_data_id (207) messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, timer-derived route gaps, native record power (field 7), and developer fields (running power and dynamics) are supported; see "FIT developer data" below. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. Importing real device activity files landed in #143 — earlier releases rejected every genuine file at the header. |
+| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, device-info, field_description (206), and developer_data_id (207) messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, timer-derived route gaps, native record power and running dynamics, and developer fields (running power and dynamics) are supported; see "FIT developer data" below. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. Importing real device activity files landed in #143 — earlier releases rejected every genuine file at the header. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
 ## Workout size limits
@@ -377,12 +377,12 @@ metrics to record messages. RunPlay Studio decodes them as follows.
   closest to RunPlayCore's decoding. Because the choice is contested, it is
   not allowed to be silent: see the diagnostic below. Pinned by
   `testDeveloperFieldOffsetIsSubtractedNotAdded`.
-- A non-zero developer offset is rare — nearly every field ships offset 0 —
-  and it is the only case where either the sign or the apply/don't-apply
-  choice is observable. Any developer field declaring a non-zero offset is
-  therefore flagged in the workout's developer-field notes, so the first real
-  file carrying one makes the assumption visible instead of quietly decoding
-  wrong.
+- A non-default developer scale or offset is rare — nearly every field
+  ships scale 1 / offset 0 — and those are the only cases where either the
+  sign or the apply/don't-apply choice is observable. Any developer field
+  declaring scale ≠ 1 or offset ≠ 0 is therefore flagged in the workout's
+  developer-field notes, so the first real file carrying one makes the
+  assumption visible instead of quietly decoding wrong.
 - The `field_description` (206) and `developer_data_id` (207) field layouts
   and the `fit_base_unit` enum are verified against the official C++ and
   Swift SDK Profile sources (Profile 21.214.0). `fit_base_unit` is
@@ -397,17 +397,48 @@ metrics to record messages. RunPlay Studio decodes them as follows.
 
 Recognition is **name-based**, with the application identity retained as
 provenance (tiebreak, not gate): an unrecognized application whose field
-names are sane is still recognized. Recognized names cover Stryd, Garmin
-Connect IQ running power, and Garmin/COROS-style running dynamics:
-`power`, `form power`, `leg spring stiffness`, `ground time` / `ground
-contact time`, `vertical oscillation`, `vertical ratio`,
-`stance time balance`, and `step length` (common spellings and `lss`/`gct`
-abbreviations included). Power, ground contact time, vertical oscillation,
-vertical ratio, stance time balance, and step length map onto route-point
-fields; form power and leg spring stiffness are recognized but have no
-per-point home. Native record power (field 7) is also decoded; when both a
-developer field and the native field supply power for the same point, the
-developer field wins and the conflict is reported.
+names are sane is still recognized. Names are matched case-insensitively
+after trimming and collapsing all whitespace. Recognized names cover
+Stryd, Garmin Connect IQ running power, and Garmin/COROS-style running
+dynamics: `power`, `form power`, `leg spring stiffness`, `ground time` /
+`ground contact time` / `stance time`, `vertical oscillation`,
+`vertical ratio`, `stance time balance`, and `step length` (common
+spellings and `lss`/`gct` abbreviations included). Power, ground contact
+time, vertical oscillation, vertical ratio, stance time balance, and
+step length map onto route-point fields; form power and leg spring
+stiffness are recognized but have no per-point home. Native record power
+(field 7) is also decoded; when both a developer field and the native
+field supply power for the same point, the developer field wins and the
+conflict is reported.
+
+The registry remains **unverified against real vendor developer-field
+data**: neither real file available to date carries developer fields, so
+every recognized spelling comes from vendor documentation, not from a
+decoded device file. A real Stryd or Connect IQ file whose fields land
+on the right route-point metrics — with values matching the vendor's own
+app — is what would verify it; a miss is not silent, because the field
+is still retained with its raw identity, name, and statistics.
+
+### Native running dynamics
+
+Garmin watches write running dynamics as **native record fields**, not
+developer fields — the common case for running dynamics data in the
+wild. Record fields 39 (vertical oscillation, scale 10, mm), 41 (stance
+time, scale 10, ms), 83 (vertical ratio, scale 100, percent), 84 (stance
+time balance, scale 100, percent), and 85 (step length, scale 10, mm)
+decode onto the same route-point fields the developer path populates;
+field 40 (stance time percent) has no route-point home and is not
+mapped further. Scales and units are confirmed against the official
+Garmin SDK Profile (21.214.0), which agrees across its C++, Swift, and
+Objective-C bindings (`src/fit_profile.cpp:1079-1081,1111-1113` in the
+C++ SDK, `RecordMesg.swift:1158-1160,1190-1192` in the Swift SDK);
+invalid sentinel `0xFFFF` decodes as absent. Precedence mirrors native
+power: a recognized developer value wins per metric, and the native
+field fills only what the developer path left absent on that point. The
+persisted summary distinguishes the origins
+(`dynamicsSourceIsNativeRecordField`, `powerSourceIsNativeRecordField`)
+so a native-only file — the most common hardware — reports its source
+as the watch itself.
 
 ### Retention and diagnostics
 
