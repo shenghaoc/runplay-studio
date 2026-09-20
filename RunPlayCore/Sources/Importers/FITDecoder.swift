@@ -588,6 +588,8 @@ public struct FITDecoder {
         var developerPowerPointCount = 0
         var nativeRecordPowerPointCount = 0
         var powerDeveloperDataIndex: UInt8?
+        var developerDynamicsPointCount = 0
+        var nativeRecordDynamicsPointCount = 0
 
         for (index, entry) in validRecords.enumerated() {
             let record = entry.record
@@ -631,6 +633,28 @@ public struct FITDecoder {
                 nativeRecordPowerPointCount += 1
             }
 
+            // Native running dynamics fill the same RoutePoint fields the
+            // developer path populates, under the same precedence: a
+            // developer value wins per field, and the native record field
+            // fills what the developer path left absent on that point.
+            let nativeDynamics = decodeNativeDynamics(record: record)
+            let groundContactTime = developerValues.groundContactTimeMilliseconds
+                ?? nativeDynamics.groundContactTimeMilliseconds
+            let verticalOscillation = developerValues.verticalOscillationMillimeters
+                ?? nativeDynamics.verticalOscillationMillimeters
+            let verticalRatio = developerValues.verticalRatioPercent
+                ?? nativeDynamics.verticalRatioPercent
+            let stanceTimeBalance = developerValues.stanceTimeBalancePercent
+                ?? nativeDynamics.stanceTimeBalancePercent
+            let stepLength = developerValues.stepLengthMeters
+                ?? nativeDynamics.stepLengthMeters
+            if developerValues.hasAnyDynamics {
+                developerDynamicsPointCount += 1
+            }
+            if nativeDynamics.suppliedAnyValue(preferredOver: developerValues) {
+                nativeRecordDynamicsPointCount += 1
+            }
+
             let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
@@ -647,11 +671,11 @@ public struct FITDecoder {
                 heartRateBPM: heartRate,
                 cadence: cadence,
                 powerWatts: powerWatts,
-                groundContactTimeMilliseconds: developerValues.groundContactTimeMilliseconds,
-                verticalOscillationMillimeters: developerValues.verticalOscillationMillimeters,
-                verticalRatioPercent: developerValues.verticalRatioPercent,
-                stanceTimeBalancePercent: developerValues.stanceTimeBalancePercent,
-                stepLengthMeters: developerValues.stepLengthMeters,
+                groundContactTimeMilliseconds: groundContactTime,
+                verticalOscillationMillimeters: verticalOscillation,
+                verticalRatioPercent: verticalRatio,
+                stanceTimeBalancePercent: stanceTimeBalance,
+                stepLengthMeters: stepLength,
                 routeSegmentIndex: entry.segmentIndex
             )
             routePoints.append(point)
@@ -671,7 +695,9 @@ public struct FITDecoder {
             droppedDescriptionCount: developerContext.droppedDescriptionCount,
             nativeRecordPowerPointCount: nativeRecordPowerPointCount,
             developerPowerPointCount: developerPowerPointCount,
-            powerDeveloperDataIndex: powerDeveloperDataIndex
+            powerDeveloperDataIndex: powerDeveloperDataIndex,
+            nativeRecordDynamicsPointCount: nativeRecordDynamicsPointCount,
+            developerDynamicsPointCount: developerDynamicsPointCount
         )
 
         return FITDecodedRouteResult(
@@ -763,5 +789,56 @@ public struct FITDecoder {
     private static func decodeNativePower(record: FITRecordMessage) -> Double? {
         guard let power = record.power, power != FITParser.invalidUint16 else { return nil }
         return Double(power)
+    }
+
+    /// Native running-dynamics values decoded from one record. All fields
+    /// are `uint16` with sentinel `0xFFFF`; scales and units are pinned by
+    /// the comments on the `FITParser.native*` conversion helpers.
+    private struct FITNativeDynamicsValues {
+        var groundContactTimeMilliseconds: Double?
+        var verticalOscillationMillimeters: Double?
+        var verticalRatioPercent: Double?
+        var stanceTimeBalancePercent: Double?
+        var stepLengthMeters: Double?
+
+        /// Whether the native fields supplied any value the developer path
+        /// had not already supplied on the same point.
+        func suppliedAnyValue(preferredOver developer: FITDeveloperPointValues) -> Bool {
+            if groundContactTimeMilliseconds != nil,
+               developer.groundContactTimeMilliseconds == nil { return true }
+            if verticalOscillationMillimeters != nil,
+               developer.verticalOscillationMillimeters == nil { return true }
+            if verticalRatioPercent != nil,
+               developer.verticalRatioPercent == nil { return true }
+            if stanceTimeBalancePercent != nil,
+               developer.stanceTimeBalancePercent == nil { return true }
+            if stepLengthMeters != nil,
+               developer.stepLengthMeters == nil { return true }
+            return false
+        }
+    }
+
+    private static func decodeNativeDynamics(record: FITRecordMessage) -> FITNativeDynamicsValues {
+        var values = FITNativeDynamicsValues()
+        if let stanceTime = record.stanceTime, stanceTime != FITParser.invalidUint16 {
+            values.groundContactTimeMilliseconds =
+                FITParser.nativeStanceTimeToMilliseconds(stanceTime)
+        }
+        if let oscillation = record.verticalOscillation,
+           oscillation != FITParser.invalidUint16 {
+            values.verticalOscillationMillimeters =
+                FITParser.nativeVerticalOscillationToMillimeters(oscillation)
+        }
+        if let ratio = record.verticalRatio, ratio != FITParser.invalidUint16 {
+            values.verticalRatioPercent = FITParser.nativeVerticalRatioToPercent(ratio)
+        }
+        if let balance = record.stanceTimeBalance, balance != FITParser.invalidUint16 {
+            values.stanceTimeBalancePercent =
+                FITParser.nativeStanceTimeBalanceToPercent(balance)
+        }
+        if let stepLength = record.stepLength, stepLength != FITParser.invalidUint16 {
+            values.stepLengthMeters = FITParser.nativeStepLengthToMeters(stepLength)
+        }
+        return values
     }
 }

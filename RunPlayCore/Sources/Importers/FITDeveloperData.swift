@@ -147,7 +147,7 @@ public enum FITDeveloperMetric: String, CaseIterable, Sendable {
         case .legSpringStiffness:
             return ["leg spring stiffness", "lss"]
         case .groundContactTime:
-            return ["ground time", "ground contact time", "gct"]
+            return ["ground time", "ground contact time", "stance time", "gct"]
         case .verticalOscillation:
             return ["vertical oscillation"]
         case .verticalRatio:
@@ -168,12 +168,14 @@ public enum FITDeveloperMetric: String, CaseIterable, Sendable {
         }
     }
 
-    /// Normalize a field name: lowercase, trimmed, single-spaced.
+    /// Normalize a field name: case-insensitive, trimmed, and with every
+    /// run of any whitespace character (spaces, tabs, newlines) collapsed
+    /// to a single space. Vendor spellings cannot be validated against real
+    /// device files yet, so matching tolerates the formatting differences
+    /// a device encoder can introduce without changing the name.
     public static func normalize(_ name: String) -> String {
         name.lowercased()
-            .split(separator: " ")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
     }
 
@@ -205,6 +207,16 @@ struct FITDeveloperPointValues: Sendable, Equatable {
     var stepLengthMeters: Double?
     /// The developer data index that supplied `powerWatts`, when it did.
     var powerDeveloperDataIndex: UInt8?
+
+    /// Whether any recognized developer field supplied a running-dynamics
+    /// value on this record (power excluded).
+    var hasAnyDynamics: Bool {
+        groundContactTimeMilliseconds != nil
+            || verticalOscillationMillimeters != nil
+            || verticalRatioPercent != nil
+            || stanceTimeBalancePercent != nil
+            || stepLengthMeters != nil
+    }
 }
 
 /// Aggregate outcome of resolving one session's developer fields.
@@ -549,6 +561,12 @@ public struct FITDeveloperFieldReport: Sendable, Equatable {
     public var developerPowerPointCount: Int
     /// Developer data index that supplied power, when a developer field did.
     public var powerDeveloperDataIndex: UInt8?
+    /// Points where a native running-dynamics record field (39/41/83/84/85)
+    /// supplied a value the developer path had not.
+    public var nativeRecordDynamicsPointCount: Int
+    /// Points where a recognized developer field supplied any
+    /// running-dynamics value.
+    public var developerDynamicsPointCount: Int
 
     init(
         sources: [Source] = [],
@@ -561,7 +579,9 @@ public struct FITDeveloperFieldReport: Sendable, Equatable {
         droppedDescriptionCount: Int = 0,
         nativeRecordPowerPointCount: Int = 0,
         developerPowerPointCount: Int = 0,
-        powerDeveloperDataIndex: UInt8? = nil
+        powerDeveloperDataIndex: UInt8? = nil,
+        nativeRecordDynamicsPointCount: Int = 0,
+        developerDynamicsPointCount: Int = 0
     ) {
         self.sources = sources
         self.fieldStats = fieldStats
@@ -574,6 +594,8 @@ public struct FITDeveloperFieldReport: Sendable, Equatable {
         self.nativeRecordPowerPointCount = nativeRecordPowerPointCount
         self.developerPowerPointCount = developerPowerPointCount
         self.powerDeveloperDataIndex = powerDeveloperDataIndex
+        self.nativeRecordDynamicsPointCount = nativeRecordDynamicsPointCount
+        self.developerDynamicsPointCount = developerDynamicsPointCount
     }
 
     public static let empty = FITDeveloperFieldReport()
@@ -587,6 +609,8 @@ public struct FITDeveloperFieldReport: Sendable, Equatable {
             && droppedDescriptionCount == 0
             && nativeRecordPowerPointCount == 0
             && developerPowerPointCount == 0
+            && nativeRecordDynamicsPointCount == 0
+            && developerDynamicsPointCount == 0
     }
 }
 

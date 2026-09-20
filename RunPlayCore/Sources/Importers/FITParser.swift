@@ -687,6 +687,12 @@ public struct FITParser {
             record.heartRate = fieldValues[FITRecordField.heartRate.rawValue]?.uint8Value
             record.cadence = fieldValues[FITRecordField.cadence.rawValue]?.uint8Value
             record.power = fieldValues[FITRecordField.power.rawValue]?.uint16Value
+            record.verticalOscillation = fieldValues[FITRecordField.verticalOscillation.rawValue]?.uint16Value
+            record.stanceTimePercent = fieldValues[FITRecordField.stanceTimePercent.rawValue]?.uint16Value
+            record.stanceTime = fieldValues[FITRecordField.stanceTime.rawValue]?.uint16Value
+            record.verticalRatio = fieldValues[FITRecordField.verticalRatio.rawValue]?.uint16Value
+            record.stanceTimeBalance = fieldValues[FITRecordField.stanceTimeBalance.rawValue]?.uint16Value
+            record.stepLength = fieldValues[FITRecordField.stepLength.rawValue]?.uint16Value
             record.temperature = fieldValues[FITRecordField.temperature.rawValue]?.int8Value
             record.developerFields = developerFieldValues
             decodedFile.records.append(record)
@@ -938,5 +944,59 @@ extension FITParser {
     /// Enhanced speed uses scale 1000, same as legacy.
     public static func enhancedSpeedToMPS(_ scaled: UInt32) -> Double {
         Double(scaled) / 1000.0
+    }
+
+    // Native running-dynamics record fields, scaled per the official Garmin
+    // FIT SDK Profile 21.214.0. Every binding agrees on the field numbers,
+    // base types, scales, offsets (all zero), and units; all are `uint16`
+    // with invalid sentinel 0xFFFF:
+    //
+    //   field 39 vertical_oscillation  scale 10   unit mm
+    //     C++    src/fit_profile.cpp:1079
+    //     Swift  Sources/FITSwiftSDK/Profile/Mesgs/RecordMesg.swift:1158
+    //   field 41 stance_time           scale 10   unit ms
+    //     C++    src/fit_profile.cpp:1081
+    //     Swift  RecordMesg.swift:1160
+    //   field 83 vertical_ratio        scale 100  unit percent
+    //     C++    src/fit_profile.cpp:1111
+    //     Swift  RecordMesg.swift:1190
+    //   field 84 stance_time_balance   scale 100  unit percent
+    //     C++    src/fit_profile.cpp:1112
+    //     Swift  RecordMesg.swift:1191
+    //   field 85 step_length           scale 10   unit mm
+    //     C++    src/fit_profile.cpp:1113
+    //     Swift  RecordMesg.swift:1192
+    //
+    // (Field 40, stance_time_percent, has no RoutePoint home and is decoded
+    // no further than the raw record field.) The getters' documented units —
+    // `fit_record_mesg.hpp:943-947` mm, `:1009-1013` ms, `:2053-2057`
+    // percent, `:2086-2090` percent, `:2119-2123` mm — and the Objective-C
+    // bindings (`FITRecordMesg.h:121-132, 253-264`, all `FITFloat32`)
+    // match the same table.
+
+    /// Convert native vertical oscillation (field 39) to millimetres.
+    public static func nativeVerticalOscillationToMillimeters(_ scaled: UInt16) -> Double {
+        Double(scaled) / 10.0
+    }
+
+    /// Convert native stance time / ground contact time (field 41) to
+    /// milliseconds.
+    public static func nativeStanceTimeToMilliseconds(_ scaled: UInt16) -> Double {
+        Double(scaled) / 10.0
+    }
+
+    /// Convert native vertical ratio (field 83) to percent.
+    public static func nativeVerticalRatioToPercent(_ scaled: UInt16) -> Double {
+        Double(scaled) / 100.0
+    }
+
+    /// Convert native stance time balance (field 84) to percent.
+    public static func nativeStanceTimeBalanceToPercent(_ scaled: UInt16) -> Double {
+        Double(scaled) / 100.0
+    }
+
+    /// Convert native step length (field 85) from millimetres to metres.
+    public static func nativeStepLengthToMeters(_ scaled: UInt16) -> Double {
+        (Double(scaled) / 10.0) / 1000.0
     }
 }

@@ -95,6 +95,34 @@ public struct FITRecordMessage: Sendable {
     public var cadence: UInt8?
     /// Native running/cycling power in watts (field 7, scale 1).
     public var power: UInt16?
+    /// Native running-dynamics record fields, all `uint16` with invalid
+    /// sentinel `0xFFFF`. Field numbers, scales, and units per the official
+    /// Garmin FIT SDK Profile (21.214.0), identical in the C++, Swift, and
+    /// Objective-C bindings:
+    ///
+    /// - field 39 `vertical_oscillation`: scale 10, unit mm
+    ///   (C++ `src/fit_profile.cpp:1079`, Swift
+    ///   `Sources/FITSwiftSDK/Profile/Mesgs/RecordMesg.swift:1158`)
+    /// - field 40 `stance_time_percent`: scale 100, unit percent
+    ///   (C++ `src/fit_profile.cpp:1080`, Swift `RecordMesg.swift:1159`)
+    /// - field 41 `stance_time`: scale 10, unit ms
+    ///   (C++ `src/fit_profile.cpp:1081`, Swift `RecordMesg.swift:1160`)
+    /// - field 83 `vertical_ratio`: scale 100, unit percent
+    ///   (C++ `src/fit_profile.cpp:1111`, Swift `RecordMesg.swift:1190`)
+    /// - field 84 `stance_time_balance`: scale 100, unit percent
+    ///   (C++ `src/fit_profile.cpp:1112`, Swift `RecordMesg.swift:1191`)
+    /// - field 85 `step_length`: scale 10, unit mm
+    ///   (C++ `src/fit_profile.cpp:1113`, Swift `RecordMesg.swift:1192`)
+    ///
+    /// Raw values are retained here; scale conversion happens in
+    /// `FITDecoder`, which maps them onto the same `RoutePoint` fields the
+    /// developer-field path populates.
+    public var verticalOscillation: UInt16?
+    public var stanceTimePercent: UInt16?
+    public var stanceTime: UInt16?
+    public var verticalRatio: UInt16?
+    public var stanceTimeBalance: UInt16?
+    public var stepLength: UInt16?
     public var temperature: Int8?
     /// Raw developer field payloads captured from this record. Values are
     /// resolved against `FITDecodedFile.fieldDescriptions` after parsing
@@ -298,6 +326,12 @@ public enum FITRecordField: UInt8 {
     case distance = 5
     case speed = 6
     case power = 7
+    case verticalOscillation = 39
+    case stanceTimePercent = 40
+    case stanceTime = 41
+    case verticalRatio = 83
+    case stanceTimeBalance = 84
+    case stepLength = 85
     case enhancedAltitude = 78
     case enhancedSpeed = 73
     case temperature = 13

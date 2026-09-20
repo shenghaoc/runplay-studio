@@ -59,6 +59,25 @@ enum FITMultiSessionFixtureBuilder {
         /// Native record power field 7 (watts). Only written when the build
         /// enables the native power field.
         var nativePowerWatts: UInt16? = nil
+        /// Native running-dynamics record fields (raw uint16 values). Only
+        /// written when the build enables the native dynamics fields;
+        /// omitted fields encode the 0xFFFF invalid sentinel.
+        var nativeDynamics: NativeDynamicsSpec? = nil
+    }
+
+    /// Raw native running-dynamics record values. Field numbers, scales,
+    /// and units per the official Garmin FIT SDK Profile 21.214.0: 39
+    /// vertical oscillation scale 10 mm, 40 stance time percent scale 100
+    /// percent, 41 stance time scale 10 ms, 83 vertical ratio scale 100
+    /// percent, 84 stance time balance scale 100 percent, 85 step length
+    /// scale 10 mm.
+    struct NativeDynamicsSpec {
+        var verticalOscillation: UInt16? = nil
+        var stanceTimePercent: UInt16? = nil
+        var stanceTime: UInt16? = nil
+        var verticalRatio: UInt16? = nil
+        var stanceTimeBalance: UInt16? = nil
+        var stepLength: UInt16? = nil
     }
 
     struct EventSpec {
@@ -113,7 +132,8 @@ enum FITMultiSessionFixtureBuilder {
         developerDataIDs: [DeveloperDataIDSpec] = [],
         fieldDescriptions: [FieldDescriptionSpec] = [],
         descriptionsFollowRecords: Bool = false,
-        includeNativePowerField: Bool = false
+        includeNativePowerField: Bool = false,
+        includeNativeDynamicsFields: Bool = false
     ) -> Data {
         var content = Data()
 
@@ -136,13 +156,15 @@ enum FITMultiSessionFixtureBuilder {
             writeRecordDefinition(
                 to: &content,
                 developerFields: developerDefinitions,
-                includePower: includeNativePowerField
+                includePower: includeNativePowerField,
+                includeDynamics: includeNativeDynamicsFields
             )
             for record in records {
                 writeRecord(
                     record,
                     developerDefinitions: developerDefinitions,
                     includePower: includeNativePowerField,
+                    includeDynamics: includeNativeDynamicsFields,
                     to: &content
                 )
             }
@@ -459,13 +481,14 @@ enum FITMultiSessionFixtureBuilder {
     private static func writeRecordDefinition(
         to data: inout Data,
         developerFields: [RecordDeveloperDefinition],
-        includePower: Bool
+        includePower: Bool,
+        includeDynamics: Bool
     ) {
         data.append(developerFields.isEmpty ? 0x40 : 0x60)
         data.append(0x00)
         data.append(0x00)
         data.append(contentsOf: [0x14, 0x00]) // global 20
-        data.append(includePower ? 7 : 6)
+        data.append((includePower ? 7 : 6) + (includeDynamics ? 6 : 0))
         field(253, 4, 134, to: &data) // timestamp uint32
         field(0, 4, 133, to: &data)   // position_lat int32
         field(1, 4, 133, to: &data)   // position_long int32
@@ -474,6 +497,14 @@ enum FITMultiSessionFixtureBuilder {
         field(6, 2, 132, to: &data)   // speed uint16
         if includePower {
             field(7, 2, 132, to: &data) // power uint16
+        }
+        if includeDynamics {
+            field(39, 2, 132, to: &data) // vertical oscillation uint16
+            field(40, 2, 132, to: &data) // stance time percent uint16
+            field(41, 2, 132, to: &data) // stance time uint16
+            field(83, 2, 132, to: &data) // vertical ratio uint16
+            field(84, 2, 132, to: &data) // stance time balance uint16
+            field(85, 2, 132, to: &data) // step length uint16
         }
         if !developerFields.isEmpty {
             data.append(UInt8(developerFields.count))
@@ -492,6 +523,7 @@ enum FITMultiSessionFixtureBuilder {
         _ spec: RecordSpec,
         developerDefinitions: [RecordDeveloperDefinition],
         includePower: Bool,
+        includeDynamics: Bool,
         to data: inout Data
     ) {
         data.append(0x00)
@@ -511,6 +543,15 @@ enum FITMultiSessionFixtureBuilder {
         appendUInt16(3_000, to: &data)
         if includePower {
             appendUInt16(spec.nativePowerWatts ?? FITParser.invalidUint16, to: &data)
+        }
+        if includeDynamics {
+            let dynamics = spec.nativeDynamics ?? NativeDynamicsSpec()
+            appendUInt16(dynamics.verticalOscillation ?? FITParser.invalidUint16, to: &data)
+            appendUInt16(dynamics.stanceTimePercent ?? FITParser.invalidUint16, to: &data)
+            appendUInt16(dynamics.stanceTime ?? FITParser.invalidUint16, to: &data)
+            appendUInt16(dynamics.verticalRatio ?? FITParser.invalidUint16, to: &data)
+            appendUInt16(dynamics.stanceTimeBalance ?? FITParser.invalidUint16, to: &data)
+            appendUInt16(dynamics.stepLength ?? FITParser.invalidUint16, to: &data)
         }
         for definition in developerDefinitions {
             if let value = spec.developerFields.first(where: {

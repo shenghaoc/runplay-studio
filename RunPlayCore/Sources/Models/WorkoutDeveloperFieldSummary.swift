@@ -52,6 +52,10 @@ public struct WorkoutDeveloperFieldSummary: Codable, Sendable, Hashable {
     public let powerSourceDeveloperDataIndex: Int?
     /// True when power came only from the native record field.
     public let powerSourceIsNativeRecordField: Bool
+    /// True when running dynamics came only from the native record fields
+    /// (39/41/83/84/85). False when a developer field supplied any dynamics
+    /// value, and false when the workout carries no dynamics at all.
+    public let dynamicsSourceIsNativeRecordField: Bool
     /// Human-readable diagnostics: skipped values, dropped descriptions,
     /// truncation, accumulation declarations, source conflicts.
     public let notes: [String]
@@ -70,12 +74,14 @@ public struct WorkoutDeveloperFieldSummary: Codable, Sendable, Hashable {
         fields: [Field],
         powerSourceDeveloperDataIndex: Int?,
         powerSourceIsNativeRecordField: Bool,
+        dynamicsSourceIsNativeRecordField: Bool,
         notes: [String]
     ) {
         self.sources = sources
         self.fields = fields
         self.powerSourceDeveloperDataIndex = powerSourceDeveloperDataIndex
         self.powerSourceIsNativeRecordField = powerSourceIsNativeRecordField
+        self.dynamicsSourceIsNativeRecordField = dynamicsSourceIsNativeRecordField
         self.notes = notes
     }
 }
@@ -153,23 +159,27 @@ extension WorkoutDeveloperFieldSummary {
             }
         }
 
-        // A non-zero developer offset is rare in the wild (nearly every
-        // field ships offset 0), which is exactly why it must be surfaced:
-        // it is the only case where the subtract-vs-add sign convention is
-        // observable, so the first real file carrying one should make the
-        // assumption visible instead of silently decoding wrong. Scanned
-        // across every stat, not just the retained ones, so a field beyond
-        // the retention cap still gets flagged.
-        let offsetFieldNames = orderedStats
-            .filter { $0.offset != 0 }
+        // A non-default developer scale or offset is rare in the wild
+        // (nearly every field ships scale 1 / offset 0), which is exactly
+        // why it must be surfaced: a non-zero offset is the only case where
+        // the subtract-vs-add sign convention is observable, and a non-unit
+        // scale is the only case where the C++ SDK's hard-coded 1.0 (which
+        // declines developer scale/offset entirely) would disagree with the
+        // Swift SDK's applied conversion this importer follows. The first
+        // real file carrying either should make the assumption visible
+        // instead of silently decoding wrong. Scanned across every stat,
+        // not just the retained ones, so a field beyond the retention cap
+        // still gets flagged.
+        let nonDefaultFieldNames = orderedStats
+            .filter { $0.offset != 0 || $0.scale != 1 }
             .map(\.fieldName)
-        if !offsetFieldNames.isEmpty {
-            let named = offsetFieldNames.prefix(maximumNamedOffsetFields)
-            let remainder = offsetFieldNames.count - named.count
+        if !nonDefaultFieldNames.isEmpty {
+            let named = nonDefaultFieldNames.prefix(maximumNamedOffsetFields)
+            let remainder = nonDefaultFieldNames.count - named.count
             let list = named.map { "\"\($0)\"" }.joined(separator: ", ")
             let suffix = remainder > 0 ? " and \(remainder) more" : ""
             notes.append(
-                "\(offsetFieldNames.count) developer field(s) declare a non-zero offset (\(list)\(suffix)); decoded as raw / scale - offset, matching the FIT profile convention."
+                "\(nonDefaultFieldNames.count) developer field(s) declare a non-default scale or offset (\(list)\(suffix)); decoded as raw / scale - offset, matching the Garmin Swift SDK."
             )
         }
 
@@ -206,6 +216,9 @@ extension WorkoutDeveloperFieldSummary {
             powerSourceIsNativeRecordField:
                 report.nativeRecordPowerPointCount > 0
                 && report.developerPowerPointCount == 0,
+            dynamicsSourceIsNativeRecordField:
+                report.nativeRecordDynamicsPointCount > 0
+                && report.developerDynamicsPointCount == 0,
             notes: notes
         )
     }

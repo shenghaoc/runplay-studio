@@ -11,6 +11,7 @@ final class FITDeveloperDataTests: XCTestCase {
     private typealias DeveloperValueSpec = FITMultiSessionFixtureBuilder.DeveloperValueSpec
     private typealias FieldDescriptionSpec = FITMultiSessionFixtureBuilder.FieldDescriptionSpec
     private typealias DeveloperDataIDSpec = FITMultiSessionFixtureBuilder.DeveloperDataIDSpec
+    private typealias NativeDynamicsSpec = FITMultiSessionFixtureBuilder.NativeDynamicsSpec
 
     // MARK: - Parser
 
@@ -249,15 +250,60 @@ final class FITDeveloperDataTests: XCTestCase {
         let summary = try XCTUnwrap(workout.developerFieldSummary)
 
         let note = try XCTUnwrap(
-            summary.notes.first { $0.contains("non-zero offset") },
-            "expected a non-zero offset diagnostic in \(summary.notes)"
+            summary.notes.first { $0.contains("non-default scale or offset") },
+            "expected a non-default scale/offset diagnostic in \(summary.notes)"
         )
         XCTAssertTrue(note.contains("\"power\""), note)
         XCTAssertTrue(note.contains("raw / scale - offset"), note)
     }
 
-    /// The common case must stay quiet: offset 0 is not worth a note.
-    func testZeroOffsetProducesNoOffsetNote() throws {
+    /// A non-unit scale announces itself even with offset 0: that is the
+    /// case where the C++ SDK's hard-coded 1.0 would disagree with the
+    /// applied conversion.
+    func testNonUnitScaleIsFlaggedInImportReport() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: [
+                RecordSpec(
+                    offsetSeconds: 0,
+                    coordinateStep: 0,
+                    developerFields: [
+                        DeveloperValueSpec(
+                            developerDataIndex: 0,
+                            fieldNumber: 0,
+                            baseType: .uint16,
+                            value: .uint16(2500)
+                        )
+                    ]
+                )
+            ],
+            sessions: [SessionSpec(startOffsetSeconds: 0, endOffsetSeconds: 0)],
+            fieldDescriptions: [
+                FieldDescriptionSpec(
+                    developerDataIndex: 0,
+                    fieldDefinitionNumber: 0,
+                    baseType: .uint16,
+                    fieldName: "power",
+                    units: "watts",
+                    scale: 10,
+                    offset: 0
+                )
+            ]
+        )
+        let workout = try importFixture(data)
+        let summary = try XCTUnwrap(workout.developerFieldSummary)
+
+        let note = try XCTUnwrap(
+            summary.notes.first { $0.contains("non-default scale or offset") },
+            "expected a non-default scale/offset diagnostic in \(summary.notes)"
+        )
+        XCTAssertTrue(note.contains("\"power\""), note)
+        // 2500 raw / scale 10 - offset 0 = 250 watts.
+        XCTAssertEqual(workout.routePoints.first?.powerWatts, 250)
+    }
+
+    /// The common case must stay quiet: scale 1 / offset 0 is not worth a
+    /// note.
+    func testDefaultScaleOffsetProduceNoNote() throws {
         let data = FITMultiSessionFixtureBuilder.build(
             records: [
                 RecordSpec(
@@ -291,8 +337,8 @@ final class FITDeveloperDataTests: XCTestCase {
 
         XCTAssertEqual(workout.routePoints.first?.powerWatts, 240)
         XCTAssertFalse(
-            summary.notes.contains { $0.contains("non-zero offset") },
-            "offset 0 must not emit a diagnostic: \(summary.notes)"
+            summary.notes.contains { $0.contains("non-default scale or offset") },
+            "scale 1 / offset 0 must not emit a diagnostic: \(summary.notes)"
         )
     }
 
@@ -449,6 +495,7 @@ final class FITDeveloperDataTests: XCTestCase {
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "Power"), .power)
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "  ground   TIME "), .groundContactTime)
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "Ground Contact Time"), .groundContactTime)
+        XCTAssertEqual(FITDeveloperMetric.match(fieldName: "Stance Time"), .groundContactTime)
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "Vertical Oscillation"), .verticalOscillation)
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "vertical ratio"), .verticalRatio)
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "Stance Time Balance"), .stanceTimeBalance)
@@ -457,6 +504,20 @@ final class FITDeveloperDataTests: XCTestCase {
         XCTAssertEqual(FITDeveloperMetric.match(fieldName: "Leg Spring Stiffness"), .legSpringStiffness)
         XCTAssertNil(FITDeveloperMetric.match(fieldName: "Air Power"))
         XCTAssertNil(FITDeveloperMetric.match(fieldName: ""))
+    }
+
+    /// Whitespace normalization covers every whitespace character, not just
+    /// runs of spaces: a device encoder that writes tabs or a trailing
+    /// newline inside the name still matches.
+    func testNameMatchingCollapsesAllWhitespace() {
+        XCTAssertEqual(
+            FITDeveloperMetric.match(fieldName: "\tGROUND\ttime\n"), .groundContactTime
+        )
+        XCTAssertEqual(
+            FITDeveloperMetric.match(fieldName: " vertical\r\noscillation "), .verticalOscillation
+        )
+        XCTAssertEqual(FITDeveloperMetric.normalize("  Step\t\tLength  "), "step length")
+        XCTAssertEqual(FITDeveloperMetric.normalize("stance\ntime\tbalance"), "stance time balance")
     }
 
     // MARK: - Native record power
@@ -510,6 +571,102 @@ final class FITDeveloperDataTests: XCTestCase {
         let workout = try importFixture(data)
 
         XCTAssertEqual(workout.routePoints.first?.powerWatts, 205)
+    }
+
+    // MARK: - Native running dynamics
+
+    /// Raw values mirror what a real Garmin watch writes (uint16 record
+    /// fields 39/41/83/84/85); expected outputs are the official profile
+    /// scales — VO scale 10 mm, stance time scale 10 ms, vertical ratio and
+    /// stance time balance scale 100 percent, step length scale 10 mm —
+    /// pinned by the comments on the `FITParser.native*` helpers.
+    func testNativeRunningDynamicsDecodeWithProfileScales() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: [
+                RecordSpec(
+                    offsetSeconds: 0,
+                    coordinateStep: 0,
+                    nativeDynamics: NativeDynamicsSpec(
+                        verticalOscillation: 742,        // 74.2 mm
+                        stanceTimePercent: 3_100,        // unmapped on purpose
+                        stanceTime: 2_530,               // 253.0 ms
+                        verticalRatio: 498,              // 4.98 %
+                        stanceTimeBalance: 5_003,        // 50.03 %
+                        stepLength: 11_300               // 1.13 m
+                    )
+                ),
+                RecordSpec(offsetSeconds: 10, coordinateStep: 2_000)
+            ],
+            sessions: [SessionSpec(startOffsetSeconds: 0, endOffsetSeconds: 10)],
+            includeNativeDynamicsFields: true
+        )
+        let workout = try importFixture(data)
+
+        let point = try XCTUnwrap(workout.routePoints.first)
+        XCTAssertEqual(point.verticalOscillationMillimeters ?? 0, 74.2, accuracy: 0.0001)
+        XCTAssertEqual(point.groundContactTimeMilliseconds ?? 0, 253.0, accuracy: 0.0001)
+        XCTAssertEqual(point.verticalRatioPercent ?? 0, 4.98, accuracy: 0.0001)
+        XCTAssertEqual(point.stanceTimeBalancePercent ?? 0, 50.03, accuracy: 0.0001)
+        XCTAssertEqual(point.stepLengthMeters ?? 0, 1.13, accuracy: 0.0001)
+
+        // A record whose fields carry the 0xFFFF sentinel decodes as absent.
+        let absent = try XCTUnwrap(workout.routePoints.last)
+        XCTAssertNil(absent.verticalOscillationMillimeters)
+        XCTAssertNil(absent.groundContactTimeMilliseconds)
+        XCTAssertNil(absent.verticalRatioPercent)
+        XCTAssertNil(absent.stanceTimeBalancePercent)
+        XCTAssertNil(absent.stepLengthMeters)
+
+        let summary = try XCTUnwrap(workout.developerFieldSummary)
+        XCTAssertTrue(summary.dynamicsSourceIsNativeRecordField)
+        XCTAssertFalse(summary.powerSourceIsNativeRecordField)
+    }
+
+    /// A recognized developer dynamics field wins per metric; native record
+    /// fields fill only what the developer path left absent on the point.
+    func testDeveloperDynamicsWinOverNative() throws {
+        let data = FITMultiSessionFixtureBuilder.build(
+            records: [
+                RecordSpec(
+                    offsetSeconds: 0,
+                    coordinateStep: 0,
+                    developerFields: [
+                        DeveloperValueSpec(
+                            developerDataIndex: 0,
+                            fieldNumber: 0,
+                            baseType: .uint16,
+                            value: .uint16(262)   // "stance time" → 262 ms
+                        )
+                    ],
+                    nativeDynamics: NativeDynamicsSpec(
+                        verticalOscillation: 742,    // 74.2 mm
+                        stanceTime: 2_530           // would decode 253 ms
+                    )
+                )
+            ],
+            sessions: [SessionSpec(startOffsetSeconds: 0, endOffsetSeconds: 0)],
+            fieldDescriptions: [
+                FieldDescriptionSpec(
+                    developerDataIndex: 0,
+                    fieldDefinitionNumber: 0,
+                    baseType: .uint16,
+                    fieldName: "stance time",
+                    units: "ms"
+                )
+            ],
+            includeNativeDynamicsFields: true
+        )
+        let workout = try importFixture(data)
+        let point = try XCTUnwrap(workout.routePoints.first)
+
+        XCTAssertEqual(point.groundContactTimeMilliseconds, 262)
+        XCTAssertEqual(point.verticalOscillationMillimeters ?? 0, 74.2, accuracy: 0.0001)
+
+        let summary = try XCTUnwrap(workout.developerFieldSummary)
+        XCTAssertFalse(
+            summary.dynamicsSourceIsNativeRecordField,
+            "a developer dynamics value makes the source mixed/developer"
+        )
     }
 
     // MARK: - Persisted summary
