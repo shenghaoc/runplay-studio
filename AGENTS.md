@@ -422,6 +422,16 @@ Caveats: this invocation has been executed with a Docker-compatible CLI
 (podman) rather than the docker binary itself, and on SELinux-enforcing
 hosts the volume needs `:Z`.
 
+CI enforces macOS/Linux toolchain parity with
+`scripts/check-toolchain-parity.sh`, which every Swift-building job runs
+against a full checkout. It compares full marketing versions read from
+`swift --version` against the container pin in
+`.github/workflows/ci.yml`, treating a missing patch component as `.0`
+(Apple prints "6.4" where the pin says "6.4.0"). An Xcode point release
+that changes the Swift patch version — 6.4 -> 6.4.2 — therefore fails
+every macOS job until the container image is bumped to match; that
+strictness is deliberate.
+
 `--scratch-path .build-linux` keeps the Linux build tree out of `.build`
 so container runs and host macOS builds do not invalidate each other's
 caches (alternating them would otherwise force a full rebuild each time).
