@@ -221,7 +221,7 @@ struct MapReferenceView: View {
             .padding(.vertical, AppDesign.Spacing.small)
             .background(.regularMaterial)
             .clipShape(Capsule())
-            .help(String(localized: "Color the route by solid, relative pace, heart rate, or corrected elevation"))
+            .help(String(localized: "Color the route by solid, relative pace, heart rate, power, or corrected elevation"))
             .accessibilityLabel(String(localized: "Route Color"))
             .accessibilityValue(preferredMode.displayName)
             .accessibilityHint(String(localized: "Choose how the workout route is colored on the map"))
