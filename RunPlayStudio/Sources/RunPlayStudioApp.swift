@@ -45,5 +45,8 @@ struct RunPlayStudioApp: App {
         .commands {
             WorkoutViewCommands()
         }
+        Settings {
+            AthleteProfileSettingsView(appState: appState)
+        }
     }
 }

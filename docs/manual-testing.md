@@ -402,6 +402,48 @@ range, VoiceOver by ear, and the coefficient-set picker's contents — a
 background-mode click cannot open a pop-up menu.
 
 
+### Athlete Profile Settings Checklist (⌘,)
+
+- [x] ⌘, opens Settings; the Athlete section shows blank-optional fields and the not-medical-guidance footer.
+- [x] Enter a birth year; the Tanaka estimate caption appears and the derived zone bounds follow it.
+- [ ] Change the birth year again; the estimate caption updates. (Only one year was entered in the pass.)
+- [x] Enter a measured maximum; the estimate caption disappears (measured wins) and the derived bounds re-derive from the measured value.
+- [x] Leave the zone fields blank: the effective-bounds preview shows the derived 60/70/80/90% bounds.
+- [ ] Enter five ascending custom zone bounds and the preview follows; malformed input keeps the saved zones.
+- [x] The coefficient section shows the magnitude-vs-shape explanation.
+- [ ] The coefficient picker lists both cohort sets and switching does not gate anything. (A background-mode click cannot open a pop-up menu; needs a full-screen pass.)
+- [x] Update Profile: the saved profile round-trips — set resting HR, quit, relaunch, reopen Settings and the value is still there.
+- [x] Closing Settings with unsaved edits discards them; the stored profile and every snapshot are unchanged.
+- [x] With a stale or un-backfilled library, the stale count is shown; Recompute Training Loads shows progress, honours Cancel (completed work stays, retry resumes), and finishes with the count at zero.
+- [x] Keyboard: Tab moves between the athlete fields.
+- [ ] Tab through *every* field and control, and confirm VoiceOver reads labels, footers (including the estimated-exclusion caveat and the not-medical-guidance note) and the recompute progress. **Not verified by ear**; only field-to-field Tab was exercised.
+
+### 2026-09-20 pass: athlete profile settings
+
+Same synthetic 483-run library and release bundle as the Trends pass above.
+
+⌘, opened Settings. Birth year 1990 produced `Estimated maximum from age 36:
+183 bpm (Tanaka) — entering a measured value is the upgrade`, which is
+208 − 0.7 × 36 to the rounding, and the effective zone bounds moved to
+`open / 110 / 128 / 146 / 165 bpm` (60/70/80/90% of 183). Entering a measured
+maximum of 192 removed the estimate caption and re-derived the bounds to
+`open / 115 / 134 / 154 / 173 bpm`. Those two edits were left unsaved and the
+window closed; the stored profile and all 483 snapshots were unchanged
+afterwards, confirming the discard path.
+
+The staleness rule was exercised for real. Saving a resting heart rate of 48
+turned the footer into `483 runs would be recomputed under the saved profile` —
+the whole library, which is correct for a profile-wide change, and the count
+matches the library exactly. Recompute showed `Recomputing — 0 of 483 runs`
+with a progress bar and a Cancel button; cancelling dropped the pending count
+to 133, so 350 completed snapshots were kept rather than rolled back. Pressing
+Recompute again finished the remaining work and the stale line disappeared
+entirely. On disk all 483 snapshots then carried
+`{"restingHeartRateBPM": 48, "trimpCoefficientProfile": "standardMale"}`.
+
+The profile round-trip was verified across a real quit and relaunch: resting
+heart rate 48 was still shown when Settings was reopened from a fresh launch.
+
 ### 2026-09-15 pass
 
 Driven through computer use against a synthetic 12-run library (15 months,
