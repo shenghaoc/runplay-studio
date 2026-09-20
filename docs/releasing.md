@@ -387,9 +387,11 @@ default executable icon until a designed asset is added deliberately.
 
 ## Third-party licenses
 
-Binary distribution includes vendored **ZIPFoundation 0.9.20** (MIT). See
-[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and
-`ThirdParty/ZIPFoundation/LICENSE`.
+Binary distribution includes **ZIPFoundation 0.9.20** (MIT), the package's
+single remote SwiftPM dependency, exact-pinned in `Package.swift` with the
+resolved revision recorded in `Package.resolved`. See
+[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md); the licence text lives
+in the upstream repository.
 
 ---
 

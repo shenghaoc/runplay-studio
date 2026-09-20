@@ -128,8 +128,8 @@ iOS-specific work is expected here.
 
 - **`RunPlayPlatform`** — macOS non-UI adapters, gated out of the Linux graph
   under `#if os(macOS)`. Framework usage: `AppKit` (7 files), `SceneKit` (3),
-  `MapKit` (3), `CoreGraphics` (2), plus `CryptoKit`, `zlib`, and the vendored
-  `ZIPFoundation`.
+  `MapKit` (3), `CoreGraphics` (2), plus `CryptoKit`, `zlib`, and the
+  exact-pinned remote `ZIPFoundation` dependency.
 - **`RunPlayStudio`** — SwiftUI, Charts, app lifecycle, GUI state, UI export.
 - **`RunPlayCore` geodesy in production Swift** uses `GeoDistance` (pure Swift),
   not `CLLocation`; Core Location stays in platform/UI layers.

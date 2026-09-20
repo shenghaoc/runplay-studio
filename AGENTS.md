@@ -420,7 +420,13 @@ Two properties are mandatory:
 
 Caveats: this invocation has been executed with a Docker-compatible CLI
 (podman) rather than the docker binary itself, and on SELinux-enforcing
-hosts the volume needs `:Z`.
+hosts the volume needs `:Z`. On *rootless* podman, `-u $(id -u):$(id -g)`
+maps the container uid into the subuid range, which cannot write the
+mounted checkout — use `--userns=keep-id` instead. The package has a
+remote dependency (ZIPFoundation, exact-pinned in `Package.swift`), so
+the first build or `swift package resolve` inside the container needs
+network access and `git` (the resolute image ships it); it fetches into
+`.build/` and commits nothing beyond the checked-in `Package.resolved`.
 
 CI enforces macOS/Linux toolchain parity with
 `scripts/check-toolchain-parity.sh`, which every Swift-building job runs
