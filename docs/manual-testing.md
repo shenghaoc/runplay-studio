@@ -744,11 +744,11 @@ Use only synthetic fixtures for automated checks. The one real-device check
 below uses a file under `local-workouts/` (git-ignored) and is never
 committed.
 
-- [ ] Import a synthetic FIT file with Stryd-style developer fields (power, ground time, vertical oscillation, plus one unknown field) and verify the Power chart, the Power replay badge, the Power splits column, and the Power & Running Dynamics panel all appear with sane values.
+- [x] Import a synthetic FIT file with Stryd-style developer fields (power, ground time, vertical oscillation, plus one unknown field) and verify the Power chart, the Power replay badge, the Power splits column, and the Power & Running Dynamics panel all appear with sane values. *(2026-09-20)*
 - [ ] Import the same workout and verify map coloring by Power: mode enabled, legend reads Lower → Higher with watts, no-data sections stay neutral, and the palette reads cool → warm yellow at higher effort.
 - [ ] Verify warm-yellow power text (#FFD60A) is legible on the light appearance for the chart line, metrics badge, and splits column; power state is never conveyed by colour alone (labels and values accompany every colour use).
 - [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table omits the Power column (it is the only conditional column) while keeping every other column, and the dynamics panel is absent.
-- [ ] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column. Check at normal width and at 720x500 with no clipping.
+- [x] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column at normal width. *(2026-09-20)* **At 720pt width the table clips: Power, HR and Elev are unreachable — see the dated record below.**
 - [ ] Right-click the splits table header and verify the column menu appears; hide a column, confirm it disappears, relaunch the app and confirm the choice persisted; re-show it and confirm it returns.
 - [ ] VoiceOver: the Power chart exposes a series-level descriptor (title, range, average, current value); the dynamics panel reads as combined label/value rows; nothing announces per replay frame.
 - [ ] Export JSON and CSV from a power workout and confirm `averagePowerWatts`, `best20MinutePowerWatts`, the `runningDynamics` block, `Avg_Power_W` columns, and the `# Running Dynamics` section with explicit units; a plain workout omits them.
@@ -757,6 +757,80 @@ committed.
 ### Real-device check (owner, local-only)
 
 - [ ] Import one real FIT file from your own watch that carries developer fields (Stryd or Garmin running power), kept under `local-workouts/`. Confirm field names are recognized (or retained as unknown with sane units) and power values are plausible against the watch's own summary. Check the workout's developer-field notes for the **non-zero offset** diagnostic: developer offsets are decoded as `raw / scale - offset`, the sign every official Garmin SDK uses (see the developer-data section of [import-formats.md](import-formats.md)). The note fires only when a field declares a non-zero offset, which is rare — if one appears, confirm the decoded value is sane, because that is the one case where the official C++ and Swift SDKs would report different numbers.
+
+
+### Manual pass 2026-09-20 — FIT power and running dynamics
+
+Release-configuration bundle assembled from the #138–#141 stack plus the two
+import fixes now on #143, launched with `RUNPLAY_LIBRARY_ROOT` against a
+throwaway library. Fixtures: four synthetic files from
+`FITMultiSessionFixtureBuilder` (Stryd-shaped power + dynamics; Garmin-style
+native record power; 21 developer fields to trip the 16-field cap; no power at
+all) and one real Garmin activity file from the owner's watch, kept in ignored
+`local-workouts/`. No screenshot taken of the real file's map.
+
+**Verified**
+
+| item | result |
+|---|---|
+| Splits table shows Power **and** Elapsed Pace at normal width | PASS — all 11 columns render: Split, Distance, Elapsed, Active, Moving (est.), Moving Pace (est.), Active Pace, Elapsed Pace, Power, HR, Elev |
+| Power chart renders, axis and units correct | PASS — yellow series, W axis, km domain; descriptor reads "Power chart. Distance in km. Power in W. Range 180.00 W to 329.00 W. Average 263.25 W…" |
+| Power chart no-data state honest | PASS — no-power workout shows "No power data available", not an empty or zeroed chart |
+| Dynamics panel opens, values unit-labelled | PASS — Average Power 263 W, Max Power 329 W, Avg Ground Contact Time 255 ms, Avg Vertical Oscillation 88.3 mm, Avg Vertical Ratio 8.0 % |
+| Dynamics units sane | PASS — GCT in hundreds of ms, VO in tens of mm, vertical ratio single-digit percent |
+| Provenance shown | PASS — developer-data case names the application id; real Garmin file reads "Power from the watch's native power field." |
+| Best 20-min power present | PASS — 378 W on the 68-minute real file. Absent on the 10-minute fixtures, correctly: no 20-minute window exists |
+| Honest empty state without dynamics | PASS — real file shows "Power & Running Dynamics (3 metrics)" with power rows only, no zeroed dynamics rows; no-power workout shows no panel at all |
+| Developer-field truncation note | PASS — 21 developer fields produced "5 additional developer field(s) not retained (cap 16)." |
+| Segment cards show mean power | PASS — fastest 400 m 423 W, fastest km 401 W, slowest km 292 W, biggest climb 354 W; power tracks effort as expected |
+| Power not conveyed by colour alone | PASS — every power value carries a "W" unit and a labelled column or row |
+| Power chart accessibility descriptor | PASS — series-level descriptor with title, range, average and current value (read from the accessibility tree, not heard) |
+
+**Failed**
+
+- **Splits table at 720pt width clips.** Power, HR and Elev are unreachable:
+  horizontal scrolling stops before them. Eleven columns at fixed widths total
+  840pt against roughly 700pt of usable content width. This predates Power —
+  the table already exceeded that width — and a `min:ideal:` attempt did not
+  compress the columns, so it was reverted rather than shipped. Note the window
+  also has a 552pt minimum height, so "720x500" is not reachable; 720x552 is.
+
+**Not verified**
+
+- Power map colouring (picker availability, legend, light/dark legibility) —
+  the Route Color control is an in-window pop-up menu, which cannot be opened
+  while the app is in the background, and it has no menu-bar equivalent.
+- PNG export power mode availability — same reason.
+- Replay badge and current-metrics panel *during playback* — the metrics bar
+  was confirmed to show power at rest (255 W), but playback was not driven.
+- VoiceOver spoken output — the chart descriptor and panel labels were read
+  from the accessibility tree; **no spoken pass was performed and none is
+  claimed**. Per-frame announcement behaviour during replay was not exercised.
+- Registry recognition against real vendor data — see below.
+
+**Real-file findings**
+
+The owner's Garmin activity file (manufacturer 1, product 4315; 4,115 records,
+8.44 km, 1:08:33) carries **no developer fields at all** — zero
+`field_description` (206) and zero `developer_data_id` (207) messages. Power is
+the native record field 7 on every record. So:
+
+- recognised developer fields: none; retained raw: none; skipped: none
+- non-zero offset diagnostic: did not fire, correctly — there are no developer
+  fields to carry an offset
+- power plausibility: median 349 W, mean 347 W, max 704 W over 68 minutes —
+  plausible for the effort, and the GUI's Average 347 W / Max 704 W match the
+  decoder exactly
+- dynamics: **absent from the app**, though the file does record
+  `vertical_oscillation`, `vertical_ratio`, `step_length` and `stance_time` on
+  ~3,990 records as **native** record fields (profile 39, 83, 85, 41). The
+  importer parses 12 record fields and none of those six, so a real Garmin
+  watch's dynamics never reach the panel
+
+**The recognition registry therefore remains unverified against real vendor
+data.** It is exact-match against hard-coded spellings, so "Stryd Power",
+"Power (w)" or "power_watts" would all miss. A Stryd or Connect IQ file is
+still needed to exercise it.
 
 ## FIT Import Checklist
 
