@@ -249,8 +249,9 @@ public struct FITBinaryReader {
             throw FITError.corruptedData("Zero element size for base type")
         }
 
-        if baseType == .string {
-            // String is always a single value
+        if baseType == .string || baseType == .byte {
+            // Strings and byte arrays (GUID payloads) are single values that
+            // span the whole field; never split them per element.
             return [try readBaseTypeValue(baseType: baseType, fieldSize: fieldSize)]
         }
 
@@ -351,6 +352,32 @@ public enum FITFieldValue: Sendable {
         switch self {
         case .float64(let v): return v
         case .float32(let v): return Double(v)
+        default: return nil
+        }
+    }
+
+    /// Extract any numeric payload as Double. Strings, byte arrays, and the
+    /// invalid sentinel return nil.
+    var numericValue: Double? {
+        switch self {
+        case .uint8(let v): return Double(v)
+        case .int8(let v): return Double(v)
+        case .uint16(let v): return Double(v)
+        case .int16(let v): return Double(v)
+        case .uint32(let v): return Double(v)
+        case .int32(let v): return Double(v)
+        case .uint64(let v): return Double(v)
+        case .int64(let v): return Double(v)
+        case .float32(let v): return Double(v)
+        case .float64(let v): return v
+        case .string, .bytes, .invalid: return nil
+        }
+    }
+
+    /// Extract a raw byte payload if valid.
+    var bytesValue: Data? {
+        switch self {
+        case .bytes(let v): return v
         default: return nil
         }
     }

@@ -10,7 +10,7 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | JSON | Full support | Native fixture format with route points, metadata, biometrics, optional recorded laps, versioned route normalization, and versioned derived analysis. Legacy snapshots are normalized before they are reanalysed. |
 | GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. Standard GPX does **not** define device laps — `recordedLaps` stays empty and `<trkseg>` is never treated as a lap. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
 | TCX | Track support | Parses one GPS-bearing activity's laps (including summary fields and `TriggerMethod`), tracks, trackpoints, distance, elevation, heart rate, and cadence. A `<Lap>` boundary alone does **not** create a route gap; multi-`<Track>` continuity is resolved deterministically. Files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
-| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, and device-info messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, and timer-derived route gaps are supported. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. Importing real device activity files landed in #143 — earlier releases rejected every genuine file at the header. |
+| FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, device-info, field_description (206), and developer_data_id (207) messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, timer-derived route gaps, native record power (field 7), and developer fields (running power and dynamics) are supported; see "FIT developer data" below. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. Importing real device activity files landed in #143 — earlier releases rejected every genuine file at the header. |
 | HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
 
 ## Workout size limits
@@ -211,7 +211,7 @@ report. Nested batch review inside archive import is out of scope.
 
 - Import is file-based and local-only.
 - FIT support targets common running activity files, not the full FIT profile. It was implemented against Garmin FIT SDK Profile 21.205.0.
-- FIT developer metrics, component accumulation, unsupported subfields, and course/workout files remain unsupported.
+- FIT developer fields are decoded (see "FIT developer data"), but component accumulation, subfield expansion, and course/workout files remain unsupported. Course and workout FIT files remain unsupported.
 - All formats use route-derived clocks: elapsed is final timestamp minus initial timestamp, falling back to a normalized per-point elapsed series only when timestamps do not span. Active sums positive adjacent deltas within a continuous route segment; the fallback treats all elapsed time as active because it cannot infer pauses. Paused is elapsed minus active. Moving time is not estimated.
 - Every format passes through the same local, platform-neutral
   `RouteQualityProcessor`. It validates fields, removes only strongly supported
@@ -255,7 +255,7 @@ report. Nested batch review inside archive import is out of scope.
 - TCX seamless manual/auto laps remain in one route segment. Multiple tracks use `TCXRouteContinuityResolver` (time/distance thresholds) so genuine pauses stay gaps while continuous tracks do not invent a pause.
 - TCX `TriggerMethod` values map to documented triggers (`Manual`, `Distance`, `Time`, `Location`); unknown text is retained as unknown rather than guessed. FIT `lap_trigger` maps official profile codes; unknown codes keep the raw value.
 - Old persisted FIT/TCX library snapshots that discarded source laps stay empty until the original file is reimported. GPX never invents laps.
-- FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, and 1,000,000 decoded messages. The 100 MB ceiling and the 1,000,000 route-point limit are the shared values in `WorkoutImportResourceLimits`; the per-session route-point limit is enforced explicitly rather than inferred from the decoded-message ceiling.
+- FIT parsing checks cancellation every 1,000 decoded messages and limits a file to 100 MB, 256 definition messages, 64 developer fields per definition, 256 retained field_description messages, 2,000,000 retained developer field values, and 1,000,000 decoded messages. The 100 MB ceiling and the 1,000,000 route-point limit are the shared values in `WorkoutImportResourceLimits`; the per-session route-point limit is enforced explicitly rather than inferred from the decoded-message ceiling.
 - FIT signed coordinate decoding uses bit-pattern semantics for western and
   southern hemisphere coordinates.
 - Quality diagnostics count invalid coordinates, discarded isolated coordinate
@@ -334,6 +334,64 @@ ZIP. There is **no** Strava login, OAuth, API call, or network access.
 
 After import, counts cover imported, duplicates, unsupported sports/formats,
 no-GPS, parse failures, unsafe entries, and provider conflicts.
+
+## FIT developer data
+
+FIT developer data fields let a device or Connect IQ application attach custom
+metrics to record messages. RunPlay Studio decodes them as follows.
+
+### Decoding
+
+- `field_description` (206) and `developer_data_id` (207) messages are parsed
+  with their official profile field layouts. Record developer field payloads
+  are captured raw during parsing and resolved once against the file-wide
+  description table, so descriptions that appear **after** the records using
+  them (out-of-order files) resolve identically.
+- Values convert with the FIT protocol formula
+  `physical = raw / scale + offset` (defaults scale 1, offset 0). Base-type
+  invalid sentinels (0xFF…, 0x7FFF for signed, NaN for floats, 0 for z-types)
+  are treated as missing, never as real values. **Verification note:** the
+  offset sign convention for developer fields has no single official worked
+  example; real-device files with a non-zero developer offset are an explicit
+  manual-test checkpoint, and flipping the convention is a one-line change if
+  one disagrees.
+- Units come from the description's `units` string when populated; an
+  unresolvable `fit_base_unit_id` is retained raw (`fit_base_unit:<id>`)
+  rather than guessed through an unverified enum table.
+
+### Recognition
+
+Recognition is **name-based**, with the application identity retained as
+provenance (tiebreak, not gate): an unrecognized application whose field
+names are sane is still recognized. Recognized names cover Stryd, Garmin
+Connect IQ running power, and Garmin/COROS-style running dynamics:
+`power`, `form power`, `leg spring stiffness`, `ground time` / `ground
+contact time`, `vertical oscillation`, `vertical ratio`,
+`stance time balance`, and `step length` (common spellings and `lss`/`gct`
+abbreviations included). Power, ground contact time, vertical oscillation,
+vertical ratio, stance time balance, and step length map onto route-point
+fields; form power and leg spring stiffness are recognized but have no
+per-point home. Native record power (field 7) is also decoded; when both a
+developer field and the native field supply power for the same point, the
+developer field wins and the conflict is reported.
+
+### Retention and diagnostics
+
+- Unrecognised fields are **not** dropped and **not** persisted per point.
+  The snapshot retains, per field: the developer application identity, field
+  name, unit, base type, scale/offset, sample count, route-point coverage,
+  and minimum/maximum/mean — enough to answer "what is my watch recording
+  that RunPlay Studio does not understand?" at most 16 fields; further fields
+  are counted in a truncation note. The source file remains the record;
+  reimporting it is the path to anything richer.
+- Diagnostics notes report values skipped for missing field descriptions,
+  invalid sentinels, multi-source power conflicts, parser retention-limit
+  drops, and fields declaring accumulation. Fields that declare accumulation
+  are decoded as instantaneous samples (accumulation math is out of scope and
+  stated as such).
+- Old snapshots pre-dating developer-data decode stay valid and simply carry
+  no developer fields; reimporting the original file adds them. No snapshot
+  version changes.
 
 ## Recorded UTC offset
 

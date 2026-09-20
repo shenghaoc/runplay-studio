@@ -6,10 +6,18 @@ import Foundation
 public struct FITDecodedRouteResult: Sendable {
     public let routePoints: [RoutePoint]
     public let invalidCoordinatePointCount: Int
+    /// Developer-field decoding outcome for this session, including native
+    /// record power accounting. Empty when the source carried none.
+    public let developerFieldReport: FITDeveloperFieldReport
 
-    public init(routePoints: [RoutePoint], invalidCoordinatePointCount: Int) {
+    public init(
+        routePoints: [RoutePoint],
+        invalidCoordinatePointCount: Int,
+        developerFieldReport: FITDeveloperFieldReport = .empty
+    ) {
         self.routePoints = routePoints
         self.invalidCoordinatePointCount = invalidCoordinatePointCount
+        self.developerFieldReport = developerFieldReport
     }
 }
 
@@ -84,7 +92,8 @@ public struct FITDecoder {
         try decodeRecordsToRoutePoints(
             records: decodedFile.records,
             segments: [],
-            usesTimerSegmentation: false
+            usesTimerSegmentation: false,
+            developerContext: FITDeveloperDataContext(decodedFile: decodedFile)
         )
     }
 
@@ -109,11 +118,13 @@ public struct FITDecoder {
         index: FITSessionMessageIndex,
         sessionIndex: Int
     ) throws -> FITDecodedRouteResult {
+        let developerContext = FITDeveloperDataContext(decodedFile: index.decodedFile)
         guard index.mode != .legacyNoSessions else {
             return try decodeRecordsToRoutePoints(
                 records: index.decodedFile.records,
                 segments: [],
-                usesTimerSegmentation: false
+                usesTimerSegmentation: false,
+                developerContext: developerContext
             )
         }
         guard index.decodedFile.sessions.indices.contains(sessionIndex) else {
@@ -132,7 +143,8 @@ public struct FITDecoder {
         return try decodeRecordsToRoutePoints(
             records: records,
             segments: segments,
-            usesTimerSegmentation: usesTimerSegmentation
+            usesTimerSegmentation: usesTimerSegmentation,
+            developerContext: developerContext
         )
     }
 
@@ -504,7 +516,8 @@ public struct FITDecoder {
     private static func decodeRecordsToRoutePoints(
         records: [FITRecordMessage],
         segments: [RouteSegment],
-        usesTimerSegmentation: Bool
+        usesTimerSegmentation: Bool,
+        developerContext: FITDeveloperDataContext
     ) throws -> FITDecodedRouteResult {
         var validRecords: [(record: FITRecordMessage, segmentIndex: Int)] = []
         validRecords.reserveCapacity(records.count)
@@ -563,8 +576,18 @@ public struct FITDecoder {
             )
         }
 
+        // Developer fields resolve against the file-wide description table
+        // after parsing, so out-of-order descriptions are handled uniformly.
+        let developerResolution = FITDeveloperFieldResolver.resolve(
+            records: validRecords.map { $0.record },
+            descriptions: developerContext.descriptions
+        )
+
         var routePoints: [RoutePoint] = []
         routePoints.reserveCapacity(validRecords.count)
+        var developerPowerPointCount = 0
+        var nativeRecordPowerPointCount = 0
+        var powerDeveloperDataIndex: UInt8?
 
         for (index, entry) in validRecords.enumerated() {
             let record = entry.record
@@ -592,6 +615,22 @@ public struct FITDecoder {
                 cadence = nil
             }
 
+            let developerValues = developerResolution.pointValues[index]
+            if developerValues.powerWatts != nil {
+                developerPowerPointCount += 1
+                if powerDeveloperDataIndex == nil {
+                    powerDeveloperDataIndex = developerValues.powerDeveloperDataIndex
+                }
+            }
+            // A recognized developer power field wins over the native record
+            // field; the native field fills power only when no developer
+            // field supplied one for this point.
+            let nativePower = decodeNativePower(record: record)
+            let powerWatts = developerValues.powerWatts ?? nativePower
+            if developerValues.powerWatts == nil, nativePower != nil {
+                nativeRecordPowerPointCount += 1
+            }
+
             let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
                 value == FITParser.invalidUint32 ? nil : FITParser.scaledDistanceToMeters(value)
@@ -607,15 +646,85 @@ public struct FITDecoder {
                 speedMetersPerSecond: speed,
                 heartRateBPM: heartRate,
                 cadence: cadence,
+                powerWatts: powerWatts,
+                groundContactTimeMilliseconds: developerValues.groundContactTimeMilliseconds,
+                verticalOscillationMillimeters: developerValues.verticalOscillationMillimeters,
+                verticalRatioPercent: developerValues.verticalRatioPercent,
+                stanceTimeBalancePercent: developerValues.stanceTimeBalancePercent,
+                stepLengthMeters: developerValues.stepLengthMeters,
                 routeSegmentIndex: entry.segmentIndex
             )
             routePoints.append(point)
         }
 
+        let developerReport = FITDeveloperFieldReport(
+            sources: referencedDeveloperSources(
+                identities: developerContext.identities,
+                records: records
+            ),
+            fieldStats: developerResolution.fieldStats,
+            totalPointCount: routePoints.count,
+            missingDescriptionValueCount: developerResolution.missingDescriptionValueCount,
+            invalidValueCount: developerResolution.invalidValueCount,
+            conflictingPowerValueCount: developerResolution.conflictingPowerValueCount,
+            droppedValueCount: developerContext.droppedValueCount,
+            droppedDescriptionCount: developerContext.droppedDescriptionCount,
+            nativeRecordPowerPointCount: nativeRecordPowerPointCount,
+            developerPowerPointCount: developerPowerPointCount,
+            powerDeveloperDataIndex: powerDeveloperDataIndex
+        )
+
         return FITDecodedRouteResult(
             routePoints: routePoints,
-            invalidCoordinatePointCount: invalidCoordinatePointCount
+            invalidCoordinatePointCount: invalidCoordinatePointCount,
+            developerFieldReport: developerReport
         )
+    }
+
+    /// Provenance for the developer data indexes this session's records
+    /// actually reference. Sibling sessions' identities stay out.
+    private static func referencedDeveloperSources(
+        identities: [FITDeveloperDataIDMessage],
+        records: [FITRecordMessage]
+    ) -> [FITDeveloperFieldReport.Source] {
+        var referencedIndexes = Set<UInt8>()
+        for record in records {
+            for value in record.developerFields {
+                referencedIndexes.insert(value.developerDataIndex)
+            }
+        }
+        guard !referencedIndexes.isEmpty else { return [] }
+
+        var sources: [FITDeveloperFieldReport.Source] = []
+        var seen = Set<UInt8>()
+        for identity in identities {
+            guard let developerDataIndex = identity.developerDataIndex,
+                  referencedIndexes.contains(developerDataIndex),
+                  !seen.contains(developerDataIndex)
+            else {
+                continue
+            }
+            seen.insert(developerDataIndex)
+            sources.append(FITDeveloperFieldReport.Source(
+                developerDataIndex: developerDataIndex,
+                developerIDHex: identity.developerID?.fitDeveloperHex,
+                applicationIDHex: identity.applicationID?.fitDeveloperHex,
+                manufacturerID: identity.manufacturerID,
+                applicationVersion: identity.applicationVersion
+            ))
+        }
+        // Referenced indexes without an identity message still belong in the
+        // provenance list so the diagnostics can name them.
+        for index in referencedIndexes.sorted() where !seen.contains(index) {
+            sources.append(FITDeveloperFieldReport.Source(
+                developerDataIndex: index,
+                developerIDHex: nil,
+                applicationIDHex: nil,
+                manufacturerID: nil,
+                applicationVersion: nil
+            ))
+        }
+        return sources
     }
 
     // MARK: - Enhanced Metric Decoding
@@ -648,5 +757,11 @@ public struct FITDecoder {
             return FITParser.scaledSpeedToMPS(speed)
         }
         return nil
+    }
+
+    /// Native record power (field 7), scale 1, invalid sentinel 0xFFFF.
+    private static func decodeNativePower(record: FITRecordMessage) -> Double? {
+        guard let power = record.power, power != FITParser.invalidUint16 else { return nil }
+        return Double(power)
     }
 }
