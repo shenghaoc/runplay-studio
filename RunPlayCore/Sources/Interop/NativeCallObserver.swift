@@ -11,6 +11,7 @@ enum NativeCallBoundary: Sendable {
     case routeAlignmentDtw
     case personalHeatmapCoverage
     case routeMetricScaleBucket
+    case trainingLoad
 }
 
 /// Test-only observation of native C++ engine invocations.
@@ -57,6 +58,7 @@ enum NativeCallObserver {
         var routeAlignmentDtw = 0
         var personalHeatmapCoverage = 0
         var routeMetricScaleBucket = 0
+        var trainingLoad = 0
 
         subscript(boundary: NativeCallBoundary) -> Int {
             switch boundary {
@@ -66,6 +68,7 @@ enum NativeCallObserver {
             case .routeAlignmentDtw: return routeAlignmentDtw
             case .personalHeatmapCoverage: return personalHeatmapCoverage
             case .routeMetricScaleBucket: return routeMetricScaleBucket
+            case .trainingLoad: return trainingLoad
             }
         }
     }
@@ -88,6 +91,7 @@ enum NativeCallObserver {
             case .routeAlignmentDtw: counts.routeAlignmentDtw += 1
             case .personalHeatmapCoverage: counts.personalHeatmapCoverage += 1
             case .routeMetricScaleBucket: counts.routeMetricScaleBucket += 1
+            case .trainingLoad: counts.trainingLoad += 1
             }
         }
 

@@ -138,6 +138,13 @@ else
   pass "public route metric scale/bucket header present"
 fi
 
+TRAINING_LOAD_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/TrainingLoad.hpp"
+if [[ ! -f "$TRAINING_LOAD_HEADER" ]]; then
+  fail "missing public training load header TrainingLoad.hpp"
+else
+  pass "public training load header present"
+fi
+
 if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
 else
@@ -178,6 +185,12 @@ if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[
   pass "umbrella header includes RouteMetricScaleBuckets.hpp"
 else
   fail "RunPlayEngine.hpp must include RouteMetricScaleBuckets.hpp"
+fi
+
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/TrainingLoad\.hpp"'; then
+  pass "umbrella header includes TrainingLoad.hpp"
+else
+  fail "RunPlayEngine.hpp must include TrainingLoad.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -303,6 +316,16 @@ if [[ -f "$ROUTE_METRIC_HEADER" ]]; then
     fail "route metric kernel must not reinterpret_cast output samples as a workspace type"
   else
     pass "route metric kernel avoids output-buffer workspace type-punning"
+  fi
+fi
+
+if [[ -f "$TRAINING_LOAD_HEADER" ]]; then
+  training_load_body="$(strip_comments "$TRAINING_LOAD_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  training_load_signature_re='TrainingLoadSummary[[:space:]]+compute_training_load[[:space:]]*\([[:space:]]*const[[:space:]]+TrainingLoadSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]+TrainingLoadPolicy[[:space:]]+policy[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$training_load_body" =~ $training_load_signature_re ]]; then
+    pass "training load boundary is one bulk const-input noexcept call with a by-value summary"
+  else
+    fail "compute_training_load must use const input*, size_t, a by-value policy, and noexcept, returning TrainingLoadSummary by value"
   fi
 fi
 
@@ -1534,6 +1557,78 @@ if [[ -x scripts/run-route-metric-scale-bucket-benchmark.sh ]] \
   pass "route metric benchmark is present and explicitly opt-in"
 else
   fail "route metric benchmark runner or opt-in guard missing"
+fi
+
+# --- Training load bridge -----------------------------------------------------
+
+TRAINING_LOAD_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayTrainingLoadBridge.swift"
+
+if [[ -f "$TRAINING_LOAD_BRIDGE_SOURCE" ]]; then
+  pass "training load bridge exists"
+else
+  fail "missing training load bridge $TRAINING_LOAD_BRIDGE_SOURCE"
+fi
+
+training_load_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_training_load([^[:alnum:]_]|$)'
+training_load_symbol_positive=(
+  'runplay.compute_training_load(buffer.baseAddress, buffer.count, policy)'
+  'let summary = runplay . compute_training_load(a, b, c)'
+)
+training_load_symbol_negative=(
+  'RunPlayTrainingLoadBridge.compute(heartRatesBPM: rates, weightsSeconds: weights)'
+  'let text = "compute_training_load"'
+  'func compute_training_load_helper() {}'
+  'runplay.assign_route_metric_scale_buckets(a, b, c, d, e, f, g)'
+)
+training_load_symbol_matcher_ok=1
+for fixture in "${training_load_symbol_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$training_load_native_re"; then
+    training_load_symbol_matcher_ok=0
+  fi
+done
+for fixture in "${training_load_symbol_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$training_load_native_re"; then
+    training_load_symbol_matcher_ok=0
+  fi
+done
+if [[ $training_load_symbol_matcher_ok -eq 1 ]]; then
+  pass "training load symbol matcher adversarial fixtures"
+else
+  fail "training load symbol matcher failed its adversarial fixtures"
+fi
+
+training_load_native_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$TRAINING_LOAD_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && training_load_native_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$training_load_native_re" || true)
+done
+
+if [[ ${#training_load_native_leaks[@]} -eq 0 ]]; then
+  pass "compute_training_load is invoked only from the training load bridge"
+else
+  for leak in "${training_load_native_leaks[@]}"; do
+    fail "compute_training_load used outside the training load bridge: $leak"
+  done
+fi
+
+training_load_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(TrainingLoadSample|TrainingLoadPolicy|TrainingLoadStatus|TrainingLoadSummary|training_load_zone_count)([^[:alnum:]_]|$)'
+training_load_cpp_leaks=()
+for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift RunPlayPlatform/Sources/**/*.swift RunPlayStudio/Sources/**/*.swift; do
+  [[ -f "$swift_file" ]] || continue
+  if code_matches "$swift_file" "$training_load_cpp_type_re"; then
+    training_load_cpp_leaks+=("$swift_file")
+  fi
+done
+if [[ ${#training_load_cpp_leaks[@]} -eq 0 ]]; then
+  pass "C++ training load types stay in Interop"
+else
+  fail "C++ training load types escaped Interop: ${training_load_cpp_leaks[*]}"
 fi
 
 # --- Summary -----------------------------------------------------------------

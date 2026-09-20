@@ -221,6 +221,20 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
             ),
         ),
     ),
+    ApprovedPointerFunction(
+        name="compute_training_load",
+        type_text=(
+            "TrainingLoadSummary "
+            "(const TrainingLoadSample *, std::size_t, "
+            "TrainingLoadPolicy) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const TrainingLoadSample *",
+            ),
+        ),
+    ),
 )
 
 
@@ -611,6 +625,13 @@ def run_self_test() -> int:
             "ParmVarDecl samples 'const RouteMetricScaleBucketInputSample *'",
             "ParmVarDecl workspace_samples 'RouteMetricScaleBucketWorkspaceSample *'",
             "ParmVarDecl output_samples 'RouteMetricScaleBucketOutputSample *'",
+            (
+                "FunctionDecl compute_training_load "
+                "'TrainingLoadSummary "
+                "(const TrainingLoadSample *, std::size_t, "
+                "TrainingLoadPolicy) noexcept'"
+            ),
+            "ParmVarDecl samples 'const TrainingLoadSample *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",

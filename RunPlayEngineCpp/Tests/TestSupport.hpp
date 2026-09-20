@@ -20,3 +20,4 @@ void run_route_alignment_dtw_tests();
 void run_segment_detection_tests();
 void run_elevation_profile_tests();
 void run_route_metric_scale_bucket_tests();
+void run_training_load_tests();

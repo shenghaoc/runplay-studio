@@ -11,6 +11,7 @@
 #include "RunPlayEngineCpp/RouteQualityPipeline.hpp"
 #include "RunPlayEngineCpp/RouteMetricScaleBuckets.hpp"
 #include "RunPlayEngineCpp/SegmentDetection.hpp"
+#include "RunPlayEngineCpp/TrainingLoad.hpp"
 
 namespace runplay {
 
