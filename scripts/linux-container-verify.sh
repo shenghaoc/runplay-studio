@@ -9,7 +9,9 @@
 #   ./scripts/linux-container-verify.sh podman --filter RouteGroupingTests
 #
 # The first optional argument may be the runtime to force (docker or
-# podman); without it the first available runtime wins. Remaining
+# podman); without it the runtime is auto-detected by probing each
+# candidate binary — a `docker` that reports podman (the Fedora
+# podman-docker shim) is driven with podman's flags. Remaining
 # arguments are forwarded to `swift test`, which always runs warning-clean
 # with the scratch tree at .build-linux (the two mandatory container
 # properties — a non-root user that owns the mounted sources, and a
@@ -35,20 +37,42 @@ case "${IMAGE}" in
 esac
 
 RUNTIME="${1:-}"
+RUNTIME_BIN=""
 case "${RUNTIME}" in
   docker|podman) shift ;;
   *) RUNTIME="" ;;
 esac
+
+# Auto-detection must probe the binary, not trust its name. On Fedora hosts
+# the podman-docker package installs /usr/bin/docker as a shim that execs
+# podman, so `command -v docker` succeeds while the engine is rootless
+# podman — and the docker branch below omits --userns=keep-id, which is
+# exactly the failure this script exists to prevent. A genuine Docker
+# reports "Docker version <n>, build <sha>"; the shim reports
+# "podman version <n>".
+reports_podman() {
+  case "$("$1" --version 2>/dev/null || true)" in
+    *[Pp]odman*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 if [ -z "${RUNTIME}" ]; then
-  if command -v docker >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1 && ! reports_podman docker; then
     RUNTIME=docker
   elif command -v podman >/dev/null 2>&1; then
     RUNTIME=podman
+  elif command -v docker >/dev/null 2>&1; then
+    # `docker` is the podman-docker shim and no separate `podman` binary is
+    # on PATH: keep podman's flags, drive them through the shim.
+    RUNTIME=podman
+    RUNTIME_BIN=docker
   else
     echo "error: neither docker nor podman is installed" >&2
     exit 1
   fi
 fi
+[ -n "${RUNTIME_BIN}" ] || RUNTIME_BIN="${RUNTIME}"
 
 # Writable HOME on the workspace filesystem: a host whose root filesystem
 # is full fails a HOME=/tmp form before any test runs, with only an
@@ -64,14 +88,16 @@ fi
 # is accepted as a no-op elsewhere. Rootless podman needs --userns=keep-id
 # — without it the container uid maps into the subuid range, /src appears
 # root-owned, and the non-root user cannot write the checkout.
+# ${RUNTIME_BIN} selects the flags and the binary together, so the
+# podman-docker shim gets podman's flags.
 case "${RUNTIME}" in
   docker)
-    exec docker run --rm -u "$(id -u):$(id -g)" \
+    exec "${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home -v "$PWD":/src:Z -w /src \
       "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
     ;;
   podman)
-    exec podman run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
+    exec "${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home -v "$PWD":/src:Z -w /src \
       "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
     ;;

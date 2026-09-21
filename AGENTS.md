@@ -440,8 +440,11 @@ if the line moves:
 ./scripts/linux-container-verify.sh podman ...                      # force the runtime
 ```
 
-Without a forced runtime the first available one wins. The script
-always runs `swift test` warning-clean with the scratch tree at
+Without a forced runtime the script probes the candidates rather than
+trusting their names: a `docker` binary that reports podman (Fedora's
+`podman-docker` shim) is driven with podman's flags, because the docker
+branch omits `--userns=keep-id` and the shim is rootless podman. The
+script always runs `swift test` warning-clean with the scratch tree at
 `.build-linux`, and preserves two mandatory properties:
 
 1. The container user must be non-root and must own the mounted sources.
