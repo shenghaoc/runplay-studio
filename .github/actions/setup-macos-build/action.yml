@@ -1,0 +1,51 @@
+name: "Set up macOS build"
+description: >-
+  The shared step sequence of every macOS CI job after checkout: the Swift
+  toolchain identity probe, the SwiftPM dependency cache restore, and the
+  Swift toolchain parity gate. The xcode-27 runner image carries exactly one
+  Xcode as its default, so there is no developer-dir selection to perform —
+  the parity check below is the Xcode verification.
+
+  GitHub Actions constraint: a local action resolves from the workspace, so
+  the calling job MUST run actions/checkout before this action. Checkout
+  cannot live inside it.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Record Swift toolchain identity
+      id: toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="$(swift --version | grep -oE 'Swift version [0-9]+(\.[0-9]+)+' | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | tail -n1)"
+        if [[ -z "${VERSION}" ]]; then
+          echo "could not read a Swift marketing version from 'swift --version'" >&2
+          swift --version >&2 || true
+          exit 1
+        fi
+        # The marketing version alone is not a toolchain identity: Xcode
+        # 27.0 -> 27.1 ships a different swiftlang build and SDK under the
+        # same "Swift 6.4" banner, and hosted image rolls are silent. Hash
+        # the full build identity — every line of `swift --version` plus
+        # `xcodebuild -version` (which carries the Xcode build number) — and
+        # append a short digest to the key. The marketing version stays in
+        # the key for legibility only.
+        ID="$( { swift --version; xcodebuild -version; } | shasum -a 256 | cut -c1-12 )"
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "id=${ID}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore SwiftPM dependency cache
+      uses: actions/cache@v6
+      with:
+        path: ~/Library/Caches/org.swift.swiftpm
+        key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-${{ hashFiles('Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-
+
+    - name: Verify Swift toolchain parity
+      shell: bash
+      run: |
+        xcodebuild -version
+        swift --version
+        ./scripts/check-toolchain-parity.sh

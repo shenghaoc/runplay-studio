@@ -1,0 +1,9 @@
+# actionlint reads this file automatically. The runner labels below are
+# newer GitHub-hosted images than this actionlint release's built-in label
+# set knows about; declaring them here keeps `actionlint` (run by the CI
+# lint lane) clean without weakening any other check. Refresh this list
+# whenever the workflows adopt a runner label actionlint does not know.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - xcode-27

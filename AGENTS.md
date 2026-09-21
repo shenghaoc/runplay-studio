@@ -427,10 +427,12 @@ official Swift image pinned by the single `container:` line in
 [.github/workflows/ci.yml](.github/workflows/ci.yml), and local
 verification must use that exact image, read from the same pin so the
 two cannot drift (currently `swift:6.4.0-resolute@sha256:bb6e5d…a91dc`,
-an Ubuntu 26.04 userspace):
+an Ubuntu 26.04 userspace). The grep below is anchored on `container:`
+and requires the digit-plus-digest image shape, so it cannot resolve the
+placeholder text inside a comment:
 
 ```bash
-IMAGE="$(grep -oE 'swift:[^[:space:]]+' .github/workflows/ci.yml | head -n1)"
+IMAGE="$(grep -oE 'container:[[:space:]]*swift:[0-9][^[:space:]]*@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1 | sed -E 's/^container:[[:space:]]*//')"
 docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/src -w /src \
   "${IMAGE}" swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
 ```
@@ -474,7 +476,7 @@ Platform-API assumptions that look correct on macOS
 corelibs-foundation; the container catches them before they burn a CI
 cycle.
 
-Benchmark scripts need release-mode test builds; the CI "Release Test Build (macOS)" job guards them.
+Benchmark scripts need release-mode test builds; the CI "macOS (release-compile)" matrix leg (via the reusable macos-verify.yml workflow) guards them.
 
 GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
