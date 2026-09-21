@@ -177,7 +177,16 @@ struct PersonalHeatmapView: View {
     /// Route restriction for the heatmap. Menu style (not a plain Picker) so
     /// derived default names can be labelled without loading snapshots.
     private var routePicker: some View {
-        Menu {
+        // Derived names are set-level: a name is only disambiguated against the
+        // whole sibling set, so derive once per picker build and index by id.
+        // `heatmapRouteFilterTitle` is read twice below — the label and the
+        // accessibility value — so it takes the already-derived names instead
+        // of deriving a second and a third time. Deriving over the `prefix(15)`
+        // window would name a group bare here while the Routes workspace shows
+        // it with a token.
+        let names = derivedRouteGroupNames
+        let filterTitle = heatmapRouteFilterTitle(derivedNames: names)
+        return Menu {
             Button("Any Route") { viewModel.routeFilter = .anyRoute }
                 .accessibilityHint("Do not restrict the heatmap by route")
             let candidates = viewModel.routeGroups.prefix(15)
@@ -188,7 +197,7 @@ struct PersonalHeatmapView: View {
                         viewModel.routeFilter = .group(group.id)
                     } label: {
                         HStack {
-                            Text(heatmapRouteMenuName(for: group))
+                            Text(Self.heatmapRouteMenuName(for: group, derivedNames: names))
                             if case .group(let selected) = viewModel.routeFilter, selected == group.id {
                                 Image(systemName: "checkmark")
                             }
@@ -199,7 +208,7 @@ struct PersonalHeatmapView: View {
             }
         } label: {
             Label(
-                heatmapRouteFilterTitle,
+                filterTitle,
                 systemImage: "point.topleft.down.curvedto.point.bottomright.up"
             )
         }
@@ -207,10 +216,20 @@ struct PersonalHeatmapView: View {
         .fixedSize()
         .help("Restrict the heatmap to one route")
         .accessibilityLabel("Route filter")
-        .accessibilityValue(heatmapRouteFilterTitle)
+        .accessibilityValue(filterTitle)
     }
 
-    private var heatmapRouteFilterTitle: String {
+    /// Collision-aware derived names for every route group, computed from the
+    /// persisted representative summaries (no snapshot loads on the filter
+    /// path).
+    private var derivedRouteGroupNames: [UUID: String] {
+        WorkoutRouteGroup.derivedDisplayNames(
+            for: viewModel.routeGroups,
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )
+    }
+
+    private func heatmapRouteFilterTitle(derivedNames: [UUID: String]) -> String {
         switch viewModel.routeFilter {
         case .anyRoute:
             return String(localized: "heatmap.route.any", defaultValue: "Any Route")
@@ -218,29 +237,23 @@ struct PersonalHeatmapView: View {
             return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route")
         case .group(let groupID):
             if let group = viewModel.routeGroups.first(where: { $0.id == groupID }) {
-                return heatmapRouteMenuName(for: group)
+                return Self.heatmapRouteMenuName(for: group, derivedNames: derivedNames)
             }
             return String(localized: "heatmap.route.any", defaultValue: "Any Route")
         }
     }
 
-    private func heatmapRouteMenuName(for group: WorkoutRouteGroup) -> String {
+    /// Menu label for one route group: the user name, else its entry in the
+    /// set-level derived names, else the plain fallback.
+    static func heatmapRouteMenuName(
+        for group: WorkoutRouteGroup,
+        derivedNames: [UUID: String]
+    ) -> String {
         if let name = group.name, !name.isEmpty {
             return name
         }
-        guard let facts = group.representativeSummary?.facts else {
-            return String(localized: "route_group.filter.unnamed", defaultValue: "Route")
-        }
-        let closure = GeoDistance.distanceMeters(
-            fromLat: facts.startLatitude,
-            lon: facts.startLongitude,
-            toLat: facts.finishLatitude,
-            lon: facts.finishLongitude
-        )
-        return WorkoutRouteGroup.defaultDisplayName(
-            distanceMeters: facts.totalDistanceMeters,
-            closesLoop: closure <= RouteGroupsViewModel.loopClosureDistanceMeters
-        )
+        return derivedNames[group.id]
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route")
     }
 
     // Each picker is bounded by the other, so an inverted range cannot be

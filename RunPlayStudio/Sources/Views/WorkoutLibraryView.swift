@@ -570,6 +570,12 @@ struct WorkoutLibraryView: View {
     /// the full browser.
     @ViewBuilder
     private var routeFilterMenu: some View {
+        // Derived names are set-level: a name is only disambiguated against the
+        // whole sibling set, so derive once over every group and index by id.
+        // Deriving over the `prefix(15)` window instead would name a group
+        // bare here while the Routes workspace shows it with a token, and
+        // deriving per row would re-derive the entire set O(n²) times.
+        let names = derivedRouteGroupNames
         Menu("Route") {
             Button("Any Route") { viewModel.routeFilter = .anyRoute }
                 .accessibilityHint("Do not restrict by route")
@@ -583,7 +589,7 @@ struct WorkoutLibraryView: View {
                         viewModel.routeFilter = .group(group.id)
                     } label: {
                         HStack {
-                            Text(routeFilterMenuName(for: group))
+                            Text(Self.routeFilterMenuName(for: group, derivedNames: names))
                             if case .group(let selected) = viewModel.routeFilter, selected == group.id {
                                 Image(systemName: "checkmark")
                             }
@@ -595,26 +601,27 @@ struct WorkoutLibraryView: View {
         }
     }
 
-    /// Menu label for one route group: the user name, else the derived
-    /// geometry default computed from the persisted representative summary
-    /// (no snapshot loads on the filter path).
-    private func routeFilterMenuName(for group: WorkoutRouteGroup) -> String {
+    /// Collision-aware derived names for every route group, computed from the
+    /// persisted representative summaries (no snapshot loads on the filter
+    /// path).
+    private var derivedRouteGroupNames: [UUID: String] {
+        WorkoutRouteGroup.derivedDisplayNames(
+            for: viewModel.routeGroups,
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )
+    }
+
+    /// Menu label for one route group: the user name, else its entry in the
+    /// set-level derived names, else the plain fallback.
+    static func routeFilterMenuName(
+        for group: WorkoutRouteGroup,
+        derivedNames: [UUID: String]
+    ) -> String {
         if let name = group.name, !name.isEmpty {
             return name
         }
-        guard let facts = group.representativeSummary?.facts else {
-            return String(localized: "route_group.filter.unnamed", defaultValue: "Route")
-        }
-        let closure = GeoDistance.distanceMeters(
-            fromLat: facts.startLatitude,
-            lon: facts.startLongitude,
-            toLat: facts.finishLatitude,
-            lon: facts.finishLongitude
-        )
-        return WorkoutRouteGroup.defaultDisplayName(
-            distanceMeters: facts.totalDistanceMeters,
-            closesLoop: closure <= RouteGroupsViewModel.loopClosureDistanceMeters
-        )
+        return derivedNames[group.id]
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route")
     }
 
     // MARK: - Content

@@ -73,10 +73,6 @@ final class RouteGroupsViewModel: ObservableObject {
     @Published private(set) var reclusterCurrentName = ""
     @Published private(set) var lastReclusterSummary: String?
 
-    /// Start-to-finish distance under which the representative counts as a
-    /// loop for the derived default name.
-    static let loopClosureDistanceMeters: Double = 100
-
     private var workouts: [RunWorkout] = []
     private var workoutsByID: [UUID: RunWorkout] = [:]
     private var groups: [WorkoutRouteGroup] = []
@@ -128,6 +124,14 @@ final class RouteGroupsViewModel: ObservableObject {
 
         var built: [RouteGroupRow] = []
         built.reserveCapacity(groups.count)
+        // Derived names are set-level: collisions are only visible against the
+        // sibling set. Derive once for the whole rebuild and index by id —
+        // deriving per row would re-derive the entire set O(n²) times and
+        // produce names that ignore one another.
+        let derivedNames = WorkoutRouteGroup.derivedDisplayNames(
+            for: groups,
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )
         for group in groups {
             let memberIDs = memberIDsByGroup[group.id] ?? []
             let members = memberIDs.compactMap { workoutsByID[$0] }
@@ -138,17 +142,8 @@ final class RouteGroupsViewModel: ObservableObject {
                 return pace.isFinite && pace > 0 ? pace : nil
             }
             let dates = members.compactMap { WorkoutLibraryEntry.canonicalStartDate(for: $0) }
-            let displayName: String
-            if let name = group.name, !name.isEmpty {
-                displayName = name
-            } else if let representative {
-                displayName = WorkoutRouteGroup.defaultDisplayName(
-                    distanceMeters: representative.summary.totalDistanceMeters,
-                    closesLoop: Self.representativeClosesLoop(representative)
-                )
-            } else {
-                displayName = String(localized: "route_group.unnamed", defaultValue: "Route")
-            }
+            let displayName = derivedNames[group.id]
+                ?? String(localized: "route_group.unnamed", defaultValue: "Route")
             built.append(RouteGroupRow(
                 id: group.id,
                 displayName: displayName,
@@ -393,7 +388,7 @@ final class RouteGroupsViewModel: ObservableObject {
             toLat: finish.latitude,
             lon: finish.longitude
         )
-        return separation <= loopClosureDistanceMeters
+        return separation <= WorkoutRouteGroup.defaultLoopClosureDistanceMeters
     }
 
     private static func isValid(_ point: RoutePoint) -> Bool {
