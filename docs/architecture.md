@@ -790,7 +790,13 @@ never start-to-finish, which for a loop is numerical noise — refined to a
 sixteen-point sector, then to a stable digest of the group id ("1.2 km
 Loop (NE·7f3)"), each group at the shortest of 3, 6, 8 hex digits that
 no sibling shares — the abbreviated-object-name rule, as with short git
-object names — until the names differ. Every discriminator is intrinsic
+object names — until the names differ. A collision is a shared *rendered
+name*, not a shared sector: every member of a set of groups that emit the
+same string escalates together, to a fixpoint. That matters because a
+sixteen-point sector can straddle an eight-point boundary (NNE spans the
+N/NE boundary at 22.5°), so two groups from different coarse sectors can
+render the same fine-tier name; comparing buckets instead of strings let
+them share it. Every discriminator is intrinsic
 to the group (persisted facts or the persisted id): no rank, count, or
 sort order participates, so importing another colliding group — bulk
 historical imports included — never renames groups already named; a

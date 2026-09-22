@@ -50,8 +50,8 @@ extension WorkoutRouteGroup {
     ///          collides within the base name;
     ///       c. a stable digest of the group's own id ("1.2 km Loop
     ///          (NE·7f3)") — the persisted identity, immune to import
-    ///          order and membership churn — when even the fine sector
-    ///          collides. Digest lengths are per group, at the shortest
+    ///          order and membership churn — when even the fine-tier
+    ///          name collides. Digest lengths are per group, at the shortest
     ///          of 3, 6, 8 hex digits that no sibling shares (the
     ///          abbreviated-object-name rule, as with short git object
     ///          names); a member whose full digest still collides falls
@@ -61,6 +61,14 @@ extension WorkoutRouteGroup {
     ///          cluster is a proper prefix of another — the ambiguity
     ///          that occasionally makes short git object names awkward
     ///          cannot arise.
+    ///
+    ///    A collision is a shared *rendered name*, not a shared sector
+    ///    bucket: every member of a set of groups that emit the same
+    ///    string escalates together (see `resolveCollisions`). A
+    ///    sixteen-point sector can straddle an eight-point boundary, so
+    ///    two groups from different coarse sectors can emit the same
+    ///    fine-tier name; they are told apart by digest like any other
+    ///    pair that renders alike.
     ///
     ///    Every discriminator is intrinsic to the group, never its position
     ///    in a sorted list: no rank, count, or sort order participates
@@ -101,8 +109,8 @@ extension WorkoutRouteGroup {
         var details: [UUID: RouteGroupDerivedName] = [:]
         details.reserveCapacity(groups.count)
 
-        var derived: [RouteGroupDerivedNameCandidate] = []
-        derived.reserveCapacity(groups.count)
+        var candidates: [RouteGroupDerivedNameCandidate] = []
+        candidates.reserveCapacity(groups.count)
 
         for group in groups {
             if let name = group.name, !name.isEmpty {
@@ -118,7 +126,7 @@ extension WorkoutRouteGroup {
                 continue
             }
             guard let summary = group.representativeSummary else {
-                derived.append(RouteGroupDerivedNameCandidate(
+                candidates.append(RouteGroupDerivedNameCandidate(
                     groupID: group.id,
                     baseName: unnamedFallbackName,
                     coarseToken: nil,
@@ -133,7 +141,7 @@ extension WorkoutRouteGroup {
                 toLat: facts.finishLatitude,
                 lon: facts.finishLongitude
             ) <= loopClosureDistanceMeters
-            derived.append(RouteGroupDerivedNameCandidate(
+            candidates.append(RouteGroupDerivedNameCandidate(
                 groupID: group.id,
                 baseName: defaultDisplayName(
                     distanceMeters: facts.totalDistanceMeters,
@@ -144,96 +152,136 @@ extension WorkoutRouteGroup {
             ))
         }
 
-        // Escalate per base-name cluster: coarse token, then fine sector,
-        // then the identity digest. Nothing here reads a sort order — the
-        // discriminator a group ends up with is a function of its own
-        // persisted data plus which siblings collide with it, so inserting
-        // a group can only force a refinement, never a re-ranking.
-        var clusters: [String: [RouteGroupDerivedNameCandidate]] = [:]
-        clusters.reserveCapacity(derived.count)
-        for candidate in derived {
-            clusters[candidate.baseName, default: []].append(candidate)
+        resolveCollisions(among: candidates, into: &details)
+        return details
+    }
+
+    /// Escalates colliding candidates tier by tier until every emitted
+    /// name is distinct, comparing the *rendered* names — never the
+    /// sector buckets they came from.
+    ///
+    /// Every candidate starts bare. Each round groups candidates by the
+    /// string they currently render; every member of a set that shares a
+    /// string and has a tier left to climb moves up one (bare → coarse
+    /// token → fine token → digest), and the round repeats until no
+    /// escalatable set remains. The base-name cluster is simply the first
+    /// round's collision set, and a candidate is escalated only by
+    /// siblings whose rendered name equals its own. The fine tier has to
+    /// be compared this way because a sixteen-point sector can straddle
+    /// an eight-point boundary — NNE spans [11.25°, 33.75°) across the
+    /// N/NE boundary at 22.5° — so two groups can render the same
+    /// "(NNE)" from different coarse buckets; bucket-scoped escalation
+    /// let them do so without ever meeting (issue #158). Comparing
+    /// strings also covers a coarse label that equals another member's
+    /// fine label, should the token tables ever allow it; with the
+    /// current tables they cannot, because each same-labelled fine sector
+    /// nests inside its coarse sector, so any two members sharing a
+    /// principal-wind fine token already shared its coarse token.
+    ///
+    /// Digest-tier members are compared by the fine-tier string they
+    /// climbed from: that string names the set whose members must be told
+    /// apart by digest, and a still-climbing sibling rendering the same
+    /// string joins that set rather than stopping one tier short of it.
+    /// Digest discriminators are then assigned per set by the shortest
+    /// prefix rule in `assignIdentityDigestNames`.
+    ///
+    /// Nothing here reads a sort order — the discriminator a group ends
+    /// up with is a function of its own persisted data plus which
+    /// siblings render the same string, so inserting a group can only
+    /// force a refinement, never a re-ranking. Each member climbs at most
+    /// three tiers, so the loop runs at most four rounds. Internal, not
+    /// private, so a test can feed the resolver synthetic token tables.
+    static func resolveCollisions(
+        among candidates: [RouteGroupDerivedNameCandidate],
+        into details: inout [UUID: RouteGroupDerivedName]
+    ) {
+        let bareTier = 0
+        let coarseTier = 1
+        let fineTier = 2
+        let digestTier = 3
+        var tiers = [Int](repeating: bareTier, count: candidates.count)
+
+        while true {
+            var byRenderedName: [String: [Int]] = [:]
+            for index in candidates.indices {
+                let comparedTier = min(tiers[index], fineTier)
+                byRenderedName[renderedName(of: candidates[index], atTier: comparedTier), default: []]
+                    .append(index)
+            }
+            var escalating: [Int] = []
+            for members in byRenderedName.values where members.count > 1 {
+                for index in members where tiers[index] < digestTier {
+                    escalating.append(index)
+                }
+            }
+            if escalating.isEmpty {
+                break
+            }
+            for index in escalating {
+                tiers[index] += 1
+            }
         }
 
-        for (baseName, cluster) in clusters {
-            guard cluster.count > 1 else {
-                details[cluster[0].groupID] = RouteGroupDerivedName(
-                    groupID: cluster[0].groupID,
-                    name: baseName,
-                    baseName: baseName,
+        var digestSets: [String: [RouteGroupDerivedNameCandidate]] = [:]
+        for index in candidates.indices {
+            let candidate = candidates[index]
+            switch tiers[index] {
+            case bareTier:
+                details[candidate.groupID] = RouteGroupDerivedName(
+                    groupID: candidate.groupID,
+                    name: candidate.baseName,
+                    baseName: candidate.baseName,
                     tier: .bare,
                     digestDiscriminator: nil,
                     fineToken: nil,
                     isUserAssigned: false
                 )
-                continue
-            }
-            var byCoarseToken: [String: [RouteGroupDerivedNameCandidate]] = [:]
-            for candidate in cluster {
-                byCoarseToken[candidate.coarseToken ?? "", default: []].append(candidate)
-            }
-            for (_, coarseGroup) in byCoarseToken {
-                guard coarseGroup.count > 1 else {
-                    let candidate = coarseGroup[0]
-                    if let coarseToken = candidate.coarseToken {
-                        details[candidate.groupID] = RouteGroupDerivedName(
-                            groupID: candidate.groupID,
-                            name: baseName + disambiguatedSuffix(coarseToken),
-                            baseName: baseName,
-                            tier: .coarseToken,
-                            digestDiscriminator: nil,
-                            fineToken: candidate.fineToken,
-                            isUserAssigned: false
-                        )
-                    } else {
-                        details[candidate.groupID] = RouteGroupDerivedName(
-                            groupID: candidate.groupID,
-                            name: baseName,
-                            baseName: baseName,
-                            tier: .bare,
-                            digestDiscriminator: nil,
-                            fineToken: candidate.fineToken,
-                            isUserAssigned: false
-                        )
-                    }
-                    continue
-                }
-                var byFineToken: [String: [RouteGroupDerivedNameCandidate]] = [:]
-                for candidate in coarseGroup {
-                    byFineToken[candidate.fineToken ?? "", default: []].append(candidate)
-                }
-                for (_, fineGroup) in byFineToken {
-                    guard fineGroup.count > 1 else {
-                        let candidate = fineGroup[0]
-                        if let fineToken = candidate.fineToken {
-                            details[candidate.groupID] = RouteGroupDerivedName(
-                                groupID: candidate.groupID,
-                                name: baseName + disambiguatedSuffix(fineToken),
-                                baseName: baseName,
-                                tier: .fineToken,
-                                digestDiscriminator: nil,
-                                fineToken: candidate.fineToken,
-                                isUserAssigned: false
-                            )
-                        } else {
-                            details[candidate.groupID] = RouteGroupDerivedName(
-                                groupID: candidate.groupID,
-                                name: baseName,
-                                baseName: baseName,
-                                tier: .bare,
-                                digestDiscriminator: nil,
-                                fineToken: candidate.fineToken,
-                                isUserAssigned: false
-                            )
-                        }
-                        continue
-                    }
-                    assignIdentityDigestNames(fineGroup, baseName: baseName, into: &details)
-                }
+            case coarseTier:
+                details[candidate.groupID] = RouteGroupDerivedName(
+                    groupID: candidate.groupID,
+                    name: renderedName(of: candidate, atTier: coarseTier),
+                    baseName: candidate.baseName,
+                    tier: candidate.coarseToken == nil ? .bare : .coarseToken,
+                    digestDiscriminator: nil,
+                    fineToken: candidate.fineToken,
+                    isUserAssigned: false
+                )
+            case fineTier:
+                details[candidate.groupID] = RouteGroupDerivedName(
+                    groupID: candidate.groupID,
+                    name: renderedName(of: candidate, atTier: fineTier),
+                    baseName: candidate.baseName,
+                    tier: candidate.fineToken == nil ? .bare : .fineToken,
+                    digestDiscriminator: nil,
+                    fineToken: candidate.fineToken,
+                    isUserAssigned: false
+                )
+            default:
+                digestSets[renderedName(of: candidate, atTier: fineTier), default: []].append(candidate)
             }
         }
+        for members in digestSets.values {
+            assignIdentityDigestNames(members, baseName: members[0].baseName, into: &details)
+        }
+    }
 
-        return details
+    /// What a candidate emits at a compass tier: its base name alone when
+    /// bare or when it has no token for that tier (the summary-less
+    /// fallback), otherwise the base name plus the tier's token.
+    private static func renderedName(
+        of candidate: RouteGroupDerivedNameCandidate,
+        atTier tier: Int
+    ) -> String {
+        let token: String?
+        switch tier {
+        case 1: token = candidate.coarseToken
+        case 2: token = candidate.fineToken
+        default: token = nil
+        }
+        guard let token else {
+            return candidate.baseName
+        }
+        return candidate.baseName + disambiguatedSuffix(token)
     }
 
     /// Appends the final-tier discriminator to every member of a group that
@@ -408,8 +456,9 @@ extension WorkoutRouteGroup {
 
 /// One derived-naming candidate: the base name plus both compass tiers
 /// for a group that needs disambiguation (`nil` tokens for the
-/// summary-less fallback).
-private struct RouteGroupDerivedNameCandidate {
+/// summary-less fallback). Internal, not private, so the resolver test
+/// can feed `resolveCollisions` token tables the compass cannot produce.
+struct RouteGroupDerivedNameCandidate {
     let groupID: UUID
     let baseName: String
     let coarseToken: String?

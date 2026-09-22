@@ -834,6 +834,49 @@ final class RouteGroupingTests: XCTestCase {
         XCTAssertTrue(try derivedName(of: northEast, in: names).hasSuffix("Loop (NE)"), "got \(names)")
     }
 
+    /// The resolver compares rendered names, so a coarse label that equals
+    /// another member's fine label is a collision too. The compass cannot
+    /// produce this shape today — every same-labelled fine sector nests
+    /// inside its coarse sector, so two members sharing a principal-wind
+    /// fine token already shared its coarse token — which is why this
+    /// test feeds `resolveCollisions` a synthetic token table rather than
+    /// bearings: it pins the resolver's contract, not a reachable
+    /// geometry. Here `settled` would rest at coarse "(NE)" while
+    /// `escalated`, pushed to the fine tier by `sibling`, would also
+    /// render "(NE)"; both must climb to the digest instead.
+    func testCoarseLabelEqualToAnotherMembersFineLabelStillEscalates() throws {
+        let settled = RouteGroupDerivedNameCandidate(
+            groupID: try XCTUnwrap(UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
+            baseName: "1.2 km Loop",
+            coarseToken: "NE",
+            fineToken: "NE"
+        )
+        let escalated = RouteGroupDerivedNameCandidate(
+            groupID: try XCTUnwrap(UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
+            baseName: "1.2 km Loop",
+            coarseToken: "Q",
+            fineToken: "NE"
+        )
+        let sibling = RouteGroupDerivedNameCandidate(
+            groupID: try XCTUnwrap(UUID(uuidString: "cccccccc-cccc-cccc-cccc-cccccccccccc")),
+            baseName: "1.2 km Loop",
+            coarseToken: "Q",
+            fineToken: "Z"
+        )
+
+        var details: [UUID: RouteGroupDerivedName] = [:]
+        WorkoutRouteGroup.resolveCollisions(among: [settled, escalated, sibling], into: &details)
+
+        XCTAssertEqual(details.count, 3)
+        XCTAssertEqual(Set(details.values.map(\.name)).count, 3, "names: \(details.values.map(\.name).sorted())")
+        for candidate in [settled, escalated] {
+            let entry = try XCTUnwrap(details[candidate.groupID])
+            XCTAssertEqual(entry.tier, .digest, "\(entry.name)")
+            XCTAssertTrue(entry.name.hasPrefix("1.2 km Loop (NE·"), "got \(entry.name)")
+        }
+        XCTAssertEqual(try XCTUnwrap(details[sibling.groupID]).name, "1.2 km Loop (Z)")
+    }
+
     // MARK: - Derived-name invariants over a generated population
 
     /// Seeded Fisher–Yates — the order-independence property must not draw
