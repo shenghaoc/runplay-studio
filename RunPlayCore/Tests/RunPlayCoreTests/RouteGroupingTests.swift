@@ -751,6 +751,89 @@ final class RouteGroupingTests: XCTestCase {
         )
     }
 
+    /// Issue #158. Eight of the sixteen fine sectors straddle a coarse
+    /// boundary — NNE spans [11.25°, 33.75°) across the N/NE boundary at
+    /// 22.5° — so the same fine token is reachable from two different
+    /// coarse buckets. Each straddler is pushed to the fine tier by a
+    /// coarse sibling of its own (0° forces 18°, 45° forces 27°), and both
+    /// then render "(NNE)": escalation that compares only within a coarse
+    /// bucket never sees the two meet, and no digest is appended. Every
+    /// straddling sector gets the same four-group shape, at bearings 4.5°
+    /// either side of the boundary — inside the ≥4° margin the population
+    /// keeps against the fixture/projection scale mismatch — so a
+    /// regression in any of the eight fails by name.
+    func testFineSectorStraddlingCoarseBoundaryNeverSharesAName() throws {
+        var generator = SplitMix64RouteGrouping(seed: 158)
+        let day = RouteGroupingFixtures.epoch
+        for boundaryIndex in 0..<8 {
+            let boundary = 22.5 + 45 * Double(boundaryIndex)
+            func member(atBearing bearing: Double) -> WorkoutRouteGroup {
+                RouteGroupingFixtures.namingGroup(
+                    id: RouteGroupingFixtures.uuid(from: &generator),
+                    bearingDegrees: bearing.truncatingRemainder(dividingBy: 360),
+                    totalDistanceMeters: 5_000,
+                    date: day
+                )
+            }
+            let belowBoundary = member(atBearing: boundary - 4.5)
+            let aboveBoundary = member(atBearing: boundary + 4.5)
+            let belowCoarseSibling = member(atBearing: boundary - 22.5)
+            let aboveCoarseSibling = member(atBearing: boundary + 22.5)
+            let set = [belowBoundary, aboveBoundary, belowCoarseSibling, aboveCoarseSibling]
+
+            let names = derivedNames(set)
+
+            XCTAssertEqual(
+                Set(names.values).count, set.count,
+                "boundary \(boundary)°: names must be pairwise distinct, got \(names.values.sorted())"
+            )
+            let below = try derivedName(of: belowBoundary, in: names)
+            let above = try derivedName(of: aboveBoundary, in: names)
+            XCTAssertNotEqual(below, above, "boundary \(boundary)°: both straddlers rendered \(below)")
+            // The straddlers share their fine token, so the digest is the
+            // only discriminator left to them; the coarse siblings settle
+            // at their own fine token, which is also their coarse one.
+            for name in [below, above] {
+                XCTAssertNotNil(
+                    name.range(of: #"Loop \([A-Z]{3}·[0-9a-f]{3,}\)$"#, options: .regularExpression),
+                    "boundary \(boundary)°: expected a fine token plus digest, got \(name)"
+                )
+            }
+            for sibling in [belowCoarseSibling, aboveCoarseSibling] {
+                let name = try derivedName(of: sibling, in: names)
+                XCTAssertNotNil(
+                    name.range(of: #"Loop \([A-Z]{1,2}\)$"#, options: .regularExpression),
+                    "boundary \(boundary)°: expected a bare compass token, got \(name)"
+                )
+            }
+        }
+    }
+
+    /// The two straddlers alone are not a collision — their coarse tokens
+    /// differ ("(N)" / "(NE)") — so the names must stay at the coarse tier
+    /// until a coarse sibling of each arrives; the fix must not pre-empt
+    /// the digest for a pair that never actually meets.
+    func testStraddlingPairWithoutCoarseSiblingsKeepsCoarseTokens() throws {
+        let day = RouteGroupingFixtures.epoch
+        let north = RouteGroupingFixtures.namingGroup(
+            id: try XCTUnwrap(UUID(uuidString: "77777777-7777-7777-7777-777777777777")),
+            bearingDegrees: 18,
+            totalDistanceMeters: 5_000,
+            date: day
+        )
+        let northEast = RouteGroupingFixtures.namingGroup(
+            id: try XCTUnwrap(UUID(uuidString: "88888888-8888-8888-8888-888888888888")),
+            bearingDegrees: 27,
+            totalDistanceMeters: 5_000,
+            date: day
+        )
+
+        let names = derivedNames([north, northEast])
+
+        XCTAssertTrue(try derivedName(of: north, in: names).hasSuffix("Loop (N)"), "got \(names)")
+        XCTAssertTrue(try derivedName(of: northEast, in: names).hasSuffix("Loop (NE)"), "got \(names)")
+    }
+
     // MARK: - Derived-name invariants over a generated population
 
     /// Seeded Fisher–Yates — the order-independence property must not draw

@@ -408,8 +408,13 @@ enum RouteGroupingFixtures {
     /// - sparse pairs across different coarse sectors (coarse-token tier);
     /// - triples sharing a coarse sector but split at the sixteen-point
     ///   tier (fine-token tier);
+    /// - straddling quads — one per fine sector that straddles a coarse
+    ///   boundary (issue #158): two members 4.5° either side of the
+    ///   boundary, sharing the fine token but not the coarse one, plus a
+    ///   coarse sibling for each that forces both to the fine tier;
     /// - dense buckets — the bulk — whose members mostly share one fine
-    ///   sector (digest tier), the rest spread over the compass;
+    ///   sector (digest tier), the rest spread over the compass,
+    ///   straddling angles included;
     /// - a sprinkle of user-named groups, some sharing names.
     ///
     /// Bucket distances are chosen so the constructs do not bleed into
@@ -423,16 +428,28 @@ enum RouteGroupingFixtures {
         func nextDate() -> Date {
             epoch.addingTimeInterval(Double(generator.next() % 100_000_000))
         }
-        // Fine-sector-centre-ish angles, every one ≥4° from a compass
-        // boundary, so the fixture/projection scale mismatch (≈0.3°)
-        // cannot flip a sector.
-        let angles: [Double] = [3, 27, 45, 63, 93, 117, 135, 159, 183, 207, 225, 249, 273, 297, 315, 339]
+        // Every angle is ≥4° from a compass boundary, so the
+        // fixture/projection scale mismatch (≈0.3°) cannot flip a
+        // sector. The first sixteen sit near fine-sector centres; the
+        // remaining sixteen sit 4.5° either side of each coarse boundary
+        // (22.5° + 45°·k), inside the fine sector that straddles it —
+        // the issue #158 shape — and the random draws below can land on
+        // any of the thirty-two.
+        let fineCentreAngles: [Double] = [3, 27, 45, 63, 93, 117, 135, 159, 183, 207, 225, 249, 273, 297, 315, 339]
+        let straddlingAngles: [Double] = (0..<8).flatMap { boundaryIndex -> [Double] in
+            let boundary = 22.5 + 45 * Double(boundaryIndex)
+            return [boundary - 4.5, boundary + 4.5]
+        }
+        let angles = fineCentreAngles + straddlingAngles
+        func randomAngle() -> Double {
+            angles[Int(generator.next() % UInt64(angles.count))]
+        }
 
         // Loners: unique distances, bare names, alternating loop/route.
         for index in 0..<24 {
             groups.append(namingGroup(
                 id: uuid(from: &generator),
-                bearingDegrees: angles[Int(generator.next() % 16)],
+                bearingDegrees: randomAngle(),
                 totalDistanceMeters: 9_000 + Double(index) * 1_000,
                 closesLoop: index.isMultiple(of: 2),
                 date: nextDate()
@@ -446,7 +463,7 @@ enum RouteGroupingFixtures {
             for angle in [first, (first + 4) % 16] {
                 groups.append(namingGroup(
                     id: uuid(from: &generator),
-                    bearingDegrees: angles[angle],
+                    bearingDegrees: fineCentreAngles[angle],
                     totalDistanceMeters: bucket,
                     date: nextDate()
                 ))
@@ -467,13 +484,32 @@ enum RouteGroupingFixtures {
             }
         }
 
+        // Straddling quads: one bucket per coarse boundary. The two
+        // straddlers share the fine sector centred on the boundary but
+        // fall in different coarse sectors; the two siblings sit at the
+        // neighbouring coarse-sector centres, so each straddler collides
+        // at the coarse tier with a sibling of its own and both are
+        // driven to the fine tier, where only a digest can separate them.
+        let quadBuckets: [Double] = [1_900, 2_600, 3_700, 4_400, 5_100, 6_900, 8_300, 9_500]
+        for (boundaryIndex, bucket) in quadBuckets.enumerated() {
+            let boundary = 22.5 + 45 * Double(boundaryIndex)
+            for offset in [-4.5, 4.5, -22.5, 22.5] {
+                groups.append(namingGroup(
+                    id: uuid(from: &generator),
+                    bearingDegrees: (boundary + offset).truncatingRemainder(dividingBy: 360),
+                    totalDistanceMeters: bucket,
+                    date: nextDate()
+                ))
+            }
+        }
+
         // User-named sprinkle, with repeated names — their choice.
         let userNames = ["Morning Run", "Home", "Commute", "Long One"]
         let userDistances: [Double] = [1_600, 2_400, 3_200]
         for index in 0..<10 {
             groups.append(namingGroup(
                 id: uuid(from: &generator),
-                bearingDegrees: angles[Int(generator.next() % 16)],
+                bearingDegrees: randomAngle(),
                 totalDistanceMeters: userDistances[index % userDistances.count],
                 date: nextDate(),
                 name: userNames[index % userNames.count]
@@ -485,13 +521,13 @@ enum RouteGroupingFixtures {
         let denseBuckets: [Double] = [1_600, 2_400, 3_200, 4_800, 5_800, 7_200]
         let denseCount = max(0, count - groups.count)
         for bucketIndex in 0..<denseBuckets.count {
-            let dominant = angles[Int(generator.next() % 16)]
+            let dominant = randomAngle()
             let members = denseCount / denseBuckets.count + (bucketIndex < denseCount % denseBuckets.count ? 1 : 0)
             for _ in 0..<members {
                 let isDominant = generator.next() % 100 < 60
                 groups.append(namingGroup(
                     id: uuid(from: &generator),
-                    bearingDegrees: isDominant ? dominant : angles[Int(generator.next() % 16)],
+                    bearingDegrees: isDominant ? dominant : randomAngle(),
                     totalDistanceMeters: denseBuckets[bucketIndex] + generator.symmetric(40),
                     date: nextDate()
                 ))
