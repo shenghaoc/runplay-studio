@@ -188,9 +188,23 @@ extension WorkoutRouteGroup {
     /// Nothing here reads a sort order — the discriminator a group ends
     /// up with is a function of its own persisted data plus which
     /// siblings render the same string, so inserting a group can only
-    /// force a refinement, never a re-ranking. Each member climbs at most
-    /// three tiers, so the loop runs at most four rounds. Internal, not
-    /// private, so a test can feed the resolver synthetic token tables.
+    /// force a refinement, never a re-ranking.
+    ///
+    /// Termination is bounded by the tier budget, not by a fixed number of
+    /// passes: every round escalates at least one member, no member climbs
+    /// past the digest tier (only members below it are collected), and each
+    /// member has at most three climbs in it, so the loop always ends. The
+    /// round count is not structurally capped at the number of tiers,
+    /// because a climb can create a *new* collision with a member that had
+    /// already settled a tier below, which must then climb in a later
+    /// round. The real compass tables cannot produce that — a same-labelled
+    /// fine sector nests inside its coarse sector — but the resolver takes
+    /// whatever tokens it is given, so the tier budget is what guarantees
+    /// the loop halts. Two members that reach the digest tier still
+    /// rendering alike (identical group ids from a manifest that
+    /// deduplication did not repair) stop there and share a name, rather
+    /// than spinning on a set nothing can separate. Internal, not private,
+    /// so a test can feed the resolver synthetic token tables.
     static func resolveCollisions(
         among candidates: [RouteGroupDerivedNameCandidate],
         into details: inout [UUID: RouteGroupDerivedName]

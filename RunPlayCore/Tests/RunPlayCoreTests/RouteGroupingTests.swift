@@ -877,6 +877,91 @@ final class RouteGroupingTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(details[sibling.groupID]).name, "1.2 km Loop (Z)")
     }
 
+    /// The escalation is a fixpoint, not three fixed passes. A member that
+    /// climbs can land on the name of a member that had already settled a
+    /// tier below, which must then climb in a later round. Here `climber`
+    /// and `partner` share coarse "P" and split at the fine tier, where
+    /// `climber` renders "(Q)" — the coarse token `settled` had already
+    /// stopped on. A resolver that ran one pass per tier would leave those
+    /// two sharing "1.2 km Loop (Q)"; the fixpoint drives `climber` on to
+    /// the digest and `settled` to its own fine token. Synthetic tokens,
+    /// because the real tables cannot produce this (a same-labelled fine
+    /// sector nests inside its coarse sector) — the contract belongs to the
+    /// resolver, not to the compass.
+    func testAClimbCreatingANewCollisionEscalatesTheSettledMemberToo() throws {
+        let climber = RouteGroupDerivedNameCandidate(
+            groupID: try XCTUnwrap(UUID(uuidString: "dddddddd-dddd-dddd-dddd-dddddddddddd")),
+            baseName: "1.2 km Loop",
+            coarseToken: "P",
+            fineToken: "Q"
+        )
+        let partner = RouteGroupDerivedNameCandidate(
+            groupID: try XCTUnwrap(UUID(uuidString: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")),
+            baseName: "1.2 km Loop",
+            coarseToken: "P",
+            fineToken: "R"
+        )
+        let settled = RouteGroupDerivedNameCandidate(
+            groupID: try XCTUnwrap(UUID(uuidString: "ffffffff-ffff-ffff-ffff-ffffffffffff")),
+            baseName: "1.2 km Loop",
+            coarseToken: "Q",
+            fineToken: "Z"
+        )
+
+        var details: [UUID: RouteGroupDerivedName] = [:]
+        WorkoutRouteGroup.resolveCollisions(among: [climber, partner, settled], into: &details)
+
+        XCTAssertEqual(details.count, 3)
+        XCTAssertEqual(
+            Set(details.values.map(\.name)).count,
+            3,
+            "names: \(details.values.map(\.name).sorted())"
+        )
+        let climberEntry = try XCTUnwrap(details[climber.groupID])
+        XCTAssertEqual(climberEntry.tier, .digest, "got \(climberEntry.name)")
+        XCTAssertTrue(climberEntry.name.hasPrefix("1.2 km Loop (Q·"), "got \(climberEntry.name)")
+        XCTAssertEqual(try XCTUnwrap(details[partner.groupID]).name, "1.2 km Loop (R)")
+        XCTAssertEqual(
+            try XCTUnwrap(details[settled.groupID]).name,
+            "1.2 km Loop (Z)",
+            "the settled member must climb once the arrival takes its coarse name"
+        )
+    }
+
+    /// The terminal guard. Two candidates carrying the same group id — a
+    /// manifest whose duplicate groups were never repaired — reach the
+    /// digest tier still rendering alike, and nothing below can separate
+    /// them. Escalation collects only members *below* the digest tier, so
+    /// the round produces no climbers and the loop ends, accepting the
+    /// duplicate instead of spinning. Note the failure mode this pins is a
+    /// hang, not an assertion: if the guard were dropped, this test would
+    /// run until the suite times out.
+    func testDuplicateGroupIDsStopAtTheTerminalTier() throws {
+        let shared = try XCTUnwrap(UUID(uuidString: "abababab-abab-abab-abab-abababababab"))
+        let first = RouteGroupDerivedNameCandidate(
+            groupID: shared,
+            baseName: "1.2 km Loop",
+            coarseToken: "NE",
+            fineToken: "NE"
+        )
+        let second = RouteGroupDerivedNameCandidate(
+            groupID: shared,
+            baseName: "1.2 km Loop",
+            coarseToken: "NE",
+            fineToken: "NE"
+        )
+
+        var details: [UUID: RouteGroupDerivedName] = [:]
+        WorkoutRouteGroup.resolveCollisions(among: [first, second], into: &details)
+
+        // One id, one entry: the duplicate collapses onto itself.
+        XCTAssertEqual(details.count, 1)
+        let entry = try XCTUnwrap(details[shared])
+        XCTAssertEqual(entry.tier, .fullID)
+        XCTAssertEqual(entry.digestDiscriminator, shared.uuidString)
+        XCTAssertEqual(entry.name, "1.2 km Loop (NE·\(shared.uuidString))")
+    }
+
     // MARK: - Derived-name invariants over a generated population
 
     /// Seeded Fisher–Yates — the order-independence property must not draw
