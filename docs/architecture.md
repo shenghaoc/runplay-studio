@@ -780,7 +780,36 @@ membership transactionally in the store actor.
 **Naming.** No geocoding — the privacy model forbids it. Unnamed groups
 derive a descriptive default from the representative's own geometry
 ("5.2 km Loop" versus "10.1 km Route" by start-to-finish closure); users
-can rename at any time.
+can rename at any time. Because `%.1f km` rounding widens name collisions
+(1.16 km and 1.24 km both render "1.2 km"), surfaces that list groups
+derive names for the whole set at once through
+`WorkoutRouteGroup.derivedDisplayNames(for:loopClosureDistanceMeters:)`:
+a colliding base name gains an eight-point compass token — the bearing
+from the representative's start point to the centre of its bounding box,
+never start-to-finish, which for a loop is numerical noise — refined to a
+sixteen-point sector, then to a stable digest of the group id ("1.2 km
+Loop (NE·7f3)"), each group at the shortest of 3, 6, 8 hex digits that
+no sibling shares — the abbreviated-object-name rule, as with short git
+object names — until the names differ. A collision is a shared *rendered
+name*, not a shared sector: every member of a set of groups that emit the
+same string escalates together, to a fixpoint. That matters because a
+sixteen-point sector can straddle an eight-point boundary (NNE spans the
+N/NE boundary at 22.5°), so two groups from different coarse sectors can
+render the same fine-tier name; comparing buckets instead of strings let
+them share it. Every discriminator is intrinsic
+to the group (persisted facts or the persisted id): no rank, count, or
+sort order participates, so importing another colliding group — bulk
+historical imports included — never renames groups already named; a
+discriminator lengthens only for the groups that share its prefix, so an
+arrival cannot change a name it does not collide with, and names revert
+when the collision goes away. (The store may re-pick a representative when
+membership changes, which can legitimately move that group's own
+geometry-derived base name and token.) User-assigned names are returned
+verbatim and never participate in disambiguating others, and the
+derivation is a pure function of the input set — input order decides
+nothing. The loop-closure threshold
+(`defaultLoopClosureDistanceMeters`, 100 m) lives on `WorkoutRouteGroup`,
+the single product copy of the number.
 
 Manual controls: rename, merge two routes, remove a run from a route
 (evaluated-nil marker), and pin a representative. A full re-cluster action
