@@ -80,8 +80,13 @@ fi
 # gitignored, so the run still leaves git status --porcelain empty.
 mkdir -p .build-linux/container-home
 
+# Remember whether this is the default full-suite invocation: the floor on
+# tests that actually ran applies to it, and a narrower --filter legitimately
+# runs fewer tests.
+DEFAULT_FULL_SUITE=0
 if [ $# -eq 0 ]; then
   set -- --filter RunPlayCoreTests
+  DEFAULT_FULL_SUITE=1
 fi
 
 # Git refuses to operate in a repository whose ownership it cannot vouch
@@ -114,15 +119,83 @@ GIT_SAFE_ENV=(
 # podman-docker shim gets podman's flags.
 case "${RUNTIME}" in
   docker)
-    exec "${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
+    VIRTUALIZE=("${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
-      -v "$PWD":/src:Z -w /src \
-      "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
+      -v "$PWD":/src:Z -w /src)
     ;;
   podman)
-    exec "${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
+    VIRTUALIZE=("${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
-      -v "$PWD":/src:Z -w /src \
-      "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
+      -v "$PWD":/src:Z -w /src)
     ;;
 esac
+
+# A check that silently skips suites cannot catch corelibs-only breakage.
+# `swift test` exits 0 when a filter matches nothing, so neither the exit
+# code nor a bare "0 failures" can distinguish a full run from a run that
+# executed almost nothing. Assert the arithmetic instead: XCTest's
+# `Executed N tests, with S skipped` counts skipped tests inside N (probed,
+# not inferred: five test methods, three skipped, reports `Executed 5 tests,
+# with 3 tests skipped`), so N - S is the number that genuinely ran.
+#
+# The headless container runs no benchmark bundle, so the only tests that may
+# skip are the env-gated benchmarks: 16 on this suite. 900 sits well below the
+# real ~1,080 executed and far above the ~0 a mass skip would leave, so it
+# fails loudly on the latter and never on a normal count change.
+FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-900}"
+MAX_SKIPPED="${RUNPLAY_LINUX_MAX_SKIPPED:-64}"
+
+LOG=".build-linux/linux-container-verify.log"
+
+echo "==> Linux container check"
+echo "    image:    ${IMAGE}"
+echo "    runtime:  ${RUNTIME}${RUNTIME_BIN:+ (via ${RUNTIME_BIN})}"
+echo "    filter:   $*"
+echo "    log:      ${LOG}"
+
+set +e
+"${VIRTUALIZE[@]}" "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux 2>&1 | tee "${LOG}"
+STATUS="${PIPESTATUS[0]}"
+set -e
+
+if [ "${STATUS}" -ne 0 ]; then
+  echo "==> swift test failed (exit ${STATUS})" >&2
+  exit "${STATUS}"
+fi
+
+# Anchor on the aggregate summary line, not the first block: with a --filter,
+# `swift test` still runs every bundle, and a filtered-out bundle prints
+# `Executed 0 tests` first. XCTest only writes the skip clause when something
+# skipped -- `Executed 36 tests, with 0 failures` with none, `Executed 1096
+# tests, with 16 tests skipped and 0 failures` when some did -- so handle both
+# and treat a missing clause as zero. Largest N is the aggregate.
+SUMMARY="$(grep -oE 'Executed [0-9]+ tests?, with ([0-9]+ tests? skipped and )?[0-9]+ failures' "${LOG}" \
+  | sed -E -e 's/.*Executed ([0-9]+) tests?, with ([0-9]+) tests? skipped and.*/\1 \2/' \
+           -e 's/.*Executed ([0-9]+) tests?, with.*/\1 0/' \
+  | sort -k1,1n | tail -1)"
+if [ -z "${SUMMARY}" ]; then
+  echo "==> could not find an 'Executed N tests, with ... failures' summary in the output" >&2
+  exit 1
+fi
+EXECUTED="${SUMMARY% *}"
+SKIPPED="${SUMMARY#* }"
+RAN="$((EXECUTED - SKIPPED))"
+
+echo "==> Executed ${EXECUTED}, skipped ${SKIPPED}, actually ran ${RAN}"
+
+if [ "${DEFAULT_FULL_SUITE}" -eq 1 ]; then
+  if [ "${RAN}" -lt "${FLOOR}" ]; then
+    echo "==> FAIL: only ${RAN} tests actually ran (floor ${FLOOR})." >&2
+    echo "    A green '0 failures' with almost nothing executed means the suite is being" >&2
+    echo "    skipped -- the gate cannot prove corelibs compatibility this way." >&2
+    exit 1
+  fi
+  if [ "${SKIPPED}" -gt "${MAX_SKIPPED}" ]; then
+    echo "==> FAIL: ${SKIPPED} tests skipped (ceiling ${MAX_SKIPPED})." >&2
+    echo "    Raise RUNPLAY_LINUX_MAX_SKIPPED only with a reason for the new skips." >&2
+    exit 1
+  fi
+  echo "==> PASS: full suite ran ${RAN} tests (>= ${FLOOR}), ${SKIPPED} skipped (<= ${MAX_SKIPPED})"
+else
+  echo "==> filter given: floor not applied (this run is a subset by request)"
+fi

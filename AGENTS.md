@@ -401,6 +401,24 @@ summary line: `swift test` runs every bundle, and the ones with no match print
 `Executed 0 tests`, so the first `Executed` line in the log is usually an
 unrelated zero.
 
+A run must also report how many tests actually executed, not just that nothing
+failed. XCTest counts **skipped tests inside** `Executed N tests`: five test
+methods with three skipped report `Executed 5 tests, with 3 tests skipped`, so
+`N - S` is the number that genuinely ran. `0 failures` alone cannot distinguish
+a full suite from a suite where nearly everything took an `XCTSkip` path, which
+is exactly the shape a corelibs-only breakage takes — `canImport(FoundationXML)`
+is true on Linux, so a mass skip would have to come from a test-side guard, and
+this gate could not see it. Report `Executed N, skipped S, ran N-S`. Report the
+same figures when citing a Linux result in a PR: a bare test count is not
+evidence that those tests ran.
+
+The guard also enforces a floor: the Linux script's default invocation fails
+below `RUNPLAY_LINUX_MIN_EXECUTED` (900) tests that actually ran, and above
+`RUNPLAY_LINUX_MAX_SKIPPED` (64) skipped. The headless container runs no
+benchmark bundle, so the only legitimate skips are the 16 env-gated benchmark
+entries; a jump toward 90% skipped now fails loudly instead of reading as green.
+Both are overridable only with a stated reason.
+
 The smoke-consumer entry is platform-asymmetric, and the ignore rule
 covering it is load-bearing: SwiftPM prunes unused package
 dependencies per-product at build planning but per-package at
