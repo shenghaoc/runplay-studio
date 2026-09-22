@@ -766,12 +766,13 @@ minimums, or removed by the user — never auto re-added). New imports assign
 asynchronously after the commit; an interrupted pass simply leaves its
 workouts pending. Because the pass suspends while matching representatives,
 it merges its route-group result into a re-read manifest snapshot before
-that single write, so a delete committed inside the pass window survives
-(removed workouts drop out of the transplanted groups, and a group left
-empty or pointing at one is repaired or dropped). The route-groups library
-revision bumps once per pass, never per workout; per-item progress lives in
-the Routes view model. Deletion repairs membership transactionally in the
-store actor.
+that single write: deletes and manual decisions committed inside the
+window (rename, re-pin, merge, deliberate removal — never auto re-added)
+win over the pass's stale copies, references to workouts that left the
+library or their group are repaired, and groups left empty are dropped.
+The route-groups library revision bumps once per pass, never per workout;
+per-item progress lives in the Routes view model. Deletion repairs
+membership transactionally in the store actor.
 
 **Naming.** No geocoding — the privacy model forbids it. Unnamed groups
 derive a descriptive default from the representative's own geometry

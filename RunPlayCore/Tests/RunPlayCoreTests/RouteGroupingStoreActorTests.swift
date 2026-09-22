@@ -334,25 +334,10 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         )[0]
         try await actor.addWorkout(newcomer, select: false)
 
-        let gate = LoaderSuspensionGate()
-        await actor.setRouteGroupRepresentativeLoaderSuspension { await gate.suspendLoader() }
-
-        let library: WorkoutLibraryStoreActor = actor
-        let newcomerID = newcomer.id
-        let passTask = Task {
-            try await library.assignRouteGroups(for: [newcomerID])
+        let (result, gate) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.deleteWorkout(id: representativeID, newSelectedID: nil)
         }
-
-        // Park the loader (the pass is suspended and the actor is free),
-        // delete the pinned representative, then let the pass finish.
-        let suspended = await withTestTimeout { await gate.waitForLoaderSuspension() } ?? false
-        XCTAssertTrue(suspended, "assignment pass never reached the representative-loader seam")
         XCTAssertEqual(gate.parkCount, 1)
-
-        try await actor.deleteWorkout(id: representativeID, newSelectedID: nil)
-        gate.release()
-
-        let result = try await passTask.value
         XCTAssertEqual(result.joinedCount, 1)
 
         // Assertions against the manifest reloaded from disk.
@@ -388,5 +373,169 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         // The pass result reports the persisted state, not a pre-filter one.
         XCTAssertEqual(result.groups, manifest.routeGroups)
         XCTAssertEqual(result.assignments, manifest.routeGroupAssignments)
+    }
+
+    /// A rename committed inside the assignment window survives the pass's
+    /// final write: group names are user intent the pass never computes.
+    func testRenameRouteGroupInsideAssignmentWindowSurvivesFinalWrite() async throws {
+        let family = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        try await addAll(family)
+        _ = try await actor.assignRouteGroups(for: family.map(\.id))
+        let groupID = try XCTUnwrap(try store.loadManifest().routeGroups.first?.id)
+
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let (result, _) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.renameRouteGroup(id: groupID, name: "Morning Loop")
+        }
+
+        XCTAssertEqual(result.joinedCount, 1)
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.routeGroups.count, 1)
+        XCTAssertEqual(
+            manifest.routeGroups[0].name, "Morning Loop",
+            "rename committed inside the window is clobbered"
+        )
+        XCTAssertEqual(
+            result.groups.first?.name, "Morning Loop",
+            "the pass result reports the persisted name"
+        )
+    }
+
+    /// A re-pin committed inside the assignment window survives the pass's
+    /// final write, pin and cached summary together.
+    func testPinRouteGroupRepresentativeInsideAssignmentWindowSurvivesFinalWrite() async throws {
+        let family = loopRuns(sideMeters: 1_250, count: 3, latitude: 37.0)
+        try await addAll(family)
+        _ = try await actor.assignRouteGroups(for: family.map(\.id))
+        let groupID = try XCTUnwrap(try store.loadManifest().routeGroups.first?.id)
+        // family[0] is the derived representative; the in-window pin
+        // targets a different member.
+
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let (result, _) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.pinRouteGroupRepresentative(groupID: groupID, workoutID: family[1].id)
+        }
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.routeGroups.count, 1)
+        XCTAssertEqual(
+            manifest.routeGroups[0].pinnedRepresentativeWorkoutID, family[1].id,
+            "pin committed inside the window is clobbered"
+        )
+        XCTAssertEqual(manifest.routeGroups[0].representativeSummary?.workoutID, family[1].id)
+        XCTAssertEqual(result.groups.first?.pinnedRepresentativeWorkoutID, family[1].id)
+    }
+
+    /// A merge committed inside the assignment window survives the pass's
+    /// final write: the merged-away source group is not resurrected by the
+    /// pass's pre-await group list. The pass-matched group is the merge
+    /// target here; the source is the other family's group.
+    func testMergeRouteGroupsInsideAssignmentWindowSurvivesFinalWrite() async throws {
+        let familyA = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        let familyB = loopRuns(sideMeters: 1_250, count: 2, latitude: 38.5)
+        try await addAll(familyA + familyB)
+        _ = try await actor.assignRouteGroups(for: (familyA + familyB).map(\.id))
+
+        let manifestBefore = try store.loadManifest()
+        XCTAssertEqual(manifestBefore.routeGroups.count, 2)
+        let targetID = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyA[0].id))
+        let sourceID = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyB[0].id))
+
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let (result, _) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.mergeRouteGroups(sourceID: sourceID, into: targetID)
+        }
+
+        XCTAssertEqual(result.joinedCount, 1)
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(
+            manifest.routeGroups.count, 1,
+            "merged-away source group resurrected by the pass's pre-await list"
+        )
+        XCTAssertEqual(manifest.routeGroups[0].id, targetID)
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: targetID).count, 5)
+        XCTAssertFalse(manifest.routeGroupAssignments.contains { $0.groupID == sourceID })
+    }
+
+    /// A deliberate removal committed inside the assignment window is not
+    /// auto re-added: the user's evaluated-nil marker ("removed by the
+    /// user — never auto re-added", docs/architecture.md) survives the
+    /// pass's computed record for the same workout. Reachable when the
+    /// pass re-evaluates a stale-version record the user removed mid-pass.
+    func testRemoveWorkoutFromRouteGroupInsideAssignmentWindowIsNotReAdded() async throws {
+        let family = loopRuns(sideMeters: 1_250, count: 3, latitude: 37.0)
+        try await addAll(family)
+        _ = try await actor.assignRouteGroups(for: family.map(\.id))
+        let groupID = try XCTUnwrap(try store.loadManifest().routeGroups.first?.id)
+
+        // Age one member's record so a later pass re-evaluates it.
+        let removedID = family[1].id
+        var aged = try store.loadManifest()
+        let recordIndex = try XCTUnwrap(
+            aged.routeGroupAssignments.firstIndex { $0.workoutID == removedID }
+        )
+        aged.routeGroupAssignments[recordIndex] = WorkoutRouteGroupAssignment(
+            workoutID: removedID,
+            groupID: aged.routeGroupAssignments[recordIndex].groupID,
+            algorithmVersion: aged.routeGroupAssignments[recordIndex].algorithmVersion - 1
+        )
+        try store.saveManifest(aged)
+
+        let (result, _) = try await runAssignmentPass(for: removedID) {
+            try await actor.removeWorkoutFromRouteGroup(workoutID: removedID)
+        }
+
+        let manifest = try store.loadManifest()
+        XCTAssertNil(
+            manifest.routeGroupID(forWorkoutID: removedID),
+            "deliberate removal auto re-added by the pass"
+        )
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: groupID).count, 2)
+        XCTAssertNil(
+            result.assignments.first { $0.workoutID == removedID }?.groupID,
+            "the pass result reports the persisted nil marker"
+        )
+    }
+
+    /// Runs one assignment pass whose representative loader is parked on a
+    /// suspension gate, executes `interleave` while the pass is suspended
+    /// and the actor is free, then releases the loader and awaits the pass
+    /// result. Fails the test (rather than hanging) if the pass never
+    /// reaches the seam.
+    @discardableResult
+    private func runAssignmentPass(
+        for workoutID: UUID,
+        interleaving interleave: () async throws -> Void
+    ) async throws -> (
+        result: WorkoutLibraryStoreActor.RouteGroupAssignmentPassResult,
+        gate: LoaderSuspensionGate
+    ) {
+        let gate = LoaderSuspensionGate()
+        await actor.setRouteGroupRepresentativeLoaderSuspension { await gate.suspendLoader() }
+
+        let library: WorkoutLibraryStoreActor = actor
+        let passTask = Task {
+            try await library.assignRouteGroups(for: [workoutID])
+        }
+        defer { gate.release() }
+
+        let suspended = await withTestTimeout { await gate.waitForLoaderSuspension() } ?? false
+        XCTAssertTrue(suspended, "assignment pass never reached the representative-loader seam")
+        try await interleave()
+        gate.release()
+        let result = try await passTask.value
+        return (result, gate)
     }
 }
