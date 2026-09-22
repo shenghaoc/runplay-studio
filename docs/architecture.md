@@ -764,9 +764,18 @@ picks it up (the records-backfill argument); a present record with a `nil`
 group ID means evaluated and deliberately ungrouped (below participation
 minimums, or removed by the user — never auto re-added). New imports assign
 asynchronously after the commit; an interrupted pass simply leaves its
-workouts pending. The route-groups library revision bumps once per pass,
-never per workout; per-item progress lives in the Routes view model.
-Deletion repairs membership transactionally in the store actor.
+workouts pending. Because the pass suspends while matching representatives,
+it merges its route-group result into a re-read manifest snapshot before
+that single write: deletes and manual decisions committed inside the
+window (rename, re-pin, merge, deliberate removal — never auto re-added)
+win over the pass's stale copies, groups written by another overlapping
+pass survive the last write, a group removed inside the window is not
+resurrected — a workout the pass matched into it falls back to the
+backlog for the next pass — references to workouts that left the
+library or their group are repaired, and groups left empty are dropped.
+The route-groups library revision bumps once per pass, never per workout;
+per-item progress lives in the Routes view model. Deletion repairs
+membership transactionally in the store actor.
 
 **Naming.** No geocoding — the privacy model forbids it. Unnamed groups
 derive a descriptive default from the representative's own geometry

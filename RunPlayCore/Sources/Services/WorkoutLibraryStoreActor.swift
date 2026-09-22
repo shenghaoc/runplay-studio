@@ -58,6 +58,20 @@ public actor WorkoutLibraryStoreActor {
 
     private let store: WorkoutLibraryStoring
 
+    /// Deterministic test seam for the representative loader used by
+    /// `assignRouteGroups`: when non-`nil`, awaited inside the loader after
+    /// each representative snapshot load, opening the pass's suspension
+    /// window so tests can interleave other actor work (a delete) before
+    /// the manifest write. Production never sets it; internal so it is not
+    /// part of the public API.
+    private var routeGroupRepresentativeLoaderSuspension: (@Sendable () async -> Void)?
+
+    /// Installs the representative-loader suspension test seam. Internal
+    /// test access to the stored property above; production never calls it.
+    func setRouteGroupRepresentativeLoaderSuspension(_ hook: (@Sendable () async -> Void)?) {
+        routeGroupRepresentativeLoaderSuspension = hook
+    }
+
     /// Create a store actor backed by the given storage implementation.
     ///
     /// - Parameter store: The low-level storage implementation (injectable for testing).
@@ -928,16 +942,26 @@ public actor WorkoutLibraryStoreActor {
 
 
     /// Final totals for one incremental route-group assignment pass.
+    ///
+    /// `groups` and `assignments` mirror the manifest state the pass
+    /// persisted, after merging into the re-read snapshot. The counts
+    /// describe the pass itself, not the write: a workout the pass matched
+    /// or could not load may have left the library — or had its record
+    /// re-decided — while the pass was suspended, in which case no record
+    /// is written for it but it is still counted.
     public struct RouteGroupAssignmentPassResult: Sendable, Equatable {
         /// Complete group list after the pass.
         public let groups: [WorkoutRouteGroup]
         /// Complete assignment list after the pass (not just the new ones).
         public let assignments: [WorkoutRouteGroupAssignment]
-        /// New workouts that joined an existing group.
+        /// New workouts that joined an existing group (pass computation;
+        /// not all may have been persisted — see the type discussion).
         public let joinedCount: Int
-        /// New workouts that founded a new group.
+        /// New workouts that founded a new group (pass computation; not
+        /// all may have been persisted — see the type discussion).
         public let createdCount: Int
-        /// Workouts that could not be loaded and stay unassigned.
+        /// Workouts that could not be loaded in the pass's pre-await scan
+        /// and stay unassigned.
         public let failedCount: Int
 
         public init(
@@ -985,16 +1009,24 @@ public actor WorkoutLibraryStoreActor {
     /// produced by the current algorithm version are skipped, so re-running
     /// the pass is idempotent. The manifest is written once at the end of
     /// the pass — a cancelled or crashed pass leaves every one of its
-    /// workouts unassigned, and the next pass retries them. Cancellation is
-    /// cooperative (task cancellation is checked between workouts and inside
-    /// matching) and surfaces as `CancellationError`.
+    /// workouts unassigned, and the next pass retries them. The write merges
+    /// the pass's route-group output into a re-read manifest snapshot, so
+    /// changes committed while the pass was suspended survive it: deletes,
+    /// manual decisions (rename, re-pin, merge, deliberate removal), and
+    /// groups written by an overlapping pass win over the pass's staler
+    /// computation, and a group another writer removed inside the window is
+    /// not resurrected — a workout the pass matched into it falls back to
+    /// the backlog marker and is re-assigned by the next pass. Cancellation
+    /// is cooperative (task cancellation is checked between workouts and
+    /// inside matching) and surfaces as `CancellationError`.
     public func assignRouteGroups(
         for workoutIDs: [UUID],
         policy: RouteGroupingPolicy = .default,
         progress: (@Sendable (RouteGroupingPassProgress) -> Void)? = nil
     ) async throws -> RouteGroupAssignmentPassResult {
         try Task.checkCancellation()
-        var manifest = try loadOrCreateManifest()
+        let manifest = try loadOrCreateManifest()
+        let representativeLoaderSuspension = routeGroupRepresentativeLoaderSuspension
 
         // Skip workouts that already carry a current-version record; the
         // pass only ever touches the nil-marker backlog and fresh imports.
@@ -1033,21 +1065,76 @@ public actor WorkoutLibraryStoreActor {
             policy: policy,
             progress: progress,
             isCancelled: { Task.isCancelled },
-            representativeLoader: { [store] workoutID in
-                try store.loadWorkout(id: workoutID)
+            representativeLoader: { [store, representativeLoaderSuspension] workoutID in
+                let workout = try store.loadWorkout(id: workoutID)
+                await representativeLoaderSuspension?()
+                return workout
             }
         )
 
-        manifest.routeGroups = result.groups
-        for assignment in result.assignments {
-            manifest.setRouteGroupAssignment(assignment)
+        // The matching pass ran outside actor isolation and may have
+        // suspended; other actor work — a delete, a manual route-group
+        // mutator, or another overlapping assignment pass — can have
+        // committed a newer manifest inside that window. Writing the
+        // pre-await copy back would clobber it, so merge the pass's
+        // route-group output into a re-read snapshot instead. The re-read
+        // group list is the base and the pass's groups are upserted by id,
+        // so groups only another writer created survive. For a group the
+        // pass saw, the re-read copy's user intent wins — the name and the
+        // pin (with the pin's summary, a consistent pair) come from it —
+        // while the pass's own derived summary is deliberately kept for
+        // unpinned groups: it was computed over the same membership, and
+        // the reconcile step below repairs it if it points at a non-member.
+        // A record already re-decided at the current version — a deliberate
+        // removal's evaluated-nil marker, a merge's moved members, another
+        // pass's write — is not overwritten by the pass's staler
+        // computation.
+        var current = try loadOrCreateManifest()
+        let survivingIDs = Set(current.workoutIDs)
+        let currentGroupIDs = Set(current.routeGroups.map(\.id))
+        let passGroupsByID = Dictionary(
+            result.groups.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        current.routeGroups = current.routeGroups.map { fresh in
+            guard var passGroup = passGroupsByID[fresh.id] else { return fresh }
+            passGroup.name = fresh.name
+            passGroup.pinnedRepresentativeWorkoutID = fresh.pinnedRepresentativeWorkoutID
+            if fresh.pinnedRepresentativeWorkoutID != nil {
+                passGroup.representativeSummary = fresh.representativeSummary
+            }
+            return passGroup
         }
-        manifest.migrateToCurrentVersionIfNeeded()
-        try store.saveManifest(manifest)
+        // Only groups the pass created (absent pre-await too) keep the
+        // pass's copy as their sole description. A group that existed
+        // pre-await and is gone from the re-read copy was removed by
+        // another writer inside the window — a merge moved its members
+        // away, or it emptied out — and must not be resurrected: a workout
+        // the pass matched into it keeps a record referencing the missing
+        // group, which `migrateToCurrentVersionIfNeeded()` drops to record
+        // absence — the backlog marker — so the next pass re-matches it.
+        let preAwaitGroupIDs = Set(manifest.routeGroups.map(\.id))
+        var appendedGroupIDs = Set<UUID>()
+        for group in result.groups
+        where !currentGroupIDs.contains(group.id) && !preAwaitGroupIDs.contains(group.id) {
+            guard appendedGroupIDs.insert(group.id).inserted else { continue }
+            current.routeGroups.append(group)
+        }
+        for assignment in result.assignments {
+            guard survivingIDs.contains(assignment.workoutID) else { continue }
+            if let freshRecord = current.routeGroupAssignment(forWorkoutID: assignment.workoutID),
+               freshRecord.algorithmVersion == policy.algorithmVersion {
+                continue
+            }
+            current.setRouteGroupAssignment(assignment)
+        }
+        reconcileTransplantedRouteGroups(in: &current)
+        current.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(current)
 
         return RouteGroupAssignmentPassResult(
-            groups: manifest.routeGroups,
-            assignments: manifest.routeGroupAssignments,
+            groups: current.routeGroups,
+            assignments: current.routeGroupAssignments,
             joinedCount: result.joinedCount,
             createdCount: result.createdCount,
             failedCount: failed
@@ -1248,6 +1335,47 @@ public actor WorkoutLibraryStoreActor {
         )
         manifest.migrateToCurrentVersionIfNeeded()
         try store.saveManifest(manifest)
+    }
+
+    /// Reconciles route-group state transplanted from an assignment pass
+    /// that ran across a suspension against the manifest's final
+    /// assignment set: records of workouts that left the library are
+    /// dropped, a group with no members left is removed, and a pin or
+    /// cached representative summary referencing a workout that is not a
+    /// member — deleted, or deliberately ungrouped while the pass was
+    /// suspended — is repaired with `bestSummary` over the surviving
+    /// members, the same primitives `deleteWorkout`'s repair path uses.
+    private func reconcileTransplantedRouteGroups(
+        in manifest: inout WorkoutLibraryManifest
+    ) {
+        let presentIDs = Set(manifest.workoutIDs)
+        manifest.routeGroupAssignments.removeAll { !presentIDs.contains($0.workoutID) }
+        var memberSetsByGroupID: [UUID: Set<UUID>] = [:]
+        memberSetsByGroupID.reserveCapacity(manifest.routeGroups.count)
+        for assignment in manifest.routeGroupAssignments {
+            guard let groupID = assignment.groupID else { continue }
+            memberSetsByGroupID[groupID, default: []].insert(assignment.workoutID)
+        }
+        var survivingGroups: [WorkoutRouteGroup] = []
+        survivingGroups.reserveCapacity(manifest.routeGroups.count)
+        for group in manifest.routeGroups {
+            guard let members = memberSetsByGroupID[group.id], !members.isEmpty else { continue }
+            var reconciled = group
+            if let pinned = reconciled.pinnedRepresentativeWorkoutID,
+               !members.contains(pinned) {
+                reconciled.pinnedRepresentativeWorkoutID = nil
+            }
+            if let summary = reconciled.representativeSummary,
+               !members.contains(summary.workoutID) {
+                reconciled.representativeSummary = bestSummary(
+                    amongWorkoutIDs: manifest.workoutIDs.filter { members.contains($0) },
+                    in: manifest
+                )
+            }
+            survivingGroups.append(reconciled)
+        }
+        manifest.routeGroups = survivingGroups
+        manifest.sortRouteGroupAssignmentsDeterministically()
     }
 
     /// Derives the best representative summary among the given member IDs by
