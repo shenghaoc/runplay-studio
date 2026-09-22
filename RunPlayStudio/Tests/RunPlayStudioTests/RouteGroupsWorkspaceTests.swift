@@ -311,6 +311,40 @@ final class RouteGroupsWorkspaceTests: XCTestCase {
         )
     }
 
+    // MARK: - Heatmap picker follows the assignment pass
+
+    /// The Personal Heatmap route picker reads its groups from the heatmap
+    /// view model, which learns about organization changes only through
+    /// `applyOrganization`. The post-import assignment pass (and a full
+    /// re-cluster) publish their result through `applyRouteGroupPassResult`,
+    /// so a group created in this session must reach the picker without a
+    /// relaunch — found by the #159 manual pass, where a fresh 317-run import
+    /// left the picker at "Any Route" alone while the All Runs filter listed
+    /// fifteen groups.
+    func testAssignmentPassResultReachesTheHeatmapPicker() {
+        let appState = AppState(storeActor: nil, importService: nil)
+        let group = RouteGroupsWorkspaceFixtures.namingGroup(bearingDegrees: 45, totalDistanceMeters: 1_200)
+        let workoutID = UUID()
+
+        appState.applyRouteGroupPassResult(
+            groups: [group],
+            assignments: [
+                WorkoutRouteGroupAssignment(workoutID: workoutID, groupID: group.id, algorithmVersion: 1)
+            ]
+        )
+
+        XCTAssertEqual(
+            appState.personalHeatmap.routeGroups.map(\.id),
+            [group.id],
+            "the heatmap picker must offer a group the assignment pass just created"
+        )
+        XCTAssertEqual(
+            appState.workoutLibrary.routeGroups.map(\.id),
+            [group.id],
+            "the library filter already follows the pass; the two pickers must agree"
+        )
+    }
+
     // MARK: - Layout budget
 
     /// The Routes split panes plus the navigation sidebar have to fit inside
