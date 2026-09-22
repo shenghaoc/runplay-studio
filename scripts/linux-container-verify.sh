@@ -138,12 +138,30 @@ esac
 # not inferred: five test methods, three skipped, reports `Executed 5 tests,
 # with 3 tests skipped`), so N - S is the number that genuinely ran.
 #
-# The headless container runs no benchmark bundle, so the only tests that may
-# skip are the env-gated benchmarks: 16 on this suite. 900 sits well below the
-# real ~1,080 executed and far above the ~0 a mass skip would leave, so it
-# fails loudly on the latter and never on a normal count change.
+# FLOOR provenance: 900, against 1080 actually ran on current main
+# (Executed 1096, skipped 16, non-root, swift:6.4.0-resolute). It is a
+# loose floor whose job is only to catch a collapse to near-zero, which is
+# what a mass `XCTSkip` looks like. It does not start to bite until
+# RAN approx 150; the real lead time is ~2x. Keep the proportion by raising
+# it in the PR that adds a batch of Core tests once RAN exceeds FLOOR + 200
+# (i.e. at RAN > 1100 today), and never lower it to accommodate skips.
 FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-900}"
-MAX_SKIPPED="${RUNPLAY_LINUX_MAX_SKIPPED:-64}"
+
+# SKIP REASONS ARE ALLOWLISTED, NOT COUNTED. A ceiling on the skip count
+# (`64`) was the first design and was rejected: it does not catch
+# mass-skipping (90 skips is under any bound loose enough to survive ordinary
+# drift), and it rots as Core grows. The allowlist below does catch it and
+# names the gap that tripped instead of just reporting that a number moved.
+#
+# Every reason observed in this container, all of which the pattern accepts:
+#   RUNPLAY_BENCHMARK=1 / RUNPLAY_PRODUCTION_AB=1 / RUNPLAY_CORE_HOTSPOT_PROFILE=1
+#   RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1 / RUNPLAY_HEATMAP_PROFILE=1
+#   RUNPLAY_ROUTE_GROUPING_BENCHMARK=1 / RUNPLAY_ROUTE_GROUPING_MEASURE=1
+#   root bypasses POSIX permission bits ... (testFailedWorkoutWritePreservesPriorValidData)
+#
+# To add a reason, put the newly-skipping test and its reason in the PR that
+# introduces it; this check failing is the prompt to do that deliberately.
+ALLOWED_SKIP_PATTERN='RUNPLAY_[A-Z_]+=1|root bypasses POSIX permission bits'
 
 LOG=".build-linux/linux-container-verify.log"
 
@@ -183,19 +201,34 @@ RAN="$((EXECUTED - SKIPPED))"
 
 echo "==> Executed ${EXECUTED}, skipped ${SKIPPED}, actually ran ${RAN}"
 
+# Secondary guard: a collapse in the count of tests that ran. This does not
+# rot in the sense the ceiling did -- a rising Core count only makes it more
+# permissive, never falsely failing -- so it costs nothing to keep.
 if [ "${DEFAULT_FULL_SUITE}" -eq 1 ]; then
   if [ "${RAN}" -lt "${FLOOR}" ]; then
     echo "==> FAIL: only ${RAN} tests actually ran (floor ${FLOOR})." >&2
-    echo "    A green '0 failures' with almost nothing executed means the suite is being" >&2
-    echo "    skipped -- the gate cannot prove corelibs compatibility this way." >&2
+    echo "    A drop in executed tests is a signal to investigate, not a number to raise." >&2
+    echo "    ${FLOOR} is provenance-documented: the executed count on current main under the" >&2
+    echo "    non-root container user, loose by design. Identify which tests stopped running" >&2
+    echo "    and why before touching it." >&2
     exit 1
   fi
-  if [ "${SKIPPED}" -gt "${MAX_SKIPPED}" ]; then
-    echo "==> FAIL: ${SKIPPED} tests skipped (ceiling ${MAX_SKIPPED})." >&2
-    echo "    Raise RUNPLAY_LINUX_MAX_SKIPPED only with a reason for the new skips." >&2
+
+  # Primary guard, and the one that does not rot: every skip name must be a
+  # reason this repo accepts. Mass-skipping is caught by name, and the failure
+  # names the offending reason instead of only reporting that a count moved.
+  UNKNOWN_SKIPS="$(grep -oE 'Test skipped: .*' "${LOG}" \
+    | sed -E 's/^Test skipped: (required false value but got true - )?//' \
+    | grep -vE "${ALLOWED_SKIP_PATTERN}" | sort -u || true)"
+  if [ -n "${UNKNOWN_SKIPS}" ]; then
+    echo "==> FAIL: ${SKIPPED} tests skipped, and at least one reason is not on the allowlist:" >&2
+    printf '    %s\n' "${UNKNOWN_SKIPS}" >&2
+    echo "    A RISE in skips is a signal to investigate. If the new skip is correct, add its" >&2
+    echo "    reason to ALLOWED_SKIP_PATTERN in the PR that introduces the skipping test," >&2
+    echo "    stating why -- do not widen the pattern to silence this." >&2
     exit 1
   fi
-  echo "==> PASS: full suite ran ${RAN} tests (>= ${FLOOR}), ${SKIPPED} skipped (<= ${MAX_SKIPPED})"
+  echo "==> PASS: full suite ran ${RAN} tests (>= ${FLOOR}); ${SKIPPED} skipped, every reason allowlisted"
 else
   echo "==> filter given: floor not applied (this run is a subset by request)"
 fi

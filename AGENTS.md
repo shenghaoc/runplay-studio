@@ -412,13 +412,28 @@ this gate could not see it. Report `Executed N, skipped S, ran N-S`. Report the
 same figures when citing a Linux result in a PR: a bare test count is not
 evidence that those tests ran.
 
-The guard also enforces a floor: the Linux script's default invocation fails
-below `RUNPLAY_LINUX_MIN_EXECUTED` (900) tests that actually ran, and above
-`RUNPLAY_LINUX_MAX_SKIPPED` (64) skipped. The legitimate skips are the
-env-gated benchmark entries plus, when the container runs as root, the
-permission-injection test `testFailedWorkoutWritePreservesPriorValidData`
-(its `0o555` failure injection cannot work under `CAP_DAC_OVERRIDE`). Both
-are overridable only with a stated reason.
+The Linux gate then keys on **skip reasons, not counts**. A count ceiling was
+the first design and was rejected: it cannot catch mass-skipping (90 skips sits
+under any bound loose enough to survive ordinary drift that way) and it rots as
+Core grows. Instead every skip reason in the run must match an allowlist in
+`scripts/linux-container-verify.sh` (`ALLOWED_SKIP_PATTERN`): the `RUNPLAY_*=1`
+benchmark/profile switches and the root-only `testFailedWorkoutWritePreservesPriorValidData`
+permission case. A reason outside that set fails the gate **and names the reason**,
+so a mass skip cannot pass and the gap that tripped it is reported rather than a
+bare number moving.
+
+A **secondary floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 900) guards a collapse in the
+count that actually ran. Provenance: 900 against 1,080 executed on current `main`
+under the non-root container user (`Executed 1096, skipped 16`), loose by design —
+it only needs to catch a fall toward zero, which is what mass-skipping looks like.
+It never falsely fails as Core grows, so it does not rot; at most it stops biting.
+
+**A failure means investigate, never bump.** A *drop* in executed tests or a
+*rise* in skips is a signal that something changed on the test side; find out
+what and why first. Raising the floor or adding a reason to the allowlist is a
+deliberate act that belongs in the PR introducing the newly-skipping tests, with
+the reason stated there — not in a drive-by edit that restores the original
+problem.
 
 Expect the skip count to differ between CI and a local run, and do not treat
 one as the other's error. CI's Linux job runs the container as **root** (it
