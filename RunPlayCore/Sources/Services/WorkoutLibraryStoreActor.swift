@@ -1011,11 +1011,12 @@ public actor WorkoutLibraryStoreActor {
     /// the pass — a cancelled or crashed pass leaves every one of its
     /// workouts unassigned, and the next pass retries them. The write merges
     /// the pass's route-group output into a re-read manifest snapshot, so
-    /// changes committed while the pass was suspended survive it: deletes
-    /// and manual decisions (rename, re-pin, merge, deliberate removal)
-    /// win over the pass's staler computation. Cancellation is cooperative
-    /// (task cancellation is checked between workouts and inside matching)
-    /// and surfaces as `CancellationError`.
+    /// changes committed while the pass was suspended survive it: deletes,
+    /// manual decisions (rename, re-pin, merge, deliberate removal), and
+    /// groups written by an overlapping pass win over the pass's staler
+    /// computation. Cancellation is cooperative (task cancellation is
+    /// checked between workouts and inside matching) and surfaces as
+    /// `CancellationError`.
     public func assignRouteGroups(
         for workoutIDs: [UUID],
         policy: RouteGroupingPolicy = .default,
@@ -1070,29 +1071,46 @@ public actor WorkoutLibraryStoreActor {
         )
 
         // The matching pass ran outside actor isolation and may have
-        // suspended; other actor work — a delete or one of the manual
-        // route-group mutators — can have committed a newer manifest inside
-        // that window. Writing the pre-await copy back would clobber it, so
-        // merge the pass's route-group output into a re-read snapshot
-        // instead. The re-read copy's user intent wins: group names and
-        // pinned representatives (with the pin's summary) come from it, and
-        // a record already re-decided at the current version — a deliberate
-        // removal's evaluated-nil marker, a merge's moved members — is not
-        // overwritten by the pass's staler computation.
+        // suspended; other actor work — a delete, a manual route-group
+        // mutator, or another overlapping assignment pass — can have
+        // committed a newer manifest inside that window. Writing the
+        // pre-await copy back would clobber it, so merge the pass's
+        // route-group output into a re-read snapshot instead. The re-read
+        // group list is the base and the pass's groups are upserted by id,
+        // so groups only another writer created survive. For a group the
+        // pass saw, the re-read copy's user intent wins — the name and the
+        // pin (with the pin's summary, a consistent pair) come from it —
+        // while the pass's own derived summary is deliberately kept for
+        // unpinned groups: it was computed over the same membership, and
+        // the reconcile step below repairs it if it points at a non-member.
+        // A record already re-decided at the current version — a deliberate
+        // removal's evaluated-nil marker, a merge's moved members, another
+        // pass's write — is not overwritten by the pass's staler
+        // computation.
         var current = try loadOrCreateManifest()
         let survivingIDs = Set(current.workoutIDs)
-        let freshGroupsByID = Dictionary(
-            uniqueKeysWithValues: current.routeGroups.map { ($0.id, $0) }
+        let currentGroupIDs = Set(current.routeGroups.map(\.id))
+        let passGroupsByID = Dictionary(
+            result.groups.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
-        current.routeGroups = result.groups.map { group in
-            guard let fresh = freshGroupsByID[group.id] else { return group }
-            var merged = group
-            merged.name = fresh.name
-            merged.pinnedRepresentativeWorkoutID = fresh.pinnedRepresentativeWorkoutID
+        current.routeGroups = current.routeGroups.map { fresh in
+            guard var passGroup = passGroupsByID[fresh.id] else { return fresh }
+            passGroup.name = fresh.name
+            passGroup.pinnedRepresentativeWorkoutID = fresh.pinnedRepresentativeWorkoutID
             if fresh.pinnedRepresentativeWorkoutID != nil {
-                merged.representativeSummary = fresh.representativeSummary
+                passGroup.representativeSummary = fresh.representativeSummary
             }
-            return merged
+            return passGroup
+        }
+        // Groups only the pass knows about — created during the pass, or a
+        // group whose re-read copy vanished inside the window (a merge
+        // source) — keep the pass's copy as their sole description; the
+        // reconcile step drops any that ends up with no members.
+        var appendedGroupIDs = Set<UUID>()
+        for group in result.groups where !currentGroupIDs.contains(group.id) {
+            guard appendedGroupIDs.insert(group.id).inserted else { continue }
+            current.routeGroups.append(group)
         }
         for assignment in result.assignments {
             guard survivingIDs.contains(assignment.workoutID) else { continue }

@@ -509,6 +509,47 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         )
     }
 
+    /// Two assignment passes can overlap: one fires un-awaited after every
+    /// import commit, and both hop off the actor at the matching pass.
+    /// Whichever resumes last must not replace the group list with its own
+    /// pre-await output — groups the other pass created survive, and their
+    /// member records (already current-version) are not re-decided.
+    func testOverlappingAssignmentPassesKeepEachOthersGroups() async throws {
+        let family = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        try await addAll(family)
+        _ = try await actor.assignRouteGroups(for: family.map(\.id))
+        let familyGroupID = try XCTUnwrap(try store.loadManifest().routeGroups.first?.id)
+
+        // newcomer1 joins the family route (its pass parks on the
+        // representative load); newcomer2 is a distinct route family whose
+        // own pass creates a new group and completes while pass 1 parks.
+        let newcomer1 = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        let newcomer2 = loopRuns(
+            sideMeters: 900, count: 1, latitude: 40.5, firstDayOffset: 6
+        )[0]
+        try await actor.addWorkout(newcomer1, select: false)
+        try await actor.addWorkout(newcomer2, select: false)
+
+        let (result1, _) = try await runAssignmentPass(for: newcomer1.id) {
+            _ = try await actor.assignRouteGroups(for: [newcomer2.id])
+        }
+
+        XCTAssertEqual(result1.joinedCount, 1)
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(
+            manifest.routeGroups.count, 2,
+            "group created by the overlapping pass is discarded by the last write"
+        )
+        XCTAssertNotNil(
+            manifest.routeGroupID(forWorkoutID: newcomer2.id),
+            "overlapping pass's assignment discarded"
+        )
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: familyGroupID).count, 3)
+        XCTAssertEqual(result1.groups, manifest.routeGroups)
+    }
+
     /// Runs one assignment pass whose representative loader is parked on a
     /// suspension gate, executes `interleave` while the pass is suspended
     /// and the actor is free, then releases the loader and awaits the pass
