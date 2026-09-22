@@ -72,6 +72,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Packaging tooling syntax
         run: |
+          # linux-container-verify is not packaging tooling, but the same
+          # syntax gate keeps the local-verification entrypoint from rotting.
+          bash -n scripts/linux-container-verify.sh
           bash -n scripts/lib/release-common.sh
           bash -n scripts/assemble-app-bundle.sh
           bash -n scripts/package-demo.sh
@@ -157,8 +160,11 @@ jobs:
       run:
         shell: bash
     # Single source of truth for the Linux Swift toolchain. Its exact text
-    # is parsed by scripts/check-toolchain-parity.sh (and grepped by the
-    # AGENTS.md local-verification recipe), so do not reformat this line;
+    # is parsed by scripts/check-toolchain-parity.sh, and
+    # scripts/linux-container-verify.sh — the local-verification
+    # entrypoint the AGENTS.md recipe invokes — reads this line by its
+    # `container:` key (then checks the @sha256: shape), so do not
+    # reformat this line;
     # keep the shape `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
     # Bumping the image means editing this line and refreshing the digest
     # in the same change.

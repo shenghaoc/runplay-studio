@@ -427,17 +427,25 @@ official Swift image pinned by the single `container:` line in
 [.github/workflows/ci.yml](.github/workflows/ci.yml), and local
 verification must use that exact image, read from the same pin so the
 two cannot drift (currently `swift:6.4.0-resolute@sha256:bb6e5d…a91dc`,
-an Ubuntu 26.04 userspace). The grep below is anchored on `container:`
-and requires the digit-plus-digest image shape, so it cannot resolve the
-placeholder text inside a comment:
+an Ubuntu 26.04 userspace). The invocation is single-sourced in
+[scripts/linux-container-verify.sh](scripts/linux-container-verify.sh),
+which reads the pin by its `container:` key (the shape-documenting
+comment above the line matches a plain `swift:` grep — the same reason
+`scripts/check-toolchain-parity.sh` anchors on the key) and fails fast
+if the line moves:
 
 ```bash
-IMAGE="$(grep -oE 'container:[[:space:]]*swift:[0-9][^[:space:]]*@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1 | sed -E 's/^container:[[:space:]]*//')"
-docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/src -w /src \
-  "${IMAGE}" swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors --scratch-path .build-linux
+./scripts/linux-container-verify.sh                                # full RunPlayCoreTests
+./scripts/linux-container-verify.sh --filter RouteGroupingTests     # a narrower filter
+./scripts/linux-container-verify.sh podman ...                      # force the runtime
 ```
 
-Two properties are mandatory:
+Without a forced runtime the script probes the candidates rather than
+trusting their names: a `docker` binary that reports podman (Fedora's
+`podman-docker` shim) is driven with podman's flags, because the docker
+branch omits `--userns=keep-id` and the shim is rootless podman. The
+script always runs `swift test` warning-clean with the scratch tree at
+`.build-linux`, and preserves two mandatory properties:
 
 1. The container user must be non-root and must own the mounted sources.
    The default container user is root, and root bypasses POSIX permission
@@ -446,17 +454,36 @@ Two properties are mandatory:
    false "did not throw" failures.
 2. HOME must be writable. A non-root uid has no passwd entry, so HOME
    resolves to `/` and SwiftPM fails with `invalid access to
-   /.cache/org.swift.swiftpm`; `-e HOME=/tmp` fixes it.
+   /.cache/org.swift.swiftpm`. HOME lives at
+   `/src/.build-linux/container-home` — inside the already-ignored
+   `.build-linux/` tree (`.gitignore` covers it, so the run still leaves
+   `git status --porcelain` empty) — so the SwiftPM cache shares the
+   workspace filesystem; a host whose root filesystem is full fails a
+   `HOME=/tmp` form before any test runs, with only that opaque SwiftPM
+   error as the clue.
 
-Caveats: this invocation has been executed with a Docker-compatible CLI
-(podman) rather than the docker binary itself, and on SELinux-enforcing
-hosts the volume needs `:Z`. On *rootless* podman, `-u $(id -u):$(id -g)`
-maps the container uid into the subuid range, which cannot write the
-mounted checkout — use `--userns=keep-id` instead. The package has a
-remote dependency (ZIPFoundation, exact-pinned in `Package.swift`), so
-the first build or `swift package resolve` inside the container needs
-network access and `git` (the resolute image ships it); it fetches into
-`.build/` and commits nothing beyond the checked-in `Package.resolved`.
+Runtime specifics the script applies: the volume is mounted `:Z`
+(relabels for SELinux-enforcing hosts, a no-op elsewhere), and rootless
+podman runs with `--userns=keep-id` — without it the container uid maps
+into the subuid range, `/src` appears root-owned, and the non-root user
+cannot write the checkout (the failure surfaces as SwiftPM `invalid
+access to /src/.build-linux/repositories`); `--userns=keep-id` is
+podman-specific and rejected by docker, which is why the runtimes
+differ. The package has a remote dependency (ZIPFoundation, exact-pinned
+in `Package.swift`), so the first build or `swift package resolve`
+inside the container needs network access and `git` (the resolute image
+ships it); it fetches into the scratch tree and commits nothing beyond
+the checked-in `Package.resolved`. That checkout is also why the script
+passes `safe.directory` as container-scoped `GIT_CONFIG_*` environment
+entries: a Docker Desktop bind mount on macOS does not satisfy git's
+ownership check even when `-u` matches the host uid, and the run dies
+with `detected dubious ownership in repository at
+'/src/.build-linux/checkouts/ZIPFoundation'`. The exception must name
+the checkout, not the mount — `safe.directory` is an exact-path match,
+so a lone `/src` fails identically — hence `/src` plus git's recursive
+`/src/*`. Passing it through the environment changes nothing on the host
+or in the repository, and it is inert wherever the uid already owns the
+mount, which is why Linux CI and rootless podman never needed it.
 
 CI enforces macOS/Linux toolchain parity with
 `scripts/check-toolchain-parity.sh`, which every Swift-building job runs
