@@ -108,4 +108,61 @@ enum RouteGroupsWorkspaceFixtures {
         let date = epoch.addingTimeInterval(Double(index) * 86_400)
         return workout(points: squareLoop(sideMeters: sideMeters, date: date), date: date)
     }
+
+    // MARK: - Derived-name groups
+
+    static var metersPerDegreeLatitude: Double { 111_000 }
+
+    /// A persisted-facts group for derived-name tests, mirroring
+    /// `RouteGroupingFixtures.namingFacts`: `bearingDegrees` places the
+    /// bounding-box centre relative to the start point, which is what the
+    /// compass token is derived from.
+    static func namingGroup(
+        bearingDegrees: Double,
+        totalDistanceMeters: Double,
+        closesLoop: Bool = true,
+        date: Date = epoch,
+        name: String? = nil
+    ) -> WorkoutRouteGroup {
+        let bearing = bearingDegrees * .pi / 180
+        let centreMeters = 600.0
+        let extentMeters = 800.0
+        let centreEast = centreMeters * sin(bearing)
+        let centreNorth = centreMeters * cos(bearing)
+        let half = extentMeters / 2
+        let finishEast = closesLoop ? 0.0 : 2 * centreEast
+        let finishNorth = closesLoop ? 0.0 : 2 * centreNorth
+        let id = UUID()
+        let facts = RouteGroupingRouteFacts(
+            minLatitude: baseLatitude + (centreNorth - half) / metersPerDegreeLatitude,
+            maxLatitude: baseLatitude + (centreNorth + half) / metersPerDegreeLatitude,
+            minLongitude: baseLongitude + (centreEast - half) / metersPerDegreeLongitude,
+            maxLongitude: baseLongitude + (centreEast + half) / metersPerDegreeLongitude,
+            startLatitude: baseLatitude,
+            startLongitude: baseLongitude,
+            finishLatitude: baseLatitude + finishNorth / metersPerDegreeLatitude,
+            finishLongitude: baseLongitude + finishEast / metersPerDegreeLongitude,
+            totalDistanceMeters: totalDistanceMeters,
+            routePointCount: 200,
+            discardedCoordinatePointCount: 0
+        )
+        return WorkoutRouteGroup(
+            id: id,
+            name: name,
+            representativeSummary: WorkoutRouteGroupSummary(
+                workoutID: id,
+                startDate: date,
+                facts: facts
+            )
+        )
+    }
+
+    /// An organization snapshot carrying `groups` with no member assignments —
+    /// enough for derived-name derivation, which reads only persisted facts.
+    static func organization(groups: [WorkoutRouteGroup]) -> WorkoutLibraryOrganizationSnapshot {
+        WorkoutLibraryOrganizationSnapshot(
+            routeGroups: groups,
+            routeGroupAssignments: []
+        )
+    }
 }

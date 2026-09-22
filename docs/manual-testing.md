@@ -1803,6 +1803,13 @@ load, watch-folder): adjust the family/filler parameters and re-run.
       routes intact, and carries over names/pins on success.
 - [x] All Runs filter menu: Route → specific route / Not on a Route filters
       the table; the filter survives into a saved smart collection.
+- [x] Colliding derived names: two routes whose derived base name collides
+      ("1.6 km Loop") read differently in All Runs → Filters → Route and in
+      the Personal Heatmap route picker; the compass token and digest suffix
+      ("1.6 km Loop (NE·1d4)") is shown in full at the menu's natural width,
+      at 1200×800 and at the 720×552 minimum, in light and dark; selecting
+      either entry filters to that route's own runs; and VoiceOver speaks the
+      full name including the suffix.
 - [ ] Personal Heatmap route filter restricts cells to the selected route
       and resets with the other filters.
 - [ ] Deleting a member run repairs the route (representative refreshes;
@@ -1864,3 +1871,53 @@ Not ticked, and why:
 - Heatmap route filter reset alongside the other filters was not exercised.
 - Deleting a member run (representative refresh, empty route disappears) was not
   exercised.
+
+### Pass record 2026-09-22 (release configuration, synthetic 317-run library, collision-aware names)
+
+Driven through Computer Use (System Events plus `screencapture`) against a
+release bundle of the collision-aware naming branch, on the 317-run library the
+generator above produces (286 routes), imported through File → Import Strava
+Archive… → Import 317 Runs. Screenshots stayed in `/tmp`; what follows is
+transcribed from them.
+
+- All Runs → Filters → Route listed fifteen routes, every one suffixed (the
+  fixture's square loops all extend north-east of their start, so each collided
+  family resolves at the digest tier): the three formerly identical pairs from
+  #134 now read "1.6 km Loop (NE·1d4)" / "1.6 km Loop (NE·4e4)", "1.7 km Loop
+  (NE·299)" / "(NE·a63)", "1.2 km Loop (NE·158)" / "(NE·4eb)". Every entry was
+  165 pt wide with no ellipsis at the menu's natural width. Selecting the first
+  1.6 km entry filtered to 1 of 317 runs, Filler Run 249; the second to Filler
+  Run 137 — each the single member the persisted manifest records for that
+  group id.
+- Personal Heatmap route picker: the same names, full width, in the same style;
+  selecting "1.0 km Loop (NE·b5a)" then "1.0 km Loop (NE·aed)" switched the
+  picker label, the included count (1 run, 974 m then 1.0 km) and the map to
+  each group's own loop.
+- Both surfaces re-checked at the 720×552 minimum and at 1200×800, in light and
+  in dark appearance: menu entries identical and untruncated in all eight
+  combinations.
+- VoiceOver (caption panel, arrow-key navigation of the open menus): the Route
+  submenu was announced as "Route, submenu, 17 items Any Route", then "2.1 km
+  Loop (NE·47d)", "2.0 km Loop (NE·45e)"; the heatmap picker's entries as "2.1
+  km Loop (NE·47d)", "2.0 km Loop (NE·45e)"; the picker button itself as "1.0
+  km Loop (NE·b5a), Route filter, menu button". The suffix is part of the spoken
+  name on both surfaces.
+
+Found and handled:
+
+- On the first import of a session the heatmap picker offered "Any Route"
+  alone while the All Runs filter already listed fifteen routes; a relaunch
+  populated it. The post-import assignment pass never handed its result to the
+  heatmap view model — fixed in the same branch (AppState
+  `applyRouteGroupPassResult`, with a Studio test) and re-verified: on the
+  fixed build the picker listed fifteen suffixed routes straight from the
+  import report's Open Personal Heatmap button, no relaunch.
+- At 720×552 the heatmap filter bar wraps its "Date range" / "Resolution" /
+  "Minimum repeats" labels even with "Any Route" selected, and with a suffixed
+  route selected the labels wrap one letter per line while Fit Heatmap
+  collapses to its icon. The menu itself is unaffected. Pre-existing layout
+  behaviour that longer names make worse; filed as #160 rather than folded
+  into the naming change.
+
+Not ticked, and why: the seven items listed under the 2026-09-20 record were not
+re-exercised in this pass, which covered naming only.
