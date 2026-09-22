@@ -84,6 +84,28 @@ if [ $# -eq 0 ]; then
   set -- --filter RunPlayCoreTests
 fi
 
+# Git refuses to operate in a repository whose ownership it cannot vouch
+# for. A Docker Desktop bind mount on macOS does not satisfy that check
+# even though -u matches the host uid, so the first run dies resolving the
+# remote dependency:
+#
+#   fatal: detected dubious ownership in repository at
+#   '/src/.build-linux/checkouts/ZIPFoundation'
+#
+# The exception must name the *checkout*, not the mount: safe.directory is
+# an exact-path match, so a lone `/src` does not cover it (probed — it
+# fails identically). `/src/*` is git's recursive form, which covers every
+# dependency checkout under the scratch tree, and `/src` covers the
+# worktree itself. Passed as container-scoped environment config so
+# nothing on the host or in the repository is modified, and inert on hosts
+# where the uid already owns the mount — which is why Linux CI, and podman
+# with --userns=keep-id, never needed it.
+GIT_SAFE_ENV=(
+  -e GIT_CONFIG_COUNT=2
+  -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src
+  -e GIT_CONFIG_KEY_1=safe.directory -e GIT_CONFIG_VALUE_1='/src/*'
+)
+
 # Runtime notes: `:Z` relabels the volume for SELinux-enforcing hosts and
 # is accepted as a no-op elsewhere. Rootless podman needs --userns=keep-id
 # — without it the container uid maps into the subuid range, /src appears
@@ -93,12 +115,14 @@ fi
 case "${RUNTIME}" in
   docker)
     exec "${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
-      -e HOME=/src/.build-linux/container-home -v "$PWD":/src:Z -w /src \
+      -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
+      -v "$PWD":/src:Z -w /src \
       "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
     ;;
   podman)
     exec "${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
-      -e HOME=/src/.build-linux/container-home -v "$PWD":/src:Z -w /src \
+      -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
+      -v "$PWD":/src:Z -w /src \
       "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
     ;;
 esac

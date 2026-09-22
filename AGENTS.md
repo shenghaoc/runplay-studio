@@ -473,7 +473,17 @@ differ. The package has a remote dependency (ZIPFoundation, exact-pinned
 in `Package.swift`), so the first build or `swift package resolve`
 inside the container needs network access and `git` (the resolute image
 ships it); it fetches into the scratch tree and commits nothing beyond
-the checked-in `Package.resolved`.
+the checked-in `Package.resolved`. That checkout is also why the script
+passes `safe.directory` as container-scoped `GIT_CONFIG_*` environment
+entries: a Docker Desktop bind mount on macOS does not satisfy git's
+ownership check even when `-u` matches the host uid, and the run dies
+with `detected dubious ownership in repository at
+'/src/.build-linux/checkouts/ZIPFoundation'`. The exception must name
+the checkout, not the mount — `safe.directory` is an exact-path match,
+so a lone `/src` fails identically — hence `/src` plus git's recursive
+`/src/*`. Passing it through the environment changes nothing on the host
+or in the repository, and it is inert wherever the uid already owns the
+mount, which is why Linux CI and rootless podman never needed it.
 
 CI enforces macOS/Linux toolchain parity with
 `scripts/check-toolchain-parity.sh`, which every Swift-building job runs
