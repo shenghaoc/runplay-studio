@@ -393,6 +393,14 @@ swift test -Xswiftc -warnings-as-errors                               # macOS fu
 git diff --check
 ```
 
+A filtered or soaked run must assert the expected `Executed N tests` count
+for the named suite, never just the exit code. `swift test --filter` exits 0
+when the filter matches nothing, so a loop that branches on the exit status
+reports a clean 25/25 having run nothing. Anchor the check on the suite's own
+summary line: `swift test` runs every bundle, and the ones with no match print
+`Executed 0 tests`, so the first `Executed` line in the log is usually an
+unrelated zero.
+
 The smoke-consumer entry is platform-asymmetric, and the ignore rule
 covering it is load-bearing: SwiftPM prunes unused package
 dependencies per-product at build planning but per-package at
