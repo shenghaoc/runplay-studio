@@ -26,10 +26,13 @@ final class RouteGroupingStoreActorTests: XCTestCase {
     private func loopRuns(
         sideMeters: Double,
         count: Int,
-        latitude: Double
+        latitude: Double,
+        firstDayOffset: Int = 0
     ) -> [RunWorkout] {
         (0..<count).map { index in
-            let date = RouteGroupingFixtures.epoch.addingTimeInterval(Double(index) * 86_400)
+            let date = RouteGroupingFixtures.epoch.addingTimeInterval(
+                Double(index + firstDayOffset) * 86_400
+            )
             let points = RouteGroupingFixtures.squareLoop(sideMeters: sideMeters, date: date)
                 .map { point in
                     RoutePoint(
@@ -213,5 +216,177 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         try await actor.deleteWorkout(id: runs[2].id, newSelectedID: nil)
         let emptied = try store.loadManifest()
         XCTAssertTrue(emptied.routeGroups.isEmpty)
+    }
+
+    // MARK: - Deletion interleaved with an assignment pass
+
+    /// Deterministic handshake for the assignment-pass representative-loader
+    /// suspension seam. The loader parks in `suspendLoader()`; the test
+    /// awaits `waitForLoaderSuspension()` (cancellation-aware), interleaves
+    /// other actor work while the pass is parked, then unparks with
+    /// `release()`. Loader calls after the release — or while an earlier
+    /// call is still parked — run straight through, so extra representative
+    /// lookups cannot deadlock the pass.
+    private final class LoaderSuspensionGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var parkedLoader: CheckedContinuation<Void, Never>?
+        private var suspensionWaiter: CheckedContinuation<Bool, Never>?
+        private var released = false
+        private var parkedCount = 0
+
+        /// Number of loader calls that actually parked (diagnostic).
+        var parkCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return parkedCount
+        }
+
+        func suspendLoader() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.lock()
+                if released || parkedLoader != nil {
+                    lock.unlock()
+                    continuation.resume()
+                    return
+                }
+                parkedCount += 1
+                parkedLoader = continuation
+                let waiter = suspensionWaiter
+                suspensionWaiter = nil
+                lock.unlock()
+                waiter?.resume(returning: true)
+            }
+        }
+
+        @discardableResult
+        func waitForLoaderSuspension() async -> Bool {
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                    lock.lock()
+                    if parkedLoader != nil {
+                        lock.unlock()
+                        continuation.resume(returning: true)
+                        return
+                    }
+                    suspensionWaiter = continuation
+                    lock.unlock()
+                }
+            } onCancel: {
+                lock.lock()
+                let waiter = suspensionWaiter
+                suspensionWaiter = nil
+                lock.unlock()
+                waiter?.resume(returning: false)
+            }
+        }
+
+        func release() {
+            lock.lock()
+            released = true
+            let loader = parkedLoader
+            parkedLoader = nil
+            lock.unlock()
+            loader?.resume()
+        }
+    }
+
+    /// Races `body` against a deadline and cancels the loser, so a broken
+    /// handshake fails the test instead of hanging the suite. Returns `nil`
+    /// only on timeout.
+    private func withTestTimeout<T: Sendable>(
+        seconds: TimeInterval = 10,
+        _ body: @escaping @Sendable () async -> T
+    ) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await body() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Reproduces issue #131: `deleteWorkout` completing inside the
+    /// assignment pass's suspension window must survive the pass's final
+    /// manifest write. The pass suspends deterministically through the
+    /// loader seam (no sleep race): the representative loader parks after
+    /// loading the snapshot, the delete commits while it is parked, and
+    /// only then is the loader released.
+    func testDeleteWorkoutInsideAssignmentWindowSurvivesFinalWrite() async throws {
+        // Two existing runs form one group; a pinned representative gives
+        // the pass's pre-await state a pin and cached summary to resurrect.
+        let family = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        try await addAll(family)
+        _ = try await actor.assignRouteGroups(for: family.map(\.id))
+        let groupID = try XCTUnwrap(try store.loadManifest().routeGroups.first?.id)
+        let representativeID = try XCTUnwrap(
+            try store.loadManifest().routeGroups.first?.representativeSummary?.workoutID
+        )
+        try await actor.pinRouteGroupRepresentative(groupID: groupID, workoutID: representativeID)
+
+        // A later run of the same route: the pass loads the group's
+        // representative through the seam and joins the group.
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let gate = LoaderSuspensionGate()
+        await actor.setRouteGroupRepresentativeLoaderSuspension { await gate.suspendLoader() }
+
+        let library: WorkoutLibraryStoreActor = actor
+        let newcomerID = newcomer.id
+        let passTask = Task {
+            try await library.assignRouteGroups(for: [newcomerID])
+        }
+
+        // Park the loader (the pass is suspended and the actor is free),
+        // delete the pinned representative, then let the pass finish.
+        let suspended = await withTestTimeout { await gate.waitForLoaderSuspension() } ?? false
+        XCTAssertTrue(suspended, "assignment pass never reached the representative-loader seam")
+        XCTAssertEqual(gate.parkCount, 1)
+
+        try await actor.deleteWorkout(id: representativeID, newSelectedID: nil)
+        gate.release()
+
+        let result = try await passTask.value
+        XCTAssertEqual(result.joinedCount, 1)
+
+        // Assertions against the manifest reloaded from disk.
+        let manifest = try store.loadManifest()
+        XCTAssertFalse(
+            manifest.workoutIDs.contains(representativeID),
+            "deleted workout resurrected in workoutIDs"
+        )
+        XCTAssertNil(
+            manifest.routeGroupAssignment(forWorkoutID: representativeID),
+            "deleted workout resurrected in routeGroupAssignments"
+        )
+        for group in manifest.routeGroups {
+            XCTAssertNotEqual(
+                group.pinnedRepresentativeWorkoutID,
+                representativeID as UUID?,
+                "deleted workout resurrected as a pinned representative"
+            )
+            XCTAssertNotEqual(
+                group.representativeSummary?.workoutID,
+                representativeID as UUID?,
+                "deleted workout resurrected as a representative summary"
+            )
+        }
+        let presentIDs = Set(manifest.workoutIDs)
+        for assignment in manifest.routeGroupAssignments {
+            XCTAssertTrue(
+                presentIDs.contains(assignment.workoutID),
+                "assignment references a deleted workout: \(assignment.workoutID)"
+            )
+        }
+
+        // The pass result reports the persisted state, not a pre-filter one.
+        XCTAssertEqual(result.groups, manifest.routeGroups)
+        XCTAssertEqual(result.assignments, manifest.routeGroupAssignments)
     }
 }
