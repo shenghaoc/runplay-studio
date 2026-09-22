@@ -550,6 +550,98 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         XCTAssertEqual(result1.groups, manifest.routeGroups)
     }
 
+    /// A merge committed inside the window whose **source** is the group the
+    /// pass is matching into must not be undone: the merged-away source is
+    /// not resurrected by the pass's pre-await group list, and the workout
+    /// the pass matched into it falls back to record *absence* — the
+    /// backlog marker, not an evaluated-nil "deliberately ungrouped"
+    /// record — so the next pass re-matches it, most likely into the merge
+    /// target where the user put its siblings.
+    func testMergedAwaySourceGroupInsideAssignmentWindowIsNotResurrected() async throws {
+        let familyS = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        let familyT = loopRuns(sideMeters: 900, count: 2, latitude: 38.5)
+        try await addAll(familyS + familyT)
+        _ = try await actor.assignRouteGroups(for: (familyS + familyT).map(\.id))
+
+        let manifestBefore = try store.loadManifest()
+        let sourceID = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyS[0].id))
+        let targetID = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyT[0].id))
+        // The target's user intent must ride out both the merge and the pass.
+        try await actor.renameRouteGroup(id: targetID, name: "Target Route")
+        try await actor.pinRouteGroupRepresentative(groupID: targetID, workoutID: familyT[1].id)
+
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let (result, _) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.mergeRouteGroups(sourceID: sourceID, into: targetID)
+        }
+        XCTAssertEqual(result.joinedCount, 1)
+
+        let manifest = try store.loadManifest()
+        XCTAssertNil(
+            manifest.routeGroup(id: sourceID),
+            "merged-away source group resurrected by the pass's pre-await list"
+        )
+        XCTAssertNil(
+            manifest.routeGroupAssignment(forWorkoutID: newcomer.id),
+            "newcomer matched into the merged-away source must fall back to record "
+                + "absence (the backlog marker), not keep any record"
+        )
+        let target = try XCTUnwrap(manifest.routeGroup(id: targetID))
+        XCTAssertEqual(target.name, "Target Route")
+        XCTAssertEqual(target.pinnedRepresentativeWorkoutID, familyT[1].id)
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: targetID).count, 4)
+        let groupIDs = Set(manifest.routeGroups.map(\.id))
+        for assignment in manifest.routeGroupAssignments {
+            if let groupID = assignment.groupID {
+                XCTAssertTrue(groupIDs.contains(groupID), "assignment references a missing group")
+            }
+        }
+        XCTAssertEqual(result.groups, manifest.routeGroups)
+
+        // Self-healing: with no interference, the next pass picks the
+        // newcomer out of the backlog and gives it a record.
+        _ = try await actor.assignRouteGroups(for: [newcomer.id])
+        XCTAssertNotNil(
+            try store.loadManifest().routeGroupAssignment(forWorkoutID: newcomer.id),
+            "backlogged newcomer is not re-assigned by the next pass"
+        )
+    }
+
+    /// The plain case the resurrect guard must not swallow: a pass whose
+    /// newcomer founds a genuinely new group — an id in neither snapshot —
+    /// still writes that group alongside the existing ones.
+    func testPassCreatedGroupStillLandsAlongsideExistingGroups() async throws {
+        let family = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        try await addAll(family)
+        _ = try await actor.assignRouteGroups(for: family.map(\.id))
+        let existingGroupID = try XCTUnwrap(try store.loadManifest().routeGroups.first?.id)
+
+        let newcomer = loopRuns(
+            sideMeters: 900, count: 1, latitude: 40.5, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let result = try await actor.assignRouteGroups(for: [newcomer.id])
+        XCTAssertEqual(result.createdCount, 1)
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.routeGroups.count, 2)
+        let createdGroup = try XCTUnwrap(manifest.routeGroups.first { $0.id != existingGroupID })
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: createdGroup.id), [newcomer.id])
+        // The result reports the persisted groups; the encoder stores them
+        // UUID-sorted while the in-memory list appends the created group,
+        // so compare order-insensitively.
+        XCTAssertEqual(
+            result.groups.sorted { $0.id.uuidString < $1.id.uuidString },
+            manifest.routeGroups.sorted { $0.id.uuidString < $1.id.uuidString },
+            "the pass result reports the persisted groups"
+        )
+    }
+
     /// Runs one assignment pass whose representative loader is parked on a
     /// suspension gate, executes `interleave` while the pass is suspended
     /// and the actor is free, then releases the loader and awaits the pass

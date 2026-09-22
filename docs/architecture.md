@@ -769,7 +769,9 @@ it merges its route-group result into a re-read manifest snapshot before
 that single write: deletes and manual decisions committed inside the
 window (rename, re-pin, merge, deliberate removal — never auto re-added)
 win over the pass's stale copies, groups written by another overlapping
-pass survive the last write, references to workouts that left the
+pass survive the last write, a group removed inside the window is not
+resurrected — a workout the pass matched into it falls back to the
+backlog for the next pass — references to workouts that left the
 library or their group are repaired, and groups left empty are dropped.
 The route-groups library revision bumps once per pass, never per workout;
 per-item progress lives in the Routes view model. Deletion repairs

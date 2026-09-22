@@ -1014,9 +1014,11 @@ public actor WorkoutLibraryStoreActor {
     /// changes committed while the pass was suspended survive it: deletes,
     /// manual decisions (rename, re-pin, merge, deliberate removal), and
     /// groups written by an overlapping pass win over the pass's staler
-    /// computation. Cancellation is cooperative (task cancellation is
-    /// checked between workouts and inside matching) and surfaces as
-    /// `CancellationError`.
+    /// computation, and a group another writer removed inside the window is
+    /// not resurrected — a workout the pass matched into it falls back to
+    /// the backlog marker and is re-assigned by the next pass. Cancellation
+    /// is cooperative (task cancellation is checked between workouts and
+    /// inside matching) and surfaces as `CancellationError`.
     public func assignRouteGroups(
         for workoutIDs: [UUID],
         policy: RouteGroupingPolicy = .default,
@@ -1103,12 +1105,18 @@ public actor WorkoutLibraryStoreActor {
             }
             return passGroup
         }
-        // Groups only the pass knows about — created during the pass, or a
-        // group whose re-read copy vanished inside the window (a merge
-        // source) — keep the pass's copy as their sole description; the
-        // reconcile step drops any that ends up with no members.
+        // Only groups the pass created (absent pre-await too) keep the
+        // pass's copy as their sole description. A group that existed
+        // pre-await and is gone from the re-read copy was removed by
+        // another writer inside the window — a merge moved its members
+        // away, or it emptied out — and must not be resurrected: a workout
+        // the pass matched into it keeps a record referencing the missing
+        // group, which `migrateToCurrentVersionIfNeeded()` drops to record
+        // absence — the backlog marker — so the next pass re-matches it.
+        let preAwaitGroupIDs = Set(manifest.routeGroups.map(\.id))
         var appendedGroupIDs = Set<UUID>()
-        for group in result.groups where !currentGroupIDs.contains(group.id) {
+        for group in result.groups
+        where !currentGroupIDs.contains(group.id) && !preAwaitGroupIDs.contains(group.id) {
             guard appendedGroupIDs.insert(group.id).inserted else { continue }
             current.routeGroups.append(group)
         }
