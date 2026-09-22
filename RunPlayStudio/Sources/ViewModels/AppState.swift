@@ -1388,11 +1388,17 @@ class AppState: ObservableObject {
     ) {
         routeGroups = groups
         routeGroupAssignments = assignments
+        let organization = currentOrganizationSnapshot()
         workoutLibrary.replaceLibrary(
             workouts: workouts,
             favoriteIDs: favoriteWorkoutIDs,
-            organization: currentOrganizationSnapshot()
+            organization: organization
         )
+        // The heatmap route picker reads the heatmap view model's own copy
+        // of the organization; without this hand-off a group created by the
+        // post-import pass (or a re-cluster) reached the All Runs filter but
+        // not the picker until the next relaunch or manual route control.
+        personalHeatmap.applyOrganization(organization)
     }
 
     /// Reload route-group organization from the persisted manifest after the
