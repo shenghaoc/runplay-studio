@@ -414,10 +414,25 @@ evidence that those tests ran.
 
 The guard also enforces a floor: the Linux script's default invocation fails
 below `RUNPLAY_LINUX_MIN_EXECUTED` (900) tests that actually ran, and above
-`RUNPLAY_LINUX_MAX_SKIPPED` (64) skipped. The headless container runs no
-benchmark bundle, so the only legitimate skips are the 16 env-gated benchmark
-entries; a jump toward 90% skipped now fails loudly instead of reading as green.
-Both are overridable only with a stated reason.
+`RUNPLAY_LINUX_MAX_SKIPPED` (64) skipped. The legitimate skips are the
+env-gated benchmark entries plus, when the container runs as root, the
+permission-injection test `testFailedWorkoutWritePreservesPriorValidData`
+(its `0o555` failure injection cannot work under `CAP_DAC_OVERRIDE`). Both
+are overridable only with a stated reason.
+
+Expect the skip count to differ between CI and a local run, and do not treat
+one as the other's error. CI's Linux job runs the container as **root** (it
+sets no `options: --user`), so it reports `Executed N tests, with 17 tests
+skipped`; the local recipe below runs non-root to keep the permission
+injection meaningful, so it reports 16. Measured on one commit in the pinned
+image, differing only in the container user:
+
+```text
+root      -> Executed 1096 tests, with 17 tests skipped and 0 failures
+non-root  -> Executed 1096 tests, with 16 tests skipped and 0 failures
+```
+
+Reconcile a CI-versus-local count against this before calling either wrong.
 
 The smoke-consumer entry is platform-asymmetric, and the ignore rule
 covering it is load-bearing: SwiftPM prunes unused package
