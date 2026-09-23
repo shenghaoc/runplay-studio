@@ -1,5 +1,22 @@
 import Foundation
 
+/// Where a summary's distance and duration came from.
+///
+/// `gpsDerived` is the historical behaviour: the workout carried route points,
+/// so distance and every time figure were derived from the route. It covers
+/// both coordinate-derived and device-supplied distance series, because both
+/// come from the route; `RunWorkout.routeDistanceSource` keeps that finer
+/// distinction.
+///
+/// `sourceReported` means the workout has no route at all, so the importer's
+/// own totals were carried through analysis unchanged. Pace is then the only
+/// speed the source supports, and active time equals elapsed time because a
+/// route-less source records no pauses.
+public enum SummaryDistanceProvenance: String, Codable, Hashable, Sendable {
+    case gpsDerived
+    case sourceReported
+}
+
 /// Aggregated metrics for an entire running workout.
 ///
 /// `averagePaceSecondsPerKilometer` and `averageSpeedMetersPerSecond` retain
@@ -50,6 +67,13 @@ public struct RunSummary: Codable, Hashable, Sendable {
     public var rawElevationGainMeters: Double?
     /// Raw descent counterpart of `rawElevationGainMeters`.
     public var rawElevationLossMeters: Double?
+    /// Whether distance and duration were derived from a route or carried
+    /// through from the source's own totals (route-less workouts only).
+    ///
+    /// Defaults to `.gpsDerived`, and `.gpsDerived` is deliberately omitted
+    /// from the encoded form so every snapshot written before this field
+    /// existed re-encodes byte for byte identically.
+    public var distanceProvenance: SummaryDistanceProvenance
 
     public init(
         totalDistanceMeters: Double = 0,
@@ -110,7 +134,8 @@ public struct RunSummary: Codable, Hashable, Sendable {
         averageStanceTimeBalancePercent: Double? = nil,
         averageStepLengthMeters: Double? = nil,
         rawElevationGainMeters: Double? = nil,
-        rawElevationLossMeters: Double? = nil
+        rawElevationLossMeters: Double? = nil,
+        distanceProvenance: SummaryDistanceProvenance = .gpsDerived
     ) {
         let elapsed = Self.nonNegativeFinite(totalElapsedSeconds)
         let active = min(Self.nonNegativeFinite(totalActiveSeconds), elapsed)
@@ -166,6 +191,7 @@ public struct RunSummary: Codable, Hashable, Sendable {
         )
         self.rawElevationGainMeters = Self.nonNegativeFiniteOptional(rawElevationGainMeters)
         self.rawElevationLossMeters = Self.nonNegativeFiniteOptional(rawElevationLossMeters)
+        self.distanceProvenance = distanceProvenance
     }
 
     /// Total distance in kilometers.
@@ -246,6 +272,7 @@ public struct RunSummary: Codable, Hashable, Sendable {
         case averageStepLengthMeters
         case rawElevationGainMeters
         case rawElevationLossMeters
+        case distanceProvenance
     }
 
     public init(from decoder: any Decoder) throws {
@@ -282,7 +309,13 @@ public struct RunSummary: Codable, Hashable, Sendable {
             averageStanceTimeBalancePercent: try container.decodeIfPresent(Double.self, forKey: .averageStanceTimeBalancePercent),
             averageStepLengthMeters: try container.decodeIfPresent(Double.self, forKey: .averageStepLengthMeters),
             rawElevationGainMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationGainMeters),
-            rawElevationLossMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationLossMeters)
+            rawElevationLossMeters: try container.decodeIfPresent(Double.self, forKey: .rawElevationLossMeters),
+            // Absent on every snapshot written before provenance existed, and
+            // those summaries were all route-derived by construction.
+            distanceProvenance: try container.decodeIfPresent(
+                SummaryDistanceProvenance.self,
+                forKey: .distanceProvenance
+            ) ?? .gpsDerived
         )
     }
 
@@ -315,6 +348,11 @@ public struct RunSummary: Codable, Hashable, Sendable {
         try container.encodeIfPresent(averageStepLengthMeters, forKey: .averageStepLengthMeters)
         try container.encodeIfPresent(rawElevationGainMeters, forKey: .rawElevationGainMeters)
         try container.encodeIfPresent(rawElevationLossMeters, forKey: .rawElevationLossMeters)
+        // Omit the historical default so snapshots written before this field
+        // existed re-encode byte for byte identically.
+        if distanceProvenance != .gpsDerived {
+            try container.encode(distanceProvenance, forKey: .distanceProvenance)
+        }
     }
 
     private static func nonNegativeFinite(_ value: Double) -> Double {
