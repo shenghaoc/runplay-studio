@@ -297,10 +297,16 @@ struct PersonalHeatmapView: View {
                 }
             }
         } label: {
-            Label(
-                filterTitle,
-                systemImage: "point.topleft.down.curvedto.point.bottomright.up"
-            )
+            // The accessibility label below differs from this title, so a
+            // plain `systemImage` would put the symbol's generated name in
+            // the Item Chooser entry (#161).
+            Label {
+                Text(filterTitle)
+            } icon: {
+                DecorativeMenuSymbol.image(
+                    systemName: "point.topleft.down.curvedto.point.bottomright.up"
+                )
+            }
         }
         .menuStyle(.borderlessButton)
         .routeMenuSizing(truncating: truncating)
