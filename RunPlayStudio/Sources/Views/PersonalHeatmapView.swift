@@ -155,9 +155,10 @@ struct PersonalHeatmapView: View {
             }
             // Below this the static labels are dropped; each value still reads
             // on its own ("Last 90 Days", "Standard (50 m cells)", "At least
-            // 2 runs") and VoiceOver keeps the accessibility labels. The label
-            // is omitted rather than `labelsHidden()`, which would leave it in
-            // the accessibility description beside the explicit one.
+            // 2 runs") and each picker's accessibility label names it instead.
+            // The label is omitted rather than `labelsHidden()`, which would
+            // leave it in the accessibility description beside the explicit
+            // one.
             VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
                 HStack(spacing: AppDesign.Spacing.large) {
                     datePresetPicker(labelled: false)
@@ -197,6 +198,12 @@ struct PersonalHeatmapView: View {
         }
     }
 
+    // Each picker is named from one source. A visible label becomes the
+    // pop-up's AXTitleUIElement and an accessibility label its AXDescription;
+    // with both, VoiceOver's Item Chooser read "All Time Date range Date range
+    // pop up button" (#195). The accessibility label therefore applies only
+    // when the label is not shown, and uses the label's words, so the name
+    // does not change with the window width.
     private func datePresetPicker(labelled: Bool) -> some View {
         Picker(selection: $viewModel.datePreset) {
             ForEach(PersonalHeatmapDatePreset.allCases) { preset in
@@ -208,7 +215,7 @@ struct PersonalHeatmapView: View {
         .pickerStyle(.menu)
         .fixedSize()
         .help("Filter workouts by start date")
-        .accessibilityLabel("Date range")
+        .accessibilityLabel("Date range", isEnabled: !labelled)
     }
 
     private func resolutionPicker(labelled: Bool) -> some View {
@@ -222,7 +229,7 @@ struct PersonalHeatmapView: View {
         .pickerStyle(.menu)
         .fixedSize()
         .help("Cell size in metres. Broader cells are less precise but faster for large libraries.")
-        .accessibilityLabel("Resolution")
+        .accessibilityLabel("Resolution", isEnabled: !labelled)
     }
 
     private func minimumRepeatsPicker(labelled: Bool) -> some View {
@@ -236,7 +243,7 @@ struct PersonalHeatmapView: View {
         .pickerStyle(.menu)
         .fixedSize()
         .help("Hide cells visited by fewer than this many distinct workouts")
-        .accessibilityLabel("Minimum runs per cell")
+        .accessibilityLabel("Minimum repeats", isEnabled: !labelled)
     }
 
     private func fitButton(iconOnly: Bool) -> some View {
