@@ -1257,6 +1257,73 @@ PY
 33. Narrow window: the settings pane and the Recent Imports popover stay
     readable and do not clip rows or buttons.
 
+### Manual pass 2026-09-23 — watch-folder import on `main`, after merge
+
+**This pass ran after the feature shipped.** #167–#170 and #156 merged
+before any GUI pass, so this record verifies shipped code on `main` (the
+merge of #156), not a branch. Failures are filed as issues against `main`
+(#175–#183), not reverted.
+
+Setup: release build assembled with `scripts/assemble-app-bundle.sh` under a
+separate bundle identifier, throwaway `RUNPLAY_LIBRARY_ROOT`, synthetic GPX
+fixtures (one generated loop per file) except the real-history check below.
+macOS 27, light appearance, Keyboard navigation **off** on the test Mac
+(`AppleKeyboardUIMode = 0`). Screenshots were taken and kept out of the
+repository.
+
+Result key: **PASS** verified by hand; **FAIL** observed failing (issue
+linked); **NOT VERIFIED** could not be exercised as written; **NOT RUN** not
+attempted. Only PASS rows count as ticked.
+
+| # | Result | Evidence |
+| --- | --- | --- |
+| 1 | FAIL — #175 | File → Watch Folders… opens nothing; the app menu's Settings… (⌘,) works. |
+| 2 | PASS | Added folder listed, unpaused, "Watching"; `watch-folders.json` written under the library root. |
+| 3 | NOT VERIFIED — #179 | Adding a folder already imports its existing files (1 → 5 workouts before the button was touched), so the button has nothing left to do. |
+| 4 | FAIL — #177 | A tag set while the folder was watching was not applied to the next two imports; it applied only after pause/resume. The "created once" half passes: 1 tag, reused. |
+| 5 | PASS | Per-folder Pause: a dropped file stayed unimported for 15 s; Resume imported it. Master switch problems are #180. |
+| 6 | FAIL — #176 | No way to remove a folder by pointer, keyboard, or VoiceOver. |
+| 7 | PASS | After relaunch: folders, paused flags, default tags, and ledgers identical; library count unchanged (nothing re-imported). |
+| 8 | PASS | Imported 4 s after the drop. With a 5 s poll and 2 s settle, this does not prove the DispatchSource early wake. |
+| 9 | Automated | Not re-run by hand. |
+| 10 | PASS | One skipped row, no second workout. The row's status is icon-only on screen; "Skipped, already imported" is spoken by VoiceOver only. |
+| 11 | PASS in session | One skip row across many polls. Re-reported after each relaunch — #182. |
+| 12 | PASS | Garbage `.gpx`: one Failed row with a readable reason, ledgered, not retried. `.txt`, hidden `.a.gpx`, and a `sub.gpx` directory ignored. |
+| 13 | PASS in session | 110 MB file: one Failed row naming the 100 MB limit. Re-reported after each relaunch — #182. |
+| 14 | PASS | File in a subdirectory never imported. |
+| 15 | PASS | Deleted a watch-imported workout; source file untouched; not re-imported over ~5 polls. |
+| 16–20 | NOT RUN | No synthetic multi-session FIT fixture was at hand. |
+| 21 | PASS (content) — #178 | Popover rows show folder, file, status icon, time, and failure detail. Its toolbar button has no visible icon. |
+| 22 | PASS | Reveal in Finder opened the folder with the file selected. |
+| 23 | PASS (bound) / FAIL — #182 | 55 new files: the list kept exactly the 50 newest. After relaunch the list was not empty (over-limit and duplicate rows re-reported). |
+| 24 | PASS | No modal alert from any watch-folder path in the whole session. |
+| 25 | PASS (simulated volume) — #181 | A `GARMIN` disk image stood in for a watch (no device attached): add, import, eject → "Unavailable — watching resumes if it returns", one row, one announcement; remount → resumed, new file imported, no recovery row. A later relaunch **re-mounted** the ejected image. |
+| 26 | PASS (partial) | No Dropbox on the test Mac; used iCloud Drive with the owner's approval and synthetic files only. A slowly written `.partial`, renamed into place, imported exactly once and the companion was never ledgered. A real `brctl evict` left the file dataless; the app did not force a download, re-import, or report it. A true download from a second device was not exercised. The test folder was deleted afterwards. |
+| 27 | PASS — #181 | Moved away: one row, "Unavailable"; recreated: resumed with no recovery row; removed again: a second row; paused folder removed: stayed "Paused", no row. Separately, a later re-activation silently followed the moved-away directory. |
+| 28 | PASS (app process) | `nettop` showed no flows for the app process during an import (12 × 1 s). MapKit tiles load in a system process and were not measured. |
+| 29 | PASS | Every watched synthetic file byte-identical to its original; real-history copies unchanged (SHA-256). |
+| 30 | NOT VERIFIED — #183 | Keyboard navigation was off, so Tab could not reach buttons. Observed: Escape did not close a pointer-opened popover. |
+| 31 | PASS (partial) | VoiceOver read "live, Watching", "Default tag for live, edit text", "Pause watching live, button"; rows "Imported, ‹file›, ‹folder›" and "Failed, ‹file›, ‹folder›, ‹reason›"; unavailability announced once ("Watched folder Activities is unavailable. Watching resumes if it returns."). Per-import and per-failure announcements were not captured. |
+| 32 | NOT RUN | Light appearance only. |
+| 33 | PASS (popover) | At 720×552 the popover stays readable, with no clipped rows or buttons; long failure details truncate at two lines. The Settings window is fixed at 900×648 and cannot be narrowed. |
+
+**Real history (owner-requested).** The three real files in the ignored
+`local-workouts/` (2 FIT, 1 TCX) were **copied** to a scratch folder outside
+the repository and that copy was watched, never the original directory.
+Result: 2 imported; 1 FIT was rejected with "No valid GPS coordinates found in
+FIT file" (it has no GPS track), ledgered and not retried. The copies'
+SHA-256 sums were unchanged afterwards. No file names or contents from them
+are recorded here.
+
+**Plain assessment.** The import engine is sound: settle, dedupe, failure
+rows, unavailability, recovery, reveal, and source-file safety all behaved.
+The management surface around it is not. The File-menu entry is dead (#175).
+A folder cannot be removed once added (#176). Adding a folder bulk-imports
+everything already in it (#179). A default tag can silently not apply (#177).
+The popover's only button is invisible (#178). Together that makes adding a
+watch folder an irreversible bulk import that the user cannot easily see
+into. #175 and #176 should be fixed before anyone is pointed at this feature.
+
 ## All Runs Library Checklist
 
 Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
