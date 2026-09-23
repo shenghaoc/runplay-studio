@@ -251,6 +251,44 @@ if [[ -f "$ROUTE_HEADER" ]]; then
   fi
 fi
 
+# --- Derived DEM altitude is never read by a kernel ----------------------------
+
+# `RouteInputSample.dem_altitude_meters` mirrors RoutePoint.demAltitudeMeters
+# only so the inspection digest covers every RoutePoint field. Besides its
+# declaration, the digest in RouteInterop.cpp is the one engine source allowed
+# to name it; any other translation unit or header that does would be a kernel
+# reading derived DEM data. Comments are ignored, and the matcher is checked
+# against a positive and a comment-only fixture so a broken pattern cannot pass
+# vacuously.
+dem_field_re='(^|[^[:alnum:]_])dem_altitude_meters([^[:alnum:]_]|$)'
+dem_fixture_dir="$(mktemp -d)"
+printf 'double read(const S& s) { return *s.dem_altitude_meters; }\n' >"$dem_fixture_dir/reader.cpp"
+printf '// dem_altitude_meters is mentioned only here\nint unrelated = 0;\n' >"$dem_fixture_dir/comment.cpp"
+if code_matches "$dem_fixture_dir/reader.cpp" "$dem_field_re" \
+  && ! code_matches "$dem_fixture_dir/comment.cpp" "$dem_field_re"; then
+  pass "DEM-altitude reader matcher flags code and ignores comments"
+else
+  fail "DEM-altitude reader matcher does not distinguish code from comments"
+fi
+rm -rf "$dem_fixture_dir"
+
+dem_field_readers=""
+while IFS= read -r engine_file; do
+  case "$engine_file" in
+    RunPlayEngineCpp/include/RunPlayEngineCpp/RouteInterop.hpp) continue ;;
+    RunPlayEngineCpp/Sources/RouteInterop.cpp) continue ;;
+  esac
+  if code_matches "$engine_file" "$dem_field_re"; then
+    dem_field_readers="$dem_field_readers $engine_file"
+  fi
+done < <(find RunPlayEngineCpp/include RunPlayEngineCpp/Sources -type f \
+  \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | LC_ALL=C sort)
+if [[ -z "$dem_field_readers" ]]; then
+  pass "RouteInputSample.dem_altitude_meters is named only by its declaration and the inspection digest"
+else
+  fail "no kernel may read RouteInputSample.dem_altitude_meters; found in:$dem_field_readers"
+fi
+
 if [[ -f "$QUALITY_HEADER" ]]; then
   quality_body="$(strip_comments "$QUALITY_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
   quality_signature_re='RouteQualityPipelineSummary[[:space:]]+process_route_quality_geometry[[:space:]]*\([[:space:]]*const[[:space:]]+RouteInputSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*RouteQualityGeometryPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*RouteQualityDistancePolicy[[:space:]]+distance_policy[[:space:]]*,[[:space:]]*const[[:space:]]+std::uint8_t[[:space:]]*\*[[:space:]]*supplied_selection_by_sample[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+supplied_selection_count[[:space:]]*,[[:space:]]*RouteQualityOutputSample[[:space:]]*\*[[:space:]]*output_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'

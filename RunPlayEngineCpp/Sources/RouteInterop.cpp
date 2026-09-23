@@ -36,6 +36,7 @@ RouteBatchInspection empty_inspection(RouteInteropStatus status) noexcept {
         /*.status=*/status,
         /*.sample_count=*/0u,
         /*.altitude_value_count=*/0u,
+        /*.dem_altitude_value_count=*/0u,
         /*.speed_value_count=*/0u,
         /*.pace_value_count=*/0u,
         /*.heart_rate_value_count=*/0u,
@@ -94,6 +95,10 @@ RouteBatchInspection inspect_route_batch(
             result.field_digest,
             sample.altitude_meters,
             result.altitude_value_count);
+        mix_optional_double(
+            result.field_digest,
+            sample.dem_altitude_meters,
+            result.dem_altitude_value_count);
         mix_word(
             result.field_digest,
             std::bit_cast<std::uint64_t>(sample.distance_from_start_meters));

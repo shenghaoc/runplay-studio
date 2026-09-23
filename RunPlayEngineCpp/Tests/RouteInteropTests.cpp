@@ -13,6 +13,11 @@ static_assert(
     "inspect_route_batch must remain noexcept at the Swift boundary");
 static_assert(std::is_standard_layout_v<runplay::RouteInputSample>);
 static_assert(std::is_copy_constructible_v<runplay::RouteInputSample>);
+// RouteQualityProcessor documents the per-point native buffer cost: seven
+// 8-byte scalars plus thirteen 16-byte optionals.
+static_assert(
+    sizeof(runplay::RouteInputSample) == 264u,
+    "update the per-point buffer size noted in RouteQualityProcessor");
 
 namespace {
 
@@ -26,6 +31,7 @@ runplay::RouteInputSample make_sample(
         1000.0 + scalar,
         1.0 + scalar,
         -2.0 - scalar,
+        std::nullopt,
         std::nullopt,
         10.0 * scalar,
         2.0 * scalar,
@@ -50,6 +56,7 @@ void test_empty_batch() {
     expect(result.status == runplay::RouteInteropStatus::success, "empty status");
     expect(result.sample_count == 0u, "empty sample count");
     expect(result.altitude_value_count == 0u, "empty altitude count");
+    expect(result.dem_altitude_value_count == 0u, "empty DEM altitude count");
     expect(result.speed_value_count == 0u, "empty speed count");
     expect(result.pace_value_count == 0u, "empty pace count");
     expect(result.heart_rate_value_count == 0u, "empty heart-rate count");
@@ -95,6 +102,7 @@ void test_complete_sample_and_explicit_digest() {
         1.25,
         -2.5,
         std::optional<double>{30.0},
+        std::optional<double>{28.75},
         100.0,
         20.0,
         std::optional<double>{5.0},
@@ -116,6 +124,7 @@ void test_complete_sample_and_explicit_digest() {
     expect(result.status == runplay::RouteInteropStatus::success, "complete status");
     expect(result.sample_count == 1u, "complete sample count");
     expect(result.altitude_value_count == 1u, "complete altitude count");
+    expect(result.dem_altitude_value_count == 1u, "complete DEM altitude count");
     expect(result.speed_value_count == 1u, "complete speed count");
     expect(result.pace_value_count == 1u, "complete pace count");
     expect(result.heart_rate_value_count == 1u, "complete heart-rate count");
@@ -133,8 +142,40 @@ void test_complete_sample_and_explicit_digest() {
     expect(result.first_source_index == 7u, "complete first source index");
     expect(result.last_source_index == 7u, "complete last source index");
     expect(
-        result.field_digest == 4617272057486931324ULL,
+        result.field_digest == 13922378483449810303ULL,
         "complete fixture digest must match the independent constant");
+}
+
+void test_dem_altitude_participates_in_digest() {
+    // The DEM field has its own presence word, so absence, zero, and a value
+    // equal to the recorded altitude must all be distinguishable.
+    runplay::RouteInputSample absent = make_sample(3u, 0);
+    runplay::RouteInputSample zero = absent;
+    zero.dem_altitude_meters = 0.0;
+    runplay::RouteInputSample recorded_twin = absent;
+    recorded_twin.altitude_meters = 41.5;
+    runplay::RouteInputSample dem_twin = absent;
+    dem_twin.dem_altitude_meters = 41.5;
+
+    const runplay::RouteBatchInspection absent_result =
+        runplay::inspect_route_batch(&absent, 1u);
+    const runplay::RouteBatchInspection zero_result =
+        runplay::inspect_route_batch(&zero, 1u);
+    const runplay::RouteBatchInspection recorded_result =
+        runplay::inspect_route_batch(&recorded_twin, 1u);
+    const runplay::RouteBatchInspection dem_result =
+        runplay::inspect_route_batch(&dem_twin, 1u);
+
+    expect(absent_result.dem_altitude_value_count == 0u, "absent DEM altitude is not counted");
+    expect(zero_result.dem_altitude_value_count == 1u, "zero DEM altitude is a value");
+    expect(dem_result.dem_altitude_value_count == 1u, "DEM altitude value count");
+    expect(dem_result.altitude_value_count == 0u, "DEM altitude is not counted as recorded altitude");
+    expect(
+        absent_result.field_digest != zero_result.field_digest,
+        "absent and zero DEM altitude must digest differently");
+    expect(
+        recorded_result.field_digest != dem_result.field_digest,
+        "the same value in the recorded and DEM altitude fields must digest differently");
 }
 
 void test_absent_optionals_and_segment_transitions() {
@@ -154,6 +195,7 @@ void test_absent_optionals_and_segment_transitions() {
     expect(first.status == runplay::RouteInteropStatus::success, "segmented status");
     expect(first.sample_count == samples.size(), "segmented sample count");
     expect(first.altitude_value_count == 0u, "absent altitude count");
+    expect(first.dem_altitude_value_count == 0u, "absent DEM altitude count");
     expect(first.speed_value_count == 0u, "absent speed count");
     expect(first.pace_value_count == 0u, "absent pace count");
     expect(first.heart_rate_value_count == 0u, "absent heart-rate count");
@@ -200,6 +242,7 @@ void run_route_interop_tests() {
     test_empty_batch();
     test_invalid_and_bounded_inputs();
     test_complete_sample_and_explicit_digest();
+    test_dem_altitude_participates_in_digest();
     test_absent_optionals_and_segment_transitions();
     test_large_heap_backed_batch();
 }

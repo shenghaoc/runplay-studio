@@ -9,6 +9,7 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         XCTAssertEqual(inspection.status, .success)
         XCTAssertEqual(inspection.sampleCount, 0)
         XCTAssertEqual(inspection.altitudeValueCount, 0)
+        XCTAssertEqual(inspection.demAltitudeValueCount, 0)
         XCTAssertEqual(inspection.speedValueCount, 0)
         XCTAssertEqual(inspection.paceValueCount, 0)
         XCTAssertEqual(inspection.heartRateValueCount, 0)
@@ -33,6 +34,7 @@ final class RunPlayRouteBridgeTests: XCTestCase {
             latitude: 1.25,
             longitude: -103.75,
             altitudeMeters: 42.5,
+            demAltitudeMeters: 38.25,
             distanceFromStartMeters: 321.75,
             elapsedSeconds: 67.875,
             speedMetersPerSecond: 4.125,
@@ -54,6 +56,7 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         XCTAssertEqual(inspection.status, .success)
         XCTAssertEqual(inspection.sampleCount, 1)
         XCTAssertEqual(inspection.altitudeValueCount, 1)
+        XCTAssertEqual(inspection.demAltitudeValueCount, 1)
         XCTAssertEqual(inspection.speedValueCount, 1)
         XCTAssertEqual(inspection.paceValueCount, 1)
         XCTAssertEqual(inspection.heartRateValueCount, 1)
@@ -79,6 +82,7 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         let inspection = RunPlayRouteBridge.inspect(points)
 
         XCTAssertEqual(inspection.altitudeValueCount, 0)
+        XCTAssertEqual(inspection.demAltitudeValueCount, 0)
         XCTAssertEqual(inspection.speedValueCount, 0)
         XCTAssertEqual(inspection.paceValueCount, 0)
         XCTAssertEqual(inspection.heartRateValueCount, 0)
@@ -134,6 +138,7 @@ final class RunPlayRouteBridgeTests: XCTestCase {
             latitude: -0.0,
             longitude: .infinity,
             altitudeMeters: -.infinity,
+            demAltitudeMeters: canonicalNaN,
             distanceFromStartMeters: canonicalNaN,
             elapsedSeconds: -.infinity,
             speedMetersPerSecond: .infinity,
@@ -178,6 +183,8 @@ final class RunPlayRouteBridgeTests: XCTestCase {
                     latitude: 1.0 + scalar * 0.000_001,
                     longitude: 103.0 - scalar * 0.000_001,
                     altitudeMeters: index.isMultiple(of: 2) ? scalar * 0.01 : nil,
+                    demAltitudeMeters:
+                        index.isMultiple(of: 41) ? 50.0 + scalar * 0.001 : nil,
                     distanceFromStartMeters: scalar * 1.5,
                     elapsedSeconds: scalar * 0.25,
                     speedMetersPerSecond:
@@ -239,6 +246,12 @@ final class RunPlayRouteBridgeTests: XCTestCase {
         XCTAssertEqual(
             actual.altitudeValueCount,
             expected.altitudeValueCount,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.demAltitudeValueCount,
+            expected.demAltitudeValueCount,
             file: file,
             line: line
         )
@@ -345,6 +358,7 @@ final class RunPlayRouteBridgeTests: XCTestCase {
 private struct SwiftRouteInspection {
     let sampleCount: UInt64
     let altitudeValueCount: UInt64
+    let demAltitudeValueCount: UInt64
     let speedValueCount: UInt64
     let paceValueCount: UInt64
     let heartRateValueCount: UInt64
@@ -370,6 +384,7 @@ private enum SwiftRouteInspectionOracle {
 
     static func inspect(_ points: [RoutePoint]) -> SwiftRouteInspection {
         var altitudeValueCount: UInt64 = 0
+        var demAltitudeValueCount: UInt64 = 0
         var speedValueCount: UInt64 = 0
         var paceValueCount: UInt64 = 0
         var heartRateValueCount: UInt64 = 0
@@ -412,6 +427,7 @@ private enum SwiftRouteInspectionOracle {
             mix(point.latitude.bitPattern)
             mix(point.longitude.bitPattern)
             mixOptional(point.altitudeMeters, valueCount: &altitudeValueCount)
+            mixOptional(point.demAltitudeMeters, valueCount: &demAltitudeValueCount)
             mix(point.distanceFromStartMeters.bitPattern)
             mix(point.elapsedSeconds.bitPattern)
             mixOptional(point.speedMetersPerSecond, valueCount: &speedValueCount)
@@ -452,6 +468,7 @@ private enum SwiftRouteInspectionOracle {
         return SwiftRouteInspection(
             sampleCount: UInt64(points.count),
             altitudeValueCount: altitudeValueCount,
+            demAltitudeValueCount: demAltitudeValueCount,
             speedValueCount: speedValueCount,
             paceValueCount: paceValueCount,
             heartRateValueCount: heartRateValueCount,

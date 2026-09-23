@@ -60,6 +60,7 @@ enum RunPlayRouteInputBuffer {
             point.latitude,
             point.longitude,
             nativeOptional(point.altitudeMeters),
+            nativeOptional(point.demAltitudeMeters),
             point.distanceFromStartMeters,
             point.elapsedSeconds,
             nativeOptional(point.speedMetersPerSecond),

@@ -16,6 +16,7 @@ struct RunPlayRouteBatchInspection: Equatable, Sendable {
     let sampleCount: UInt64
 
     let altitudeValueCount: UInt64
+    let demAltitudeValueCount: UInt64
     let speedValueCount: UInt64
     let paceValueCount: UInt64
     let heartRateValueCount: UInt64
@@ -71,6 +72,7 @@ enum RunPlayRouteBridge {
                 status: status,
                 sampleCount: native.sample_count,
                 altitudeValueCount: native.altitude_value_count,
+                demAltitudeValueCount: native.dem_altitude_value_count,
                 speedValueCount: native.speed_value_count,
                 paceValueCount: native.pace_value_count,
                 heartRateValueCount: native.heart_rate_value_count,
