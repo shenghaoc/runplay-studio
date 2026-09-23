@@ -1,0 +1,20 @@
+Building for debugging...
+[Pre-planning 1 / 97]
+[Planning deferred tasks]
+Build complete! (25.85 secs)
+
+*** Signal 11: Backtracing from 0x74fcb5ba196a... done ***
+
+*** Program crashed: Bad pointer dereference at 0xffff8b034a49f720 ***
+
+Platform: x86_64 Linux (Ubuntu 26.04.1 LTS)
+
+Thread 2 "DispatchWorker" crashed:
+
+0      0x000074fcb5ba196a _dispatch_event_loop_drain + 1130 in libdispatch.so
+1 [ra] 0x000074fcb5b97022 _dispatch_mgr_invoke + 129 in libdispatch.so
+2 [ra] 0x000074fcb5b96f8d _dispatch_mgr_thread + 108 in libdispatch.so
+3 [ra] 0x000074fcb5b9a1b5 _dispatch_worker_thread + 660 in libdispatch.so
+4 [ra] 0x000074fcb4550dfa <unknown> in libc.so.6
+
+Backtrace took 19.41s

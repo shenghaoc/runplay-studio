@@ -72,9 +72,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Packaging tooling syntax
         run: |
-          # linux-container-verify is not packaging tooling, but the same
-          # syntax gate keeps the local-verification entrypoint from rotting.
+          # linux-container-verify and the SwiftPM crash-retry wrapper it
+          # shares with the Linux lane are not packaging tooling, but the
+          # same syntax gate keeps them from rotting.
           bash -n scripts/linux-container-verify.sh
+          bash -n scripts/retry-swiftpm-libdispatch-crash.sh
           bash -n scripts/lib/release-common.sh
           bash -n scripts/assemble-app-bundle.sh
           bash -n scripts/package-demo.sh
@@ -223,8 +225,19 @@ jobs:
           clang++ --version || true
       - name: Validate C++ architecture boundaries
         run: ./scripts/validate-cpp-boundaries.sh
+      # SwiftPM itself can segfault in libdispatch while it plans a build
+      # (#199), so every SwiftPM build below — the Core gate's `swift test`
+      # too, inside linux-container-verify.sh — runs through
+      # retry-swiftpm-libdispatch-crash.sh. It reruns a command once for
+      # exactly that crash, and only while SwiftPM has reported no error and
+      # not finished the build, so a reported build error or any test result
+      # is final. Its classifier is shell + awk: self-test it on the image's
+      # mawk first.
+      - name: Self-test SwiftPM crash retry
+        run: ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
       - name: Build RunPlayEngineCpp
         run: >-
+          ./scripts/retry-swiftpm-libdispatch-crash.sh
           swift build --target RunPlayEngineCpp
           -Xcxx -Wall
           -Xcxx -Wextra
@@ -234,7 +247,9 @@ jobs:
           -Xcxx -Wshadow
       - name: Run native C++ engine tests
         if: matrix.suite == 'tests'
-        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+        run: >-
+          ./scripts/retry-swiftpm-libdispatch-crash.sh
+          swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
       - name: Native C++ tests under ASan + UBSan
         if: matrix.suite == 'sanitizers'
         run: ./scripts/run-cpp-engine-tests.sh --sanitize
@@ -264,8 +279,8 @@ jobs:
       - name: Verify external RunPlayCore consumer
         if: matrix.suite == 'tests'
         run: |
-          swift build --package-path Tests/PackageConsumerSmoke
-          swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
+          ./scripts/retry-swiftpm-libdispatch-crash.sh swift build --package-path Tests/PackageConsumerSmoke
+          ./scripts/retry-swiftpm-libdispatch-crash.sh swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
       # Mirrors the Release Packaging job's end-of-job assertion. Every
       # Swift-invoking step above may only write under ignored paths
       # (.build/, Tests/PackageConsumerSmoke/.build/, the ignored smoke

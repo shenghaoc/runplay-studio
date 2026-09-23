@@ -1,0 +1,254 @@
+[0/1] Planning build
+Building for debugging...
+[0/12] Write sources
+[1/12] Write swift-version--1BFCD5C06E9F820A.txt
+[2/12] Wrapping AST for RunPlayCore for debugging
+[4/22] Emitting module RunPlayCoreTests
+[5/25] Compiling RunPlayCoreTests MetricValidationTests.swift
+[6/25] Compiling RunPlayCoreTests ReplayStateTests.swift
+[7/25] Compiling RunPlayCoreTests RoutePointInterpolatorTests.swift
+[8/25] Compiling RunPlayCoreTests FileWorkoutLibraryStoreTests.swift
+[9/25] Compiling RunPlayCoreTests GeoDistanceTests.swift
+[10/25] Compiling RunPlayCoreTests ImporterDispatchTests.swift
+[11/25] Compiling RunPlayCoreTests DisplayFormatterTests.swift
+[12/25] Compiling RunPlayCoreTests FITParserTests.swift
+[13/25] Compiling RunPlayCoreTests FITScalingTests.swift
+[14/25] Compiling RunPlayCoreTests RoutePointSanitizerTests.swift
+[15/25] Compiling RunPlayCoreTests WorkoutImportServiceTests.swift
+[16/25] Compiling RunPlayCoreTests WorkoutLibraryStoreActorTests.swift
+[17/26] Wrapping AST for RunPlayCoreTests for debugging
+[18/26] /home/runner/work/runplay-studio/runplay-studio/.build/x86_64-unknown-linux-gnu/debug/RunPlayStudioPackageDiscoveredTests.derived/all-discovered-tests.swift
+[19/26] Write sources
+[21/29] Compiling RunPlayStudioPackageDiscoveredTests RunPlayCoreTests.swift
+[22/29] Compiling RunPlayStudioPackageDiscoveredTests all-discovered-tests.swift
+[23/29] Emitting module RunPlayStudioPackageDiscoveredTests
+[24/30] /home/runner/work/runplay-studio/runplay-studio/.build/x86_64-unknown-linux-gnu/debug/RunPlayStudioPackageTests.derived/runner.swift
+[25/30] Write sources
+[26/30] Wrapping AST for RunPlayStudioPackageDiscoveredTests for debugging
+[28/32] Compiling RunPlayStudioPackageTests runner.swift
+[29/32] Emitting module RunPlayStudioPackageTests
+[30/33] Wrapping AST for RunPlayStudioPackageTests for debugging
+[31/33] Write Objects.LinkFileList
+[32/33] Linking RunPlayStudioPackageTests.xctest
+Build complete! (7.24s)
+Test Suite 'Selected tests' started at 2026-07-11 23:32:44.500
+Test Suite 'DisplayFormatterTests' started at 2026-07-11 23:32:44.975
+Test Case 'DisplayFormatterTests.testFormatCadenceNaNReturnsFallback' started at 2026-07-11 23:32:44.975
+Test Case 'DisplayFormatterTests.testFormatCadenceNaNReturnsFallback' passed (0.001 seconds)
+Test Case 'DisplayFormatterTests.testFormatCadenceNilReturnsFallback' started at 2026-07-11 23:32:44.981
+Test Case 'DisplayFormatterTests.testFormatCadenceNilReturnsFallback' passed (0.101 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceInfinityReturnsFallback' started at 2026-07-11 23:32:45.082
+Test Case 'DisplayFormatterTests.testFormatDistanceInfinityReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceKmInfinityReturnsFallback' started at 2026-07-11 23:32:45.082
+Test Case 'DisplayFormatterTests.testFormatDistanceKmInfinityReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNaNReturnsFallback' started at 2026-07-11 23:32:45.082
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNegativeReturnsFallback' started at 2026-07-11 23:32:45.082
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNegativeReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNilReturnsFallback' started at 2026-07-11 23:32:45.082
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNilReturnsFallback' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNormal' started at 2026-07-11 23:32:45.183
+Test Case 'DisplayFormatterTests.testFormatDistanceKmNormal' passed (0.001 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceMeters' started at 2026-07-11 23:32:45.183
+Test Case 'DisplayFormatterTests.testFormatDistanceMeters' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceNaNReturnsFallback' started at 2026-07-11 23:32:45.183
+Test Case 'DisplayFormatterTests.testFormatDistanceNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDistanceNegativeReturnsFallback' started at 2026-07-11 23:32:45.183
+Test Case 'DisplayFormatterTests.testFormatDistanceNegativeReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDurationInfinityReturnsFallback' started at 2026-07-11 23:32:45.184
+Test Case 'DisplayFormatterTests.testFormatDurationInfinityReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDurationNaNReturnsFallback' started at 2026-07-11 23:32:45.184
+Test Case 'DisplayFormatterTests.testFormatDurationNaNReturnsFallback' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatDurationNegativeReturnsFallback' started at 2026-07-11 23:32:45.284
+Test Case 'DisplayFormatterTests.testFormatDurationNegativeReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDurationNilReturnsFallback' started at 2026-07-11 23:32:45.284
+Test Case 'DisplayFormatterTests.testFormatDurationNilReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDurationNormal' started at 2026-07-11 23:32:45.284
+Test Case 'DisplayFormatterTests.testFormatDurationNormal' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatDurationZeroReturnsValid' started at 2026-07-11 23:32:45.285
+Test Case 'DisplayFormatterTests.testFormatDurationZeroReturnsValid' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatElapsedInfinityReturnsFallback' started at 2026-07-11 23:32:45.385
+Test Case 'DisplayFormatterTests.testFormatElapsedInfinityReturnsFallback' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatElapsedNaNReturnsFallback' started at 2026-07-11 23:32:45.485
+Test Case 'DisplayFormatterTests.testFormatElapsedNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatElapsedNegativeReturnsFallback' started at 2026-07-11 23:32:45.486
+Test Case 'DisplayFormatterTests.testFormatElapsedNegativeReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatElapsedNormal' started at 2026-07-11 23:32:45.486
+Test Case 'DisplayFormatterTests.testFormatElapsedNormal' passed (0.001 seconds)
+Test Case 'DisplayFormatterTests.testFormatElevationDeltaNormal' started at 2026-07-11 23:32:45.487
+Test Case 'DisplayFormatterTests.testFormatElevationDeltaNormal' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatElevationNaNReturnsFallback' started at 2026-07-11 23:32:45.487
+Test Case 'DisplayFormatterTests.testFormatElevationNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatElevationNilReturnsFallback' started at 2026-07-11 23:32:45.487
+Test Case 'DisplayFormatterTests.testFormatElevationNilReturnsFallback' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatHeartRateInfinityReturnsFallback' started at 2026-07-11 23:32:45.587
+Test Case 'DisplayFormatterTests.testFormatHeartRateInfinityReturnsFallback' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatHeartRateNaNReturnsFallback' started at 2026-07-11 23:32:45.687
+Test Case 'DisplayFormatterTests.testFormatHeartRateNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatHeartRateNilReturnsFallback' started at 2026-07-11 23:32:45.688
+Test Case 'DisplayFormatterTests.testFormatHeartRateNilReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatHeartRateNormal' started at 2026-07-11 23:32:45.688
+Test Case 'DisplayFormatterTests.testFormatHeartRateNormal' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatNumberDecimal' started at 2026-07-11 23:32:45.788
+Test Case 'DisplayFormatterTests.testFormatNumberDecimal' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatNumberInfinityReturnsEmpty' started at 2026-07-11 23:32:45.889
+Test Case 'DisplayFormatterTests.testFormatNumberInfinityReturnsEmpty' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatNumberInteger' started at 2026-07-11 23:32:45.989
+Test Case 'DisplayFormatterTests.testFormatNumberInteger' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatNumberNaNReturnsEmpty' started at 2026-07-11 23:32:45.989
+Test Case 'DisplayFormatterTests.testFormatNumberNaNReturnsEmpty' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatOptionalNumberNaNReturnsEmpty' started at 2026-07-11 23:32:45.989
+Test Case 'DisplayFormatterTests.testFormatOptionalNumberNaNReturnsEmpty' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatOptionalNumberNilReturnsEmpty' started at 2026-07-11 23:32:46.090
+Test Case 'DisplayFormatterTests.testFormatOptionalNumberNilReturnsEmpty' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatPaceInfinityReturnsFallback' started at 2026-07-11 23:32:46.090
+Test Case 'DisplayFormatterTests.testFormatPaceInfinityReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatPaceNaNReturnsFallback' started at 2026-07-11 23:32:46.090
+Test Case 'DisplayFormatterTests.testFormatPaceNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatPaceNegativeReturnsFallback' started at 2026-07-11 23:32:46.090
+Test Case 'DisplayFormatterTests.testFormatPaceNegativeReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatPaceNilReturnsFallback' started at 2026-07-11 23:32:46.091
+Test Case 'DisplayFormatterTests.testFormatPaceNilReturnsFallback' passed (0.1 seconds)
+Test Case 'DisplayFormatterTests.testFormatPaceNormal' started at 2026-07-11 23:32:46.191
+Test Case 'DisplayFormatterTests.testFormatPaceNormal' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatPaceZeroReturnsFallback' started at 2026-07-11 23:32:46.191
+Test Case 'DisplayFormatterTests.testFormatPaceZeroReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatSpeedKmhNormal' started at 2026-07-11 23:32:46.191
+Test Case 'DisplayFormatterTests.testFormatSpeedKmhNormal' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatSpeedNaNReturnsFallback' started at 2026-07-11 23:32:46.191
+Test Case 'DisplayFormatterTests.testFormatSpeedNaNReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatSpeedNegativeReturnsFallback' started at 2026-07-11 23:32:46.192
+Test Case 'DisplayFormatterTests.testFormatSpeedNegativeReturnsFallback' passed (0.0 seconds)
+Test Case 'DisplayFormatterTests.testFormatSpeedNilReturnsFallback' started at 2026-07-11 23:32:46.192
+Test Case 'DisplayFormatterTests.testFormatSpeedNilReturnsFallback' passed (0.0 seconds)
+Test Suite 'DisplayFormatterTests' passed at 2026-07-11 23:32:46.192
+
+Test Suite 'FITParserTests' started at 2026-07-11 23:32:46.192
+Test Case 'FITParserTests.test12ByteHeaderParsesSuccessfully' started at 2026-07-11 23:32:46.192
+Test Case 'FITParserTests.test12ByteHeaderParsesSuccessfully' passed (0.001 seconds)
+Test Case 'FITParserTests.testCRC16KnownAnswer' started at 2026-07-11 23:32:46.193
+Test Case 'FITParserTests.testCRC16KnownAnswer' passed (0.0 seconds)
+Test Case 'FITParserTests.testCompressedTimestampHeaderFailsWithoutBaseline' started at 2026-07-11 23:32:46.193
+Test Case 'FITParserTests.testCompressedTimestampHeaderFailsWithoutBaseline' passed (0.0 seconds)
+Test Case 'FITParserTests.testCompressedTimestampParsesCorrectly' started at 2026-07-11 23:32:46.194
+Test Case 'FITParserTests.testCompressedTimestampParsesCorrectly' passed (0.0 seconds)
+Test Case 'FITParserTests.testCompressedTimestampWithMultipleLocalTypes' started at 2026-07-11 23:32:46.194
+Test Case 'FITParserTests.testCompressedTimestampWithMultipleLocalTypes' passed (0.0 seconds)
+Test Case 'FITParserTests.testCompressedTimestampWrapHandling' started at 2026-07-11 23:32:46.194
+
+*** Signal 4: Backtracing from 0x55c45dfeb10c... done ***
+
+*** Swift runtime failure: arithmetic overflow ***
+
+Platform: x86_64 Linux (Ubuntu 24.04.4 LTS)
+
+Thread 0 "RunPlayStudioPa" crashed:
+
+  0 [inlined] [system] 0x000055c45dfeb10c Swift runtime failure: arithmetic overflow in RunPlayStudioPackageTests.xctest at //<compiler-generated>
+  1                    0x000055c45dfeb10c static FITParser.parse(data:isCancelled:) + 12188 in RunPlayStudioPackageTests.xctest at /home/runner/work/runplay-studio/runplay-studio/RunPlayCore/Sources/Importers/FITParser.swift:177:47
+  2 [ra]               0x000055c45e080aa7 FITParserTests.testCompressedTimestampWrapHandling() + 630 in RunPlayStudioPackageTests.xctest at /home/runner/work/runplay-studio/runplay-studio/RunPlayCore/Tests/RunPlayCoreTests/FITParserTests.swift:334:37
+  3 [ra] [system]      0x000055c45e0cbbae implicit closure #12 in implicit closure #11 in variable initialization expression of static FITParserTests.__allTests__FITParserTests + 29 in RunPlayStudioPackageTests.xctest at /home/runner/work/runplay-studio/runplay-studio/.build/x86_64-unknown-linux-gnu/debug/RunPlayStudioPackageDiscoveredTests.derived/RunPlayCoreTests.swift
+  4 [ra] [thunk]       0x000055c45e0d66ff partial apply for implicit closure #12 in implicit closure #11 in variable initialization expression of static FITParserTests.__allTests__FITParserTests + 14 in RunPlayStudioPackageTests.xctest at //<compiler-generated>
+  5 [ra] [thunk]       0x000055c45e0cb71f thunk for @escaping @callee_guaranteed () -> (@error @owned Error) + 14 in RunPlayStudioPackageTests.xctest at //<compiler-generated>
+  6 [ra] [thunk]       0x000055c45e0d67b4 partial apply for thunk for @escaping @callee_guaranteed () -> (@error @owned Error) + 19 in RunPlayStudioPackageTests.xctest at //<compiler-generated>
+...
+
+Thread 1:
+
+  0      0x00007fbb99298d71 <unknown> in libc.so.6
+  1 [ra] 0x00007fbb992a4d93 <unknown> in libc.so.6
+  2 [ra] 0x00007fbb9a8b7cb1 _dispatch_sema4_timedwait + 80 in libdispatch.so
+  3 [ra] 0x00007fbb9a8b09b1 _dispatch_semaphore_wait_slow + 32 in libdispatch.so
+  4 [ra] 0x00007fbb9a8b02be _dispatch_worker_thread + 1037 in libdispatch.so
+  5 [ra] 0x00007fbb9929caa4 <unknown> in libc.so.6
+...
+
+Thread 2:
+
+  0      0x00007fbb9932a072 <unknown> in libc.so.6
+error: Process '/home/runner/work/runplay-studio/runplay-studio/.build/x86_64-unknown-linux-gnu/debug/RunPlayStudioPackageTests.xctest RunPlayCoreTests.DisplayFormatterTests/testFormatCadenceNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatCadenceNilReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceInfinityReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceKmInfinityReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceKmNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceKmNegativeReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceKmNilReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceKmNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceMeters,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDistanceNegativeReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDurationInfinityReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDurationNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDurationNegativeReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDurationNilReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatDurationNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatDurationZeroReturnsValid,RunPlayCoreTests.DisplayFormatterTests/testFormatElapsedInfinityReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatElapsedNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatElapsedNegativeReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatElapsedNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatElevationDeltaNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatElevationNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatElevationNilReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatHeartRateInfinityReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatHeartRateNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatHeartRateNilReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatHeartRateNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatNumberDecimal,RunPlayCoreTests.DisplayFormatterTests/testFormatNumberInfinityReturnsEmpty,RunPlayCoreTests.DisplayFormatterTests/testFormatNumberInteger,RunPlayCoreTests.DisplayFormatterTests/testFormatNumberNaNReturnsEmpty,RunPlayCoreTests.DisplayFormatterTests/testFormatOptionalNumberNaNReturnsEmpty,RunPlayCoreTests.DisplayFormatterTests/testFormatOptionalNumberNilReturnsEmpty,RunPlayCoreTests.DisplayFormatterTests/testFormatPaceInfinityReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatPaceNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatPaceNegativeReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatPaceNilReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatPaceNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatPaceZeroReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatSpeedKmhNormal,RunPlayCoreTests.DisplayFormatterTests/testFormatSpeedNaNReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatSpeedNegativeReturnsFallback,RunPlayCoreTests.DisplayFormatterTests/testFormatSpeedNilReturnsFallback,RunPlayCoreTests.FITParserTests/test12ByteHeaderParsesSuccessfully,RunPlayCoreTests.FITParserTests/testCRC16KnownAnswer,RunPlayCoreTests.FITParserTests/testCompressedTimestampHeaderFailsWithoutBaseline,RunPlayCoreTests.FITParserTests/testCompressedTimestampParsesCorrectly,RunPlayCoreTests.FITParserTests/testCompressedTimestampWithMultipleLocalTypes,RunPlayCoreTests.FITParserTests/testCompressedTimestampWrapHandling,RunPlayCoreTests.FITParserTests/testCorruptFileCRCThrows,RunPlayCoreTests.FITParserTests/testCorruptHeaderCRCThrows,RunPlayCoreTests.FITParserTests/testDeveloperDataFieldsAreSkippedWithoutDesyncing,RunPlayCoreTests.FITParserTests/testDeviceInfoMessageIsParsed,RunPlayCoreTests.FITParserTests/testEnhancedAltitudeAndSpeedAreParsed,RunPlayCoreTests.FITParserTests/testEventMessageIsParsed,RunPlayCoreTests.FITParserTests/testFITDecoderInterpolatesPartialTimestamps,RunPlayCoreTests.FITParserTests/testFITDecoderReturnsEmptyWhenGPSRecordsHaveNoTimestamps,RunPlayCoreTests.FITParserTests/testFileIDMessageIsParsed,RunPlayCoreTests.FITParserTests/testNegativeFITCoordinatesUseBitPatternSemantics,RunPlayCoreTests.FITParserTests/testOrderedMessagesTrackDocumentOrder,RunPlayCoreTests.FITParserTests/testSessionMessageIsParsed,RunPlayCoreTests.FITParserTests/testSessionSelectionFallsBackWithoutSessions,RunPlayCoreTests.FITParserTests/testSessionSelectionRejectsMultipleRunningSessions,RunPlayCoreTests.FITParserTests/testSessionSelectionRejectsNonRunningSport,RunPlayCoreTests.FITParserTests/testSessionSelectionWithSingleRunningSession,RunPlayCoreTests.FITParserTests/testTimerEventSegmentationSplitsRoute,RunPlayCoreTests.FITParserTests/testTrailingBytesAfterFileCRCThrows,RunPlayCoreTests.FITParserTests/testTruncatedDataThrows,RunPlayCoreTests.FITParserTests/testValidCRCParsesSuccessfully,RunPlayCoreTests.FITParserTests/testZeroHeaderCRCSkipsValidation,RunPlayCoreTests.FITScalingTests/testScaledAltitudeToMeters100m,RunPlayCoreTests.FITScalingTests/testScaledAltitudeToMetersSeaLevel,RunPlayCoreTests.FITScalingTests/testScaledAltitudeToMetersZero,RunPlayCoreTests.FITScalingTests/testScaledDistanceToMeters1km,RunPlayCoreTests.FITScalingTests/testScaledDistanceToMeters5km,RunPlayCoreTests.FITScalingTests/testScaledDistanceToMetersZero,RunPlayCoreTests.FITScalingTests/testScaledSpeedToMPS10kmh,RunPlayCoreTests.FITScalingTests/testScaledSpeedToMPS5minKm,RunPlayCoreTests.FITScalingTests/testScaledSpeedToMPSZero,RunPlayCoreTests.FITScalingTests/testSemicirclesToDegreesNegative,RunPlayCoreTests.FITScalingTests/testSemicirclesToDegreesPositive90,RunPlayCoreTests.FITScalingTests/testSemicirclesToDegreesSanFrancisco,RunPlayCoreTests.FITScalingTests/testSemicirclesToDegreesZero,RunPlayCoreTests.FITScalingTests/testTimestampToDateEpoch,RunPlayCoreTests.FITScalingTests/testTimestampToDateKnownValue,RunPlayCoreTests.FITScalingTests/testTimestampToDateOneSecond,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testCorruptManifestThrows,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testCorruptWorkoutFileAmongValid,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testDateRoundTrip,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testDeleteNonexistentWorkoutDoesNotThrow,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testDeleteWorkout,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testDeletionPersistsAfterReload,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testFailedWorkoutWritePreservesPriorValidData,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testLoadManifestFromEmptyLibraryThrows,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testManifestEquality,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testManifestInequalityDifferentOrder,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testMissingWorkoutFileReferencedByManifest,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testNilSelectedWorkoutPreserved,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testOlderSchemaVersionThrowsWithoutMigration,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testOrderPreservedAcrossReload,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testRoutePointsRoundTrip,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testSaveAndReloadMultipleWorkouts,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testSaveAndReloadOneWorkout,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testSegmentsRoundTrip,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testSelectedWorkoutRestored,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testSplitsRoundTrip,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testSummaryRoundTrip,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testUUIDRoundTrip,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testUnsupportedSchemaVersionThrows,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testUpdateExistingWorkout,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testWorkoutExistsReturnsFalseForMissing,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testWorkoutExistsReturnsTrueForSaved,RunPlayCoreTests.FileWorkoutLibraryStoreTests/testWorkoutLibraryErrorEquatable,RunPlayCoreTests.GeoDistanceTests/testDistanceBetweenSamePointIsZero,RunPlayCoreTests.GeoDistanceTests/testDistanceEquatorOneDegreeLongitude,RunPlayCoreTests.GeoDistanceTests/testDistanceIsSymmetric,RunPlayCoreTests.GeoDistanceTests/testDistanceOneDegreeLatitude,RunPlayCoreTests.GeoDistanceTests/testDistanceSanFranciscoToLosAngeles,RunPlayCoreTests.GeoDistanceTests/testInfinityCoordinateRejected,RunPlayCoreTests.GeoDistanceTests/testInfinityLongitudeReturnsZero,RunPlayCoreTests.GeoDistanceTests/testInvalidLatitudeRejected,RunPlayCoreTests.GeoDistanceTests/testInvalidLatitudeReturnsZero,RunPlayCoreTests.GeoDistanceTests/testInvalidLongitudeRejected,RunPlayCoreTests.GeoDistanceTests/testInvalidLongitudeReturnsZero,RunPlayCoreTests.GeoDistanceTests/testNaNCoordinateRejected,RunPlayCoreTests.GeoDistanceTests/testNaNLatitudeReturnsZero,RunPlayCoreTests.GeoDistanceTests/testSouthernHemisphereDistance,RunPlayCoreTests.GeoDistanceTests/testValidCoordinateAccepted,RunPlayCoreTests.GeoDistanceTests/testWesternHemisphereDistance,RunPlayCoreTests.ImporterDispatchTests/testAllImportersHaveSupportedExtensions,RunPlayCoreTests.ImporterDispatchTests/testCaseInsensitiveExtension,RunPlayCoreTests.ImporterDispatchTests/testFITImporterDispatchedByExtension,RunPlayCoreTests.ImporterDispatchTests/testGPXImporterDispatchedByExtension,RunPlayCoreTests.ImporterDispatchTests/testImportersRejectMissingFiles,RunPlayCoreTests.ImporterDispatchTests/testImportersRejectNonFileURLs,RunPlayCoreTests.ImporterDispatchTests/testJSONImporterDispatchedByExtension,RunPlayCoreTests.ImporterDispatchTests/testSupportedExtensionsContainsFIT,RunPlayCoreTests.ImporterDispatchTests/testSupportedExtensionsContainsGPX,RunPlayCoreTests.ImporterDispatchTests/testSupportedExtensionsContainsJSON,RunPlayCoreTests.ImporterDispatchTests/testSupportedExtensionsContainsTCX,RunPlayCoreTests.ImporterDispatchTests/testSupportedExtensionsCount,RunPlayCoreTests.ImporterDispatchTests/testTCXImporterDispatchedByExtension,RunPlayCoreTests.ImporterDispatchTests/testUnsupportedExtensionThrows,RunPlayCoreTests.MetricValidationTests/testFormatPaceShortInfinityReturnsFallback,RunPlayCoreTests.MetricValidationTests/testFormatPaceShortNaNReturnsFallback,RunPlayCoreTests.MetricValidationTests/testFormatPaceShortNegativeReturnsFallback,RunPlayCoreTests.MetricValidationTests/testFormatPaceShortNilReturnsFallback,RunPlayCoreTests.MetricValidationTests/testFormatPaceShortNormal,RunPlayCoreTests.MetricValidationTests/testFormatPaceShortZeroReturnsFallback,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateInfinity,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateJustAboveRange,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateJustBelowRange,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateNaN,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateNegative,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateNegativeInfinity,RunPlayCoreTests.MetricValidationTests/testInvalidHeartRateZero,RunPlayCoreTests.MetricValidationTests/testValidHeartRateLowerBound,RunPlayCoreTests.MetricValidationTests/testValidHeartRateMidpoint,RunPlayCoreTests.MetricValidationTests/testValidHeartRateUpperBound,RunPlayCoreTests.ReplayStateTests/testInitClampsInvalidPlaybackValues,RunPlayCoreTests.ReplayStateTests/testInitClampsPositionToKnownTotals,RunPlayCoreTests.RoutePointInterpolatorTests/testAverageHeartRateFiltersOutOfRange,RunPlayCoreTests.RoutePointInterpolatorTests/testAverageHeartRateReturnsAverage,RunPlayCoreTests.RoutePointInterpolatorTests/testAverageHeartRateWithInvertedRangeReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testAverageHeartRateWithNoValidHRReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testElevationGainComputesPositiveGain,RunPlayCoreTests.RoutePointInterpolatorTests/testElevationGainWithInvertedRangeReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testElevationGainWithNoAltitudeReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testFirstIndexAtOrAfterFindsCorrectIndex,RunPlayCoreTests.RoutePointInterpolatorTests/testFirstIndexBeyondEndReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testLastIndexAtOrBeforeFindsCorrectIndex,RunPlayCoreTests.RoutePointInterpolatorTests/testPointAtDuplicateTailDistanceReturnsLastPoint,RunPlayCoreTests.RoutePointInterpolatorTests/testPointAtEndReturnsLastPoint,RunPlayCoreTests.RoutePointInterpolatorTests/testPointAtExactEndpointPreservesOneSidedMetrics,RunPlayCoreTests.RoutePointInterpolatorTests/testPointAtMidDistanceInterpolates,RunPlayCoreTests.RoutePointInterpolatorTests/testPointAtStartReturnsFirstPoint,RunPlayCoreTests.RoutePointInterpolatorTests/testPointBeforeStartClamps,RunPlayCoreTests.RoutePointInterpolatorTests/testPointBeyondEndClamps,RunPlayCoreTests.RoutePointInterpolatorTests/testPointWithEmptyArrayReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testPointWithNaNDistanceReturnsNil,RunPlayCoreTests.RoutePointInterpolatorTests/testPointWithSinglePointReturnsThatPoint,RunPlayCoreTests.RoutePointInterpolatorTests/testScenePointAtDuplicateTailDistanceReturnsLastPoint,RunPlayCoreTests.RoutePointSanitizerTests/testHeartRateSmoothingPreservesPointAlignment,RunPlayCoreTests.RoutePointSanitizerTests/testNormalizeAllowsZeroOptionalMetrics,RunPlayCoreTests.RoutePointSanitizerTests/testNormalizeDropsNegativeOptionalMetrics,RunPlayCoreTests.RoutePointSanitizerTests/testNormalizeSortsFiltersAndKeepsMonotonicSeries,RunPlayCoreTests.RoutePointSanitizerTests/testSplitCalculationInterpolatesUnevenSamples,RunPlayCoreTests.RoutePointSanitizerTests/testSuppliedDistancesAreRebasedWhenCompleteAndMonotonic,RunPlayCoreTests.WorkoutImportServiceTests/testParseFailurePropagates,RunPlayCoreTests.WorkoutImportServiceTests/testParseRunsOffMainThread,RunPlayCoreTests.WorkoutImportServiceTests/testSuccessfulImport,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testAddPropagatesManifestCorruptedError,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testAddRollbackOnManifestFailure,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testConcurrentAdditionsPreserveAllIDs,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testCorruptManifestNotOverwritten,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testDeleteManifestFailureLeavesWorkoutIntact,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testDeleteNonexistentWorkoutReturnsNotInManifest,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testDeleteTransactionSuccess,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testDeleteWithNoManifestReturnsNotInManifest,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testDuplicateAddIsIdempotent,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testLargeWorkoutEncodeDecode,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testLoadLibraryFromEmptyReturnsDemos,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testLoadLibraryWithWorkoutsReturnsThem,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testOrphanedFileThrowsError,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testRapidSelectionPreservesNewest,RunPlayCoreTests.WorkoutLibraryStoreActorTests/testStoreOperationsSerialize' exited with unexpected signal code 4
+  1 [ra] 0x00007fbb9a8b74c7 _dispatch_event_loop_drain + 54 in libdispatch.so
+  2 [ra] 0x00007fbb9a8acfb2 _dispatch_mgr_invoke + 129 in libdispatch.so
+  3 [ra] 0x00007fbb9a8acf1d _dispatch_mgr_thread + 108 in libdispatch.so
+  4 [ra] 0x00007fbb9a8b0125 _dispatch_worker_thread + 628 in libdispatch.so
+  5 [ra] 0x00007fbb9929caa4 <unknown> in libc.so.6
+...
+
+Thread 3:
+
+  0      0x00007fbb99298d71 <unknown> in libc.so.6
+  1 [ra] 0x00007fbb992a4d93 <unknown> in libc.so.6
+  2 [ra] 0x00007fbb9a8b7cb1 _dispatch_sema4_timedwait + 80 in libdispatch.so
+  3 [ra] 0x00007fbb9a8b09b1 _dispatch_semaphore_wait_slow + 32 in libdispatch.so
+  4 [ra] 0x00007fbb9a8b02be _dispatch_worker_thread + 1037 in libdispatch.so
+  5 [ra] 0x00007fbb9929caa4 <unknown> in libc.so.6
+...
+
+Thread 4:
+
+  0      0x00007fbb99298d71 <unknown> in libc.so.6
+  1 [ra] 0x00007fbb992a4d93 <unknown> in libc.so.6
+  2 [ra] 0x00007fbb9a8b7cb1 _dispatch_sema4_timedwait + 80 in libdispatch.so
+  3 [ra] 0x00007fbb9a8b09b1 _dispatch_semaphore_wait_slow + 32 in libdispatch.so
+  4 [ra] 0x00007fbb9a8b02be _dispatch_worker_thread + 1037 in libdispatch.so
+  5 [ra] 0x00007fbb9929caa4 <unknown> in libc.so.6
+...
+
+Thread 5:
+
+  0      0x00007fbb99298d71 <unknown> in libc.so.6
+  1 [ra] 0x00007fbb992a4d93 <unknown> in libc.so.6
+  2 [ra] 0x00007fbb9a8b7cb1 _dispatch_sema4_timedwait + 80 in libdispatch.so
+  3 [ra] 0x00007fbb9a8b09b1 _dispatch_semaphore_wait_slow + 32 in libdispatch.so
+  4 [ra] 0x00007fbb9a8b02be _dispatch_worker_thread + 1037 in libdispatch.so
+  5 [ra] 0x00007fbb9929caa4 <unknown> in libc.so.6
+...
+
+Thread 6:
+
+  0      0x00007fbb99298d71 <unknown> in libc.so.6
+  1 [ra] 0x00007fbb992a4d93 <unknown> in libc.so.6
+  2 [ra] 0x00007fbb9a8b7cb1 _dispatch_sema4_timedwait + 80 in libdispatch.so
+  3 [ra] 0x00007fbb9a8b09b1 _dispatch_semaphore_wait_slow + 32 in libdispatch.so
+  4 [ra] 0x00007fbb9a8b02be _dispatch_worker_thread + 1037 in libdispatch.so
+  5 [ra] 0x00007fbb9929caa4 <unknown> in libc.so.6
+...
+
+
+Registers:
+
+rax 0x00000000000f4201  999937
+rdx 0x00007fbb9aff9c70  78 fe fe 9a bb 7f 00 00 ff ff ff ff 04 00 00 80  xþþ·»···ÿÿÿÿ····
+rcx 0x00000000ffffffe7  4294967271
+rbx 0x0000000000000001  1
+rsi 0x00007ffdc271dae8  05 00 00 00 00 00 00 05 00 00 00 00 00 05 05 00  ················
+rdi 0x0000000000000000  0
+rbp 0x00007ffdc271de00  00 e1 71 c2 fd 7f 00 00 a7 0a 08 5e c4 55 00 00  ·áqÂý···§··^ÄU··
+rsp 0x00007ffdc271d130  70 9c ff 9a bb 7f 00 00 00 00 00 00 bb 7f 00 00  p·ÿ·»·······»···
+ r8 0x80000006ffffffff  9223372066919546879
+ r9 0xba992e318fdcb7bc  13445828952893208508
+r10 0x000055c4791d9da0  29 ed 5c 25 c1 55 00 00 d5 e6 98 80 de 7a b5 da  )í\%ÁU··Õæ··ÞzµÚ
+r11 0xdab57ade8098e6d5  15759637567111751381
+r12 0x0000000000000000  0
+r13 0x0000000000000000  0
+r14 0x000055c4791c51d0  48 3e 18 5e c4 55 00 00 03 00 00 00 0a 00 00 00  H>·^ÄU··········
+r15 0x0000000000000000  0
+rip 0x000055c45dfeb10c  0f 0b 0f 0b 0f 0b 0f 0b 0f 0b 0f 0b 0f 0b 0f 0b  ················
+
+rflags 0x0000000000010202
+
+cs 0x0033  fs 0x0000  gs 0x0000
+
+
+Images (28 omitted):
+
+0x000055c45df90000–0x000055c45e167a28 fb59c40fa8801e41215542edeb58110b29e0de4b RunPlayStudioPackageTests.xctest /home/runner/work/runplay-studio/runplay-studio/.build/x86_64-unknown-linux-gnu/debug/RunPlayStudioPackageTests.xctest
+0x00007fbb99200000–0x00007fbb993afd39 8e9fd827446c24067541ac5390e6f527fb5947bb libc.so.6                        /usr/lib/x86_64-linux-gnu/libc.so.6
+0x00007fbb9a87b000–0x00007fbb9a8c3140 15b8c0a5fee2122fa0f4579a8f026620c6aacc57 libdispatch.so                   /usr/share/swift/usr/lib/swift/linux/libdispatch.so
+
+Backtrace took 0.06s
+
+◇ Test run started.
+↳ Testing Library Version: 6.3.3 (48d727cc1cf4eda)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.004 seconds.
