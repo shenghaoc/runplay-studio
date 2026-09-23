@@ -532,7 +532,12 @@ public struct WorkoutAnalyzer: Sendable {
         policy: RouteQualityPolicy
     ) -> RunSummary {
         let points = workout.routePoints
-        guard !points.isEmpty else { return RunSummary() }
+        guard !points.isEmpty else {
+            return Self.routeLessSummary(
+                from: workout.summary,
+                policy: policy
+            )
+        }
 
         let timeline = context.timeline
 
@@ -608,6 +613,63 @@ public struct WorkoutAnalyzer: Sendable {
             averageStepLengthMeters: powerDynamics.averageStepLengthMeters,
             rawElevationGainMeters: rawElevation.gain,
             rawElevationLossMeters: rawElevation.loss
+        )
+    }
+
+    /// Summary for a workout that carries no route at all.
+    ///
+    /// The summary-path invariant: source-supplied distance and duration
+    /// survive analysis **only** when `routePoints` is empty, and then only
+    /// when the source actually reported them. A routed workout never reaches
+    /// this function, so it keeps route-derived distance exactly as before,
+    /// including Health-export runs that arrive with a route GPX — which keeps
+    /// pace and splits consistent with every other importer.
+    ///
+    /// An empty route with nothing reported stays an all-zero summary with the
+    /// `.gpsDerived` default, which is what every snapshot written before this
+    /// change produced; those bytes are unchanged.
+    ///
+    /// Heart rate is deliberately not carried through here. HR for a route-less
+    /// workout comes from the dedicated heart-rate series through the single HR
+    /// accessor, which is the layer that owns it; this function preserves only
+    /// what the source reported about distance and duration.
+    static func routeLessSummary(
+        from existing: RunSummary,
+        policy: RouteQualityPolicy
+    ) -> RunSummary {
+        let reportedDistance = existing.totalDistanceMeters
+        let reportedElapsed = existing.totalElapsedSeconds
+        guard reportedDistance > 0 || reportedElapsed > 0 else {
+            // Nothing to preserve: reproduce the historical empty summary,
+            // including its omitted provenance.
+            return RunSummary()
+        }
+
+        // A route-less source reports elapsed time only; it carries no pause
+        // boundaries, so active time equals elapsed time and pace is the sole
+        // speed the source supports. Moving time is set to the active clock and
+        // stopped time therefore falls out at zero — the same fallback the
+        // designated `RunSummary` initializer applies — rather than inventing a
+        // movement split that only a route can evidence.
+        let speed = Self.speed(
+            distanceMeters: reportedDistance,
+            seconds: reportedElapsed,
+            maximumMetersPerSecond: policy.maximumSourceSpeedMetersPerSecond
+        )
+        let pace = speed > 0 ? 1_000 / speed : 0
+
+        return RunSummary(
+            totalDistanceMeters: reportedDistance,
+            totalElapsedSeconds: reportedElapsed,
+            totalActiveSeconds: reportedElapsed,
+            totalMovingSeconds: reportedElapsed,
+            movingPaceSecondsPerKilometer: pace,
+            movingAverageSpeedMetersPerSecond: speed,
+            averagePaceSecondsPerKilometer: pace,
+            elapsedPaceSecondsPerKilometer: pace,
+            averageSpeedMetersPerSecond: speed,
+            elapsedAverageSpeedMetersPerSecond: speed,
+            distanceProvenance: .sourceReported
         )
     }
 
