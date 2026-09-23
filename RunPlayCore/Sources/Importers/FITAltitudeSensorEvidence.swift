@@ -17,8 +17,12 @@ import Foundation
 ///   `Profile/Mesgs/DeviceInfoMesg.swift` L16 and L30 (field numbers 1 and 25)
 ///   with L358 (`addMap(refFieldNum: 25, refFieldValue: 5)`).
 ///
-/// A `device_type` of 4 without a local `source_type` is not evidence: for an
-/// ANT+ or Bluetooth source the same number names a different device.
+/// A `device_type` of 4 without a local `source_type` is not evidence. The
+/// same field then reads through another subfield (`DeviceInfoMesg.swift`
+/// L351–356), where 4 is not a barometer: `ble_device_type` 4 is bike speed
+/// (`BleDeviceType.swift` L17), `antplus_device_type` defines no 4
+/// (`AntplusDeviceType.swift`), `ant_device_type` is a bare number, and a
+/// Bluetooth, Wi-Fi or absent source selects no subfield at all.
 enum FITAltitudeSensorEvidence {
     static let localSourceType: UInt8 = 5
     static let barometerLocalDeviceType: UInt8 = 4

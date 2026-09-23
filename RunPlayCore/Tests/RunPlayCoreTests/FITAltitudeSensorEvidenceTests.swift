@@ -18,8 +18,10 @@ final class FITAltitudeSensorEvidenceTests: XCTestCase {
     }
 
     func testDeviceTypeFourIsNotEvidenceWithoutALocalSource() {
-        // For ANT+ (1), Bluetooth LE (3), or an absent source, device type 4
-        // names a different device, not the onboard barometer.
+        // Without a local source, device type 4 reads through another table
+        // or none: Bluetooth LE (3) bike speed, an undefined ANT+ (1) value, a
+        // bare ANT (0) number, or no subfield for Bluetooth (2), Wi-Fi (4) or
+        // an absent source. None of them is the onboard barometer.
         for source in [UInt8?.none, 0, 1, 2, 3, 4] {
             let messages = [deviceInfo(index: 1, type: 4, source: source)]
             XCTAssertEqual(
