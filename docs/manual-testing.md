@@ -252,6 +252,43 @@ generator's runs with `filler_count` lowered to 10 (27 runs):
   happened after Open Personal Heatmap from the import report and after an
   appearance switch. Navigating away and back restores it. Filed as #196.
 
+### Filter picker Item Chooser pass 2026-09-23 (#195; release configuration, bundled two-run demo library)
+
+In the labelled filter arrangements the Item Chooser (VO+I) listed the date
+picker as "All Time Date range Date range pop up button". An AX attribute dump
+showed two names on each labelled pop-up: an AXTitleUIElement linked to the
+visible label, and an AXDescription from the explicit `accessibilityLabel`. The
+Item Chooser reads both. Resolution was doubled the same way. The repeats
+picker read "Minimum repeats Minimum runs per cell". The unlabelled
+arrangements have only the AXDescription and were already clean.
+
+The explicit label now applies only when the visible label is omitted. The
+repeats picker is named "Minimum repeats" in every arrangement. On the fixed
+release bundle, VoiceOver was driven through System Events, and speech was read
+from the caption panel:
+
+- 1200×800, labelled, two rows: there is no AXDescription. The Item Chooser read
+  "All Time Date range pop up button", "Standard (50 m cells) Resolution pop up
+  button", and "At least 1 run Minimum repeats pop up button". Choosing each
+  entry moved the VoiceOver cursor there, and it announced "All Time, Date
+  range, pop up button", "Standard (50 m cells), Resolution, pop up button",
+  and "At least 1 run, Minimum repeats, pop up button".
+- 1480×800, labelled, one row: the AX attributes matched 1200. Speech was not
+  captured at this width.
+- 1000×800, unlabelled: AXDescription "Date range", "Resolution", and "Minimum
+  repeats", with no title element. The Item Chooser read the same three strings
+  as at 1200. Focus read them without the comma after the value ("All Time
+  Date range, pop up button").
+- 720×800: the AX attributes matched 1000.
+
+Found, and present before this change: Trends and Records pickers also have
+two names. On Trends the Item Chooser read "Month Period Trends period pop up
+button". The AX dump showed the same shape for Trends Range, Scope and Period
+detail, and for Records Scope. Filed as #204. The heatmap legend read "1 run ·
+1 runs · 2 runs", filed as #205.
+
+Not covered: dark appearance (no drawing changed), and speech at 720 pt.
+
 ## Trends Workspace Checklist
 
 Use only synthetic or explicitly private, ignored local workout files.
