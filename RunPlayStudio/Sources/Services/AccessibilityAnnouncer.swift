@@ -104,6 +104,10 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case speedChanged(label: String)
     case tagUpdateCompleted
     case smartCollectionUpdated
+    case watchFolderImportCompleted(count: Int)
+    case watchFolderImportFailed(count: Int)
+    case watchFolderUnavailable(name: String)
+    case watchFolderReviewReady(name: String)
 
     var message: String {
         switch self {
@@ -180,6 +184,18 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Tags updated."
         case .smartCollectionUpdated:
             return "Smart collection updated."
+        case .watchFolderImportCompleted(let count):
+            return count == 1
+                ? "Watch folder imported 1 run."
+                : "Watch folder imported \(count) runs."
+        case .watchFolderImportFailed(let count):
+            return count == 1
+                ? "Watch folder import failed for 1 file. See Recent Imports."
+                : "Watch folder import failed for \(count) files. See Recent Imports."
+        case .watchFolderUnavailable(let name):
+            return "Watched folder \(name) is unavailable. Watching resumes if it returns."
+        case .watchFolderReviewReady(let name):
+            return "\(name) has several sessions and is waiting for review."
         }
     }
 }

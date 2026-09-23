@@ -259,8 +259,15 @@ class AppState: ObservableObject {
     /// The store actor for persistence. Nil only in tests without persistence.
     let storeActor: WorkoutLibraryStoreActor?
 
+    /// Watch-folder coordinator. Nil only in tests without watch folders;
+    /// the app injects one rooted at the same library directory and calls
+    /// `startWatchFolders()` after the library loads.
+    private(set) var watchFolderCoordinator: WatchFolderCoordinator?
+
     /// The import service for parsing workout files off the main actor.
-    private let importService: WorkoutImportServicing?
+    /// Internal (not private) so `AppState+WatchFolderImport` reuses the
+    /// identical import path.
+    let importService: WorkoutImportServicing?
 
     /// Platform archive service (ZIP scan/import). Nil in tests without platform.
     let archiveService: StravaArchiveService?
@@ -347,6 +354,55 @@ class AppState: ObservableObject {
             fitSessionService: fitSessionService,
             profileStore: FileAthleteProfileStore(rootURL: libraryRoot)
         )
+        attachWatchFolderCoordinator(
+            store: FileWatchFolderStore(rootURL: libraryRoot),
+            digest: CryptoKitContentDigest()
+        )
+    }
+
+    /// Create and wire the watch-folder coordinator. Split from init so the
+    /// coordinator can call back into this AppState through closures.
+    func attachWatchFolderCoordinator(
+        store: FileWatchFolderStore,
+        digest: any ContentDigesting,
+        policy: WatchFolderScanPolicy = .default
+    ) {
+        guard watchFolderCoordinator == nil else { return }
+        let coordinator = WatchFolderCoordinator(
+            store: store,
+            digest: digest,
+            policy: policy
+        )
+        coordinator.importExecutor = { [weak self] url, configuration in
+            guard let self else { return .failed("AppState unavailable.") }
+            return await self.performWatchFolderImport(
+                from: url,
+                configuration: configuration
+            )
+        }
+        coordinator.reviewPresenter = { [weak self] url in
+            guard let self else { return }
+            Task { await self.presentWatchFolderFITReview(for: url) }
+        }
+        coordinator.canImportNow = { [weak self] in
+            guard let self else { return false }
+            return self.operationState == .idle
+                && self.archiveSession == nil
+                && self.fitSessionImportSession == nil
+        }
+        // Watch-folder results are non-modal, so speech is the only signal for
+        // a background import completing, failing, or a folder disappearing.
+        // The coordinator aggregates per pass; it never announces per file.
+        coordinator.announce = { [weak self] event in
+            self?.announcementPolicy.handle(event)
+        }
+        watchFolderCoordinator = coordinator
+    }
+
+    /// Begin watching after the library has loaded (called from `start()`),
+    /// so watch-folder imports land on a fully loaded library.
+    func startWatchFolders() {
+        watchFolderCoordinator?.start()
     }
 
     deinit {
@@ -653,7 +709,10 @@ class AppState: ObservableObject {
         }
 
         operationState = .loadingLibrary
-        defer { operationState = .idle }
+        defer {
+            operationState = .idle
+            startWatchFolders()
+        }
 
         let result = await storeActor.loadLibrary()
         applyLibraryLoadResult(result)
@@ -830,18 +889,42 @@ class AppState: ObservableObject {
         }
     }
 
-    private func importErrorMessage(for error: WorkoutImportError, filename: String) -> String {
+    func importErrorMessage(for error: WorkoutImportError, filename: String) -> String {
+        if let shared = Self.parseLevelImportErrorMessage(for: error, filename: filename) {
+            return shared
+        }
         switch error {
         case .unsupportedFormat(let ext):
             return "'\(filename)' uses the .\(ext) format, which isn't supported. Import a GPX, TCX, FIT, or JSON file instead."
+        case .fileNotFound:
+            return "Couldn't find the selected file. Try importing again."
+        case .parsingError, .missingData, .invalidFormat:
+            // Unreachable: handled by the shared helper above.
+            return "'\(filename)' could not be imported."
+        }
+    }
+
+    /// Wording for the parse-level failures, shared by every import entry point
+    /// so it cannot drift between them.
+    ///
+    /// These three are identical no matter how the file was selected: the user
+    /// cannot act differently on a malformed file reached through a picker
+    /// versus one that arrived in a watched folder. Returns nil for
+    /// `.unsupportedFormat` and `.fileNotFound`, whose wording genuinely
+    /// depends on the entry point and is therefore owned by each caller.
+    static func parseLevelImportErrorMessage(
+        for error: WorkoutImportError,
+        filename: String
+    ) -> String? {
+        switch error {
         case .parsingError(let detail):
             return "'\(filename)' couldn't be parsed. \(detail)"
         case .missingData(let detail):
             return "'\(filename)' is missing required data. \(detail)"
         case .invalidFormat(let detail):
             return "'\(filename)' has an invalid format. \(detail)"
-        case .fileNotFound:
-            return "Couldn't find the selected file. Try importing again."
+        case .unsupportedFormat, .fileNotFound:
+            return nil
         }
     }
 
@@ -1128,7 +1211,7 @@ class AppState: ObservableObject {
         requestSessionSave()
     }
 
-    private func currentOrganizationSnapshot() -> WorkoutLibraryOrganizationSnapshot {
+    func currentOrganizationSnapshot() -> WorkoutLibraryOrganizationSnapshot {
         // Prefer live All Runs entry assignments so in-session tag edits stay
         // coherent across replaceLibrary without reloading the manifest.
         let assignments = workoutLibrary.entries.compactMap { entry -> WorkoutTagAssignment? in
@@ -1842,7 +1925,7 @@ class AppState: ObservableObject {
     }
 
     /// Recompute one workout's load under `profile` (import re-stamp).
-    private func recomputeTrainingLoad(
+    func recomputeTrainingLoad(
         for workout: RunWorkout,
         profile: AthleteProfile
     ) throws -> TrainingLoadSnapshot? {

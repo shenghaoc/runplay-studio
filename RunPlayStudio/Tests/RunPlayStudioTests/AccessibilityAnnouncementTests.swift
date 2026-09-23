@@ -115,4 +115,33 @@ final class AccessibilityAnnouncementTests: XCTestCase {
             "Exported summary.png."
         )
     }
+
+    func testWatchFolderMessages() {
+        // Singular and plural must both read correctly: these are the only
+        // non-visual signal for a background import.
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.watchFolderImportCompleted(count: 1).message,
+            "Watch folder imported 1 run."
+        )
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.watchFolderImportCompleted(count: 3).message,
+            "Watch folder imported 3 runs."
+        )
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.watchFolderImportFailed(count: 1).message,
+            "Watch folder import failed for 1 file. See Recent Imports."
+        )
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.watchFolderImportFailed(count: 2).message,
+            "Watch folder import failed for 2 files. See Recent Imports."
+        )
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.watchFolderUnavailable(name: "GARMIN").message,
+            "Watched folder GARMIN is unavailable. Watching resumes if it returns."
+        )
+        XCTAssertEqual(
+            AccessibilityAnnouncementEvent.watchFolderReviewReady(name: "multi.fit").message,
+            "multi.fit has several sessions and is waiting for review."
+        )
+    }
 }
