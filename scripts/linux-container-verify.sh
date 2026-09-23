@@ -7,13 +7,17 @@
 #   ./scripts/linux-container-verify.sh                    # full RunPlayCoreTests, warning-clean
 #   ./scripts/linux-container-verify.sh --filter RouteGroupingTests
 #   ./scripts/linux-container-verify.sh podman --filter RouteGroupingTests
+#   ./scripts/linux-container-verify.sh native             # already inside the pinned image (CI)
 #
 # The first optional argument may be the runtime to force (docker or
-# podman); without it the runtime is auto-detected by probing each
-# candidate binary — a `docker` that reports podman (the Fedora
-# podman-docker shim) is driven with podman's flags. Remaining
+# podman), or `native` when the caller is already running inside the
+# pinned image — the Linux CI job, whose `container:` key starts it — so
+# `swift test` runs directly with the same gate applied. Without it the
+# runtime is auto-detected by probing each candidate binary — a `docker`
+# that reports podman (the Fedora podman-docker shim) is driven with
+# podman's flags. Remaining
 # arguments are forwarded to `swift test`, which always runs warning-clean
-# with the scratch tree at .build-linux (the two mandatory container
+# with the scratch tree at .build-linux (.build in native mode) (the two mandatory container
 # properties — a non-root user that owns the mounted sources, and a
 # writable HOME — are preserved; see AGENTS.md for why).
 set -euo pipefail
@@ -39,7 +43,7 @@ esac
 RUNTIME="${1:-}"
 RUNTIME_BIN=""
 case "${RUNTIME}" in
-  docker|podman) shift ;;
+  docker|podman|native) shift ;;
   *) RUNTIME="" ;;
 esac
 
@@ -73,6 +77,18 @@ if [ -z "${RUNTIME}" ]; then
   fi
 fi
 [ -n "${RUNTIME_BIN}" ] || RUNTIME_BIN="${RUNTIME}"
+
+# Native mode measures the same thing the container recipe does only when
+# the user is non-root: root bypasses POSIX permission bits
+# (CAP_DAC_OVERRIDE), so the read-only-directory failure injection in
+# testFailedWorkoutWritePreservesPriorValidData cannot fail and the test
+# skips. Refuse rather than report a count that differs from a developer's.
+# CI drops privileges with setpriv before calling this.
+if [ "${RUNTIME}" = native ] && [ "$(id -u)" -eq 0 ]; then
+  echo "error: native mode must run as a non-root user that owns the checkout" >&2
+  echo "root bypasses POSIX permission bits, so permission-injection tests would skip" >&2
+  exit 1
+fi
 
 # Writable HOME on the workspace filesystem: a host whose root filesystem
 # is full fails a HOME=/tmp form before any test runs, with only an
@@ -121,14 +137,22 @@ case "${RUNTIME}" in
   docker)
     VIRTUALIZE=("${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
-      -v "$PWD":/src:Z -w /src)
+      -v "$PWD":/src:Z -w /src "${IMAGE}")
     ;;
   podman)
     VIRTUALIZE=("${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
-      -v "$PWD":/src:Z -w /src)
+      -v "$PWD":/src:Z -w /src "${IMAGE}")
+    ;;
+  native)
+    # Already inside the image: no wrapper, same writable HOME. There is no
+    # host build tree to keep apart, so use the default scratch path and
+    # reuse whatever the caller's earlier steps already built.
+    VIRTUALIZE=(env HOME="$PWD/.build-linux/container-home")
+    SCRATCH_PATH=.build
     ;;
 esac
+SCRATCH_PATH="${SCRATCH_PATH:-.build-linux}"
 
 # A check that silently skips suites cannot catch corelibs-only breakage.
 # `swift test` exits 0 when a filter matches nothing, so neither the exit
@@ -153,26 +177,37 @@ FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-900}"
 # drift), and it rots as Core grows. The allowlist below does catch it and
 # names the gap that tripped instead of just reporting that a number moved.
 #
-# Every reason observed in this container, all of which the pattern accepts:
+# Every reason observed in this container as a non-root user, all of which
+# the pattern accepts:
 #   RUNPLAY_BENCHMARK=1 / RUNPLAY_PRODUCTION_AB=1 / RUNPLAY_CORE_HOTSPOT_PROFILE=1
 #   RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1 / RUNPLAY_HEATMAP_PROFILE=1
 #   RUNPLAY_ROUTE_GROUPING_BENCHMARK=1 / RUNPLAY_ROUTE_GROUPING_MEASURE=1
-#   root bypasses POSIX permission bits ... (testFailedWorkoutWritePreservesPriorValidData)
+#
+# Deliberately NOT listed: testFailedWorkoutWritePreservesPriorValidData's
+# "root bypasses POSIX permission bits" skip. Every entrypoint runs non-root
+# (the container modes pass -u, native mode refuses uid 0, CI drops to a
+# non-root uid), so that reason can only appear if one of them regressed to
+# root — and then the permission-injection coverage is silently gone, which
+# this gate should name rather than accept.
 #
 # To add a reason, put the newly-skipping test and its reason in the PR that
 # introduces it; this check failing is the prompt to do that deliberately.
-ALLOWED_SKIP_PATTERN='RUNPLAY_[A-Z_]+=1|root bypasses POSIX permission bits'
+ALLOWED_SKIP_PATTERN='RUNPLAY_[A-Z_]+=1'
 
 LOG=".build-linux/linux-container-verify.log"
 
 echo "==> Linux container check"
-echo "    image:    ${IMAGE}"
-echo "    runtime:  ${RUNTIME}${RUNTIME_BIN:+ (via ${RUNTIME_BIN})}"
+if [ "${RUNTIME}" = native ]; then
+  echo "    image:    ${IMAGE} (already inside it; not re-verified)"
+else
+  echo "    image:    ${IMAGE}"
+fi
+echo "    runtime:  ${RUNTIME}${RUNTIME_BIN:+ (via ${RUNTIME_BIN})} as uid $(id -u)"
 echo "    filter:   $*"
 echo "    log:      ${LOG}"
 
 set +e
-"${VIRTUALIZE[@]}" "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux 2>&1 | tee "${LOG}"
+"${VIRTUALIZE[@]}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path "${SCRATCH_PATH}" 2>&1 | tee "${LOG}"
 STATUS="${PIPESTATUS[0]}"
 set -e
 
@@ -203,7 +238,9 @@ echo "==> Executed ${EXECUTED}, skipped ${SKIPPED}, actually ran ${RAN}"
 
 # Secondary guard: a collapse in the count of tests that ran. This does not
 # rot in the sense the ceiling did -- a rising Core count only makes it more
-# permissive, never falsely failing -- so it costs nothing to keep.
+# permissive, never falsely failing -- so it costs nothing to keep. It also
+# sees what the allowlist cannot: a test class compiled out on Linux or
+# dropped from the target disappears without printing a skip reason.
 if [ "${DEFAULT_FULL_SUITE}" -eq 1 ]; then
   if [ "${RAN}" -lt "${FLOOR}" ]; then
     echo "==> FAIL: only ${RAN} tests actually ran (floor ${FLOOR})." >&2

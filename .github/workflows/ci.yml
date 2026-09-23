@@ -238,9 +238,27 @@ jobs:
       - name: Native C++ tests under ASan + UBSan
         if: matrix.suite == 'sanitizers'
         run: ./scripts/run-cpp-engine-tests.sh --sanitize
-      - name: Verify RunPlayCore
+      # The Core gate is the script, not a bare `swift test`: a bare run exits
+      # 0 however many tests skipped, so only the script's skip-reason
+      # allowlist and executed-test floor turn a mass skip into a failure.
+      # It runs non-root so CI measures what a developer's container run
+      # measures: this job's container is root (the python3 install above
+      # needs it), and root bypasses POSIX permission bits, which makes
+      # testFailedWorkoutWritePreservesPriorValidData skip. The step hands
+      # the checkout to an unprivileged uid, drops to it with setpriv
+      # (util-linux, in the image), and hands the tree back so the steps
+      # below keep running as root on a root-owned tree. 1001 is only an
+      # unused uid; it needs no passwd entry because the script sets HOME.
+      - name: Verify RunPlayCore (non-root, skip allowlist and floor)
         if: matrix.suite == 'tests'
-        run: swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+        run: |
+          set -euo pipefail
+          chown -R 1001:1001 .
+          status=0
+          setpriv --reuid=1001 --regid=1001 --clear-groups -- \
+            ./scripts/linux-container-verify.sh native || status=$?
+          chown -R 0:0 .
+          exit "${status}"
       # Building alone would not exercise the smoke test's runtime
       # `precondition`s, so run the binary as well.
       - name: Verify external RunPlayCore consumer
