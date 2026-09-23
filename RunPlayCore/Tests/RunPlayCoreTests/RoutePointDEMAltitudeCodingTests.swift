@@ -55,19 +55,29 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
     }
 
     func testWorkoutSnapshotWithoutDEMContainsNoDEMKey() throws {
+        // Typed locals keep each expression cheap for the type checker, which
+        // times out on slower CI runners when literals and arithmetic nest
+        // inside a closure passed to an initializer.
+        var points: [RoutePoint] = []
+        for index in 0..<4 {
+            let step: Double = Double(index)
+            let seconds: TimeInterval = 800_000_000 + step
+            let latitude: Double = 1.3 + step * 0.0001
+            let altitude: Double = 10 + step
+            let distance: Double = step * 11
+            points.append(RoutePoint(
+                timestamp: Date(timeIntervalSinceReferenceDate: seconds),
+                latitude: latitude,
+                longitude: 103.8,
+                altitudeMeters: altitude,
+                distanceFromStartMeters: distance,
+                elapsedSeconds: step
+            ))
+        }
         let workout = RunWorkout(
             metadata: WorkoutMetadata(name: "Uncorrected"),
             source: .gpx,
-            routePoints: (0..<4).map { index in
-                RoutePoint(
-                    timestamp: Date(timeIntervalSinceReferenceDate: 800_000_000 + Double(index)),
-                    latitude: 1.3 + Double(index) * 0.0001,
-                    longitude: 103.8,
-                    altitudeMeters: 10 + Double(index),
-                    distanceFromStartMeters: Double(index) * 11,
-                    elapsedSeconds: Double(index)
-                )
-            }
+            routePoints: points
         )
 
         let text = String(decoding: try Self.libraryStoreEncoder().encode(workout), as: UTF8.self)
@@ -110,20 +120,27 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
     func testRouteQualityProcessingIgnoresAndPreservesDEMAltitude() throws {
         var baseline: [RoutePoint] = []
         for index in 0..<12 {
-            let north = index == 6 ? 5_000.0 : Double(index) * 10
+            let step: Double = Double(index)
+            // Point 6 is an isolated 5 km teleport the processor rejects.
+            let north: Double = index == 6 ? 5_000 : step * 10
+            let seconds: TimeInterval = 900_000_000 + step
+            let latitude: Double = 1.3 + north / 111_132
+            let altitude: Double = 20 + step
             baseline.append(RoutePoint(
-                timestamp: Date(timeIntervalSinceReferenceDate: 900_000_000 + Double(index)),
-                latitude: 1.3 + north / 111_132.0,
+                timestamp: Date(timeIntervalSinceReferenceDate: seconds),
+                latitude: latitude,
                 longitude: 103.8,
-                altitudeMeters: 20 + Double(index),
+                altitudeMeters: altitude,
                 distanceFromStartMeters: 0,
-                elapsedSeconds: Double(index),
+                elapsedSeconds: step,
                 horizontalAccuracy: 5
             ))
         }
         var withDEM = baseline
         for index in withDEM.indices where !index.isMultiple(of: 3) {
-            withDEM[index].demAltitudeMeters = 300 - Double(index) * 7.25
+            let step: Double = Double(index)
+            let demAltitude: Double = 300 - step * 7.25
+            withDEM[index].demAltitudeMeters = demAltitude
         }
 
         let processor = RouteQualityProcessor()
