@@ -246,6 +246,7 @@ symbols directly.
 | `build_elevation_profile` | `RunPlayElevationProfileBridge` | elevation profile builder |
 | `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketBridge` | `RouteMetricProfileBuilder` (pace/HR path) |
 | `compute_training_load` | `RunPlayTrainingLoadBridge` | training-load pass (workout analysis and library backfill) |
+| `plan_dem_tiles`, `sample_dem_elevations` | `RunPlayDemElevationBridge` | DEM elevation correction: one planning and one sampling call per correction pass, with Swift decoding the planned tiles in between |
 | scalar geodesy | `RunPlayGeodesyBridge` | parity/tests only |
 
 Corrected-elevation route-metric finalization intentionally stays in Swift
@@ -269,7 +270,7 @@ external package consumers.
 | `build_elevation_profile` | `ElevationProfileTests.cpp` | `SwiftElevationProfileOracle` | `run-elevation-profile-benchmark.sh` |
 | `assign_route_metric_scale_buckets` | `RouteMetricScaleBucketTests.cpp` | `SwiftRouteMetricScaleBucketOracle` | `run-route-metric-scale-bucket-benchmark.sh` |
 | `compute_training_load` | `TrainingLoadTests.cpp` | `RunPlayTrainingLoadBridgeTests` (hand-computed parity through the bridge) | — |
-| `plan_dem_tiles`, `sample_dem_elevations` | `DemElevationSamplingTests.cpp` (including the seeded property that sampling with exactly the planned tiles never reports a missing tile, and that every planned tile is read) | — | — |
+| `plan_dem_tiles`, `sample_dem_elevations` | `DemElevationSamplingTests.cpp` (including the seeded property that sampling with exactly the planned tiles never reports a missing tile, and that every planned tile is read) | `RunPlayDemElevationBridgeTests` (synthetic 2×2 tile set, loader contract, and the planner/sampler property through the bridge) | — |
 | scalar geodesy | `GeodesyTests.cpp` | `GeoDistance.swift` | — |
 | `engine_info` | `EngineInfoTests.cpp` | — (identity only) | — |
 
@@ -293,6 +294,10 @@ runner measures and how it is invoked.
 - Pace/HR scale/bucket: 1 native call per finalization.
 - Training load: 1 native call per measured training-load pass; estimated
   loads are Swift scalar arithmetic and make 0 native calls.
+- DEM elevation correction: 1 planning call and 1 sampling call per correction
+  pass; 1 planning call and no sampling call when the route needs more tiles
+  than the budget; 0 calls for an empty route. Tile decoding between the two
+  calls is Swift work and makes no native call.
 - Corrected-elevation finalization: 0 native calls.
 - Solid-mode (no analysis) route inspection: 0 analysis-native calls.
 

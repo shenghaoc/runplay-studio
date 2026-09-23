@@ -1558,6 +1558,79 @@ else
   pass "elevation benchmark diagnostic stays internal to RunPlayCore"
 fi
 
+# --- DEM elevation bridge ---------------------------------------------------
+
+DEM_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayDemElevationBridge.swift"
+
+if [[ ! -f "$DEM_BRIDGE_SOURCE" ]]; then
+  fail "missing DEM elevation bridge $DEM_BRIDGE_SOURCE"
+else
+  pass "DEM elevation bridge exists"
+fi
+
+# The two DEM calls are made only by their bridge, and each from exactly one
+# call site: one planning call and one sampling call per correction pass.
+dem_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(plan_dem_tiles|sample_dem_elevations)([^[:alnum:]_]|$)'
+dem_native_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$DEM_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && dem_native_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$dem_native_re" || true)
+done
+
+if [[ ${#dem_native_leaks[@]} -eq 0 ]]; then
+  pass "DEM planning and sampling are invoked only from the DEM bridge"
+else
+  for leak in "${dem_native_leaks[@]}"; do
+    fail "DEM native call outside the DEM bridge: $leak"
+  done
+fi
+
+if [[ -f "$DEM_BRIDGE_SOURCE" ]]; then
+  dem_bridge_body="$(strip_comments "$DEM_BRIDGE_SOURCE")"
+  dem_plan_sites="$(grep -Eo 'runplay[[:space:]]*\.[[:space:]]*plan_dem_tiles[[:space:]]*\(' <<<"$dem_bridge_body" | wc -l | tr -d '[:space:]')"
+  dem_sample_sites="$(grep -Eo 'runplay[[:space:]]*\.[[:space:]]*sample_dem_elevations[[:space:]]*\(' <<<"$dem_bridge_body" | wc -l | tr -d '[:space:]')"
+  if [[ "$dem_plan_sites" == "1" && "$dem_sample_sites" == "1" ]]; then
+    pass "DEM bridge has exactly one planning and one sampling call site"
+  else
+    fail "DEM bridge must have exactly one call site per DEM call (planning $dem_plan_sites, sampling $dem_sample_sites)"
+  fi
+fi
+
+# No Swift file outside Interop may name a C++ DEM type.
+dem_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*Dem[A-Za-z]+([^[:alnum:]_]|$)'
+dem_type_fixture_dir="$(mktemp -d)"
+printf 'var sample = runplay.DemRouteSample()\n' >"$dem_type_fixture_dir/type.swift"
+printf 'let demo = runplay.engine_info() // runplay.DemTileKey\n' >"$dem_type_fixture_dir/comment.swift"
+if code_matches "$dem_type_fixture_dir/type.swift" "$dem_cpp_type_re" \
+  && ! code_matches "$dem_type_fixture_dir/comment.swift" "$dem_cpp_type_re"; then
+  pass "DEM C++ type matcher flags code and ignores comments"
+else
+  fail "DEM C++ type matcher does not distinguish code from comments"
+fi
+rm -rf "$dem_type_fixture_dir"
+
+dem_type_leaks=""
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    RunPlayCore/Sources/Interop/*) continue ;;
+  esac
+  if code_matches "$swift_file" "$dem_cpp_type_re"; then
+    dem_type_leaks="$dem_type_leaks $relative_swift_file"
+  fi
+done
+if [[ -z "$dem_type_leaks" ]]; then
+  pass "C++ DEM types stay in Interop"
+else
+  fail "C++ DEM types named outside Interop:$dem_type_leaks"
+fi
+
 # SegmentDetector continues to consume pure Swift elevation snapshot
 if code_matches "$SEGMENT_DETECTOR_SOURCE" 'segmentDetectionSnapshot'; then
   pass "SegmentDetector continues to consume pure Swift elevation snapshot"

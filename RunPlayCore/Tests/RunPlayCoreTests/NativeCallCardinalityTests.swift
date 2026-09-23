@@ -160,6 +160,66 @@ final class NativeCallCardinalityTests: XCTestCase {
 
     /// Guards the isolation property the scoping is there to provide: native
     /// work performed outside a scope must not appear inside one.
+    func testDemSamplingPlansOnceAndSamplesOnce() throws {
+        let points = makeStraightLinePoints(count: 50)
+        let (outcome, counts) = try NativeCallObserver.observing {
+            try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: points,
+                grid: demGrid(maximumTileCount: 64),
+                cancellationCheckStride: 2_048,
+                loadTiles: { planned in
+                    planned.map { RunPlayDemDecodedTile(key: $0, heightsMeters: Array(repeating: 12, count: 256)) }
+                },
+                isCancelled: { false }
+            )
+        }
+        guard case .sampled(let result) = outcome else {
+            return XCTFail("a short route fits the budget")
+        }
+        XCTAssertEqual(result.sampledCount, points.count)
+        XCTAssertEqual(counts.demTilePlanning, 1)
+        XCTAssertEqual(counts.demSampling, 1)
+    }
+
+    func testDemSamplingOverBudgetPlansOnlyAndEmptyRouteCallsNothing() throws {
+        let points = makeStraightLinePoints(count: 400)
+        let (_, overBudget) = try NativeCallObserver.observing {
+            try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: points,
+                grid: demGrid(maximumTileCount: 1),
+                cancellationCheckStride: 2_048,
+                loadTiles: { _ in [] },
+                isCancelled: { false }
+            )
+        }
+        XCTAssertEqual(overBudget.demTilePlanning, 1)
+        XCTAssertEqual(overBudget.demSampling, 0, "a route over budget is never sampled")
+
+        let (_, empty) = try NativeCallObserver.observing {
+            try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: [],
+                grid: demGrid(maximumTileCount: 64),
+                cancellationCheckStride: 2_048,
+                loadTiles: { _ in [] },
+                isCancelled: { false }
+            )
+        }
+        XCTAssertEqual(empty.demTilePlanning, 0)
+        XCTAssertEqual(empty.demSampling, 0)
+    }
+
+    /// Zoom 17 with 16-pixel tiles: each tile spans 360 / 2^17 degrees, about
+    /// 250 m at this latitude, so the 4.4 km 400-point line above crosses
+    /// roughly eighteen tile rows while the 50-point line needs a handful.
+    private func demGrid(maximumTileCount: Int) -> RunPlayDemSamplingGrid {
+        RunPlayDemSamplingGrid(
+            zoom: 17,
+            tileSize: 16,
+            maximumTileCount: maximumTileCount,
+            plausibleElevationMeters: -500...9_000
+        )
+    }
+
     func testObservationScopeExcludesWorkDoneOutsideIt() throws {
         let points = makeStraightLinePoints(count: 64)
 
