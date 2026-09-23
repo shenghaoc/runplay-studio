@@ -255,7 +255,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNotNil(json)
 
         XCTAssertEqual(json?["appName"] as? String, "RunPlay Studio")
-        XCTAssertEqual(json?["exportVersion"] as? String, "4.1")
+        XCTAssertEqual(json?["exportVersion"] as? String, "4.2")
         XCTAssertNotNil(json?["privacyNote"])
         XCTAssertNotNil(json?["workoutTitle"])
         XCTAssertEqual(

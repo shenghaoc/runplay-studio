@@ -482,14 +482,14 @@ refuses uid 0. The job's container starts as root (its `apt-get` step needs
 it), so the step hands the checkout to an unprivileged uid, drops to it with
 `setpriv`, and hands the tree back afterwards.
 
-A **floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 1,020) guards the count that
+A **floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 1,145) guards the count that
 actually ran. It is not redundant with the allowlist: the allowlist sees only
 tests that *print* a skip, while a test class compiled out on Linux
 (`#if os(macOS)`, a `canImport` guard that is false on corelibs) or dropped from
 the target vanishes without a line, so the count is the only guard against
-silent disappearance, and it is tight enough to bite. Provenance: 1,020 against
-1,080 executed on `main` under the non-root container user (`Executed 1096,
-skipped 16`), about 5% headroom. The headroom is room for a PR that
+silent disappearance, and it is tight enough to bite. Provenance: 1,145 against
+1,208 executed on the head that raised it, under the non-root container user
+(`Executed 1225, skipped 17`), about 5% headroom. The headroom is room for a PR that
 legitimately deletes a few tests, not tolerance for drift. A PR removing more
 lowers the floor deliberately and says why. Raise it back to ~5% below the real
 count in the PR that adds Core tests once the headroom passes ~10%.

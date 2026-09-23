@@ -72,6 +72,13 @@ final class DEMTileSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.loadOrDefault(), DEMTileSettings())
     }
 
+    func testDefaultZoomIsTheFinestUpToFourteen() {
+        XCTAssertEqual(DEMTileFolder.defaultZoom(from: [10, 12, 13, 14, 15, 16]), 14)
+        XCTAssertEqual(DEMTileFolder.defaultZoom(from: [9, 11]), 11)
+        XCTAssertEqual(DEMTileFolder.defaultZoom(from: [15, 17]), 15, "only finer zooms: the coarsest of them")
+        XCTAssertNil(DEMTileFolder.defaultZoom(from: []))
+    }
+
     func testDecodingToleratesLaterAndPartialFiles() throws {
         let later = Data("""
         {"version": 7, "correctsNewImports": false, "somethingNew": [1, 2],

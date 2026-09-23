@@ -11,11 +11,14 @@ public protocol FITFileScanning: Sendable {
 
 /// Imports selected FIT sessions as separate workouts in one staged transaction.
 public protocol FITSessionBatchImporting: Sendable {
+    /// `elevationCorrection`, when present, corrects each session's elevation
+    /// before it is staged; a failed correction never fails the session.
     func importSessions(
         _ selection: FITSessionImportSelection,
         from url: URL,
         existingWorkouts: [RunWorkout],
         storeActor: WorkoutLibraryStoreActor,
+        elevationCorrection: DEMImportElevationCorrection?,
         progress: @Sendable (WorkoutBatchImportProgress) async -> Void
     ) async throws -> FITSessionBatchImportReport
 }
@@ -102,6 +105,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         from url: URL,
         existingWorkouts: [RunWorkout],
         storeActor: WorkoutLibraryStoreActor,
+        elevationCorrection: DEMImportElevationCorrection? = nil,
         progress: @Sendable (WorkoutBatchImportProgress) async -> Void = { _ in }
     ) async throws -> FITSessionBatchImportReport {
         do {
@@ -110,6 +114,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                 from: url,
                 existingWorkouts: existingWorkouts,
                 storeActor: storeActor,
+                elevationCorrection: elevationCorrection,
                 progress: progress
             )
         } catch is CancellationError {
@@ -125,6 +130,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         from url: URL,
         existingWorkouts: [RunWorkout],
         storeActor: WorkoutLibraryStoreActor,
+        elevationCorrection: DEMImportElevationCorrection?,
         progress: @Sendable (WorkoutBatchImportProgress) async -> Void
     ) async throws -> FITSessionBatchImportReport {
         try Task.checkCancellation()
@@ -200,7 +206,8 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
             sessionName: String,
             status: FITSessionCandidateStatus,
             detail: String? = nil,
-            workoutID: UUID? = nil
+            workoutID: UUID? = nil,
+            elevationCorrection: DEMElevationCorrection? = nil
         ) {
             items.append(FITSessionImportItemResult(
                 candidateID: candidateID,
@@ -208,7 +215,8 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                 sessionName: sessionName,
                 status: status,
                 detail: detail,
-                importedWorkoutID: workoutID
+                importedWorkoutID: workoutID,
+                elevationCorrection: elevationCorrection
             ))
         }
 
@@ -274,7 +282,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                     sourceContainerSHA256: containerSHA256
                 )
 
-                let workout: RunWorkout
+                var workout: RunWorkout
                 do {
                     workout = try importer.buildSession(
                         index: index,
@@ -308,6 +316,11 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                     continue
                 }
 
+                let elevationRecord = try elevationCorrection?.apply(
+                    to: &workout,
+                    isCancelled: { Task.isCancelled }
+                )
+
                 await progress(makeProgress(.staging, name: live.displayName))
                 try Task.checkCancellation()
 
@@ -327,7 +340,8 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                         sourceIndex: live.sourceIndex,
                         sessionName: displayName,
                         status: .ready,
-                        workoutID: workoutID
+                        workoutID: workoutID,
+                        elevationCorrection: elevationRecord
                     )
                 } catch is CancellationError {
                     throw CancellationError()

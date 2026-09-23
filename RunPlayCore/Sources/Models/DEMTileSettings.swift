@@ -61,6 +61,19 @@ public struct DEMTileFolder: Hashable, Sendable {
     public var tileSet: DEMTileSetIdentity {
         DEMTileSetIdentity(folderID: id, zoom: zoom, tileSize: tileSize)
     }
+
+    /// Finest zoom a folder is read at by default. 256-pixel tiles resolve
+    /// about 10 m at zoom 14 (less toward the poles), as fine as common
+    /// elevation sources get, so a finer zoom mostly multiplies the tiles a
+    /// route needs.
+    public static let preferredMaximumZoom = 14
+
+    /// The zoom a newly chosen folder is read at: its finest zoom up to
+    /// `preferredMaximumZoom`, else its coarsest; `nil` for a folder without
+    /// tiles.
+    public static func defaultZoom(from availableZooms: [Int]) -> Int? {
+        availableZooms.filter { $0 <= preferredMaximumZoom }.max() ?? availableZooms.min()
+    }
 }
 
 extension DEMTileFolder: Codable {}
