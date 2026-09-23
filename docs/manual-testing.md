@@ -199,6 +199,49 @@ library (286 routes).
 Not covered: VoiceOver speech (only AX attributes were read), and a clicked Fit
 button at the minimum size.
 
+### Route filter Item Chooser pass 2026-09-23 (#161; release configuration, bundled two-run demo library)
+
+The Item Chooser (VO+I) listed the route filter as "Any Route Route filter
+Downward point at the top-left corner of to point at the bottom-right corner
+of curvepath". An AX attribute dump of the release bundle showed where each
+part comes from: AXValue "Any Route" from `accessibilityValue`, AXTitle
+"Route filter" from `accessibilityLabel`, and AXDescription, which held the
+generated symbol name. The Item Chooser reads value, title, description, and
+role. Focus reads value, title, and role, which is why focus was clean.
+
+Several label variants were built in one release bundle and read with the AX
+dump and the Item Chooser:
+
+- `Image(systemName:)` with `.accessibilityHidden(true)`, with
+  `.accessibilityLabel(Text(""))` or with a real label, or the `Label` wrapped in
+  `.accessibilityElement(children: .ignore)`: the generated name stayed.
+- An `NSImage(systemSymbolName:accessibilityDescription:)` symbol with an empty
+  description: the generated name stayed, because AppKit treats an empty
+  description as none.
+- The same `NSImage` symbol described as "Route filter": the generated name was
+  gone, but the chooser said "Route filter" twice.
+- A menu with no `accessibilityLabel`: there was no description at all, but
+  "Route filter" was not spoken either.
+- The same `NSImage` symbol with a one-space description: the chooser read
+  "PHvalue ProbeH   menu button", with nothing between the title and the role.
+  The fix uses this variant, as `DecorativeMenuSymbol`.
+
+On the fixed build:
+
+- AXDescription is `" "`.
+- The Item Chooser, filtered to "route filter", read "Any Route Route
+  filter   menu button".
+- VoiceOver focus still read "Any Route, Route filter, menu button", followed
+  by the help text.
+- The icon still rendered beside the title.
+
+An AX scan of every menu and pop-up button on Personal Heatmap, All Runs,
+Routes, Trends, and Records found no other generated symbol description. Only
+a `Menu` whose `accessibilityLabel` differs from its visible title leaks one.
+
+Not covered: a library with named route groups (only "Any Route" was
+selected), and dark appearance.
+
 ## Trends Workspace Checklist
 
 Use only synthetic or explicitly private, ignored local workout files.
