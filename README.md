@@ -39,6 +39,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 - **Strava bulk archive import** — Import running activities from a local Strava export ZIP (no login or network)
 - **Multi-session FIT import** — Review every session in a multi-session `.fit` file and import the supported runs as separate workouts in one transaction
+- **Watch-folder import** — Optionally watch one or more local folders and import new GPX, TCX, FIT, and JSON files automatically: a settle check never imports a file being written, a per-folder SHA-256 ledger never imports the same content twice, and results appear in a non-modal toolbar panel with per-file success/skip/error and Reveal in Finder
 
 ---
 

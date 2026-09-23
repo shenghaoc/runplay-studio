@@ -1392,3 +1392,108 @@ interpolates selected-distance markers without introducing another renderer.
 - `WorkoutImportServicing.importWorkout` still returns exactly one `RunWorkout`.
   Multi-session FIT is an additional service rather than a weakening of the
   general import contract.
+
+
+## Optional watch-folder import
+
+Watch-folder import is **opt-in**: no folder is scanned until the user adds
+one in Settings → Watch Folders (or the File → Watch Folders… menu item). It
+reuses the existing single-file import pipeline end-to-end and adds no engine
+kernel — no `RunPlayEngineCpp` surface, and nothing in the
+`RunPlayStudio → RunPlayPlatform → RunPlayCore` dependency direction is
+reversed.
+
+- **RunPlayCore** owns the platform-neutral pieces so the ledger and settle
+  logic test on Linux with a temporary directory:
+  * `WatchFolderConfiguration` (a folder's `UUID` identity, display name,
+    **opaque** security-scoped bookmark bytes, optional default tag name, and
+    paused flag), `WatchFolderState` (per-folder ledger plus the pending-FIT-review
+    queue keyed by content hash), `WatchFolderLedgerEntry`,
+    `WatchFolderImportRecord`, `WatchFolderPendingReviewEntry`, and the
+    `WatchFolderScanPolicy` tunables.
+  * `FileWatchFolderStore` persists a versioned envelope to
+    `watch-folders.json` beside the library manifest and athlete profile, with
+    atomic writes and tolerant load: a missing, undecodable, or newer-version
+    file loads empty rather than throwing or wedging the library. Bookmark
+    bytes are stored but never interpreted in Core.
+  * `WatchFolderScanner` is the pure, clock-injectable decision layer: it
+    lists non-recursive eligible files (skipping hidden files, directories, and
+    unsupported extensions), classifies them against a folder state and a
+    caller-supplied content-hash map (candidates / duplicates / pending review /
+    unreadable), tracks the **two-probe size+mtime settle** through
+    `SettleTracker`, and performs the bounded content read + SHA-256 hash via
+    `ContentDigesting`. `isDirectoryListable(_:)` distinguishes "watched folder
+    is gone right now" from "watched folder is empty", which zero files alone
+    cannot tell apart. It re-throws the product resource-limit error for an
+    oversized file so the failure is definitive rather than retried, and that
+    error names the limit actually enforced rather than a second copy of the
+    product number.
+- **RunPlayPlatform** owns the macOS-only filesystem access:
+  * `SecurityScopedBookmarkStore` creates and **stale-tolerantly** resolves
+    security-scoped bookmarks and hands back a `ScopedAccess` handle that holds
+    the folder's security scope for the whole watch lifetime (released on
+    deinit). These APIs are functional no-ops in the current unsigned build but
+    become load-bearing unchanged when App Sandbox entitlements land; enabling
+    the sandbox is a deliberate follow-up, not part of this feature.
+  * `DirectoryWatching` / `DispatchSourceDirectoryWatcher` deliver coalesced
+    directory `.write` events as an **advisory early wake**. The coordinator's
+    periodic poll stays authoritative, so missed events only add poll latency
+    and never lose a file.
+- **RunPlayStudio** owns orchestration and every user-facing surface:
+  * `WatchFolderCoordinator` (`@MainActor`, `ObservableObject`) is the state
+    machine. It resolves bookmarks, holds scoped access, registers watchers,
+    runs the authoritative poll plus early-wake scans, drives settle, computes
+    content hashes off the main actor in a detached task, applies dedupe,
+    records outcomes, and persists state. Scan/settle tracker state is passed
+    across the detached-task boundary explicitly so it survives between passes.
+    It publishes `recentImports`, `folders`, `isPaused`,
+    `pendingReviewBanner`, and `unavailableFolderIDs`.
+  * **Unavailability is a first-class state, never silence.** An ejected volume
+    or deleted folder is reported once per available ⇄ unavailable edge (never
+    per poll) as a readable failure row, the Settings pane marks the folder
+    **Unavailable**, and watching resumes automatically when the directory
+    returns — the poll loop retries folders that never activated, so a volume
+    mounted after launch recovers without a restart. A paused folder is never
+    reported unavailable, because pausing stops access on purpose.
+  * **Pending-review state is durable and never stranded.** The queued FIT file
+    persists per folder, so its banner is restored on relaunch; resolving or
+    removing one folder's review re-surfaces another folder's queued review
+    instead of dropping it. Entries whose file vanished are pruned rather than
+    surfaced, so the banner always offers a review that can actually be opened.
+  * **Recovery is folder state, not a file result.** A folder becoming
+    available again clears its badge but adds no Recent Imports row, because a
+    row there would falsely imply a workout was imported.
+  * `AppState+WatchFolderImport` bridges into the existing pipeline: it
+    re-stamps training load, adds the workout through the store, refreshes the
+    library, applies the per-folder default tag through the existing tag APIs,
+    and returns a structured outcome with display detail. It deliberately never
+    sets `operationState`, `errorMessage`, or `showingError`, so a background
+    import cannot raise a modal alert over whatever the user is doing. The
+    three parse-level failure messages live in one shared helper
+    (`AppState.parseLevelImportErrorMessage`) consumed by both entry points so
+    they cannot drift; only `.unsupportedFormat` and `.fileNotFound` are worded
+    per caller, because "the selected file" and "import a file instead" are
+    both wrong for a file that arrived by itself.
+  * A multi-session `.fit` file is **queued** for the existing FIT review sheet
+    behind a non-modal banner and is not ledgered until the user resolves it;
+    single-session files take the direct path.
+  * Results surface in a toolbar **Recent Imports** popover (per-file
+    success/skip/error with reveal-in-Finder) and a Settings pane; there is no
+    alert spam and no window blocking.
+  * **Speech is aggregated once per scan pass**, never per file and never per
+    idle poll. Because the results are non-modal, a VoiceOver user has no other
+    signal that a background import finished, so the coordinator emits at most
+    a few concise `AccessibilityAnnouncementEvent`s through `AppState`'s
+    retained policy: failure outranks success (an error must never be masked by
+    a sibling import), unavailability is spoken once per transition, and a
+    queued FIT review is announced once rather than re-announced on every poll
+    while it waits.
+- **Dedupe identity is content, not filename.** Every processed outcome —
+  imported, skipped-duplicate, and failed — is ledgered, so a failed file is
+  never retried on every scan and a renamed or copied file with identical bytes
+  is recognized as a duplicate. Steady-state duplicates are silent; a skip row
+  appears only when the same content shows up under a new filename.
+- **A file too large to read has no hash, so it cannot be ledgered.** It is
+  instead suppressed by an in-memory size/mtime/path fingerprint, which is
+  sufficient: the point is to stop re-reading >100 MB from disk on every poll
+  and to stop repeating the row, not to survive relaunch.

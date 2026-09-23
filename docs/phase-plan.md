@@ -97,6 +97,22 @@
 - Validates missing/corrupt/future state and excludes transient sheets, alerts, operations, caches, result IDs, and active playback
 - Actor-backed atomic writes with structural debounce, replay throttling, pause/lifecycle flushes, and synthetic focused tests
 
+### Optional Watch-Folder Import ✅
+- User-chosen directories auto-import new GPX/TCX/FIT/JSON files; opt-in, never on by default
+- Security-scoped bookmark persistence (`watch-folders.json` beside the manifest) with stale-tolerant re-resolution; works identically once App Sandbox lands (enablement itself is a follow-up)
+- Detection: authoritative ~5 s poll plus DispatchSource directory events as an early wake (missed events degrade to poll latency)
+- Two-probe size+mtime settle (default 2 s) so files still being written are never imported; "Import Existing Files Now" bypasses settling for pre-existing files
+- Per-folder SHA-256 content ledger: every outcome (imported/skipped/failed) is ledgered so nothing retries forever; identity is content, not filename (renames dedupe)
+- Steady-state duplicates are silent; a skip row appears only for a renamed/copied duplicate
+- Reuses the single-file import pipeline end-to-end (training-load restamp, store add, library refresh, per-folder default tag via existing tag APIs)
+- Multi-session FIT files queue for the existing review sheet behind a non-modal banner; not ledgered until resolved
+- Results surface in a toolbar popover "Recent Imports" panel (success/skip/error per file, reveal-in-Finder) and a Settings pane; no alert spam, no window blocking
+- Unavailability is a first-class state, never silence: an ejected volume or removed folder is reported once per transition, marked **Unavailable** in settings, and resumes watching automatically when the directory returns
+- Queued FIT reviews persist, so the banner survives relaunch and removing one folder re-surfaces another folder's queued review instead of stranding it
+- VoiceOver is the only non-visual signal for a background import, so outcomes are announced once per scan pass (failure outranks success), never per file and never on an idle poll
+- Parse-level import failure wording is shared with the manual path through one helper so the two cannot drift; only the two context-dependent cases are worded per caller
+- Watch Folders… File-menu item opens the Settings pane (registered command, no additional shortcut)
+
 ---
 
 ## Active / Upcoming Phases
@@ -122,6 +138,7 @@
 - [x] Multi-session FIT batch import
 - [x] FIT developer data: field_description/developer_data_id decode, name-based recognition with provenance, running power + dynamics on route points, per-field metadata/statistics retention (no per-point series, 16-field cap)
 - [x] Running power + dynamics surfaces: power chart, replay badge, split/segment means, Power map coloring (warm-yellow ramp), best 20-min power (segment-safe time window in Swift), dynamics detail panel, JSON/CSV export fields with explicit units
+- [x] Optional watch-folder import: security-scoped folder bookmarks, poll + DispatchSource detection, size/mtime settle, per-folder SHA-256 content ledger, non-modal recent-imports panel and review banner, per-folder default tag
 - [ ] iPhone companion exporter (future)
 
 ### Phase: Portable C++23 Engine Migration
