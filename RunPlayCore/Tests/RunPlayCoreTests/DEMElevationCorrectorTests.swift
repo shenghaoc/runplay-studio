@@ -58,6 +58,38 @@ final class DEMElevationCorrectorTests: XCTestCase {
         )
     }
 
+    /// A route DEM makes perfectly flat has 0 m corrected ascent and descent;
+    /// Trends, records, and the library must not fall back to the raw
+    /// recorded sum, which is the GPS noise the correction removed.
+    func testFlatDEMRunsKeepZeroAscentEverywhereAscentIsTotalled() throws {
+        var random = DemSplitMix64(seed: 17)
+        var noise = 0.0
+        let noisy = (0..<SyntheticDEMTiles.routePointCount).map { _ -> Double in
+            noise = max(-12, min(12, noise + random.nextDouble(in: -2...2)))
+            return 300 + noise
+        }
+        var workout = try importedWorkout(recorded: { noisy[$0] })
+        workout.metadata.startDate = Date(timeIntervalSinceReferenceDate: 700_000_000)
+        try DEMElevationCorrector().correct(&workout, using: SyntheticDEMTiles(height: 300), at: date)
+        XCTAssertEqual(workout.summary.elevationGainMeters, 0)
+        XCTAssertGreaterThan(try XCTUnwrap(workout.summary.rawElevationGainMeters), 50, "the noise the raw sum keeps")
+
+        XCTAssertTrue(workout.hasCorrectedElevationTotals)
+        XCTAssertEqual(WorkoutTrendsSummaryRow.make(from: workout)?.ascentMeters, 0)
+        XCTAssertNil(
+            PersonalRecordsAggregator.aggregate(workouts: [workout]).row(for: .biggestAscent)?.best,
+            "0 m is not a climb record"
+        )
+        XCTAssertTrue(WorkoutLibraryEntry.make(from: workout, manifestIndex: 0, isFavorite: false).hasCorrectedElevation)
+
+        try DEMElevationCorrector().useRecordedElevation(&workout, at: date)
+        XCTAssertEqual(
+            WorkoutTrendsSummaryRow.make(from: workout)?.ascentMeters,
+            workout.summary.elevationGainMeters,
+            "recorded elevation again: its corrected profile is back"
+        )
+    }
+
     func testBarometricAltitudeIsKeptAndOnlyItsGapsAreFilledWithoutASourceStep() throws {
         let gap = 200..<240
         var workout = try importedWorkout(sensor: .barometric, recorded: { gap.contains($0) ? nil : 100 })
