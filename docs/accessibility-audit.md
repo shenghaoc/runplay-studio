@@ -25,12 +25,19 @@ Focused scene values publish action bundles from the active workspace:
 | `AppWorkspaceActions` | `ContentView` | File import, Library destinations |
 | `ReplayActions` | `WorkoutDetailView` | Replay |
 | `LibraryActions` | `WorkoutLibraryView` | Find, Edit Tags |
-| `MapActions` | Map / Heatmap / Comparison map | Fit, 2D/3D |
+| `MapActions` | Map / Heatmap / Comparison map | Fit, 2D/3D; Route Color (single-workout map only) |
+| `ExportActions` | `ContentView` workout workspace, relayed to `ExportView` | File → Export |
 | `AppPresentationActions` | `ContentView` | Help → Keyboard Shortcuts |
 | `workoutTabSelection` | `WorkoutDetailView` | Workout tabs |
 
 Authoritative inventory: `CommandRegistry` in
 `RunPlayStudio/Sources/Commands/CommandRegistry.swift`.
+
+`ExportView` sits in the window toolbar, and a focused scene value published
+from a toolbar item does not reach the menu bar's `Commands`. The workout
+workspace therefore publishes `ExportActions` that post to an
+`ExportCommandRelay`; `ExportView` performs each request through the same path
+as its pull-down and reports its asynchronous MP4 eligibility back to the relay.
 
 NotificationCenter fallback remains only for All Runs / Heatmap workspace
 commands when scene focus is cleared after reopening the main window.
@@ -57,6 +64,11 @@ commands when scene focus is cleared after reopening the main window.
 | Restart | ⌘⇧← | Workout | Pauses at start |
 | Fit Map | ⌘0 | Visible map | Route / routes / heatmap |
 | Toggle 2D/3D | View menu | Visible map | No global chord; avoids the system Dock shortcut |
+| Route Color → Solid / Pace / Heart Rate / Power / Elevation | ⌥⌘0 – ⌥⌘4 | Workout map | View menu; checkmark on the active mode; unavailable metric modes disabled, Solid always enabled |
+| Export → Summary (JSON)… / Distance Splits (CSV)… / Segments (CSV)… / All (CSV)… | File menu | Workout | Same save panels as the toolbar Export pull-down |
+| Export → Recorded Laps (CSV)… | File menu | Workout | Disabled when the workout has no recorded laps |
+| Export → Summary Card (PNG)… | ⌘E | Workout | Opens the PNG options sheet |
+| Export → Route Replay (MP4)… | ⌘⇧E | Workout | Disabled until the video-eligibility check passes |
 | Keyboard Shortcuts | ⌘/ | Any | Help sheet from registry |
 | Open Selected Run | ↩ | All Runs table | Local; single selection only |
 | Step frame ± | ← / → | Replay controls focused | Local only; not global menu |
@@ -72,6 +84,10 @@ commands when scene focus is cleared after reopening the main window.
 - **Escape / Delete**: not global. Escape clears All Runs search only when search
   is focused and nonempty. Delete deletes only one eligible selected persisted
   workout from the table context.
+- **⌘E / ⌘⇧E**: bound to Summary Card and Route Replay export. The app has no
+  Find panel, so the standard "Use Selection for Find" (⌘E) is not displaced.
+- **⌥⌘0 – ⌥⌘4**: Route Color modes; distinct from Fit Map (⌘0) and Workout tabs
+  (⌘1 – ⌘4) by the Option modifier.
 - **Toggle 2D/3D**: remains keyboard reachable through the native View menu.
   It intentionally has no global chord because ⌘⌥D belongs to the system Dock.
 

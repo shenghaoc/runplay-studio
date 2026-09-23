@@ -127,6 +127,69 @@ final class FocusedActionTests: XCTestCase {
         XCTAssertEqual(toggleCount, 1)
     }
 
+    func testMapActionsDoNotOfferRouteColorByDefault() {
+        let actions = MapActions(isAvailable: { true })
+        XCTAssertFalse(actions.supportsRouteColor())
+        for mode in WorkoutRouteColorMode.allCases {
+            XCTAssertFalse(actions.canSelectRouteColor(mode))
+        }
+    }
+
+    func testRouteColorSelectabilityFollowsAvailability() {
+        XCTAssertTrue(WorkoutRouteColorMode.solid.isSelectable(in: nil))
+        for mode in WorkoutRouteColorMode.allCases where mode != .solid {
+            XCTAssertFalse(mode.isSelectable(in: nil), "\(mode) before the probe runs")
+        }
+
+        let partial = RouteMetricModeAvailability(
+            pace: true,
+            heartRate: false,
+            power: false,
+            correctedElevation: true
+        )
+        XCTAssertTrue(WorkoutRouteColorMode.solid.isSelectable(in: partial))
+        XCTAssertTrue(WorkoutRouteColorMode.pace.isSelectable(in: partial))
+        XCTAssertFalse(WorkoutRouteColorMode.heartRate.isSelectable(in: partial))
+        XCTAssertFalse(WorkoutRouteColorMode.power.isSelectable(in: partial))
+        XCTAssertTrue(WorkoutRouteColorMode.correctedElevation.isSelectable(in: partial))
+
+        let none = RouteMetricModeAvailability(
+            solid: false,
+            pace: false,
+            heartRate: false,
+            correctedElevation: false
+        )
+        XCTAssertTrue(WorkoutRouteColorMode.solid.isSelectable(in: none))
+    }
+
+    func testExportCommandRelayDeliversEachRequestOnce() {
+        let relay = ExportCommandRelay()
+        let actions = relay.actions(for: makeWorkout())
+
+        XCTAssertNil(relay.takePendingCommand())
+        actions.exportSummaryCardPNG()
+        XCTAssertEqual(relay.pendingCommand, .summaryCardPNG)
+        XCTAssertEqual(relay.takePendingCommand(), .summaryCardPNG)
+        XCTAssertNil(relay.pendingCommand)
+
+        // Repeating the same export must post a fresh request.
+        actions.exportSummaryCardPNG()
+        XCTAssertEqual(relay.takePendingCommand(), .summaryCardPNG)
+
+        actions.exportAllCSV()
+        XCTAssertEqual(relay.takePendingCommand(), .allCSV)
+    }
+
+    func testExportCommandRelayGatesOptionalExports() {
+        let relay = ExportCommandRelay()
+        let actions = relay.actions(for: makeWorkout())
+
+        XCTAssertFalse(actions.canExportRouteReplay())
+        relay.canExportRouteReplay = true
+        XCTAssertTrue(actions.canExportRouteReplay())
+        XCTAssertFalse(actions.canExportRecordedLaps(), "fixture has no recorded laps")
+    }
+
     func testSheetBlocksDestructiveBackgroundSemantics() {
         // Mirrors WorkoutViewCommands: when a sheet is active, replay/library
         // menu items are disabled even if action bundles exist.

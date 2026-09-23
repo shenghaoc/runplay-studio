@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var sidebarSelection: SidebarSelection?
     @State private var showKeyboardShortcuts = false
     @State private var descendantPresentationActive = false
+    @State private var exportCommandRelay = ExportCommandRelay()
 
     init(appState: AppState, sessionController: AppSessionController) {
         self.appState = appState
@@ -325,6 +326,7 @@ struct ContentView: View {
         case .workout:
             if let workout = appState.selectedWorkout {
                 WorkoutDetailView(workout: workout, appState: appState)
+                    .focusedSceneValue(\.exportActions, exportCommandRelay.actions(for: workout))
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) {
                             HStack {
@@ -350,7 +352,8 @@ struct ContentView: View {
                                 ExportView(
                                     workout: workout,
                                     segments: appState.detectedSegments,
-                                    analysisContext: appState.cachedAnalysisContext(for: workout)
+                                    analysisContext: appState.cachedAnalysisContext(for: workout),
+                                    commandRelay: exportCommandRelay
                                 )
                             }
                         }

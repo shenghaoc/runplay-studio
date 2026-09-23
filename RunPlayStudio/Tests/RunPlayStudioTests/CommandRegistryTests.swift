@@ -1,5 +1,7 @@
 import XCTest
+import RunPlayCore
 @testable import RunPlayStudio
+import SwiftUI
 
 final class CommandRegistryTests: XCTestCase {
 
@@ -65,5 +67,52 @@ final class CommandRegistryTests: XCTestCase {
     func testLocalOnlyOpenSelectionIsNotMenuCommand() {
         XCTAssertTrue(CommandRegistry.definition(for: .openSelectedWorkout).localOnly)
         XCTAssertFalse(CommandRegistry.menuCommands.contains { $0.id == .openSelectedWorkout })
+    }
+
+    func testEveryRouteColorModeHasADistinctViewMenuCommand() {
+        let commands = WorkoutRouteColorMode.allCases.map(CommandRegistry.routeColorCommand(for:))
+        XCTAssertEqual(Set(commands).count, WorkoutRouteColorMode.allCases.count)
+        for (index, id) in commands.enumerated() {
+            let command = CommandRegistry.definition(for: id)
+            XCTAssertEqual(command.menu, "View")
+            XCTAssertEqual(command.workspace, .workout)
+            XCTAssertEqual(command.keyEquivalent, "\(index)")
+            XCTAssertEqual(command.modifiers, [.command, .option])
+            XCTAssertEqual(command.displayShortcut, "⌥⌘\(index)")
+        }
+        XCTAssertEqual(
+            CommandRegistry.definition(for: CommandRegistry.routeColorCommand(for: .solid)).menuTitle,
+            WorkoutRouteColorMode.solid.displayName
+        )
+    }
+
+    func testExportCommandsLiveInTheFileMenu() {
+        let exports: [CommandID] = [
+            .exportSummaryJSON, .exportDistanceSplitsCSV, .exportRecordedLapsCSV,
+            .exportSegmentsCSV, .exportSummaryCardPNG, .exportRouteReplayMP4, .exportAllCSV
+        ]
+        for id in exports {
+            let command = CommandRegistry.definition(for: id)
+            XCTAssertEqual(command.menu, "File", id.rawValue)
+            XCTAssertEqual(command.workspace, .workout, id.rawValue)
+            XCTAssertTrue(command.menuTitle.hasSuffix("…"), id.rawValue)
+        }
+        XCTAssertEqual(CommandRegistry.definition(for: .exportSummaryCardPNG).displayShortcut, "⌘E")
+        XCTAssertEqual(CommandRegistry.definition(for: .exportRouteReplayMP4).displayShortcut, "⇧⌘E")
+        XCTAssertEqual(CommandRegistry.definition(for: .exportSummaryJSON).displayShortcut, "Menu")
+    }
+
+    func testMenuKeyboardShortcutOnlyForSingleLetterOrDigitKeys() {
+        let png = CommandRegistry.definition(for: .exportSummaryCardPNG).menuKeyboardShortcut
+        XCTAssertEqual(png?.key, KeyEquivalent("e"))
+        XCTAssertEqual(png?.modifiers, .command)
+
+        let pace = CommandRegistry.definition(for: .routeColorPace).menuKeyboardShortcut
+        XCTAssertEqual(pace?.key, KeyEquivalent("1"))
+        XCTAssertEqual(pace?.modifiers, [.command, .option])
+
+        XCTAssertNil(CommandRegistry.definition(for: .exportSummaryJSON).menuKeyboardShortcut)
+        XCTAssertNil(CommandRegistry.definition(for: .replayPlayPause).menuKeyboardShortcut)
+        XCTAssertNil(CommandRegistry.definition(for: .replayRestart).menuKeyboardShortcut)
     }
 }

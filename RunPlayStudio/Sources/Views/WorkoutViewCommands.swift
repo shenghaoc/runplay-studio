@@ -1,3 +1,4 @@
+import RunPlayCore
 import SwiftUI
 import AppKit
 
@@ -50,6 +51,7 @@ struct WorkoutViewCommands: Commands {
     @FocusedValue(\.replayActions) private var replayActions
     @FocusedValue(\.libraryActions) private var libraryActions
     @FocusedValue(\.mapActions) private var mapActions
+    @FocusedValue(\.exportActions) private var exportActions
     @FocusedValue(\.appPresentationActions) private var presentationActions
     @FocusedValue(\.sheetPresentationActive) private var sheetActive
 
@@ -65,6 +67,14 @@ struct WorkoutViewCommands: Commands {
 
     private var mapAvailable: Bool {
         !isSheetBlocking && (mapActions?.isAvailable() ?? false)
+    }
+
+    private var exportAvailable: Bool {
+        !isSheetBlocking && exportActions != nil
+    }
+
+    private var routeColorAvailable: Bool {
+        mapAvailable && (mapActions?.supportsRouteColor() ?? false)
     }
 
     var body: some Commands {
@@ -92,6 +102,33 @@ struct WorkoutViewCommands: Commands {
             }
             .help(CommandRegistry.definition(for: .watchFoldersSettings).purpose)
             .disabled(isSheetBlocking)
+
+            Divider()
+
+            // Mirrors the toolbar Export pull-down, which Tab does not reach
+            // while Full Keyboard Access is off (the macOS default).
+            Menu("Export") {
+                exportButton(.exportSummaryJSON) { $0.exportSummaryJSON() }
+                exportButton(.exportDistanceSplitsCSV) { $0.exportDistanceSplitsCSV() }
+                exportButton(
+                    .exportRecordedLapsCSV,
+                    isEnabled: exportActions?.canExportRecordedLaps() ?? false
+                ) { $0.exportRecordedLapsCSV() }
+                exportButton(.exportSegmentsCSV) { $0.exportSegmentsCSV() }
+
+                Divider()
+
+                exportButton(.exportSummaryCardPNG) { $0.exportSummaryCardPNG() }
+                exportButton(
+                    .exportRouteReplayMP4,
+                    isEnabled: exportActions?.canExportRouteReplay() ?? false
+                ) { $0.exportRouteReplayMP4() }
+
+                Divider()
+
+                exportButton(.exportAllCSV) { $0.exportAllCSV() }
+            }
+            .disabled(!exportAvailable)
         }
 
         CommandMenu("Workout") {
@@ -265,6 +302,31 @@ struct WorkoutViewCommands: Commands {
             }
             .help(CommandRegistry.definition(for: .mapTogglePresentation).purpose)
             .disabled(!mapAvailable || !(mapActions?.canTogglePresentation() ?? false))
+
+            Divider()
+
+            // Mirrors the map's Route Color pull-down, which Tab does not reach
+            // while Full Keyboard Access is off (the macOS default).
+            Menu(String(localized: "Route Color")) {
+                ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
+                    let command = CommandRegistry.definition(
+                        for: CommandRegistry.routeColorCommand(for: mode)
+                    )
+                    Toggle(mode.displayName, isOn: Binding(
+                        get: { mapActions?.routeColorMode() == mode },
+                        set: { isOn in
+                            if isOn { mapActions?.selectRouteColor(mode) }
+                        }
+                    ))
+                    .keyboardShortcut(command.menuKeyboardShortcut)
+                    .help(command.purpose)
+                    .disabled(
+                        !routeColorAvailable
+                            || !(mapActions?.canSelectRouteColor(mode) ?? false)
+                    )
+                }
+            }
+            .disabled(!routeColorAvailable)
         }
 
         CommandGroup(after: .help) {
@@ -274,5 +336,19 @@ struct WorkoutViewCommands: Commands {
             .keyboardShortcut("/", modifiers: .command)
             .help(CommandRegistry.definition(for: .keyboardShortcutsHelp).purpose)
         }
+    }
+
+    private func exportButton(
+        _ id: CommandID,
+        isEnabled: Bool = true,
+        perform: @escaping (ExportActions) -> Void
+    ) -> some View {
+        let command = CommandRegistry.definition(for: id)
+        return Button(command.menuTitle) {
+            if let exportActions { perform(exportActions) }
+        }
+        .keyboardShortcut(command.menuKeyboardShortcut)
+        .help(command.purpose)
+        .disabled(!exportAvailable || !isEnabled)
     }
 }
