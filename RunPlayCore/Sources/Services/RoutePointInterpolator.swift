@@ -200,6 +200,7 @@ public enum RoutePointInterpolator {
             latitude: interpolate(before.latitude, after.latitude, fraction),
             longitude: interpolate(before.longitude, after.longitude, fraction),
             altitudeMeters: interpolateOptional(before.altitudeMeters, after.altitudeMeters, fraction),
+            demAltitudeMeters: interpolateOptional(before.demAltitudeMeters, after.demAltitudeMeters, fraction),
             distanceFromStartMeters: distance,
             elapsedSeconds: interpolate(before.elapsedSeconds, after.elapsedSeconds, fraction),
             speedMetersPerSecond: interpolateOptional(before.speedMetersPerSecond, after.speedMetersPerSecond, fraction),

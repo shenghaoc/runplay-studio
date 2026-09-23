@@ -104,6 +104,7 @@ struct RoutePoint: Identifiable, Codable {
     var latitude: Double
     var longitude: Double
     var altitudeMeters: Double?
+    var demAltitudeMeters: Double?
     var distanceFromStartMeters: Double
     var elapsedSeconds: Double
     var speedMetersPerSecond: Double?
@@ -140,6 +141,14 @@ is not replaced with a smoothed value. Corrected presentation and analysis
 altitude lives in an aligned, derived `ElevationProfile`. Missing source
 altitude remains missing rather than becoming zero.
 
+`demAltitudeMeters` is derived terrain elevation sampled from user-supplied DEM
+tiles. It sits beside `altitudeMeters` and never replaces it. The key is
+written only when a value is present (`encodeIfPresent`), so a snapshot with no
+DEM data encodes byte-for-byte as it did before the field existed, and older
+snapshots decode it as `nil`. The JSON importer deliberately does not read it:
+DEM elevation depends on the user's local tiles and is recomputed, not
+imported.
+
 `horizontalAccuracy` remains optional. Non-finite or negative values are
 discarded. A poor finite accuracy value can support an isolated-coordinate
 decision only when the neighbouring trajectory has better accuracy; it is
@@ -157,12 +166,19 @@ struct RouteInputSample {
     double latitude;
     double longitude;
     std::optional<double> altitude_meters;
+    std::optional<double> dem_altitude_meters;
     double distance_from_start_meters;
     double elapsed_seconds;
     std::optional<double> speed_meters_per_second;
     std::optional<double> pace_seconds_per_kilometer;
     std::optional<double> heart_rate_bpm;
     std::optional<double> cadence;
+    std::optional<double> power_watts;
+    std::optional<double> ground_contact_time_milliseconds;
+    std::optional<double> vertical_oscillation_millimeters;
+    std::optional<double> vertical_ratio_percent;
+    std::optional<double> stance_time_balance_percent;
+    std::optional<double> step_length_meters;
     std::optional<double> horizontal_accuracy;
     std::int64_t route_segment_index;
 };
@@ -178,10 +194,16 @@ non-finite values. The segment index converts exactly to `Int64` and never
 truncates.
 
 Swift owns one contiguous temporary buffer. C++ borrows it for one synchronous
-inspection call, retains nothing, and returns a compact value that Core converts
-back to pure Swift. The projection is test/parity infrastructure only: it is
-not persisted, does not change any schema or version, and is not called by
-production route analysis.
+call, retains nothing, and returns a compact value that Core converts back to
+pure Swift. The projection is not persisted and does not change any schema or
+version. `inspect_route_batch` reads every field into the parity digest; the
+production `process_route_quality_geometry` kernel reads only source index,
+timestamp, coordinates, supplied distance, elapsed time, horizontal accuracy,
+and segment index. No kernel reads `dem_altitude_meters`, which exists only so
+the digest covers every `RoutePoint` field; `validate-cpp-boundaries.sh`
+rejects any engine source other than the digest that names it, and a native
+test shows route quality produces bit-identical output whatever DEM values the
+buffer carries.
 
 ### Non-persisted C++ local-metre value
 

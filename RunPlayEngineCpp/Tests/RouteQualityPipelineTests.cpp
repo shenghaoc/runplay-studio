@@ -2,6 +2,7 @@
 #include "TestSupport.hpp"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -85,6 +86,7 @@ RouteInputSample make_sample(
         timestamp,
         latitude,
         longitude,
+        std::nullopt,
         std::nullopt,
         distance,
         elapsed,
@@ -846,6 +848,116 @@ void test_many_segments() {
 
 }  // namespace
 
+// The route-value boundary carries `dem_altitude_meters` only for the field
+// digest. Route quality must not read it: an adversarial DEM series (absent,
+// NaN, infinities, signed zero, huge magnitudes) may not change a single
+// summary value or output bit under any distance policy. The fixture exercises
+// every stage: an isolated teleport, an inferred relocation gap, an explicit
+// source boundary, and supplied distances.
+void test_dem_altitude_is_never_read() {
+    std::vector<RouteInputSample> baseline;
+    const auto push = [&baseline](
+        double metres_north, double seconds, double supplied, std::int64_t segment) {
+        baseline.push_back(make_sample(
+            static_cast<std::uint64_t>(baseline.size()),
+            lat_step_for_metres(metres_north),
+            0.0,
+            seconds,
+            seconds,
+            supplied,
+            segment,
+            std::optional<double>{5.0}));
+    };
+    for (int i = 0; i < 6; ++i) {
+        const double step = static_cast<double>(i);
+        push(10.0 * step, step, 10.0 * step, 0);
+    }
+    push(5'000.0, 6.0, 60.0, 0);  // isolated teleport
+    for (int i = 7; i < 10; ++i) {
+        const double step = static_cast<double>(i);
+        push(10.0 * step, step, 10.0 * step, 0);
+    }
+    for (int i = 0; i < 4; ++i) {  // coherent relocation cluster
+        const double step = static_cast<double>(i);
+        push(3'000.0 + 10.0 * step, 10.0 + step, 100.0 + 10.0 * step, 0);
+    }
+    for (int i = 0; i < 4; ++i) {  // explicit source boundary
+        const double step = static_cast<double>(i);
+        push(3'100.0 + 10.0 * step, 20.0 + step, 140.0 + 10.0 * step, 1);
+    }
+
+    constexpr std::array<double, 8> adversarial{
+        quiet_nan,
+        std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(),
+        -0.0,
+        0.0,
+        1.0e308,
+        -1.0e308,
+        123.456,
+    };
+    std::vector<RouteInputSample> with_dem = baseline;
+    for (std::size_t index = 0; index < with_dem.size(); ++index) {
+        if (index % 3u != 2u) {
+            with_dem[index].dem_altitude_meters = adversarial[index % adversarial.size()];
+        }
+    }
+
+    constexpr std::array<RouteQualityDistancePolicy, 4> policies{
+        RouteQualityDistancePolicy::compute_from_coordinates,
+        RouteQualityDistancePolicy::use_supplied_when_all_valid,
+        RouteQualityDistancePolicy::use_supplied_per_segment,
+        RouteQualityDistancePolicy::use_supplied_for_selected_source_segments,
+    };
+    const std::vector<std::uint8_t> selection(baseline.size(), 1u);
+    for (const RouteQualityDistancePolicy policy : policies) {
+        const bool selected =
+            policy == RouteQualityDistancePolicy::use_supplied_for_selected_source_segments;
+        std::vector<RouteQualityOutputSample> expected(baseline.size());
+        std::vector<RouteQualityOutputSample> actual(baseline.size());
+        const RouteQualityPipelineSummary expected_summary = process_route_quality_geometry(
+            baseline.data(), baseline.size(), default_policy(), policy,
+            selected ? selection.data() : nullptr, selected ? selection.size() : 0u,
+            expected.data(), expected.size());
+        const RouteQualityPipelineSummary actual_summary = process_route_quality_geometry(
+            with_dem.data(), with_dem.size(), default_policy(), policy,
+            selected ? selection.data() : nullptr, selected ? selection.size() : 0u,
+            actual.data(), actual.size());
+
+        expect(expected_summary.status == RouteQualityPipelineStatus::success, "DEM proof baseline ok");
+        expect(expected_summary.discarded_coordinate_point_count == 1u, "DEM proof fixture rejects the teleport");
+        expect(expected_summary.inferred_route_gap_count == 1u, "DEM proof fixture infers the relocation gap");
+        expect(actual_summary.status == expected_summary.status, "DEM altitude must not change status");
+        expect(
+            actual_summary.input_sample_count == expected_summary.input_sample_count
+                && actual_summary.retained_sample_count == expected_summary.retained_sample_count
+                && actual_summary.discarded_coordinate_point_count
+                    == expected_summary.discarded_coordinate_point_count
+                && actual_summary.inferred_route_gap_count == expected_summary.inferred_route_gap_count
+                && actual_summary.normalized_segment_count == expected_summary.normalized_segment_count
+                && actual_summary.distance_source == expected_summary.distance_source,
+            "DEM altitude must not change summary counts or source");
+        expect(
+            std::bit_cast<std::uint64_t>(actual_summary.total_distance_meters)
+                == std::bit_cast<std::uint64_t>(expected_summary.total_distance_meters),
+            "DEM altitude must not change total distance bits");
+        for (std::size_t index = 0; index < baseline.size(); ++index) {
+            const RouteQualityOutputSample& lhs = expected[index];
+            const RouteQualityOutputSample& rhs = actual[index];
+            expect(
+                lhs.source_index == rhs.source_index
+                    && lhs.normalized_segment_index == rhs.normalized_segment_index
+                    && std::bit_cast<std::uint64_t>(lhs.normalized_distance_from_start_meters)
+                        == std::bit_cast<std::uint64_t>(rhs.normalized_distance_from_start_meters)
+                    && lhs.distance_source == rhs.distance_source
+                    && lhs.retained == rhs.retained
+                    && lhs.rejected_coordinate_outlier == rhs.rejected_coordinate_outlier
+                    && lhs.inferred_boundary == rhs.inferred_boundary,
+                "DEM altitude must not change any output sample");
+        }
+    }
+}
+
 void run_route_quality_pipeline_tests() {
     test_empty_and_boundary_errors();
     test_ordinary_route_and_teleport();
@@ -855,4 +967,5 @@ void run_route_quality_pipeline_tests() {
     test_segment_contract_and_identity();
     test_large_route();
     test_many_segments();
+    test_dem_altitude_is_never_read();
 }

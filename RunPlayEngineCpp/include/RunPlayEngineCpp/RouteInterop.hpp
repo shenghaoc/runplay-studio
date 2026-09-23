@@ -30,12 +30,19 @@ using RouteOptionalSourceIndex = std::optional<std::uint64_t>;
 ///
 /// `source_index` maps back to the original Swift array offset. Timestamps are
 /// exact `Date.timeIntervalSinceReferenceDate` values with no rounding.
+///
+/// `dem_altitude_meters` mirrors `RoutePoint.demAltitudeMeters`, terrain
+/// elevation sampled from user-supplied DEM tiles. It is carried only so the
+/// field digest covers every `RoutePoint` field: `inspect_route_batch` is its
+/// sole reader, and no kernel reads it (`validate-cpp-boundaries.sh` enforces
+/// that no other engine source names the field).
 struct RouteInputSample final {
     std::uint64_t source_index;
     double timestamp_seconds_since_reference_date;
     double latitude;
     double longitude;
     RouteOptionalDouble altitude_meters;
+    RouteOptionalDouble dem_altitude_meters;
     double distance_from_start_meters;
     double elapsed_seconds;
     RouteOptionalDouble speed_meters_per_second;
@@ -57,6 +64,7 @@ struct RouteInputSample final {
         double latitude_value,
         double longitude_value,
         RouteOptionalDouble altitude_meters_value,
+        RouteOptionalDouble dem_altitude_meters_value,
         double distance_from_start_meters_value,
         double elapsed_seconds_value,
         RouteOptionalDouble speed_meters_per_second_value,
@@ -78,6 +86,7 @@ struct RouteInputSample final {
           latitude(latitude_value),
           longitude(longitude_value),
           altitude_meters(altitude_meters_value),
+          dem_altitude_meters(dem_altitude_meters_value),
           distance_from_start_meters(distance_from_start_meters_value),
           elapsed_seconds(elapsed_seconds_value),
           speed_meters_per_second(speed_meters_per_second_value),
@@ -112,6 +121,7 @@ struct RouteBatchInspection final {
     std::uint64_t sample_count;
 
     std::uint64_t altitude_value_count;
+    std::uint64_t dem_altitude_value_count;
     std::uint64_t speed_value_count;
     std::uint64_t pace_value_count;
     std::uint64_t heart_rate_value_count;
