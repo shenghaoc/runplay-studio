@@ -241,6 +241,34 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
         ),
     ),
     ApprovedPointerFunction(
+        name="sample_dem_elevations",
+        type_text=(
+            "DemSamplingSummary "
+            "(const DemRouteSample *, std::size_t, DemSamplingPolicy, "
+            "const DemTileKey *, std::size_t, const DemTileHeightSample *, "
+            "std::size_t, DemElevationOutputSample *, std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const DemRouteSample *",
+            ),
+            ApprovedPointerParameter(
+                name="tiles",
+                type_text="const DemTileKey *",
+            ),
+            ApprovedPointerParameter(
+                name="tile_heights",
+                type_text="const DemTileHeightSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_samples",
+                type_text="DemElevationOutputSample *",
+                mutable_output=True,
+            ),
+        ),
+    ),
+    ApprovedPointerFunction(
         name="compute_training_load",
         type_text=(
             "TrainingLoadSummary "
@@ -659,6 +687,17 @@ def run_self_test() -> int:
             ),
             "ParmVarDecl samples 'const DemRouteSample *'",
             "ParmVarDecl output_tiles 'DemTileKey *'",
+            (
+                "FunctionDecl sample_dem_elevations "
+                "'DemSamplingSummary "
+                "(const DemRouteSample *, std::size_t, DemSamplingPolicy, "
+                "const DemTileKey *, std::size_t, const DemTileHeightSample *, "
+                "std::size_t, DemElevationOutputSample *, std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const DemRouteSample *'",
+            "ParmVarDecl tiles 'const DemTileKey *'",
+            "ParmVarDecl tile_heights 'const DemTileHeightSample *'",
+            "ParmVarDecl output_samples 'DemElevationOutputSample *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -1321,6 +1360,53 @@ def run_self_test() -> int:
         ),
         "dem plan pointer return": (
             "FunctionDecl plan_dem_tiles 'DemTileKey * (const DemRouteSample *, std::size_t, DemSamplingPolicy) noexcept'"
+        ),
+        "dem sample writable heights": "\n".join(
+            [
+                "FunctionDecl sample_dem_elevations 'DemSamplingSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, const DemTileKey *, std::size_t, DemTileHeightSample *, std::size_t, DemElevationOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl tiles 'const DemTileKey *'",
+                "ParmVarDecl tile_heights 'DemTileHeightSample *'",
+                "ParmVarDecl output_samples 'DemElevationOutputSample *'",
+            ]
+        ),
+        "dem sample raw float heights": "\n".join(
+            [
+                "FunctionDecl sample_dem_elevations 'DemSamplingSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, const DemTileKey *, std::size_t, const float *, std::size_t, DemElevationOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl tiles 'const DemTileKey *'",
+                "ParmVarDecl tile_heights 'const float *'",
+                "ParmVarDecl output_samples 'DemElevationOutputSample *'",
+            ]
+        ),
+        "dem sample const output": "\n".join(
+            [
+                "FunctionDecl sample_dem_elevations 'DemSamplingSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, const DemTileKey *, std::size_t, const DemTileHeightSample *, std::size_t, const DemElevationOutputSample *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl tiles 'const DemTileKey *'",
+                "ParmVarDecl tile_heights 'const DemTileHeightSample *'",
+                "ParmVarDecl output_samples 'const DemElevationOutputSample *'",
+            ]
+        ),
+        "dem sample tile file path": "\n".join(
+            [
+                "FunctionDecl sample_dem_elevations 'DemSamplingSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, const DemTileKey *, std::size_t, const DemTileHeightSample *, std::size_t, DemElevationOutputSample *, std::size_t, const char *) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl tiles 'const DemTileKey *'",
+                "ParmVarDecl tile_heights 'const DemTileHeightSample *'",
+                "ParmVarDecl output_samples 'DemElevationOutputSample *'",
+                "ParmVarDecl tile_path 'const char *'",
+            ]
+        ),
+        "dem sample height accessor callback": "\n".join(
+            [
+                "FunctionDecl sample_dem_elevations 'DemSamplingSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, const DemTileKey *, std::size_t, const DemTileHeightSample *, std::size_t, DemElevationOutputSample *, std::size_t, float (*)(DemTileKey, std::uint32_t, std::uint32_t)) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl tiles 'const DemTileKey *'",
+                "ParmVarDecl tile_heights 'const DemTileHeightSample *'",
+                "ParmVarDecl output_samples 'DemElevationOutputSample *'",
+                "ParmVarDecl height_at 'float (*)(DemTileKey, std::uint32_t, std::uint32_t)'",
+            ]
         ),
         "route metric writable input": "\n".join(
             [

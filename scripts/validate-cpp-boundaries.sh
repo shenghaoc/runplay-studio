@@ -350,6 +350,18 @@ if [[ -f "$DEM_HEADER" ]]; then
   else
     fail "plan_dem_tiles must use const DemRouteSample*, by-value policy, mutable DemTileKey*+capacity, and noexcept"
   fi
+  dem_sample_signature_re='DemSamplingSummary[[:space:]]+sample_dem_elevations[[:space:]]*\([[:space:]]*const[[:space:]]+DemRouteSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*DemSamplingPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*const[[:space:]]+DemTileKey[[:space:]]*\*[[:space:]]*tiles[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+tile_count[[:space:]]*,[[:space:]]*const[[:space:]]+DemTileHeightSample[[:space:]]*\*[[:space:]]*tile_heights[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+tile_height_count[[:space:]]*,[[:space:]]*DemElevationOutputSample[[:space:]]*\*[[:space:]]*output_samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$dem_body" =~ $dem_sample_signature_re ]]; then
+    pass "DEM sampling boundary is one bulk call over const coordinates, tile keys and decoded heights"
+  else
+    fail "sample_dem_elevations must use const samples*, by-value policy, const tile keys*, const heights*, mutable output*+capacity, and noexcept"
+  fi
+  dem_sample_symbol_count="$(grep -Eo 'sample_dem_elevations[[:space:]]*\(' <<<"$dem_body" | wc -l | tr -d '[:space:]')"
+  if [[ "$dem_sample_symbol_count" == "1" ]]; then
+    pass "public DEM header declares one sampling API"
+  else
+    fail "public DEM header must declare exactly one sampling API (found $dem_sample_symbol_count)"
+  fi
   dem_plan_symbol_count="$(grep -Eo 'plan_dem_tiles[[:space:]]*\(' <<<"$dem_body" | wc -l | tr -d '[:space:]')"
   if [[ "$dem_plan_symbol_count" == "1" ]]; then
     pass "public DEM header declares one tile-planning API"
