@@ -229,8 +229,10 @@ jobs:
       # (#199), so every SwiftPM build below — the Core gate's `swift test`
       # too, inside linux-container-verify.sh — runs through
       # retry-swiftpm-libdispatch-crash.sh. It reruns a command once for
-      # exactly that crash, and never for a build or test failure. Its
-      # classifier is shell + awk: self-test it on the image's mawk first.
+      # exactly that crash, and only while SwiftPM has reported no error and
+      # not finished the build, so a reported build error or any test result
+      # is final. Its classifier is shell + awk: self-test it on the image's
+      # mawk first.
       - name: Self-test SwiftPM crash retry
         run: ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
       - name: Build RunPlayEngineCpp

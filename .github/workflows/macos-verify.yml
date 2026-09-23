@@ -49,11 +49,13 @@ jobs:
       # classifier it runs `swift test` through are shell + awk. The Linux
       # lane self-tests both on the image's mawk before trusting them; this
       # runs the same fixtures on BSD awk, which is what the docker/podman
-      # modes parse with on a developer's Mac. Seconds, no Swift build.
-      - name: Self-test Linux log parsers (BSD awk)
+      # modes parse with on a developer's Mac. /bin/bash pins the bash 3.2
+      # every Mac ships, whatever bash comes first on PATH. Seconds, no
+      # Swift build.
+      - name: Self-test Linux log parsers (BSD awk, bash 3.2)
         run: |
-          ./scripts/linux-container-verify.sh --self-test
-          ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
+          /bin/bash ./scripts/linux-container-verify.sh --self-test
+          /bin/bash ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
 
       - name: Build RunPlayEngineCpp
         if: inputs.engine

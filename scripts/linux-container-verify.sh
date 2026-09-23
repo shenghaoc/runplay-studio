@@ -381,7 +381,8 @@ printf '%s\n' "${SELF_TEST_OUTPUT}" | tail -n1
 # SwiftPM itself can segfault in libdispatch while it plans the build (#199);
 # the wrapper reruns `swift test` once for exactly that crash. It never reruns
 # after SwiftPM printed `Build complete!`, so a retried attempt left no test
-# output in the log, and gate_log below still judges a single run.
+# output in the log, and gate_log below still judges a single run. Forwarded
+# -q/--quiet or --skip-build hide that line, and turn the retry off.
 set +e
 ./scripts/retry-swiftpm-libdispatch-crash.sh \
   "${VIRTUALIZE[@]}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path "${SCRATCH_PATH}" 2>&1 | tee "${LOG}"

@@ -496,11 +496,12 @@ while swift-build pre-plans a build — an upstream epoll use-after-free
 package bug. Every SwiftPM build in the Linux CI lane, including the
 `swift test` inside `scripts/linux-container-verify.sh`, runs through
 `scripts/retry-swiftpm-libdispatch-crash.sh`. It reruns a command once
-for exactly that crash signature, and only before SwiftPM prints `Build
-complete!`, so a build or test failure is never retried. Each retry
-leaves a warning annotation on the run. Do not widen the wrapper to
-other failures; delete it once the pinned image ships the libdispatch
-fix.
+for exactly that crash signature, and only while SwiftPM has reported no
+error and not yet printed `Build complete!`, so a reported build error
+or any test result is final; `-q`/`--quiet` and `--skip-build` hide that
+line, so they turn the retry off. Each retry leaves a warning annotation
+on the run. Do not widen the wrapper to other failures; delete it once
+the pinned image ships the libdispatch fix.
 
 Isolated verification runs: Swift 6.4 SwiftPM has no
 `--manifest-cache-path` (rejected at every command level) and keeps
