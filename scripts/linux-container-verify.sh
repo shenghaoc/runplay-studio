@@ -148,7 +148,16 @@ case "${RUNTIME}" in
     # Already inside the image: no wrapper, same writable HOME. There is no
     # host build tree to keep apart, so use the default scratch path and
     # reuse whatever the caller's earlier steps already built.
-    VIRTUALIZE=(env HOME="$PWD/.build-linux/container-home")
+    #
+    # TMPDIR too: SwiftPM keeps its scratch-tree lock in the temp directory
+    # (/tmp/<mangled scratch path>.lock), not under the scratch tree, so a
+    # root build earlier in the same container leaves a root-owned lock
+    # there that the unprivileged user cannot open — CI's first run failed
+    # with `invalid access to /tmp/___w_..._.build.lock`, and chowning the
+    # checkout cannot reach it. Our own TMPDIR gives this user its own
+    # locks; the caller's root builds have finished, so nothing contends.
+    mkdir -p .build-linux/tmp
+    VIRTUALIZE=(env HOME="$PWD/.build-linux/container-home" TMPDIR="$PWD/.build-linux/tmp")
     SCRATCH_PATH=.build
     ;;
 esac
