@@ -145,6 +145,13 @@ else
   pass "public training load header present"
 fi
 
+DEM_HEADER="RunPlayEngineCpp/include/RunPlayEngineCpp/DemElevationSampling.hpp"
+if [[ ! -f "$DEM_HEADER" ]]; then
+  fail "missing public DEM elevation sampling header DemElevationSampling.hpp"
+else
+  pass "public DEM elevation sampling header present"
+fi
+
 if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/RouteInterop\.hpp"'; then
   pass "umbrella header includes RouteInterop.hpp"
 else
@@ -191,6 +198,12 @@ if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[
   pass "umbrella header includes TrainingLoad.hpp"
 else
   fail "RunPlayEngine.hpp must include TrainingLoad.hpp"
+fi
+
+if code_matches RunPlayEngineCpp/include/RunPlayEngineCpp/RunPlayEngine.hpp '#[[:space:]]*include[[:space:]]*"RunPlayEngineCpp/DemElevationSampling\.hpp"'; then
+  pass "umbrella header includes DemElevationSampling.hpp"
+else
+  fail "RunPlayEngine.hpp must include DemElevationSampling.hpp"
 fi
 
 # --- Public C++ headers: prohibited constructs --------------------------------
@@ -326,6 +339,22 @@ if [[ -f "$ELEVATION_HEADER" ]]; then
     pass "elevation profile boundary is one bulk input/output noexcept call"
   else
     fail "build_elevation_profile must use const input*, by-value policy, mutable output*+capacity, and noexcept"
+  fi
+fi
+
+if [[ -f "$DEM_HEADER" ]]; then
+  dem_body="$(strip_comments "$DEM_HEADER" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
+  dem_plan_signature_re='DemTilePlanSummary[[:space:]]+plan_dem_tiles[[:space:]]*\([[:space:]]*const[[:space:]]+DemRouteSample[[:space:]]*\*[[:space:]]*samples[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+sample_count[[:space:]]*,[[:space:]]*DemSamplingPolicy[[:space:]]+policy[[:space:]]*,[[:space:]]*DemTileKey[[:space:]]*\*[[:space:]]*output_tiles[[:space:]]*,[[:space:]]*std::size_t[[:space:]]+output_capacity[[:space:]]*\)[[:space:]]*noexcept[[:space:]]*;'
+  if [[ "$dem_body" =~ $dem_plan_signature_re ]]; then
+    pass "DEM tile planning boundary is one bulk input/output noexcept call"
+  else
+    fail "plan_dem_tiles must use const DemRouteSample*, by-value policy, mutable DemTileKey*+capacity, and noexcept"
+  fi
+  dem_plan_symbol_count="$(grep -Eo 'plan_dem_tiles[[:space:]]*\(' <<<"$dem_body" | wc -l | tr -d '[:space:]')"
+  if [[ "$dem_plan_symbol_count" == "1" ]]; then
+    pass "public DEM header declares one tile-planning API"
+  else
+    fail "public DEM header must declare exactly one tile-planning API (found $dem_plan_symbol_count)"
   fi
 fi
 
@@ -476,6 +505,42 @@ done
 
 if [[ $failures -eq 0 ]]; then
   pass "RunPlayEngineCpp sources avoid Apple frameworks and ObjC"
+fi
+
+# --- Engine sources: no file I/O ----------------------------------------------
+#
+# The engine computes on Swift-owned buffers; Swift reads and decodes files
+# (DEM tiles included). No engine translation unit or header may open, read,
+# or list files, or print. Native tests may print their results, so the test
+# trees are exempt. The matcher is exercised on fixtures first so a broken
+# pattern cannot pass vacuously.
+engine_io_re='#[[:space:]]*include[[:space:]]*<(fstream|iostream|istream|ostream|cstdio|stdio\.h|filesystem|fcntl\.h|unistd\.h|dirent\.h|sys/[^>]*)>|(^|[^[:alnum:]_])(fopen|freopen|fdopen|mmap|opendir)[[:space:]]*\(|std::(ifstream|ofstream|fstream|filesystem)'
+io_fixture_dir="$(mktemp -d)"
+printf '#include <fstream>\nint x = 0;\n' >"$io_fixture_dir/include.cpp"
+printf 'void f() { std::FILE* h = fopen("tile.png", "rb"); (void)h; }\n' >"$io_fixture_dir/call.cpp"
+printf '// Swift decodes tiles; we never fopen() or #include <fstream> here.\nint y = 0;\n' >"$io_fixture_dir/comment.cpp"
+if code_matches "$io_fixture_dir/include.cpp" "$engine_io_re" \
+  && code_matches "$io_fixture_dir/call.cpp" "$engine_io_re" \
+  && ! code_matches "$io_fixture_dir/comment.cpp" "$engine_io_re"; then
+  pass "engine file-I/O matcher flags includes and calls and ignores comments"
+else
+  fail "engine file-I/O matcher does not distinguish code from comments"
+fi
+rm -rf "$io_fixture_dir"
+
+engine_io_hits=""
+for src in "${ENGINE_SOURCES[@]}"; do
+  case "$src" in
+    RunPlayEngineCpp/Tests/*|RunPlayEngineCpp/SwiftPMTests/*) continue ;;
+  esac
+  if code_matches "$src" "$engine_io_re"; then
+    engine_io_hits="$engine_io_hits $src"
+  fi
+done
+if [[ -z "$engine_io_hits" ]]; then
+  pass "RunPlayEngineCpp sources perform no file I/O"
+else
+  fail "RunPlayEngineCpp sources must not perform file I/O:$engine_io_hits"
 fi
 
 # --- Native discovery coverage ------------------------------------------------

@@ -151,6 +151,13 @@ not import `RunPlayEngineCpp` directly.
   a recording gap or pause), the athlete-profile policy (resting/max heart
   rate, coefficient set, zone bounds), the measured-versus-estimated decision,
   the pace/duration estimator, public models, cancellation, and persistence.
+  For DEM elevation correction, C++23 plans the exact set of XYZ Web Mercator
+  tiles that bilinear samples of a route read — neighbours within half a pixel
+  of a tile edge and across the antimeridian included, coordinates beyond the
+  projection limit needing none — through one bulk call per correction pass.
+  Swift retains tile discovery, file reading and image decoding, the tile
+  budget, elevation precedence, public models, cancellation, and persistence;
+  no engine source performs file I/O.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -235,6 +242,11 @@ Approved pointer boundaries:
   * `const TrainingLoadSample*` input samples
   * no output pointer — aggregates return by value in `TrainingLoadSummary`
 
+- DEM tile planning:
+
+  * `const DemRouteSample*` input samples
+  * `DemTileKey*` caller-owned output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -292,6 +304,16 @@ carries no partial values — every numeric field is zero and only the status is
 set. One native call occurs per training-load pass; none occurs per interval.
 Cancellation is cooperative Swift work before and after the native call and
 during input conversion, never inside the native call.
+
+The DEM tile-planning boundary writes exactly `required_tile_count` keys on
+success, strictly ascending by (y, x). It is bounded rather than
+capacity-negotiated: Swift supplies an output capacity equal to its tile budget
+(`maximum_tile_count`), the planner's internal tile set never grows past that
+budget whatever the route length, and a route needing more tiles returns
+`tile_budget_exceeded`, which Swift treats as "keep recorded elevation for this
+workout", not as a retry signal. On any failure status the output buffer is
+left completely unchanged. One native call occurs per DEM correction pass;
+none occurs per point or per tile.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route

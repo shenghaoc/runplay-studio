@@ -18,11 +18,12 @@ Every public callable carries exactly one status:
 | `build_elevation_profile` | **production** | called by the elevation profile builder via `RunPlayElevationProfileBridge` |
 | `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
 | `compute_training_load` | **production** | called by the training-load pass (analysis and backfill) via `RunPlayTrainingLoadBridge` |
+| `plan_dem_tiles` | **production** | tile-planning step of DEM elevation correction: one call per correction pass |
 | `inspect_route_batch` | **parity/contract verification** | no production caller; consumed only by `RunPlayRouteBridge` for parity tests and validators |
 | `is_valid_coordinate`, `haversine_distance_meters`, `project_lat_lon_to_local_meters` | **parity/test utility** | production Swift geodesy uses `GeoDistance`; these pin the C++ implementations against it |
 | `engine_info` | **smoke/identity** | build/ABI identity probe; consumed by engine smoke tests and the external-consumer smoke |
 
-Seven pointer-bearing boundaries are production; the eighth
+Eight pointer-bearing boundaries are production; the ninth
 (`inspect_route_batch`) is not. Its continued public exposure is deliberate: it
 is the value-contract verification boundary — the only callable that exercises
 the complete `RouteInputSample` field mapping (per-field value counts, segment
@@ -45,7 +46,7 @@ disagrees with the validators, the validators win.
 
 ## Headers
 
-Ten public headers live under `RunPlayEngineCpp/include/RunPlayEngineCpp/`:
+Eleven public headers live under `RunPlayEngineCpp/include/RunPlayEngineCpp/`:
 
 | Header | Content |
 |---|---|
@@ -59,6 +60,7 @@ Ten public headers live under `RunPlayEngineCpp/include/RunPlayEngineCpp/`:
 | `ElevationProfile.hpp` | Multi-pass elevation profile kernel |
 | `RouteMetricScaleBuckets.hpp` | Route-metric scale/bucket assignment kernel |
 | `TrainingLoad.hpp` | Banister TRIMP training-load kernel |
+| `DemElevationSampling.hpp` | DEM tile planning over the XYZ Web Mercator tile grid |
 
 There is no standalone step-distance header: the transitional bulk
 `compute_route_step_distances` boundary was removed. The route-quality kernel
@@ -97,6 +99,7 @@ the structs embedding these aliases can assert it.
 | `ElevationProfile.hpp` | `ElevationProfileInputSample`, `ElevationProfilePolicy`, `ElevationProfileOutputSample`, `ElevationProfileSummary` | `ElevationProfileStatus` | — |
 | `RouteMetricScaleBuckets.hpp` | `RouteMetricScaleBucketInputSample`, `RouteMetricScaleBucketWorkspaceSample`, `RouteMetricScaleBucketPolicy`, `RouteMetricScaleBucketOutputSample`, `RouteMetricScaleBucketSummary` | `RouteMetricScaleBucketStatus` | — |
 | `TrainingLoad.hpp` | `TrainingLoadSample`, `TrainingLoadPolicy`, `TrainingLoadSummary` | `TrainingLoadStatus` | `training_load_zone_count` (5) |
+| `DemElevationSampling.hpp` | `DemRouteSample`, `DemTileKey`, `DemSamplingPolicy`, `DemTilePlanSummary` | `DemSamplingStatus` | `dem_maximum_zoom` (24), `dem_minimum_tile_size` (2), `dem_maximum_tile_size` (4,096), `dem_maximum_tile_count` (65,536), `dem_web_mercator_max_latitude_degrees` |
 
 `max_route_input_samples` is the engine's internal safety ceiling, deliberately
 25% above the product limit in `WorkoutImportResourceLimits` (1,000,000 route
@@ -105,7 +108,7 @@ test enforces that relationship.
 
 ## Pointer-bearing public functions
 
-Eight functions carry raw pointers across the Swift boundary. C++ borrows every
+Nine functions carry raw pointers across the Swift boundary. C++ borrows every
 buffer synchronously, retains nothing, and performs no callback. Swift owns
 every buffer. Each boundary is exactly one call per logical operation.
 
@@ -119,6 +122,7 @@ every buffer. Each boundary is exactly one call per logical operation.
 | `build_elevation_profile` | `const ElevationProfileInputSample*` + count + policy | `ElevationProfileOutputSample*` + capacity | writes exactly `sample_count` entries on success |
 | `assign_route_metric_scale_buckets` | `const RouteMetricScaleBucketInputSample*` + count + policy | `RouteMetricScaleBucketWorkspaceSample*` (typed workspace) + `RouteMetricScaleBucketOutputSample*` + capacities | writes exactly `sample_count` output entries on success |
 | `compute_training_load` | `const TrainingLoadSample*` + count + policy | — (return value) | **summary-only**: every product is a fixed-size aggregate returned by value; no output buffer exists and an error summary carries no partial values |
+| `plan_dem_tiles` | `const DemRouteSample*` + count + policy | `DemTileKey*` + capacity | **bounded tile set**: writes `required_tile_count` keys on success; Swift passes capacity equal to the policy's `maximum_tile_count`, and `tile_budget_exceeded` means "keep recorded elevation", not "retry" |
 
 Geodesy primitives (`is_valid_coordinate`, `haversine_distance_meters`,
 `project_lat_lon_to_local_meters`, `earth_radius_meters`) are scalar
@@ -137,7 +141,7 @@ route-quality geometry goes through the combined kernel.
 - **No `std::vector` / `std::pair` / `std::tuple` / `std::variant`** in public
   Swift-facing APIs. Value-returning functions name their fields through
   standard-layout aggregates (e.g. `LocalMeters`).
-- Output sizing falls into four distinct shapes; there is no single rule:
+- Output sizing falls into six distinct shapes; there is no single rule:
   - **Per-sample** — `process_route_quality_geometry`, `build_elevation_profile`,
     and `assign_route_metric_scale_buckets` write exactly `sample_count` entries
     on success and nothing on error.
@@ -154,6 +158,11 @@ route-quality geometry goes through the combined kernel.
     every product of the pass (TRIMP, zone seconds, coverage, counts) fits in
     fixed-size aggregates returned by value, and an error summary is zeroed
     except for the status.
+  - **Bounded tile set** — `plan_dem_tiles` writes `required_tile_count`
+    distinct tile keys, strictly ascending by (y, x). The set is bounded by the
+    policy's `maximum_tile_count`, not by route length: Swift allocates that
+    budget as the capacity, and a route that needs more tiles returns
+    `tile_budget_exceeded` without writing.
 
 ## Pointer/lifetime audit (workstream R3)
 
@@ -196,6 +205,13 @@ contract above. Findings:
   Rejects a null buffer with a positive count and every invalid policy before
   the loop; a per-sample contract violation returns a zeroed summary carrying
   only the status, so no partial accumulation escapes an error path.
+- **`plan_dem_tiles`** (`DemElevationSampling.cpp`): validates both buffers,
+  the route ceiling, and the whole policy before any work. It collects keys in
+  an internal sorted vector that never exceeds `maximum_tile_count`, reporting
+  allocation failure as a status rather than throwing, and copies them out only
+  on success; budget and capacity failures leave the output untouched. It shares
+  one internal footprint rule with sampling, so the listed tiles are exactly
+  those holding a non-zero-weight bilinear corner.
 - **Geodesy primitives** (`Geodesy.cpp`): scalar value returns, no raw
   pointers; parity/test-focused.
 - **Engine identity** (`RunPlayEngine.cpp`): `engine_info()` is a value return.
@@ -244,6 +260,7 @@ external package consumers.
 | `build_elevation_profile` | `ElevationProfileTests.cpp` | `SwiftElevationProfileOracle` | `run-elevation-profile-benchmark.sh` |
 | `assign_route_metric_scale_buckets` | `RouteMetricScaleBucketTests.cpp` | `SwiftRouteMetricScaleBucketOracle` | `run-route-metric-scale-bucket-benchmark.sh` |
 | `compute_training_load` | `TrainingLoadTests.cpp` | `RunPlayTrainingLoadBridgeTests` (hand-computed parity through the bridge) | — |
+| `plan_dem_tiles` | `DemElevationSamplingTests.cpp` | — | — |
 | scalar geodesy | `GeodesyTests.cpp` | `GeoDistance.swift` | — |
 | `engine_info` | `EngineInfoTests.cpp` | — (identity only) | — |
 
@@ -281,7 +298,7 @@ counter, no lock, and no mutable diagnostic state, and `NativeCallObserver
 ## Enforcement
 
 - `scripts/validate-cpp-public-ast.py` holds the approved-pointer allow-list
-  (8 pointer-bearing functions) and rejects any other public raw pointer,
+  (9 pointer-bearing functions) and rejects any other public raw pointer,
   non-`noexcept` callable, or exposed standard-library container type.
 - `scripts/validate-cpp-boundaries.sh` asserts each C++ symbol is invoked only
   from its designated bridge, that bridges stay under `Interop`, and that no

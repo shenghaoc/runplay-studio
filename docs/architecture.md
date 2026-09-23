@@ -75,8 +75,8 @@ contract, allocation-free geodesy primitives, the production combined
 route-quality geometry
 kernel, the production per-workout personal heatmap coverage kernel, the
 production constrained-DTW path solver for Route-Aware comparison, the
-production SegmentDetector window-search kernel, and the production
-heart-rate training-load kernel:
+production SegmentDetector window-search kernel, the production
+heart-rate training-load kernel, and the DEM tile planner:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -89,7 +89,10 @@ heart-rate training-load kernel:
   per alignment attempt;
 - the production SegmentDetector candidate search — the five segment
   highlights plus the five fixed-distance personal-record windows — through
-  one bulk call per detector invocation.
+  one bulk call per detector invocation;
+- DEM tile planning — the exact XYZ Web Mercator tiles a route's bilinear
+  samples read — through one bulk call per correction pass, with no file I/O
+  anywhere in the engine.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -272,6 +275,19 @@ Approved pointer boundaries:
   weights that never span a recording gap or pause), the athlete-profile
   policy, the measured-versus-estimated decision, the estimator, public
   models, cancellation, and persistence.
+- DEM tile planning: `const DemRouteSample*` input coordinates plus a
+  caller-owned `DemTileKey*` output. Bounded rather than capacity-negotiated:
+  Swift passes an output capacity equal to its tile budget, the planner's
+  internal tile set never grows past that budget, and a route needing more
+  returns `tile_budget_exceeded` (the workout keeps recorded elevation). On
+  success it writes exactly `required_tile_count` keys, strictly ascending by
+  (y, x); on any failure the output is unchanged. The listed tiles are exactly
+  those holding a bilinear corner with non-zero weight, computed by the same
+  internal footprint rule the sampler uses. Pixels hold the height at their
+  centre, so a sample within half a pixel of a tile edge also needs the
+  neighbouring tile; columns wrap across the antimeridian, rows clamp at the
+  Web Mercator limit (±85.0511°) and never wrap across a pole, and invalid or
+  polar coordinates need no tile.
 
 #### C++ policy defaults
 
