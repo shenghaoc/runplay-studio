@@ -748,6 +748,45 @@ final class FITParserTests: XCTestCase {
         XCTAssertEqual(decoded.deviceInfo[0].productName, "Forerunner")
     }
 
+    /// `source_type` is field 25 (enum) in the official profile; with a local
+    /// source, `device_type` holds `local_device_type`, where 4 is barometer.
+    func testDeviceInfoSourceTypeIsParsed() throws {
+        var content = Data()
+        content.append(0x40)
+        content.append(0x00)
+        content.append(0x00)
+        content.append(contentsOf: [0x17, 0x00]) // global msg 23 (device_info)
+        content.append(3)
+        Self.writeField(0, size: 1, type: 2, to: &content)  // device_index
+        Self.writeField(1, size: 1, type: 2, to: &content)  // device_type
+        Self.writeField(25, size: 1, type: 0, to: &content) // source_type (enum)
+
+        content.append(0x00)
+        content.append(1)    // device index
+        content.append(4)    // device type: barometer when local
+        content.append(5)    // source type: local
+        content.append(0x00)
+        content.append(2)
+        content.append(0xFF) // device type invalid
+        content.append(0xFF) // source type invalid
+
+        Self.writeDefinition(to: &content)
+        content.append(0x00)
+        Self.append(UInt32(1_000_000), to: &content)
+        Self.append(Self.semicircles(37.7749), to: &content)
+        Self.append(Self.semicircles(-122.4194), to: &content)
+        Self.append(UInt32(0), to: &content)
+
+        let decoded = try FITParser.parse(data: Self.fitData(rawContent: content))
+
+        XCTAssertEqual(decoded.deviceInfo.count, 2)
+        XCTAssertEqual(decoded.deviceInfo[0].deviceIndex, 1)
+        XCTAssertEqual(decoded.deviceInfo[0].deviceType, 4)
+        XCTAssertEqual(decoded.deviceInfo[0].sourceType, 5)
+        XCTAssertNil(decoded.deviceInfo[1].deviceType, "0xFF is the uint8 invalid value")
+        XCTAssertNil(decoded.deviceInfo[1].sourceType, "0xFF is the enum invalid value")
+    }
+
     func testLapMessageUsesOfficialProfileFieldNumbers() throws {
         var content = Data()
         content.append(0x40)

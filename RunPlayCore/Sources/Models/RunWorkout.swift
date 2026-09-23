@@ -55,6 +55,14 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Deliberately not gated on any snapshot version: the fields decode as
     /// nil on older snapshots and reimport is the upgrade path.
     public var developerFieldSummary: WorkoutDeveloperFieldSummary?
+    /// What the source says about the sensor behind recorded altitude.
+    /// `.unknown` for every non-FIT source and for snapshots that predate the
+    /// field; reimporting a FIT file is the upgrade path. Written only when
+    /// `.barometric`, so other snapshots do not grow.
+    public var recordedAltitudeSensor: RecordedAltitudeSensor
+    /// The last DEM elevation correction, describing the
+    /// `RoutePoint.demAltitudeMeters` values. `nil` when never corrected.
+    public var demElevationCorrection: DEMElevationCorrection?
 
     public init(
         id: UUID = UUID(),
@@ -108,7 +116,9 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         routeDistanceSource: RouteDistanceSource = .coordinateDerived,
         routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown,
         importProvenance: WorkoutImportProvenance? = nil,
-        developerFieldSummary: WorkoutDeveloperFieldSummary? = nil
+        developerFieldSummary: WorkoutDeveloperFieldSummary? = nil,
+        recordedAltitudeSensor: RecordedAltitudeSensor = .unknown,
+        demElevationCorrection: DEMElevationCorrection? = nil
     ) {
         self.id = id
         self.metadata = metadata
@@ -131,6 +141,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.routeDistanceProvenance = routeDistanceProvenance
         self.importProvenance = importProvenance
         self.developerFieldSummary = developerFieldSummary
+        self.recordedAltitudeSensor = recordedAltitudeSensor
+        self.demElevationCorrection = demElevationCorrection
     }
 
     /// Cached medium-date/short-time formatter for the unnamed-workout fallback.
@@ -196,6 +208,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         case qualityDiagnostics, recordedLapDiagnostics
         case routeDistanceSource, routeDistanceProvenance, importProvenance
         case developerFieldSummary
+        case recordedAltitudeSensor, demElevationCorrection
     }
 
     public init(from decoder: any Decoder) throws {
@@ -266,6 +279,17 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             WorkoutDeveloperFieldSummary.self,
             forKey: .developerFieldSummary
         )
+        // Both decode lossily: a value this build cannot read degrades to
+        // "sensor unknown" or "no correction record" instead of failing the
+        // whole snapshot, which the library would then drop (#207).
+        recordedAltitudeSensor = (try? container.decodeIfPresent(
+            RecordedAltitudeSensor.self,
+            forKey: .recordedAltitudeSensor
+        )) ?? .unknown
+        demElevationCorrection = (try? container.decodeIfPresent(
+            DEMElevationCorrection.self,
+            forKey: .demElevationCorrection
+        )) ?? nil
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -291,6 +315,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)
         try container.encodeIfPresent(importProvenance, forKey: .importProvenance)
         try container.encodeIfPresent(developerFieldSummary, forKey: .developerFieldSummary)
+        if recordedAltitudeSensor == .barometric {
+            try container.encode(recordedAltitudeSensor, forKey: .recordedAltitudeSensor)
+        }
+        try container.encodeIfPresent(demElevationCorrection, forKey: .demElevationCorrection)
     }
 
     private static func sanitizedRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {

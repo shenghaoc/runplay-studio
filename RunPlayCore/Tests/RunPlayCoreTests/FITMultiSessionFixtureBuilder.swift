@@ -110,6 +110,14 @@ enum FITMultiSessionFixtureBuilder {
         var numberOfLaps: UInt16 = 0xFFFF
     }
 
+    /// One `device_info` message. `deviceType` means `local_device_type` only
+    /// when `sourceType` is local (5); nil writes the FIT invalid value.
+    struct DeviceInfoSpec {
+        var deviceIndex: UInt8 = 0
+        var deviceType: UInt8?
+        var sourceType: UInt8?
+    }
+
     /// One developer field declared on the shared record definition.
     struct RecordDeveloperDefinition {
         let developerDataIndex: UInt8
@@ -133,9 +141,17 @@ enum FITMultiSessionFixtureBuilder {
         fieldDescriptions: [FieldDescriptionSpec] = [],
         descriptionsFollowRecords: Bool = false,
         includeNativePowerField: Bool = false,
-        includeNativeDynamicsFields: Bool = false
+        includeNativeDynamicsFields: Bool = false,
+        deviceInfos: [DeviceInfoSpec] = []
     ) -> Data {
         var content = Data()
+
+        if !deviceInfos.isEmpty {
+            writeDeviceInfoDefinition(to: &content)
+            for deviceInfo in deviceInfos {
+                writeDeviceInfo(deviceInfo, to: &content)
+            }
+        }
 
         let developerDefinitions = recordDeveloperDefinitions(from: records)
 
@@ -607,6 +623,24 @@ enum FITMultiSessionFixtureBuilder {
     }
 
     // Developer data IDs — local type 5
+    private static func writeDeviceInfoDefinition(to data: inout Data) {
+        data.append(0x46)
+        data.append(0x00)
+        data.append(0x00)
+        data.append(contentsOf: [0x17, 0x00]) // global 23
+        data.append(3)
+        field(0, 1, 2, to: &data)  // device_index uint8
+        field(1, 1, 2, to: &data)  // device_type uint8
+        field(25, 1, 0, to: &data) // source_type enum
+    }
+
+    private static func writeDeviceInfo(_ spec: DeviceInfoSpec, to data: inout Data) {
+        data.append(0x06)
+        data.append(spec.deviceIndex)
+        data.append(spec.deviceType ?? 0xFF)
+        data.append(spec.sourceType ?? 0xFF)
+    }
+
     private static func writeDeveloperDataIDDefinition(to data: inout Data) {
         data.append(0x45)
         data.append(0x00)

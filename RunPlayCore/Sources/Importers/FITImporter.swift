@@ -141,6 +141,9 @@ public struct FITImporter: WorkoutImporting {
             recordedLaps: provisionalLaps
         )
         workout.sourceStructureVersion = RunWorkout.currentSourceStructureVersion
+        workout.recordedAltitudeSensor = FITAltitudeSensorEvidence.recordedAltitudeSensor(
+            in: decodedFile.deviceInfo
+        )
         if let provenance {
             workout.importProvenance = provenance
         }
