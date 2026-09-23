@@ -49,6 +49,8 @@ struct MetricChartDescriptor: AXChartDescriptorRepresentable {
     let model: ChartAccessibilityModel
     let samples: [MetricChartAccessibilitySample]
     let metric: MetricsChartView.MetricType
+    /// For elevation, where it comes from (`ElevationSourceSummary.label`).
+    var elevationSourceLabel: String? = nil
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let xScale = AXNumericDataAxisDescriptor(
@@ -101,7 +103,7 @@ struct MetricChartDescriptor: AXChartDescriptorRepresentable {
 
         return AXChartDescriptor(
             title: model.title,
-            summary: model.spokenSummary,
+            summary: elevationSourceLabel.map { "\(model.spokenSummary) Source: \($0)." } ?? model.spokenSummary,
             xAxis: xScale,
             yAxis: yScale,
             additionalAxes: [],

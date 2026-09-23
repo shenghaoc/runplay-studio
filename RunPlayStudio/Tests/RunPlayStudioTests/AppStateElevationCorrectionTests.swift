@@ -138,6 +138,40 @@ final class AppStateElevationCorrectionTests: XCTestCase {
         XCTAssertEqual(appState.personalRecordsLibraryRevision, revision + 1, "nothing changed, nothing refreshed")
     }
 
+    // MARK: - One run
+
+    func testUseRecordedElevationAndCorrectingAgainForOneRun() async throws {
+        let (appState, store, recorder) = try makeLibraryAppState()
+        XCTAssertNil(appState.chooseDEMTileFolder(at: try writeTileBlock(height: 612)))
+        await appState.importWorkout(from: try writeGPX())
+        let corrected = try XCTUnwrap(appState.workouts.first)
+        XCTAssertTrue(appState.canCorrectElevation(of: corrected))
+        XCTAssertFalse(appState.usesRecordedElevation(corrected))
+
+        await appState.setUsesRecordedElevation(true, for: corrected)
+
+        let recorded = try XCTUnwrap(appState.workouts.first)
+        XCTAssertTrue(appState.usesRecordedElevation(recorded))
+        XCTAssertFalse(appState.canCorrectElevation(of: recorded), "Correct Elevation is off while recorded is chosen")
+        XCTAssertTrue(recorded.routePoints.allSatisfy { $0.demAltitudeMeters == nil })
+        XCTAssertEqual(appState.selectedWorkout?.demElevationCorrection?.outcome, .optedOut)
+        XCTAssertEqual(try store.loadWorkout(id: recorded.id).demElevationCorrection?.outcome, .optedOut)
+        XCTAssertEqual(recorder.messages.last, "Using recorded elevation for this run.")
+        XCTAssertEqual(
+            appState.analysisContext(for: recorded).elevationProfile.sourceCounts.demPointCount,
+            0,
+            "the chart reads recorded altitude again"
+        )
+
+        await appState.setUsesRecordedElevation(false, for: recorded)
+        let again = try XCTUnwrap(appState.workouts.first)
+        XCTAssertEqual(again.demElevationCorrection?.outcome, .applied, "corrected again while the folder is open")
+
+        XCTAssertNil(appState.chooseDEMTileFolder(at: try writeTileBlock(height: 700)))
+        await appState.correctElevation(of: again)
+        XCTAssertTrue(try XCTUnwrap(appState.workouts.first).routePoints.allSatisfy { $0.demAltitudeMeters == 700 })
+    }
+
     func testCachedContextNeverOutlivesAnElevationChange() throws {
         let appState = AppState()
         let points = (0..<20).map { index in

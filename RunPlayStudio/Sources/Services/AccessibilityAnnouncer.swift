@@ -111,6 +111,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case watchFolderUnavailable(name: String)
     case watchFolderReviewReady(name: String)
     case elevationCorrectionFinished(summary: String)
+    /// One run's elevation source changed; the message says how.
+    case elevationSourceChanged(message: String)
 
     var message: String {
         switch self {
@@ -203,6 +205,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "\(name) has several sessions and is waiting for review."
         case .elevationCorrectionFinished(let summary):
             return "Elevation correction finished. \(summary)"
+        case .elevationSourceChanged(let message):
+            return message
         }
     }
 }

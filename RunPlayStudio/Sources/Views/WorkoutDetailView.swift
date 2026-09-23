@@ -95,6 +95,15 @@ struct WorkoutDetailView: View {
                 .ignoresSafeArea()
         }
         .focusedSceneValue(\.workoutTabSelection, selectedTabBinding)
+        .focusedSceneValue(\.elevationActions, ElevationActions(
+            canCorrect: { appState.canCorrectElevation(of: workout) },
+            correct: { Task { await appState.correctElevation(of: workout) } },
+            canChooseRecorded: { appState.canChooseRecordedElevation(for: workout) },
+            usesRecordedElevation: { appState.usesRecordedElevation(workout) },
+            setUsesRecordedElevation: { usesRecorded in
+                Task { await appState.setUsesRecordedElevation(usesRecorded, for: workout) }
+            }
+        ))
         .focusedSceneValue(\.replayActions, ReplayActions(
             isAvailable: { replayController.hasPlayableTimeline },
             togglePlayPause: {
@@ -253,15 +262,20 @@ struct WorkoutDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.large))
         case .charts:
+            let elevationProfile = appState.analysisContext(for: workout).elevationProfile
             MetricsChartView(
                 routePoints: workout.routePoints,
-                elevationProfile: appState.analysisContext(for: workout).elevationProfile,
+                elevationProfile: elevationProfile,
                 currentDistance: replayController.state.currentDistance,
                 onSeek: { distance in
                     replayController.pause()
                     replayController.seekToDistance(distance)
                 },
-                highlightedRangeMeters: highlightedRangeMeters
+                highlightedRangeMeters: highlightedRangeMeters,
+                elevationSource: ElevationSourceSummary(
+                    workout: workout,
+                    sourceCounts: elevationProfile.sourceCounts
+                )
             )
             .padding(.vertical, AppDesign.Spacing.large)
 
