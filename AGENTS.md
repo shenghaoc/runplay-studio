@@ -488,8 +488,8 @@ tests that *print* a skip, while a test class compiled out on Linux
 (`#if os(macOS)`, a `canImport` guard that is false on corelibs) or dropped from
 the target vanishes without a line, so the count is the only guard against
 silent disappearance, and it is tight enough to bite. Provenance: 1,145 against
-1,207 executed on the head that raised it, under the non-root container user
-(`Executed 1224, skipped 17`), about 5% headroom. The headroom is room for a PR that
+1,208 executed on the head that raised it, under the non-root container user
+(`Executed 1225, skipped 17`), about 5% headroom. The headroom is room for a PR that
 legitimately deletes a few tests, not tolerance for drift. A PR removing more
 lowers the floor deliberately and says why. Raise it back to ~5% below the real
 count in the PR that adds Core tests once the headroom passes ~10%.

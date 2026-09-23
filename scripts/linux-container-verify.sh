@@ -32,8 +32,8 @@ cd "$(dirname "$0")/.."
 # not inferred: five test methods, three skipped, reports `Executed 5 tests,
 # with 3 tests skipped`), so N - S is the number that genuinely ran.
 #
-# FLOOR provenance: 1145, against 1207 actually run on the head that raised
-# it (Executed 1224, skipped 17, non-root, swift:6.4.0-resolute) -- about 5%
+# FLOOR provenance: 1145, against 1208 actually run on the head that raised
+# it (Executed 1225, skipped 17, non-root, swift:6.4.0-resolute) -- about 5%
 # below the real count. The floor exists to catch tests that vanish WITHOUT printing a skip
 # (a class compiled out under `#if os(macOS)` or a `canImport` guard false on
 # corelibs, or dropped from the target), which the allowlist below cannot
