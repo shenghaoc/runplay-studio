@@ -44,6 +44,8 @@ extension AppState {
         do {
             var workout = try await importService.importWorkout(from: url)
             try Task.checkCancellation()
+            workout = try await Self.correctImportedElevation(of: workout, with: demImportCorrection)
+            try Task.checkCancellation()
             workout.trainingLoad = try recomputeTrainingLoad(
                 for: workout,
                 profile: athleteProfile
@@ -79,7 +81,9 @@ extension AppState {
                     workoutID: workout.id
                 )
             }
-            return .imported
+            return .imported(detail: workout.demElevationCorrection?.importSummary(
+                recordedAltitudeSensor: workout.recordedAltitudeSensor
+            ))
         } catch is CancellationError {
             return .failed("Import was cancelled.")
         } catch let error as WorkoutImportError {

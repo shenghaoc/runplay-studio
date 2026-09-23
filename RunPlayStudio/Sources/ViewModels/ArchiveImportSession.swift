@@ -20,6 +20,9 @@ final class ArchiveImportSession: ObservableObject {
     @Published var progress: WorkoutBatchImportProgress = WorkoutBatchImportProgress()
     @Published var report: WorkoutBatchImportReport?
     @Published var errorMessage: String?
+    /// Whether this import corrected elevation, so the report can tell a
+    /// correction that could not finish from one that was never asked for.
+    var correctsElevation = false
 
     let archiveURL: URL
     let archiveName: String

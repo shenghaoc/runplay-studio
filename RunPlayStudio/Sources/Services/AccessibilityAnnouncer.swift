@@ -72,6 +72,8 @@ final class RecordingAccessibilityAnnouncer: AccessibilityAnnouncing {
 enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case libraryLoaded(count: Int)
     case importCompleted(name: String)
+    /// A single-file import whose elevation was DEM-corrected on the way in.
+    case importCompletedWithDetail(name: String, detail: String)
     case importCancelled
     case importFailed(message: String)
     case exportPreviewReady
@@ -108,6 +110,7 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case watchFolderImportFailed(count: Int)
     case watchFolderUnavailable(name: String)
     case watchFolderReviewReady(name: String)
+    case elevationCorrectionFinished(summary: String)
 
     var message: String {
         switch self {
@@ -115,6 +118,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return count == 1 ? "Library loaded. 1 run." : "Library loaded. \(count) runs."
         case .importCompleted(let name):
             return "Imported \(name)."
+        case .importCompletedWithDetail(let name, let detail):
+            return "Imported \(name). \(detail)"
         case .importCancelled:
             return "Import cancelled."
         case .importFailed(let message):
@@ -196,6 +201,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
             return "Watched folder \(name) is unavailable. Watching resumes if it returns."
         case .watchFolderReviewReady(let name):
             return "\(name) has several sessions and is waiting for review."
+        case .elevationCorrectionFinished(let summary):
+            return "Elevation correction finished. \(summary)"
         }
     }
 }

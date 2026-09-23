@@ -118,7 +118,7 @@ public struct ElevationSourceSummary: Equatable, Sendable {
 
     /// A whole percentage rounded down, so partial coverage never reads as
     /// 100%, and any share above zero never reads as 0%.
-    static func percent(_ fraction: Double) -> String {
+    public static func percent(_ fraction: Double) -> String {
         guard fraction.isFinite, fraction > 0 else { return "0%" }
         let whole = Int((min(fraction, 1) * 100).rounded(.down))
         return whole == 0 ? "less than 1%" : "\(whole)%"

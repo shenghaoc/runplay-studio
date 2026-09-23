@@ -152,6 +152,10 @@ private struct TrendsRequestKey: Hashable {
         /// in-session digest is what makes a backfilled or recomputed load
         /// visible to the cache.
         let trainingLoadRevision: Int?
+        /// A DEM correction changes ascent and descent without bumping
+        /// `analysisVersion`; the summary totals themselves key the cache.
+        let elevationGainMeters: Double
+        let elevationLossMeters: Double
     }
 
     let workouts: [WorkoutRevision]
@@ -347,7 +351,9 @@ final class TrendsViewModel: ObservableObject {
                     analysisVersion: $0.analysisVersion,
                     startDate: $0.metadata.startDate ?? $0.routePoints.first?.timestamp,
                     recordedUTCOffsetSeconds: $0.metadata.recordedUTCOffsetSeconds,
-                    trainingLoadRevision: $0.trainingLoad.map(\.hashValue)
+                    trainingLoadRevision: $0.trainingLoad.map(\.hashValue),
+                    elevationGainMeters: $0.summary.elevationGainMeters,
+                    elevationLossMeters: $0.summary.elevationLossMeters
                 )
             },
             entriesDigest: Self.entriesDigest(inputs.entries),

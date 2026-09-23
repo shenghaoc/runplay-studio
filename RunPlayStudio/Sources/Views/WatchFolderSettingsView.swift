@@ -222,6 +222,12 @@ struct RecentImportRow: View {
                         .foregroundStyle(.red)
                         .lineLimit(2)
                 }
+                if let detail = record.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
             // The status icon is hidden from accessibility, so the spoken row
             // must carry the status as text — never colour or icon alone.
@@ -264,6 +270,9 @@ struct RecentImportRow: View {
         var parts = [statusText, record.fileName, record.folderName]
         if !record.failureDetail.isEmpty {
             parts.append(record.failureDetail)
+        }
+        if let detail = record.detail {
+            parts.append(detail)
         }
         return parts.joined(separator: ", ")
     }

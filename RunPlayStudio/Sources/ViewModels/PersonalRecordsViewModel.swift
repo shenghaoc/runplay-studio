@@ -58,6 +58,9 @@ private struct PersonalRecordsRequestKey: Hashable {
         /// Record windows are the only persisted input; their identity is the
         /// marker plus per-category window bounds.
         let recordWindowsDigest: String
+        /// The biggest-ascent input, which a DEM correction changes without
+        /// touching any record window or `analysisVersion`.
+        let ascentMeters: Double?
     }
 
     let workouts: [WorkoutRevision]
@@ -183,7 +186,8 @@ final class PersonalRecordsViewModel: ObservableObject {
                     id: $0.id,
                     analysisVersion: $0.analysisVersion,
                     startDate: $0.metadata.startDate ?? $0.routePoints.first?.timestamp,
-                    recordWindowsDigest: Self.recordWindowsDigest($0.personalRecords)
+                    recordWindowsDigest: Self.recordWindowsDigest($0.personalRecords),
+                    ascentMeters: Self.ascentRevision($0)
                 )
             },
             entriesDigest: Self.entriesDigest(inputs.entries),
@@ -282,7 +286,8 @@ final class PersonalRecordsViewModel: ObservableObject {
                         id: $0.id,
                         analysisVersion: $0.analysisVersion,
                         startDate: $0.metadata.startDate ?? $0.routePoints.first?.timestamp,
-                        recordWindowsDigest: recordWindowsDigest($0.personalRecords)
+                        recordWindowsDigest: recordWindowsDigest($0.personalRecords),
+                        ascentMeters: ascentRevision($0)
                     )
                 },
                 entriesDigest: entriesDigest(inputs.entries),
@@ -323,6 +328,13 @@ final class PersonalRecordsViewModel: ObservableObject {
     }
 
     // MARK: - Digests
+
+    /// The ascent `PersonalRecordsAggregator` ranks for this run.
+    private nonisolated static func ascentRevision(_ workout: RunWorkout) -> Double? {
+        workout.hasCorrectedElevationTotals
+            ? workout.summary.elevationGainMeters
+            : workout.summary.rawElevationGainMeters
+    }
 
     private nonisolated static func recordWindowsDigest(
         _ records: WorkoutPersonalRecords?
