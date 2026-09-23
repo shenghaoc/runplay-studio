@@ -150,12 +150,10 @@ public struct WorkoutTrendsSummaryRow: Identifiable, Hashable, Sendable {
             heartRate = nil
         }
         // Corrected elevation availability mirrors the All Runs table signal
-        // (summary metrics only); flat corrected runs with a raw fallback are
-        // still truthful because raw ascent over a flat route is ~0.
-        let correctedAvailable =
-            summary.elevationGainMeters > 0 || summary.elevationLossMeters > 0
+        // (summary metrics only, plus DEM correction; see
+        // `RunWorkout.hasCorrectedElevationTotals`).
         let ascent: Double?
-        if correctedAvailable {
+        if workout.hasCorrectedElevationTotals {
             ascent = summary.elevationGainMeters
         } else if let raw = summary.rawElevationGainMeters {
             ascent = raw

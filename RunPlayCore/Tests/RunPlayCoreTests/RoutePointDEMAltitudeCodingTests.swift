@@ -4,8 +4,8 @@ import XCTest
 
 /// `RoutePoint.demAltitudeMeters` is derived data added beside the recorded
 /// altitude. Uncorrected snapshots must keep their exact bytes, older
-/// snapshots must decode unchanged, and nothing that reads the route today may
-/// change because the field is present.
+/// snapshots must decode unchanged, and route geometry must not change because
+/// the field is present; only elevation analysis reads it.
 final class RoutePointDEMAltitudeCodingTests: XCTestCase {
     // MARK: - Encoding
 
@@ -118,9 +118,9 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
         XCTAssertTrue(workout.routePoints.allSatisfy { $0.demAltitudeMeters == nil })
     }
 
-    // MARK: - Nothing that reads the route today reads the new field
+    // MARK: - Route geometry never reads the new field; elevation analysis does
 
-    func testRouteQualityProcessingIgnoresAndPreservesDEMAltitude() throws {
+    func testRouteQualityGeometryIgnoresAndPreservesDEMAltitude() throws {
         var baseline: [RoutePoint] = []
         for index in 0..<12 {
             let step: Double = Double(index)
@@ -151,7 +151,10 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
         let actual = try processor.process(withDEM)
 
         XCTAssertEqual(expected.diagnostics.discardedCoordinatePointCount, 1, "the fixture rejects its teleport")
-        XCTAssertEqual(actual.diagnostics, expected.diagnostics)
+        XCTAssertEqual(actual.diagnostics.invalidCoordinatePointCount, expected.diagnostics.invalidCoordinatePointCount)
+        XCTAssertEqual(actual.diagnostics.discardedCoordinatePointCount, expected.diagnostics.discardedCoordinatePointCount)
+        XCTAssertEqual(actual.diagnostics.inferredRouteGapCount, expected.diagnostics.inferredRouteGapCount)
+        XCTAssertEqual(actual.diagnostics.invalidSourceSpeedSampleCount, expected.diagnostics.invalidSourceSpeedSampleCount)
         XCTAssertEqual(actual.distanceSource, expected.distanceSource)
         XCTAssertEqual(actual.distanceProvenance, expected.distanceProvenance)
         XCTAssertEqual(actual.analysisWarnings, expected.analysisWarnings)
@@ -161,11 +164,12 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
             expected.routePoints.map(\.distanceFromStartMeters.bitPattern)
         )
         XCTAssertEqual(actual.routePoints.map(\.routeSegmentIndex), expected.routePoints.map(\.routeSegmentIndex))
+        // The elevation half of route quality is the one reader, by design.
         XCTAssertEqual(
-            actual.elevationProfile.samples,
-            expected.elevationProfile.samples,
-            "the corrected elevation profile does not read DEM elevation yet"
+            actual.elevationProfile.samples.map(\.sourceAltitudeIsDEM),
+            actual.routePoints.map { $0.demAltitudeMeters != nil }
         )
+        XCTAssertEqual(actual.elevationProfile.samples, ElevationProfile(routePoints: actual.routePoints).samples)
 
         let demByID = Dictionary(uniqueKeysWithValues: withDEM.map { ($0.id, $0.demAltitudeMeters) })
         for point in actual.routePoints {

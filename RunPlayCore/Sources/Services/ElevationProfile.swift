@@ -9,6 +9,10 @@ public struct ElevationProfileSample: Hashable, Sendable {
     public let sourceAltitudeWasRejected: Bool
     public let cumulativeAscentMeters: Double
     public let cumulativeDescentMeters: Double
+    /// Whether the analysed source altitude is the point's DEM elevation
+    /// rather than its recorded altitude. Where this changes between
+    /// neighbouring samples a new elevation run starts.
+    public let sourceAltitudeIsDEM: Bool
 
     public init(
         routePointID: UUID,
@@ -17,7 +21,8 @@ public struct ElevationProfileSample: Hashable, Sendable {
         correctedAltitudeMeters: Double?,
         sourceAltitudeWasRejected: Bool,
         cumulativeAscentMeters: Double,
-        cumulativeDescentMeters: Double
+        cumulativeDescentMeters: Double,
+        sourceAltitudeIsDEM: Bool = false
     ) {
         self.routePointID = routePointID
         self.distanceFromStartMeters = distanceFromStartMeters
@@ -26,12 +31,40 @@ public struct ElevationProfileSample: Hashable, Sendable {
         self.sourceAltitudeWasRejected = sourceAltitudeWasRejected
         self.cumulativeAscentMeters = cumulativeAscentMeters
         self.cumulativeDescentMeters = cumulativeDescentMeters
+        self.sourceAltitudeIsDEM = sourceAltitudeIsDEM
+    }
+}
+
+/// How many route points fed elevation analysis from each altitude source.
+public struct ElevationSourceCounts: Hashable, Sendable {
+    /// Points analysed at their DEM elevation.
+    public var demPointCount: Int
+    /// Points analysed at their recorded altitude, which is present.
+    public var recordedPointCount: Int
+
+    public init(demPointCount: Int = 0, recordedPointCount: Int = 0) {
+        self.demPointCount = demPointCount
+        self.recordedPointCount = recordedPointCount
+    }
+}
+
+extension RoutePoint {
+    /// The DEM elevation that elevation analysis reads in place of
+    /// `altitudeMeters`. A non-finite stored value, which no correction
+    /// writes, reads as absent so the recorded altitude applies.
+    var analysisDEMAltitudeMeters: Double? {
+        guard let demAltitudeMeters, demAltitudeMeters.isFinite else { return nil }
+        return demAltitudeMeters
     }
 }
 
 /// Distance-domain elevation analysis aligned one-to-one with route points.
 ///
-/// Finite source altitude remains on `RoutePoint`. This profile rejects only
+/// Finite source altitude remains on `RoutePoint`. Each point's source
+/// altitude is its DEM elevation when it has one and its recorded altitude
+/// otherwise; a switch between the two ends one continuous run and starts the
+/// next, exactly as a route-segment boundary does, so the offset between two
+/// sources is never counted as ascent or descent. This profile rejects only
 /// analysis outliers, fills an isolated rejected sample from its two reliable
 /// neighbours, smooths within continuous non-missing runs, and applies a
 /// threshold-confirmed trend reversal algorithm for cumulative gain and loss.
@@ -52,6 +85,9 @@ public struct ElevationProfile: Sendable {
     public let hasMeaningfulElevation: Bool
     public let totalAscentMeters: Double?
     public let totalDescentMeters: Double?
+    /// Where the analysed altitudes came from. Zero in the empty profile a
+    /// failed build falls back to.
+    public let sourceCounts: ElevationSourceCounts
 
     private let distances: [Double]
     private let segmentIndexes: [Int]
@@ -207,6 +243,7 @@ public struct ElevationProfile: Sendable {
         runIDs.reserveCapacity(count)
         reliableRunIDs.reserveCapacity(count)
 
+        var sourceCounts = ElevationSourceCounts()
         let stride = max(1, policy.cancellationCheckStride)
         for index in routePoints.indices {
             if index.isMultiple(of: stride), isCancelled() {
@@ -214,6 +251,13 @@ public struct ElevationProfile: Sendable {
             }
             let point = routePoints[index]
             let result = native.samples[index]
+            // The bridge applies the same rule when it builds the native input.
+            let sourceIsDEM = point.analysisDEMAltitudeMeters != nil
+            if sourceIsDEM {
+                sourceCounts.demPointCount += 1
+            } else if point.altitudeMeters != nil {
+                sourceCounts.recordedPointCount += 1
+            }
             samples.append(ElevationProfileSample(
                 routePointID: point.id,
                 distanceFromStartMeters: point.distanceFromStartMeters,
@@ -221,7 +265,8 @@ public struct ElevationProfile: Sendable {
                 correctedAltitudeMeters: result.correctedAltitudeMeters,
                 sourceAltitudeWasRejected: result.sourceAltitudeWasRejected,
                 cumulativeAscentMeters: result.cumulativeAscentMeters,
-                cumulativeDescentMeters: result.cumulativeDescentMeters
+                cumulativeDescentMeters: result.cumulativeDescentMeters,
+                sourceAltitudeIsDEM: sourceIsDEM
             ))
             distances.append(point.distanceFromStartMeters)
             segmentIndexes.append(point.routeSegmentIndex)
@@ -239,6 +284,7 @@ public struct ElevationProfile: Sendable {
             hasMeaningfulElevation: native.hasMeaningfulElevation,
             totalAscentMeters: native.totalAscentMeters,
             totalDescentMeters: native.totalDescentMeters,
+            sourceCounts: sourceCounts,
             distances: distances,
             segmentIndexes: segmentIndexes,
             correctedAltitudes: corrected,
@@ -257,6 +303,7 @@ public struct ElevationProfile: Sendable {
         hasMeaningfulElevation: Bool,
         totalAscentMeters: Double?,
         totalDescentMeters: Double?,
+        sourceCounts: ElevationSourceCounts,
         distances: [Double],
         segmentIndexes: [Int],
         correctedAltitudes: [Double?],
@@ -271,6 +318,7 @@ public struct ElevationProfile: Sendable {
         self.hasMeaningfulElevation = hasMeaningfulElevation
         self.totalAscentMeters = totalAscentMeters
         self.totalDescentMeters = totalDescentMeters
+        self.sourceCounts = sourceCounts
         self.distances = distances
         self.segmentIndexes = segmentIndexes
         self.correctedAltitudes = correctedAltitudes
@@ -311,6 +359,7 @@ public struct ElevationProfile: Sendable {
             hasMeaningfulElevation: false,
             totalAscentMeters: nil,
             totalDescentMeters: nil,
+            sourceCounts: ElevationSourceCounts(),
             distances: distances,
             segmentIndexes: segmentIndexes,
             correctedAltitudes: Array(repeating: nil, count: count),

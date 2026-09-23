@@ -174,6 +174,23 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
 
     public var pointCount: Int { routePoints.count }
     public var hasAltitudeData: Bool { routePoints.contains { $0.altitudeMeters != nil } }
+
+    /// Whether the summary's corrected ascent and descent describe this run
+    /// even when both are zero, so no raw fallback applies.
+    ///
+    /// A run analysed on DEM elevation always has authoritative totals: a flat
+    /// route legitimately climbs 0 m, and the raw adjacent-delta sum over its
+    /// recorded altitude would bring back the GPS noise the correction
+    /// removed. Otherwise the summary keeps no availability flag, so a zero
+    /// pair still reads as "no meaningful corrected elevation".
+    public var hasCorrectedElevationTotals: Bool {
+        if let correction = demElevationCorrection,
+           correction.outcome == .applied,
+           correction.coverage.appliedPointCount > 0 {
+            return true
+        }
+        return summary.elevationGainMeters > 0 || summary.elevationLossMeters > 0
+    }
     public var hasHeartRateData: Bool {
         routePoints.contains { point in
             point.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false

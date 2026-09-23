@@ -192,12 +192,10 @@ public enum PersonalRecordsAggregator {
             )
         case .biggestAscent:
             // Corrected ascent when the analysis produced a meaningful
-            // profile, else the persisted raw adjacent-delta ascent; the same
-            // rule the Trends workspace uses.
-            let correctedAvailable =
-                summary.elevationGainMeters > 0 || summary.elevationLossMeters > 0
+            // profile or DEM elevation, else the persisted raw adjacent-delta
+            // ascent; the same rule the Trends workspace uses.
             let ascent: Double?
-            if correctedAvailable {
+            if workout.hasCorrectedElevationTotals {
                 ascent = summary.elevationGainMeters
             } else {
                 ascent = summary.rawElevationGainMeters

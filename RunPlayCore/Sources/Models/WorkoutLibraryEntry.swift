@@ -114,11 +114,10 @@ public struct WorkoutLibraryEntry: Identifiable, Hashable, Sendable {
         let hasHeartRate =
             (workout.summary.averageHeartRateBPM.map { $0.isFinite && $0 > 0 } ?? false)
             || (workout.summary.maxHeartRateBPM.map { $0.isFinite && $0 > 0 } ?? false)
-        // Corrected elevation availability uses summary elevation metrics so
-        // entry construction does not walk route points for large libraries.
-        let hasCorrectedElevation =
-            workout.summary.elevationGainMeters > 0
-            || workout.summary.elevationLossMeters > 0
+        // Corrected elevation availability uses summary elevation metrics (and
+        // the DEM record) so entry construction does not walk route points for
+        // large libraries.
+        let hasCorrectedElevation = workout.hasCorrectedElevationTotals
         let name = workout.metadata.name
         let notes = workout.metadata.notes
         let orderedTagNames = Self.orderedTagNames(tagIDs: tagIDs, tagsByID: tagsByID)
