@@ -52,8 +52,20 @@ struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     var recordedLapDiagnostics: RecordedLapDiagnostics
     var routeDistanceSource: RouteDistanceSource
     var routeDistanceProvenance: RouteDistanceProvenance
+    var recordedAltitudeSensor: RecordedAltitudeSensor   // .barometric | .unknown
+    var demElevationCorrection: DEMElevationCorrection?  // last DEM correction
 }
 ```
+
+`recordedAltitudeSensor` is `.barometric` only when a FIT file declares an
+onboard barometric altimeter, and `.unknown` otherwise; it is written only when
+barometric. `demElevationCorrection` records the last DEM correction — its
+outcome (applied, no coverage, tile budget exceeded, or opted out), the tile
+set used (a folder identifier, zoom, and tile size, never a path), when, point
+and tile counts, and the first 16 missing and unreadable tiles — and is absent
+for a workout that was never corrected. Both decode lossily: a value a later
+build writes that this build cannot read degrades to `.unknown` or no record
+instead of failing the workout (#207). See [dem-tiles.md](dem-tiles.md).
 
 `normalizationVersion` versions changes that may alter retained route points,
 segment boundaries, distance, and speed. `analysisVersion` separately versions

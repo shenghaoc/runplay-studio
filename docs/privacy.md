@@ -181,6 +181,27 @@ removes the library copy, not the watched source file. Ledger hashes exist only
 so the same content is never imported twice; they are not a copy of your workout
 data and cannot reconstruct it.
 
+## DEM elevation tiles
+
+DEM correction is **opt-in**: nothing happens until you choose a tile folder in
+Settings → Elevation. RunPlay Studio never downloads tiles; you fetch them with
+your own tools, and the app only reads the folder you chose.
+
+`Application Support/RunPlayStudio/dem-tiles.json` stores the folder's display
+name, an opaque **security-scoped bookmark** (it can name the folder path; it is
+never uploaded or exported), the zoom levels found, the zoom and tile size in
+use, a minted folder identifier, and the "Correct new imports" flag. Tiles are
+read from disk and decoded in memory; decoded heights live in a bounded
+in-memory cache and are never written anywhere.
+
+A corrected workout stores the sampled terrain heights beside its recorded
+altitude and a correction record: counts of points and tiles, the zoom, the
+first few missing or unreadable tile coordinates, and the folder identifier —
+never a path. The JSON export includes the counts, zoom, and tile size but not
+the folder identifier. Removing the folder in Settings stops all access at once;
+corrections already made stay until a run is corrected again or set back to
+recorded elevation.
+
 ## Strava bulk-export import
 
 Archive import reads a user-selected ZIP entirely on-device. The app does not

@@ -28,6 +28,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Personal heatmap** — Local density map of places you run most often across the workout library (distinct workouts per cell, not GPS sample density)
 - **Trends** — Whole-library trends by ISO week, month, or year: distance, active time, run count, active pace, heart rate, and ascent, with smart-collection scoping and click-through to the runs behind each period
 - **Training load** — Per-workout Banister TRIMP from heart rate (one native engine pass), clearly-labelled conservative estimates for runs without a strap, and a fitness/fatigue/form (CTL/ATL/TSB) chart in Trends. Local-only athlete profile with Tanaka-derived defaults; estimated loads stay out of the model unless you opt in. See [docs/training-load.md](docs/training-load.md)
+- **DEM elevation correction** — Correct elevation from Terrarium DEM tiles you download yourself (the app never downloads them): barometric altitude is kept and only its gaps are filled, other recorded altitude is replaced where tiles cover the route, missing tiles fall back per point, and a switch between sources is never counted as climb. Per-run Use Recorded Elevation, a manual library pass, and tile coverage in every import summary. See [docs/dem-tiles.md](docs/dem-tiles.md)
 - **Personal records** — Cross-library records for fastest 400 m / 1 km / 1 mile / 5 km / 10 km / half marathon / marathon windows, longest run, and biggest single-run ascent, scoped to the whole library or any All Runs filter, with per-record improvement history and click-through that opens the workout at the record window highlighted on map and charts
 - **All Runs library** — Search, filter, sort, favourite, tag, and rename runs; save smart collections as dynamic queries; the sidebar shows bounded Favourites, Recent, and Smart Collections instead of every workout
 - **Synchronized views** — Map and charts stay in sync with the timeline
@@ -61,7 +62,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 
 | Format | Description |
 |--------|-------------|
-| JSON   | Explicit elapsed, active, paused, moving/stopped estimates, pace, diagnostics, splits, and segments |
+| JSON   | Explicit elapsed, active, paused, moving/stopped estimates, pace, diagnostics, elevation source and DEM coverage, splits, and segments |
 | CSV    | Splits and segments with explicit clock and pace columns; estimated moving/stopped labels |
 | PNG    | Configurable summary card (exact 1200×1600 px): optional map, Light/Dark, route colors |
 
@@ -75,6 +76,7 @@ RunPlay Studio is a **local-only** application:
 - **No app-operated cloud, accounts, or telemetry** — The app has no backend service, sign-up/login, usage tracking, or phone-home behavior.
 - **No AI APIs** — No external AI services are used.
 - **MapKit map content** — Apple MapKit loads map content from Apple services over the network. Requests cover the map region derived from your route coordinates, so the general area of your route is visible to Apple Maps. No workout file data or metrics are sent by the app.
+- **DEM elevation tiles** — Elevation tiles are read from a folder you choose on your Mac. The app downloads nothing and remembers the folder only as a local bookmark.
 - **Deleting a workout** removes the stored library copy, not the original imported file.
 
 For manual dogfooding with real workouts, keep private files in ignored local

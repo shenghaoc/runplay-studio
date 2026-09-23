@@ -275,6 +275,17 @@ Delivered as a four-PR stack (engine kernel → Core profile/calculator/backfill
 - [x] Trends: `TrainingLoadRollup` daily series with the zero-contribution rule (no-HR days flagged, never rest days), CTL/ATL/TSB recursion (42/7 defaults), estimated-excluded-by-default with explicit opt-in, HR-coverage disclosure, hover/VoiceOver summaries, one-pass backfill trigger honouring the library-level revision discipline
 - [x] Settings: athlete profile form with derived-value disclosure (Tanaka estimate, population defaults), coefficient set offered but never required, explicit "Recompute Training Loads" with progress/cancel, and docs/training-load.md
 
+### Phase: DEM Elevation Correction
+
+Delivered as a thirteen-PR stack (engine → Core → Platform → Studio → docs):
+
+- [x] Engine: `dem_altitude_meters` on the route boundary (digest pinned on both sides; no kernel reads it), bounded `plan_dem_tiles` and bilinear `sample_dem_elevations` bulk calls sharing one footprint function, native tests for tile edges, missing tiles, the antimeridian and pole guards, and the planner/sampler property test
+- [x] Interop: `RunPlayDemElevationBridge` with the tile hand-off between the two calls, a 1,000-fixture Swift oracle, and a benchmark entry in the route-quality runner
+- [x] Core: FIT barometer evidence, the correction record, DEM-first elevation input with a continuity break at every source switch (no fake climb; biggest climb checked), `DEMElevationCorrector`, targeted reanalysis, tile settings, the resumable library pass, import correction that never fails an import, elevation-source wording, JSON export 4.2, and the raised Linux floor
+- [x] Platform: `TerrariumTileDirectory` (ImageIO, exact bytes, bounded cache) and folder bookmarks
+- [x] Studio: Settings → Elevation, corrected imports with coverage in every summary, the library pass with progress and cancel, Workout ▸ Correct Elevation / Use Recorded Elevation, and the chart's break and dashed fallback
+- [ ] Deferred: GeoTIFF tiles
+
 ### Phase: Analysis Enhancements
 - [x] Personal heatmap across multiple runs
 - [x] Automatic route grouping (Routes workspace) — two-stage matching (Swift facts filter + the existing constrained-DTW boundary, no second DTW), mutual coverage ≥ 0.90 at a 100 m unmatched budget (matched distance on both routes from the single solve; containment deliberately not grouped — the superset rule was reversed by product decision, manual merge is the recovery path) / median ≤ 35 m / p90 ≤ 100 m thresholds, opposite-direction grouping with reversed-member marking, derived-plus-pinnable representatives, manifest schema v4 with nil-marker assignment records, asynchronous post-import assignment and one-write re-cluster under the library-level revision discipline, descriptive no-geocoding names, rename/merge/remove/pin controls, All Runs + Personal Heatmap route filters, and a filtered-vs-brute-force benchmark on a 2,000-workout synthetic library

@@ -1487,6 +1487,127 @@ The popover's only button is invisible (#178). Together that makes adding a
 watch folder an irreversible bulk import that the user cannot easily see
 into. #175 and #176 should be fixed before anyone is pointed at this feature.
 
+## DEM elevation correction (synthetic)
+
+Use **synthetic** tiles and routes only — never commit real tiles, real runs,
+or anything derived from them. These are manual checks to perform in a GUI
+session on the ad-hoc-signed bundle from `scripts/assemble-app-bundle.sh`
+(the bookmark behaviour is only meaningful in the build that ships); they are
+not claims of a completed manual pass.
+
+### Prep
+
+Writes a 3×3 block of flat 612 m Terrarium tiles at zoom 13, a copy missing
+the eastern tile the route enters, and a flat 4 km GPX with a noisy recorded
+altitude that crosses one tile edge (standard library only; nothing is
+downloaded):
+
+```bash
+python3 - <<'PY'
+import math, pathlib, random, shutil, struct, zlib
+root = pathlib.Path.home() / "dem-manual"
+Z, LAT, LON = 13, 46.44, 7.30
+
+def tile_of(lat, lon):
+    n = 2 ** Z
+    return (int((lon + 180) / 360 * n),
+            int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n))
+
+def terrarium_png(height, size=256):
+    v = height + 32768
+    pixel = bytes((int(v // 256), int(v % 256), int((v - math.floor(v)) * 256)))
+    raw = b"".join(b"\0" + pixel * size for _ in range(size))
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+cx, cy = tile_of(LAT, LON)
+for x in range(cx - 1, cx + 2):
+    for y in range(cy - 1, cy + 2):
+        out = root / "tiles" / str(Z) / str(x) / f"{y}.png"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(terrarium_png(612))
+shutil.copytree(root / "tiles", root / "partial", dirs_exist_ok=True)
+(root / "partial" / str(Z) / str(cx + 1) / f"{cy}.png").unlink()
+
+random.seed(965)
+noise, points = 0.0, []
+for i in range(801):  # 4 km east at 5 m per point, one point every 2 s
+    noise = max(-8.0, min(8.0, noise + random.uniform(-1.5, 1.5)))
+    lon = LON + (i * 5) / (111_320 * math.cos(math.radians(LAT)))
+    t = f"2026-09-01T07:{(i * 2) // 60:02d}:{(i * 2) % 60:02d}Z"
+    points.append(f'<trkpt lat="{LAT}" lon="{lon:.6f}"><ele>{600 + noise:.1f}</ele><time>{t}</time></trkpt>')
+(root / "flat-noisy.gpx").write_text(
+    '<?xml version="1.0"?><gpx version="1.1" creator="synthetic"><trk><trkseg>'
+    + "".join(points) + "</trkseg></trk></gpx>")
+print("tiles:", root / "tiles", "partial:", root / "partial", "gpx:", root / "flat-noisy.gpx")
+PY
+```
+
+### Settings and folder
+
+1. **Settings → Elevation** without a folder: the pane says runs keep their
+   recorded elevation; Correct new imports and the library button are disabled.
+2. **Choose Folder…** on `~/dem-manual` (no zoom directories) → refused with
+   the expected `z/x/y.png` layout; nothing is saved.
+3. **Choose Folder…** on `~/dem-manual/tiles` → folder name, Zoom 13, Tile
+   size 256 pixels; Correct new imports is on.
+4. Quit and relaunch → the folder is still chosen and ready (no
+   "could not be opened" line). Move `tiles` to another folder on the same
+   disk and relaunch → still ready, because the bookmark follows the move.
+   Delete it (the prep script regenerates it) and relaunch → the pane reports
+   that it could not be opened; regenerate it and choose it again.
+
+### Imports and per-run commands
+
+5. Import `flat-noisy.gpx` → VoiceOver announces the import with "Elevation
+   corrected from DEM tiles covering 100% of the route, replacing recorded
+   altitude from an unstated sensor." Overview ascent is 0 m.
+6. **Charts → Elevation**: a flat line at 612 m; the note reads "Source: DEM
+   tiles" and the plain sentence that DEM replaced recorded altitude from an
+   unstated sensor.
+7. **Workout ▸ Use Recorded Elevation** → the item is checked, the chart shows
+   the noisy recorded line, ascent returns to its noisy value (write both
+   numbers down), the note says correction is off, and Workout ▸ Correct
+   Elevation is disabled. Uncheck it → corrected again.
+8. Choose `~/dem-manual/partial` in Settings, then **Workout ▸ Correct
+   Elevation** → the chart breaks at the tile edge and the eastern part is
+   dashed, with the legend "Dashed sections use recorded altitude where no
+   DEM tile covers the route."; the note reports the coverage percentage and
+   "1 tile is missing from the folder"; ascent does not jump by the offset
+   between 612 m and the recorded ~600 m.
+
+### Library pass and batch imports
+
+9. Turn Correct new imports off, import two more synthetic runs, turn it back
+   on → the button reads "Correct Elevation of 2 Runs". Run it → progress with
+   the current run's name, then a one-line summary that VoiceOver also reads.
+   On a larger synthetic library, Cancel mid-pass → runs corrected so far stay
+   corrected; running it again resumes.
+10. Import a synthetic Strava archive and a synthetic multi-session FIT with
+    correction on → each report shows the "DEM elevation for N runs" line and
+    per-run coverage in Details.
+11. Drop a synthetic GPX into a watched folder → its Recent Imports row shows
+    the elevation line in secondary text and speaks it.
+
+### Accessibility and appearance
+
+12. Every Elevation pane control is reachable by keyboard and labelled; the
+    folder status is text, not colour alone.
+13. VoiceOver on the Elevation chart note reads the source, the legend, and
+    the notes as one element; the audio graph summary ends with the source.
+14. The Workout menu items are reachable from the keyboard (⌃F2) and Use
+    Recorded Elevation announces its state.
+15. Dark mode and the 720×552 minimum window: the note wraps without clipping.
+
+### Real-data acceptance (owner, local-only)
+
+On one of your own flat runs, with tiles you supply that cover it: record the
+ascent with **Use Recorded Elevation** checked, then unchecked (DEM), and report
+only the two numbers. Never commit the file, the tiles, or anything derived from
+them.
+
 ## All Runs Library Checklist
 
 Use synthetic fixtures only. Do not claim unperformed GUI scenarios.

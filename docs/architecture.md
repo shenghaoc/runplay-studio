@@ -1394,6 +1394,7 @@ interpolates selected-distance markers without introducing another renderer.
 ### Apple Frameworks Used (macOS targets only)
 
 - **SwiftUI**: App UI and views
+- **ImageIO**: Terrarium DEM tile decoding (Platform), and PNG summary export (Studio)
 - **MapKit**: Platform route/map data and one SwiftUI map with top-down and pitched presentations
 - **AVFoundation**: File-backed H.264 route-replay encoding and validation
 - **Swift Charts**: Pace, elevation, heart rate charts
@@ -1563,3 +1564,51 @@ reversed.
   instead suppressed by an in-memory size/mtime/path fingerprint, which is
   sufficient: the point is to stop re-reading >100 MB from disk on every poll
   and to stop repeating the row, not to survive relaunch.
+
+## DEM elevation correction
+
+DEM correction samples terrain heights from a folder of Terrarium PNG tiles the
+user downloaded (see [dem-tiles.md](dem-tiles.md)). It adds two engine calls
+and no network access; nothing in the dependency direction is reversed.
+
+- **RunPlayEngineCpp** plans and samples, never reading files or images:
+  `plan_dem_tiles` lists the bounded set of XYZ tiles a route's bilinear
+  footprints read (columns wrap across the antimeridian, rows clamp at the Web
+  Mercator limit), and `sample_dem_elevations` interpolates Swift-decoded
+  heights at every route point with a per-point status (sampled, invalid
+  coordinate, outside the projection, missing tile, implausible height). Both
+  share one pixel-footprint function, so the sampler only ever reads planned
+  tiles; a property test over seeded routes, including antimeridian and tile
+  corners, pins that.
+- **RunPlayCore** decides everything that is policy.
+  `RunPlayDemElevationBridge` converts coordinates once, calls the planner,
+  hands the planned keys to a `DEMTileSource` (a Swift closure between the two
+  native calls; C++ never calls back), packs the heights into one buffer, and
+  calls the sampler. `DEMElevationCorrector` applies precedence per point
+  (barometric recorded altitude kept, DEM replacing any other recorded altitude
+  and filling missing points, recorded altitude where no tile covers), writes
+  `RoutePoint.demAltitudeMeters`, reanalyzes elevation through
+  `WorkoutAnalyzer.reanalyzeAfterElevationChange` (route quality is not rerun;
+  training load is kept), and stores `DEMElevationCorrection`. The elevation
+  bridge reads a point's DEM elevation in place of its recorded altitude and
+  starts a new continuity group wherever the source switches, so the offset
+  between sources never becomes ascent, descent, or a climb highlight.
+  `FileDEMTileSettingsStore` keeps the chosen folder in `dem-tiles.json`, the
+  store actor runs the resumable library pass and the per-workout re-correct
+  and opt-out, and `DEMImportElevationCorrection` corrects new imports without
+  ever failing them. `ElevationSourceSummary` words the source for the chart,
+  its note, the import summaries, and VoiceOver.
+- **RunPlayPlatform** reads the folder: `TerrariumTileDirectory` decodes
+  8-bit RGB(A) PNGs with ImageIO straight from the stored pixel bytes (never
+  drawn, so no colour management), rejects buffered and malformed tiles as
+  unreadable, and keeps a 64 MiB least-recently-used cache of decoded tiles.
+  `DEMTileFolderAccess` scans a chosen folder, bookmarks it with the watch
+  folders' stale-tolerant `SecurityScopedBookmarkStore`, and reopens it. The
+  Strava archive importer takes the same import correction.
+- **RunPlayStudio** owns the Settings → Elevation pane, the import hooks and
+  their coverage reporting, the Workout menu's Correct Elevation and Use
+  Recorded Elevation, the elevation chart's break and dashed fallback at a
+  source switch, and `applyElevationChanges`, which refreshes every view that
+  shows elevation once per change. The analysis-context, route-map, and Trends
+  caches key on elevation too, because a correction changes heights without
+  changing any point identifier.
