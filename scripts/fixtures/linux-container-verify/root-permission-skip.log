@@ -1,0 +1,5 @@
+/src/RunPlayCore/Tests/RunPlayCoreTests/FileWorkoutLibraryStoreTests.swift:412: FileWorkoutLibraryStoreTests.testFailedWorkoutWritePreservesPriorValidData : Test skipped - root bypasses POSIX permission bits, so a read-only directory cannot fail the write
+Test Case 'FileWorkoutLibraryStoreTests.testFailedWorkoutWritePreservesPriorValidData' skipped (0.0 seconds)
+/src/RunPlayCore/Tests/RunPlayCoreTests/SegmentDetectorBenchmark.swift:16: SegmentDetectorBenchmark.testSegmentDetectorBenchmark : Test skipped: required false value but got true - Set RUNPLAY_BENCHMARK=1 to run the release benchmark.
+Test Case 'SegmentDetectorBenchmark.testSegmentDetectorBenchmark' skipped (0.0 seconds)
+	 Executed 1098 tests, with 2 tests skipped and 0 failures (0 unexpected) in 36.0 (36.0) seconds

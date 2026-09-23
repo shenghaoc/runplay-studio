@@ -1,0 +1,4 @@
+Test Suite 'All tests' started at 2026-09-23 03:29:18.000
+Test Case 'FITParserTests.testZeroHeaderCRCSkipsValidation' passed (0.0 seconds)
+Test Suite 'All tests' passed at 2026-09-23 03:29:55.000
+	 Executed 1000 tests, with 0 failures (0 unexpected) in 30.0 (30.0) seconds
