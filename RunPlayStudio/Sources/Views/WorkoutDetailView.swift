@@ -457,33 +457,50 @@ struct StandingRecordBadge: Identifiable, Equatable {
 private struct StandingRecordsBadgesRow: View {
     let badges: [StandingRecordBadge]
 
+    // Chips never wrap: squeezed into the detail column at the 720 pt window
+    // minimum, their titles broke one letter per line and the row grew tall
+    // enough to leave the Splits table no height at all (#146). Chips that
+    // do not fit scroll instead.
     var body: some View {
-        HStack(spacing: AppDesign.Spacing.medium) {
-            ForEach(badges) { badge in
-                HStack(spacing: AppDesign.Spacing.xxSmall) {
-                    Image(systemName: "stopwatch")
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                    Text("\(badge.category.displayName)")
-                        .font(AppDesign.Typography.compactLabel)
-                        .foregroundStyle(.secondary)
-                    Text(badge.valueText)
-                        .font(AppDesign.Typography.compactLabel.weight(.semibold).monospacedDigit())
-                }
-                .padding(.horizontal, AppDesign.Spacing.medium)
-                .padding(.vertical, AppDesign.Spacing.xxSmall)
-                .background(AppDesign.panelBackground)
-                .clipShape(Capsule())
-                .help("This run currently holds the whole-library \(badge.category.displayName.lowercased()) record. Runs whose records were later beaten show no badge; their history is in the Records workspace.")
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(badge.category.displayName) record")
-                .accessibilityValue(badge.valueText)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppDesign.Spacing.medium) {
+                chips
+                Spacer()
             }
-            Spacer()
+            ScrollView(.horizontal) {
+                HStack(spacing: AppDesign.Spacing.medium) {
+                    chips
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, AppDesign.Spacing.xxLarge)
         .padding(.bottom, AppDesign.Spacing.medium)
+    }
+
+    private var chips: some View {
+        ForEach(badges) { badge in
+            HStack(spacing: AppDesign.Spacing.xxSmall) {
+                Image(systemName: "stopwatch")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+                Text("\(badge.category.displayName)")
+                    .font(AppDesign.Typography.compactLabel)
+                    .foregroundStyle(.secondary)
+                Text(badge.valueText)
+                    .font(AppDesign.Typography.compactLabel.weight(.semibold).monospacedDigit())
+            }
+            .fixedSize()
+            .padding(.horizontal, AppDesign.Spacing.medium)
+            .padding(.vertical, AppDesign.Spacing.xxSmall)
+            .background(AppDesign.panelBackground)
+            .clipShape(Capsule())
+            .help("This run currently holds the whole-library \(badge.category.displayName.lowercased()) record. Runs whose records were later beaten show no badge; their history is in the Records workspace.")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(badge.category.displayName) record")
+            .accessibilityValue(badge.valueText)
+        }
     }
 }
 
@@ -507,6 +524,12 @@ private struct WorkoutHeaderView: View {
                 Spacer(minLength: AppDesign.Spacing.xLarge)
                 metrics
             }
+            // `ViewThatFits` measures ideal widths, and this row's ideal —
+            // every label on one line, the full name — does not fit the
+            // default 1200 pt window, where the row has always fitted by
+            // truncating the name. Declaring its minimum instead keeps it
+            // wherever it fitted before.
+            .frame(idealWidth: wideRowMinimumWidth)
             HStack(alignment: .center, spacing: AppDesign.Spacing.xLarge) {
                 title(maxWidth: 160)
                 ScrollView(.horizontal) {
@@ -518,6 +541,26 @@ private struct WorkoutHeaderView: View {
         .padding(.horizontal, AppDesign.Spacing.xxLarge)
         .padding(.vertical, AppDesign.Spacing.large)
         .background(AppDesign.panelBackground)
+    }
+
+    private static let metricMinimumWidth: CGFloat = 72
+    /// Room left for a truncated name, roughly "Morn…Run".
+    private static let titleMinimumWidth: CGFloat = 96
+
+    private var metricCount: Int {
+        7 + (hasAverageHeartRate ? 1 : 0)
+    }
+
+    private var hasAverageHeartRate: Bool {
+        workout.summary.averageHeartRateBPM?.isFinite == true
+    }
+
+    /// Title, spacer and metrics at their minimums, with the row's gaps.
+    private var wideRowMinimumWidth: CGFloat {
+        let gap = AppDesign.Spacing.xxxLarge
+        let metrics = CGFloat(metricCount) * Self.metricMinimumWidth
+            + CGFloat(metricCount - 1) * gap
+        return Self.titleMinimumWidth + gap + AppDesign.Spacing.xLarge + gap + metrics
     }
 
     private func title(maxWidth: CGFloat) -> some View {
@@ -603,7 +646,7 @@ private struct WorkoutHeaderView: View {
                 .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(.tertiary)
         }
-        .frame(minWidth: 72, alignment: .leading)
+        .frame(minWidth: Self.metricMinimumWidth, alignment: .leading)
         .help(help)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
