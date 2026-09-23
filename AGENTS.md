@@ -423,7 +423,11 @@ tripped it is reported rather than a bare number moving. The root-only
 `testFailedWorkoutWritePreservesPriorValidData` skip ("root bypasses POSIX
 permission bits") is deliberately absent: every entrypoint runs non-root, so
 that reason appearing means one regressed to root and lost the
-permission-injection coverage.
+permission-injection coverage. The gate reads both shapes corelibs XCTest
+prints (`Test skipped: required … - <msg>` from `XCTSkipIf`/`XCTSkipUnless`,
+`Test skipped - <msg>` from a bare `throw XCTSkip`) and fails unless it parsed
+exactly one reason per skip XCTest counted, so a skip it cannot read fails
+rather than bypassing the allowlist.
 
 CI runs this same script — the Linux `tests` leg calls
 `./scripts/linux-container-verify.sh native` rather than a bare `swift test`,

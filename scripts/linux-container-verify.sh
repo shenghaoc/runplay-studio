@@ -263,9 +263,36 @@ if [ "${DEFAULT_FULL_SUITE}" -eq 1 ]; then
   # Primary guard, and the one that does not rot: every skip name must be a
   # reason this repo accepts. Mass-skipping is caught by name, and the failure
   # names the offending reason instead of only reporting that a count moved.
-  UNKNOWN_SKIPS="$(grep -oE 'Test skipped: .*' "${LOG}" \
-    | sed -E 's/^Test skipped: (required false value but got true - )?//' \
-    | grep -vE "${ALLOWED_SKIP_PATTERN}" | sort -u || true)"
+  #
+  # corelibs XCTest prints a skip in two shapes, and both must be parsed:
+  #   <file>:<line>: Class.test : Test skipped: required false value but got true - <msg>
+  #                                            (XCTSkipIf / XCTSkipUnless)
+  #   <file>:<line>: Class.test : Test skipped - <msg>
+  #                                            (a bare `throw XCTSkip("<msg>")`)
+  # #166 parsed only the colon form, so a bare XCTSkip was counted in S but
+  # never checked -- CI's negative control (an unlisted bare XCTSkip) passed.
+  # Reduce each to `Class.test<TAB><msg>`, then require one parsed reason per
+  # skip XCTest reported: a third shape this does not know fails here
+  # instead of slipping past the allowlist the way the dash form did.
+  # awk, not sed: the container modes parse on the host, and BSD sed has no
+  # \t in a replacement.
+  SKIP_REASONS="$(awk 'match($0, / : Test skipped/) {
+      n = split(substr($0, 1, RSTART - 1), head, ": ")
+      msg = substr($0, RSTART + RLENGTH)
+      sub(/^( -|:)? ?/, "", msg)
+      sub(/^required (false|true) value but got (true|false) - /, "", msg)
+      print head[n] "\t" msg
+    }' "${LOG}")"
+  PARSED="$(printf '%s' "${SKIP_REASONS}" | grep -c . || true)"
+  if [ "${PARSED}" -ne "${SKIPPED}" ]; then
+    echo "==> FAIL: XCTest reported ${SKIPPED} skipped, but ${PARSED} skip reasons were parsed." >&2
+    echo "    A skip whose reason the gate cannot read cannot be checked against the" >&2
+    echo "    allowlist. Teach the parser the new 'Test skipped' shape in ${LOG}." >&2
+    exit 1
+  fi
+  UNKNOWN_SKIPS="$(printf '%s\n' "${SKIP_REASONS}" \
+    | awk -F '\t' -v allowed="${ALLOWED_SKIP_PATTERN}" 'NF && $2 !~ allowed { print $1 ": " $2 }' \
+    | sort -u)"
   if [ -n "${UNKNOWN_SKIPS}" ]; then
     echo "==> FAIL: ${SKIPPED} tests skipped, and at least one reason is not on the allowlist:" >&2
     printf '    %s\n' "${UNKNOWN_SKIPS}" >&2
