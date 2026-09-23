@@ -303,26 +303,59 @@ struct WorkoutDetailView: View {
 
     // MARK: - Replay Dock
 
+    // The side-by-side dock needs about 600 pt: the metrics panel keeps
+    // about 260 pt, the controls about 280 pt, and `HStack` offers the panel
+    // its share before it learns the controls' minimum, so below that the
+    // controls overflowed and widened the whole detail view past the window —
+    // clipping the Splits table's first and last columns at the 720 pt window
+    // minimum (#146). Narrower than that the dock stacks. The declared ideal width is what
+    // `ViewThatFits` measures; it does not change the wide layout.
     private var replayDock: some View {
-        HStack(spacing: AppDesign.Spacing.xxLarge) {
-            CurrentMetricsPanel(
-                metrics: replayController.selectedMetrics,
-                hasHeartRate: workout.hasHeartRateData,
-                hasCadence: workout.hasCadenceData,
-                hasPower: workout.hasPowerData
-            )
-            .frame(maxWidth: 620)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppDesign.Spacing.xxLarge) {
+                scrollingMetricsPanel
+                    .frame(maxWidth: 620)
 
-            Divider()
-                .frame(height: 48)
+                Divider()
+                    .frame(height: 48)
 
-            ReplayControlsView(controller: replayController)
-                .frame(maxWidth: .infinity)
+                ReplayControlsView(controller: replayController)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(idealWidth: 600)
+
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+                scrollingMetricsPanel
+
+                ReplayControlsView(controller: replayController)
+                    .frame(maxWidth: .infinity)
+            }
         }
         .padding(.horizontal, AppDesign.Spacing.xLarge)
         .padding(.vertical, AppDesign.Spacing.medium)
         .panelBackground()
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // Compressing the panel wraps its labels one letter per line ("Moving"
+    // did at a 1200 pt window), so below its ideal width it scrolls instead.
+    private var scrollingMetricsPanel: some View {
+        ViewThatFits(in: .horizontal) {
+            currentMetricsPanel
+            ScrollView(.horizontal) {
+                currentMetricsPanel
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var currentMetricsPanel: some View {
+        CurrentMetricsPanel(
+            metrics: replayController.selectedMetrics,
+            hasHeartRate: workout.hasHeartRateData,
+            hasCadence: workout.hasCadenceData,
+            hasPower: workout.hasPowerData
+        )
     }
 
     private func seekToSegment(_ segment: SegmentHighlight) {
@@ -460,23 +493,50 @@ private struct WorkoutHeaderView: View {
     let workout: RunWorkout
     let elevationAvailable: Bool
 
+    // The metric row has a hard minimum of roughly 750 pt (each metric keeps
+    // 72 pt, with 24 pt gaps). The window's minimum is 720 pt, which leaves
+    // about 470 pt of detail column beside the sidebar, and a row that cannot
+    // shrink widened the whole detail view past the column: the overflow was
+    // clipped on both edges, taking the Splits table's first and last columns
+    // with it (#146). When the row does not fit, the metrics scroll instead,
+    // so every summary value stays reachable and wide windows are unchanged.
     var body: some View {
-        HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
-            VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
-                Text("WORKOUT")
-                    .font(.caption2.weight(.semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(.tertiary)
-                Text(workout.displayName)
-                    .font(AppDesign.Typography.heading2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
+                title(maxWidth: 260)
+                Spacer(minLength: AppDesign.Spacing.xLarge)
+                metrics
             }
-            .frame(maxWidth: 260, alignment: .leading)
-            .help(workout.displayName)
+            HStack(alignment: .center, spacing: AppDesign.Spacing.xLarge) {
+                title(maxWidth: 160)
+                ScrollView(.horizontal) {
+                    metrics
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, AppDesign.Spacing.xxLarge)
+        .padding(.vertical, AppDesign.Spacing.large)
+        .background(AppDesign.panelBackground)
+    }
 
-            Spacer(minLength: AppDesign.Spacing.xLarge)
+    private func title(maxWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
+            Text("WORKOUT")
+                .font(.caption2.weight(.semibold))
+                .tracking(1.2)
+                .foregroundStyle(.tertiary)
+            Text(workout.displayName)
+                .font(AppDesign.Typography.heading2)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: maxWidth, alignment: .leading)
+        .help(workout.displayName)
+    }
 
+    private var metrics: some View {
+        HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
             headerMetric(
                 "Distance",
                 workout.summary.formattedDistance,
@@ -532,9 +592,6 @@ private struct WorkoutHeaderView: View {
                 )
             }
         }
-        .padding(.horizontal, AppDesign.Spacing.xxLarge)
-        .padding(.vertical, AppDesign.Spacing.large)
-        .background(AppDesign.panelBackground)
     }
 
     private func headerMetric(_ label: String, _ value: String, _ color: Color, help: String) -> some View {
