@@ -783,7 +783,7 @@ committed.
 - [ ] Import the same workout and verify map coloring by Power: mode enabled, legend reads Lower → Higher with watts, no-data sections stay neutral, and the palette reads cool → warm yellow at higher effort.
 - [ ] Verify warm-yellow power text (#FFD60A) is legible on the light appearance for the chart line, metrics badge, and splits column; power state is never conveyed by colour alone (labels and values accompany every colour use).
 - [ ] Import a workout without power and verify the Power chart shows "No power data available", the Power map mode is disabled with an explanatory help string, the splits table omits the Power column (it is the only conditional column) while keeping every other column, and the dynamics panel is absent.
-- [x] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column at normal width. *(2026-09-20)* **At 720pt width the table clips: Power, HR and Elev are unreachable — tracked as [#146](https://github.com/shenghaoc/runplay-studio/issues/146); see the dated record below.**
+- [x] On a power workout, verify the splits table shows **both** Power and Elapsed Pace — power is additive and must not displace a column at normal width. *(2026-09-20)* **At 720pt width the table clipped: Power, HR and Elev were unreachable — [#146](https://github.com/shenghaoc/runplay-studio/issues/146); reachable at 720×552 since the 2026-09-23 record below.**
 - [ ] Right-click the splits table header and verify the column menu appears; hide a column, confirm it disappears, relaunch the app and confirm the choice persisted; re-show it and confirm it returns.
 - [ ] VoiceOver: the Power chart exposes a series-level descriptor (title, range, average, current value); the dynamics panel reads as combined label/value rows; nothing announces per replay frame.
 - [ ] Export JSON and CSV from a power workout and confirm `averagePowerWatts`, `best20MinutePowerWatts`, the `runningDynamics` block, `Avg_Power_W` columns, and the `# Running Dynamics` section with explicit units; a plain workout omits them.
@@ -1043,6 +1043,45 @@ Fresh bundle rebuilt after two fixes on this session's head (`2c076e2`):
   still carries no developer fields, so the exact-match spellings in the
   registry are still not exercised against a real Stryd or Connect IQ
   device.
+
+### Manual pass 2026-09-23 — workout detail at the 720×552 minimum (#146)
+
+Release bundle of the #146 branch beside a release bundle of `main` (2006bfd)
+for comparison, each launched with `RUNPLAY_LIBRARY_ROOT` against a throwaway
+library. Fixture: one synthetic JSON run (2,401 points, 8.62 km) with heart
+rate, cadence and power, so the Power splits column, the header's Avg HR and
+every optional replay-dock metric are present. Driven with System Events and
+`screencapture`; window size set by AppleScript and read back.
+
+Root cause, measured rather than inferred: the splits table was never the
+problem — hosted alone it stays inside its container and scrolls its full
+width. The workout header's metric row and the side-by-side replay dock gave
+the whole detail view an 848pt minimum, so beside the sidebar at 720pt every
+tab was laid out wider than its column and clipped on **both** edges (on `main`
+the Splits tab starts at "Elapsed"; Split and Distance are gone too).
+
+| check | result |
+|---|---|
+| `main`, 720×552, Splits | FAIL (reproduces #146) — detail view clipped on both edges; header starts mid-"Elapsed" |
+| Branch, 720×552, Splits, light | PASS — header, badges, tabs, table and dock inside the column; horizontal scroll over the table reaches Elapsed Pace, Power, HR, Elev |
+| Branch, 720×552, Splits, dark | PASS — same layout; Power/HR/Elev colours legible |
+| Branch, 1200×800, Splits, light and dark | PASS — all header metrics shown with the name truncated, as on `main`; dock labels on one line (on `main` they wrap letter by letter, e.g. "Elap / sed") |
+| Branch, 720×552, Overview | PASS — map, header and dock inside the window |
+| Branch, 720×552, Charts | Dock below the window bottom — pre-existing, same on `main`; filed as [#193](https://github.com/shenghaoc/runplay-studio/issues/193) |
+
+Found and fixed during the pass: once the detail view fitted its column, the
+standing-record badge row was squeezed to the column width and its chip titles
+wrapped one letter per line, leaving the splits table no height. Chips are now
+fixed-size and the row scrolls when they do not fit. At 720×552 the table shows
+about two rows and scrolls vertically; the header metrics, badges and dock
+metrics scroll horizontally.
+
+Also found: a JSON file whose `metadata` lacks a required key is reported as
+"Imported but could not save to your library" — filed as
+[#192](https://github.com/shenghaoc/runplay-studio/issues/192).
+
+Not covered: VoiceOver was not run, and the sidebar was not dragged to its
+320pt maximum.
 
 ## FIT Import Checklist
 
