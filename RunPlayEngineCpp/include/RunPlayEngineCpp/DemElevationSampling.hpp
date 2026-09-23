@@ -110,6 +110,9 @@ enum class DemSamplingStatus : std::uint8_t {
     invalid_policy,
     /// Planning only: the route needs more than `maximum_tile_count` tiles.
     tile_budget_exceeded,
+    /// Sampling only: the tile directory breaks its contract (order, key
+    /// range, count, or the height buffer's size).
+    invalid_tile_directory,
     resource_limit,
     allocation_failure,
     internal_failure,
@@ -168,6 +171,116 @@ DemTilePlanSummary plan_dem_tiles(
     std::size_t sample_count,
     DemSamplingPolicy policy,
     DemTileKey* output_tiles,
+    std::size_t output_capacity
+) noexcept;
+
+// ---------------------------------------------------------------------------
+// Tile heights — decoded by Swift (caller-owned)
+// ---------------------------------------------------------------------------
+
+/// One decoded pixel height in metres. For the tile at directory position k
+/// the heights occupy [k * tile_size^2, (k + 1) * tile_size^2), row-major
+/// from the tile's north-west pixel. Single precision is exact for Terrarium
+/// data: every Terrarium height is a multiple of 1/256 m within +-32,768 m.
+/// Non-finite values are allowed and read as unusable heights.
+struct DemTileHeightSample final {
+    float height_meters{0};
+};
+
+static_assert(std::is_standard_layout_v<DemTileHeightSample>);
+static_assert(std::is_trivially_copyable_v<DemTileHeightSample>);
+static_assert(std::is_nothrow_default_constructible_v<DemTileHeightSample>);
+static_assert(std::is_nothrow_copy_constructible_v<DemTileHeightSample>);
+static_assert(std::is_nothrow_copy_assignable_v<DemTileHeightSample>);
+
+// ---------------------------------------------------------------------------
+// Sampling output — one entry per input coordinate
+// ---------------------------------------------------------------------------
+
+/// Why a coordinate has, or lacks, a DEM elevation. When several reasons
+/// apply, the first in this order is reported.
+enum class DemSampleStatus : std::uint8_t {
+    /// Every non-zero-weight corner was present and plausible.
+    sampled,
+    invalid_coordinate,
+    outside_projection,
+    /// A tile holding a non-zero-weight corner is not in the directory.
+    missing_tile,
+    /// A non-zero-weight corner height is non-finite or outside the policy's
+    /// plausible range.
+    implausible_height,
+};
+
+/// `has_elevation` is 1 exactly when `status` is `sampled`; otherwise
+/// `elevation_meters` is 0 and carries no meaning.
+struct DemElevationOutputSample final {
+    double elevation_meters{0};
+    DemSampleStatus status{DemSampleStatus::invalid_coordinate};
+    std::uint8_t has_elevation{0};
+};
+
+static_assert(std::is_standard_layout_v<DemElevationOutputSample>);
+static_assert(std::is_trivially_copyable_v<DemElevationOutputSample>);
+static_assert(std::is_nothrow_default_constructible_v<DemElevationOutputSample>);
+static_assert(std::is_nothrow_copy_constructible_v<DemElevationOutputSample>);
+static_assert(std::is_nothrow_copy_assignable_v<DemElevationOutputSample>);
+
+/// Counts from one sampling pass. On success the five per-status counts sum
+/// to `sample_count`. On failure every count is zero except
+/// `required_output_capacity`, which is always `sample_count`.
+struct DemSamplingSummary final {
+    DemSamplingStatus status{DemSamplingStatus::success};
+
+    std::uint64_t sample_count{0};
+    std::uint64_t sampled_count{0};
+    std::uint64_t invalid_coordinate_count{0};
+    std::uint64_t outside_projection_count{0};
+    std::uint64_t missing_tile_count{0};
+    std::uint64_t implausible_height_count{0};
+
+    std::uint64_t required_output_capacity{0};
+};
+
+static_assert(std::is_standard_layout_v<DemSamplingSummary>);
+static_assert(std::is_trivially_copyable_v<DemSamplingSummary>);
+static_assert(std::is_nothrow_default_constructible_v<DemSamplingSummary>);
+static_assert(std::is_nothrow_copy_constructible_v<DemSamplingSummary>);
+static_assert(std::is_nothrow_copy_assignable_v<DemSamplingSummary>);
+
+// ---------------------------------------------------------------------------
+// Bilinear sampling
+// ---------------------------------------------------------------------------
+
+/// Bilinearly samples Swift-decoded tile heights at every route coordinate.
+///
+/// samples          Swift-owned, immutable, borrowed synchronously
+/// tiles            Swift-owned, immutable: the tiles present, strictly
+///                  ascending by (y, x), keys inside the zoom's grid, at most
+///                  `maximum_tile_count` of them
+/// tile_heights     Swift-owned, immutable: exactly
+///                  `tile_count * tile_size^2` heights in directory order
+/// output_samples   Swift-owned, mutable, borrowed synchronously
+///
+/// A tile absent from the directory is missing: each coordinate falls back on
+/// its own, and a missing tile is never an error. Bilinear interpolation runs
+/// between pixel centres and reads only corners with non-zero weight, using
+/// the same footprint rule as `plan_dem_tiles`, so directory tiles beyond the
+/// plan are never needed. On success exactly `sample_count` entries are
+/// written. Every contract check runs before the first output write, so on any
+/// failure status the output buffer is left completely unchanged. C++ retains
+/// no pointer, performs no callback, and allocates nothing.
+///
+/// Empty input allows null sample and output buffers.
+[[nodiscard]]
+DemSamplingSummary sample_dem_elevations(
+    const DemRouteSample* samples,
+    std::size_t sample_count,
+    DemSamplingPolicy policy,
+    const DemTileKey* tiles,
+    std::size_t tile_count,
+    const DemTileHeightSample* tile_heights,
+    std::size_t tile_height_count,
+    DemElevationOutputSample* output_samples,
     std::size_t output_capacity
 ) noexcept;
 

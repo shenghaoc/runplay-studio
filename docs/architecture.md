@@ -76,7 +76,8 @@ route-quality geometry
 kernel, the production per-workout personal heatmap coverage kernel, the
 production constrained-DTW path solver for Route-Aware comparison, the
 production SegmentDetector window-search kernel, the production
-heart-rate training-load kernel, and the DEM tile planner:
+heart-rate training-load kernel, and the DEM tile planning and bilinear
+sampling kernels:
 
 - public-header discovery and C++23 compilation on macOS and Linux;
 - Swift/C++ interoperability through an **internal** `RunPlayCore` adapter;
@@ -91,8 +92,8 @@ heart-rate training-load kernel, and the DEM tile planner:
   highlights plus the five fixed-distance personal-record windows — through
   one bulk call per detector invocation;
 - DEM tile planning — the exact XYZ Web Mercator tiles a route's bilinear
-  samples read — through one bulk call per correction pass, with no file I/O
-  anywhere in the engine.
+  samples read — and bilinear sampling of Swift-decoded tile heights, one bulk
+  call each per correction pass, with no file I/O anywhere in the engine.
 
 ```text
 Swift stage-1 ordered [RoutePoint]
@@ -239,7 +240,7 @@ Approved pointer boundaries:
   Swift cell array escapes that lifetime.
 - constrained-DTW path solving: `const RouteAlignmentCostSample*` primary and
   comparison inputs plus a caller-owned `RouteAlignmentDtwPathCell*` output.
-  This is the only boundary that borrows two const input buffers in one call.
+  It borrows two const input buffers of the same type in one call.
   It is not capacity-negotiated: a valid path never exceeds
   `primary_sample_count + comparison_sample_count + 1` cells, so Swift allocates
   that proven bound and an insufficient-capacity response is an engine contract
@@ -288,6 +289,22 @@ Approved pointer boundaries:
   neighbouring tile; columns wrap across the antimeridian, rows clamp at the
   Web Mercator limit (±85.0511°) and never wrap across a pole, and invalid or
   polar coordinates need no tile.
+- DEM bilinear sampling: `const DemRouteSample*` input coordinates, a
+  `const DemTileKey*` directory of the tiles present, and their
+  `const DemTileHeightSample*` heights (`tile_size^2` per tile, row-major from
+  the north-west pixel, directory order), plus a caller-owned
+  `DemElevationOutputSample*` output. It borrows three const input buffers in
+  one call and writes exactly `sample_count` entries on success: an elevation
+  and a status (`sampled`, `invalid_coordinate`, `outside_projection`,
+  `missing_tile`, or `implausible_height`, reported in that precedence). The
+  directory contract (order, key range, budget, height count) is validated
+  before the first write, so every failure leaves the output unchanged; a
+  missing tile is never an error, only a per-coordinate fallback.
+  Interpolation runs between pixel centres over non-zero-weight corners only,
+  in split statements so `-ffp-contract` cannot fuse a multiply-add; heights
+  outside the policy's plausible range, or non-finite, mark the coordinate
+  implausible. The heights are single precision because every Terrarium height
+  — a multiple of 1/256 m within ±32,768 m — is exact in a float.
 
 #### C++ policy defaults
 

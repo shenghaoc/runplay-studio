@@ -154,10 +154,14 @@ not import `RunPlayEngineCpp` directly.
   For DEM elevation correction, C++23 plans the exact set of XYZ Web Mercator
   tiles that bilinear samples of a route read — neighbours within half a pixel
   of a tile edge and across the antimeridian included, coordinates beyond the
-  projection limit needing none — through one bulk call per correction pass.
-  Swift retains tile discovery, file reading and image decoding, the tile
-  budget, elevation precedence, public models, cancellation, and persistence;
-  no engine source performs file I/O.
+  projection limit needing none — and then bilinearly samples Swift-decoded
+  tile heights at every coordinate, returning a per-point status (sampled,
+  invalid coordinate, outside projection, missing tile, implausible height),
+  through one bulk call each per correction pass. Both calls share one internal
+  footprint rule, so sampling never reads a tile planning did not list. Swift
+  retains tile discovery, file reading and image decoding, the tile budget,
+  elevation precedence, public models, cancellation, and persistence; no engine
+  source performs file I/O.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
@@ -247,6 +251,13 @@ Approved pointer boundaries:
   * `const DemRouteSample*` input samples
   * `DemTileKey*` caller-owned output
 
+- DEM bilinear sampling:
+
+  * `const DemRouteSample*` input samples
+  * `const DemTileKey*` tile directory and `const DemTileHeightSample*`
+    decoded heights
+  * `DemElevationOutputSample*` caller-owned output
+
 Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
 and performs no callback.
 
@@ -314,6 +325,16 @@ budget whatever the route length, and a route needing more tiles returns
 workout", not as a retry signal. On any failure status the output buffer is
 left completely unchanged. One native call occurs per DEM correction pass;
 none occurs per point or per tile.
+
+The DEM sampling boundary writes exactly `sample_count` output entries on
+success, one per coordinate. Its tile directory is the tiles present, strictly
+ascending by (y, x) and within the tile budget, with exactly
+`tile_count * tile_size^2` single-precision heights in directory order; C++
+validates that whole contract before the first output write, so any failure
+leaves the output unchanged. A tile absent from the directory is not an error:
+each affected coordinate reports `missing_tile` and falls back on its own. One
+native call occurs per correction pass, after Swift has decoded the planned
+tiles; C++ never reads a file, decodes an image, or calls back for a tile.
 
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route
