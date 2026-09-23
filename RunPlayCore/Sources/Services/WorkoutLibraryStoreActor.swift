@@ -943,6 +943,206 @@ public actor WorkoutLibraryStoreActor {
         )
     }
 
+    // MARK: - DEM elevation
+
+    /// Progress for one DEM elevation pass over the library.
+    public struct DEMElevationPassUpdate: Sendable {
+        public let completedCount: Int
+        public let totalCount: Int
+        public let currentWorkoutName: String?
+        /// The corrected workout as saved; `nil` when it was skipped.
+        public let correctedWorkout: RunWorkout?
+
+        public init(
+            completedCount: Int,
+            totalCount: Int,
+            currentWorkoutName: String?,
+            correctedWorkout: RunWorkout?
+        ) {
+            self.completedCount = completedCount
+            self.totalCount = totalCount
+            self.currentWorkoutName = currentWorkoutName
+            self.correctedWorkout = correctedWorkout
+        }
+    }
+
+    /// Final totals for one DEM elevation pass.
+    public struct DEMElevationPassResult: Sendable, Equatable {
+        /// Workouts corrected, whatever the outcome: applied, no coverage, or
+        /// over the tile budget.
+        public let correctedCount: Int
+        /// Workouts left as they were: opted out, current for the tile set,
+        /// or re-checked for new tiles without any change.
+        public let skippedCount: Int
+        /// Workouts that could not be loaded or corrected; they keep their
+        /// previous elevation. A cancelled pass never adds to this.
+        public let failedCount: Int
+        public let saveFailureCount: Int
+
+        public init(correctedCount: Int, skippedCount: Int, failedCount: Int, saveFailureCount: Int) {
+            self.correctedCount = correctedCount
+            self.skippedCount = skippedCount
+            self.failedCount = failedCount
+            self.saveFailureCount = saveFailureCount
+        }
+    }
+
+    /// Correct and persist the elevation of every library workout a pass with
+    /// `source` could change (`DEMElevationCorrection.shouldRecorrect(with:)`):
+    /// never-corrected workouts, those corrected from another tile set, and
+    /// those with points a tile did not cover. Opted-out workouts are skipped,
+    /// and a re-check that changes nothing but the correction date is neither
+    /// saved nor reported as corrected.
+    ///
+    /// Cooperative like the other library passes: the calling task's
+    /// cancellation is checked before every workout and inside each
+    /// correction, completed workouts stay saved, and the next pass resumes
+    /// where this one stopped. It yields between workouts and never runs
+    /// during library load; callers trigger it explicitly.
+    public func correctElevation(
+        using source: any DEMTileSource,
+        corrector: DEMElevationCorrector = DEMElevationCorrector(),
+        progress: (@Sendable (DEMElevationPassUpdate) -> Void)? = nil
+    ) async -> DEMElevationPassResult {
+        let workoutIDs = (try? loadOrCreateManifest())?.workoutIDs ?? []
+        let tileSet = source.tileSet
+        var corrected = 0
+        var skipped = 0
+        var failed = 0
+        var saveFailures = 0
+
+        for (index, workoutID) in workoutIDs.enumerated() {
+            if Task.isCancelled { break }
+
+            await Task.yield()
+            if Task.isCancelled { break }
+
+            guard var workout = try? store.loadWorkout(id: workoutID) else {
+                failed += 1
+                continue
+            }
+            let name = workout.displayName
+            if let record = workout.demElevationCorrection, !record.shouldRecorrect(with: tileSet) {
+                skipped += 1
+                progress?(DEMElevationPassUpdate(
+                    completedCount: index + 1,
+                    totalCount: workoutIDs.count,
+                    currentWorkoutName: name,
+                    correctedWorkout: nil
+                ))
+                continue
+            }
+
+            let previousRecord = workout.demElevationCorrection
+            let previousPoints = workout.routePoints
+            do {
+                try corrector.correct(&workout, using: source, isCancelled: { Task.isCancelled })
+            } catch is CancellationError {
+                // Not a failure: the workout keeps its previous elevation and
+                // record, so the next pass corrects it.
+                break
+            } catch {
+                failed += 1
+                continue
+            }
+
+            if var unchanged = previousRecord, let record = workout.demElevationCorrection {
+                unchanged.correctedAt = record.correctedAt
+                if unchanged == record, workout.routePoints == previousPoints {
+                    skipped += 1
+                    progress?(DEMElevationPassUpdate(
+                        completedCount: index + 1,
+                        totalCount: workoutIDs.count,
+                        currentWorkoutName: name,
+                        correctedWorkout: nil
+                    ))
+                    continue
+                }
+            }
+
+            do {
+                try store.saveWorkout(workout)
+            } catch {
+                // The in-memory update still applies; the next pass retries
+                // the snapshot on disk.
+                saveFailures += 1
+            }
+            corrected += 1
+            progress?(DEMElevationPassUpdate(
+                completedCount: index + 1,
+                totalCount: workoutIDs.count,
+                currentWorkoutName: name,
+                correctedWorkout: workout
+            ))
+        }
+
+        return DEMElevationPassResult(
+            correctedCount: corrected,
+            skippedCount: skipped,
+            failedCount: failed,
+            saveFailureCount: saveFailures
+        )
+    }
+
+    /// Correct one library workout's elevation now and persist it. Correcting
+    /// replaces any earlier record, including an opt-out.
+    public func correctElevation(
+        ofWorkout workoutID: UUID,
+        using source: any DEMTileSource,
+        corrector: DEMElevationCorrector = DEMElevationCorrector()
+    ) throws -> RunWorkout {
+        var workout = try loadLibraryWorkout(workoutID)
+        try corrector.correct(&workout, using: source, isCancelled: { Task.isCancelled })
+        try store.saveWorkout(workout)
+        return workout
+    }
+
+    /// Choose recorded altitude for one workout, or undo that choice, and
+    /// persist it.
+    ///
+    /// Choosing it removes the workout's DEM elevation and records the
+    /// opt-out, so library passes leave the workout alone. Undoing it corrects
+    /// the workout with `source` when a tile folder is set, and otherwise only
+    /// clears the opt-out so a later pass includes the workout again.
+    public func setUsesRecordedElevation(
+        _ usesRecorded: Bool,
+        ofWorkout workoutID: UUID,
+        source: (any DEMTileSource)?,
+        corrector: DEMElevationCorrector = DEMElevationCorrector()
+    ) throws -> RunWorkout {
+        var workout = try loadLibraryWorkout(workoutID)
+        let isOptedOut = workout.demElevationCorrection?.outcome == .optedOut
+        guard usesRecorded != isOptedOut else { return workout }
+
+        if usesRecorded {
+            try corrector.useRecordedElevation(&workout, isCancelled: { Task.isCancelled })
+        } else if let source {
+            try corrector.correct(&workout, using: source, isCancelled: { Task.isCancelled })
+        } else {
+            workout.demElevationCorrection = nil
+        }
+        try store.saveWorkout(workout)
+        return workout
+    }
+
+    /// Load a workout the manifest lists, as the per-workout edits do.
+    private func loadLibraryWorkout(_ workoutID: UUID) throws -> RunWorkout {
+        try Task.checkCancellation()
+        let manifest: WorkoutLibraryManifest
+        do {
+            manifest = try store.loadManifest()
+        } catch let error as WorkoutLibraryError {
+            if case .manifestMissing = error {
+                throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+            }
+            throw error
+        }
+        guard manifest.workoutIDs.contains(workoutID) else {
+            throw WorkoutLibraryStoreError.workoutNotInLibrary(workoutID)
+        }
+        return try store.loadWorkout(id: workoutID)
+    }
+
     // MARK: - Route groups
 
     /// Read-only organization snapshot of the persisted manifest. Returns
