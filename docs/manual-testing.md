@@ -2044,6 +2044,12 @@ load, watch-folder): adjust the family/filler parameters and re-run.
       at 1200×800 and at the 720×552 minimum, in light and dark; selecting
       either entry filters to that route's own runs; and VoiceOver speaks the
       full name including the suffix.
+- [x] Route menu secondary line: every route in All Runs → Filters → Route
+      and in the Personal Heatmap route picker shows its run count and month
+      span under the name ("1 run · Jul 2026"); the selected route carries
+      the menu's own checkmark; selecting an entry still filters to that
+      route. (Light appearance at 1200×800; see the 2026-09-23 record for
+      what was not covered.)
 - [ ] Personal Heatmap route filter restricts cells to the selected route
       and resets with the other filters.
 - [ ] Deleting a member run repairs the route (representative refreshes;
@@ -2155,3 +2161,25 @@ Found and handled:
 
 Not ticked, and why: the seven items listed under the 2026-09-20 record were not
 re-exercised in this pass, which covered naming only.
+
+### Pass record 2026-09-23 (release configuration, synthetic 317-run library, menu secondary line)
+
+Driven with System Events plus `screencapture` against a release bundle of the
+secondary-line branch, on a fresh library holding the generator's 317 runs (286
+routes), imported through File → Import Strava Archive… → Import 317 Runs.
+
+- All Runs → Filters → Route: every one of the fifteen routes showed a second,
+  smaller line under its name, for example "1.3 km Loop (NE·8c2)" over "1 run ·
+  Jul 2026". Selecting it filtered the table to 1 of 317 runs; reopening the
+  menu showed the macOS checkmark on that entry alone.
+- Personal Heatmap route picker: the same two-line entries; selecting "1.0 km
+  Loop (NE·a92)" set the picker title to that name and the checkmark followed.
+- Found and fixed during the pass: the first build kept the old `HStack` label,
+  and macOS menus flattened it to the name alone (no second line). Without the
+  `HStack` the subtitle appeared, but the hand-drawn checkmark `Image` was then
+  dropped. The rows are now `Toggle`s, whose checkmark the menu draws itself.
+
+Not covered: the fifteen-entry window contained only single-run routes, so a
+multi-month span ("5 runs · Mar – Aug 2026") was checked only by unit tests
+(`RouteGroupMenuDetailTests`). Dark appearance, the 720×552 minimum and
+VoiceOver were not exercised in this pass.

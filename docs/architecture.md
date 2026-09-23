@@ -840,7 +840,11 @@ contributed members start earliest; the others' names are dropped.
 
 The All Runs query filter and the Personal Heatmap filter row both gain a
 "route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
-through the ordinary query service and is saved-query compatible. Routes
+through the ordinary query service and is saved-query compatible. Each
+route entry in both menus carries a secondary line with its run count and
+month span ("5 runs · Mar – Aug 2026"), derived on the fly from library
+entries by `RouteGroupMenuDetail` — the same `routeGroupID` membership the
+filter evaluates — and never persisted. Routes
 state participates in session restoration as of session **v5**
 (destination only — the selected route is a transient table selection).
 

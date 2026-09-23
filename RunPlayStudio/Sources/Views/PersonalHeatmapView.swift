@@ -186,6 +186,9 @@ struct PersonalHeatmapView: View {
         // it with a token.
         let names = derivedRouteGroupNames
         let filterTitle = heatmapRouteFilterTitle(derivedNames: names)
+        // Run count and date span under each name, from the library entries
+        // (the same membership the All Runs route filter shows).
+        let details = RouteGroupMenuDetail.details(for: appState.workoutLibrary.entries)
         return Menu {
             Button("Any Route") { viewModel.routeFilter = .anyRoute }
                 .accessibilityHint("Do not restrict the heatmap by route")
@@ -193,14 +196,19 @@ struct PersonalHeatmapView: View {
             if !candidates.isEmpty {
                 Divider()
                 ForEach(Array(candidates)) { group in
-                    Button {
-                        viewModel.routeFilter = .group(group.id)
-                    } label: {
-                        HStack {
-                            Text(Self.heatmapRouteMenuName(for: group, derivedNames: names))
-                            if case .group(let selected) = viewModel.routeFilter, selected == group.id {
-                                Image(systemName: "checkmark")
-                            }
+                    // A Toggle, not a Button with a checkmark image: the
+                    // menu draws its own checkmark (and VoiceOver reports
+                    // the state), while the label's first Text becomes the
+                    // item title and the second its subtitle. An HStack
+                    // label would flatten the subtitle away. Choosing the
+                    // checked route again keeps it selected.
+                    Toggle(isOn: Binding(
+                        get: { viewModel.routeFilter == .group(group.id) },
+                        set: { _ in viewModel.routeFilter = .group(group.id) }
+                    )) {
+                        Text(Self.heatmapRouteMenuName(for: group, derivedNames: names))
+                        if let detail = details[group.id] {
+                            Text(detail.subtitle())
                         }
                     }
                     .accessibilityHint("Show heat only from runs on this route")
