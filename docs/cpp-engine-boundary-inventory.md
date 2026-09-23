@@ -270,7 +270,7 @@ external package consumers.
 | `build_elevation_profile` | `ElevationProfileTests.cpp` | `SwiftElevationProfileOracle` | `run-elevation-profile-benchmark.sh` |
 | `assign_route_metric_scale_buckets` | `RouteMetricScaleBucketTests.cpp` | `SwiftRouteMetricScaleBucketOracle` | `run-route-metric-scale-bucket-benchmark.sh` |
 | `compute_training_load` | `TrainingLoadTests.cpp` | `RunPlayTrainingLoadBridgeTests` (hand-computed parity through the bridge) | — |
-| `plan_dem_tiles`, `sample_dem_elevations` | `DemElevationSamplingTests.cpp` (including the seeded property that sampling with exactly the planned tiles never reports a missing tile, and that every planned tile is read) | `RunPlayDemElevationBridgeTests` (synthetic 2×2 tile set, loader contract, and the planner/sampler property through the bridge) | — |
+| `plan_dem_tiles`, `sample_dem_elevations` | `DemElevationSamplingTests.cpp` (including the seeded property that sampling with exactly the planned tiles never reports a missing tile, and that every planned tile is read) | `SwiftDemSamplingOracle` (1,000 seeded fixtures through the bridge, bit-exact) | `run-route-quality-benchmark.sh` (DEM section) |
 | scalar geodesy | `GeodesyTests.cpp` | `GeoDistance.swift` | — |
 | `engine_info` | `EngineInfoTests.cpp` | — (identity only) | — |
 

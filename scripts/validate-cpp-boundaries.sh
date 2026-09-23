@@ -1602,6 +1602,12 @@ if [[ -f "$DEM_BRIDGE_SOURCE" ]]; then
   fi
 fi
 
+if [[ -f "RunPlayCore/Tests/RunPlayCoreTests/SwiftDemSamplingOracle.swift" ]]; then
+  pass "Swift DEM sampling oracle confined to tests"
+else
+  fail "missing SwiftDemSamplingOracle in tests"
+fi
+
 # No Swift file outside Interop may name a C++ DEM type.
 dem_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*Dem[A-Za-z]+([^[:alnum:]_]|$)'
 dem_type_fixture_dir="$(mktemp -d)"
@@ -1629,6 +1635,60 @@ if [[ -z "$dem_type_leaks" ]]; then
   pass "C++ DEM types stay in Interop"
 else
   fail "C++ DEM types named outside Interop:$dem_type_leaks"
+fi
+
+# Diagnostic benchmark entry points must remain internal and may be referenced
+# only by their defining bridge and test targets.
+dem_benchmark_api_re='(^|[^[:alnum:]_])(sampleElevationsCollectingBenchmarkReport|RunPlayDemSamplingBenchmarkReport)([^[:alnum:]_]|$)'
+dem_benchmark_api_positive=(
+  'let profiled = try RunPlayDemElevationBridge.sampleElevationsCollectingBenchmarkReport('
+  'struct RunPlayDemSamplingBenchmarkReport: Sendable {'
+)
+dem_benchmark_api_negative=(
+  'let sampleElevationsCollectingBenchmarkReporter = true'
+  'struct RunPlayDemSamplingBenchmarkReporter {}'
+)
+dem_benchmark_api_matcher_ok=1
+for fixture in "${dem_benchmark_api_positive[@]}"; do
+  if ! printf '%s' "$fixture" | grep -Eq "$dem_benchmark_api_re"; then
+    dem_benchmark_api_matcher_ok=0
+  fi
+done
+for fixture in "${dem_benchmark_api_negative[@]}"; do
+  if printf '%s' "$fixture" | grep -Eq "$dem_benchmark_api_re"; then
+    dem_benchmark_api_matcher_ok=0
+  fi
+done
+if [[ $dem_benchmark_api_matcher_ok -eq 1 ]]; then
+  pass "DEM benchmark API matcher adversarial fixtures"
+else
+  fail "DEM benchmark API matcher failed its adversarial fixtures"
+fi
+
+dem_benchmark_api_leaks=()
+for swift_file in "${SWIFT_FILES[@]}"; do
+  relative_swift_file="${swift_file#./}"
+  case "$relative_swift_file" in
+    "$DEM_BRIDGE_SOURCE") continue ;;
+    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+  esac
+  while IFS= read -r leak; do
+    [[ -n "$leak" ]] && dem_benchmark_api_leaks+=("$relative_swift_file:$leak")
+  done < <(strip_comments "$swift_file" | grep -En "$dem_benchmark_api_re" || true)
+done
+
+if [[ ${#dem_benchmark_api_leaks[@]} -eq 0 ]]; then
+  pass "DEM benchmark API is referenced only by its bridge and tests"
+else
+  for leak in "${dem_benchmark_api_leaks[@]}"; do
+    fail "production Swift references the test-only DEM benchmark API: $leak"
+  done
+fi
+
+if code_matches "$DEM_BRIDGE_SOURCE" '^[[:space:]]*(public|open|package)[^/]*(sampleElevationsCollectingBenchmarkReport|RunPlayDemSamplingBenchmarkReport)'; then
+  fail "DEM benchmark diagnostic must stay internal, not public/package"
+else
+  pass "DEM benchmark diagnostic stays internal to RunPlayCore"
 fi
 
 # SegmentDetector continues to consume pure Swift elevation snapshot

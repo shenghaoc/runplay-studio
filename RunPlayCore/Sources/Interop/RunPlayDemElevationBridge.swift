@@ -79,6 +79,17 @@ enum RunPlayDemElevationBridgeError: Error, Equatable {
     case engineContractViolation
 }
 
+/// Diagnostic-only phase timings for one complete bridge invocation.
+/// Production callers never request or collect these clocks.
+struct RunPlayDemSamplingBenchmarkReport: Sendable {
+    let inputConversionMilliseconds: Double
+    let nativePlanningMilliseconds: Double
+    let tileLoadingMilliseconds: Double
+    let heightPackingMilliseconds: Double
+    let nativeSamplingMilliseconds: Double
+    let outputTranslationMilliseconds: Double
+}
+
 // MARK: - Bridge
 
 /// Production adapter for the two DEM engine calls.
@@ -104,8 +115,31 @@ enum RunPlayDemElevationBridge {
             grid: grid,
             cancellationCheckStride: cancellationCheckStride,
             loadTiles: loadTiles,
-            isCancelled: isCancelled
+            isCancelled: isCancelled,
+            collectBenchmarkTimings: false
+        ).outcome
+    }
+
+    /// Diagnostic-only profiled bridge used by release benchmarks. The outcome
+    /// travels through the same conversion, native calls, tile loading,
+    /// validation, and translation as production.
+    static func sampleElevationsCollectingBenchmarkReport(
+        routePoints: [RoutePoint],
+        grid: RunPlayDemSamplingGrid,
+        loadTiles: ([RunPlayDemTileKey]) throws -> [RunPlayDemDecodedTile]
+    ) throws -> (outcome: RunPlayDemSamplingOutcome, report: RunPlayDemSamplingBenchmarkReport) {
+        let profiled = try sampleNative(
+            routePoints: routePoints,
+            grid: grid,
+            cancellationCheckStride: 2_048,
+            loadTiles: loadTiles,
+            isCancelled: { false },
+            collectBenchmarkTimings: true
         )
+        guard let report = profiled.report else {
+            throw RunPlayDemElevationBridgeError.engineContractViolation
+        }
+        return (profiled.outcome, report)
     }
 
     // MARK: Implementation
@@ -117,8 +151,9 @@ enum RunPlayDemElevationBridge {
         grid: RunPlayDemSamplingGrid,
         cancellationCheckStride: Int,
         loadTiles: ([RunPlayDemTileKey]) throws -> [RunPlayDemDecodedTile],
-        isCancelled: @Sendable () -> Bool
-    ) throws -> RunPlayDemSamplingOutcome {
+        isCancelled: @Sendable () -> Bool,
+        collectBenchmarkTimings: Bool
+    ) throws -> (outcome: RunPlayDemSamplingOutcome, report: RunPlayDemSamplingBenchmarkReport?) {
         let count = routePoints.count
         guard count <= WorkoutImportResourceLimits.maxRoutePointCount else {
             throw RunPlayDemElevationBridgeError.resourceLimit
@@ -138,10 +173,21 @@ enum RunPlayDemElevationBridge {
                 missingTileCount: 0,
                 implausibleHeightCount: 0
             )
-            return .sampled(empty)
+            let report = collectBenchmarkTimings
+                ? RunPlayDemSamplingBenchmarkReport(
+                    inputConversionMilliseconds: 0,
+                    nativePlanningMilliseconds: 0,
+                    tileLoadingMilliseconds: 0,
+                    heightPackingMilliseconds: 0,
+                    nativeSamplingMilliseconds: 0,
+                    outputTranslationMilliseconds: 0
+                )
+                : nil
+            return (.sampled(empty), report)
         }
 
         let stride = max(1, cancellationCheckStride)
+        var clock = PhaseClock(enabled: collectBenchmarkTimings)
 
         // ---- Coordinates, converted once for both native calls ----
         var samples = ContiguousArray<runplay.DemRouteSample>()
@@ -155,22 +201,35 @@ enum RunPlayDemElevationBridge {
             sample.longitude_degrees = routePoints[index].longitude
             samples.append(sample)
         }
+        let conversionMilliseconds = clock.lap()
 
         // ---- Plan ----
         try checkCancellation(isCancelled)
         let plan = try planTiles(samples: samples, policy: policy, grid: grid)
+        let planningMilliseconds = clock.lap()
         try checkCancellation(isCancelled)
 
         let plannedTiles: [RunPlayDemTileKey]
         switch plan {
         case .exceeded(let minimumRequiredTileCount):
-            return .tileBudgetExceeded(minimumRequiredTileCount: minimumRequiredTileCount)
+            let report = collectBenchmarkTimings
+                ? RunPlayDemSamplingBenchmarkReport(
+                    inputConversionMilliseconds: conversionMilliseconds,
+                    nativePlanningMilliseconds: planningMilliseconds,
+                    tileLoadingMilliseconds: 0,
+                    heightPackingMilliseconds: 0,
+                    nativeSamplingMilliseconds: 0,
+                    outputTranslationMilliseconds: 0
+                )
+                : nil
+            return (.tileBudgetExceeded(minimumRequiredTileCount: minimumRequiredTileCount), report)
         case .planned(let tiles):
             plannedTiles = tiles
         }
 
         // ---- Swift decodes whichever planned tiles exist ----
         let loaded = plannedTiles.isEmpty ? [] : try loadTiles(plannedTiles)
+        let loadingMilliseconds = clock.lap()
         try checkCancellation(isCancelled)
         let directory = try validatedDirectory(loaded, plannedTiles: plannedTiles, tileSize: grid.tileSize)
 
@@ -196,6 +255,7 @@ enum RunPlayDemElevationBridge {
             repeating: runplay.DemElevationOutputSample(),
             count: count
         )
+        let packingMilliseconds = clock.lap()
 
         // ---- Sample ----
         try checkCancellation(isCancelled)
@@ -219,6 +279,7 @@ enum RunPlayDemElevationBridge {
                 }
             }
         }
+        let samplingMilliseconds = clock.lap()
         try checkCancellation(isCancelled)
 
         switch summary.status {
@@ -280,6 +341,7 @@ enum RunPlayDemElevationBridge {
         else {
             throw RunPlayDemElevationBridgeError.engineContractViolation
         }
+        let translationMilliseconds = clock.lap()
 
         let result = RunPlayDemSamplingResult(
             elevationsMeters: elevations,
@@ -292,7 +354,17 @@ enum RunPlayDemElevationBridge {
             missingTileCount: tallies.missingTile,
             implausibleHeightCount: tallies.implausibleHeight
         )
-        return .sampled(result)
+        let report = collectBenchmarkTimings
+            ? RunPlayDemSamplingBenchmarkReport(
+                inputConversionMilliseconds: conversionMilliseconds,
+                nativePlanningMilliseconds: planningMilliseconds,
+                tileLoadingMilliseconds: loadingMilliseconds,
+                heightPackingMilliseconds: packingMilliseconds,
+                nativeSamplingMilliseconds: samplingMilliseconds,
+                outputTranslationMilliseconds: translationMilliseconds
+            )
+            : nil
+        return (.sampled(result), report)
     }
 
     private enum PlanResult {
@@ -427,5 +499,23 @@ private struct StatusTallies {
         case .missingTile: missingTile += 1
         case .implausibleHeight: implausibleHeight += 1
         }
+    }
+}
+
+/// Lap timer for the diagnostic report; reads no clock unless enabled.
+private struct PhaseClock {
+    let enabled: Bool
+    private var last: UInt64
+
+    init(enabled: Bool) {
+        self.enabled = enabled
+        self.last = enabled ? DispatchTime.now().uptimeNanoseconds : 0
+    }
+
+    mutating func lap() -> Double {
+        guard enabled else { return 0 }
+        let now = DispatchTime.now().uptimeNanoseconds
+        defer { last = now }
+        return Double(now - last) / 1_000_000
     }
 }
