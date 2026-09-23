@@ -521,12 +521,18 @@ struct MetricsChartView: View {
             smoothedValues = routePoints.map { $0.speedMetersPerSecond }
         }
 
+        let sourceSplit = selectedMetric == .elevation ? elevationSourceSplit : nil
         let updatedData = MetricChartDataBuilder.build(
             routePoints: routePoints,
             values: smoothedValues,
-            sourceSplit: selectedMetric == .elevation ? elevationSourceSplit : nil
+            sourceSplit: sourceSplit
         )
         chartData = updatedData
+        // The spoken summary counts recording gaps. A source switch also
+        // starts a new series but is not a gap, so group without the split.
+        let gapSeriesIDs = sourceSplit == nil
+            ? updatedData.map(\.seriesID)
+            : MetricChartDataBuilder.build(routePoints: routePoints, values: smoothedValues).map(\.seriesID)
         // Power's chart line is smoothed but the Power & Running Dynamics
         // panel shows raw Max Power, so the descriptor summary reports the
         // raw series' min/max/average — otherwise a VoiceOver user hears a
@@ -543,7 +549,7 @@ struct MetricsChartView: View {
             metricName: selectedMetric.rawValue,
             unit: selectedMetric.unit,
             values: updatedData.map(\.value),
-            seriesIDs: updatedData.map(\.seriesID),
+            seriesIDs: gapSeriesIDs,
             currentValue: nil,
             totalDistanceMeters: routePoints.last?.distanceFromStartMeters ?? 0,
             aggregatesFromValues: aggregatesFromValues
@@ -575,6 +581,9 @@ struct MetricsChartView: View {
             }
             .font(AppDesign.Typography.compactLabel)
             .foregroundStyle(.secondary)
+            // Wrap, never truncate: the notes carry the plain warning that DEM
+            // replaced altitude from an unstated sensor.
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)
             .accessibilityElement(children: .combine)

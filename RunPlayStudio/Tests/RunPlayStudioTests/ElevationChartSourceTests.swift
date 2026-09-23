@@ -53,6 +53,25 @@ final class ElevationChartSourceTests: XCTestCase {
         )
     }
 
+    func testSpokenSummaryCountsOnlyRealGapsNotSourceSwitches() {
+        let values: [Double?] = [612, 612, 600, 600]
+        let split = ElevationChartSourceSplit(sourceIsDEM: [true, true, false, false], fallbackIsDEM: false)
+        let charted = MetricChartDataBuilder.build(routePoints: points(4), values: values, sourceSplit: split)
+        let gaps = MetricChartDataBuilder.build(routePoints: points(4), values: values)
+        XCTAssertEqual(Set(charted.map(\.seriesID)).count, 2, "the drawn line breaks at the switch")
+        XCTAssertEqual(Set(gaps.map(\.seriesID)).count, 1, "but the run has no recording gap")
+
+        let model = ChartAccessibilityModel.make(
+            metricName: "Elevation",
+            unit: "m",
+            values: gaps.map(\.value),
+            seriesIDs: gaps.map(\.seriesID),
+            currentValue: nil,
+            totalDistanceMeters: 30
+        )
+        XCTAssertFalse(model.spokenSummary.contains("gap"), model.spokenSummary)
+    }
+
     func testLegendNamesTheDashedSource() {
         XCTAssertEqual(
             ElevationChartSourceSplit(sourceIsDEM: [], fallbackIsDEM: false).legend,
