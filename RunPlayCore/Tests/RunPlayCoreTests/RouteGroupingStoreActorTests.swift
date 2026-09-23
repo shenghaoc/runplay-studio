@@ -639,13 +639,13 @@ final class RouteGroupingStoreActorTests: XCTestCase {
     }
 
     /// A merge committed inside the window whose **source** is the group the
-    /// pass is matching into must not be undone: the merged-away source is
-    /// not resurrected by the pass's pre-await group list, and the workout
-    /// the pass matched into it falls back to record *absence* — the
-    /// backlog marker, not an evaluated-nil "deliberately ungrouped"
-    /// record — so the next pass re-matches it, most likely into the merge
-    /// target where the user put its siblings.
-    func testMergedAwaySourceGroupInsideAssignmentWindowIsNotResurrected() async throws {
+    /// pass is matching into must not be undone, and the workout the pass
+    /// matched into the source lands in the merge target on the pass's own
+    /// write — where the user put its siblings — instead of waiting a pass
+    /// in the backlog (#164). The merged-away source is not resurrected by
+    /// the pass's pre-await group list, and the target keeps its name and
+    /// pin.
+    func testNewcomerMatchedIntoGroupMergedAwayInsideAssignmentWindowLandsInMergeTarget() async throws {
         let familyS = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
         let familyT = loopRuns(sideMeters: 900, count: 2, latitude: 38.5)
         try await addAll(familyS + familyT)
@@ -673,21 +673,101 @@ final class RouteGroupingStoreActorTests: XCTestCase {
             manifest.routeGroup(id: sourceID),
             "merged-away source group resurrected by the pass's pre-await list"
         )
-        XCTAssertNil(
+        let record = try XCTUnwrap(
             manifest.routeGroupAssignment(forWorkoutID: newcomer.id),
-            "newcomer matched into the merged-away source must fall back to record "
-                + "absence (the backlog marker), not keep any record"
+            "newcomer matched into the merged-away source was left in the backlog"
         )
+        XCTAssertEqual(record.groupID, targetID, "newcomer did not follow the merge")
+        XCTAssertEqual(record.algorithmVersion, RouteGroupingPolicy.default.algorithmVersion)
         let target = try XCTUnwrap(manifest.routeGroup(id: targetID))
         XCTAssertEqual(target.name, "Target Route")
         XCTAssertEqual(target.pinnedRepresentativeWorkoutID, familyT[1].id)
-        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: targetID).count, 4)
-        let groupIDs = Set(manifest.routeGroups.map(\.id))
-        for assignment in manifest.routeGroupAssignments {
-            if let groupID = assignment.groupID {
-                XCTAssertTrue(groupIDs.contains(groupID), "assignment references a missing group")
+        XCTAssertEqual(target.representativeSummary?.workoutID, familyT[1].id)
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: targetID).count, 5)
+        assertEveryAssignmentReferencesAGroup(manifest)
+        XCTAssertEqual(result.groups, manifest.routeGroups)
+    }
+
+    /// Chained merges inside one window — the matched group into B, then B
+    /// into C — resolve through the journal to the surviving end of the
+    /// chain. An unpinned target adopts the pass's source summary when the
+    /// newcomer outranks the target's representative, the same rule
+    /// `mergeRouteGroups` applies, so the representative is right on the
+    /// first write too.
+    func testNewcomerFollowsChainedMergesInsideAssignmentWindow() async throws {
+        let familyA = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        let familyB = loopRuns(sideMeters: 900, count: 2, latitude: 38.5)
+        let familyC = loopRuns(sideMeters: 1_100, count: 2, latitude: 40.0)
+        try await addAll(familyA + familyB + familyC)
+        _ = try await actor.assignRouteGroups(for: (familyA + familyB + familyC).map(\.id))
+
+        let manifestBefore = try store.loadManifest()
+        let groupA = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyA[0].id))
+        let groupB = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyB[0].id))
+        let groupC = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyC[0].id))
+
+        // A denser recording of family A's loop: more route points, so it
+        // outranks every existing representative.
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5, stepMeters: 10
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let (result, _) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.mergeRouteGroups(sourceID: groupA, into: groupB)
+            try await actor.mergeRouteGroups(sourceID: groupB, into: groupC)
+        }
+        XCTAssertEqual(result.joinedCount, 1)
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.routeGroups.map(\.id), [groupC])
+        XCTAssertEqual(manifest.routeGroupID(forWorkoutID: newcomer.id), groupC)
+        XCTAssertEqual(manifest.routeGroupMemberIDs(groupID: groupC).count, 7)
+        XCTAssertEqual(
+            manifest.routeGroup(id: groupC)?.representativeSummary?.workoutID, newcomer.id,
+            "unpinned merge target was not re-ranked against the redirected newcomer"
+        )
+        assertEveryAssignmentReferencesAGroup(manifest)
+        XCTAssertEqual(result.groups, manifest.routeGroups)
+    }
+
+    /// When the merge target is itself gone by the final write — here
+    /// emptied by deliberate removals inside the same window — there is no
+    /// surviving group to follow the merge into, so the newcomer falls back
+    /// to record *absence*: the backlog marker, not an evaluated-nil
+    /// "deliberately ungrouped" record, and the next pass re-matches it.
+    func testNewcomerFallsBackToBacklogWhenMergeTargetIsGoneByFinalWrite() async throws {
+        let familyS = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        let familyT = loopRuns(sideMeters: 900, count: 1, latitude: 38.5)
+        try await addAll(familyS + familyT)
+        _ = try await actor.assignRouteGroups(for: (familyS + familyT).map(\.id))
+
+        let manifestBefore = try store.loadManifest()
+        let sourceID = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyS[0].id))
+        let targetID = try XCTUnwrap(manifestBefore.routeGroupID(forWorkoutID: familyT[0].id))
+
+        let newcomer = loopRuns(
+            sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5
+        )[0]
+        try await actor.addWorkout(newcomer, select: false)
+
+        let (result, _) = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.mergeRouteGroups(sourceID: sourceID, into: targetID)
+            for member in familyS + familyT {
+                try await actor.removeWorkoutFromRouteGroup(workoutID: member.id)
             }
         }
+        XCTAssertEqual(result.joinedCount, 1)
+
+        let manifest = try store.loadManifest()
+        XCTAssertNil(manifest.routeGroup(id: sourceID))
+        XCTAssertNil(manifest.routeGroup(id: targetID))
+        XCTAssertNil(
+            manifest.routeGroupAssignment(forWorkoutID: newcomer.id),
+            "newcomer with no surviving merge target must fall back to record "
+                + "absence (the backlog marker), not keep any record"
+        )
+        assertEveryAssignmentReferencesAGroup(manifest)
         XCTAssertEqual(result.groups, manifest.routeGroups)
 
         // Self-healing: with no interference, the next pass picks the
@@ -697,6 +777,22 @@ final class RouteGroupingStoreActorTests: XCTestCase {
             try store.loadManifest().routeGroupAssignment(forWorkoutID: newcomer.id),
             "backlogged newcomer is not re-assigned by the next pass"
         )
+    }
+
+    private func assertEveryAssignmentReferencesAGroup(
+        _ manifest: WorkoutLibraryManifest,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let groupIDs = Set(manifest.routeGroups.map(\.id))
+        for assignment in manifest.routeGroupAssignments {
+            if let groupID = assignment.groupID {
+                XCTAssertTrue(
+                    groupIDs.contains(groupID), "assignment references a missing group",
+                    file: file, line: line
+                )
+            }
+        }
     }
 
     /// The plain case the resurrect guard must not swallow: a pass whose
