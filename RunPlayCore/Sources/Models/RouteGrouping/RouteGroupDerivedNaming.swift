@@ -92,10 +92,10 @@ extension WorkoutRouteGroup {
     ///
     /// The result is a pure function of the input set: no assignment
     /// depends on iteration or input order, so the same set always yields
-    /// the same names in any order. (The one remaining name-changing path
-    /// is inherent to facts-derived names: the store may re-pick a group's
-    /// representative when membership changes, which legitimately moves
-    /// that group's own base name and compass token.)
+    /// the same names in any order. (A group derived here follows its
+    /// current representative's facts, so a re-pick would move its base
+    /// name and compass token; the store never lets that reach a saved
+    /// group, because materialization freezes the name at first save.)
     public static func derivedDisplayNames(
         for groups: [WorkoutRouteGroup],
         loopClosureDistanceMeters: Double
