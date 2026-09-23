@@ -4,7 +4,8 @@ import XCTest
 
 /// The Swift adapter over the two DEM engine calls: a synthetic 2×2 tile set
 /// crossed by a route, the loader contract, the tile budget, grid validation,
-/// cancellation, and the planner/sampler property through the bridge.
+/// cancellation, the planner/sampler property through the bridge, and
+/// 1,000 seeded fixtures against the independent `SwiftDemSamplingOracle`.
 final class RunPlayDemElevationBridgeTests: XCTestCase {
     // MARK: - A synthetic 2×2 tile set crossed by a route
 
@@ -351,7 +352,7 @@ final class RunPlayDemElevationBridgeTests: XCTestCase {
         }
     }
 
-    // MARK: - Seeded property
+    // MARK: - Seeded property and oracle parity
 
     /// Every tile the sampler touches is in the planner's returned set: given
     /// exactly the planned tiles, no point is missing one.
@@ -376,6 +377,90 @@ final class RunPlayDemElevationBridgeTests: XCTestCase {
                 route.count,
                 "fixture \(fixture)"
             )
+        }
+    }
+
+    func testBridgeMatchesIndependentOracleOnSeededFixtures() throws {
+        var random = DemSplitMix64(seed: 0x0DE5)
+        for fixture in 0..<1_000 {
+            let budget = random.nextBool(probability: 0.15) ? 1 + random.nextInt(below: 6) : 4_096
+            let grid = Self.randomGrid(&random, maximumTileCount: budget)
+            let route = Self.randomRoute(&random, grid: grid)
+            let oracleGrid = SwiftDemSamplingOracle.Grid(
+                zoom: grid.zoom,
+                tileSize: grid.tileSize,
+                maximumTileCount: grid.maximumTileCount,
+                plausibleElevationMeters: grid.plausibleElevationMeters
+            )
+            let coordinates = route.map { (latitude: $0.latitude, longitude: $0.longitude) }
+
+            var supplied: [RunPlayDemDecodedTile] = []
+            let outcome = try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: route,
+                grid: grid,
+                cancellationCheckStride: 64,
+                loadTiles: { planned in
+                    // Drop about one tile in five; inject defects into some.
+                    supplied = planned
+                        .filter { _ in !random.nextBool(probability: 0.2) }
+                        .map { Self.randomTile($0, grid: grid, random: &random, defects: true) }
+                    return supplied
+                },
+                isCancelled: { false }
+            )
+
+            switch (outcome, SwiftDemSamplingOracle.plan(coordinates, grid: oracleGrid)) {
+            case (.tileBudgetExceeded(let minimum), .exceeded(let oracleMinimum)):
+                XCTAssertEqual(minimum, oracleMinimum, "fixture \(fixture)")
+            case (.sampled(let result), .planned(let oracleTiles)):
+                XCTAssertEqual(
+                    result.plannedTiles.map { SwiftDemSamplingOracle.Key(x: $0.x, y: $0.y) },
+                    oracleTiles,
+                    "fixture \(fixture): planned tiles"
+                )
+                let oracleTileSet = Dictionary(
+                    uniqueKeysWithValues: supplied.map { (SwiftDemSamplingOracle.Key(x: $0.key.x, y: $0.key.y), $0.heightsMeters) }
+                )
+                let expected = SwiftDemSamplingOracle.sample(coordinates, grid: oracleGrid, tiles: oracleTileSet)
+                for index in route.indices {
+                    Self.assertMatches(result, index: index, expected: expected[index], fixture: fixture)
+                }
+            default:
+                XCTFail("fixture \(fixture): bridge and oracle disagree about the tile budget")
+            }
+        }
+    }
+
+    private static func assertMatches(
+        _ result: RunPlayDemSamplingResult,
+        index: Int,
+        expected: SwiftDemSamplingOracle.Sample,
+        fixture: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let message = "fixture \(fixture), point \(index)"
+        switch expected {
+        case .sampled(let value):
+            XCTAssertEqual(result.statuses[index], .sampled, message, file: file, line: line)
+            XCTAssertEqual(
+                result.elevationsMeters[index]?.bitPattern,
+                value.bitPattern,
+                "\(message): bit-exact elevation",
+                file: file,
+                line: line
+            )
+        case .invalidCoordinate:
+            XCTAssertEqual(result.statuses[index], .invalidCoordinate, message, file: file, line: line)
+        case .outsideProjection:
+            XCTAssertEqual(result.statuses[index], .outsideProjection, message, file: file, line: line)
+        case .missingTile:
+            XCTAssertEqual(result.statuses[index], .missingTile, message, file: file, line: line)
+        case .implausibleHeight:
+            XCTAssertEqual(result.statuses[index], .implausibleHeight, message, file: file, line: line)
+        }
+        if case .sampled = expected {} else {
+            XCTAssertNil(result.elevationsMeters[index], message, file: file, line: line)
         }
     }
 

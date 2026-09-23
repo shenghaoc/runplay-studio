@@ -19,7 +19,7 @@ measured on deterministic synthetic fixtures.
 | `scripts/run-remaining-core-hotspot-profile.sh` | `RUNPLAY_CORE_HOTSPOT_PROFILE=1` | Release phase-level profile of remaining RunPlayCore computational hotspots (production diagnostic; `RUNPLAY_PROFILE_FAMILY` selects the family, `RUNPLAY_PROFILE_PRODUCT_LIMIT=1` enables 1M-point probes) |
 | `scripts/run-route-alignment-dtw-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Constrained-DTW path solve; `RUNPLAY_BENCHMARK_MAX_BAND=1` adds the maximum-band probe |
 | `scripts/run-route-metric-scale-bucket-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | C++23 route-metric numeric finalizer; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
-| `scripts/run-route-quality-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Combined route-quality geometry cutover on a deterministic 100,000-point fixture; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
+| `scripts/run-route-quality-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Combined route-quality geometry cutover on a deterministic 100,000-point fixture, then DEM tile planning and bilinear sampling on a 100,000-point route over synthetic zoom-12 tiles; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds a 1M-point probe for each |
 | `scripts/run-segment-detector-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | Complete segment-detector cutover; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1M-point probe |
 
 All eight runners remain present after the step-distance migration; the
@@ -29,7 +29,8 @@ transitional step-distance benchmark runner was removed with its boundary.
 
 Five runners carry a 1,000,000-point probe, and they do not gate it the same
 way. Four make it opt-in behind `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1`
-(personal-heatmap, route-metric, route-quality, segment-detector), while
+(personal-heatmap, route-metric, route-quality — whose DEM probe uses the same
+gate — and segment-detector), while
 `ElevationProfileBenchmark`'s `E7 1,000,000-point product limit` case has no
 environment gate at all and runs on every invocation of its runner.
 
@@ -146,18 +147,30 @@ the numbers below are policy (fixture sizes, iteration counts), not results.
 
 ### `run-route-quality-benchmark.sh`
 
-- **Harness:** `RouteQualityPipelineBenchmark` (XCTest, release).
-- **Fixtures / policy:** one deterministic 100,000-point mixed fixture
-  (segments/outliers/gaps/supplied distances), 5 + 20, medians; product-limit
-  probe 1,000,000 points × 3 native-kernel iterations, gated.
-- **Conversion:** four timings — Swift stages 2–4 oracle, complete combined
-  bridge (conversion + C++ + projection), native path alone, and the complete
-  `RouteQualityProcessor.process`.
-- **Role:** merge gate — complete combined bridge ≤ ~1.25× the Swift stages 2–4
-  oracle.
-- **Memory:** the product-limit probe reports peak RSS.
+- **Harnesses:** `RouteQualityPipelineBenchmark` and
+  `DemElevationSamplingBenchmark` (XCTest, release), run by one filter.
+- **Fixtures / policy:** route quality — one deterministic 100,000-point mixed
+  fixture (segments/outliers/gaps/supplied distances), 5 + 20, medians;
+  product-limit probe 1,000,000 points × 3 native-kernel iterations, gated.
+  DEM — a 100,000-point course of about 300 km over synthetic zoom-12,
+  256-pixel tiles decoded once up front, 3 + 15, medians; product-limit probe
+  1,000,000 points over the same course and tiles × 3 complete-bridge
+  iterations, gated.
+- **Conversion:** route quality reports four timings — Swift stages 2–4
+  oracle, complete combined bridge (conversion + C++ + projection), native path
+  alone, and the complete `RouteQualityProcessor.process`. DEM reports the
+  complete bridge (coordinate conversion, both native calls, the tile hand-off,
+  height packing, and translation), each of those phases, and the independent
+  `SwiftDemSamplingOracle` for context.
+- **Role:** route quality is a merge gate — complete combined bridge ≤ ~1.25×
+  the Swift stages 2–4 oracle. DEM sampling has no Swift production path to
+  gate against; its report tracks the boundary's cost, and PNG decoding is
+  measured by the tile source, not here.
+- **Memory:** both product-limit probes report peak RSS.
 - **Retention rationale:** guards the largest single kernel cutover; the
-  processor timing keeps the end-to-end cost visible alongside the kernel.
+  processor timing keeps the end-to-end cost visible alongside the kernel. The
+  DEM report shares the runner because DEM correction consumes the same route
+  boundary; see the planner/sampler rows in the boundary inventory.
 
 ### `run-segment-detector-benchmark.sh`
 
