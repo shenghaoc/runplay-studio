@@ -459,6 +459,28 @@ as the watch itself.
   no developer fields; reimporting the original file adds them. No snapshot
   version changes.
 
+## Elevation correction on import
+
+With a DEM tile folder chosen and **Correct new imports** on (Settings →
+Elevation), every import path — file picker, watch folder, Strava archive, and
+multi-session FIT — corrects the workout's elevation after parsing and
+analysis and before it is saved. The correction never fails an import: a
+missing or unreadable tile keeps the recorded altitude for the points it would
+cover, and a correction that cannot finish saves the workout as imported for a
+later library pass. See [dem-tiles.md](dem-tiles.md).
+
+**Barometric evidence.** Recorded altitude is kept, with DEM elevation filling
+only missing points, when the source declares an onboard barometric altimeter.
+Only FIT carries that evidence: a `device_info` message whose `source_type`
+(field 25) is `local` (5) and whose `device_type` (field 1, read through the
+`local_device_type` subfield) is `barometer` (4). Garmin's C++ and Swift SDKs
+agree on every value; the citations are in `FITAltitudeSensorEvidence`. Device
+type 4 from an ANT+, Bluetooth, Wi-Fi, or absent source is not evidence. GPX,
+TCX, JSON, and FIT files without that record read as "sensor unknown": their
+recorded altitude is replaced wherever a tile covers the route, and the
+workout's elevation note says so plainly. Existing snapshots read as unknown;
+reimporting a FIT file records its sensor.
+
 ## Recorded UTC offset
 
 Text formats that carry an explicit zone designator record it on
