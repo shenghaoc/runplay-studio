@@ -129,6 +129,15 @@ final class AppStateElevationCorrectionTests: XCTestCase {
         XCTAssertEqual(try store.loadWorkout(id: corrected.id).demElevationCorrection?.outcome, .applied)
     }
 
+    func testElevationChangesRefreshTheRecordBadges() throws {
+        let appState = AppState()
+        let revision = appState.personalRecordsLibraryRevision
+        appState.applyElevationChanges([RunWorkout(routePoints: [])])
+        XCTAssertEqual(appState.personalRecordsLibraryRevision, revision + 1, "biggest ascent may have changed")
+        appState.applyElevationChanges([])
+        XCTAssertEqual(appState.personalRecordsLibraryRevision, revision + 1, "nothing changed, nothing refreshed")
+    }
+
     func testCachedContextNeverOutlivesAnElevationChange() throws {
         let appState = AppState()
         let points = (0..<20).map { index in

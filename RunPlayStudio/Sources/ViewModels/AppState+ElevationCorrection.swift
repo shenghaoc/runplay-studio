@@ -234,10 +234,10 @@ extension AppState {
 
     /// Applies runs whose elevation changed — a correction written or removed
     /// — to everything that shows elevation: the library and its entries, the
-    /// selected and comparison runs (keeping the replay position), and cached
-    /// analysis contexts. Trends refreshes now only while it is on screen; its
-    /// cache keys on each run's ascent and descent, so it recomputes when it
-    /// next opens.
+    /// selected and comparison runs (keeping the replay position), cached
+    /// analysis contexts, and the biggest-ascent record behind the Overview
+    /// badges. Trends and Records refresh now only while on screen; their
+    /// caches key on each run's ascent, so they recompute when next opened.
     func applyElevationChanges(_ changed: [RunWorkout]) {
         guard !changed.isEmpty else { return }
         for workout in changed {
@@ -266,8 +266,12 @@ extension AppState {
             favoriteIDs: favoriteWorkoutIDs,
             organization: currentOrganizationSnapshot()
         )
+        bumpPersonalRecordsLibraryRevision()
         if workspaceMode == .trends {
             refreshTrends()
+        }
+        if workspaceMode == .personalRecords {
+            refreshPersonalRecords()
         }
         requestSessionSave()
     }
