@@ -305,14 +305,18 @@ final class SyntheticDEMTiles: DEMTileSource, @unchecked Sendable {
     var wronglySized: Set<DEMTileKey> = []
     private(set) var requests: [[DEMTileKey]] = []
 
-    init(height: Float, tiles: [DEMTileKey] = block, zoom: Int = zoom, tileSize: Int = tileSize) {
+    static let folderID = UUID(uuidString: "6A1D1C0E-8E43-4C8B-9D6E-2B7A1C5D9E04")!
+
+    init(
+        height: Float,
+        tiles: [DEMTileKey] = block,
+        folderID: UUID = folderID,
+        zoom: Int = zoom,
+        tileSize: Int = tileSize
+    ) {
         self.height = height
         self.tiles = Set(tiles)
-        self.tileSet = DEMTileSetIdentity(
-            folderID: UUID(uuidString: "6A1D1C0E-8E43-4C8B-9D6E-2B7A1C5D9E04")!,
-            zoom: zoom,
-            tileSize: tileSize
-        )
+        self.tileSet = DEMTileSetIdentity(folderID: folderID, zoom: zoom, tileSize: tileSize)
     }
 
     func loadTiles(_ keys: [DEMTileKey], isCancelled: @Sendable () -> Bool) throws -> DEMTileLoadResult {
