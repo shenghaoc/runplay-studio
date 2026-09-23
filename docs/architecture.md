@@ -802,9 +802,9 @@ sort order participates, so importing another colliding group — bulk
 historical imports included — never renames groups already named; a
 discriminator lengthens only for the groups that share its prefix, so an
 arrival cannot change a name it does not collide with, and names revert
-when the collision goes away. (The store may re-pick a representative when
-membership changes, which can legitimately move that group's own
-geometry-derived base name and token.) User-assigned names are returned
+when the collision goes away. (Read-time derivation follows the current
+representative, so a re-pick would move a derived base name and token; the
+store prevents that by materializing names — see below.) User-assigned names are returned
 verbatim and never participate in disambiguating others, and the
 derivation is a pure function of the input set — input order decides
 nothing. The loop-closure threshold
@@ -820,8 +820,10 @@ it is first persisted, as a set lookup against every name already stored:
 a newcomer that collides refines to the first free rung of its own ladder
 (bare, eight-point, sixteen-point, id digest) and the name already shown
 stays put. Stored names are then frozen — a representative change (a user
-pin, or the quality rule picking a reversed member) cannot swing the
-compass token — and renaming is non-destructive: clearing a rename returns
+pin, or the quality rule re-picking when a joiner outranks the current
+representative) moves neither the base name nor the compass token; the
+trade-off is that a stored name describes the representative the group had
+when it was first saved, and only a rename changes it — and renaming is non-destructive: clearing a rename returns
 the stored original. User-named groups get a derived name too, chosen
 after the unnamed ones so it collides with nothing. A manifest that
 predates the field is migrated on its first load, whole set at once, and

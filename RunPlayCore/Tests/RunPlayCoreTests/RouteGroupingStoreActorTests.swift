@@ -27,13 +27,18 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         sideMeters: Double,
         count: Int,
         latitude: Double,
-        firstDayOffset: Int = 0
+        firstDayOffset: Int = 0,
+        stepMeters: Double = 20
     ) -> [RunWorkout] {
         (0..<count).map { index in
             let date = RouteGroupingFixtures.epoch.addingTimeInterval(
                 Double(index + firstDayOffset) * 86_400
             )
-            let points = RouteGroupingFixtures.squareLoop(sideMeters: sideMeters, date: date)
+            let points = RouteGroupingFixtures.squareLoop(
+                sideMeters: sideMeters,
+                stepMeters: stepMeters,
+                date: date
+            )
                 .map { point in
                     RoutePoint(
                         timestamp: point.timestamp,
@@ -128,6 +133,37 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         let reset = try XCTUnwrap(try store.loadManifest().routeGroups.first)
         XCTAssertNil(reset.name)
         XCTAssertEqual(reset.derivedName, derived, "clearing a rename returns the stable original")
+    }
+
+    /// #165: a joiner that outranks the representative re-picks it, and
+    /// the new representative's facts would derive a different name. The
+    /// stored name must not move — only a rename changes what the user sees.
+    func testDerivedNameSurvivesRepresentativeRepickOnJoin() async throws {
+        let runs = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        try await addAll(runs)
+        _ = try await actor.assignRouteGroups(for: runs.map(\.id))
+        let before = try XCTUnwrap(try store.loadManifest().routeGroups.first)
+        let stored = try XCTUnwrap(before.derivedName)
+
+        // Denser sampling outranks the current representative; the longer
+        // side moves the rendered distance from 5.0 km to 5.1 km.
+        let joiner = try XCTUnwrap(
+            loopRuns(sideMeters: 1_275, count: 1, latitude: 37.0, firstDayOffset: 10, stepMeters: 10).first
+        )
+        try await addAll([joiner])
+        let pass = try await actor.assignRouteGroups(for: [joiner.id])
+        XCTAssertEqual(pass.joinedCount, 1, "the joiner must group with the loop")
+
+        let after = try XCTUnwrap(try store.loadManifest().routeGroups.first { $0.id == before.id })
+        XCTAssertEqual(after.representativeSummary?.workoutID, joiner.id, "the representative was re-picked")
+        var unmaterialized = after
+        unmaterialized.derivedName = nil
+        let fresh = WorkoutRouteGroup.derivedDisplayNames(
+            for: [unmaterialized],
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )[after.id]
+        XCTAssertNotEqual(fresh, stored, "the new representative would derive a different name")
+        XCTAssertEqual(after.derivedName, stored, "the stored name does not follow the re-pick")
     }
 
     func testLoadLibraryMaterializesDerivedNamesForALegacyManifest() async throws {
