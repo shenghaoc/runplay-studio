@@ -66,6 +66,26 @@ public actor WorkoutLibraryStoreActor {
     /// part of the public API.
     private var routeGroupRepresentativeLoaderSuspension: (@Sendable () async -> Void)?
 
+    /// Route-group merges committed while at least one `assignRouteGroups`
+    /// pass is suspended, as merged-away source ID → merge target ID.
+    ///
+    /// The manifest records only a merge's end state, which cannot be told
+    /// apart from a group emptying out; this journal records the operation,
+    /// so a pass that matched a newcomer into a group merged away inside
+    /// its window can land it in the merge target on its own write instead
+    /// of leaving it to the next pass. Lifetime: `mergeRouteGroups` appends
+    /// only while a pass is in flight, a re-cluster clears it (its groups
+    /// replace everything the entries describe), and it is emptied when the
+    /// last in-flight pass finishes. It is actor-isolated in-memory state,
+    /// never persisted: every read and write happens inside a synchronous
+    /// actor section, so it has no lost-update surface of its own, and a
+    /// merge it does not know about still falls back to the backlog marker.
+    private var routeGroupMergeJournal: [UUID: UUID] = [:]
+
+    /// Number of `assignRouteGroups` passes between their pre-await manifest
+    /// read and their final write; gates `routeGroupMergeJournal`.
+    private var inFlightRouteGroupAssignmentPassCount = 0
+
     /// Installs the representative-loader suspension test seam. Internal
     /// test access to the stored property above; production never calls it.
     func setRouteGroupRepresentativeLoaderSuspension(_ hook: (@Sendable () async -> Void)?) {
@@ -1015,8 +1035,10 @@ public actor WorkoutLibraryStoreActor {
     /// manual decisions (rename, re-pin, merge, deliberate removal), and
     /// groups written by an overlapping pass win over the pass's staler
     /// computation, and a group another writer removed inside the window is
-    /// not resurrected — a workout the pass matched into it falls back to
-    /// the backlog marker and is re-assigned by the next pass. Cancellation
+    /// not resurrected. A workout the pass matched into a group merged away
+    /// inside the window lands in the surviving merge target; one matched
+    /// into a group that emptied out falls back to the backlog marker and
+    /// is re-assigned by the next pass. Cancellation
     /// is cooperative (task cancellation is checked between workouts and
     /// inside matching) and surfaces as `CancellationError`.
     public func assignRouteGroups(
@@ -1056,6 +1078,14 @@ public actor WorkoutLibraryStoreActor {
                 createdCount: 0,
                 failedCount: failed
             )
+        }
+
+        inFlightRouteGroupAssignmentPassCount += 1
+        defer {
+            inFlightRouteGroupAssignmentPassCount -= 1
+            if inFlightRouteGroupAssignmentPassCount == 0 {
+                routeGroupMergeJournal.removeAll()
+            }
         }
 
         let service = RouteGroupingService()
@@ -1111,10 +1141,14 @@ public actor WorkoutLibraryStoreActor {
         // pass's copy as their sole description. A group that existed
         // pre-await and is gone from the re-read copy was removed by
         // another writer inside the window — a merge moved its members
-        // away, or it emptied out — and must not be resurrected: a workout
-        // the pass matched into it keeps a record referencing the missing
-        // group, which `migrateToCurrentVersionIfNeeded()` drops to record
-        // absence — the backlog marker — so the next pass re-matches it.
+        // away, or it emptied out — and must not be resurrected. A workout
+        // the pass matched into a group merged away inside the window
+        // follows the merge journal to the surviving merge target, where
+        // the user put its siblings. Otherwise — the group emptied out, or
+        // the journal chain ends at a group that is gone too — its record
+        // references the missing group, which
+        // `migrateToCurrentVersionIfNeeded()` drops to record absence — the
+        // backlog marker — so the next pass re-matches it.
         let preAwaitGroupIDs = Set(manifest.routeGroups.map(\.id))
         var appendedGroupIDs = Set<UUID>()
         for group in result.groups
@@ -1122,13 +1156,39 @@ public actor WorkoutLibraryStoreActor {
             guard appendedGroupIDs.insert(group.id).inserted else { continue }
             current.routeGroups.append(group)
         }
-        for assignment in result.assignments {
+        var redirectedTargetsBySourceID: [UUID: UUID] = [:]
+        for var assignment in result.assignments {
             guard survivingIDs.contains(assignment.workoutID) else { continue }
             if let freshRecord = current.routeGroupAssignment(forWorkoutID: assignment.workoutID),
                freshRecord.algorithmVersion == policy.algorithmVersion {
                 continue
             }
+            if let groupID = assignment.groupID,
+               !currentGroupIDs.contains(groupID),
+               preAwaitGroupIDs.contains(groupID),
+               let targetID = mergeTarget(ofMergedAwayGroupID: groupID, among: currentGroupIDs) {
+                assignment = WorkoutRouteGroupAssignment(
+                    workoutID: assignment.workoutID,
+                    groupID: targetID,
+                    algorithmVersion: assignment.algorithmVersion
+                )
+                redirectedTargetsBySourceID[groupID] = targetID
+            }
             current.setRouteGroupAssignment(assignment)
+        }
+        // A redirected newcomer reaches the target the way it would have had
+        // it joined the source before the merge: the target keeps its pin,
+        // and an unpinned target adopts the pass's source summary — computed
+        // over the source's members plus the newcomer — only when it
+        // outranks the target's own, the same rule `mergeRouteGroups` uses.
+        for (sourceID, targetID) in redirectedTargetsBySourceID {
+            guard let sourceSummary = passGroupsByID[sourceID]?.representativeSummary,
+                  let targetIndex = current.routeGroups.firstIndex(where: { $0.id == targetID }),
+                  current.routeGroups[targetIndex].pinnedRepresentativeWorkoutID == nil,
+                  let targetSummary = current.routeGroups[targetIndex].representativeSummary,
+                  sourceSummary.ranksAbove(targetSummary)
+            else { continue }
+            current.routeGroups[targetIndex].representativeSummary = sourceSummary
         }
         reconcileTransplantedRouteGroups(in: &current)
         current.migrateToCurrentVersionIfNeeded()
@@ -1210,6 +1270,7 @@ public actor WorkoutLibraryStoreActor {
         manifest.routeGroupAssignments = result.assignments
         manifest.migrateToCurrentVersionIfNeeded()
         try store.saveManifest(manifest)
+        routeGroupMergeJournal.removeAll()
 
         return RouteGroupReclusterPassResult(
             groups: manifest.routeGroups,
@@ -1267,6 +1328,9 @@ public actor WorkoutLibraryStoreActor {
         manifest.sortRouteGroupAssignmentsDeterministically()
         manifest.migrateToCurrentVersionIfNeeded()
         try store.saveManifest(manifest)
+        if inFlightRouteGroupAssignmentPassCount > 0 {
+            routeGroupMergeJournal[sourceID] = targetID
+        }
     }
 
     /// Removes one workout from its route group. The workout's record keeps
@@ -1338,6 +1402,26 @@ public actor WorkoutLibraryStoreActor {
         )
         manifest.migrateToCurrentVersionIfNeeded()
         try store.saveManifest(manifest)
+    }
+
+    /// Follows `routeGroupMergeJournal` from a group merged away inside an
+    /// assignment pass's window to the first merge target still present in
+    /// `presentGroupIDs`, through chained merges (A into B, then B into C).
+    /// Returns `nil` when the group was not merged away — it emptied out —
+    /// or the chain ends at a group that is gone too. Bounded by the
+    /// journal size, so it terminates without trusting the chain to be
+    /// acyclic.
+    private func mergeTarget(
+        ofMergedAwayGroupID groupID: UUID,
+        among presentGroupIDs: Set<UUID>
+    ) -> UUID? {
+        var candidate = groupID
+        for _ in 0..<routeGroupMergeJournal.count {
+            guard let next = routeGroupMergeJournal[candidate] else { return nil }
+            if presentGroupIDs.contains(next) { return next }
+            candidate = next
+        }
+        return nil
     }
 
     /// Reconciles route-group state transplanted from an assignment pass
