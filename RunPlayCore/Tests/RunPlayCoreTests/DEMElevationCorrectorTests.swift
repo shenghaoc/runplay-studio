@@ -284,7 +284,8 @@ final class DEMElevationCorrectorTests: XCTestCase {
 }
 
 /// In-memory tiles for corrector tests: the block (2130, 1450)–(2131, 1451) at
-/// zoom 12 with 32-pixel tiles, every height the same.
+/// zoom 12 with 32-pixel tiles, or every tile when `tiles` is `nil`, every
+/// height the same.
 final class SyntheticDEMTiles: DEMTileSource, @unchecked Sendable {
     static let zoom = 12
     static let tileSize = 32
@@ -300,8 +301,10 @@ final class SyntheticDEMTiles: DEMTileSource, @unchecked Sendable {
 
     let tileSet: DEMTileSetIdentity
     private let height: Float
-    private let tiles: Set<DEMTileKey>
+    private let tiles: Set<DEMTileKey>?
     var unreadable: Set<DEMTileKey> = []
+    /// Thrown by every load, like a folder that disappeared mid-import.
+    var loadError: (any Error)?
     var wronglySized: Set<DEMTileKey> = []
     private(set) var requests: [[DEMTileKey]] = []
 
@@ -309,20 +312,21 @@ final class SyntheticDEMTiles: DEMTileSource, @unchecked Sendable {
 
     init(
         height: Float,
-        tiles: [DEMTileKey] = block,
+        tiles: [DEMTileKey]? = block,
         folderID: UUID = folderID,
         zoom: Int = zoom,
         tileSize: Int = tileSize
     ) {
         self.height = height
-        self.tiles = Set(tiles)
+        self.tiles = tiles.map(Set.init)
         self.tileSet = DEMTileSetIdentity(folderID: folderID, zoom: zoom, tileSize: tileSize)
     }
 
     func loadTiles(_ keys: [DEMTileKey], isCancelled: @Sendable () -> Bool) throws -> DEMTileLoadResult {
         requests.append(keys)
+        if let loadError { throw loadError }
         var result = DEMTileLoadResult()
-        for key in keys where tiles.contains(key) {
+        for key in keys where tiles?.contains(key) ?? true {
             if unreadable.contains(key) {
                 result.unreadableTiles.append(key)
             } else {

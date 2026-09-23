@@ -205,6 +205,9 @@ public struct FITSessionImportItemResult: Hashable, Sendable {
     public var detail: String?
     /// Set when the workout was staged successfully; commit may still fail.
     public var importedWorkoutID: UUID?
+    /// The DEM correction the staged workout carries; `nil` when the import
+    /// did not correct elevation or the correction could not finish.
+    public var elevationCorrection: DEMElevationCorrection?
 
     public init(
         candidateID: String,
@@ -212,7 +215,8 @@ public struct FITSessionImportItemResult: Hashable, Sendable {
         sessionName: String,
         status: FITSessionCandidateStatus,
         detail: String? = nil,
-        importedWorkoutID: UUID? = nil
+        importedWorkoutID: UUID? = nil,
+        elevationCorrection: DEMElevationCorrection? = nil
     ) {
         self.candidateID = candidateID
         self.sourceIndex = sourceIndex
@@ -220,6 +224,7 @@ public struct FITSessionImportItemResult: Hashable, Sendable {
         self.status = status
         self.detail = detail
         self.importedWorkoutID = importedWorkoutID
+        self.elevationCorrection = elevationCorrection
     }
 
     /// User-facing report row label. Never treat bare `.ready` as “Imported”.

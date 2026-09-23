@@ -317,6 +317,9 @@ public struct WorkoutBatchImportItemResult: Hashable, Sendable {
     public var status: WorkoutArchiveCandidateStatus
     public var detail: String?
     public var importedWorkoutID: UUID?
+    /// The DEM correction the staged workout carries; `nil` when the import
+    /// did not correct elevation or the correction could not finish.
+    public var elevationCorrection: DEMElevationCorrection?
 
     public init(
         candidateID: String,
@@ -324,7 +327,8 @@ public struct WorkoutBatchImportItemResult: Hashable, Sendable {
         activityName: String? = nil,
         status: WorkoutArchiveCandidateStatus,
         detail: String? = nil,
-        importedWorkoutID: UUID? = nil
+        importedWorkoutID: UUID? = nil,
+        elevationCorrection: DEMElevationCorrection? = nil
     ) {
         self.candidateID = candidateID
         self.archiveRelativePath = archiveRelativePath
@@ -332,6 +336,7 @@ public struct WorkoutBatchImportItemResult: Hashable, Sendable {
         self.status = status
         self.detail = detail
         self.importedWorkoutID = importedWorkoutID
+        self.elevationCorrection = elevationCorrection
     }
 }
 

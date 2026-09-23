@@ -32,18 +32,18 @@ cd "$(dirname "$0")/.."
 # not inferred: five test methods, three skipped, reports `Executed 5 tests,
 # with 3 tests skipped`), so N - S is the number that genuinely ran.
 #
-# FLOOR provenance: 1020, against 1080 actually run on main (Executed 1096,
-# skipped 16, non-root, swift:6.4.0-resolute) -- about 5% below the real
-# count. The floor exists to catch tests that vanish WITHOUT printing a skip
+# FLOOR provenance: 1145, against 1207 actually run on the head that raised
+# it (Executed 1224, skipped 17, non-root, swift:6.4.0-resolute) -- about 5%
+# below the real count. The floor exists to catch tests that vanish WITHOUT printing a skip
 # (a class compiled out under `#if os(macOS)` or a `canImport` guard false on
 # corelibs, or dropped from the target), which the allowlist below cannot
 # see. So it is tight on purpose: the headroom is room for a PR that
 # legitimately deletes a few tests, not tolerance for drift. A PR that
 # removes more than that lowers it deliberately and says why; never lower it
 # to make a disappearance you have not explained pass. Raise it in the PR
-# that adds Core tests once the headroom passes ~10% (RAN > ~1130 today),
+# that adds Core tests once the headroom passes ~10% (RAN > ~1270 today),
 # back to ~5% below the new count.
-FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-1020}"
+FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-1145}"
 
 # SKIP REASONS ARE ALLOWLISTED, NOT COUNTED. A ceiling on the skip count
 # (`64`) was the first design and was rejected: it does not catch

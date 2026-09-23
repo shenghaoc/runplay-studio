@@ -243,6 +243,19 @@ public struct DEMElevationCorrection: Hashable, Sendable {
     }
 }
 
+extension DEMElevationCorrection.Outcome {
+    /// The outcome's name in snapshots and exports; decoding reads the same
+    /// names back.
+    var name: String {
+        switch self {
+        case .applied: "applied"
+        case .noCoverage: "noCoverage"
+        case .tileBudgetExceeded: "tileBudgetExceeded"
+        case .optedOut: "optedOut"
+        }
+    }
+}
+
 extension DEMElevationCorrection: Codable {
     private enum CodingKeys: String, CodingKey {
         case outcome, minimumRequiredTileCount, tileBudget
@@ -288,15 +301,8 @@ extension DEMElevationCorrection: Codable {
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        switch outcome {
-        case .applied:
-            try container.encode(OutcomeKind.applied.rawValue, forKey: .outcome)
-        case .noCoverage:
-            try container.encode(OutcomeKind.noCoverage.rawValue, forKey: .outcome)
-        case .optedOut:
-            try container.encode(OutcomeKind.optedOut.rawValue, forKey: .outcome)
-        case .tileBudgetExceeded(let minimumRequiredTileCount, let tileBudget):
-            try container.encode(OutcomeKind.tileBudgetExceeded.rawValue, forKey: .outcome)
+        try container.encode(outcome.name, forKey: .outcome)
+        if case .tileBudgetExceeded(let minimumRequiredTileCount, let tileBudget) = outcome {
             try container.encode(minimumRequiredTileCount, forKey: .minimumRequiredTileCount)
             try container.encode(tileBudget, forKey: .tileBudget)
         }
