@@ -437,15 +437,25 @@ refuses uid 0. The job's container starts as root (its `apt-get` step needs
 it), so the step hands the checkout to an unprivileged uid, drops to it with
 `setpriv`, and hands the tree back afterwards.
 
-A **secondary floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 900) guards a collapse in the
-count that actually ran. Provenance: 900 against 1,080 executed on current `main`
-under the non-root container user (`Executed 1096, skipped 16`), loose by design —
-it only needs to catch a fall toward zero, which is what mass-skipping looks like.
-It never falsely fails as Core grows, so it does not rot; at most it stops biting.
-It is not redundant with the allowlist: the allowlist sees only tests that
-*report* a skip, while a test class compiled out on Linux (`#if os(macOS)`, a
-`canImport` guard that is false on corelibs) or dropped from the target vanishes
-without a skip line. Only the count sees that.
+A **floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 1,020) guards the count that
+actually ran. It is not redundant with the allowlist: the allowlist sees only
+tests that *print* a skip, while a test class compiled out on Linux
+(`#if os(macOS)`, a `canImport` guard that is false on corelibs) or dropped from
+the target vanishes without a line, so the count is the only guard against
+silent disappearance, and it is tight enough to bite. Provenance: 1,020 against
+1,080 executed on `main` under the non-root container user (`Executed 1096,
+skipped 16`), about 5% headroom. The headroom is room for a PR that
+legitimately deletes a few tests, not tolerance for drift. A PR removing more
+lowers the floor deliberately and says why. Raise it back to ~5% below the real
+count in the PR that adds Core tests once the headroom passes ~10%.
+
+The parser is itself tested: `./scripts/linux-container-verify.sh --self-test`
+runs `gate_log` over fixtures in `scripts/fixtures/linux-container-verify/`
+(two real CI logs from the negative control, plus one synthetic log per failure
+path) and asserts each verdict. Every gate run self-tests first on the image's
+`mawk`, and the macOS verification job runs it on BSD awk. A parser change that
+breaks a verdict fails there, not on a merge. A new skip shape or failure path
+gets a fixture in the same change.
 
 **A failure means investigate, never bump.** A *drop* in executed tests or a
 *rise* in skips is a signal that something changed on the test side; find out

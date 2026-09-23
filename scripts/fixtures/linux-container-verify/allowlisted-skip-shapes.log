@@ -1,0 +1,10 @@
+Test Suite 'All tests' started at 2026-09-23 03:29:18.000
+/src/RunPlayCore/Tests/RunPlayCoreTests/RouteQualityPipelineBenchmark.swift:15: RouteQualityPipelineBenchmark.testRouteQualityPipelineBenchmark : Test skipped: required false value but got true - Set RUNPLAY_BENCHMARK=1 to run the release benchmark.
+Test Case 'RouteQualityPipelineBenchmark.testRouteQualityPipelineBenchmark' skipped (0.0 seconds)
+/src/RunPlayCore/Tests/RunPlayCoreTests/RouteGroupingMeasurementTests.swift:56: RouteGroupingMeasurementTests.testMutualCoverageGrid : Test skipped: required true value but got false - Set RUNPLAY_ROUTE_GROUPING_MEASURE=1 to print the mutual-coverage grid
+Test Case 'RouteGroupingMeasurementTests.testMutualCoverageGrid' skipped (0.0 seconds)
+/src/RunPlayCore/Tests/RunPlayCoreTests/RemainingCoreHotspotProfile.swift:18: RemainingCoreHotspotProfile.testFamilyA_AnalysisProfile : Test skipped - Set RUNPLAY_CORE_HOTSPOT_PROFILE=1
+Test Case 'RemainingCoreHotspotProfile.testFamilyA_AnalysisProfile' skipped (0.0 seconds)
+Test Case 'FITParserTests.testDeveloperDataFieldsAreSkippedWithoutDesyncing' passed (0.0 seconds)
+Test Suite 'All tests' passed at 2026-09-23 03:29:55.000
+	 Executed 1100 tests, with 3 tests skipped and 0 failures (0 unexpected) in 36.0 (36.0) seconds

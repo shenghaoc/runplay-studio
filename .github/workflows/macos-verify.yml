@@ -45,6 +45,13 @@ jobs:
       - name: Validate C++ architecture boundaries
         run: ./scripts/validate-cpp-boundaries.sh
 
+      # The Linux Core gate's log parser is shell + awk. Every Linux gate
+      # run self-tests it on the image's mawk before trusting it; this runs
+      # the same fixtures on BSD awk, which is what the docker/podman modes
+      # parse with on a developer's Mac. Seconds, no Swift build.
+      - name: Self-test Linux gate log parser (BSD awk)
+        run: ./scripts/linux-container-verify.sh --self-test
+
       - name: Build RunPlayEngineCpp
         if: inputs.engine
         run: >-
