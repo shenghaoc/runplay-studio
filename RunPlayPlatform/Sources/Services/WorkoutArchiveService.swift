@@ -13,11 +13,14 @@ public protocol WorkoutArchiveScanning: Sendable {
 
 /// Imports selected archive candidates into staged workouts via the library actor.
 public protocol WorkoutArchiveImporting: Sendable {
+    /// `elevationCorrection`, when present, corrects each activity's elevation
+    /// before it is staged; a failed correction never fails the activity.
     func importCandidates(
         _ selection: WorkoutBatchImportSelection,
         from archiveURL: URL,
         existingWorkouts: [RunWorkout],
         storeActor: WorkoutLibraryStoreActor,
+        elevationCorrection: DEMImportElevationCorrection?,
         progress: @Sendable (WorkoutBatchImportProgress) async -> Void
     ) async throws -> WorkoutBatchImportReport
 }
@@ -284,6 +287,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         from archiveURL: URL,
         existingWorkouts: [RunWorkout],
         storeActor: WorkoutLibraryStoreActor,
+        elevationCorrection: DEMImportElevationCorrection? = nil,
         progress: @Sendable (WorkoutBatchImportProgress) async -> Void = { _ in }
     ) async throws -> WorkoutBatchImportReport {
         try Task.checkCancellation()
@@ -456,7 +460,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     provenance: provenance
                 )
 
-                let workout: RunWorkout
+                var workout: RunWorkout
                 do {
                     var parsed = try WorkoutImporterFactory.importWorkout(from: input)
                     let meta = StravaActivityMetadataRow(
@@ -508,6 +512,11 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     continue
                 }
 
+                let elevationRecord = try elevationCorrection?.apply(
+                    to: &workout,
+                    isCancelled: { Task.isCancelled }
+                )
+
                 await progress(WorkoutBatchImportProgress(
                     phase: .staging,
                     completedCount: completed,
@@ -532,7 +541,8 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                         activityName: displayName,
                         status: .ready,
                         detail: nil,
-                        importedWorkoutID: workoutID
+                        importedWorkoutID: workoutID,
+                        elevationCorrection: elevationRecord
                     ))
                 } catch is CancellationError {
                     throw CancellationError()

@@ -205,6 +205,33 @@ final class StravaArchiveImportTests: XCTestCase {
 
     // MARK: - Import end-to-end
 
+    func testImportCorrectsElevationBeforeStagingWhenAsked() async throws {
+        let csv = activitiesCSV(rows: [(id: "301", name: "Hill", type: "Run", file: "activities/301.gpx")])
+        let zip = try writeZip(named: "dem.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/301.gpx", makeGPX(name: "Hill", lat: 46.44, lon: 7.3)),
+        ])
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("lib"))
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let service = StravaArchiveService()
+        let scan = try await service.scanArchive(at: zip, existingWorkouts: [])
+
+        let report = try await service.importCandidates(
+            WorkoutBatchImportSelection(selectedCandidateIDs: scan.candidates.map(\.id), candidates: scan.candidates),
+            from: zip,
+            existingWorkouts: [],
+            storeActor: storeActor,
+            elevationCorrection: DEMImportElevationCorrection(source: UniformDEMTiles(height: 1_234))
+        )
+
+        XCTAssertEqual(report.importedCount, 1)
+        let record = try XCTUnwrap(report.items.first?.elevationCorrection)
+        XCTAssertEqual(record.outcome, .applied)
+        XCTAssertEqual(record.coverage.replacedRecordedPointCount, 3, "the GPX states no altitude sensor")
+        let saved = try store.loadWorkout(id: try XCTUnwrap(report.items.first?.importedWorkoutID))
+        XCTAssertTrue(saved.routePoints.allSatisfy { $0.demAltitudeMeters == 1_234 })
+    }
+
     func testImportValidActivitiesAndSecondImportDuplicates() async throws {
         let gpx1 = makeGPX(name: "A", lat: 37.1)
         let gpx2 = makeGPX(name: "B", lat: 37.2)

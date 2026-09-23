@@ -51,7 +51,7 @@ RunPlayCore/                   # Platform-neutral Swift facade (no UI frameworks
 └── Tests/
     └── RunPlayCoreTests/      # Platform-neutral tests (includes engine bridge tests)
 
-RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit values)
+RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit values, ImageIO DEM tiles)
 ├── Sources/                   # Route/map data and rendering services
 └── Tests/                     # Platform integration tests
 

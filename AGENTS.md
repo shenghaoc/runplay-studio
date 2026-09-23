@@ -181,7 +181,8 @@ not import `RunPlayEngineCpp` directly.
   lifecycle, and publish the public alignment models. Use `GeoDistance` for
   remaining Swift geodesy stages, not `CLLocation`.
 - **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
-  MapKit, and non-UI Combine. It must not depend on `RunPlayStudio`.
+  MapKit, ImageIO (DEM tile decoding), and non-UI Combine. It must not depend
+  on `RunPlayStudio`.
 - **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
   export.
 
