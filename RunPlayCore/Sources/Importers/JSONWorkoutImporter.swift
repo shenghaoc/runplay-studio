@@ -80,6 +80,12 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         var paceSecondsPerKilometer: Double?
         var heartRateBPM: Double?
         var cadence: Double?
+        var powerWatts: Double?
+        var groundContactTimeMilliseconds: Double?
+        var verticalOscillationMillimeters: Double?
+        var verticalRatioPercent: Double?
+        var stanceTimeBalancePercent: Double?
+        var stepLengthMeters: Double?
         var horizontalAccuracy: Double?
         var routeSegmentIndex: Int?
     }
@@ -170,6 +176,22 @@ public struct JSONWorkoutImporter: WorkoutImporting {
                 paceSecondsPerKilometer: rawPoint.paceSecondsPerKilometer,
                 heartRateBPM: rawPoint.heartRateBPM,
                 cadence: rawPoint.cadence,
+                powerWatts: Self.plausible(rawPoint.powerWatts, MetricValidation.isValidPower),
+                groundContactTimeMilliseconds: Self.plausible(
+                    rawPoint.groundContactTimeMilliseconds,
+                    MetricValidation.isValidGroundContactTime),
+                verticalOscillationMillimeters: Self.plausible(
+                    rawPoint.verticalOscillationMillimeters,
+                    MetricValidation.isValidVerticalOscillation),
+                verticalRatioPercent: Self.plausible(
+                    rawPoint.verticalRatioPercent,
+                    MetricValidation.isValidVerticalRatio),
+                stanceTimeBalancePercent: Self.plausible(
+                    rawPoint.stanceTimeBalancePercent,
+                    MetricValidation.isValidStanceTimeBalance),
+                stepLengthMeters: Self.plausible(
+                    rawPoint.stepLengthMeters,
+                    MetricValidation.isValidStepLength),
                 horizontalAccuracy: rawPoint.horizontalAccuracy,
                 routeSegmentIndex: rawPoint.routeSegmentIndex ?? 0
             )
@@ -225,6 +247,18 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         }
 
         return workout
+    }
+
+    /// Power and running dynamics are the fields a hand-written or
+    /// third-party JSON file is most likely to carry in the wrong unit, so
+    /// an out-of-range value is dropped at the boundary rather than
+    /// persisted; every consumer applies the same `MetricValidation` check.
+    private static func plausible(
+        _ value: Double?,
+        _ isValid: (Double) -> Bool
+    ) -> Double? {
+        guard let value, isValid(value) else { return nil }
+        return value
     }
 
     private func parseSource(_ source: String?) -> WorkoutSource {
