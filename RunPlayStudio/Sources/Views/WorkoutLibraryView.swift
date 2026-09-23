@@ -576,6 +576,9 @@ struct WorkoutLibraryView: View {
         // bare here while the Routes workspace shows it with a token, and
         // deriving per row would re-derive the entire set O(n²) times.
         let names = derivedRouteGroupNames
+        // Run count and date span under each name, from one pass over the
+        // library entries — the same membership the filter evaluates.
+        let details = RouteGroupMenuDetail.details(for: viewModel.entries)
         Menu("Route") {
             Button("Any Route") { viewModel.routeFilter = .anyRoute }
                 .accessibilityHint("Do not restrict by route")
@@ -585,14 +588,19 @@ struct WorkoutLibraryView: View {
             if !candidates.isEmpty {
                 Divider()
                 ForEach(Array(candidates)) { group in
-                    Button {
-                        viewModel.routeFilter = .group(group.id)
-                    } label: {
-                        HStack {
-                            Text(Self.routeFilterMenuName(for: group, derivedNames: names))
-                            if case .group(let selected) = viewModel.routeFilter, selected == group.id {
-                                Image(systemName: "checkmark")
-                            }
+                    // A Toggle, not a Button with a checkmark image: the
+                    // menu draws its own checkmark (and VoiceOver reports
+                    // the state), while the label's first Text becomes the
+                    // item title and the second its subtitle. An HStack
+                    // label would flatten the subtitle away. Choosing the
+                    // checked route again keeps it selected.
+                    Toggle(isOn: Binding(
+                        get: { viewModel.routeFilter == .group(group.id) },
+                        set: { _ in viewModel.routeFilter = .group(group.id) }
+                    )) {
+                        Text(Self.routeFilterMenuName(for: group, derivedNames: names))
+                        if let detail = details[group.id] {
+                            Text(detail.subtitle())
                         }
                     }
                     .accessibilityHint("Show only runs on this route")
