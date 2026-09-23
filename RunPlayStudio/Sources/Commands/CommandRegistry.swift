@@ -1,4 +1,5 @@
 import Foundation
+import RunPlayCore
 import SwiftUI
 
 /// Workspace context required for a command to be meaningful.
@@ -27,6 +28,13 @@ enum CommandID: String, CaseIterable, Sendable, Equatable {
     case importFile
     case importStravaArchive
     case watchFoldersSettings
+    case exportSummaryJSON
+    case exportDistanceSplitsCSV
+    case exportRecordedLapsCSV
+    case exportSegmentsCSV
+    case exportSummaryCardPNG
+    case exportRouteReplayMP4
+    case exportAllCSV
     case workoutOverview
     case workoutCharts
     case workoutSplits
@@ -47,6 +55,11 @@ enum CommandID: String, CaseIterable, Sendable, Equatable {
     case replayRestart
     case mapFit
     case mapTogglePresentation
+    case routeColorSolid
+    case routeColorPace
+    case routeColorHeartRate
+    case routeColorPower
+    case routeColorElevation
     case keyboardShortcutsHelp
 }
 
@@ -72,6 +85,20 @@ struct CommandDefinition: Equatable, Sendable, Identifiable {
             return "\(modifierSymbols)\(keyEquivalent) (when focused)"
         }
         return "\(modifierSymbols)\(keyEquivalent)"
+    }
+
+    /// Menu-bar shortcut for a single ASCII letter or digit key equivalent.
+    ///
+    /// Nil for menu-only commands and for named keys (Space, arrows), whose
+    /// call sites spell out the SwiftUI key directly.
+    var menuKeyboardShortcut: KeyboardShortcut? {
+        guard keyEquivalent.count == 1,
+              let character = keyEquivalent.lowercased().first,
+              character.isASCII,
+              character.isLetter || character.isNumber else {
+            return nil
+        }
+        return KeyboardShortcut(KeyEquivalent(character), modifiers: modifiers)
     }
 
     private var modifierSymbols: String {
@@ -122,6 +149,83 @@ enum CommandRegistry {
             workspace: .any,
             purpose: "Manage folders that import new workout files automatically",
             accessibilityDescription: "Open watch folder settings",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportSummaryJSON,
+            menuTitle: "Summary (JSON)…",
+            menu: "File",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Export the workout summary as JSON",
+            accessibilityDescription: "Export workout summary as JSON",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportDistanceSplitsCSV,
+            menuTitle: "Distance Splits (CSV)…",
+            menu: "File",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Export calculated kilometer splits as CSV",
+            accessibilityDescription: "Export distance splits as CSV",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportRecordedLapsCSV,
+            menuTitle: "Recorded Laps (CSV)…",
+            menu: "File",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Export source-recorded laps as CSV. Disabled when the workout has no recorded laps.",
+            accessibilityDescription: "Export recorded laps as CSV",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportSegmentsCSV,
+            menuTitle: "Segments (CSV)…",
+            menu: "File",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Export detected segments as CSV",
+            accessibilityDescription: "Export detected segments as CSV",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportSummaryCardPNG,
+            menuTitle: "Summary Card (PNG)…",
+            menu: "File",
+            keyEquivalent: "E",
+            modifiers: .command,
+            workspace: .workout,
+            purpose: "Open options for exporting the workout summary card as a PNG image",
+            accessibilityDescription: "Export summary card as PNG image",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportRouteReplayMP4,
+            menuTitle: "Route Replay (MP4)…",
+            menu: "File",
+            keyEquivalent: "E",
+            modifiers: [.command, .shift],
+            workspace: .workout,
+            purpose: "Open options for exporting the route replay as an MP4 video. Disabled when the workout cannot be exported as video.",
+            accessibilityDescription: "Export route replay as MP4 video",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .exportAllCSV,
+            menuTitle: "All (CSV)…",
+            menu: "File",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Export distance splits, recorded laps, and segments as one combined CSV",
+            accessibilityDescription: "Export combined CSV",
             localOnly: false
         ),
         CommandDefinition(
@@ -345,6 +449,61 @@ enum CommandRegistry {
             localOnly: false
         ),
         CommandDefinition(
+            id: .routeColorSolid,
+            menuTitle: "Solid",
+            menu: "View",
+            keyEquivalent: "0",
+            modifiers: [.command, .option],
+            workspace: .workout,
+            purpose: "Show the workout route in the primary color",
+            accessibilityDescription: "Route color solid",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .routeColorPace,
+            menuTitle: "Pace",
+            menu: "View",
+            keyEquivalent: "1",
+            modifiers: [.command, .option],
+            workspace: .workout,
+            purpose: "Color the workout route by relative pace. Disabled when pace coloring is unavailable.",
+            accessibilityDescription: "Route color by pace",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .routeColorHeartRate,
+            menuTitle: "Heart Rate",
+            menu: "View",
+            keyEquivalent: "2",
+            modifiers: [.command, .option],
+            workspace: .workout,
+            purpose: "Color the workout route by relative heart rate. Disabled when heart-rate coloring is unavailable.",
+            accessibilityDescription: "Route color by heart rate",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .routeColorPower,
+            menuTitle: "Power",
+            menu: "View",
+            keyEquivalent: "3",
+            modifiers: [.command, .option],
+            workspace: .workout,
+            purpose: "Color the workout route by relative running power. Disabled when power coloring is unavailable.",
+            accessibilityDescription: "Route color by power",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .routeColorElevation,
+            menuTitle: "Elevation",
+            menu: "View",
+            keyEquivalent: "4",
+            modifiers: [.command, .option],
+            workspace: .workout,
+            purpose: "Color the workout route by corrected elevation. Disabled when elevation coloring is unavailable.",
+            accessibilityDescription: "Route color by elevation",
+            localOnly: false
+        ),
+        CommandDefinition(
             id: .keyboardShortcutsHelp,
             menuTitle: "Keyboard Shortcuts",
             menu: "Help",
@@ -382,6 +541,17 @@ enum CommandRegistry {
             }
         }
         return duplicates
+    }
+
+    /// The View → Route Color command for one route color mode.
+    static func routeColorCommand(for mode: WorkoutRouteColorMode) -> CommandID {
+        switch mode {
+        case .solid: return .routeColorSolid
+        case .pace: return .routeColorPace
+        case .heartRate: return .routeColorHeartRate
+        case .power: return .routeColorPower
+        case .correctedElevation: return .routeColorElevation
+        }
     }
 
     /// Known intentional non-conflicts with standard macOS commands.

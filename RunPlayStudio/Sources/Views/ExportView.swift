@@ -9,6 +9,8 @@ struct ExportView: View {
     let workout: RunWorkout
     let segments: [SegmentHighlight]
     let analysisContext: WorkoutAnalysisContext?
+    /// Delivers File → Export menu-bar requests; nil keeps the toolbar menu only.
+    var commandRelay: ExportCommandRelay? = nil
 
     @AppStorage("routeColorMode") private var storedRouteColorMode: String = WorkoutRouteColorMode.solid.rawValue
     @Environment(\.colorScheme) private var colorScheme
@@ -114,6 +116,13 @@ struct ExportView: View {
         .blocksBackgroundCommands(
             showingError || showingSuccess || pngViewModel != nil || videoViewModel != nil
         )
+        .onChange(of: commandRelay?.pendingCommand) { _, _ in
+            guard let command = commandRelay?.takePendingCommand() else { return }
+            perform(command)
+        }
+        .onChange(of: canExportVideo, initial: true) { _, canExport in
+            commandRelay?.canExportRouteReplay = canExport
+        }
         .task(id: videoEligibilityKey) {
             videoEligibility = nil
             let key = videoEligibilityKey
@@ -147,6 +156,20 @@ struct ExportView: View {
             firstPointID: workout.routePoints.first?.id,
             lastPointID: workout.routePoints.last?.id
         )
+    }
+
+    private func perform(_ command: ExportCommand) {
+        switch command {
+        case .summaryJSON: exportJSON()
+        case .distanceSplitsCSV: exportSplitsCSV()
+        case .recordedLapsCSV:
+            guard !workout.recordedLaps.isEmpty else { return }
+            exportRecordedLapsCSV()
+        case .segmentsCSV: exportSegmentsCSV()
+        case .summaryCardPNG: openPNGSheet()
+        case .routeReplayMP4: openVideoSheet()
+        case .allCSV: exportCombinedCSV()
+        }
     }
 
     private func openPNGSheet() {

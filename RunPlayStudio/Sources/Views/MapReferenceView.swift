@@ -133,7 +133,11 @@ struct MapReferenceView: View {
                 displayMode = displayMode == .threeD ? .twoD : .threeD
                 presentationRequest += 1
             },
-            canTogglePresentation: { !routePoints.isEmpty }
+            canTogglePresentation: { !routePoints.isEmpty },
+            supportsRouteColor: { mapViewModel != nil },
+            routeColorMode: { preferredMode },
+            canSelectRouteColor: { $0.isSelectable(in: mapViewModel?.availability) },
+            selectRouteColor: { selectRouteColor($0) }
         ))
         .onAppear {
             syncPreferredMode()
@@ -191,14 +195,13 @@ struct MapReferenceView: View {
         HStack(spacing: AppDesign.Spacing.small) {
             Menu {
                 ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
-                    let available = mapViewModel?.availability.isAvailable(mode) ?? (mode == .solid)
+                    let available = mode.isSelectable(in: mapViewModel?.availability)
                     let modeHelp = routeColorModeHelp(mode, available: available)
                     Button {
-                        storedColorModeRaw = mode.rawValue
-                        mapViewModel?.preferredMode = mode
+                        selectRouteColor(mode)
                     } label: {
                         HStack {
-                            if !available, mode != .solid {
+                            if !available {
                                 Text("\(mode.displayName) — \(String(localized: "Unavailable"))")
                             } else {
                                 Text(mode.displayName)
@@ -208,7 +211,7 @@ struct MapReferenceView: View {
                             }
                         }
                     }
-                    .disabled(!available && mode != .solid)
+                    .disabled(!available)
                     .help(modeHelp)
                     .accessibilityHint(modeHelp)
                 }
@@ -261,6 +264,11 @@ struct MapReferenceView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: presentation.effectiveMode)
         }
+    }
+
+    private func selectRouteColor(_ mode: WorkoutRouteColorMode) {
+        storedColorModeRaw = mode.rawValue
+        mapViewModel?.preferredMode = mode
     }
 
     private func syncPreferredMode() {
