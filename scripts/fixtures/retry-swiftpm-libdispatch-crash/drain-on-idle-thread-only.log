@@ -1,0 +1,21 @@
+Building for debugging...
+[Pre-planning 1 / 97]
+
+*** Signal 11: Backtracing from 0x74fcb5e9c2f4... done ***
+
+*** Program crashed: Bad pointer dereference at 0x0000000000000018 ***
+
+Platform: x86_64 Linux (Ubuntu 26.04.1 LTS)
+
+Thread 0 "swift-build" crashed:
+
+0      0x000074fcb5e9c2f4 swift_release + 20 in libswiftCore.so
+1 [ra] 0x000059b740a1c3e2 <unknown> in swift-package
+
+Thread 2 "DispatchWorker":
+
+0      0x000074fcb5ba196a _dispatch_event_loop_drain + 1130 in libdispatch.so
+1 [ra] 0x000074fcb5b97022 _dispatch_mgr_invoke + 129 in libdispatch.so
+2 [ra] 0x000074fcb5b96f8d _dispatch_mgr_thread + 108 in libdispatch.so
+
+Backtrace took 19.41s
