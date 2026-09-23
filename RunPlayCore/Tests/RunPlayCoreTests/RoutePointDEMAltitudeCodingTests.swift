@@ -13,7 +13,10 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
         let point = makePoint(demAltitudeMeters: nil)
         let legacyShape = PreDEMRoutePointShape(point)
 
-        for encoder in [Self.libraryStoreEncoder(), Self.defaultOrderEncoder()] {
+        // Keys are compared under `.sortedKeys`, as the library store writes
+        // them: without it JSONEncoder does not guarantee key order, so two
+        // encodes of identical content may differ byte for byte.
+        for encoder in [Self.libraryStoreEncoder(), Self.compactSortedEncoder()] {
             let encoded = try encoder.encode(point)
             let expected = try encoder.encode(legacyShape)
             XCTAssertEqual(
@@ -254,9 +257,12 @@ final class RoutePointDEMAltitudeCodingTests: XCTestCase {
         return decoder
     }
 
-    /// Unsorted output exposes key order as well as key set.
-    private static func defaultOrderEncoder() -> JSONEncoder {
-        JSONEncoder()
+    /// The store's key order without its whitespace.
+    private static func compactSortedEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
     }
 }
 
