@@ -10,10 +10,11 @@ public struct RoutePoint: Identifiable, Hashable, Sendable {
     /// Terrain elevation in metres sampled from user-supplied DEM tiles.
     ///
     /// Derived, not source data: it sits beside `altitudeMeters` and never
-    /// replaces it. `nil` when the point has not been DEM-corrected, when no
-    /// tile covered it, or when recorded barometric altitude outranks DEM.
-    /// Uncorrected points omit the key when encoded, so snapshots without DEM
-    /// data keep their existing size and bytes.
+    /// overwrites it. When present, elevation analysis reads it in place of
+    /// `altitudeMeters` (see `ElevationProfile`). `nil` when the point has not
+    /// been DEM-corrected, when no tile covered it, or when recorded barometric
+    /// altitude outranks DEM. Uncorrected points omit the key when encoded, so
+    /// snapshots without DEM data keep their existing size and bytes.
     public var demAltitudeMeters: Double?
     public var distanceFromStartMeters: Double
     public var elapsedSeconds: Double

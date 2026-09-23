@@ -130,9 +130,11 @@ not import `RunPlayEngineCpp` directly.
   classification, distance-domain smoothing, cumulative corrected signed
   change, reliable-interval counting, and deadband-confirmed cumulative
   ascent/descent — through one bulk call per profile build. Swift retains
-  route-point UUIDs, public `ElevationProfile`/`ElevationProfileSample`
-  models, all distance-query APIs, policy ownership, cancellation,
-  diagnostics, and persistence. For pace and heart-rate route-metric profiles,
+  route-point UUIDs, each point's source altitude (DEM or recorded) and the
+  continuity break at a switch between them, public
+  `ElevationProfile`/`ElevationProfileSample` models, all distance-query APIs,
+  policy ownership, cancellation, diagnostics, and persistence. For pace and
+  heart-rate route-metric profiles,
   C++23 performs deterministic distance-weighted lower/median/upper scale
   construction, numeric normalization, bucket assignment, and numeric summary
   construction through one bulk call per profile finalization, using a

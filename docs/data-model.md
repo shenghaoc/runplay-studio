@@ -142,7 +142,8 @@ altitude lives in an aligned, derived `ElevationProfile`. Missing source
 altitude remains missing rather than becoming zero.
 
 `demAltitudeMeters` is derived terrain elevation sampled from user-supplied DEM
-tiles. It sits beside `altitudeMeters` and never replaces it. The key is
+tiles. It sits beside `altitudeMeters` and never overwrites it; where it is
+present, elevation analysis reads it in place of `altitudeMeters`. The key is
 written only when a value is present (`encodeIfPresent`), so a snapshot with no
 DEM data encodes byte-for-byte as it did before the field existed, and older
 snapshots decode it as `nil`. The JSON importer deliberately does not read it:
@@ -280,6 +281,7 @@ struct ElevationProfileSample: Hashable, Sendable {
     let sourceAltitudeWasRejected: Bool
     let cumulativeAscentMeters: Double
     let cumulativeDescentMeters: Double
+    let sourceAltitudeIsDEM: Bool          // analysed at DEM, not recorded
 }
 
 struct ElevationProfile: Sendable {
@@ -287,13 +289,21 @@ struct ElevationProfile: Sendable {
     let hasMeaningfulElevation: Bool
     let totalAscentMeters: Double?
     let totalDescentMeters: Double?
+    let sourceCounts: ElevationSourceCounts  // DEM vs recorded points
 }
 ```
+
+Each point's source altitude is its finite `demAltitudeMeters` when present and
+its `altitudeMeters` otherwise. A switch between the two sources ends one
+elevation run and starts the next, exactly as a route-segment boundary does, so
+the offset between sources is never counted as ascent or descent, never inside
+a climb or descent highlight, and never interpolated across.
 
 The profile also provides corrected altitude at cumulative distance and
 threshold-confirmed ascent, descent, or signed elevation change over a distance
 range. Distance lookup respects duplicate-distance boundary roles and returns
-no interpolated elevation across a route segment or missing-altitude run.
+no interpolated elevation across a route segment, a missing-altitude run, or a
+switch between DEM and recorded altitude.
 
 `WorkoutAnalysisContext` pairs one profile with a `WorkoutTimeline` built from
 that profile. `WorkoutAnalyzer` shares this immutable value with summary,

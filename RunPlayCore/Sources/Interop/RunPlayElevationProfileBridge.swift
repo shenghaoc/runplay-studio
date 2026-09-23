@@ -136,6 +136,7 @@ enum RunPlayElevationProfileBridge {
 
         var compactGroup: Int32 = 0
         var previousRouteSegment: Int?
+        var previousUsesDEM = false
 
         for index in 0..<count {
             if index.isMultiple(of: stride), isCancelled() {
@@ -144,15 +145,26 @@ enum RunPlayElevationProfileBridge {
 
             let point = routePoints[index]
             let segment = point.routeSegmentIndex
-            if let previous = previousRouteSegment, segment != previous {
+            let demAltitude = point.analysisDEMAltitudeMeters
+            let usesDEM = demAltitude != nil
+            if let previous = previousRouteSegment,
+               segment != previous || usesDEM != previousUsesDEM {
                 // Continuity groups are compact 0-based and increase by one.
+                // A switch between DEM and recorded altitude starts a new
+                // group, like a route-segment boundary, so no spike test,
+                // interpolation, smoothing window or gain/loss interval spans
+                // the offset between two altitude sources.
                 compactGroup += 1
             }
             previousRouteSegment = segment
+            previousUsesDEM = usesDEM
 
             var sample = runplay.ElevationProfileInputSample()
             sample.distance_meters = point.distanceFromStartMeters
-            if let altitude = point.altitudeMeters {
+            if let demAltitude {
+                sample.altitude_meters = demAltitude
+                sample.has_altitude = 1
+            } else if let altitude = point.altitudeMeters {
                 // Present NaN/infinity are data to reject, not missing values.
                 sample.altitude_meters = altitude
                 sample.has_altitude = 1

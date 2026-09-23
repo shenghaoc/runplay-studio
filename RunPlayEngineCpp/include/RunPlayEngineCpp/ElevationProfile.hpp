@@ -14,7 +14,9 @@ namespace runplay {
 ///
 /// Input order is source route-point order. Distance is the point's cumulative
 /// normalized distance. Continuity group changes on every source route-segment
-/// transition. `has_altitude == 0` means missing (`nil`); `has_altitude == 1`
+/// transition and wherever the altitude switches between a DEM elevation and a
+/// recorded altitude; the kernel does not know which source a value came from.
+/// `has_altitude == 0` means missing (`nil`); `has_altitude == 1`
 /// means a present source value (including NaN/infinity, which are rejected as
 /// data, not treated as missing).
 struct ElevationProfileInputSample final {

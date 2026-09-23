@@ -1106,6 +1106,13 @@ one-to-one derived view that exposes corrected altitude, source-rejection state,
 cumulative ascent/descent, corrected altitude at cumulative distance, and
 ascent, descent, or signed change over a distance range.
 
+A point's source altitude is its DEM elevation when it has one and its
+recorded altitude otherwise; the switch between the two breaks the altitude run
+the way a route-segment boundary does. `DEMElevationCorrector` writes the DEM
+elevation and decides precedence per point: recorded barometric altitude
+outranks DEM, DEM outranks any other recorded altitude and fills missing
+altitude, and a point no present tile covers keeps its recorded altitude.
+
 Each continuous non-missing altitude run is processed independently. Broad
 range validation first rejects impossible values. Local checks can then reject
 one unsupported interior or one-sided endpoint sample, or an extreme plateau of

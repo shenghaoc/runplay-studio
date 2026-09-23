@@ -471,6 +471,77 @@ public struct WorkoutAnalyzer: Sendable {
         workout.routePoints = storedRoutePoints
     }
 
+    /// Recompute every elevation-dependent result after the analysed altitude
+    /// of `workout`'s route points changed — DEM elevation written or removed —
+    /// while preserving the exact stored route-point payload.
+    ///
+    /// Route quality is not rerun: the stored points are already normalized,
+    /// and only its elevation outputs can change. The discarded-altitude count
+    /// swaps the previous profile's rejections for the new profile's, keeping
+    /// the non-finite source samples quality dropped at import, and the two
+    /// elevation warnings follow the new values. Training load is kept as
+    /// stored: no altitude reaches it, and recomputing it here would restamp
+    /// it with this analyzer's athlete profile.
+    func reanalyzeAfterElevationChange(
+        _ workout: inout RunWorkout,
+        previousRoutePoints: [RoutePoint],
+        policy: RouteQualityPolicy = .runningDefault,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws {
+        var analyzed = workout
+        var diagnostics = analyzed.qualityDiagnostics
+        if diagnostics.discardedAltitudeSampleCount > 0 {
+            let previous = try ElevationProfile.build(
+                routePoints: previousRoutePoints,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+            diagnostics.discardedAltitudeSampleCount -= min(
+                diagnostics.discardedAltitudeSampleCount,
+                previous.rejectedAltitudeCount
+            )
+        }
+        let current = try ElevationProfile.build(
+            routePoints: analyzed.routePoints,
+            policy: policy,
+            isCancelled: isCancelled
+        )
+        diagnostics.discardedAltitudeSampleCount += current.rejectedAltitudeCount
+        analyzed.qualityDiagnostics = diagnostics
+
+        var warnings = analyzed.analysisWarnings
+        func require(_ warning: WorkoutAnalysisWarning, _ present: Bool) {
+            if !present {
+                warnings.removeAll { $0 == warning }
+            } else if !warnings.contains(warning) {
+                warnings.append(warning)
+            }
+        }
+        require(.altitudeOutliersIgnored, diagnostics.discardedAltitudeSampleCount > 0)
+        require(
+            .insufficientReliableElevation,
+            !analyzed.routePoints.isEmpty && !current.profile.hasMeaningfulElevation
+        )
+        analyzed.analysisWarnings = warnings
+
+        let storedRoutePoints = analyzed.routePoints
+        let storedTrainingLoad = analyzed.trainingLoad
+        var profile: WorkoutAnalysisPhaseProfile? = nil
+        try analyzeCancellable(
+            &analyzed,
+            context: WorkoutAnalysisContext(
+                routePoints: storedRoutePoints,
+                elevationProfile: current.profile
+            ),
+            policy: policy,
+            isCancelled: isCancelled,
+            profile: &profile
+        )
+        analyzed.routePoints = storedRoutePoints
+        analyzed.trainingLoad = storedTrainingLoad
+        workout = analyzed
+    }
+
     private func calculateDerivedMetrics(
         _ workout: inout RunWorkout,
         timeline: WorkoutTimeline,

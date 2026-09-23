@@ -208,6 +208,24 @@ final class NativeCallCardinalityTests: XCTestCase {
         XCTAssertEqual(empty.demSampling, 0)
     }
 
+    /// A correction samples once, then reanalyzes: one elevation build (the
+    /// previous profile is rebuilt only when altitude was discarded at import)
+    /// and one segment detection.
+    func testDemCorrectionPlansSamplesAndRebuildsElevationOnce() throws {
+        var workout = try SyntheticDEMTiles.importedWorkout(recorded: { _ in 100 })
+        let source = SyntheticDEMTiles(height: 250)
+
+        let (_, counts) = try NativeCallObserver.observing {
+            try DEMElevationCorrector().correct(&workout, using: source)
+        }
+
+        XCTAssertEqual(counts.demTilePlanning, 1)
+        XCTAssertEqual(counts.demSampling, 1)
+        XCTAssertEqual(counts.elevationProfile, 1)
+        XCTAssertEqual(counts.segmentDetection, 1)
+        XCTAssertEqual(counts.routeQuality, 0, "stored points are not renormalized")
+    }
+
     /// Zoom 17 with 16-pixel tiles: each tile spans 360 / 2^17 degrees, about
     /// 250 m at this latitude, so the 4.4 km 400-point line above crosses
     /// roughly eighteen tile rows while the 50-point line needs a handful.
