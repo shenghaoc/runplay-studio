@@ -384,6 +384,55 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
         XCTAssertEqual(vm.loadState, .ready)
     }
 
+    func testRepeatedRefreshForEmptyResultAnnouncesOnce() async {
+        let builder = ControllableHeatmapBuilder()
+        let recorder = RecordingAccessibilityAnnouncer()
+        let vm = PersonalHeatmapViewModel(
+            builder: builder,
+            now: fixedNow,
+            announcementPolicy: AccessibilityAnnouncementPolicy(announcer: recorder)
+        )
+        vm.nowProvider = { self.fixedNow }
+
+        vm.refresh(workouts: [])
+        await waitUntil { vm.loadState == .empty(.noGPSWorkouts) }
+        XCTAssertEqual(builder.buildCount, 1)
+
+        // Each duplicate used to take the cache-hit path and re-announce
+        // "0 runs", because only `.ready` counted as settled.
+        vm.refresh(workouts: [])
+        vm.refresh(workouts: [])
+        vm.refresh(workouts: [])
+
+        XCTAssertEqual(builder.buildCount, 1)
+        XCTAssertEqual(vm.loadState, .empty(.noGPSWorkouts))
+        XCTAssertEqual(recorder.messages, ["Heatmap ready. 0 runs included."])
+    }
+
+    func testRefreshAfterFailedRetryRebuilds() async {
+        let builder = ControllableHeatmapBuilder()
+        let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        let workouts = [makeWorkout(name: "A")]
+
+        vm.refresh(workouts: workouts)
+        await waitUntil { vm.loadState == .ready }
+
+        // The failed retry leaves the old snapshot and fit in place for the
+        // same key; that must not make the failure look settled.
+        builder.setError(PersonalHeatmapError.invalidConfiguration)
+        vm.retry(workouts: workouts)
+        await waitUntil {
+            if case .failed = vm.loadState { return true }
+            return false
+        }
+
+        builder.setError(nil)
+        vm.refresh(workouts: workouts)
+        await waitUntil { builder.buildCount == 3 }
+        await waitUntil { vm.loadState == .ready }
+    }
+
     func testBulkFilterChangeBuildsOnce() async {
         let builder = ControllableHeatmapBuilder()
         let vm = PersonalHeatmapViewModel(builder: builder, now: fixedNow)

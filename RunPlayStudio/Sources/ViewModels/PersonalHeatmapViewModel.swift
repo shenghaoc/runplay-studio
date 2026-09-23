@@ -385,9 +385,20 @@ final class PersonalHeatmapViewModel: ObservableObject {
     /// A snapshot that has not been fitted for this key is deliberately *not*
     /// settled: `cancel()` clears `fittedKey` so that re-entering the
     /// workspace re-fits the recreated map surface.
+    ///
+    /// An empty result is settled too — `apply` marks it fitted — so a burst
+    /// of duplicate refreshes cannot re-announce "0 runs" once per arrival.
+    /// A failure is never settled, even when `fittedKey` still names the key
+    /// from before a `retry`.
     private func isRequestSettled(for key: PersonalHeatmapRequestKey) -> Bool {
         if isComputing { return true }
-        return snapshot != nil && fittedKey == key && loadState == .ready
+        guard snapshot != nil, fittedKey == key else { return false }
+        switch loadState {
+        case .ready, .empty:
+            return true
+        case .idle, .loading, .failed:
+            return false
+        }
     }
 
     private func apply(snapshot: PersonalHeatmapSnapshot, key: PersonalHeatmapRequestKey, requestFit: Bool) {
