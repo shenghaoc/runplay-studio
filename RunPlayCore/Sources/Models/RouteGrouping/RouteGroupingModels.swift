@@ -304,9 +304,22 @@ public struct WorkoutRouteGroupSummary: Codable, Hashable, Sendable {
 public struct WorkoutRouteGroup: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
 
-    /// User-assigned name. `nil` means the UI derives a descriptive default
-    /// from the representative's own geometry (for example "5.2 km Loop").
+    /// User-assigned name. `nil` means the group is not user-named and
+    /// displays `derivedName` (or, until that is materialized, a name
+    /// derived on the fly). Clearing a rename never touches `derivedName`,
+    /// so it returns the group to its stable original.
     public var name: String?
+
+    /// Automatic, collision-aware name materialized once — when the group is
+    /// first persisted, or on the first load of a manifest that predates the
+    /// field — and never recomputed afterwards: a representative change
+    /// (user pin, or the quality rule selecting a reversed member) cannot
+    /// move it, and a full re-cluster carries it to the recomputed group.
+    /// Kept apart from `name` so a derived name never passes for a
+    /// user-assigned one; only derived names are ever collision-suffixed.
+    /// Display is `name ?? derivedName ?? fallback`. Additive optional:
+    /// manifests without it decode to `nil` and need no schema bump.
+    public var derivedName: String?
 
     /// User-pinned representative. When set (and still a member) it overrides
     /// the derived representative. A full re-cluster clears stale pins but
@@ -322,12 +335,14 @@ public struct WorkoutRouteGroup: Codable, Hashable, Identifiable, Sendable {
         id: UUID = UUID(),
         name: String? = nil,
         pinnedRepresentativeWorkoutID: UUID? = nil,
-        representativeSummary: WorkoutRouteGroupSummary? = nil
+        representativeSummary: WorkoutRouteGroupSummary? = nil,
+        derivedName: String? = nil
     ) {
         self.id = id
         self.name = name
         self.pinnedRepresentativeWorkoutID = pinnedRepresentativeWorkoutID
         self.representativeSummary = representativeSummary
+        self.derivedName = derivedName
     }
 
     /// Descriptive default name derived from the representative's own

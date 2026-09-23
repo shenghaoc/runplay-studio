@@ -350,6 +350,13 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         let keptGroupIDs = Set(keptGroups.map(\.id))
         routeGroups = keptGroups
 
+        // Every persisted group carries a materialized derived name. Groups
+        // created since the last save are the only pending ones, so this is
+        // where a group's automatic name is decided — once, against every
+        // name already stored. A manifest that predates the field gets the
+        // whole set at once on its first repair (the load-time migration).
+        WorkoutRouteGroup.materializeDerivedNames(in: &routeGroups)
+
         // Repair assignment records: drop workouts that left the library,
         // drop references to groups that no longer exist, deduplicate by
         // workout, and cap the count.

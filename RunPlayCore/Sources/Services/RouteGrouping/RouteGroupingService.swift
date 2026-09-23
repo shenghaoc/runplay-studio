@@ -257,13 +257,17 @@ public struct RouteGroupingService: Sendable {
     ///
     /// Workouts are processed in canonical start-date order against current
     /// effective representatives — the same greedy rule as incremental
-    /// assignment, replayed from an empty state. User names and pinned
-    /// representatives carry over when the referenced workout still clusters
-    /// into a group; every other decision (including deliberate removals) is
-    /// recomputed.
+    /// assignment, replayed from an empty state. User names, materialized
+    /// derived names, and pinned representatives carry over when the
+    /// referenced workout still clusters into a group; every other decision
+    /// (including deliberate removals) is recomputed. `previousAssignments`
+    /// — the records the previous groups were built from — decides which
+    /// previous group's state a new group keeps when several collapse into
+    /// it (see `carryOverManualState`).
     public func recluster(
         workouts: [RunWorkout],
         previousGroups: [WorkoutRouteGroup] = [],
+        previousAssignments: [WorkoutRouteGroupAssignment] = [],
         policy: RouteGroupingPolicy,
         progress: (@Sendable (RouteGroupingPassProgress) -> Void)? = nil,
         isCancelled: @Sendable () -> Bool = { false }
@@ -365,6 +369,7 @@ public struct RouteGroupingService: Sendable {
         }
         Self.carryOverManualState(
             from: previousGroups,
+            previousAssignments: previousAssignments,
             into: &groups,
             assignments: assignments,
             workoutsByID: Dictionary(uniqueKeysWithValues: ordered.map { ($0.id, $0) })
@@ -388,14 +393,25 @@ public struct RouteGroupingService: Sendable {
             }
     }
 
-    /// Transfers user names and pinned representatives from the previous
-    /// groups into the recomputed ones. A manual value survives when the
-    /// referenced workout (pin) or the previous effective representative
-    /// (name) still clusters into one new group, and each new group accepts
-    /// at most one transfer. Deterministic: previous groups in stable id
-    /// order.
+    /// Transfers user names, materialized derived names, and pinned
+    /// representatives from the previous groups into the recomputed ones.
+    ///
+    /// Each previous group is keyed by a reference workout — its pin, else
+    /// its effective representative — and targets the new group that
+    /// workout landed in. Each new group accepts at most one transfer, so
+    /// when several previous groups collapse into one new group only one
+    /// name can survive. The winner is the previous group contributing the
+    /// most members to that new group, then the one whose contributed
+    /// members start earliest, then the smaller previous id — deterministic
+    /// and defensible, where id order alone would be arbitrary. The other
+    /// previous groups' names are discarded without notice. A derived name
+    /// travels with its group like a user name: it is the group's durable
+    /// identity, so a re-cluster never re-derives a name for a group it can
+    /// map. New groups nobody claims get a fresh derived name when the
+    /// manifest is next repaired, collision-aware against the carried ones.
     private static func carryOverManualState(
         from previousGroups: [WorkoutRouteGroup],
+        previousAssignments: [WorkoutRouteGroupAssignment],
         into groups: inout [WorkoutRouteGroup],
         assignments: [WorkoutRouteGroupAssignment],
         workoutsByID: [UUID: RunWorkout]
@@ -410,25 +426,68 @@ public struct RouteGroupingService: Sendable {
             }
             return map
         }()
-
-        let orderedPrevious = previousGroups.sorted {
-            $0.id.uuidString < $1.id.uuidString
+        var previousMembersByGroup: [UUID: Set<UUID>] = [:]
+        for assignment in previousAssignments {
+            if let groupID = assignment.groupID {
+                previousMembersByGroup[groupID, default: []].insert(assignment.workoutID)
+            }
         }
-        var claimedNewGroupIDs = Set<UUID>()
 
-        for previous in orderedPrevious {
+        struct Claim {
+            let previous: WorkoutRouteGroup
+            let contributedCount: Int
+            let earliestContributedDate: Date?
+
+            func outranks(_ other: Claim) -> Bool {
+                if contributedCount != other.contributedCount {
+                    return contributedCount > other.contributedCount
+                }
+                switch (earliestContributedDate, other.earliestContributedDate) {
+                case let (lhs?, rhs?) where lhs != rhs:
+                    return lhs < rhs
+                case (.some, nil):
+                    return true
+                case (nil, .some):
+                    return false
+                default:
+                    return previous.id.uuidString < other.previous.id.uuidString
+                }
+            }
+        }
+
+        var winningClaims: [UUID: Claim] = [:]
+        for previous in previousGroups {
             let referenceID = previous.pinnedRepresentativeWorkoutID
                 ?? previous.representativeSummary?.workoutID
-            guard let referenceID,
-                  let newGroupID = groupIDByWorkout[referenceID],
-                  !claimedNewGroupIDs.contains(newGroupID),
-                  let newIndex = groups.firstIndex(where: { $0.id == newGroupID })
-            else {
+            guard let referenceID, let newGroupID = groupIDByWorkout[referenceID] else {
                 continue
             }
-            claimedNewGroupIDs.insert(newGroupID)
+            // The reference is a member by the store's invariant; counting
+            // it explicitly keeps the rule meaningful without records.
+            let contributed = (previousMembersByGroup[previous.id] ?? [])
+                .union([referenceID])
+                .filter { groupIDByWorkout[$0] == newGroupID }
+            let claim = Claim(
+                previous: previous,
+                contributedCount: contributed.count,
+                earliestContributedDate: contributed
+                    .compactMap { workoutsByID[$0].flatMap(WorkoutLibraryEntry.canonicalStartDate(for:)) }
+                    .min()
+            )
+            if let current = winningClaims[newGroupID], !claim.outranks(current) {
+                continue
+            }
+            winningClaims[newGroupID] = claim
+        }
+
+        for newIndex in groups.indices {
+            let newGroupID = groups[newIndex].id
+            guard let previous = winningClaims[newGroupID]?.previous else { continue }
             if let name = previous.name {
                 groups[newIndex].name = name
+            }
+            if let derivedName = previous.derivedName {
+                groups[newIndex].derivedName = derivedName
             }
             if let pinned = previous.pinnedRepresentativeWorkoutID,
                let pinnedWorkout = workoutsByID[pinned],

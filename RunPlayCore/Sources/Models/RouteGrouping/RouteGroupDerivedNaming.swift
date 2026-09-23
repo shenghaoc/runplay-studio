@@ -30,15 +30,20 @@ extension WorkoutRouteGroup {
     ///    verbatim: never suffixed, and never consulted when disambiguating
     ///    others. Two identically user-named groups stay identical — that is
     ///    the user's choice, not a collision to repair.
-    /// 2. A group with no `representativeSummary` keeps today's plain
+    /// 2. A group with a materialized `derivedName` (see
+    ///    `materializeDerivedNames(in:loopClosureDistanceMeters:)`) is
+    ///    returned verbatim and never re-derived. Stored names are frozen:
+    ///    every group still derived here is disambiguated around them
+    ///    (`settle(_:againstStoredNames:into:)`), never the reverse.
+    /// 3. A group with no `representativeSummary` keeps today's plain
     ///    fallback name ("Route"): no facts can be read, so it carries no
     ///    compass token.
-    /// 3. Every other group's base name is exactly
+    /// 4. Every other group's base name is exactly
     ///    `defaultDisplayName(distanceMeters:closesLoop:)` over its
     ///    persisted facts — loop closure from the persisted start/finish
     ///    pair measured with `GeoDistance` against
     ///    `loopClosureDistanceMeters`.
-    /// 4. A base name held by only one group is emitted unchanged.
+    /// 5. A base name held by only one group is emitted unchanged.
     ///    Otherwise the base name is disambiguated by escalating intrinsic
     ///    discriminators until the names differ, coarsest first:
     ///
@@ -78,8 +83,12 @@ extension WorkoutRouteGroup {
     ///    a name only ever *refines* (bare → coarse token → fine token →
     ///    digest) when a new collision forces it, a discriminator
     ///    lengthens only for the groups that share its prefix, and an
-    ///    arrival cannot change a name it does not collide with. Names
-    ///    revert when the collision goes away.
+    ///    arrival cannot change a name it does not collide with. Among
+    ///    groups derived here, names revert when the collision goes away.
+    ///    Once a name is materialized into `derivedName` none of this moves
+    ///    it again: the store persists each group's name when the group is
+    ///    created, so in the app a newcomer refines around the names already
+    ///    shown rather than the shown names refining around it.
     ///
     /// The result is a pure function of the input set: no assignment
     /// depends on iteration or input order, so the same set always yields
@@ -111,6 +120,7 @@ extension WorkoutRouteGroup {
 
         var candidates: [RouteGroupDerivedNameCandidate] = []
         candidates.reserveCapacity(groups.count)
+        var storedNames = Set<String>()
 
         for group in groups {
             if let name = group.name, !name.isEmpty {
@@ -125,35 +135,210 @@ extension WorkoutRouteGroup {
                 )
                 continue
             }
-            guard let summary = group.representativeSummary else {
-                candidates.append(RouteGroupDerivedNameCandidate(
+            if let stored = group.derivedName, !stored.isEmpty {
+                details[group.id] = RouteGroupDerivedName(
                     groupID: group.id,
-                    baseName: unnamedFallbackName,
-                    coarseToken: nil,
-                    fineToken: nil
-                ))
+                    name: stored,
+                    baseName: stored,
+                    tier: .bare,
+                    digestDiscriminator: nil,
+                    fineToken: nil,
+                    isUserAssigned: false,
+                    isStored: true
+                )
+                storedNames.insert(stored)
                 continue
             }
-            let facts = summary.facts
-            let closesLoop = GeoDistance.distanceMeters(
-                fromLat: facts.startLatitude,
-                lon: facts.startLongitude,
-                toLat: facts.finishLatitude,
-                lon: facts.finishLongitude
-            ) <= loopClosureDistanceMeters
-            candidates.append(RouteGroupDerivedNameCandidate(
-                groupID: group.id,
-                baseName: defaultDisplayName(
-                    distanceMeters: facts.totalDistanceMeters,
-                    closesLoop: closesLoop
-                ),
-                coarseToken: compassToken(for: facts),
-                fineToken: compassToken(for: facts, fine: true)
+            candidates.append(candidate(
+                for: group,
+                loopClosureDistanceMeters: loopClosureDistanceMeters
             ))
         }
 
         resolveCollisions(among: candidates, into: &details)
+        settle(candidates, againstStoredNames: storedNames, into: &details)
         return details
+    }
+
+    /// Materializes `derivedName` for every group in `groups` that has a
+    /// representative summary but no stored derived name yet, collision-aware
+    /// against every name already stored. Existing stored names are never
+    /// changed — a stored name is the group's durable identity — except that
+    /// an empty or duplicated one (a hand-edited manifest, or two writers
+    /// racing) is dropped from all but the first holder in id order and
+    /// re-materialized. A group without a summary stays `nil` until one
+    /// exists; surfaces derive its name on the fly meanwhile.
+    ///
+    /// Two passes, unnamed groups first. The first pass sees exactly the set
+    /// the read-time derivation has always named — unnamed groups, never
+    /// user-named ones — so migrating a manifest that predates the field
+    /// persists precisely the names its surfaces were already showing. The
+    /// second pass gives user-named groups a derived name too, avoiding every
+    /// name the first pass stored, so clearing a rename later returns a
+    /// stable name that collides with nothing.
+    ///
+    /// The whole-set derivation runs once per pass, so a first-load
+    /// migration sees every name simultaneously; after that only newly
+    /// created groups are pending. Deterministic: stored-duplicate repair and
+    /// every tiebreak below it are in id order, never input order.
+    public static func materializeDerivedNames(
+        in groups: inout [WorkoutRouteGroup],
+        loopClosureDistanceMeters: Double = defaultLoopClosureDistanceMeters
+    ) {
+        var seenStoredNames = Set<String>()
+        let indicesByID = groups.indices.sorted {
+            groups[$0].id.uuidString < groups[$1].id.uuidString
+        }
+        for index in indicesByID {
+            guard let stored = groups[index].derivedName else { continue }
+            if stored.isEmpty || !seenStoredNames.insert(stored).inserted {
+                groups[index].derivedName = nil
+            }
+        }
+
+        func isPending(_ group: WorkoutRouteGroup) -> Bool {
+            group.derivedName == nil && group.representativeSummary != nil
+        }
+        func isUserNamed(_ group: WorkoutRouteGroup) -> Bool {
+            !(group.name ?? "").isEmpty
+        }
+
+        for userNamedPass in [false, true] {
+            let pendingIDs = Set(groups.lazy
+                .filter { isPending($0) && isUserNamed($0) == userNamedPass }
+                .map(\.id))
+            guard !pendingIDs.isEmpty else { continue }
+            // Names are stripped so a stored derived name of a user-named
+            // group counts as taken rather than being skipped as user intent.
+            let input = groups
+                .filter { $0.derivedName != nil || pendingIDs.contains($0.id) }
+                .map { group -> WorkoutRouteGroup in
+                    var unnamed = group
+                    unnamed.name = nil
+                    return unnamed
+                }
+            let names = derivedNameDetails(
+                for: input,
+                loopClosureDistanceMeters: loopClosureDistanceMeters
+            )
+            for index in groups.indices where pendingIDs.contains(groups[index].id) {
+                groups[index].derivedName = names[groups[index].id]?.name
+            }
+        }
+    }
+
+    /// The naming candidate for one not-yet-named group: its base name and
+    /// both compass tiers, or the plain fallback with no tokens when the
+    /// representative summary is missing.
+    private static func candidate(
+        for group: WorkoutRouteGroup,
+        loopClosureDistanceMeters: Double
+    ) -> RouteGroupDerivedNameCandidate {
+        guard let summary = group.representativeSummary else {
+            return RouteGroupDerivedNameCandidate(
+                groupID: group.id,
+                baseName: unnamedFallbackName,
+                coarseToken: nil,
+                fineToken: nil
+            )
+        }
+        let facts = summary.facts
+        let closesLoop = GeoDistance.distanceMeters(
+            fromLat: facts.startLatitude,
+            lon: facts.startLongitude,
+            toLat: facts.finishLatitude,
+            lon: facts.finishLongitude
+        ) <= loopClosureDistanceMeters
+        return RouteGroupDerivedNameCandidate(
+            groupID: group.id,
+            baseName: defaultDisplayName(
+                distanceMeters: facts.totalDistanceMeters,
+                closesLoop: closesLoop
+            ),
+            coarseToken: compassToken(for: facts),
+            fineToken: compassToken(for: facts, fine: true)
+        )
+    }
+
+    /// Moves every resolved candidate whose name is already stored by another
+    /// group to the first rung of its own ladder that is free — not stored,
+    /// and not any other candidate's name. Stored names are frozen, so the
+    /// newcomer is the one that refines: an existing "1.2 km Loop" stays bare
+    /// while a later colliding group becomes "1.2 km Loop (NE)". The ladder
+    /// is the same tier sequence the resolver climbs (bare, eight-point,
+    /// sixteen-point, then the fine token with a 3-, 6-, 8-digit id digest,
+    /// then the full id), each rung intrinsic to the group; whether a rung is
+    /// free is a set lookup against names already in hand. Conflicting
+    /// candidates settle in id order so the result stays independent of
+    /// input order. A no-op without stored names, which keeps the resolver's
+    /// behaviour exactly as documented above for sets nothing has been
+    /// stored for.
+    private static func settle(
+        _ candidates: [RouteGroupDerivedNameCandidate],
+        againstStoredNames storedNames: Set<String>,
+        into details: inout [UUID: RouteGroupDerivedName]
+    ) {
+        guard !storedNames.isEmpty else { return }
+        var taken = storedNames
+        for candidate in candidates {
+            if let name = details[candidate.groupID]?.name {
+                taken.insert(name)
+            }
+        }
+        let conflicting = candidates
+            .filter { candidate in
+                details[candidate.groupID].map { storedNames.contains($0.name) } ?? false
+            }
+            .sorted { $0.groupID.uuidString < $1.groupID.uuidString }
+        for candidate in conflicting {
+            // The last rung is the group's own UUID, taken only by a
+            // duplicate id; keep the colliding name rather than invent one.
+            guard let free = ladder(for: candidate).first(where: { !taken.contains($0.name) }) else {
+                continue
+            }
+            taken.insert(free.name)
+            details[candidate.groupID] = free
+        }
+    }
+
+    /// Every name a candidate can take, barest first.
+    private static func ladder(
+        for candidate: RouteGroupDerivedNameCandidate
+    ) -> [RouteGroupDerivedName] {
+        func rung(
+            _ disambiguator: String?,
+            tier: RouteGroupDerivedNameTier,
+            digest: String? = nil
+        ) -> RouteGroupDerivedName {
+            RouteGroupDerivedName(
+                groupID: candidate.groupID,
+                name: candidate.baseName + (disambiguator.map(disambiguatedSuffix) ?? ""),
+                baseName: candidate.baseName,
+                tier: tier,
+                digestDiscriminator: digest,
+                fineToken: tier == .bare || tier == .coarseToken ? nil : candidate.fineToken,
+                isUserAssigned: false
+            )
+        }
+        func withFineToken(_ discriminator: String) -> String {
+            candidate.fineToken.map { "\($0)·\(discriminator)" } ?? discriminator
+        }
+
+        var rungs = [rung(nil, tier: .bare)]
+        if let coarse = candidate.coarseToken {
+            rungs.append(rung(coarse, tier: .coarseToken))
+        }
+        if let fine = candidate.fineToken {
+            rungs.append(rung(fine, tier: .fineToken))
+        }
+        let digest = stableDigestHex(for: candidate.groupID)
+        for length in [3, 6, 8] {
+            let prefix = String(digest.prefix(length))
+            rungs.append(rung(withFineToken(prefix), tier: .digest, digest: prefix))
+        }
+        let fullID = candidate.groupID.uuidString
+        rungs.append(rung(withFineToken(fullID), tier: .fullID, digest: fullID))
+        return rungs
     }
 
     /// Escalates colliding candidates tier by tier until every emitted
@@ -511,4 +696,7 @@ struct RouteGroupDerivedName: Equatable {
     /// assert discriminator prefix-freeness per cluster.
     let fineToken: String?
     let isUserAssigned: Bool
+    /// Whether the name is a group's materialized `derivedName`, returned
+    /// verbatim rather than derived in this call.
+    var isStored = false
 }
