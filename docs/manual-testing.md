@@ -239,8 +239,18 @@ An AX scan of every menu and pop-up button on Personal Heatmap, All Runs,
 Routes, Trends, and Records found no other generated symbol description. Only
 a `Menu` whose `accessibilityLabel` differs from its visible title leaks one.
 
-Not covered: a library with named route groups (only "Any Route" was
-selected), and dark appearance.
+Follow-up on the same build, on a fresh library holding the Routes fixture
+generator's runs with `filler_count` lowered to 10 (27 runs):
+
+- "2.0 km Loop (NE·74e)" was selected through the menu. The Item Chooser read
+  "2.0 km Loop (NE·74e) Route filter   menu button", and focus read "2.0 km
+  Loop (NE·74e), Route filter, menu button".
+- In dark appearance the icon rendered beside the title and AXDescription
+  stayed `" "`. The system appearance was restored to light afterwards.
+- Found, and present before this change as well: the button sometimes reports
+  the visible route name as its AXTitle instead of "Route filter". This
+  happened after Open Personal Heatmap from the import report and after an
+  appearance switch. Navigating away and back restores it. Filed as #196.
 
 ## Trends Workspace Checklist
 
