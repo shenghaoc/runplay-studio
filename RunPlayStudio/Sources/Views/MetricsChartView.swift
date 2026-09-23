@@ -7,6 +7,38 @@ struct MetricChartDataPoint: Identifiable, Equatable {
     let distanceKm: Double
     let value: Double
     let seriesID: Int
+    /// Drawn dashed: elevation from a run's fallback source (see
+    /// `ElevationChartSourceSplit`).
+    var dashed = false
+}
+
+/// How an elevation chart separates its two altitude sources. A switch
+/// between DEM and recorded altitude always starts a new series, so the line
+/// breaks there rather than drawing the offset between sources as a slope;
+/// and where a run shows both, its fallback source is dashed.
+struct ElevationChartSourceSplit: Equatable {
+    /// Per route point, from `ElevationProfileSample.sourceAltitudeIsDEM`.
+    let sourceIsDEM: [Bool]
+    /// The fallback source: DEM filling gaps in barometric altitude, or
+    /// recorded altitude where no tile covered a DEM-corrected run.
+    let fallbackIsDEM: Bool
+
+    init(profile: ElevationProfile, recordedAltitudeSensor: RecordedAltitudeSensor) {
+        sourceIsDEM = profile.samples.map(\.sourceAltitudeIsDEM)
+        fallbackIsDEM = recordedAltitudeSensor == .barometric
+    }
+
+    init(sourceIsDEM: [Bool], fallbackIsDEM: Bool) {
+        self.sourceIsDEM = sourceIsDEM
+        self.fallbackIsDEM = fallbackIsDEM
+    }
+
+    /// The legend line for a chart that shows both sources.
+    var legend: String {
+        fallbackIsDEM
+            ? "Dashed sections are DEM elevation filling gaps in the barometric altitude."
+            : "Dashed sections use recorded altitude where no DEM tile covers the route."
+    }
 }
 
 enum MetricChartDataBuilder {
@@ -46,30 +78,46 @@ enum MetricChartDataBuilder {
 
     static func build(
         routePoints: [RoutePoint],
-        values: [Double?]
+        values: [Double?],
+        sourceSplit: ElevationChartSourceSplit? = nil
     ) -> [MetricChartDataPoint] {
+        func hasValue(_ index: Int) -> Bool {
+            values.indices.contains(index) && values[index].map(\.isFinite) == true
+        }
+        func isDEM(_ index: Int) -> Bool {
+            guard let flags = sourceSplit?.sourceIsDEM, flags.indices.contains(index) else { return false }
+            return flags[index]
+        }
+        let charted = routePoints.indices.filter(hasValue)
+        let showsBothSources = sourceSplit != nil
+            && charted.contains(where: isDEM)
+            && charted.contains(where: { !isDEM($0) })
+
         var seriesID = 0
         var previousSegment: Int?
         var previousHadValue = false
+        var previousWasDEM = false
         return routePoints.indices.compactMap { index in
             let point = routePoints[index]
-            guard values.indices.contains(index),
-                  let value = values[index],
-                  value.isFinite
-            else {
+            guard hasValue(index), let value = values[index] else {
                 previousHadValue = false
                 return nil
             }
-            if !previousHadValue || point.routeSegmentIndex != previousSegment {
+            let pointIsDEM = isDEM(index)
+            if !previousHadValue
+                || point.routeSegmentIndex != previousSegment
+                || pointIsDEM != previousWasDEM {
                 seriesID += 1
             }
             previousHadValue = true
             previousSegment = point.routeSegmentIndex
+            previousWasDEM = pointIsDEM
             return MetricChartDataPoint(
                 id: index,
                 distanceKm: point.distanceFromStartMeters / 1_000,
                 value: value,
-                seriesID: seriesID
+                seriesID: seriesID,
+                dashed: showsBothSources && pointIsDEM == sourceSplit?.fallbackIsDEM
             )
         }
     }
@@ -90,6 +138,8 @@ struct MetricsChartView: View {
     /// Cumulative-distance window emphasized as a translucent band
     /// (personal-record navigation); `nil` draws no band.
     var highlightedRangeMeters: ClosedRange<Double>? = nil
+    /// Where the elevation comes from; shown under the Elevation chart.
+    var elevationSource: ElevationSourceSummary? = nil
 
     @State private var selectedMetric: MetricType = .elevation
     @State private var isDragging: Bool = false
@@ -106,7 +156,8 @@ struct MetricsChartView: View {
         currentDistance: Double = 0,
         smoothingWindow: Int = 5,
         onSeek: ((Double) -> Void)? = nil,
-        highlightedRangeMeters: ClosedRange<Double>? = nil
+        highlightedRangeMeters: ClosedRange<Double>? = nil,
+        elevationSource: ElevationSourceSummary? = nil
     ) {
         self.routePoints = routePoints
         self.elevationProfile = elevationProfile ?? ElevationProfile(routePoints: routePoints)
@@ -114,6 +165,7 @@ struct MetricsChartView: View {
         self.smoothingWindow = smoothingWindow
         self.onSeek = onSeek
         self.highlightedRangeMeters = highlightedRangeMeters
+        self.elevationSource = elevationSource
     }
 
     enum MetricType: String, CaseIterable {
@@ -199,7 +251,7 @@ struct MetricsChartView: View {
                         )
                         .foregroundStyle(chartColor)
                         .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: point.dashed ? [5, 3] : []))
                     }
 
                     // Highlighted record-window band. Decorative emphasis of a
@@ -275,7 +327,8 @@ struct MetricsChartView: View {
                 .accessibilityChartDescriptor(MetricChartDescriptor(
                     model: accessibilityModel,
                     samples: downsampledChartSamples,
-                    metric: selectedMetric
+                    metric: selectedMetric,
+                    elevationSourceLabel: selectedMetric == .elevation ? elevationSource?.label : nil
                 ))
                 .accessibilityLabel(accessibilityModel.title)
                 .accessibilityValue(accessibilityModel.spokenSummary)
@@ -303,6 +356,8 @@ struct MetricsChartView: View {
                     .accessibilityLabel("Chart summary")
                     .accessibilityValue(accessibilityModel.spokenSummary)
             }
+
+            elevationSourceNote
 
             // Keyboard-accessible seek alternative
             if !chartData.isEmpty {
@@ -468,7 +523,8 @@ struct MetricsChartView: View {
 
         let updatedData = MetricChartDataBuilder.build(
             routePoints: routePoints,
-            values: smoothedValues
+            values: smoothedValues,
+            sourceSplit: selectedMetric == .elevation ? elevationSourceSplit : nil
         )
         chartData = updatedData
         // Power's chart line is smoothed but the Power & Running Dynamics
@@ -493,6 +549,36 @@ struct MetricsChartView: View {
             aggregatesFromValues: aggregatesFromValues
         )
         downsampledChartSamples = MetricChartAccessibilityBuilder.downsample(updatedData)
+    }
+
+    private var elevationSourceSplit: ElevationChartSourceSplit {
+        ElevationChartSourceSplit(
+            profile: elevationProfile,
+            recordedAltitudeSensor: elevationSource?.recordedAltitudeSensor ?? .unknown
+        )
+    }
+
+    /// The source label, the dashed-line legend when both sources show, and
+    /// the correction notes, read as one element by VoiceOver.
+    @ViewBuilder
+    private var elevationSourceNote: some View {
+        if selectedMetric == .elevation, let source = elevationSource {
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
+                Text("Source: \(source.label)")
+                    .font(AppDesign.Typography.compactLabel.weight(.semibold))
+                if chartData.contains(where: \.dashed) {
+                    Text(elevationSourceSplit.legend)
+                }
+                ForEach(source.notes, id: \.self) { note in
+                    Text(note)
+                }
+            }
+            .font(AppDesign.Typography.compactLabel)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .accessibilityElement(children: .combine)
+        }
     }
 
     private var chartColor: Color {

@@ -17,6 +17,15 @@ struct ReplayActions {
 }
 
 /// Library commands valid while All Runs owns focus.
+/// Per-run DEM elevation commands for the Workout menu.
+struct ElevationActions {
+    var canCorrect: () -> Bool = { false }
+    var correct: () -> Void = {}
+    var canChooseRecorded: () -> Bool = { false }
+    var usesRecordedElevation: () -> Bool = { false }
+    var setUsesRecordedElevation: (Bool) -> Void = { _ in }
+}
+
 struct LibraryActions {
     var isAvailable: () -> Bool = { false }
     var focusSearch: () -> Void = {}
@@ -126,6 +135,10 @@ private struct ReplayActionsKey: FocusedValueKey {
     typealias Value = ReplayActions
 }
 
+private struct ElevationActionsKey: FocusedValueKey {
+    typealias Value = ElevationActions
+}
+
 private struct LibraryActionsKey: FocusedValueKey {
     typealias Value = LibraryActions
 }
@@ -167,6 +180,11 @@ extension View {
 }
 
 extension FocusedValues {
+    var elevationActions: ElevationActions? {
+        get { self[ElevationActionsKey.self] }
+        set { self[ElevationActionsKey.self] = newValue }
+    }
+
     var replayActions: ReplayActions? {
         get { self[ReplayActionsKey.self] }
         set { self[ReplayActionsKey.self] = newValue }

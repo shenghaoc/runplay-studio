@@ -49,6 +49,7 @@ struct WorkoutViewCommands: Commands {
     @FocusedBinding(\.workoutTabSelection) private var selectedTab
     @FocusedValue(\.appWorkspaceActions) private var workspaceActions
     @FocusedValue(\.replayActions) private var replayActions
+    @FocusedValue(\.elevationActions) private var elevationActions
     @FocusedValue(\.libraryActions) private var libraryActions
     @FocusedValue(\.mapActions) private var mapActions
     @FocusedValue(\.exportActions) private var exportActions
@@ -155,6 +156,24 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("4", modifiers: .command)
             .disabled(selectedTab == nil || isSheetBlocking)
+
+            Divider()
+
+            Button(CommandRegistry.definition(for: .correctElevation).menuTitle) {
+                elevationActions?.correct()
+            }
+            .help(CommandRegistry.definition(for: .correctElevation).purpose)
+            .disabled(isSheetBlocking || !(elevationActions?.canCorrect() ?? false))
+
+            Toggle(
+                CommandRegistry.definition(for: .useRecordedElevation).menuTitle,
+                isOn: Binding(
+                    get: { elevationActions?.usesRecordedElevation() ?? false },
+                    set: { elevationActions?.setUsesRecordedElevation($0) }
+                )
+            )
+            .help(CommandRegistry.definition(for: .useRecordedElevation).purpose)
+            .disabled(isSheetBlocking || !(elevationActions?.canChooseRecorded() ?? false))
         }
 
         CommandMenu("Replay") {

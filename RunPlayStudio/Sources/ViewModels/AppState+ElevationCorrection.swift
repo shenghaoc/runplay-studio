@@ -230,6 +230,70 @@ extension AppState {
         return sentences.joined(separator: " ")
     }
 
+    // MARK: - One run
+
+    /// Whether Workout ▸ Correct Elevation applies: a library run that has
+    /// not chosen recorded elevation, an open tile folder, and no pass running.
+    func canCorrectElevation(of workout: RunWorkout) -> Bool {
+        canEditLibraryMetadata(workout)
+            && demFolderAccess != nil
+            && demCorrectionTask == nil
+            && !usesRecordedElevation(workout)
+    }
+
+    /// Whether Workout ▸ Use Recorded Elevation can change for this run.
+    func canChooseRecordedElevation(for workout: RunWorkout) -> Bool {
+        canEditLibraryMetadata(workout) && demCorrectionTask == nil
+    }
+
+    func usesRecordedElevation(_ workout: RunWorkout) -> Bool {
+        workout.demElevationCorrection?.outcome == .optedOut
+    }
+
+    /// Samples the tile folder for one run again, for example after adding
+    /// tiles, and applies the result everywhere elevation shows.
+    func correctElevation(of workout: RunWorkout) async {
+        guard canCorrectElevation(of: workout), let storeActor, let access = demFolderAccess else { return }
+        do {
+            let updated = try await storeActor.correctElevation(ofWorkout: workout.id, using: access.directory)
+            applyElevationChanges([updated])
+            if let summary = updated.demElevationCorrection?.importSummary(
+                recordedAltitudeSensor: updated.recordedAltitudeSensor
+            ) {
+                announcementPolicy.handle(.elevationSourceChanged(message: summary))
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = "Elevation could not be corrected: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+
+    /// Chooses recorded altitude for one run, or undoes that choice (the run
+    /// is corrected again when a tile folder is open).
+    func setUsesRecordedElevation(_ usesRecorded: Bool, for workout: RunWorkout) async {
+        guard canChooseRecordedElevation(for: workout), let storeActor else { return }
+        do {
+            let updated = try await storeActor.setUsesRecordedElevation(
+                usesRecorded,
+                ofWorkout: workout.id,
+                source: demFolderAccess?.directory
+            )
+            applyElevationChanges([updated])
+            let message = usesRecorded
+                ? "Using recorded elevation for this run."
+                : updated.demElevationCorrection?.importSummary(recordedAltitudeSensor: updated.recordedAltitudeSensor)
+                    ?? "DEM correction is allowed for this run again."
+            announcementPolicy.handle(.elevationSourceChanged(message: message))
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = "The elevation source could not be changed: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+
     // MARK: - Refreshing elevation
 
     /// Applies runs whose elevation changed — a correction written or removed

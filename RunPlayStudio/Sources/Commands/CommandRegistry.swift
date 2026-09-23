@@ -39,6 +39,8 @@ enum CommandID: String, CaseIterable, Sendable, Equatable {
     case workoutCharts
     case workoutSplits
     case workoutSegments
+    case correctElevation
+    case useRecordedElevation
     case showAllRuns
     case showPersonalHeatmap
     case showTrends
@@ -270,6 +272,28 @@ enum CommandRegistry {
             workspace: .workout,
             purpose: "Show detected segment highlights",
             accessibilityDescription: "Switch to Segments tab",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .correctElevation,
+            menuTitle: "Correct Elevation",
+            menu: "Workout",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Correct this run's elevation from the DEM tile folder again, for example after adding tiles",
+            accessibilityDescription: "Correct this run's elevation from DEM tiles",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .useRecordedElevation,
+            menuTitle: "Use Recorded Elevation",
+            menu: "Workout",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .workout,
+            purpose: "Keep this run's recorded altitude instead of DEM elevation",
+            accessibilityDescription: "Use recorded elevation for this run",
             localOnly: false
         ),
         CommandDefinition(
