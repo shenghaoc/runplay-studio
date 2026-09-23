@@ -811,12 +811,32 @@ nothing. The loop-closure threshold
 (`defaultLoopClosureDistanceMeters`, 100 m) lives on `WorkoutRouteGroup`,
 the single product copy of the number.
 
+Derived names are **materialized**, not recomputed on every read. A group
+carries two fields: `name` (user-assigned) and `derivedName` (automatic);
+display is `name ?? derivedName ?? fallback`. Manifest repair — which runs
+before every save — fills `derivedName` for any group that has a
+representative summary but no stored name, so a group is named once, when
+it is first persisted, as a set lookup against every name already stored:
+a newcomer that collides refines to the first free rung of its own ladder
+(bare, eight-point, sixteen-point, id digest) and the name already shown
+stays put. Stored names are then frozen — a representative change (a user
+pin, or the quality rule picking a reversed member) cannot swing the
+compass token — and renaming is non-destructive: clearing a rename returns
+the stored original. User-named groups get a derived name too, chosen
+after the unnamed ones so it collides with nothing. A manifest that
+predates the field is migrated on its first load, whole set at once, and
+persists exactly the names its surfaces were already showing. Both fields
+are additive optionals, so the schema stays at v4.
+
 Manual controls: rename, merge two routes, remove a run from a route
 (evaluated-nil marker), and pin a representative. A full re-cluster action
 replays the greedy rule chronologically with progress and cancellation,
 replaces the manifest in one atomic write (cancelled or failed passes leave
-the previous groups untouched), and carries over user names and pins whose
-referenced workouts still cluster together.
+the previous groups untouched), and carries over user names, derived names,
+and pins whose referenced workouts still cluster together. When several
+previous groups' reference workouts land in one new group, the previous
+group contributing the most members to it wins, then the one whose
+contributed members start earliest; the others' names are dropped.
 
 The All Runs query filter and the Personal Heatmap filter row both gain a
 "route" restriction; the filter evaluates `WorkoutLibraryEntry.routeGroupID`
