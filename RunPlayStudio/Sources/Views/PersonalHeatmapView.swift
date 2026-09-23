@@ -127,56 +127,138 @@ struct PersonalHeatmapView: View {
         .padding(.vertical, AppDesign.Spacing.medium)
     }
 
+    // The primary controls have no width budget of their own, so the bar
+    // picks the widest arrangement that fits rather than letting SwiftUI
+    // compress it. Every picker is `.fixedSize()`: its static label is the
+    // only thing that could give way, and a label wrapped one letter per
+    // line is worse than a second row (#160). The variants run from widest
+    // to narrowest; `ViewThatFits` falls back to the last, which is the only
+    // one where the route title may truncate — its menu entries still show
+    // the full collision-aware name.
     private var primaryFilterRow: some View {
-        HStack(spacing: AppDesign.Spacing.large) {
-            Picker("Date range", selection: $viewModel.datePreset) {
-                ForEach(PersonalHeatmapDatePreset.allCases) { preset in
-                    Text(preset.title).tag(preset)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppDesign.Spacing.large) {
+                datePresetPicker(labelled: true)
+                resolutionPicker(labelled: true)
+                minimumRepeatsPicker(labelled: true)
+                routePicker(truncating: false)
+                Spacer(minLength: 0)
+                fitButton(iconOnly: false)
+            }
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+                HStack(spacing: AppDesign.Spacing.large) {
+                    datePresetPicker(labelled: true)
+                    resolutionPicker(labelled: true)
+                    minimumRepeatsPicker(labelled: true)
                 }
+                routeAndFitRow(truncating: false)
             }
-            .pickerStyle(.menu)
-            .frame(maxWidth: 160)
-            .help("Filter workouts by start date")
-            .accessibilityLabel("Date range")
-
-            Picker("Resolution", selection: $viewModel.resolution) {
-                ForEach(PersonalHeatmapResolution.allCases, id: \.self) { res in
-                    Text(res.helpText).tag(res)
+            // Below this the static labels are dropped; each value still reads
+            // on its own ("Last 90 Days", "Standard (50 m cells)", "At least
+            // 2 runs") and VoiceOver keeps the accessibility labels. The label
+            // is omitted rather than `labelsHidden()`, which would leave it in
+            // the accessibility description beside the explicit one.
+            VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+                HStack(spacing: AppDesign.Spacing.large) {
+                    datePresetPicker(labelled: false)
+                    resolutionPicker(labelled: false)
+                    minimumRepeatsPicker(labelled: false)
                 }
+                routeAndFitRow(truncating: false)
             }
-            .pickerStyle(.menu)
-            .frame(maxWidth: 180)
-            .help("Cell size in metres. Broader cells are less precise but faster for large libraries.")
-            .accessibilityLabel("Resolution")
-
-            Picker("Minimum repeats", selection: $viewModel.minimumWorkoutCount) {
-                ForEach(PersonalHeatmapViewModel.minimumRepeatOptions, id: \.self) { count in
-                    Text(count == 1 ? "At least 1 run" : "At least \(count) runs").tag(count)
-                }
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: 160)
-            .help("Hide cells visited by fewer than this many distinct workouts")
-            .accessibilityLabel("Minimum runs per cell")
-
-            routePicker
-
-            Spacer()
-
-            Button {
-                viewModel.requestFit()
-            } label: {
-                Label("Fit Heatmap", systemImage: "viewfinder")
-            }
-            .help("Zoom and center the map to show all heat cells")
-            .accessibilityLabel("Fit Heatmap")
-            .disabled(viewModel.mapAreas.isEmpty)
+            // At the 720 pt minimum the Fit button gives up its title first,
+            // which leaves room for a collision-suffixed route name such as
+            // "1.0 km Loop (NE·aed)"; only a longer name then truncates.
+            narrowFilterRows(routeTruncates: false)
+            narrowFilterRows(routeTruncates: true)
         }
+    }
+
+    private func narrowFilterRows(routeTruncates: Bool) -> some View {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
+            HStack(spacing: AppDesign.Spacing.large) {
+                datePresetPicker(labelled: false)
+                resolutionPicker(labelled: false)
+            }
+            HStack(spacing: AppDesign.Spacing.large) {
+                minimumRepeatsPicker(labelled: false)
+                routePicker(truncating: routeTruncates)
+                Spacer(minLength: 0)
+                fitButton(iconOnly: true)
+            }
+        }
+    }
+
+    private func routeAndFitRow(truncating: Bool) -> some View {
+        HStack(spacing: AppDesign.Spacing.large) {
+            routePicker(truncating: truncating)
+            Spacer(minLength: 0)
+            fitButton(iconOnly: false)
+        }
+    }
+
+    private func datePresetPicker(labelled: Bool) -> some View {
+        Picker(selection: $viewModel.datePreset) {
+            ForEach(PersonalHeatmapDatePreset.allCases) { preset in
+                Text(preset.title).tag(preset)
+            }
+        } label: {
+            if labelled { Text("Date range") }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+        .help("Filter workouts by start date")
+        .accessibilityLabel("Date range")
+    }
+
+    private func resolutionPicker(labelled: Bool) -> some View {
+        Picker(selection: $viewModel.resolution) {
+            ForEach(PersonalHeatmapResolution.allCases, id: \.self) { res in
+                Text(res.helpText).tag(res)
+            }
+        } label: {
+            if labelled { Text("Resolution") }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+        .help("Cell size in metres. Broader cells are less precise but faster for large libraries.")
+        .accessibilityLabel("Resolution")
+    }
+
+    private func minimumRepeatsPicker(labelled: Bool) -> some View {
+        Picker(selection: $viewModel.minimumWorkoutCount) {
+            ForEach(PersonalHeatmapViewModel.minimumRepeatOptions, id: \.self) { count in
+                Text(count == 1 ? "At least 1 run" : "At least \(count) runs").tag(count)
+            }
+        } label: {
+            if labelled { Text("Minimum repeats") }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+        .help("Hide cells visited by fewer than this many distinct workouts")
+        .accessibilityLabel("Minimum runs per cell")
+    }
+
+    private func fitButton(iconOnly: Bool) -> some View {
+        Button {
+            viewModel.requestFit()
+        } label: {
+            Label("Fit Heatmap", systemImage: "viewfinder")
+                .labelStyle(FitButtonLabelStyle(iconOnly: iconOnly))
+        }
+        .fixedSize()
+        .help("Zoom and center the map to show all heat cells")
+        .accessibilityLabel("Fit Heatmap")
+        .disabled(viewModel.mapAreas.isEmpty)
     }
 
     /// Route restriction for the heatmap. Menu style (not a plain Picker) so
     /// derived default names can be labelled without loading snapshots.
-    private var routePicker: some View {
+    /// `truncating` lets the selected title shorten on one line instead of
+    /// taking its full width from the rest of the bar; only the narrowest
+    /// filter arrangement uses it. The menu label truncates at its tail
+    /// whatever `truncationMode` says, so a suffix is the part that goes.
+    private func routePicker(truncating: Bool) -> some View {
         // Derived names are set-level: a name is only disambiguated against the
         // whole sibling set, so derive once per picker build and index by id.
         // `heatmapRouteFilterTitle` is read twice below — the label and the
@@ -221,7 +303,7 @@ struct PersonalHeatmapView: View {
             )
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
+        .routeMenuSizing(truncating: truncating)
         .help("Restrict the heatmap to one route")
         .accessibilityLabel("Route filter")
         .accessibilityValue(filterTitle)
@@ -574,4 +656,31 @@ private func blend(_ a: Color, _ b: Color, t: Double) -> Color {
     #else
     return t < 0.5 ? a : b
     #endif
+}
+
+private extension View {
+    @ViewBuilder
+    func routeMenuSizing(truncating: Bool) -> some View {
+        if truncating {
+            lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(-1)
+        } else {
+            fixedSize()
+        }
+    }
+}
+
+/// Title-and-icon or icon-only, chosen per filter arrangement. The button
+/// keeps its "Fit Heatmap" accessibility label and help either way.
+private struct FitButtonLabelStyle: LabelStyle {
+    let iconOnly: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if iconOnly {
+            configuration.icon
+        } else {
+            Label(configuration)
+        }
+    }
 }
