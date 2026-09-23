@@ -80,8 +80,13 @@ fi
 # gitignored, so the run still leaves git status --porcelain empty.
 mkdir -p .build-linux/container-home
 
+# Remember whether this is the default full-suite invocation: the floor on
+# tests that actually ran applies to it, and a narrower --filter legitimately
+# runs fewer tests.
+DEFAULT_FULL_SUITE=0
 if [ $# -eq 0 ]; then
   set -- --filter RunPlayCoreTests
+  DEFAULT_FULL_SUITE=1
 fi
 
 # Git refuses to operate in a repository whose ownership it cannot vouch
@@ -114,15 +119,116 @@ GIT_SAFE_ENV=(
 # podman-docker shim gets podman's flags.
 case "${RUNTIME}" in
   docker)
-    exec "${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
+    VIRTUALIZE=("${RUNTIME_BIN}" run --rm -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
-      -v "$PWD":/src:Z -w /src \
-      "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
+      -v "$PWD":/src:Z -w /src)
     ;;
   podman)
-    exec "${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
+    VIRTUALIZE=("${RUNTIME_BIN}" run --rm --userns=keep-id -u "$(id -u):$(id -g)" \
       -e HOME=/src/.build-linux/container-home "${GIT_SAFE_ENV[@]}" \
-      -v "$PWD":/src:Z -w /src \
-      "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux
+      -v "$PWD":/src:Z -w /src)
     ;;
 esac
+
+# A check that silently skips suites cannot catch corelibs-only breakage.
+# `swift test` exits 0 when a filter matches nothing, so neither the exit
+# code nor a bare "0 failures" can distinguish a full run from a run that
+# executed almost nothing. Assert the arithmetic instead: XCTest's
+# `Executed N tests, with S skipped` counts skipped tests inside N (probed,
+# not inferred: five test methods, three skipped, reports `Executed 5 tests,
+# with 3 tests skipped`), so N - S is the number that genuinely ran.
+#
+# FLOOR provenance: 900, against 1080 actually ran on current main
+# (Executed 1096, skipped 16, non-root, swift:6.4.0-resolute). It is a
+# loose floor whose job is only to catch a collapse to near-zero, which is
+# what a mass `XCTSkip` looks like. It does not start to bite until
+# RAN approx 150; the real lead time is ~2x. Keep the proportion by raising
+# it in the PR that adds a batch of Core tests once RAN exceeds FLOOR + 200
+# (i.e. at RAN > 1100 today), and never lower it to accommodate skips.
+FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-900}"
+
+# SKIP REASONS ARE ALLOWLISTED, NOT COUNTED. A ceiling on the skip count
+# (`64`) was the first design and was rejected: it does not catch
+# mass-skipping (90 skips is under any bound loose enough to survive ordinary
+# drift), and it rots as Core grows. The allowlist below does catch it and
+# names the gap that tripped instead of just reporting that a number moved.
+#
+# Every reason observed in this container, all of which the pattern accepts:
+#   RUNPLAY_BENCHMARK=1 / RUNPLAY_PRODUCTION_AB=1 / RUNPLAY_CORE_HOTSPOT_PROFILE=1
+#   RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1 / RUNPLAY_HEATMAP_PROFILE=1
+#   RUNPLAY_ROUTE_GROUPING_BENCHMARK=1 / RUNPLAY_ROUTE_GROUPING_MEASURE=1
+#   root bypasses POSIX permission bits ... (testFailedWorkoutWritePreservesPriorValidData)
+#
+# To add a reason, put the newly-skipping test and its reason in the PR that
+# introduces it; this check failing is the prompt to do that deliberately.
+ALLOWED_SKIP_PATTERN='RUNPLAY_[A-Z_]+=1|root bypasses POSIX permission bits'
+
+LOG=".build-linux/linux-container-verify.log"
+
+echo "==> Linux container check"
+echo "    image:    ${IMAGE}"
+echo "    runtime:  ${RUNTIME}${RUNTIME_BIN:+ (via ${RUNTIME_BIN})}"
+echo "    filter:   $*"
+echo "    log:      ${LOG}"
+
+set +e
+"${VIRTUALIZE[@]}" "${IMAGE}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path .build-linux 2>&1 | tee "${LOG}"
+STATUS="${PIPESTATUS[0]}"
+set -e
+
+if [ "${STATUS}" -ne 0 ]; then
+  echo "==> swift test failed (exit ${STATUS})" >&2
+  exit "${STATUS}"
+fi
+
+# Anchor on the aggregate summary line, not the first block: with a --filter,
+# `swift test` still runs every bundle, and a filtered-out bundle prints
+# `Executed 0 tests` first. XCTest only writes the skip clause when something
+# skipped -- `Executed 36 tests, with 0 failures` with none, `Executed 1096
+# tests, with 16 tests skipped and 0 failures` when some did -- so handle both
+# and treat a missing clause as zero. Largest N is the aggregate.
+SUMMARY="$(grep -oE 'Executed [0-9]+ tests?, with ([0-9]+ tests? skipped and )?[0-9]+ failures' "${LOG}" \
+  | sed -E -e 's/.*Executed ([0-9]+) tests?, with ([0-9]+) tests? skipped and.*/\1 \2/' \
+           -e 's/.*Executed ([0-9]+) tests?, with.*/\1 0/' \
+  | sort -k1,1n | tail -1)"
+if [ -z "${SUMMARY}" ]; then
+  echo "==> could not find an 'Executed N tests, with ... failures' summary in the output" >&2
+  exit 1
+fi
+EXECUTED="${SUMMARY% *}"
+SKIPPED="${SUMMARY#* }"
+RAN="$((EXECUTED - SKIPPED))"
+
+echo "==> Executed ${EXECUTED}, skipped ${SKIPPED}, actually ran ${RAN}"
+
+# Secondary guard: a collapse in the count of tests that ran. This does not
+# rot in the sense the ceiling did -- a rising Core count only makes it more
+# permissive, never falsely failing -- so it costs nothing to keep.
+if [ "${DEFAULT_FULL_SUITE}" -eq 1 ]; then
+  if [ "${RAN}" -lt "${FLOOR}" ]; then
+    echo "==> FAIL: only ${RAN} tests actually ran (floor ${FLOOR})." >&2
+    echo "    A drop in executed tests is a signal to investigate, not a number to raise." >&2
+    echo "    ${FLOOR} is provenance-documented: the executed count on current main under the" >&2
+    echo "    non-root container user, loose by design. Identify which tests stopped running" >&2
+    echo "    and why before touching it." >&2
+    exit 1
+  fi
+
+  # Primary guard, and the one that does not rot: every skip name must be a
+  # reason this repo accepts. Mass-skipping is caught by name, and the failure
+  # names the offending reason instead of only reporting that a count moved.
+  UNKNOWN_SKIPS="$(grep -oE 'Test skipped: .*' "${LOG}" \
+    | sed -E 's/^Test skipped: (required false value but got true - )?//' \
+    | grep -vE "${ALLOWED_SKIP_PATTERN}" | sort -u || true)"
+  if [ -n "${UNKNOWN_SKIPS}" ]; then
+    echo "==> FAIL: ${SKIPPED} tests skipped, and at least one reason is not on the allowlist:" >&2
+    printf '    %s\n' "${UNKNOWN_SKIPS}" >&2
+    echo "    A RISE in skips is a signal to investigate. If the new skip is correct, add its" >&2
+    echo "    reason to ALLOWED_SKIP_PATTERN in the PR that introduces the skipping test," >&2
+    echo "    stating why -- do not widen the pattern to silence this." >&2
+    exit 1
+  fi
+  echo "==> PASS: full suite ran ${RAN} tests (>= ${FLOOR}); ${SKIPPED} skipped, every reason allowlisted"
+else
+  echo "==> filter given: floor not applied (this run is a subset by request)"
+fi
