@@ -6,8 +6,14 @@ import RunPlayPlatform
 struct WatchFolderExecutionResult: Sendable {
     let outcome: WatchFolderImportOutcome
     let failureDetail: String
+    /// Informational detail for an import, shown on its recent-imports row.
+    var detail: String? = nil
 
     static let imported = WatchFolderExecutionResult(outcome: .imported, failureDetail: "")
+
+    static func imported(detail: String?) -> WatchFolderExecutionResult {
+        WatchFolderExecutionResult(outcome: .imported, failureDetail: "", detail: detail)
+    }
     static let duplicate = WatchFolderExecutionResult(outcome: .skippedDuplicate, failureDetail: "")
 
     static func failed(_ detail: String) -> WatchFolderExecutionResult {
@@ -799,7 +805,8 @@ final class WatchFolderCoordinator: ObservableObject {
                 fileName: file.url.lastPathComponent,
                 status: Self.status(for: execution.outcome),
                 processedAt: Date(),
-                failureDetail: execution.failureDetail
+                failureDetail: execution.failureDetail,
+                detail: execution.detail
             ))
             ledger(hash: hash, outcome: execution.outcome, file: file, folderID: folderID)
             persist()

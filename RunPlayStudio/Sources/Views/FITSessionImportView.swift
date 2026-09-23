@@ -343,12 +343,27 @@ struct FITSessionImportView: View {
                 }
                 .padding(.horizontal)
 
+                if let elevation = DEMImportReportText.summary(
+                    records: report.items.filter { $0.status == .ready }.map(\.elevationCorrection),
+                    correctsElevation: session.correctsElevation,
+                    commitFailed: report.commitFailed
+                ) {
+                    Text(elevation)
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
+
                 DisclosureGroup("Details") {
                     List(report.items, id: \.candidateID) { item in
                         HStack {
                             Text(item.sessionName)
                                 .lineLimit(1)
                             Spacer()
+                            if let elevation = elevationDetail(item, commitFailed: report.commitFailed) {
+                                Text(elevation)
+                                    .foregroundStyle(.secondary)
+                            }
                             Text(itemStatusText(item, commitFailed: report.commitFailed))
                                 .foregroundStyle(.secondary)
                         }
@@ -357,6 +372,7 @@ struct FITSessionImportView: View {
                             "\(item.sessionName), "
                                 + itemStatusText(item, commitFailed: report.commitFailed)
                                 + (item.detail.map { ". \($0)" } ?? "")
+                                + (elevationDetail(item, commitFailed: report.commitFailed).map { ". \($0)" } ?? "")
                         )
                     }
                     .frame(minHeight: 120, maxHeight: 220)
@@ -397,6 +413,11 @@ struct FITSessionImportView: View {
         // Report label is authoritative: item.status alone is process-time
         // classification, not commit outcome.
         item.reportLabel(commitFailed: commitFailed)
+    }
+
+    private func elevationDetail(_ item: FITSessionImportItemResult, commitFailed: Bool) -> String? {
+        guard item.status == .ready, !commitFailed else { return nil }
+        return DEMImportReportText.itemDetail(item.elevationCorrection, correctsElevation: session.correctsElevation)
     }
 
     private func reportStat(_ title: String, _ value: Int) -> some View {

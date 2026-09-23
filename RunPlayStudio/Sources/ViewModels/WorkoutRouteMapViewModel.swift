@@ -14,6 +14,9 @@ struct WorkoutRouteMapCacheKey: Hashable, Sendable {
     let mode: WorkoutRouteColorMode
     let policyVersion: Int
     let profileVersion: Int
+    /// Elevation colouring follows DEM elevation, which changes without
+    /// changing any point ID.
+    let demElevationCorrection: DEMElevationCorrection?
 
     static let profileVersion = 1
 
@@ -27,6 +30,7 @@ struct WorkoutRouteMapCacheKey: Hashable, Sendable {
         self.mode = mode
         self.policyVersion = policy.policyVersion
         self.profileVersion = Self.profileVersion
+        self.demElevationCorrection = workout.demElevationCorrection
     }
 
     /// Workout revision without color mode — used to cache availability.
@@ -39,7 +43,8 @@ struct WorkoutRouteMapCacheKey: Hashable, Sendable {
             firstPointID: firstPointID,
             lastPointID: lastPointID,
             policyVersion: policyVersion,
-            profileVersion: profileVersion
+            profileVersion: profileVersion,
+            demElevationCorrection: demElevationCorrection
         )
     }
 }
@@ -54,6 +59,7 @@ struct WorkoutRouteMapWorkoutRevision: Hashable, Sendable {
     let lastPointID: UUID?
     let policyVersion: Int
     let profileVersion: Int
+    let demElevationCorrection: DEMElevationCorrection?
 }
 
 /// Snapshot of map lines + legend ready for presentation.

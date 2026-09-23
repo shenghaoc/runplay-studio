@@ -80,6 +80,19 @@ class AppState: ObservableObject {
     /// Feature-local published state, never a library-wide token.
     @Published private(set) var trainingLoadRecomputeState: TrainingLoadRecomputeState = .idle
 
+    /// DEM tile folder and import setting (Settings → Elevation). Loaded once
+    /// at startup; changed only through `AppState+ElevationCorrection`.
+    @Published var demTileSettings = DEMTileSettings()
+    /// Whether the chosen tile folder is open for reading.
+    @Published var demFolderStatus: DEMFolderStatus = .notChosen
+    /// Settings-scene progress for the library-wide elevation pass.
+    @Published var demCorrectionPassState: DEMCorrectionPassState = .idle
+    let demSettingsStore: FileDEMTileSettingsStore?
+    /// The open tile folder; `nil` without a folder or when it cannot open.
+    var demFolderAccess: DEMTileFolderAccess?
+    /// Handle for the active library elevation pass.
+    var demCorrectionTask: Task<Void, Never>?
+
     func bumpPersonalRecordsLibraryRevision() {
         personalRecordsLibraryRevision += 1
     }
@@ -231,6 +244,8 @@ class AppState: ObservableObject {
         let pointCount: Int
         let firstPointID: UUID?
         let lastPointID: UUID?
+        /// DEM correction changes elevation without changing any point ID.
+        let demElevationCorrection: DEMElevationCorrection?
         let context: WorkoutAnalysisContext
     }
 
@@ -302,6 +317,7 @@ class AppState: ObservableObject {
         archiveService: StravaArchiveService? = nil,
         fitSessionService: FITSessionImportService? = nil,
         profileStore: FileAthleteProfileStore? = nil,
+        demSettingsStore: FileDEMTileSettingsStore? = nil,
         accessibilityAnnouncer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
     ) {
         let announcementPolicy = AccessibilityAnnouncementPolicy(
@@ -311,6 +327,10 @@ class AppState: ObservableObject {
         self.profileStore = profileStore
         if let profileStore {
             athleteProfile = profileStore.loadOrDefault()
+        }
+        self.demSettingsStore = demSettingsStore
+        if let demSettingsStore {
+            demTileSettings = demSettingsStore.loadOrDefault()
         }
         self.importService = importService
         self.archiveService = archiveService
@@ -352,7 +372,8 @@ class AppState: ObservableObject {
             importService: importService,
             archiveService: archiveService,
             fitSessionService: fitSessionService,
-            profileStore: FileAthleteProfileStore(rootURL: libraryRoot)
+            profileStore: FileAthleteProfileStore(rootURL: libraryRoot),
+            demSettingsStore: FileDEMTileSettingsStore(rootURL: libraryRoot)
         )
         attachWatchFolderCoordinator(
             store: FileWatchFolderStore(rootURL: libraryRoot),
@@ -411,6 +432,7 @@ class AppState: ObservableObject {
         fitImportTask?.cancel()
         personalRecordsBackfillTask?.cancel()
         trainingLoadBackfillTask?.cancel()
+        demCorrectionTask?.cancel()
         routeGroupAssignmentTask?.cancel()
         routeGroupReclusterTask?.cancel()
         routeGroupBackfillTask?.cancel()
@@ -702,6 +724,7 @@ class AppState: ObservableObject {
     /// `.loadingLibrary` while loading and `.idle` when complete.
     /// Always resets to `.idle` even if the task is cancelled.
     func start() async {
+        openDEMTileFolder()
         guard let storeActor else {
             loadSampleWorkouts()
             announcementPolicy.handle(.libraryLoaded(count: workouts.count))
@@ -831,6 +854,10 @@ class AppState: ObservableObject {
         do {
             var workout = try await importService.importWorkout(from: url)
             try Task.checkCancellation()
+            // Correct elevation before the load re-stamp so the saved snapshot
+            // is final; a correction that cannot finish keeps the import.
+            workout = try await Self.correctImportedElevation(of: workout, with: demImportCorrection)
+            try Task.checkCancellation()
             // Importers analyze with the default profile; re-stamp the load
             // with the current one so fresh imports are never stale. One
             // native call, skipped entirely when the profile is default.
@@ -869,7 +896,13 @@ class AppState: ObservableObject {
             // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
             requestSessionSave()
-            announcementPolicy.handle(.importCompleted(name: filename))
+            if let elevation = workout.demElevationCorrection?.importSummary(
+                recordedAltitudeSensor: workout.recordedAltitudeSensor
+            ) {
+                announcementPolicy.handle(.importCompletedWithDetail(name: filename, detail: elevation))
+            } else {
+                announcementPolicy.handle(.importCompleted(name: filename))
+            }
         } catch is CancellationError {
             // Cancelled — do not add to UI.
             announcementPolicy.handle(.importCancelled)
@@ -2546,6 +2579,7 @@ class AppState: ObservableObject {
             pointCount: workout.routePoints.count,
             firstPointID: workout.routePoints.first?.id,
             lastPointID: workout.routePoints.last?.id,
+            demElevationCorrection: workout.demElevationCorrection,
             context: context
         )
         return context
@@ -2559,7 +2593,8 @@ class AppState: ObservableObject {
            cached.normalizationVersion == workout.normalizationVersion,
            cached.pointCount == workout.routePoints.count,
            cached.firstPointID == workout.routePoints.first?.id,
-           cached.lastPointID == workout.routePoints.last?.id {
+           cached.lastPointID == workout.routePoints.last?.id,
+           cached.demElevationCorrection == workout.demElevationCorrection {
             return cached.context
         }
         return nil

@@ -269,12 +269,30 @@ struct StravaArchiveImportView: View {
                 }
                 .padding(.horizontal)
 
+                if let elevation = DEMImportReportText.summary(
+                    records: report.items.filter { $0.status == .ready }.map(\.elevationCorrection),
+                    correctsElevation: session.correctsElevation,
+                    commitFailed: report.commitFailed
+                ) {
+                    Text(elevation)
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
+
                 DisclosureGroup("Details") {
                     List(report.items, id: \.candidateID) { item in
                         HStack {
                             Text(item.activityName ?? item.archiveRelativePath)
                                 .lineLimit(1)
                             Spacer()
+                            if item.status == .ready, let elevation = DEMImportReportText.itemDetail(
+                                item.elevationCorrection,
+                                correctsElevation: session.correctsElevation
+                            ) {
+                                Text(elevation)
+                                    .foregroundStyle(.secondary)
+                            }
                             Text(item.status.userFacingSummary)
                                 .foregroundStyle(.secondary)
                         }

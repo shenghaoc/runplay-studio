@@ -51,6 +51,10 @@ struct RunPlayStudioApp: App {
                     .tabItem {
                         Label("Athlete", systemImage: "figure.run")
                     }
+                ElevationSettingsView(appState: appState)
+                    .tabItem {
+                        Label("Elevation", systemImage: "mountain.2")
+                    }
                 if let coordinator = appState.watchFolderCoordinator {
                     WatchFolderSettingsView(coordinator: coordinator)
                         .tabItem {

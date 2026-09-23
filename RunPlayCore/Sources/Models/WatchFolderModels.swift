@@ -131,6 +131,11 @@ public struct WatchFolderImportRecord: Codable, Equatable, Identifiable, Sendabl
     /// Short human-readable failure detail for failed rows; empty otherwise.
     public let failureDetail: String
 
+    /// Informational detail for a successful row, such as how the import's
+    /// elevation was corrected; `nil` when there is none. Absent in rows
+    /// written before it existed.
+    public let detail: String?
+
     public init(
         id: UUID = UUID(),
         folderID: UUID,
@@ -139,7 +144,8 @@ public struct WatchFolderImportRecord: Codable, Equatable, Identifiable, Sendabl
         fileName: String,
         status: Status,
         processedAt: Date,
-        failureDetail: String = ""
+        failureDetail: String = "",
+        detail: String? = nil
     ) {
         self.id = id
         self.folderID = folderID
@@ -149,6 +155,7 @@ public struct WatchFolderImportRecord: Codable, Equatable, Identifiable, Sendabl
         self.status = status
         self.processedAt = processedAt
         self.failureDetail = failureDetail
+        self.detail = detail
     }
 }
 

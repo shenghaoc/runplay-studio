@@ -97,6 +97,8 @@ extension AppState {
         let archiveURL = session.archiveURL
         let existing = workouts
         let completedName = session.archiveName
+        let elevationCorrection = demImportCorrection
+        session.correctsElevation = elevationCorrection != nil
 
         archiveTask?.cancel()
         archiveTask = Task { [weak self] in
@@ -106,7 +108,8 @@ extension AppState {
                     selection,
                     from: archiveURL,
                     existingWorkouts: existing,
-                    storeActor: storeActor
+                    storeActor: storeActor,
+                    elevationCorrection: elevationCorrection
                 ) { progress in
                     await MainActor.run {
                         self.archiveSession?.progress = progress
@@ -273,6 +276,8 @@ extension AppState {
         let fileURL = session.fileURL
         let existing = workouts
         let completedName = session.fileName
+        let elevationCorrection = demImportCorrection
+        session.correctsElevation = elevationCorrection != nil
 
         fitImportTask?.cancel()
         fitImportTask = Task { [weak self] in
@@ -282,7 +287,8 @@ extension AppState {
                     selection,
                     from: fileURL,
                     existingWorkouts: existing,
-                    storeActor: storeActor
+                    storeActor: storeActor,
+                    elevationCorrection: elevationCorrection
                 ) { progress in
                     await MainActor.run {
                         self.fitSessionImportSession?.progress = progress
