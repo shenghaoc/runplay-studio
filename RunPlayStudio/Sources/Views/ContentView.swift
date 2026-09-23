@@ -121,6 +121,7 @@ struct ContentView: View {
                 ),
                 onImport: { appState.showImporter = true },
                 onArchiveImport: { appState.showArchiveImporter = true },
+                watchFolderCoordinator: appState.watchFolderCoordinator,
                 onDelete: { workout in
                     Task { await appState.deleteWorkout(workout) }
                 },
@@ -243,6 +244,16 @@ struct ContentView: View {
                     .padding()
             } else {
                 operationStateOverlay
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // Non-modal watch-folder review banner: never blocks the window;
+            // sits above content only while a FIT review is queued.
+            if let coordinator = appState.watchFolderCoordinator {
+                WatchFolderReviewBanner(coordinator: coordinator) {
+                    coordinator.presentPendingReview()
+                }
+                .animation(.default, value: coordinator.pendingReviewBanner)
             }
         }
         .focusedSceneValue(\.appWorkspaceActions, AppWorkspaceActions(

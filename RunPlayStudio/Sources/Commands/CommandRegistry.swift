@@ -26,6 +26,7 @@ enum CommandWorkspace: String, CaseIterable, Sendable, Equatable {
 enum CommandID: String, CaseIterable, Sendable, Equatable {
     case importFile
     case importStravaArchive
+    case watchFoldersSettings
     case workoutOverview
     case workoutCharts
     case workoutSplits
@@ -110,6 +111,17 @@ enum CommandRegistry {
             workspace: .any,
             purpose: "Import running activities from a local Strava bulk-export ZIP",
             accessibilityDescription: "Import a Strava archive",
+            localOnly: false
+        ),
+        CommandDefinition(
+            id: .watchFoldersSettings,
+            menuTitle: "Watch Folders…",
+            menu: "File",
+            keyEquivalent: "",
+            modifiers: [],
+            workspace: .any,
+            purpose: "Manage folders that import new workout files automatically",
+            accessibilityDescription: "Open watch folder settings",
             localOnly: false
         ),
         CommandDefinition(

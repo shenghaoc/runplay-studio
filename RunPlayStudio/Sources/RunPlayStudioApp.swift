@@ -46,7 +46,18 @@ struct RunPlayStudioApp: App {
             WorkoutViewCommands()
         }
         Settings {
-            AthleteProfileSettingsView(appState: appState)
+            TabView {
+                AthleteProfileSettingsView(appState: appState)
+                    .tabItem {
+                        Label("Athlete", systemImage: "figure.run")
+                    }
+                if let coordinator = appState.watchFolderCoordinator {
+                    WatchFolderSettingsView(coordinator: coordinator)
+                        .tabItem {
+                            Label("Watch Folders", systemImage: "folder.badge.gearshape")
+                        }
+                }
+            }
         }
     }
 }
