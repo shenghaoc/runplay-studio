@@ -42,6 +42,7 @@ Accessibility Inspector alone.
 - [ ] Comparison: textual P/C identity; Distance / Route-Aware alignment picker; distance or matched-route slider; End Comparison.
 - [ ] Heatmap: filters, Fit Heatmap, summary statistics.
 - [ ] Import file, multi-session FIT review, and Strava archive; cancel sheets with Escape.
+- [ ] Watch Folders: File menu item opens the settings pane; add/remove/pause, Import Existing Files Now, Recent Imports popover, and review banner are all reachable and operable by keyboard; Escape closes the Recent Imports popover, and the banner's focused Dismiss button clears it.
 - [ ] PNG export configuration, preview, save/cancel.
 - [ ] Video export configuration, poster preview, 15/30/60 s encode, cancel cleanup.
 - [ ] Help → Keyboard Shortcuts matches live menu chords.
@@ -1094,6 +1095,168 @@ A spoken VoiceOver pass, increased-contrast pass, and appearance variants remain
 part of the broader release checklist; they are not substitutes for the
 packaged-app and accessibility-tree checks above.
 
+## Watch-folder import (synthetic)
+
+Use **synthetic** fixtures only — never point a watch folder at a directory of
+real private workout files, and never commit what lands in one. These are
+manual checks to perform in a GUI session; they are not claims of a completed
+manual pass.
+
+### Prep
+
+Create three throwaway directories and keep a few synthetic files handy (the
+Strava archive fixtures above, or any synthetic `.gpx`/`.tcx`/`.fit`/`.json`
+run):
+
+```bash
+WATCH_ROOT="$HOME/watch-folder-manual"
+mkdir -p "$WATCH_ROOT/live" "$WATCH_ROOT/existing" "$WATCH_ROOT/removable"
+```
+
+Generate a file slowly **only if reproducing the settle behaviour by hand** —
+the slow-write case is automated (item 9), so this script is a convenience, not
+a required step:
+
+```bash
+# Writes a synthetic GPX in 1 KB slices over ~10 s; the watcher must not
+# import it until the writes stop.
+python3 - <<'PY'
+import time, pathlib
+src = pathlib.Path("FIXTURE.gpx").read_text()   # any synthetic GPX
+out = pathlib.Path.home() / "watch-folder-manual/live/slow.gpx"
+with out.open("w") as f:
+    for i in range(0, len(src), 1024):
+        f.write(src[i:i + 1024]); f.flush()
+        time.sleep(0.5)
+PY
+```
+
+### Settings pane and folder lifecycle
+
+1. **File → Watch Folders…** opens Settings on the Watch Folders pane.
+2. **Add Folder…** on `live` → it appears in the list, unpaused, watching.
+3. **Import Existing Files Now** on a folder pre-populated with `existing`
+   files → they import without waiting for the settle interval.
+4. Set a default tag on one folder, drop a new file in, confirm the imported
+   workout carries that tag and that the tag is created once, not duplicated.
+5. **Pause** → dropping a file in does nothing. **Resume** → the next poll
+   picks it up.
+6. **Remove** a folder → it stops scanning at once and the directory is no
+   longer touched (verify with `fs_usage` or by moving the folder away).
+7. Quit and relaunch → the folder list, paused flags, default tags, and
+   ledgers all persist; previously imported files are **not** re-imported.
+
+### Detection, settle, and dedupe
+
+8. Drop one synthetic GPX into `live` → it imports within a few seconds
+   (DispatchSource early wake), not only at the next poll.
+9. [AUTOMATED] ~~Run the slow-write script → the file is **not** imported
+   while it grows, then imports once the size and modification date are stable
+   across two probes.~~ Covered by
+   `WatchFolderScannerTests.testSettleWithholdsSlowlyWrittenFileUntilStable`,
+   which writes a file in slices with pauses, probes the scanner mid-write, and
+   asserts it stays unsettled while the size keeps changing and settles once it
+   has been stable for the interval. The manual script above remains available
+   for eyeballing the end-to-end path, but this behaviour no longer needs a hand
+   pass.
+10. Import the same content again under a new filename (`cp a.gpx b.gpx`) →
+    one **Skipped — already imported** row appears in Recent Imports and no
+    second workout is created.
+11. Leave an already-processed file alone across several poll cycles → the
+    Recent Imports list does **not** accumulate repeated skip rows.
+12. Drop a corrupt/unsupported file (`.gpx` with garbage bytes, a `.txt`, a
+    hidden `.a.gpx`, a directory named `sub.gpx`) → one **Failed** row with a
+    readable reason for the corrupt file; the rest are ignored silently, and
+    the corrupt file is **not** retried on every subsequent scan.
+13. Drop a file larger than the 100 MB product limit → a definitive **Failed**
+    row naming the size limit; no repeated retries.
+14. Confirm files in a **subdirectory** of a watched folder are never imported
+    (watching is non-recursive).
+15. Delete an imported workout from the library → it does **not** come back on
+    the next scan (the ledger is content identity, not library state).
+
+### Multi-session FIT review
+
+16. Drop a multi-session `.fit` file in → a **non-modal** banner appears; no
+    sheet steals focus and no alert blocks the window.
+17. Activate the banner → the existing **Import FIT Sessions** review sheet
+    opens with the queued container; import → workouts commit, the banner
+    clears, and the file is ledgered.
+18. Dismiss the banner without importing → the file stays queued and is not
+    re-announced on every poll.
+19. Drop a single-session `.fit` file in → it imports directly with **no**
+    review sheet and no banner.
+20. Quit and relaunch with a queued review still pending → the banner returns
+    from the persisted pending-review state.
+
+### Recent Imports panel
+
+21. Open the toolbar **Recent Imports** popover → per-file rows show folder,
+    filename, status (imported / skipped / failed / awaiting review), time,
+    and failure detail.
+22. **Reveal in Finder** on a row opens the containing folder with the file
+    selected.
+23. Confirm the list is bounded (oldest rows drop off) and that it is empty
+    after relaunch — recent rows are in-memory only, the ledger is what
+    persists.
+24. Confirm a failure produces **no** modal alert anywhere; the only surfaces
+    are the panel row and a single VoiceOver announcement.
+
+### Environment scenarios
+
+25. **Mounted device volume** (a Garmin/Fenix-style `Volumes/GARMIN/Activities`
+    directory, or any removable volume): add it while mounted, copy a file in,
+    confirm import. Then **eject the volume while watching** → no crash, no
+    modal alert, exactly **one** readable failure row in Recent Imports (not one
+    per poll), and the Settings pane shows that folder as **Unavailable —
+    watching resumes if it returns** with a warning icon instead of a green
+    "Watching" status. **Remount** → watching resumes automatically without
+    re-adding the folder, the Unavailable status clears, and a new file copied
+    in imports. Confirm no Recent Imports row is added merely because the folder
+    came back (recovery is folder state, not an import).
+26. **Synced folder** (Dropbox / iCloud Drive / Google Drive): add the local
+    synced directory and confirm a file that lands as a partial download plus
+    its `.partial`/`.icloud` companion imports exactly once, after the sync
+    client finishes writing. Confirm the temporary companion files are never
+    imported — hidden `.`-prefixed companions and non-supported extensions such
+    as `.partial` and `.icloud` are skipped — and that no duplicate appears when
+    the sync client renames the finished file into place.
+27. **Folder removed while watching**: `rm -rf` or move away a watched folder
+    with the app running → no crash, no alert storm, one readable failure row,
+    and the folder reads **Unavailable** in the Settings pane rather than
+    "Watching". Recreate the directory at the same path → watching resumes on a
+    later poll without re-adding the folder. Then remove it again and confirm a
+    **second** row appears (one per transition, not one per poll). Finally,
+    confirm a **paused** folder whose directory is removed is never reported
+    unavailable, because pausing stops access deliberately.
+28. Confirm no network activity occurs beyond the existing MapKit basemap loads
+    (Little Snitch or `nettop`) while watching, importing, and revealing.
+29. Confirm the watched folder's source files are never modified, moved, or
+    deleted by any of the above.
+
+### Accessibility and appearance
+
+30. Keyboard-only: reach the Watch Folders pane, add/remove/pause folders,
+    trigger **Import Existing Files Now**, open the Recent Imports popover, and
+    activate a row's Reveal in Finder without a pointer. Escape closes the
+    Recent Imports popover. The review banner is dismissed by tabbing to its
+    **Dismiss** button and pressing Space — it deliberately does not take
+    focus, so it never traps keyboard navigation; confirm focus order passes
+    through the banner and back into the main content.
+31. VoiceOver: folder rows read name plus status as text (**Watching**,
+    **Paused**, or **Unavailable — watching resumes if it returns**); the
+    default tag is a separate labelled field ("Default tag for <folder>"), and
+    the Pause/Resume button names the folder it acts on. Recent Imports rows
+    read status as **text** ("Imported", "Skipped, already imported", "Failed",
+    "Waiting for review") followed by file and folder — never colour or icon
+    alone, since the status icon is hidden from accessibility. A completed
+    import and a failure each produce exactly one announcement (no per-poll
+    spam), and folder unavailability is announced once per transition.
+32. Light/dark, Increase Contrast, and Reduce Transparency: status colours stay
+    legible and every status remains distinguishable without colour.
+33. Narrow window: the settings pane and the Recent Imports popover stay
+    readable and do not clip rows or buttons.
+
 ## All Runs Library Checklist
 
 Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
@@ -1211,6 +1374,10 @@ Persistence dogfood record (2026-07-11):
 - [x] Keep committed fixtures and demo assets synthetic or anonymized.
 - [x] Store private workout files under `local-workouts/` or `private-workouts/`.
 - [x] Note: `activity_*.tcx` and `activity_*.fit` are gitignored for local dogfooding.
+- [x] Note: `watch-folders.json` (folder display names, security-scoped bookmark
+  bytes, per-folder SHA-256 ledger) lives in `Application Support/RunPlayStudio/`
+  and is never a repository artifact; point watch folders only at synthetic
+  fixture directories during manual passes.
 - [x] See `docs/private-data.md` for the durable private-data policy.
 
 ## Route Comparison Dogfood Checklist

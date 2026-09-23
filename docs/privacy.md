@@ -160,6 +160,27 @@ entitlements and a separate privacy review. Any such change will be opt-in and
 clearly documented before shipping.
 
 
+## Watch-folder import
+
+Watch folders are **opt-in** and stay entirely local. The app never scans a
+folder you have not chosen, and removing a folder stops all access immediately.
+
+`Application Support/RunPlayStudio/watch-folders.json` stores, per folder: the
+folder's display name, an opaque **security-scoped bookmark** (the system's own
+serialized access grant — it can name the folder path and is never uploaded or
+included in exports), an optional default tag name, and the paused flag. It also
+stores a per-folder ledger of already-processed files: the **SHA-256 content
+hash**, the **filename**, the outcome (imported / skipped duplicate / failed /
+awaiting review), and the timestamp. The recent-imports list shown in the app is
+in-memory only and is never persisted.
+
+Watched files are read with the same bounded, on-device import pipeline as the
+file picker — nothing is uploaded, no network access is involved, and the
+watched folder's original files are never modified or moved. Deleting a workout
+removes the library copy, not the watched source file. Ledger hashes exist only
+so the same content is never imported twice; they are not a copy of your workout
+data and cannot reconstruct it.
+
 ## Strava bulk-export import
 
 Archive import reads a user-selected ZIP entirely on-device. The app does not
