@@ -23,6 +23,7 @@ struct SidebarView: View {
     @Binding var selection: SidebarSelection?
     var onImport: () -> Void
     var onArchiveImport: (() -> Void)? = nil
+    var watchFolderCoordinator: WatchFolderCoordinator? = nil
     var onDelete: ((RunWorkout) -> Void)?
     var onShowAllFavorites: (() -> Void)? = nil
     var onManageSmartCollections: (() -> Void)? = nil
@@ -210,21 +211,27 @@ struct SidebarView: View {
         .navigationTitle("RunPlay Studio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button(action: onImport) {
-                        Label("Import File…", systemImage: "doc.badge.plus")
-                    }
-                    .keyboardShortcut("i", modifiers: .command)
-                    if let onArchiveImport {
-                        Button(action: onArchiveImport) {
-                            Label("Import Strava Archive…", systemImage: "archivebox")
+                HStack(spacing: 4) {
+                    Menu {
+                        Button(action: onImport) {
+                            Label("Import File…", systemImage: "doc.badge.plus")
                         }
-                        .keyboardShortcut("i", modifiers: [.command, .shift])
+                        .keyboardShortcut("i", modifiers: .command)
+                        if let onArchiveImport {
+                            Button(action: onArchiveImport) {
+                                Label("Import Strava Archive…", systemImage: "archivebox")
+                            }
+                            .keyboardShortcut("i", modifiers: [.command, .shift])
+                        }
+                    } label: {
+                        Label("Import", systemImage: "plus")
                     }
-                } label: {
-                    Label("Import", systemImage: "plus")
+                    .help("Import a workout file or Strava archive")
+
+                    if let watchFolderCoordinator {
+                        RecentImportsToolbarButton(coordinator: watchFolderCoordinator)
+                    }
                 }
-                .help("Import a workout file or Strava archive")
             }
         }
         .alert("Delete Run", isPresented: Binding(

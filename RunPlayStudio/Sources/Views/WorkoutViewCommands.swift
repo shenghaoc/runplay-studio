@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 extension Notification.Name {
     static let runPlayWorkspaceCommand = Notification.Name("runplay.workspace-command")
@@ -81,6 +82,15 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .importStravaArchive).purpose)
+            .disabled(isSheetBlocking)
+
+            // Settings is the standard ⌘, scene; the menu item routes there
+            // without a second shortcut (reserved, see
+            // CommandRegistry.reservedSystemShortcuts).
+            Button(CommandRegistry.definition(for: .watchFoldersSettings).menuTitle) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            .help(CommandRegistry.definition(for: .watchFoldersSettings).purpose)
             .disabled(isSheetBlocking)
         }
 
