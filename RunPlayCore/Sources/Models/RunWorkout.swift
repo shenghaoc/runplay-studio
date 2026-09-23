@@ -55,6 +55,16 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Deliberately not gated on any snapshot version: the fields decode as
     /// nil on older snapshots and reimport is the upgrade path.
     public var developerFieldSummary: WorkoutDeveloperFieldSummary?
+    /// Standalone time-indexed heart rate, for sources whose route carries no
+    /// heart rate at all.
+    ///
+    /// Nil on every snapshot written before this field existed, and on every
+    /// workout imported from FIT/TCX/GPX/JSON where heart rate rides on
+    /// `routePoints`. The single-heart-rate-source invariant is enforced at
+    /// construction: when `routePoints` carry heart rate this series is
+    /// cleared, so the two representations can never both hold data. Read it
+    /// through `heartRateSamples`, never directly.
+    public var heartRateSeries: [HeartRateSample]?
 
     public init(
         id: UUID = UUID(),
@@ -86,7 +96,6 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             routeDistanceProvenance: .legacyUnknown
         )
     }
-
     public init(
         id: UUID = UUID(),
         metadata: WorkoutMetadata = WorkoutMetadata(),
@@ -108,7 +117,8 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         routeDistanceSource: RouteDistanceSource = .coordinateDerived,
         routeDistanceProvenance: RouteDistanceProvenance = .legacyUnknown,
         importProvenance: WorkoutImportProvenance? = nil,
-        developerFieldSummary: WorkoutDeveloperFieldSummary? = nil
+        developerFieldSummary: WorkoutDeveloperFieldSummary? = nil,
+        heartRateSeries: [HeartRateSample]? = nil
     ) {
         self.id = id
         self.metadata = metadata
@@ -131,6 +141,65 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         self.routeDistanceProvenance = routeDistanceProvenance
         self.importProvenance = importProvenance
         self.developerFieldSummary = developerFieldSummary
+        self.heartRateSeries = Self.sanitizedHeartRateSeries(
+            heartRateSeries,
+            routePoints: routePoints
+        )
+    }
+
+    /// Enforce the single-heart-rate-source invariant.
+    ///
+    /// Heart rate lives in `routePoints` or in the standalone series, never
+    /// both. When the route points already carry any valid reading the
+    /// standalone series is dropped, because a route-bearing source owns its
+    /// heart rate and a second copy would silently double-count it in training
+    /// load and the summary aggregation.
+    ///
+    /// An empty or all-invalid series normalizes to `nil` rather than to an
+    /// empty array, so snapshots that never had standalone heart rate re-encode
+    /// byte for byte identically.
+    private static func sanitizedHeartRateSeries(
+        _ series: [HeartRateSample]?,
+        routePoints: [RoutePoint]
+    ) -> [HeartRateSample]? {
+        guard let series, !series.isEmpty else { return nil }
+
+        let routeCarriesHeartRate = routePoints.contains { point in
+            point.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false
+        }
+        if routeCarriesHeartRate { return nil }
+
+        // A series with no valid reading anywhere carries no information; keep
+        // the historical nil shape instead of persisting an inert array.
+        let hasAnyValidReading = series.contains { sample in
+            sample.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false
+        }
+        guard hasAnyValidReading else { return nil }
+
+        // Sort into the elapsed-time domain the consumers assume, then clamp
+        // elapsed time monotonically so a series whose source timestamps were
+        // slightly out of order cannot produce a negative interval weight.
+        let sorted = series.sorted { lhs, rhs in
+            if lhs.elapsedSeconds != rhs.elapsedSeconds {
+                return lhs.elapsedSeconds < rhs.elapsedSeconds
+            }
+            return lhs.segmentIndex < rhs.segmentIndex
+        }
+        var normalized: [HeartRateSample] = []
+        normalized.reserveCapacity(sorted.count)
+        var previousElapsed: Double = 0
+        for sample in sorted {
+            let elapsed = max(previousElapsed, sample.elapsedSeconds)
+            previousElapsed = elapsed
+            normalized.append(
+                HeartRateSample(
+                    elapsedSeconds: elapsed,
+                    heartRateBPM: sample.heartRateBPM,
+                    segmentIndex: sample.segmentIndex
+                )
+            )
+        }
+        return normalized
     }
 
     /// Cached medium-date/short-time formatter for the unnamed-workout fallback.
@@ -161,9 +230,179 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     }
 
     public var pointCount: Int { routePoints.count }
+
+    /// Whether this workout carries GPS coordinates at all.
+    ///
+    /// This is the single route-presence predicate every consumer must use.
+    /// Route-bearing analysis (heatmap coverage, route grouping, distance-
+    /// window personal records, comparison alignment, replay, the map, PNG and
+    /// MP4 export) requires it; route-less analysis (summary, training load,
+    /// trends, longest run by summary distance) does not. Do not re-derive this
+    /// from `routePoints.isEmpty` at a call site — go through here so the
+    /// decision stays in one place and each consumer's answer to "no route" is
+    /// deliberate rather than emergent.
+    ///
+    /// Route presence is independent of where heart rate lives: an Apple Health
+    /// export run can have a route GPX yet still carry heart rate in
+    /// `heartRateSeries`, because the Health route GPX files hold no heart rate.
+    /// Nothing may infer one from the other.
+    public var hasRoute: Bool { !routePoints.isEmpty }
+
     public var hasAltitudeData: Bool { routePoints.contains { $0.altitudeMeters != nil } }
+
+    /// Visits every heart-rate reading in the workout, from whichever single
+    /// source holds it — route points or the standalone series, never both.
+    ///
+    /// This is *the* decision point for "where does heart rate live", and it
+    /// allocates nothing: the summary aggregation uses it so a million-point
+    /// route is not copied into a temporary array. `heartRateSamples` is built
+    /// on top of it, so both forms resolve the source through this one rule and
+    /// cannot diverge.
+    ///
+    /// The single-source invariant is enforced at construction, so reading both
+    /// representations here would be a bug, not a fallback.
+    public func forEachHeartRateSample(
+        _ body: (HeartRateSample) -> Void
+    ) {
+        if let series = heartRateSourceSeries {
+            for sample in series {
+                body(sample)
+            }
+            return
+        }
+        for point in routePoints {
+            body(
+                HeartRateSample(
+                    elapsedSeconds: point.elapsedSeconds,
+                    heartRateBPM: point.heartRateBPM,
+                    segmentIndex: point.routeSegmentIndex
+                )
+            )
+        }
+    }
+
+    /// Every heart-rate reading in the workout, from whichever single source
+    /// holds it.
+    ///
+    /// The materializing form of `forEachHeartRateSample`, for consumers that
+    /// need the samples as a value rather than as a visit. Training load is the
+    /// current one: it builds two route-sized interval arrays and checks
+    /// cancellation per sample, so it needs the list anyway.
+    ///
+    /// Prefer `forEachHeartRateSample` when merely aggregating — a million-point
+    /// route must not be copied into a temporary array just to compute a mean.
+    public var heartRateSamples: [HeartRateSample] {
+        var samples: [HeartRateSample] = []
+        samples.reserveCapacity(heartRateSampleCount)
+        forEachHeartRateSample { samples.append($0) }
+        return samples
+    }
+
+    /// The standalone series when it owns this workout's heart rate, else nil.
+    ///
+    /// The single expression of the resolution rule. Construction has already
+    /// made the two representations mutually exclusive, so a non-empty series
+    /// always wins and route points are only consulted when it is absent.
+    ///
+    /// Internal rather than public: `WorkoutTimeline` needs it to keep split and
+    /// record-window heart-rate averages on the single accessor, but the public
+    /// forms are `forEachHeartRateSample`, `heartRateSamples` and
+    /// `heartRateBPM(atRoutePointIndex:)`.
+    var heartRateSourceSeries: [HeartRateSample]? {
+        guard let series = heartRateSeries, !series.isEmpty else { return nil }
+        return series
+    }
+
+    private var heartRateSampleCount: Int {
+        heartRateSourceSeries?.count ?? routePoints.count
+    }
+
+    /// Heart rate for one specific route point, resolved through the single
+    /// accessor.
+    ///
+    /// Replay and the chart scrub readout both address heart rate by route
+    /// point index, so they need this rather than the flat sample list.
+    ///
+    /// When heart rate rides on the route points — every FIT/TCX/GPX/JSON
+    /// workout — this returns that point's own reading verbatim, so existing
+    /// behaviour is exactly preserved, including duplicate elapsed times. When
+    /// heart rate is a standalone series, the point's elapsed time indexes the
+    /// series instead: this is what makes an Apple Health export run *with* a
+    /// route GPX still show heart rate during replay, because its GPX carries
+    /// position, elevation, speed, course and accuracy but no heart rate.
+    ///
+    /// Returns nil for an out-of-range index or when no reading covers it.
+    public func heartRateBPM(atRoutePointIndex index: Int) -> Double? {
+        guard routePoints.indices.contains(index) else { return nil }
+
+        guard let series = heartRateSourceSeries else {
+            return routePoints[index].heartRateBPM
+        }
+
+        let target = routePoints[index].elapsedSeconds
+        guard target.isFinite else { return nil }
+        return Self.heartRateReading(
+            in: series,
+            atOrBeforeElapsedSeconds: target
+        )
+    }
+
+    /// The heart rate that applies at one elapsed time in a sorted series.
+    ///
+    /// Private rather than an `Array` extension so the sorted-series lookup
+    /// adds no public API surface: the ordering it relies on is an invariant of
+    /// `sanitizedHeartRateSeries`, and exposing a binary search that only holds
+    /// for its own sorted input would invite misuse.
+    ///
+    /// "At or before" is the hold rule: between two readings the earlier one
+    /// still applies, which is how a step-shaped heart-rate trace behaves during
+    /// replay and in the chart scrub readout. It is deliberately *not*
+    /// interpolated, so a route-less workout never shows a reading the source
+    /// did not produce.
+    private static func heartRateReading(
+        in series: [HeartRateSample],
+        atOrBeforeElapsedSeconds elapsedSeconds: Double
+    ) -> Double? {
+        guard !series.isEmpty, elapsedSeconds.isFinite else { return nil }
+        if elapsedSeconds < series[0].elapsedSeconds { return nil }
+
+        // First index whose elapsed time exceeds the target, then step back one.
+        // Sound because `sanitizedHeartRateSeries` sorted the series.
+        var low = 0
+        var high = series.count
+        while low < high {
+            let middle = (low + high) / 2
+            if series[middle].elapsedSeconds <= elapsedSeconds {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        guard low > 0 else { return nil }
+        return series[low - 1].heartRateBPM
+    }
+
+    /// Which representation currently holds this workout's heart rate.
+    public var heartRateSampleSource: HeartRateSampleSource {
+        if let series = heartRateSeries, !series.isEmpty {
+            return .standaloneSeries
+        }
+        let routeHasHeartRate = routePoints.contains { point in
+            point.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false
+        }
+        return routeHasHeartRate ? .routePoints : .none
+    }
+
     public var hasHeartRateData: Bool {
-        routePoints.contains { point in
+        // Deliberately does not materialize `heartRateSamples`: this predicate
+        // is reached from list rendering, where an O(N) array per row would be
+        // a needless allocation.
+        if let series = heartRateSeries {
+            return series.contains { sample in
+                sample.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false
+            }
+        }
+        return routePoints.contains { point in
             point.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false
         }
     }
@@ -196,6 +435,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         case qualityDiagnostics, recordedLapDiagnostics
         case routeDistanceSource, routeDistanceProvenance, importProvenance
         case developerFieldSummary
+        case heartRateSeries
     }
 
     public init(from decoder: any Decoder) throws {
@@ -266,6 +506,14 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
             WorkoutDeveloperFieldSummary.self,
             forKey: .developerFieldSummary
         )
+        // Absent on every snapshot written before standalone heart rate
+        // existed; those snapshots all carried heart rate on route points.
+        // Route through the same sanitizer as construction so a hand-edited or
+        // cross-imported snapshot cannot break the single-source invariant.
+        heartRateSeries = Self.sanitizedHeartRateSeries(
+            try container.decodeIfPresent([HeartRateSample].self, forKey: .heartRateSeries),
+            routePoints: routePoints
+        )
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -291,6 +539,9 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         try container.encode(routeDistanceProvenance, forKey: .routeDistanceProvenance)
         try container.encodeIfPresent(importProvenance, forKey: .importProvenance)
         try container.encodeIfPresent(developerFieldSummary, forKey: .developerFieldSummary)
+        // Omitted when nil, so snapshots written before standalone heart rate
+        // existed re-encode byte for byte identically.
+        try container.encodeIfPresent(heartRateSeries, forKey: .heartRateSeries)
     }
 
     private static func sanitizedRecordedLaps(_ laps: [RecordedLap]) -> [RecordedLap] {
