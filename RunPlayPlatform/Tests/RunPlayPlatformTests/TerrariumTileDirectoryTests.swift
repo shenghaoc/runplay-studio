@@ -147,6 +147,10 @@ final class TerrariumTileDirectoryTests: XCTestCase {
         XCTAssertEqual(TerrariumTileDirectory.availableZooms(in: root), [12, 13])
         XCTAssertEqual(TerrariumTileDirectory.tileSize(in: root, zoom: 12), 4)
         XCTAssertNil(TerrariumTileDirectory.tileSize(in: root, zoom: 13), "no tile at zoom 13")
+
+        // A buffered tile (2 pixels of overlap on each edge) is never read as a grid.
+        try writeTile(DEMTileKey(x: 3, y: 3), TerrariumPNG.rgb(size: 6, heights: Array(repeating: 1, count: 36)), zoom: 13)
+        XCTAssertNil(TerrariumTileDirectory.tileSize(in: root, zoom: 13), "6 = 2 + 2 × 2 buffered pixels")
         XCTAssertEqual(TerrariumTileDirectory.canonicalInteger("2130"), 2_130)
         XCTAssertNil(TerrariumTileDirectory.canonicalInteger("-1"))
         XCTAssertNil(TerrariumTileDirectory.canonicalInteger("07"))

@@ -74,7 +74,10 @@ public final class TerrariumTileDirectory: DEMTileSource, @unchecked Sendable {
     }
 
     /// The tile size at `zoom`, from the first of up to `probeLimit` tiles that
-    /// decodes as a square Terrarium tile; `nil` when none does.
+    /// decodes as a square Terrarium tile whose side is a power of two;
+    /// `nil` when none does. Buffered 260- and 516-pixel Terrarium variants
+    /// overlap their neighbours by two pixels on each edge, so reading them
+    /// as a plain grid would misplace every height; they never qualify.
     public static func tileSize(in rootURL: URL, zoom: Int, probeLimit: Int = 8) -> Int? {
         let zoomURL = rootURL.appendingPathComponent(String(zoom), isDirectory: true)
         var probed = 0
@@ -124,7 +127,8 @@ public final class TerrariumTileDirectory: DEMTileSource, @unchecked Sendable {
               let width = properties[kCGImagePropertyPixelWidth] as? Int,
               let height = properties[kCGImagePropertyPixelHeight] as? Int,
               width == height,
-              (2...4_096).contains(width)
+              (2...4_096).contains(width),
+              width & (width - 1) == 0
         else {
             return nil
         }
