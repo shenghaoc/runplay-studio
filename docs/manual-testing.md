@@ -165,6 +165,40 @@ been re-verified in the running app**. Needs a pass over:
       screen and clickable.
 - [ ] The custom range's two pickers cannot be crossed over each other.
 
+### Filter bar width pass 2026-09-23 (#160; release configuration, synthetic 317-run library)
+
+The primary filter row now picks the widest arrangement that fits instead of
+compressing one `HStack`. The order is: one row, then labelled pickers over a
+route + Fit row, then the same two rows without the static labels, and last,
+date + resolution over repeats + route + an icon-only Fit, where only the route
+title may truncate. Driven with System Events, `screencapture`, and an AX
+attribute dump against a release bundle, on a copy of the generator's 317-run
+library (286 routes).
+
+- 720×552, sidebar visible, light and dark: the last arrangement was used. No
+  label wrapped, and every pop-up showed its full value. With "1.0 km Loop
+  (NE·747)" selected the route title showed in full beside the icon-only
+  Fit button.
+- 720×552 with Date range → Custom (dark): the From/To row sat beneath the two
+  filter rows and the Fit button stayed on screen. The button was not clicked.
+- 720×552, sidebar hidden: labels dropped, and the route title and "Fit
+  Heatmap" were both shown in full.
+- A user name of 49 characters, set in the scratch library's manifest, was the
+  one case that truncated: one line with a tail ellipsis. The AX value kept the
+  full name. A macOS menu label ignores `truncationMode(.middle)`.
+- 1200×800, light and dark: labelled pickers on the first row, route and Fit
+  Heatmap on the second. At their natural widths the three labelled pickers
+  need about 723 pt. A single row comes back only in a window around 1330 pt
+  wide. Before #160 the row fit at 1200 only because the `maxWidth` caps
+  squeezed the pickers, which is also what made the labels wrap.
+- AX descriptions in the unlabelled arrangements read "Date range",
+  "Resolution", "Minimum runs per cell", and the icon-only button reads
+  "Fit Heatmap". An earlier build used `labelsHidden()`, and those descriptions
+  came out doubled ("Date range, Date range"). The label is now omitted instead.
+
+Not covered: VoiceOver speech (only AX attributes were read), and a clicked Fit
+button at the minimum size.
+
 ## Trends Workspace Checklist
 
 Use only synthetic or explicitly private, ignored local workout files.
