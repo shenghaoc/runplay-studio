@@ -1080,8 +1080,9 @@ public actor WorkoutLibraryStoreActor {
         // route-group output into a re-read snapshot instead. The re-read
         // group list is the base and the pass's groups are upserted by id,
         // so groups only another writer created survive. For a group the
-        // pass saw, the re-read copy's user intent wins — the name and the
-        // pin (with the pin's summary, a consistent pair) come from it —
+        // pass saw, the re-read copy's user intent wins — the name, the
+        // stored derived name, and the pin (with the pin's summary, a
+        // consistent pair) come from it —
         // while the pass's own derived summary is deliberately kept for
         // unpinned groups: it was computed over the same membership, and
         // the reconcile step below repairs it if it points at a non-member.
@@ -1099,6 +1100,7 @@ public actor WorkoutLibraryStoreActor {
         current.routeGroups = current.routeGroups.map { fresh in
             guard var passGroup = passGroupsByID[fresh.id] else { return fresh }
             passGroup.name = fresh.name
+            passGroup.derivedName = fresh.derivedName
             passGroup.pinnedRepresentativeWorkoutID = fresh.pinnedRepresentativeWorkoutID
             if fresh.pinnedRepresentativeWorkoutID != nil {
                 passGroup.representativeSummary = fresh.representativeSummary
@@ -1198,6 +1200,7 @@ public actor WorkoutLibraryStoreActor {
         let result = try service.recluster(
             workouts: workouts,
             previousGroups: manifest.routeGroups,
+            previousAssignments: manifest.routeGroupAssignments,
             policy: policy,
             progress: progress,
             isCancelled: { Task.isCancelled }

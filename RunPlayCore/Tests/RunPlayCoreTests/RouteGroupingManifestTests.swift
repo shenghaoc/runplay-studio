@@ -101,8 +101,12 @@ final class RouteGroupingManifestTests: XCTestCase {
 
         manifest.migrateToCurrentVersionIfNeeded()
 
-        XCTAssertTrue(manifest.routeGroups.contains(group))
-        XCTAssertFalse(manifest.routeGroups.contains(emptiedGroup), "a group with no surviving members is removed")
+        // Compared by id: repair also materializes the kept group's derived name.
+        XCTAssertEqual(
+            manifest.routeGroups.map(\.id),
+            [group.id],
+            "a group with no surviving members is removed"
+        )
         XCTAssertEqual(manifest.routeGroupAssignments.count, 1)
         XCTAssertEqual(manifest.routeGroupAssignment(forWorkoutID: deleted), nil, "the nil marker: absence means pending")
     }

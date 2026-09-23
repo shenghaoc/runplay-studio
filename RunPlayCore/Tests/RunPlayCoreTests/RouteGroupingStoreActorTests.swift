@@ -109,6 +109,58 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         XCTAssertEqual(result.workoutCount, 3)
     }
 
+    // MARK: - Materialized derived names
+
+    func testDerivedNameIsPersistedAtCreationAndSurvivesReclusterAndRename() async throws {
+        let runs = loopRuns(sideMeters: 1_250, count: 3, latitude: 37.0)
+        try await addAll(runs)
+        _ = try await actor.assignRouteGroups(for: runs.map(\.id))
+        let created = try XCTUnwrap(try store.loadManifest().routeGroups.first)
+        let derived = try XCTUnwrap(created.derivedName, "a new group is named when first persisted")
+        XCTAssertNil(created.name, "a derived name is never stored as a user name")
+
+        let reclustered = try await actor.reclusterRouteGroups()
+        XCTAssertNotEqual(reclustered.groups[0].id, created.id)
+        XCTAssertEqual(reclustered.groups[0].derivedName, derived, "re-cluster carries the derived name")
+
+        try await actor.renameRouteGroup(id: reclustered.groups[0].id, name: "Canal Loop")
+        try await actor.renameRouteGroup(id: reclustered.groups[0].id, name: nil)
+        let reset = try XCTUnwrap(try store.loadManifest().routeGroups.first)
+        XCTAssertNil(reset.name)
+        XCTAssertEqual(reset.derivedName, derived, "clearing a rename returns the stable original")
+    }
+
+    func testLoadLibraryMaterializesDerivedNamesForALegacyManifest() async throws {
+        let familyA = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        let familyB = loopRuns(sideMeters: 900, count: 2, latitude: 38.5)
+        try await addAll(familyA + familyB)
+        _ = try await actor.backfillRouteGroupAssignments()
+
+        // Rewrite the manifest as a pre-field v4 library would have it.
+        var legacy = try store.loadManifest()
+        let shown = WorkoutRouteGroup.derivedDisplayNames(
+            for: legacy.routeGroups.map { group in
+                var stripped = group
+                stripped.derivedName = nil
+                return stripped
+            },
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )
+        for index in legacy.routeGroups.indices {
+            legacy.routeGroups[index].derivedName = nil
+        }
+        try store.saveManifest(legacy)
+
+        _ = await actor.loadLibrary()
+
+        let migrated = try store.loadManifest()
+        XCTAssertEqual(migrated.version, 4)
+        XCTAssertEqual(migrated.routeGroups.count, 2)
+        for group in migrated.routeGroups {
+            XCTAssertEqual(group.derivedName, shown[group.id], "migration keeps the name already shown")
+        }
+    }
+
     // MARK: - Manual mutations
 
     func testRenameRouteGroup() async throws {
