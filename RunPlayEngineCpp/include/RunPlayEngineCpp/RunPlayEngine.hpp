@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "RunPlayEngineCpp/DemElevationSampling.hpp"
 #include "RunPlayEngineCpp/ElevationProfile.hpp"
 #include "RunPlayEngineCpp/Geodesy.hpp"
 #include "RunPlayEngineCpp/PersonalHeatmapCoverage.hpp"

@@ -222,6 +222,25 @@ APPROVED_POINTER_FUNCTIONS: tuple[ApprovedPointerFunction, ...] = (
         ),
     ),
     ApprovedPointerFunction(
+        name="plan_dem_tiles",
+        type_text=(
+            "DemTilePlanSummary "
+            "(const DemRouteSample *, std::size_t, DemSamplingPolicy, "
+            "DemTileKey *, std::size_t) noexcept"
+        ),
+        parameters=(
+            ApprovedPointerParameter(
+                name="samples",
+                type_text="const DemRouteSample *",
+            ),
+            ApprovedPointerParameter(
+                name="output_tiles",
+                type_text="DemTileKey *",
+                mutable_output=True,
+            ),
+        ),
+    ),
+    ApprovedPointerFunction(
         name="compute_training_load",
         type_text=(
             "TrainingLoadSummary "
@@ -632,6 +651,14 @@ def run_self_test() -> int:
                 "TrainingLoadPolicy) noexcept'"
             ),
             "ParmVarDecl samples 'const TrainingLoadSample *'",
+            (
+                "FunctionDecl plan_dem_tiles "
+                "'DemTilePlanSummary "
+                "(const DemRouteSample *, std::size_t, DemSamplingPolicy, "
+                "DemTileKey *, std::size_t) noexcept'"
+            ),
+            "ParmVarDecl samples 'const DemRouteSample *'",
+            "ParmVarDecl output_tiles 'DemTileKey *'",
             "VarDecl earth_radius_meters 'const double'",
             "CXXRecordDecl struct LocalMeters definition",
             "FieldDecl x_meters 'double'",
@@ -1261,6 +1288,39 @@ def run_self_test() -> int:
                 "ParmVarDecl samples 'const ElevationProfileInputSample *'",
                 "ParmVarDecl output_samples 'ElevationProfileOutputSample *'",
             ]
+        ),
+        "dem plan writable input": "\n".join(
+            [
+                "FunctionDecl plan_dem_tiles 'DemTilePlanSummary (DemRouteSample *, std::size_t, DemSamplingPolicy, DemTileKey *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'DemRouteSample *'",
+                "ParmVarDecl output_tiles 'DemTileKey *'",
+            ]
+        ),
+        "dem plan const output": "\n".join(
+            [
+                "FunctionDecl plan_dem_tiles 'DemTilePlanSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, const DemTileKey *, std::size_t) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl output_tiles 'const DemTileKey *'",
+            ]
+        ),
+        "dem plan tile folder path": "\n".join(
+            [
+                "FunctionDecl plan_dem_tiles 'DemTilePlanSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, DemTileKey *, std::size_t, const char *) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl output_tiles 'DemTileKey *'",
+                "ParmVarDecl tile_folder_path 'const char *'",
+            ]
+        ),
+        "dem plan tile loader callback": "\n".join(
+            [
+                "FunctionDecl plan_dem_tiles 'DemTilePlanSummary (const DemRouteSample *, std::size_t, DemSamplingPolicy, DemTileKey *, std::size_t, bool (*)(DemTileKey)) noexcept'",
+                "ParmVarDecl samples 'const DemRouteSample *'",
+                "ParmVarDecl output_tiles 'DemTileKey *'",
+                "ParmVarDecl load_tile 'bool (*)(DemTileKey)'",
+            ]
+        ),
+        "dem plan pointer return": (
+            "FunctionDecl plan_dem_tiles 'DemTileKey * (const DemRouteSample *, std::size_t, DemSamplingPolicy) noexcept'"
         ),
         "route metric writable input": "\n".join(
             [

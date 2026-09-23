@@ -16,6 +16,7 @@ int main() {
     run_elevation_profile_tests();
     run_route_metric_scale_bucket_tests();
     run_training_load_tests();
+    run_dem_elevation_sampling_tests();
     std::cout << "RunPlayEngineCppTests: all checks passed\n";
     return EXIT_SUCCESS;
 }
