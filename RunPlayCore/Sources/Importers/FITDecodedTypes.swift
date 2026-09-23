@@ -259,7 +259,11 @@ public struct FITDeviceInfoMessage: Sendable {
     public var softwareVersion: UInt16?     // scaled 100
     public var hardwareVersion: UInt8?
     public var deviceIndex: UInt8?
+    /// Raw `device_type`. Its meaning depends on `sourceType`: when the source
+    /// is local (5) it is the `local_device_type` subfield (4 = barometer).
     public var deviceType: UInt8?
+    /// Raw `source_type` (field 25): how the device is connected; 5 = local.
+    public var sourceType: UInt8?
     public var productName: String?
 
     public init() {}
@@ -453,6 +457,7 @@ public enum FITDeviceInfoField: UInt8 {
     case product = 4
     case softwareVersion = 5
     case hardwareVersion = 6
+    case sourceType = 25
     case productName = 27
 }
 

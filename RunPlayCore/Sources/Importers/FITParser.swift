@@ -791,6 +791,7 @@ public struct FITParser {
             deviceInfo.hardwareVersion = fieldValues[FITDeviceInfoField.hardwareVersion.rawValue]?.uint8Value
             deviceInfo.deviceIndex = fieldValues[FITDeviceInfoField.deviceIndex.rawValue]?.uint8Value
             deviceInfo.deviceType = fieldValues[FITDeviceInfoField.deviceType.rawValue]?.uint8Value
+            deviceInfo.sourceType = fieldValues[FITDeviceInfoField.sourceType.rawValue]?.uint8Value
             deviceInfo.productName = fieldValues[FITDeviceInfoField.productName.rawValue]?.stringValue
             decodedFile.deviceInfo.append(deviceInfo)
             decodedFile.orderedMessages.append(.deviceInfo(deviceInfo))
