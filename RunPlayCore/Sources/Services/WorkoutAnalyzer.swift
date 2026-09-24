@@ -196,13 +196,10 @@ public struct WorkoutAnalyzer: Sendable {
         try throwIfCancelled(isCancelled)
 
         // Training load depends on the summary (active time and speed) and
-        // one native call over same-segment heart-rate intervals.
+        // one native call over same-segment heart-rate intervals, read through
+        // the workout's single heart-rate accessor.
         workout.trainingLoad = try TrainingLoadCalculator.compute(
-            routePoints: workout.routePoints,
-            activeSeconds: workout.summary.totalActiveSeconds,
-            averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
-                ? workout.summary.averageSpeedMetersPerSecond
-                : nil,
+            for: workout,
             profile: athleteProfile,
             referenceYear: referenceYear,
             isCancelled: isCancelled
@@ -533,9 +530,12 @@ public struct WorkoutAnalyzer: Sendable {
     ) -> RunSummary {
         let points = workout.routePoints
         guard !points.isEmpty else {
-            return Self.routeLessSummary(
-                from: workout.summary,
-                policy: policy
+            return Self.withHeartRate(
+                Self.routeLessSummary(
+                    from: workout.summary,
+                    policy: policy
+                ),
+                from: workout
             )
         }
 
@@ -567,22 +567,17 @@ public struct WorkoutAnalyzer: Sendable {
 
         // ⚡ Bolt: Replaced .compactMap { ... }.filter { ... }.reduce chain with inline loop.
         // This avoids intermediate O(N) array allocations for heart rate aggregations.
-        var sumHR: Double = 0
-        var countHR = 0
-        var maxHR: Double? = nil
-
-        for point in points {
-            if let hr = point.heartRateBPM, Self.validHeartRateRange.contains(hr), hr.isFinite {
-                sumHR += hr
-                countHR += 1
-                if let currentMax = maxHR {
-                    maxHR = max(currentMax, hr)
-                } else {
-                    maxHR = hr
-                }
-            }
-        }
-        let averageHeartRate = countHR > 0 ? sumHR / Double(countHR) : nil
+        //
+        // Read through the single heart-rate accessor rather than scanning
+        // `points` directly: for a route-bearing FIT/TCX/GPX/JSON workout the
+        // accessor maps those same points 1:1 in the same order, so this
+        // aggregation is value-identical to the historical loop. For an Apple
+        // Health export run it instead reads the standalone series, which is
+        // the only place that run's heart rate exists — its route GPX carries
+        // position, elevation, speed, course and accuracy but no heart rate.
+        let heartRate = Self.heartRateAggregate(in: workout)
+        let averageHeartRate = heartRate.average
+        let maxHR = heartRate.max
 
         let powerDynamics = Self.powerAndDynamicsAverages(in: points)
 
@@ -629,10 +624,11 @@ public struct WorkoutAnalyzer: Sendable {
     /// `.gpsDerived` default, which is what every snapshot written before this
     /// change produced; those bytes are unchanged.
     ///
-    /// Heart rate is deliberately not carried through here. HR for a route-less
-    /// workout comes from the dedicated heart-rate series through the single HR
-    /// accessor, which is the layer that owns it; this function preserves only
-    /// what the source reported about distance and duration.
+    /// Heart rate is deliberately not carried through here: this function
+    /// preserves only what the source reported about distance and duration.
+    /// The caller overlays average and maximum heart rate from the workout's
+    /// single heart-rate accessor, which for a route-less workout reads the
+    /// standalone series.
     static func routeLessSummary(
         from existing: RunSummary,
         policy: RouteQualityPolicy
@@ -671,6 +667,86 @@ public struct WorkoutAnalyzer: Sendable {
             elapsedAverageSpeedMetersPerSecond: speed,
             distanceProvenance: .sourceReported
         )
+    }
+
+    /// Mean and maximum over one workout's valid heart-rate readings.
+    ///
+    /// The validation range and the unweighted-mean rule live in `Accumulator`
+    /// alone, so the routed and route-less summary paths cannot drift. Both
+    /// entry points below feed it; they differ only in whether the samples are
+    /// already materialized.
+    struct HeartRateAggregate {
+        var average: Double?
+        var max: Double?
+    }
+
+    private struct HeartRateAccumulator {
+        private var sum: Double = 0
+        private var count: Int = 0
+        private var maximum: Double? = nil
+
+        mutating func add(_ sample: HeartRateSample) {
+            guard let hr = sample.heartRateBPM,
+                  WorkoutAnalyzer.validHeartRateRange.contains(hr),
+                  hr.isFinite else {
+                return
+            }
+            sum += hr
+            count += 1
+            if let currentMax = maximum {
+                maximum = Swift.max(currentMax, hr)
+            } else {
+                maximum = hr
+            }
+        }
+
+        var aggregate: HeartRateAggregate {
+            HeartRateAggregate(
+                average: count > 0 ? sum / Double(count) : nil,
+                max: maximum
+            )
+        }
+    }
+
+    static func heartRateAggregate(
+        in samples: [HeartRateSample]
+    ) -> HeartRateAggregate {
+        var accumulator = HeartRateAccumulator()
+        for sample in samples {
+            accumulator.add(sample)
+        }
+        return accumulator.aggregate
+    }
+
+    /// Aggregates one workout's heart rate without copying its samples.
+    ///
+    /// The summary pass runs once per analysis over potentially a million
+    /// points, so it visits through the allocation-free accessor rather than
+    /// materializing `heartRateSamples`.
+    static func heartRateAggregate(
+        in workout: RunWorkout
+    ) -> HeartRateAggregate {
+        var accumulator = HeartRateAccumulator()
+        workout.forEachHeartRateSample { accumulator.add($0) }
+        return accumulator.aggregate
+    }
+
+    /// Overlay heart rate onto a summary that was built without it.
+    ///
+    /// Used by the route-less path, whose totals come from the source's own
+    /// report and which deliberately carries no heart rate of its own. Mutates
+    /// only the two heart-rate fields: a route-less workout with no readings
+    /// therefore re-encodes byte for byte identically to the pre-accessor
+    /// behaviour, because both fields stay `nil` and `nil` is omitted.
+    private static func withHeartRate(
+        _ summary: RunSummary,
+        from workout: RunWorkout
+    ) -> RunSummary {
+        var updated = summary
+        let aggregate = heartRateAggregate(in: workout)
+        updated.averageHeartRateBPM = aggregate.average
+        updated.maxHeartRateBPM = aggregate.max
+        return updated
     }
 
     /// Power and running-dynamics averages over valid route points, plus the
