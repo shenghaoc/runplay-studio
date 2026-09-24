@@ -112,7 +112,7 @@ public final class WorkoutVideoReplaySampler: @unchecked Sendable {
     /// Whether the workout has a positive finite playable elapsed timeline.
     public var hasPlayableTimeline: Bool {
         let duration = totalElapsedSeconds
-        return duration.isFinite && duration > 0 && !workout.routePoints.isEmpty
+        return duration.isFinite && duration > 0 && workout.hasRoute
     }
 
     /// Sample canonical metrics at a planned frame index.
@@ -193,15 +193,22 @@ public enum WorkoutVideoExportEligibility: Sendable {
     }
 
     /// True when the workout has at least one coordinate usable for a route map.
+    ///
+    /// This is the MP4 export's explicit route-less decision. It is stronger
+    /// than `hasRoute`: a workout can carry route points whose coordinates were
+    /// all discarded as invalid, and rendering a route replay from those would
+    /// draw a line to nowhere. Either way the caller gets the no-route help
+    /// string rather than a video.
     public static func hasUsableRoute(_ workout: RunWorkout) -> Bool {
-        workout.routePoints.contains { point in
+        guard workout.hasRoute else { return false }
+        return workout.routePoints.contains { point in
             GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude)
         }
     }
 
     /// True when the canonical replay elapsed duration is positive and finite.
     public static func hasPlayableTimeline(_ workout: RunWorkout) -> Bool {
-        guard !workout.routePoints.isEmpty else { return false }
+        guard workout.hasRoute else { return false }
         let elapsed = WorkoutTimeline.playableElapsedDuration(routePoints: workout.routePoints)
         return elapsed.isFinite && elapsed > 0
     }
