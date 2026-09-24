@@ -172,7 +172,13 @@ public struct PersonalHeatmapBuilder: Sendable {
                     includedWorkouts: pass.includedWorkoutCount,
                     totalDistanceMeters: pass.totalDistanceMeters,
                     excludedUndated: dateFiltered.excludedUndated,
-                    excludedNoRoute: dateFiltered.workouts.count - pass.includedWorkoutCount,
+                    // Route-less workouts are held out before the native pass,
+                    // so they no longer appear in `dateFiltered.workouts`. Add
+                    // them back here to keep the reported exclusion total equal
+                    // to what the pre-`hasRoute` code computed from
+                    // `cellCount == 0` alone.
+                    excludedNoRoute: dateFiltered.excludedNoRoute
+                        + (dateFiltered.workouts.count - pass.includedWorkoutCount),
                     requestedCellSize: configuration.cellSizeMeters,
                     effectiveCellSize: cellSize,
                     adaptiveRetries: adaptiveRetries,
@@ -196,6 +202,14 @@ public struct PersonalHeatmapBuilder: Sendable {
     private struct DateFilterResult: Sendable {
         let workouts: [RunWorkout]
         let excludedUndated: Int
+        /// Route-less workouts held out before the native coverage pass.
+        ///
+        /// A workout with no coordinates cannot contribute a cell, so the
+        /// aggregate pass would have skipped it anyway. Filtering here makes
+        /// that an explicit `hasRoute` decision instead of a side effect of
+        /// `cellCount == 0`, and avoids handing empty routes to the native
+        /// batch at all.
+        let excludedNoRoute: Int
     }
 
     private func filterDateEligibleWorkouts(
@@ -206,13 +220,16 @@ public struct PersonalHeatmapBuilder: Sendable {
         var eligible: [RunWorkout] = []
         eligible.reserveCapacity(workouts.count)
         var excludedUndated = 0
+        var excludedNoRoute = 0
 
         for (index, workout) in workouts.enumerated() {
             if index % 32 == 0, isCancelled() {
                 throw CancellationError()
             }
 
-            // Date policy.
+            // Date policy. Deliberately evaluated before route presence so a
+            // workout that fails both is counted as it always was — undated —
+            // and the two exclusion counters keep their existing meaning.
             let date = trustworthyDate(for: workout)
             switch configuration.dateFilter {
             case .allTime:
@@ -227,12 +244,25 @@ public struct PersonalHeatmapBuilder: Sendable {
                 }
             }
 
+            // Route presence. A heatmap is coverage of ground actually run, so
+            // a route-less workout — including an Apple Health export run with
+            // summary and heart rate but no GPX — can never contribute a cell.
+            // Holding it out here makes that an explicit `hasRoute` decision
+            // rather than a side effect of `cellCount == 0` discovered after
+            // the native coverage pass, and keeps empty routes out of that
+            // pass entirely.
+            guard workout.hasRoute else {
+                excludedNoRoute += 1
+                continue
+            }
+
             eligible.append(workout)
         }
 
         return DateFilterResult(
             workouts: eligible,
-            excludedUndated: excludedUndated
+            excludedUndated: excludedUndated,
+            excludedNoRoute: excludedNoRoute
         )
     }
 

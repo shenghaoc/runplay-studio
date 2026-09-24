@@ -129,12 +129,12 @@ public class PlaybackEngine {
 
     /// Step between real route points, including points with duplicate times.
     public func stepForward() {
-        guard let workout, !workout.routePoints.isEmpty else { return }
+        guard let workout, workout.hasRoute else { return }
         selectPoint(at: min(state.currentPointIndex + 1, workout.routePoints.count - 1))
     }
 
     public func stepBackward() {
-        guard let workout, !workout.routePoints.isEmpty else { return }
+        guard let workout, workout.hasRoute else { return }
         selectPoint(at: max(state.currentPointIndex - 1, 0))
     }
 

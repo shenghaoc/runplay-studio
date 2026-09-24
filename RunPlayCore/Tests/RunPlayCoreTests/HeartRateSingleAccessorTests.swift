@@ -14,7 +14,7 @@ import XCTest
 /// The Apple Health export is what makes the standalone series necessary: its
 /// route GPX files carry position, elevation, speed, course and accuracy but no
 /// heart rate, so even a *routed* Health run keeps heart rate in the series.
-/// That is exactly why the source cannot be inferred from route presence.
+/// That is exactly why the source cannot be inferred from `hasRoute`.
 final class HeartRateSingleAccessorTests: XCTestCase {
 
     private let origin = Date(timeIntervalSince1970: 1_700_000_000)
@@ -69,7 +69,7 @@ final class HeartRateSingleAccessorTests: XCTestCase {
             heartRateSeries: series
         )
 
-        XCTAssertTrue(workout.routePoints.isEmpty)
+        XCTAssertFalse(workout.hasRoute)
         XCTAssertEqual(workout.heartRateSampleSource, .standaloneSeries)
         XCTAssertEqual(workout.heartRateSeries?.count, series.count)
         XCTAssertEqual(workout.heartRateSamples.count, series.count)
@@ -89,7 +89,7 @@ final class HeartRateSingleAccessorTests: XCTestCase {
             heartRateSeries: series
         )
 
-        XCTAssertFalse(workout.routePoints.isEmpty)
+        XCTAssertTrue(workout.hasRoute)
         XCTAssertEqual(workout.heartRateSampleSource, .standaloneSeries)
         XCTAssertEqual(workout.heartRateSeries?.count, series.count)
         // Indexed lookup resolves through the series by elapsed time, not

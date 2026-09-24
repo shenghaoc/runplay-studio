@@ -231,6 +231,23 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
 
     public var pointCount: Int { routePoints.count }
 
+    /// Whether this workout carries GPS coordinates at all.
+    ///
+    /// This is the single route-presence predicate every consumer must use.
+    /// Route-bearing analysis (heatmap coverage, route grouping, distance-
+    /// window personal records, comparison alignment, replay, the map, PNG and
+    /// MP4 export) requires it; route-less analysis (summary, training load,
+    /// trends, longest run by summary distance) does not. Do not re-derive this
+    /// from `routePoints.isEmpty` at a call site — go through here so the
+    /// decision stays in one place and each consumer's answer to "no route" is
+    /// deliberate rather than emergent.
+    ///
+    /// Route presence is independent of where heart rate lives: an Apple Health
+    /// export run can have a route GPX yet still carry heart rate in
+    /// `heartRateSeries`, because the Health route GPX files hold no heart rate.
+    /// Nothing may infer one from the other.
+    public var hasRoute: Bool { !routePoints.isEmpty }
+
     public var hasAltitudeData: Bool { routePoints.contains { $0.altitudeMeters != nil } }
 
     /// Visits every heart-rate reading in the workout, from whichever single
