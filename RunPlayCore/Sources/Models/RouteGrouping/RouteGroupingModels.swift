@@ -249,9 +249,29 @@ public struct RouteGroupingRouteFacts: Codable, Hashable, Sendable {
         )
     }
 
+    /// Whether this workout contributes route geometry at all.
+    ///
+    /// Derived rather than stored: `RouteGroupingRouteFacts` is persisted
+    /// inside `WorkoutRouteGroupSummary`, so adding a stored flag would change
+    /// the on-disk shape of every existing snapshot for no gain. It cannot
+    /// drift from the counts it is derived from either.
+    ///
+    /// `routePointCount` counts only *valid* coordinates, so this is false for
+    /// both an Apple Health export run that has no GPX and a workout whose
+    /// coordinates were all discarded as invalid — neither can be grouped.
+    public var hasRoute: Bool { routePointCount > 0 }
+
     /// Whether a route with these facts can participate in grouping at all.
+    ///
+    /// This is route grouping's explicit route-less decision. Grouping is
+    /// shape similarity, and a workout with no route geometry has no shape to
+    /// compare, so it is excluded. The `hasRoute` term is logically implied by
+    /// the point-count threshold below and is stated separately so the
+    /// route-less exclusion is a named decision rather than an emergent
+    /// consequence of a numeric floor.
     public func canParticipate(policy: RouteGroupingPolicy) -> Bool {
-        totalDistanceMeters.isFinite
+        hasRoute
+            && totalDistanceMeters.isFinite
             && totalDistanceMeters >= policy.minimumRouteDistanceMeters
             && routePointCount >= policy.minimumRoutePointCount
     }
