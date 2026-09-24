@@ -37,13 +37,100 @@ public enum TrainingLoadPolicy {
 /// Measured loads make exactly one native `compute_training_load` call over
 /// same-segment heart-rate intervals — recording gaps and pauses never
 /// contribute weight, because interval weights only exist between adjacent
-/// points of one route segment. Estimated loads are pure Swift arithmetic
+/// samples of one segment. Estimated loads are pure Swift arithmetic
 /// over pace and duration and make no native call.
+///
+/// Heart rate arrives as normalized `[HeartRateSample]` from
+/// `RunWorkout.heartRateSamples`, so a route-less workout whose heart rate came
+/// from a standalone series is measured on exactly the same path as a
+/// route-bearing one. Nothing here branches on route presence.
 public struct TrainingLoadCalculator: Sendable {
     public init() {}
 
+    /// Same-segment heart-rate intervals ready for the native call.
+    ///
+    /// Built from adjacent sample pairs only, so a segment boundary or a
+    /// non-positive time delta contributes no weight at all.
+    struct IntervalAccumulation {
+        var rates: [Double?]
+        var weights: [Double]
+        /// Whether at least one interval carries a usable reading.
+        var hasAnyRate: Bool
+
+        static let empty = IntervalAccumulation(
+            rates: [], weights: [], hasAnyRate: false
+        )
+    }
+
+    static func accumulateIntervals(
+        from samples: [HeartRateSample],
+        isCancelled: @Sendable () -> Bool
+    ) throws -> IntervalAccumulation {
+        guard samples.count >= 2 else { return .empty }
+
+        var rates: [Double?] = []
+        var weights: [Double] = []
+        rates.reserveCapacity(samples.count - 1)
+        weights.reserveCapacity(samples.count - 1)
+
+        var previousSegment: Int? = nil
+        var previousElapsed: Double = 0
+        var previousRate: Double? = nil
+        var hasAnyRate = false
+
+        for sample in samples {
+            if isCancelled() { throw CancellationError() }
+            let rate = sample.heartRateBPM.flatMap { value in
+                MetricValidation.isValidHeartRate(value) ? value : nil
+            }
+            if let segment = previousSegment, segment == sample.segmentIndex {
+                let delta = sample.elapsedSeconds - previousElapsed
+                if delta.isFinite, delta > 0 {
+                    let intervalRate: Double?
+                    if let leading = previousRate, let trailing = rate {
+                        intervalRate = (leading + trailing) / 2
+                    } else {
+                        intervalRate = nil
+                    }
+                    if intervalRate != nil { hasAnyRate = true }
+                    weights.append(delta)
+                    rates.append(intervalRate)
+                }
+            }
+            previousSegment = sample.segmentIndex
+            previousElapsed = sample.elapsedSeconds
+            previousRate = rate
+        }
+
+        return IntervalAccumulation(
+            rates: rates,
+            weights: weights,
+            hasAnyRate: hasAnyRate
+        )
+    }
+
+    /// The production entry point. Reads heart rate through the workout's
+    /// single accessor, never through `routePoints` directly.
     public static func compute(
-        routePoints: [RoutePoint],
+        for workout: RunWorkout,
+        profile: AthleteProfile,
+        referenceYear: Int,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> TrainingLoadSnapshot {
+        try compute(
+            heartRateSamples: workout.heartRateSamples,
+            activeSeconds: workout.summary.totalActiveSeconds,
+            averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
+                ? workout.summary.averageSpeedMetersPerSecond
+                : nil,
+            profile: profile,
+            referenceYear: referenceYear,
+            isCancelled: isCancelled
+        )
+    }
+
+    public static func compute(
+        heartRateSamples samples: [HeartRateSample],
         activeSeconds: Double,
         averageSpeedMetersPerSecond: Double?,
         profile: AthleteProfile,
@@ -52,40 +139,14 @@ public struct TrainingLoadCalculator: Sendable {
     ) throws -> TrainingLoadSnapshot {
         let effective = profile.effectiveProfile(referenceYear: referenceYear)
 
-        var rates: [Double?] = []
-        var weights: [Double] = []
-        rates.reserveCapacity(max(0, routePoints.count - 1))
-        weights.reserveCapacity(max(0, routePoints.count - 1))
+        let intervals = try accumulateIntervals(
+            from: samples,
+            isCancelled: isCancelled
+        )
+        let rates = intervals.rates
+        let weights = intervals.weights
 
-        var previousSegment: Int? = nil
-        var previousElapsed: Double = 0
-        var previousRate: Double? = nil
-
-        for point in routePoints {
-            if isCancelled() { throw CancellationError() }
-            let rate = point.heartRateBPM.flatMap { value in
-                MetricValidation.isValidHeartRate(value) ? value : nil
-            }
-            if let segment = previousSegment, segment == point.routeSegmentIndex {
-                let delta = point.elapsedSeconds - previousElapsed
-                if delta.isFinite, delta > 0 {
-                    let intervalRate: Double?
-                    if let leading = previousRate, let trailing = rate {
-                        intervalRate = (leading + trailing) / 2
-                    } else {
-                        intervalRate = nil
-                    }
-                    weights.append(delta)
-                    rates.append(intervalRate)
-                }
-            }
-            previousSegment = point.routeSegmentIndex
-            previousElapsed = point.elapsedSeconds
-            previousRate = rate
-        }
-
-        let hasAnyRate = rates.contains { $0 != nil }
-        if hasAnyRate {
+        if intervals.hasAnyRate {
             let result = try RunPlayTrainingLoadBridge.compute(
                 heartRatesBPM: rates,
                 weightsSeconds: weights,

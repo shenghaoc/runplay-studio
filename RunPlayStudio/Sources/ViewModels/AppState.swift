@@ -1931,11 +1931,7 @@ class AppState: ObservableObject {
     ) throws -> TrainingLoadSnapshot? {
         guard profile != AthleteProfile() else { return workout.trainingLoad }
         return try TrainingLoadCalculator.compute(
-            routePoints: workout.routePoints,
-            activeSeconds: workout.summary.totalActiveSeconds,
-            averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
-                ? workout.summary.averageSpeedMetersPerSecond
-                : nil,
+            for: workout,
             profile: profile,
             referenceYear: Calendar.current.component(.year, from: Date())
         )

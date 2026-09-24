@@ -178,7 +178,17 @@ public class PlaybackEngine {
             altitudeMeters: elevationProfile?.correctedAltitude(
                 atPointIndex: state.currentPointIndex
             ),
-            heartRateBPM: point.heartRateBPM,
+            // Read through the single heart-rate accessor rather than the route
+            // point: for every existing FIT/TCX/GPX/JSON workout this resolves
+            // to that same point's reading, so replay is unchanged. For an
+            // Apple Health export run it resolves through the standalone series
+            // by elapsed time, which is the only place that run's heart rate
+            // lives even when it does have a route GPX.
+            //
+            // Deliberately no `?? point.heartRateBPM` fallback: falling back
+            // would be a second read path for the same value, which is what the
+            // single-accessor invariant exists to prevent.
+            heartRateBPM: workout?.heartRateBPM(atRoutePointIndex: state.currentPointIndex),
             speedMetersPerSecond: point.speedMetersPerSecond,
             cadence: point.cadence,
             powerWatts: point.powerWatts,
