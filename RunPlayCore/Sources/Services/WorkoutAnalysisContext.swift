@@ -13,7 +13,12 @@ public struct WorkoutAnalysisContext: Sendable {
         let profile = ElevationProfile(routePoints: workout.routePoints, policy: policy)
         let timeline = WorkoutTimeline(
             routePoints: workout.routePoints,
-            elevationProfile: profile
+            elevationProfile: profile,
+            // Thread the workout's heart-rate source through so split and
+            // record-window averages read the same single accessor the summary
+            // and training load do. Nil whenever heart rate rides on the route
+            // points, which is every workout except an Apple Health export run.
+            standaloneHeartRateSamples: workout.heartRateSourceSeries
         )
         let movementProfile = try? MovementProfile(
             routePoints: workout.routePoints,
