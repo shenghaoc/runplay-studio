@@ -158,6 +158,21 @@ public struct AppleHealthExportScan: Sendable {
     /// heart-rate history. A nonzero count here proves the depth tracking ran.
     public var nestedRecordCount: Int
 
+    /// `Workout` elements left out because their window could not be read.
+    ///
+    /// The reason is unreadable dates: a workout is dropped when its
+    /// `startDate` or `endDate` attribute is missing or cannot be parsed. Without
+    /// a window it can be joined to no heart rate and placed at no instant, and
+    /// inventing either would attribute data the export never claimed.
+    ///
+    /// Counted under its own reason rather than folded into `nestedRecordCount`,
+    /// because the two are different findings: a nested record is heart-rate
+    /// data this scan deliberately does not index, while a dropped workout is a
+    /// workout the user can see in Health that this import will not offer. A
+    /// nonzero count here is what lets the import report name the loss instead
+    /// of dropping a visible workout in silence.
+    public var droppedWorkoutCount: Int
+
     /// True when the first pass exceeded the ceiling and a second pass ran.
     public var usedFilteredSecondPass: Bool { passCount > 1 }
 
@@ -167,7 +182,8 @@ public struct AppleHealthExportScan: Sendable {
         workouts: [WorkoutEntry] = [],
         passCount: Int = 1,
         heartRateRecordCount: Int = 0,
-        nestedRecordCount: Int = 0
+        nestedRecordCount: Int = 0,
+        droppedWorkoutCount: Int = 0
     ) {
         self.locale = locale
         self.exportDate = exportDate
@@ -175,6 +191,7 @@ public struct AppleHealthExportScan: Sendable {
         self.passCount = passCount
         self.heartRateRecordCount = heartRateRecordCount
         self.nestedRecordCount = nestedRecordCount
+        self.droppedWorkoutCount = droppedWorkoutCount
     }
 }
 
@@ -466,7 +483,7 @@ public struct AppleHealthExportParser: Sendable {
 
         let lookup = delegate.finalizeIndex()
         return PassResult(
-            scan: delegate.buildScan(lookup: lookup),
+            scan: try delegate.buildScan(lookup: lookup, isCancelled: isCancelled),
             releasedByCeiling: delegate.releasedByCeiling
         )
     }
@@ -509,8 +526,12 @@ private final class Delegate: NSObject, XMLParserDelegate {
 
     private var heartRateRecordCount = 0
     private var nestedRecordCount = 0
+    private var droppedWorkoutCount = 0
 
-    init(windowFilter: [AppleHealthWorkoutWindow]?, heartRateCeiling: Int) {
+    init(
+        windowFilter: [AppleHealthWorkoutWindow]?,
+        heartRateCeiling: Int
+    ) {
         index = AppleHealthHeartRateIndex(sampleCountCeiling: heartRateCeiling)
         super.init()
         if let windows = windowFilter {
@@ -529,7 +550,10 @@ private final class Delegate: NSObject, XMLParserDelegate {
         index.finalize()
     }
 
-    func buildScan(lookup: AppleHealthHeartRateLookup) -> AppleHealthExportScan {
+    func buildScan(
+        lookup: AppleHealthHeartRateLookup,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> AppleHealthExportScan {
         var workouts = pendingWorkouts
         if let current = currentWorkout {
             workouts.append(current)
@@ -538,7 +562,16 @@ private final class Delegate: NSObject, XMLParserDelegate {
         // Join heart rate to each workout by time overlap. Done here rather than
         // during the parse because the index is not sortable until the pass ends,
         // and a range query over unsorted readings would silently miss some.
+        //
+        // Cancellation is checked here, not only around the native parse: this is
+        // a real translation loop, one range query per workout over the whole
+        // retained index, and on a large export it is the largest piece of work
+        // after the parse itself. Throwing unwinds before any scan is returned,
+        // so a cancelled import yields no scan at all rather than one holding a
+        // prefix of the workouts — a caller cannot mistake a partial join for a
+        // complete one.
         for position in workouts.indices {
+            guard !isCancelled() else { throw CancellationError() }
             let window = workouts[position].window
             workouts[position].heartRate = lookup.readings(in: window)
         }
@@ -549,7 +582,8 @@ private final class Delegate: NSObject, XMLParserDelegate {
             workouts: workouts,
             passCount: 1,
             heartRateRecordCount: heartRateRecordCount,
-            nestedRecordCount: nestedRecordCount
+            nestedRecordCount: nestedRecordCount,
+            droppedWorkoutCount: droppedWorkoutCount
         )
     }
 
@@ -584,6 +618,12 @@ private final class Delegate: NSObject, XMLParserDelegate {
                 ) {
                     currentWorkout = AppleHealthExportScan.WorkoutEntry(window: window)
                     currentRoutePath = nil
+                } else {
+                    // Unreadable window: no dates, or dates that do not parse.
+                    // The workout is dropped, and counted under that reason so
+                    // the loss surfaces instead of vanishing; see
+                    // `AppleHealthExportScan.droppedWorkoutCount`.
+                    droppedWorkoutCount += 1
                 }
             }
 
