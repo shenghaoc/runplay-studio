@@ -310,7 +310,12 @@ public struct AppleHealthExportParser: Sendable {
     static let heartRateType = "HKQuantityTypeIdentifierHeartRate"
 
     /// Directory prefix the export's own `FileReference@path` omits.
-    static let archiveRoot = "apple_health_export"
+    ///
+    /// Public because the archive layout is shared: Core resolves route paths
+    /// through it, and the reader that opens `export.zip` must find the same
+    /// directory to locate the export document. One constant keeps the two from
+    /// drifting.
+    public static let archiveRoot = "apple_health_export"
 
     /// Ceiling passed to each `AppleHealthHeartRateIndex` this parser builds.
     ///
