@@ -101,6 +101,12 @@ targets.append(contentsOf: [
         name: "RunPlayPlatformTests",
         dependencies: ["RunPlayCore", "RunPlayPlatform"],
         path: "RunPlayPlatform/Tests/RunPlayPlatformTests",
+        // `Fixtures` holds one generated archive plus the script that wrote it.
+        // Copied rather than processed so the bytes are exactly what the
+        // generator produced.
+        resources: [
+            .copy("Fixtures")
+        ],
         swiftSettings: cxxInteropSettings
     ),
     // macOS UI layer: owns the app lifecycle and all SwiftUI/Charts code.
