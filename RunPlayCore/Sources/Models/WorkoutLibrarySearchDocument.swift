@@ -36,6 +36,10 @@ public struct WorkoutLibrarySearchDocument: Hashable, Sendable {
             case .stravaBulkExport:
                 tokens.append("Strava")
                 tokens.append("strava")
+            case .appleHealthExport:
+                tokens.append("Apple Health")
+                tokens.append("apple")
+                tokens.append("health")
             case .singleFile:
                 tokens.append("single")
                 tokens.append("file")

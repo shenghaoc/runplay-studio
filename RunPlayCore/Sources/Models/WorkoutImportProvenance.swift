@@ -6,6 +6,12 @@ public enum WorkoutImportProvider: String, Codable, Hashable, Sendable, CaseIter
     case singleFile
     /// Activity extracted from a Strava bulk-export ZIP.
     case stravaBulkExport
+    /// Workout imported from an Apple Health export archive.
+    ///
+    /// Carries no provider activity identifier: an Apple Health export has no
+    /// stable per-workout ID to quote, so `providerActivityID` holds this
+    /// importer's own content-derived candidate identity instead.
+    case appleHealthExport
     /// One session extracted from a multi-session FIT container.
     ///
     /// Ordinary one-session FIT files keep `.singleFile`; this case exists so
