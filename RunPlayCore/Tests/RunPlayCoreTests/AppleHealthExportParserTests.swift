@@ -286,6 +286,64 @@ final class AppleHealthExportParserTests: XCTestCase {
         XCTAssertEqual(scan.workouts.first?.heartRate.count, 0)
     }
 
+    // MARK: - Workouts dropped for an unreadable window
+
+    func testWorkoutWithUnparseableStartDateIsDroppedAndCountedWithItsOwnReason() throws {
+        let first = runningWorkout(
+            start: "2026-09-01 08:00:00 +0800",
+            end: "2026-09-01 09:00:00 +0800",
+            route: nil
+        )
+        let second = runningWorkout(
+            start: "2026-09-02 08:00:00 +0800",
+            end: "2026-09-02 09:00:00 +0800",
+            route: nil
+        )
+        let malformed = "<Workout workoutActivityType=\"HKWorkoutActivityTypeRunning\" "
+            + "startDate=\"yesterday\" endDate=\"2026-09-03 09:00:00 +0800\"/>"
+
+        let scan = try parse(document(records: "", workouts: first + malformed + second))
+
+        // The two readable workouts survive, in order, and only the unreadable
+        // one is gone.
+        XCTAssertEqual(scan.workouts.map(\.window.startSeconds), [
+            seconds("2026-09-01 08:00:00 +0800"),
+            seconds("2026-09-02 08:00:00 +0800"),
+        ])
+        // One drop, under its own reason — not folded into the nested-record
+        // count, which is a different finding.
+        XCTAssertEqual(scan.droppedWorkoutCount, 1)
+        XCTAssertEqual(scan.nestedRecordCount, 0)
+    }
+
+    func testWorkoutWithUnparseableEndDateIsAlsoCountedAsADrop() throws {
+        let valid = runningWorkout(
+            start: "2026-09-01 08:00:00 +0800",
+            end: "2026-09-01 09:00:00 +0800",
+            route: nil
+        )
+        let malformed = "<Workout workoutActivityType=\"HKWorkoutActivityTypeRunning\" "
+            + "startDate=\"2026-09-03 08:00:00 +0800\" endDate=\"\"/>"
+
+        let scan = try parse(document(records: "", workouts: valid + malformed))
+
+        XCTAssertEqual(scan.workouts.count, 1)
+        XCTAssertEqual(scan.droppedWorkoutCount, 1)
+    }
+
+    func testFullyReadableDocumentReportsNoDroppedWorkouts() throws {
+        let scan = try parse(document(
+            records: "",
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil
+            )
+        ))
+        XCTAssertEqual(scan.workouts.count, 1)
+        XCTAssertEqual(scan.droppedWorkoutCount, 0)
+    }
+
     // MARK: - The lossless guard and document shape
 
     func testQuotedAttributeDefaultFailsInsteadOfImporting() {
@@ -324,6 +382,52 @@ final class AppleHealthExportParserTests: XCTestCase {
         )) { error in
             XCTAssertTrue(error is CancellationError)
         }
+    }
+
+    // MARK: - Cancellation during translation
+
+    /// Cancelling after the native parse has finished but while heart rate is
+    /// still being joined to the workouts.
+    ///
+    /// The join runs entirely after the parse, in `buildScan`, so a predicate
+    /// that turns true partway through the workouts exercises the translation
+    /// check rather than the ones around the native call.
+    func testCancellationDuringTranslationThrowsAndReturnsNoPartialScan() throws {
+        let workouts = (1...6).map { day in
+            runningWorkout(
+                start: "2026-09-0\(day) 08:00:00 +0800",
+                end: "2026-09-0\(day) 09:00:00 +0800",
+                route: nil
+            )
+        }.joined()
+        let xml = document(records: "", workouts: workouts)
+
+        // A full parse consults cancellation once before the native parse, once
+        // after it, and once per workout in the join loop: 2 + 6 here. Pinning
+        // that count is what makes the cancel-at value below provably land
+        // inside the loop; if the parser gains or loses a check, this assertion
+        // fails instead of the next one quietly testing the wrong thing.
+        let baseline = CancellationProbe()
+        _ = try parser.parse(
+            openStream: { InputStream(data: Data(xml.utf8)) },
+            isCancelled: baseline.predicate
+        )
+        XCTAssertEqual(baseline.callCount, 2 + 6)
+
+        // Four calls in: the two around the parse, then two workouts already
+        // joined, leaving four untranslated.
+        let cancelling = CancellationProbe(cancelAtCall: 4)
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { InputStream(data: Data(xml.utf8)) },
+            isCancelled: cancelling.predicate
+        )) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        // It stopped on the fourth call rather than running the loop out, and
+        // the call threw, so no scan exists for a caller to mistake for a
+        // complete one — there is no partial result to return.
+        XCTAssertEqual(cancelling.callCount, 4)
+        XCTAssertLessThan(cancelling.callCount, baseline.callCount)
     }
 
     // MARK: - Ceiling and the second pass
@@ -484,5 +588,38 @@ private final class ReadSizeProbe: InputStream {
             largestRead = max(largestRead, n)
         }
         return n
+    }
+}
+
+/// A cancellation predicate that counts how often it is consulted.
+///
+/// `@unchecked Sendable` over a lock because the parser takes a `@Sendable`
+/// closure. The tests run single-threaded, but the predicate has to look
+/// thread-safe to the type system to be passed at all.
+private final class CancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private let cancelAtCall: Int?
+
+    init(cancelAtCall: Int? = nil) {
+        self.cancelAtCall = cancelAtCall
+    }
+
+    /// Times the predicate has been consulted so far.
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    /// Starts reporting `true` from `cancelAtCall` onward; never when nil.
+    var predicate: @Sendable () -> Bool {
+        { [self] in
+            lock.lock()
+            defer { lock.unlock() }
+            calls += 1
+            guard let cancelAtCall else { return false }
+            return calls >= cancelAtCall
+        }
     }
 }
