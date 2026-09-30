@@ -38,13 +38,15 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
     private func makeService(
         policy: WorkoutArchiveSecurityPolicy = .default,
         staleExtractionAge: TimeInterval = 3_600,
-        availableCapacity: Int64? = nil
+        availableCapacity: Int64? = nil,
+        sourcePayloadByteLimit: Int64 = Int64(WorkoutImportResourceLimits.maxSourceFileBytes)
     ) -> AppleHealthArchiveService {
         AppleHealthArchiveService(
             policy: policy,
             extractionRoot: extractionRoot,
             staleExtractionAge: staleExtractionAge,
-            availableCapacity: { _ in availableCapacity }
+            availableCapacity: { _ in availableCapacity },
+            sourcePayloadByteLimit: sourcePayloadByteLimit
         )
     }
 
@@ -52,7 +54,8 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
 
     private func writeArchive(
         named: String,
-        entries: [(path: String, type: Entry.EntryType, data: Data)]
+        entries: [(path: String, type: Entry.EntryType, data: Data)],
+        compression: CompressionMethod = .none
     ) throws -> URL {
         let url = tempDir.appendingPathComponent(named)
         if FileManager.default.fileExists(atPath: url.path) {
@@ -64,6 +67,7 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
                 with: entry.path,
                 type: entry.type,
                 uncompressedSize: Int64(entry.data.count),
+                compressionMethod: compression,
                 provider: { position, size in
                     let start = Int(position)
                     let end = min(start + size, entry.data.count)
@@ -417,14 +421,25 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         }
     }
 
-    func testDocumentAboveTheUncompressedCapIsRefused() async throws {
-        let url = try writeZip(named: "export.zip", entries: [
-            (Self.exportPath, healthDocument(workouts: runningWorkout())),
-        ])
-        let service = makeService(policy: WorkoutArchiveSecurityPolicy(maxUncompressedEntryBytes: 8))
+    func testStreamedDocumentAboveInjectedPayloadCapIsAccepted() async throws {
+        let document = healthDocument(workouts: runningWorkout())
+        let url = try writeZip(named: "export.zip", entries: [(Self.exportPath, document)])
+        let service = makeService(
+            policy: WorkoutArchiveSecurityPolicy(maxUncompressedEntryBytes: 8),
+            sourcePayloadByteLimit: 8
+        )
+        let result = try await service.scan(archiveAt: url)
+        XCTAssertEqual(result.candidateCount, 1)
+        XCTAssertEqual(result.report.uncompressedXMLBytes, Int64(document.count))
+        XCTAssertTrue(extractionFileNames().isEmpty)
+    }
 
-        await assertThrows(.entryTooLarge(path: Self.exportPath, limitBytes: 8)) {
-            _ = try await service.scan(archiveAt: url)
+    func testRouteAboveInjectedPayloadCapIsStillRefused() async throws {
+        let url = try writeZip(named: "export.zip", entries: [(Self.routePath, routeGPX())])
+        await assertThrows(.entryTooLarge(path: Self.routePath, limitBytes: 8)) {
+            _ = try await self.makeService(sourcePayloadByteLimit: 8).routeGPXData(
+                forArchivePath: Self.routePath, archiveAt: url
+            )
         }
     }
 
@@ -483,16 +498,33 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertTrue(extractionFileNames().isEmpty, "a failed parse must leave no extraction file")
     }
 
-    /// A ceiling refusal happens before the file exists.
-    func testCeilingRefusalLeavesNoExtractionFile() async throws {
-        let url = try writeZip(named: "export.zip", entries: [
-            (Self.exportPath, healthDocument(workouts: runningWorkout())),
-        ])
-        let service = makeService(policy: WorkoutArchiveSecurityPolicy(maxUncompressedEntryBytes: 8))
-
-        await assertThrows(.entryTooLarge(path: Self.exportPath, limitBytes: 8)) {
-            _ = try await service.scan(archiveAt: url)
+    /// The descriptor retains the real size: Entry.uncompressedSize therefore
+    /// cannot detect this mismatch. The service must consult the central directory.
+    func testUnderstatedCentralDirectorySizeAbortsAndRemovesExtraction() async throws {
+        let document = healthDocument(records: "<!-- " + String(repeating: "x", count: 200_000) + " -->")
+        let url = try writeArchive(
+            named: "understated.zip", entries: [(Self.exportPath, .file, document)], compression: .deflate
+        )
+        var bytes = try Data(contentsOf: url)
+        let central = try XCTUnwrap(bytes.range(of: Data([0x50, 0x4b, 0x01, 0x02]))).lowerBound
+        let descriptor = Data([0x50, 0x4b, 0x07, 0x08]) + bytes.subdata(in: (central + 16)..<(central + 28))
+        bytes[6] |= 8 // Local header: use a data descriptor.
+        bytes.insert(contentsOf: descriptor, at: central)
+        let newCentral = central + descriptor.count
+        bytes[newCentral + 8] |= 8
+        let declared = UInt32(document.count - 1)
+        for index in 0..<4 {
+            bytes[newCentral + 24 + index] = UInt8(truncatingIfNeeded: declared >> (index * 8))
+            bytes[bytes.count - 22 + 16 + index] = UInt8(truncatingIfNeeded: UInt32(newCentral) >> (index * 8))
         }
+        try bytes.write(to: url)
+        let archive = try Archive(url: url, accessMode: .read)
+        XCTAssertEqual(try XCTUnwrap(archive.first { _ in true }).uncompressedSize, UInt64(document.count))
+        let probe = ExtractionProbe(directory: extractionRoot)
+        await assertThrows(.entryExceedsDeclaredSize(path: Self.exportPath, declaredBytes: UInt64(declared))) {
+            _ = try await self.makeService().scan(archiveAt: url, isCancelled: probe.predicate)
+        }
+        XCTAssertEqual(probe.filePermissions, 0o600, "must abort a real partial extraction")
         XCTAssertTrue(extractionFileNames().isEmpty)
     }
 
