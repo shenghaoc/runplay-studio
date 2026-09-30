@@ -231,6 +231,28 @@ final class AppleHealthExportParserTests: XCTestCase {
             )
         ))
         XCTAssertEqual(scan.nestedRecordCount, 1)
+        XCTAssertTrue(scan.ignoredNonHeartRateRecords.isEmpty, "nested HR must not be labelled non-HR")
+        XCTAssertEqual(scan.heartRateRecordCount, 1)
+        XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
+    }
+
+    func testIgnoredNonHeartRateRecordsAreCountedByTypeWithoutCountingTopLevelRecords() throws {
+        let instant = "2026-09-01 08:30:00 +0800"
+        let effortType = "HKQuantityTypeIdentifierEstimatedWorkoutEffortScore"
+        let energyType = "HKQuantityTypeIdentifierActiveEnergyBurned"
+        let effort = record(type: effortType, value: "7", start: instant, end: instant)
+        let energy = record(type: energyType, value: "8", start: instant, end: instant)
+        let scan = try parse(document(
+            records: effort + energy + heartRate("150", start: instant, end: instant),
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil,
+                nestedRecord: effort + effort + energy + "<Record/>"
+            )
+        ))
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords, [effortType: 2, energyType: 1, "missing-type": 1])
+        XCTAssertEqual(scan.nestedRecordCount, 4)
         XCTAssertEqual(scan.heartRateRecordCount, 1)
         XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
     }
@@ -445,12 +467,16 @@ final class AppleHealthExportParserTests: XCTestCase {
             workouts: runningWorkout(
                 start: "2026-09-01 08:00:00 +0800",
                 end: "2026-09-01 09:00:00 +0800",
-                route: nil
+                route: nil,
+                nestedRecord: record(type: "HKQuantityTypeIdentifierEstimatedWorkoutEffortScore",
+                                     value: "7", start: inside, end: inside)
             )
         )
         let scan = try parse(xml, ceiling: 2)
         XCTAssertEqual(scan.passCount, 2)
         XCTAssertTrue(scan.usedFilteredSecondPass)
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords, ["HKQuantityTypeIdentifierEstimatedWorkoutEffortScore": 1])
+        XCTAssertEqual(scan.nestedRecordCount, 1, "the second pass must not double-count diagnostics")
         // Only the in-window reading survives the filtered pass; both
         // out-of-window readings were dropped before they could be retained.
         XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])

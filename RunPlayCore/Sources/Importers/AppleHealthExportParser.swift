@@ -151,11 +151,14 @@ public struct AppleHealthExportScan: Sendable {
     /// Heart-rate `Record` elements the scan saw, before any filtering.
     public var heartRateRecordCount: Int
 
-    /// `Record` elements skipped because they were nested inside a `Workout`.
-    ///
-    /// Counted rather than silently ignored: the measured export has 282 of
-    /// them, and a parser that tracked no nesting would index those as
-    /// heart-rate history. A nonzero count here proves the depth tracking ran.
+    /// Non-heart-rate `Record` elements ignored inside `Workout`, counted by
+    /// their type identifier. These are unsupported metrics, not lost heart rate.
+    /// Records without a type use the diagnostic key `missing-type`.
+    public var ignoredNonHeartRateRecords: [String: Int]
+
+    /// All `Record` elements ignored inside `Workout`, including any nested
+    /// heart rate. Retained as a nesting diagnostic; only the non-HR subset is
+    /// reported by `ignoredNonHeartRateRecords`. Top-level records are not counted.
     public var nestedRecordCount: Int
 
     /// `Workout` elements left out because their window could not be read.
@@ -166,8 +169,8 @@ public struct AppleHealthExportScan: Sendable {
     /// inventing either would attribute data the export never claimed.
     ///
     /// Counted under its own reason rather than folded into `nestedRecordCount`,
-    /// because the two are different findings: a nested record is heart-rate
-    /// data this scan deliberately does not index, while a dropped workout is a
+    /// because the two are different findings: nested records can contain
+    /// unsupported metrics such as effort scores, while a dropped workout is a
     /// workout the user can see in Health that this import will not offer. A
     /// nonzero count here is what lets the import report name the loss instead
     /// of dropping a visible workout in silence.
@@ -183,7 +186,8 @@ public struct AppleHealthExportScan: Sendable {
         passCount: Int = 1,
         heartRateRecordCount: Int = 0,
         nestedRecordCount: Int = 0,
-        droppedWorkoutCount: Int = 0
+        droppedWorkoutCount: Int = 0,
+        ignoredNonHeartRateRecords: [String: Int] = [:]
     ) {
         self.locale = locale
         self.exportDate = exportDate
@@ -192,6 +196,7 @@ public struct AppleHealthExportScan: Sendable {
         self.heartRateRecordCount = heartRateRecordCount
         self.nestedRecordCount = nestedRecordCount
         self.droppedWorkoutCount = droppedWorkoutCount
+        self.ignoredNonHeartRateRecords = ignoredNonHeartRateRecords
     }
 }
 
@@ -515,9 +520,10 @@ private final class Delegate: NSObject, XMLParserDelegate {
     /// Counting Workout depth alone is sufficient and is the part worth being
     /// careful about: a `Record` can never contain a `Workout`, so the 1,440,512
     /// non-self-closing top-level `Record` elements — which do have closing tags
-    /// and would otherwise have to be tracked — cannot affect the decision. The
-    /// measured export nests 282 `Record` elements inside workouts, and a
-    /// depth-blind parser would index those as heart-rate history.
+    /// and would otherwise have to be tracked — cannot affect the decision.
+    /// Nested records are scoped to their parent workout. Only top-level HR is
+    /// indexed by this parser; nested non-HR types are counted as unsupported
+    /// metrics rather than described as dropped heart-rate history.
     private var workoutDepth = 0
 
     private var pendingWorkouts: [AppleHealthExportScan.WorkoutEntry] = []
@@ -526,6 +532,7 @@ private final class Delegate: NSObject, XMLParserDelegate {
 
     private var heartRateRecordCount = 0
     private var nestedRecordCount = 0
+    private var ignoredNonHeartRateRecords: [String: Int] = [:]
     private var droppedWorkoutCount = 0
 
     init(
@@ -583,7 +590,8 @@ private final class Delegate: NSObject, XMLParserDelegate {
             passCount: 1,
             heartRateRecordCount: heartRateRecordCount,
             nestedRecordCount: nestedRecordCount,
-            droppedWorkoutCount: droppedWorkoutCount
+            droppedWorkoutCount: droppedWorkoutCount,
+            ignoredNonHeartRateRecords: ignoredNonHeartRateRecords
         )
     }
 
@@ -646,6 +654,10 @@ private final class Delegate: NSObject, XMLParserDelegate {
         case AppleHealthExportParser.Element.record:
             if workoutDepth >= 1 {
                 nestedRecordCount += 1
+                let type = attributeDict[AppleHealthExportParser.Attribute.type] ?? "missing-type"
+                if type != AppleHealthExportParser.heartRateType {
+                    ignoredNonHeartRateRecords[type, default: 0] += 1
+                }
                 return
             }
             guard attributeDict[AppleHealthExportParser.Attribute.type]
