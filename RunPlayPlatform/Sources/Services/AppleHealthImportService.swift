@@ -110,6 +110,10 @@ public struct AppleHealthImportReport: Sendable {
     public var commitFailed: Bool
     public var errorMessage: String?
 
+    /// Non-running workouts intentionally excluded before review and dedup.
+    public var excludedWorkoutsByActivityType: [String: Int]
+    public var excludedWorkoutCount: Int { excludedWorkoutsByActivityType.values.reduce(0, +) }
+
     /// Workouts the export document described that the scan could not build.
     public var droppedWorkoutCount: Int
     /// Workouts that named a route the archive does not contain.
@@ -134,7 +138,8 @@ public struct AppleHealthImportReport: Sendable {
         commitFailed: Bool = false,
         errorMessage: String? = nil,
         droppedWorkoutCount: Int = 0,
-        unmatchedRouteReferenceCount: Int = 0
+        unmatchedRouteReferenceCount: Int = 0,
+        excludedWorkoutsByActivityType: [String: Int] = [:]
     ) {
         self.items = items
         self.importedWorkoutIDs = importedWorkoutIDs
@@ -144,6 +149,7 @@ public struct AppleHealthImportReport: Sendable {
         self.errorMessage = errorMessage
         self.droppedWorkoutCount = droppedWorkoutCount
         self.unmatchedRouteReferenceCount = unmatchedRouteReferenceCount
+        self.excludedWorkoutsByActivityType = excludedWorkoutsByActivityType
     }
 }
 
@@ -210,7 +216,8 @@ public actor AppleHealthImportService {
 
         var report = AppleHealthImportReport(
             droppedWorkoutCount: scan.report.droppedWorkoutCount,
-            unmatchedRouteReferenceCount: scan.report.unmatchedRouteReferenceCount
+            unmatchedRouteReferenceCount: scan.report.unmatchedRouteReferenceCount,
+            excludedWorkoutsByActivityType: scan.report.excludedWorkoutsByActivityType
         )
 
         // Nothing selected is nothing to do: do not take the library's batch

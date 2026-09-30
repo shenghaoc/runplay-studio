@@ -317,6 +317,25 @@ final class AppleHealthImportServiceTests: XCTestCase {
 
     // MARK: - Report counts
 
+    func testImportReportCarriesExclusionsEvenWhenNothingIsSelected() async throws {
+        let run = workoutRecord(startSeconds: Self.runStart, endSeconds: Self.runEnd)
+        let excluded = run.replacingOccurrences(of: "HKWorkoutActivityTypeRunning", with: "HKWorkoutActivityTypeCycling")
+        let zip = try writeZip(named: "excluded.zip", entries: [
+            (Self.exportPath, healthDocument(workouts: run + excluded + excluded)),
+        ])
+        let result = try await scan(zip)
+        let (store, actor, _) = makeStore(named: "lib-exclusions")
+        for selected in [[], result.candidates] {
+            let report = try await makeService().importSelection(
+                selected, from: result, archiveAt: zip, storeActor: actor
+            )
+            XCTAssertEqual(report.excludedWorkoutsByActivityType, ["HKWorkoutActivityTypeCycling": 2])
+            XCTAssertEqual(report.excludedWorkoutCount, 2)
+            XCTAssertEqual(report.addedWorkoutCount, selected.count)
+        }
+        XCTAssertEqual(try store.loadManifest().workoutIDs.count, 1)
+    }
+
     func testReportCarriesTheArchiveLossCountsBesideTheItemOutcomes() async throws {
         // A document the scan cannot build a workout from, plus a workout naming
         // an absent route: one dropped, one unmatched.
