@@ -245,6 +245,26 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertEqual(result.report.candidateCount, 1)
     }
 
+    func testScanReportsExcludedActivityTypesAndKeepsParserWorkouts() async throws {
+        let run = runningWorkout()
+        let cycling = run.replacingOccurrences(of: "HKWorkoutActivityTypeRunning", with: "HKWorkoutActivityTypeCycling")
+        let walking = run.replacingOccurrences(of: "HKWorkoutActivityTypeRunning", with: "HKWorkoutActivityTypeWalking")
+        let url = try writeZip(named: "export.zip", entries: [
+            (Self.exportPath, healthDocument(workouts: cycling + run + cycling + walking)),
+        ])
+        let result = try await makeService().scan(archiveAt: url)
+        XCTAssertEqual(result.scan.workouts.count, 4)
+        XCTAssertEqual(result.candidates.count, 1)
+        XCTAssertEqual(result.candidates[0].sourceIndex, 1)
+        XCTAssertEqual(result.candidates[0].status, .ready)
+        XCTAssertEqual(result.report.excludedWorkoutsByActivityType, [
+            "HKWorkoutActivityTypeCycling": 2, "HKWorkoutActivityTypeWalking": 1,
+        ])
+        XCTAssertEqual(result.report.excludedWorkoutCount, 3)
+        XCTAssertEqual(result.report.workoutCount, result.report.candidateCount + result.report.excludedWorkoutCount)
+        XCTAssertEqual(result.report.droppedWorkoutCount, 0)
+    }
+
     func testHeartRateInsideTheWindowReachesTheCandidate() async throws {
         let url = try writeZip(named: "export.zip", entries: [
             (Self.exportPath, healthDocument(
@@ -601,6 +621,33 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
             _ = try await makeService(availableCapacity: 1).scan(archiveAt: url)
         }
         XCTAssertTrue(extractionFileNames().isEmpty)
+    }
+
+    func testZeroImportantCapacityFallsBackToInjectedPlainCapacity() async throws {
+        let document = healthDocument(workouts: runningWorkout())
+        let url = try writeZip(named: "export.zip", entries: [(Self.exportPath, document)])
+        let service = AppleHealthArchiveService(
+            policy: .default,
+            extractionRoot: extractionRoot,
+            staleExtractionAge: 3_600,
+            availableCapacity: { location in
+                AppleHealthArchiveService.availableCapacityOnDisk(
+                    at: location, capacityProvider: { _ in (important: 0, plain: Int64.max) }
+                )
+            }
+        )
+        let scan = try await service.scan(archiveAt: url)
+        XCTAssertEqual(scan.candidates.count, 1)
+        XCTAssertTrue(extractionFileNames().isEmpty)
+    }
+
+    func testCapacityPreferenceAndMissingValuesUseInjectedProvider() {
+        let cases: [(Int64?, Int64?, Int64?)] = [(5, 10, 5), (nil, 10, 10), (0, 0, 0), (0, nil, nil)]
+        for (important, plain, expected) in cases {
+            XCTAssertEqual(AppleHealthArchiveService.availableCapacityOnDisk(
+                at: extractionRoot, capacityProvider: { _ in (important, plain) }
+            ), expected)
+        }
     }
 
     // MARK: - Routes
