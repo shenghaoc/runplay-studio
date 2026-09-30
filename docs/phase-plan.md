@@ -117,10 +117,16 @@
 
 ## Active / Upcoming Phases
 
-### Phase: HealthKit Research (Future)
-- [ ] Research macOS HealthKit entitlements and availability
-- [ ] Design import flow and privacy model
-- [ ] Implement HealthKit workout query and importer
+### Phase: Apple Health export import
+- [x] Direct-access decision: export archives are supported; direct HealthKit is outside the signing policy ([decision record](healthkit-viability.md))
+- [x] Preserve source distance/duration only for route-less analysis, with summary provenance and routed-snapshot compatibility
+- [x] Single route-presence predicate, exclusive HR sources/accessor, and explicit route-less consumer decisions
+- [x] Linux-tested streaming XML parser with guarded DTD elision, recorded offsets and bounded single-/two-pass HR indexing
+- [x] Running candidates, HR window join, overlap flags unchecked by default and non-running exclusions counted by type
+- [x] Local archive service, declared-size extraction guard, capacity fallback and temporary-file cleanup; ZIP64 limitation documented
+- [x] Transactional import with independent route-window validation, small-overrun trimming and route-less mismatch fallback
+- [x] Studio review/report, separate menu command, time-domain HR and explicit no-GPS presentation
+- [ ] Owner's manual GUI/keyboard/VoiceOver pass on the ad-hoc-signed bundle ([checklist](manual-testing.md#apple-health-export-acceptance))
 
 ### Phase: Advanced Export
 - [x] Dark mode PNG summary card variant
