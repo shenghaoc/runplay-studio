@@ -162,6 +162,10 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
     /// Candidates flagged as an exact or possible duplicate of another window.
     public var duplicateCandidateCount: Int
 
+    /// Parsed non-running workouts deliberately excluded from candidates.
+    public var excludedWorkoutsByActivityType: [String: Int]
+    public var excludedWorkoutCount: Int { excludedWorkoutsByActivityType.values.reduce(0, +) }
+
     /// Workouts the scan could not build.
     public var droppedWorkoutCount: Int
 
@@ -189,7 +193,8 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
         unmatchedRouteReferenceCount: Int,
         routeEntryCount: Int,
         entryCount: Int,
-        uncompressedXMLBytes: Int64
+        uncompressedXMLBytes: Int64,
+        excludedWorkoutsByActivityType: [String: Int] = [:]
     ) {
         self.workoutCount = workoutCount
         self.candidateCount = candidateCount
@@ -199,6 +204,7 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
         self.routeEntryCount = routeEntryCount
         self.entryCount = entryCount
         self.uncompressedXMLBytes = uncompressedXMLBytes
+        self.excludedWorkoutsByActivityType = excludedWorkoutsByActivityType
     }
 }
 
@@ -303,7 +309,7 @@ public actor AppleHealthArchiveService {
         self.sourcePayloadByteLimit = Int64(WorkoutImportResourceLimits.maxSourceFileBytes)
         self.extractionRootOverride = nil
         self.staleExtractionAge = 3_600
-        self.availableCapacity = AppleHealthArchiveService.availableCapacityOnDisk
+        self.availableCapacity = { Self.availableCapacityOnDisk(at: $0) }
     }
 
     /// Test seam: point extraction at a scratch directory and fake free space.
@@ -374,10 +380,11 @@ public actor AppleHealthArchiveService {
             isCancelled: isCancelled
         )
 
-        let candidates = AppleHealthWorkoutCandidateBuilder.candidates(
+        let built = AppleHealthWorkoutCandidateBuilder.build(
             from: scan,
             existingLibraryRuns: existingLibraryRuns
         )
+        let candidates = built.candidates
         let unmatched = candidates.count { candidate in
             guard let path = candidate.routeArchivePath else { return false }
             return !listing.routePathsLowercased.contains(path.lowercased())
@@ -391,7 +398,8 @@ public actor AppleHealthArchiveService {
             unmatchedRouteReferenceCount: unmatched,
             routeEntryCount: listing.routePathsLowercased.count,
             entryCount: listing.entryCount,
-            uncompressedXMLBytes: uncompressedBytes
+            uncompressedXMLBytes: uncompressedBytes,
+            excludedWorkoutsByActivityType: built.excludedWorkoutsByActivityType
         )
 
         return AppleHealthArchiveScanResult(
@@ -834,15 +842,22 @@ public actor AppleHealthArchiveService {
 
     /// Free space at a location, preferring the figure that accounts for purgeable
     /// space, or `nil` when the volume cannot report one.
-    private static func availableCapacityOnDisk(at url: URL) -> Int64? {
-        let keys: Set<URLResourceKey> = [
-            .volumeAvailableCapacityForImportantUsageKey,
-            .volumeAvailableCapacityKey,
-        ]
-        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
-        if let important = values.volumeAvailableCapacityForImportantUsage { return important }
-        if let plain = values.volumeAvailableCapacity { return Int64(plain) }
-        return nil
+    static func availableCapacityOnDisk(
+        at url: URL,
+        capacityProvider: @Sendable (URL) throws -> (important: Int64?, plain: Int64?) = { url in
+            let values = try url.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey,
+                .volumeAvailableCapacityKey,
+            ])
+            return (values.volumeAvailableCapacityForImportantUsage,
+                    values.volumeAvailableCapacity.map(Int64.init))
+        }
+    ) -> Int64? {
+        guard let values = try? capacityProvider(url) else { return nil }
+        // Sandboxed capacity queries can report a non-nil zero for important
+        // usage while the ordinary capacity still reports usable disk space.
+        if let important = values.important, important > 0 { return important }
+        return values.plain
     }
 
     private func fileSize(of url: URL) -> Int64 {
