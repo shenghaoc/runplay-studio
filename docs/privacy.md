@@ -153,11 +153,11 @@ gitignored local paths (`local-workouts/` or `private-workouts/`). Never commit
 real workout data, screenshots of private routes, or exports derived from
 personal activity files. See `docs/private-data.md` for the full policy.
 
-## Future Considerations
+## Direct HealthKit
 
-If HealthKit integration is added in a future phase, it will require explicit
-entitlements and a separate privacy review. Any such change will be opt-in and
-clearly documented before shipping.
+Direct HealthKit is not planned under this project's signing policy. Apple
+Health export archives use the local file import path below; see
+[the decision record](healthkit-viability.md).
 
 
 ## Watch-folder import
@@ -225,3 +225,44 @@ raw FIT timestamps, sport, sub-sport, and lap metadata. It contains no absolute
 path, no filename-derived identity, no locale-formatted date, and no account or
 device serial. User-visible session names use the file's base name plus a
 fixed-locale date or an ordinal — never a fingerprint, UUID, or raw FIT field.
+
+## Apple Health export import
+
+The separate Apple Health command reads a ZIP you choose on this Mac. It does
+not contact Apple Health, request HealthKit permissions, use an account, or
+upload any content. The original archive is not modified.
+
+The whole `export.xml` is temporarily extracted to
+`~/Library/Caches/RunPlayStudio/AppleHealthExtractions/` (directory mode `0700`,
+file mode `0600`) and stream-parsed. The document is not loaded wholesale into
+memory. Extraction is bounded by its declared uncompressed size and checked
+against available space. The temporary XML is removed on success, failure or
+cancellation. A crash may leave a file; a later scan removes owned extraction
+files older than one hour. The app does not extract the whole ZIP.
+
+Parsing examines workout activity identifiers, date windows and offsets,
+workout statistics, route file references and top-level heart-rate sample
+windows/values. The parser sees all workout types, but candidates retain only
+running workouts. Non-running workouts are excluded, counted by activity
+identifier and not stored in the library. Other record types, nested non-HR
+records, profile/device/source metadata, clinical records, sleep, nutrition,
+photos and free text are not mapped into imported workouts. Unsupported nested
+non-HR records are counted by type identifier only. Nested HR is not consumed
+by the current parser. Transient parser metadata is not persisted.
+
+A bounded in-memory HR index may temporarily contain readings outside runs;
+its second pass, if needed, filters to workout windows. It is released after
+the scan. Only HR overlapping a selected running workout's window is retained
+in that workout. Import reads the GPX explicitly referenced by that selected
+run, including its coordinates, timestamps, elevation and supported HR/cadence
+extensions. Unreferenced GPX entries are not imported. A time-mismatched route
+is discarded from the imported workout while its running summary, joined HR
+and recorded offset survive.
+
+Only selected runs reach the local library in one transaction. Provenance
+stores a locally derived candidate identity and, for an accepted route, its
+content digest and filename basename; it stores no source ZIP absolute path,
+account identifier or source/device name from the Health XML. Route-less
+snapshots retain source-reported summary provenance. No raw Health XML is
+saved in the workout library. Existing MapKit basemap loads remain the only
+app network activity; a route-less run has no map region to load.

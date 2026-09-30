@@ -55,9 +55,10 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 | GPX    | ✅ Track support | Requires at least one timestamp; partial missing timestamps are interpolated; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
 | FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, enhanced metrics, and developer data fields (running power and running dynamics with provenance); importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
-| HealthKit | 📋 Research only | Requires entitlements, future work |
+| Apple Health export archive | Supported | Running workouts from `export.zip`, with route-less and HR support; use **Import Apple Health Export…**. See [the import guide](docs/apple-health-import.md). |
+| Direct HealthKit | Not planned | A provisioned HealthKit capability is outside this project's signing policy. See [the decision record](docs/healthkit-viability.md). |
 
-**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message. Apple Health archives use **Import Apple Health Export…**; ordinary file import does not sniff ZIP contents.
 
 ### Export
 
@@ -375,9 +376,10 @@ To build a local `.app` bundle:
 | GPX    | ✅ Track support | Requires at least one timestamp for elapsed/active pace analysis; partial missing timestamps are interpolated; normalized elapsed values are used when timestamps do not span; HR/cadence via extensions |
 | TCX    | ✅ Full support | Training Center XML with recorded-lap summaries, HR, cadence, distance; seamless laps stay continuous; partial missing timestamps are interpolated |
 | FIT    | ✅ Common running activities | CRC-validated binary activity files with compressed timestamps, session selection, multi-session review and batch import, recorded-lap preservation, pause/resume boundaries, enhanced metrics, and developer data fields (running power and running dynamics with provenance); importing real device files landed in #143 — earlier builds rejected them at the header; see limitations below |
-| HealthKit | 📋 Research only | Requires entitlements, future work |
+| Apple Health export archive | Supported | Running workouts from `export.zip`, with route-less and HR support; use **Import Apple Health Export…**. See [the import guide](docs/apple-health-import.md). |
+| Direct HealthKit | Not planned | A provisioned HealthKit capability is outside this project's signing policy. See [the decision record](docs/healthkit-viability.md). |
 
-**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message.
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message. Apple Health archives use **Import Apple Health Export…**; ordinary file import does not sniff ZIP contents.
 
 **FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. A file with zero or one session message imports directly; a file with several session messages opens the **Import FIT Sessions** review sheet, where supported running sessions become separate workouts committed in one transaction. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer data fields (running power and running dynamics) and native record running dynamics are decoded with provenance; component accumulation, subfield expansion, and course/workout files remain unsupported. Real-device-file import landed in #143: before it, the parser required the wrong header data-type magic and rejected every genuine FIT file at the header, and a device writing `session.timestamp == start_time` collapsed a whole run to a single route point.
 
@@ -498,7 +500,7 @@ Compare two completed runs side by side:
 - Moving-time estimation remains an estimate; Active is recorded time inside continuous route segments
 - FIT support targets common running activities rather than the full FIT profile; developer data fields (running power, running dynamics) are decoded, while component accumulation, subfield expansion, and course/workout files remain unsupported
 - A Strava archive entry that itself contains several running sessions is reported as unsupported rather than opening a nested review sheet
-- No HealthKit integration (placeholder importer exists but is not yet functional)
+- Direct HealthKit access is not planned; Apple Health export archives are supported through a separate review/import command
 - No cloud sync, accounts, or web interface
 - macOS only (requires SwiftUI and MapKit)
 - PNG export requires GUI context (`ImageRenderer`); map-inclusive export needs MapKit network access for basemap tiles

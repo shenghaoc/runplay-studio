@@ -2509,3 +2509,41 @@ Dynamic Type / larger text: **not applicable on macOS** for this view. Restore a
 - [ ] Read a warning icon's full help text and focus its row with the keyboard. Verify VoiceOver reads the full reason, activity, duration, distance provenance, route and heart-rate status.
 
 - [ ] In Accessibility Inspector, verify the Apple Health title and report headline are headings; Cancel, filters, row checkboxes, import, Details, Done and View Imported Run keep their own control names and roles. Confirm VoiceOver actually speaks the header, Cancel, a flagged row with its full reason, and the import button. Restore VoiceOver and keyboard settings afterwards.
+
+## Apple Health export acceptance
+
+Use the ad-hoc-signed bundle produced by `scripts/assemble-app-bundle.sh`, not
+`swift run` or a test-process hosting view. Keep this pass in a disposable
+library. The checks below use synthetic archives so screenshots or issue
+attachments contain no private health data.
+The assembly script does not sign; ad-hoc signing is a separate local step:
+
+```bash
+./scripts/assemble-app-bundle.sh --output /tmp/RunPlayStudio-HealthGUI.app
+codesign --force --sign - /tmp/RunPlayStudio-HealthGUI.app
+codesign --verify --strict /tmp/RunPlayStudio-HealthGUI.app
+open -n --env RUNPLAY_LIBRARY_ROOT=/tmp/runplay-health-gui-check -a /tmp/RunPlayStudio-HealthGUI.app
+```
+
+Choose a fresh scratch-library path for `RUNPLAY_LIBRARY_ROOT` and delete that
+library and the temporary bundle after the pass. The override isolates both
+workouts and local session state from the normal library.
+
+- [ ] **File → Import Apple Health Export…** opens a ZIP picker; ordinary file import does not auto-route a Health ZIP.
+- [ ] Review synthetic outdoor and indoor/treadmill runs alongside overlapping walking/cycling workouts. Only runs appear; the skipped non-running count is explicit.
+- [ ] Verify review dates respect the recorded offset, source distance is described as source-reported, and route/HR indicators match the export.
+- [ ] Exact duplicates and partial overlaps against the disposable library or other candidates start unchecked. Keyboard toggling and selection filters work; import saves only selected runs.
+- [ ] A valid route remains GPS-derived. A small early/late overrun trims to ±60 seconds, with a trimming report sentence. Verify both ends and the five-minute boundary using synthetic data.
+- [ ] No overlap or an overrun beyond five minutes imports without a map and reports the time mismatch separately from a missing/unreadable GPX. Check shared references independently.
+- [ ] Route-less runs retain summary distance/duration, HR and recorded local date; the map shows the explicit no-GPS message, and the HR chart uses time. Kilometre splits and segments are unavailable; no route/splits are invented.
+- [ ] Route-less runs appear in Trends and Training Load; longest run uses summary distance. They do not enter Heatmap, route groups, distance-window records, comparison or replay.
+- [ ] PNG produces a metrics-only result for a route-less run; MP4 explains that a route is required. The saved library snapshot retains source-reported provenance.
+- [ ] Report wording distinguishes imported, route fallback, trimming, already-present, failed, discarded, excluded, unreadable-date and unmatched-reference counts. Zero findings produce no warning sentence.
+- [ ] Cancel scan/review/import and verify the library is unchanged and no current extraction XML remains. Finish a successful scan and check the same cleanup.
+- [ ] Reimport using default selection; no second copy is added. An export containing only non-running workouts reports the exclusions and offers no candidates.
+- [ ] A synthetic ZIP64 offset-zero fixture is refused clearly; a supported ZIP64/data-descriptor fixture imports. Do not infer support for every ZIP64 archive.
+- [ ] VoiceOver reads the menu, candidate rows, checkbox states, duplicate reasons, chart descriptor, no-GPS message and final report. Keyboard navigation/import/dismissal remain usable. Confirm no per-frame announcements.
+
+A private acceptance pass may be recorded separately as counts and booleans
+only; never screenshot, attach, commit or copy its Health contents. See
+[private-data handling](private-data.md#apple-health-acceptance-checks).
