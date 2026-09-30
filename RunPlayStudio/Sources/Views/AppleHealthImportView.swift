@@ -59,6 +59,16 @@ struct AppleHealthImportView: View {
     private var reviewBody: some View {
         VStack(spacing: 0) {
             summaryBar
+            if let skipped = AppleHealthReviewPresentation.skippedNonRunningText(
+                session.scanResult.report.excludedWorkoutCount
+            ) {
+                Text(skipped)
+                    .font(AppDesign.Typography.secondary)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, AppDesign.Spacing.small)
+            }
             filterBar
             candidateTable
             reviewFooter

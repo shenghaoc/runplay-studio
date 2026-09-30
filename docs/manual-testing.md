@@ -2346,3 +2346,11 @@ Not covered: the fifteen-entry window contained only single-run routes, so a
 multi-month span ("5 runs · Mar – Aug 2026") was checked only by unit tests
 (`RouteGroupMenuDetailTests`). Dark appearance, the 720×552 minimum and
 VoiceOver were not exercised in this pass.
+
+## Apple Health running-only review (synthetic)
+
+- [ ] Assemble a bundle with `scripts/assemble-app-bundle.sh`, ad-hoc-sign it, and open **Import Apple Health Export…** with a synthetic mixed-activity archive.
+- [ ] Include a running workout, a route-less indoor/treadmill running workout, and walking/cycling workouts overlapping the run. Only the two runs appear; excluded activities do not flag either run.
+- [ ] Review and the final import report state the number of non-running workouts skipped. Verify VoiceOver reads this static message and keyboard selection/import still work.
+- [ ] Import an archive containing only non-running workouts. Review shows no candidates and explicitly states the skipped count.
+- [ ] Reimport selected runs into the same disposable library; no additional workouts are added. Never use or screenshot private data for this checklist.
