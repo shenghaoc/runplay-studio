@@ -51,7 +51,8 @@ public struct AppleHealthImportItemResult: Sendable, Equatable {
     public enum Outcome: String, Sendable, Equatable {
         /// Imported with the route the candidate named.
         case imported
-        /// Imported without a route, because the file it named could not be read.
+        /// Imported without a route because the file was unavailable or its
+        /// timestamps did not match this workout.
         case importedWithoutRoute
         /// Left alone: the library already holds a run with this exact window.
         case alreadyInLibrary
@@ -64,6 +65,13 @@ public struct AppleHealthImportItemResult: Sendable, Equatable {
         case failed
     }
 
+    public enum RouteFallbackReason: String, Sendable, Equatable {
+        case routeFileUnavailable
+        case routeWindowMismatch
+    }
+
+    public let routeFallbackReason: RouteFallbackReason?
+    public let wasRouteTrimmed: Bool
     public let candidateID: String
     /// `workoutActivityType` verbatim, so a report can name the activity without
     /// re-deriving it from a formatting rule this layer does not own.
@@ -80,8 +88,12 @@ public struct AppleHealthImportItemResult: Sendable, Equatable {
         startSeconds: Int64,
         outcome: Outcome,
         detail: String? = nil,
-        importedWorkoutID: UUID? = nil
+        importedWorkoutID: UUID? = nil,
+        routeFallbackReason: RouteFallbackReason? = nil,
+        wasRouteTrimmed: Bool = false
     ) {
+        self.routeFallbackReason = routeFallbackReason
+        self.wasRouteTrimmed = wasRouteTrimmed
         self.candidateID = candidateID
         self.activityType = activityType
         self.startSeconds = startSeconds
@@ -121,6 +133,11 @@ public struct AppleHealthImportReport: Sendable {
 
     public var importedCount: Int { items.count { $0.outcome == .imported } }
     public var importedWithoutRouteCount: Int { items.count { $0.outcome == .importedWithoutRoute } }
+    /// Successful imports only; rolled-back items never count as imported.
+    public var routeWindowMismatchCount: Int {
+        items.count { $0.outcome == .importedWithoutRoute && $0.routeFallbackReason == .routeWindowMismatch }
+    }
+    public var trimmedRouteCount: Int { items.count { $0.outcome == .imported && $0.wasRouteTrimmed } }
     public var alreadyInLibraryCount: Int { items.count { $0.outcome == .alreadyInLibrary } }
     public var failedCount: Int { items.count { $0.outcome == .failed } }
     /// Candidates that were ready to import but were rolled back, so the library
@@ -209,7 +226,7 @@ public actor AppleHealthImportService {
         existingWorkouts: [RunWorkout] = [],
         storeActor: WorkoutLibraryStoreActor,
         progress: @Sendable (AppleHealthImportProgress) async -> Void = { _ in },
-        isCancelled: @Sendable () -> Bool = { false }
+        isCancelled: @escaping @Sendable () -> Bool = { false }
     ) async throws -> AppleHealthImportReport {
         guard archiveURL.isFileURL else { throw AppleHealthImportError.notALocalFile }
         if isCancelled() { throw CancellationError() }
@@ -327,7 +344,9 @@ public actor AppleHealthImportService {
                         startSeconds: candidate.window.startSeconds,
                         outcome: built.routeFailure == nil ? .imported : .importedWithoutRoute,
                         detail: built.routeFailure,
-                        importedWorkoutID: workoutID
+                        importedWorkoutID: workoutID,
+                        routeFallbackReason: built.fallbackReason,
+                        wasRouteTrimmed: built.wasTrimmed
                     ))
                 } catch is CancellationError {
                     throw CancellationError()
@@ -415,12 +434,14 @@ public actor AppleHealthImportService {
     private struct BuiltWorkout {
         var workout: RunWorkout
         var routeFailure: String?
+        var fallbackReason: AppleHealthImportItemResult.RouteFallbackReason? = nil
+        var wasTrimmed = false
     }
 
     private func buildWorkout(
         for candidate: AppleHealthWorkoutCandidate,
         archiveAt archiveURL: URL,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @escaping @Sendable () -> Bool
     ) async throws -> BuiltWorkout {
         guard let routePath = candidate.routeArchivePath else {
             return BuiltWorkout(workout: Self.routeLessWorkout(for: candidate), routeFailure: nil)
@@ -432,10 +453,7 @@ public actor AppleHealthImportService {
                 archiveAt: archiveURL,
                 isCancelled: isCancelled
             )
-            return BuiltWorkout(
-                workout: try Self.routedWorkout(for: candidate, gpx: gpx),
-                routeFailure: nil
-            )
+            return try Self.routedWorkout(for: candidate, gpx: gpx, isCancelled: isCancelled)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -446,7 +464,8 @@ public actor AppleHealthImportService {
             // never silently imported as though it had a route.
             return BuiltWorkout(
                 workout: Self.routeLessWorkout(for: candidate),
-                routeFailure: "Imported without its route: \(error.localizedDescription)"
+                routeFailure: "Imported without its route: \(error.localizedDescription)",
+                fallbackReason: .routeFileUnavailable
             )
         }
     }
@@ -481,13 +500,13 @@ public actor AppleHealthImportService {
     ///
     /// Parsing goes through the ordinary GPX importer, so the geometry, splits
     /// and distance come from the same code every other GPX import uses. The
-    /// export's window then overrides the timestamps the file happened to carry:
-    /// the workout record is the authority on when the run happened, and the
-    /// route file is the authority on where.
+    /// route is judged against this workout's window before its metadata is
+    /// replaced. Shared file references are therefore judged independently.
     private static func routedWorkout(
         for candidate: AppleHealthWorkoutCandidate,
-        gpx: Data
-    ) throws -> RunWorkout {
+        gpx: Data,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> BuiltWorkout {
         let filename = candidate.routeArchivePath.map { ($0 as NSString).lastPathComponent }
         let input = WorkoutImportInput(
             data: gpx,
@@ -501,13 +520,33 @@ public actor AppleHealthImportService {
         )
 
         var workout = try WorkoutImporterFactory.importWorkout(from: input)
+        var wasTrimmed = false
+        switch AppleHealthRouteWindowPolicy.decision(for: workout.routePoints, window: candidate.window) {
+        case .keep:
+            break // Preserve the ordinary GPX route and summary byte for byte.
+        case .mismatch:
+            return BuiltWorkout(
+                workout: routeLessWorkout(for: candidate),
+                routeFailure: "Imported without a map because its route file did not match the run's time",
+                fallbackReason: .routeWindowMismatch
+            )
+        case .trim(let range):
+            workout.routePoints = Array(workout.routePoints[range])
+            // The new first point has no preceding interval in this route.
+            workout.routePoints[0].speedMetersPerSecond = nil
+            workout.routePoints[0].paceSecondsPerKilometer = nil
+            try WorkoutAnalyzer().normalizeAndAnalyze(
+                &workout, distancePolicy: .computeFromCoordinates, isCancelled: isCancelled
+            )
+            wasTrimmed = true
+        }
         workout.source = .healthKit
         workout.metadata = metadata(for: candidate)
         workout.heartRateSeries = heartRateSeries(
             for: candidate,
             routePoints: workout.routePoints
         )
-        return workout
+        return BuiltWorkout(workout: workout, routeFailure: nil, wasTrimmed: wasTrimmed)
     }
 
     private static func metadata(for candidate: AppleHealthWorkoutCandidate) -> WorkoutMetadata {
