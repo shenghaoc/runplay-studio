@@ -55,6 +55,9 @@ class AppState: ObservableObject {
     @Published var showArchiveImporter = false
     @Published var archiveSession: ArchiveImportSession?
     @Published var fitSessionImportSession: FITSessionImportSession?
+    /// Whether the Apple Health export file picker is on screen.
+    @Published var showAppleHealthImporter = false
+    @Published var appleHealthSession: AppleHealthImportSession?
     @Published var errorMessage: String?
     @Published var showingError = false
     @Published var detectedSegments: [SegmentHighlight] = []
@@ -250,8 +253,10 @@ class AppState: ObservableObject {
     var isModalPresentationActive: Bool {
         archiveSession != nil
             || fitSessionImportSession != nil
+            || appleHealthSession != nil
             || showImporter
             || showArchiveImporter
+            || showAppleHealthImporter
             || showSmartCollectionsManager
             || showingError
     }
@@ -276,6 +281,11 @@ class AppState: ObservableObject {
     /// sheet entirely; every FIT file then follows the direct import path.
     let fitSessionService: FITSessionImportService?
 
+    /// Apple Health `export.zip` reader. Nil disables the Apple Health review
+    /// sheet; the import service is derived from it rather than stored, because
+    /// it holds no state of its own beyond the reader it borrows.
+    let appleHealthArchiveService: AppleHealthArchiveService?
+
     /// Retained, injectable policy shared by app-owned transition models.
     let announcementPolicy: AccessibilityAnnouncementPolicy
 
@@ -287,6 +297,9 @@ class AppState: ObservableObject {
 
     /// Handle for the active multi-session FIT import task.
     var fitImportTask: Task<Void, Never>?
+
+    /// Handle for the active Apple Health scan/import task.
+    var appleHealthTask: Task<Void, Never>?
 
     /// Create AppState with injectable services.
     ///
@@ -301,6 +314,7 @@ class AppState: ObservableObject {
         importService: WorkoutImportServicing? = nil,
         archiveService: StravaArchiveService? = nil,
         fitSessionService: FITSessionImportService? = nil,
+        appleHealthArchiveService: AppleHealthArchiveService? = nil,
         profileStore: FileAthleteProfileStore? = nil,
         accessibilityAnnouncer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
     ) {
@@ -315,6 +329,7 @@ class AppState: ObservableObject {
         self.importService = importService
         self.archiveService = archiveService
         self.fitSessionService = fitSessionService
+        self.appleHealthArchiveService = appleHealthArchiveService
         self.announcementPolicy = announcementPolicy
         self.personalHeatmap = PersonalHeatmapViewModel(
             announcementPolicy: announcementPolicy
@@ -352,6 +367,7 @@ class AppState: ObservableObject {
             importService: importService,
             archiveService: archiveService,
             fitSessionService: fitSessionService,
+            appleHealthArchiveService: AppleHealthArchiveService(),
             profileStore: FileAthleteProfileStore(rootURL: libraryRoot)
         )
         attachWatchFolderCoordinator(
@@ -409,6 +425,7 @@ class AppState: ObservableObject {
         selectionTask?.cancel()
         archiveTask?.cancel()
         fitImportTask?.cancel()
+        appleHealthTask?.cancel()
         personalRecordsBackfillTask?.cancel()
         trainingLoadBackfillTask?.cancel()
         routeGroupAssignmentTask?.cancel()

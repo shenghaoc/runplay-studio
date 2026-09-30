@@ -26,6 +26,7 @@ struct AppWorkspaceActions {
     var showAllRuns: () -> Void = {}
     var importFile: () -> Void = {}
     var importStravaArchive: () -> Void = {}
+    var importAppleHealthExport: () -> Void = {}
 }
 
 private struct AppWorkspaceActionsKey: FocusedValueKey {
@@ -92,6 +93,12 @@ struct WorkoutViewCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .importStravaArchive).purpose)
+            .disabled(isSheetBlocking)
+
+            Button(CommandRegistry.definition(for: .importAppleHealthExport).menuTitle) {
+                workspaceActions?.importAppleHealthExport()
+            }
+            .help(CommandRegistry.definition(for: .importAppleHealthExport).purpose)
             .disabled(isSheetBlocking)
 
             // Settings is the standard ⌘, scene; the menu item routes there
