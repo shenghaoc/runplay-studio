@@ -134,6 +134,7 @@
 - [x] Window state persistence across relaunches
 
 ### Phase: Expanded Import
+- [x] Apple Health export candidate policy: running-only, including route-less indoor/treadmill runs; excluded activity counts in review and import reports; overlap flags computed after filtering
 - [x] Strava export (.zip) importer
 - [x] Multi-session FIT batch import
 - [x] FIT developer data: field_description/developer_data_id decode, name-based recognition with provenance, running power + dynamics on route points, per-field metadata/statistics retention (no per-point series, 16-field cap)

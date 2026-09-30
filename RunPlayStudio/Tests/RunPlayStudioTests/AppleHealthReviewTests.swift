@@ -78,7 +78,8 @@ final class AppleHealthReviewTests: XCTestCase {
     private func scanResult(
         candidates: [AppleHealthWorkoutCandidate],
         dropped: Int = 0,
-        unmatchedRoutes: Int = 0
+        unmatchedRoutes: Int = 0,
+        excluded: [String: Int] = [:]
     ) -> AppleHealthArchiveScanResult {
         AppleHealthArchiveScanResult(
             scan: AppleHealthExportScan(
@@ -103,7 +104,8 @@ final class AppleHealthReviewTests: XCTestCase {
                 unmatchedRouteReferenceCount: unmatchedRoutes,
                 routeEntryCount: 0,
                 entryCount: 1,
-                uncompressedXMLBytes: 0
+                uncompressedXMLBytes: 0,
+                excludedWorkoutsByActivityType: excluded
             )
         )
     }
@@ -320,6 +322,19 @@ final class AppleHealthReviewTests: XCTestCase {
         )
     }
 
+    func testNonRunningExclusionsArePlainLanguageInReviewAndReport() {
+        XCTAssertNil(AppleHealthReviewPresentation.skippedNonRunningText(0))
+        let singular = "1 non-running workout was skipped. Only running workouts are offered for import."
+        let plural = "3 non-running workouts were skipped. Only running workouts are offered for import."
+        XCTAssertEqual(AppleHealthReviewPresentation.skippedNonRunningText(1), singular)
+        XCTAssertEqual(AppleHealthReviewPresentation.skippedNonRunningText(3), plural)
+        let report = AppleHealthImportReport(excludedWorkoutsByActivityType: [
+            "HKWorkoutActivityTypeCycling": 2, "HKWorkoutActivityTypeWalking": 1,
+        ])
+        XCTAssertEqual(AppleHealthImportSummary(report: report).lines, [plural])
+        XCTAssertTrue(AppleHealthImportSummary(report: AppleHealthImportReport()).lines.isEmpty)
+    }
+
     func testReportStatesDroppedWorkoutsAndUnmatchedRoutesInPlainLanguage() {
         let report = AppleHealthImportReport(
             items: [],
@@ -411,7 +426,8 @@ final class AppleHealthReviewTests: XCTestCase {
             candidate(index: 0, start: 0, end: 600, route: nil, heartRateBeats: [150, 152]),
             candidate(index: 1, start: 5_000, end: 6_200, route: nil, distanceMeters: 3_200),
         ]
-        present(appState, scanResult(candidates: candidates, dropped: 2, unmatchedRoutes: 1))
+        present(appState, scanResult(candidates: candidates, dropped: 2, unmatchedRoutes: 1,
+                                     excluded: ["HKWorkoutActivityTypeCycling": 3]))
 
         appState.confirmAppleHealthImport()
         await waitForTerminalPhase(appState)
@@ -425,6 +441,7 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(report.addedWorkoutCount, 2)
         XCTAssertEqual(report.droppedWorkoutCount, 2)
         XCTAssertEqual(report.unmatchedRouteReferenceCount, 1)
+        XCTAssertEqual(report.excludedWorkoutsByActivityType, ["HKWorkoutActivityTypeCycling": 3])
 
         let stored = try XCTUnwrap(appState.workouts.first { $0.id == report.items[0].importedWorkoutID })
         XCTAssertEqual(stored.source, .healthKit)

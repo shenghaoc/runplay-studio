@@ -195,6 +195,13 @@ enum AppleHealthReviewPresentation {
         )
     }
 
+    /// Shared by review and final report, including exports with no runs.
+    static func skippedNonRunningText(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return "\(count) non-running \(count == 1 ? "workout was" : "workouts were") skipped. "
+            + "Only running workouts are offered for import."
+    }
+
     // MARK: - Report rows
 
     /// One row of the post-import detail list.
@@ -266,6 +273,9 @@ struct AppleHealthImportSummary: Equatable {
         }
 
         var lines: [String] = []
+        if let skipped = AppleHealthReviewPresentation.skippedNonRunningText(report.excludedWorkoutCount) {
+            lines.append(skipped)
+        }
         lines += Self.sentence(
             report.importedWithoutRouteCount, "run has", "runs have",
             "no route, because the export did not contain the route file it names."

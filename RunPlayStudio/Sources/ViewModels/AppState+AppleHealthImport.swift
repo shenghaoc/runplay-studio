@@ -169,7 +169,8 @@ extension AppState {
                             commitFailed: true,
                             errorMessage: error.localizedDescription,
                             droppedWorkoutCount: scan.report.droppedWorkoutCount,
-                            unmatchedRouteReferenceCount: scan.report.unmatchedRouteReferenceCount
+                            unmatchedRouteReferenceCount: scan.report.unmatchedRouteReferenceCount,
+                            excludedWorkoutsByActivityType: scan.report.excludedWorkoutsByActivityType
                         )
                         session.phase = .report
                         session.errorMessage = error.localizedDescription
