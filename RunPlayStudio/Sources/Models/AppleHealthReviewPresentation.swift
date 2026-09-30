@@ -277,8 +277,16 @@ struct AppleHealthImportSummary: Equatable {
             lines.append(skipped)
         }
         lines += Self.sentence(
-            report.importedWithoutRouteCount, "run has", "runs have",
-            "no route, because the export did not contain the route file it names."
+            report.routeWindowMismatchCount, "run imported", "runs imported",
+            "without a map because their route file didn't match the run's time."
+        )
+        lines += Self.sentence(
+            report.trimmedRouteCount, "run had", "runs had",
+            "their route trimmed to match the run's recorded time."
+        )
+        lines += Self.sentence(
+            report.importedWithoutRouteCount - report.routeWindowMismatchCount, "run has", "runs have",
+            "no route, because its route file could not be read."
         )
         lines += Self.sentence(
             report.alreadyInLibraryCount, "run was", "runs were",

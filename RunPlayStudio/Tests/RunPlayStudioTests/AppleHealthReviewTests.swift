@@ -356,6 +356,35 @@ final class AppleHealthReviewTests: XCTestCase {
         )
     }
 
+    func testReportNamesTimeMismatchesWithoutCallingTheirFilesMissing() {
+        for count in [1, 8] {
+            let items = (0..<count).map { index in
+                AppleHealthImportItemResult(candidateID: "mismatch-\(index)", activityType: Self.running,
+                    startSeconds: 0, outcome: .importedWithoutRoute, routeFallbackReason: .routeWindowMismatch)
+            }
+            let summary = AppleHealthImportSummary(report: AppleHealthImportReport(items: items))
+            XCTAssertEqual(summary.lines, ["\(count) \(count == 1 ? "run" : "runs") imported without a map because their route file didn't match the run's time."])
+        }
+    }
+
+    func testReportSeparatesTrimmedRoutesFromUnavailableFilesAndIgnoresDiscardedItems() {
+        let items = [
+            AppleHealthImportItemResult(candidateID: "trimmed", activityType: Self.running,
+                startSeconds: 0, outcome: .imported, wasRouteTrimmed: true),
+            AppleHealthImportItemResult(candidateID: "missing", activityType: Self.running,
+                startSeconds: 0, outcome: .importedWithoutRoute, routeFallbackReason: .routeFileUnavailable),
+            AppleHealthImportItemResult(candidateID: "discarded", activityType: Self.running,
+                startSeconds: 0, outcome: .discarded, routeFallbackReason: .routeWindowMismatch, wasRouteTrimmed: true),
+        ]
+        let report = AppleHealthImportReport(items: items)
+        XCTAssertEqual(report.routeWindowMismatchCount, 0)
+        XCTAssertEqual(report.trimmedRouteCount, 1)
+        let summary = AppleHealthImportSummary(report: report)
+        XCTAssertTrue(summary.lines.contains("1 run had their route trimmed to match the run's recorded time."))
+        XCTAssertTrue(summary.lines.contains("1 run has no route, because its route file could not be read."))
+        XCTAssertFalse(summary.lines.contains { $0.contains("didn't match") })
+    }
+
     func testReportSaysNothingBeyondTheHeadlineWhenNothingWentWrong() {
         let summary = AppleHealthImportSummary(report: AppleHealthImportReport(importedWorkoutIDs: [UUID()]))
         XCTAssertTrue(summary.lines.isEmpty)
