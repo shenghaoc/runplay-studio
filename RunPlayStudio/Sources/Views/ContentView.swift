@@ -31,6 +31,8 @@ private final class SecurityScopedURL: Sendable {
 extension UTType {
     static let supportedImportTypes: [UTType] = [.data]
     static let stravaArchiveTypes: [UTType] = [.zip]
+    /// An Apple Health export is delivered as the same container shape.
+    static let appleHealthExportTypes: [UTType] = [.zip]
 }
 
 /// Main content view with sidebar, 3D route view, and detail panels.
@@ -173,6 +175,20 @@ struct ContentView: View {
                 appState.showingError = true
             }
         }
+        .fileImporter(
+            isPresented: $appState.showAppleHealthImporter,
+            allowedContentTypes: UTType.appleHealthExportTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                appState.beginAppleHealthImport(from: url)
+            case .failure(let error):
+                appState.errorMessage = error.localizedDescription
+                appState.showingError = true
+            }
+        }
         .sheet(isPresented: Binding(
             get: { appState.archiveSession != nil },
             set: { isPresented in
@@ -219,6 +235,31 @@ struct ContentView: View {
                 .interactiveDismissDisabled(session.phase == .importing)
             }
         }
+        .sheet(isPresented: Binding(
+            get: { appState.appleHealthScan != nil || appState.appleHealthSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.appleHealthScan != nil || appState.appleHealthSession?.phase == .importing {
+                    appState.cancelAppleHealthImport()
+                } else {
+                    appState.dismissAppleHealthSession()
+                }
+            }
+        )) {
+            if let scan = appState.appleHealthScan {
+                AppleHealthScanView(filename: scan.filename, onCancel: appState.cancelAppleHealthImport)
+                    .interactiveDismissDisabled()
+            } else if let session = appState.appleHealthSession {
+                AppleHealthImportView(
+                    session: session,
+                    onImport: { appState.confirmAppleHealthImport() },
+                    onCancel: { appState.cancelAppleHealthImport() },
+                    onDone: { appState.dismissAppleHealthSession() },
+                    onViewImported: { appState.viewMostRecentAppleHealthImportedRun() }
+                )
+                .interactiveDismissDisabled(session.phase == .importing)
+            }
+        }
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("Got it") { appState.errorMessage = nil }
         } message: {
@@ -235,7 +276,10 @@ struct ContentView: View {
             case .idle, .importingArchive, .importingFITSessions:
                 // Batch progress UI lives in its sheet; keep the window usable.
                 return false
-            case .loadingLibrary, .importing, .deleting, .scanningArchive, .scanningFITFile:
+            case .scanningArchive:
+                // The Health sheet owns scan progress and can still be cancelled.
+                return appState.appleHealthScan == nil
+            case .loadingLibrary, .importing, .deleting, .scanningFITFile:
                 return true
             }
         }())
@@ -264,7 +308,8 @@ struct ContentView: View {
             showRouteGroups: { appState.showRouteGroups() },
             showAllRuns: { appState.showWorkoutLibrary(restoreManualQuery: true) },
             importFile: { appState.showImporter = true },
-            importStravaArchive: { appState.showArchiveImporter = true }
+            importStravaArchive: { appState.showArchiveImporter = true },
+            importAppleHealthExport: { appState.showAppleHealthImporter = true }
         ))
         .focusedSceneValue(\.appPresentationActions, AppPresentationActions(
             showKeyboardShortcuts: { showKeyboardShortcuts = true }
@@ -383,10 +428,12 @@ struct ContentView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Deleting stored workout copy")
         case .scanningArchive(let filename):
-            ProgressView("Scanning \(filename)…")
-                .padding()
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Scanning archive \(filename)")
+            if appState.appleHealthScan == nil {
+                ProgressView("Scanning \(filename)…")
+                    .padding()
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Scanning archive \(filename)")
+            }
         case .importingArchive:
             // Progress lives in the archive sheet.
             EmptyView()

@@ -138,6 +138,28 @@ enum AppleHealthReviewPresentation {
         return "\(candidate.status.userFacingSummary) — \(detail)"
     }
 
+    /// Includes the full reason represented visually by the warning icon.
+    static func rowAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
+        [
+            "Import \(activityName(candidate.window.activityType))",
+            dateText(candidate.window),
+            "Duration \(durationText(candidate.window))",
+            "Distance \(distanceText(candidate)), \(distanceHelp(candidate))",
+            routeAccessibilityLabel(candidate),
+            heartRateAccessibilityLabel(candidate),
+            flagText(candidate) ?? "Ready, no duplicates found",
+        ].joined(separator: "; ")
+    }
+
+    /// Focus is independent of which rows are checked for import.
+    static func flagDetailText(
+        selectedCandidate: AppleHealthWorkoutCandidate?, flaggedCount: Int
+    ) -> String? {
+        if let selectedCandidate, let reason = flagText(selectedCandidate) { return reason }
+        guard flaggedCount > 0 else { return nil }
+        return "\(flaggedCount) \(flaggedCount == 1 ? "row" : "rows") flagged as duplicates or possible duplicates."
+    }
+
     /// The candidates that start checked: only the unflagged ones.
     static func defaultSelection(_ candidates: [AppleHealthWorkoutCandidate]) -> Set<String> {
         Set(candidates.filter(\.isSelectedByDefault).map(\.id))
@@ -149,6 +171,30 @@ enum AppleHealthReviewPresentation {
 
     static func flaggedCount(_ candidates: [AppleHealthWorkoutCandidate]) -> Int {
         candidates.count { $0.status != .ready }
+    }
+
+    /// The import checkboxes after Space on the rows selected in the table.
+    ///
+    /// One rule for one row or several: if any of the rows is unchecked, all of
+    /// them become checked; only when every one is already checked do they all
+    /// become unchecked. A flagged row toggles like any other, because its flag
+    /// decides only that it starts unchecked.
+    static func toggledImportSelection(
+        _ checked: Set<String>,
+        togglingRows rows: Set<String>
+    ) -> Set<String> {
+        guard !rows.isEmpty else { return checked }
+        return rows.isSubset(of: checked) ? checked.subtracting(rows) : checked.union(rows)
+    }
+
+    /// The footer Import button's title for a number of checked rows.
+    static func importButtonTitle(selectedCount: Int) -> String {
+        "Import \(selectedCount) \(selectedCount == 1 ? "Workout" : "Workouts")"
+    }
+
+    /// Whether the Import button can be pressed: at least one row is checked.
+    static func canImport(selectedCount: Int) -> Bool {
+        selectedCount > 0
     }
 
     // MARK: - Filtering
@@ -218,6 +264,13 @@ enum AppleHealthReviewPresentation {
             magnitude / 3_600,
             (magnitude % 3_600) / 60
         )
+    }
+
+    /// Shared by review and final report, including exports with no runs.
+    static func skippedNonRunningText(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return "\(count) non-running \(count == 1 ? "workout was" : "workouts were") skipped. "
+            + "Only running workouts are offered for import."
     }
 
     // MARK: - Report rows
@@ -296,9 +349,20 @@ struct AppleHealthImportSummary: Equatable {
         }
 
         var lines: [String] = []
+        if let skipped = AppleHealthReviewPresentation.skippedNonRunningText(report.excludedWorkoutCount) {
+            lines.append(skipped)
+        }
         lines += Self.sentence(
-            report.importedWithoutRouteCount, "run has", "runs have",
-            "no route, because the export did not contain the route file it names."
+            report.routeWindowMismatchCount, "run imported", "runs imported",
+            "without a map because their route file didn't match the run's time."
+        )
+        lines += Self.sentence(
+            report.trimmedRouteCount, "run had", "runs had",
+            "their route trimmed to match the run's recorded time."
+        )
+        lines += Self.sentence(
+            report.importedWithoutRouteCount - report.routeWindowMismatchCount, "run has", "runs have",
+            "no route, because its route file could not be read."
         )
         lines += Self.sentence(
             report.alreadyInLibraryCount, "run was", "runs were",
