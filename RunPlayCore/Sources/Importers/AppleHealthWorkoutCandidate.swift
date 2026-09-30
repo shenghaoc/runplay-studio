@@ -179,6 +179,16 @@ public struct AppleHealthWorkoutCandidate: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Running candidates and the activity types intentionally excluded from review.
+public struct AppleHealthCandidateBuildResult: Sendable {
+    public let candidates: [AppleHealthWorkoutCandidate]
+    public let excludedWorkoutsByActivityType: [String: Int]
+
+    public var excludedWorkoutCount: Int {
+        excludedWorkoutsByActivityType.values.reduce(0, +)
+    }
+}
+
 /// Turns a streaming scan into the candidate list a review can act on.
 ///
 /// The heart-rate join is not repeated here: the scan already attached to each
@@ -194,7 +204,7 @@ public enum AppleHealthWorkoutCandidateBuilder {
         "HKQuantityTypeIdentifierDistanceSwimming",
     ]
 
-    /// Build candidates for every workout in `scan`, flagging duplicates.
+    /// Build running candidates, flagging duplicates after activity filtering.
     ///
     /// - Parameter existingLibraryRuns: windows of runs already stored. Overlap
     ///   with one of these flags the candidate exactly as an in-export overlap
@@ -203,8 +213,25 @@ public enum AppleHealthWorkoutCandidateBuilder {
         from scan: AppleHealthExportScan,
         existingLibraryRuns: [AppleHealthLibraryRunWindow] = []
     ) -> [AppleHealthWorkoutCandidate] {
-        var candidates = scan.workouts.enumerated().map { index, workout in
-            makeCandidate(workout, index: index)
+        build(from: scan, existingLibraryRuns: existingLibraryRuns).candidates
+    }
+
+    /// Keep the running activity identifier regardless of route presence or
+    /// indoor metadata. Unknown and non-running identifiers are counted rather
+    /// than treated as runs. The parser continues to expose every activity type.
+    public static func build(
+        from scan: AppleHealthExportScan,
+        existingLibraryRuns: [AppleHealthLibraryRunWindow] = []
+    ) -> AppleHealthCandidateBuildResult {
+        var candidates: [AppleHealthWorkoutCandidate] = []
+        var excluded: [String: Int] = [:]
+        for (index, workout) in scan.workouts.enumerated() {
+            guard workout.window.activityType == "HKWorkoutActivityTypeRunning" else {
+                excluded[workout.window.activityType, default: 0] += 1
+                continue
+            }
+            // Keep the document ordinal, so filtering cannot change identity.
+            candidates.append(makeCandidate(workout, index: index))
         }
 
         // Within the export. Each pair is visited once and both sides flagged:
@@ -237,7 +264,10 @@ public enum AppleHealthWorkoutCandidateBuilder {
             }
         }
 
-        return candidates
+        return AppleHealthCandidateBuildResult(
+            candidates: candidates,
+            excludedWorkoutsByActivityType: excluded
+        )
     }
 
     private static func makeCandidate(
