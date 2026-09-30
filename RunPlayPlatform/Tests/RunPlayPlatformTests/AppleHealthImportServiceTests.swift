@@ -217,6 +217,127 @@ final class AppleHealthImportServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Route window validation
+
+    private func timedGPX(_ offsets: [Int64]) -> Data {
+        let formatter = ISO8601DateFormatter()
+        let body = offsets.map { offset in
+            let time = formatter.string(from: Date(timeIntervalSince1970: Double(Self.runStart + offset)))
+            let latitude = 37.77 + Double(offset) * 0.00001
+            return "<trkpt lat=\"\(latitude)\" lon=\"-122.42\"><ele>10</ele><time>\(time)</time></trkpt>"
+        }.joined()
+        return Data("<gpx version=\"1.1\"><trk><trkseg>\(body)</trkseg></trk></gpx>".utf8)
+    }
+
+    private func importTimedRoute(
+        _ offsets: [Int64], windows: [(Int64, Int64)] = [(0, 600)], recordedOffset: Int = 0
+    ) async throws -> (AppleHealthImportReport, [RunWorkout]) {
+        let zip = try writeZip(named: "window.zip", entries: [
+            (Self.exportPath, healthDocument(
+                records: windows.map { heartRateRecord(seconds: Self.runStart + $0.0 + 60) }.joined(),
+                workouts: windows.map { workoutRecord(startSeconds: Self.runStart + $0.0,
+                    endSeconds: Self.runStart + $0.1, route: Self.routeReference, distanceMeters: 6_000) }.joined()
+            )),
+            (Self.routePath, timedGPX(offsets)),
+        ])
+        let result = try await scan(zip)
+        var candidates = result.candidates
+        for index in candidates.indices { candidates[index].window.utcOffsetSeconds = recordedOffset }
+        let (store, actor, _) = makeStore(named: "window-library")
+        let report = try await makeService().importSelection(candidates, from: result,
+            archiveAt: zip, storeActor: actor)
+        return (report, try report.importedWorkoutIDs.map { try store.loadWorkout(id: $0) })
+    }
+
+    func testValidRouteAtBothToleranceBoundariesKeepsByteIdenticalSummary() async throws {
+        let offsets: [Int64] = [-60, 0, 300, 600, 660]
+        let original = try GPXImporter().importWorkout(from: WorkoutImportInput(
+            data: timedGPX(offsets), fileExtension: "gpx", suggestedName: "route.gpx"))
+        let (report, workouts) = try await importTimedRoute(offsets)
+        let workout = try XCTUnwrap(workouts.first)
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        XCTAssertEqual(try encoder.encode(workout.summary), try encoder.encode(original.summary))
+        XCTAssertEqual(workout.routePoints.map(\.timestamp), original.routePoints.map(\.timestamp))
+        XCTAssertEqual(workout.routePoints.map(\.distanceFromStartMeters), original.routePoints.map(\.distanceFromStartMeters))
+        XCTAssertEqual(report.routeWindowMismatchCount, 0)
+        XCTAssertEqual(report.trimmedRouteCount, 0)
+        XCTAssertEqual(workout.summary.distanceProvenance, .gpsDerived)
+    }
+
+    func testSmallOverrunsTrimAndRecomputeGPSAnalysis() async throws {
+        for excess: Int64 in [61, 299, 300] {
+            let retained = Array(stride(from: Int64(-60), through: 660, by: 30))
+            let offsets: [Int64] = [-excess] + retained + [600 + excess]
+            let (report, workouts) = try await importTimedRoute(offsets)
+            let workout = try XCTUnwrap(workouts.first)
+            let expected = try GPXImporter().importWorkout(from: WorkoutImportInput(
+                data: timedGPX(retained),
+                fileExtension: "gpx", suggestedName: "trimmed.gpx"))
+            XCTAssertEqual(report.trimmedRouteCount, 1)
+            XCTAssertEqual(report.routeWindowMismatchCount, 0)
+            XCTAssertEqual(workout.routePoints.first?.timestamp, Date(timeIntervalSince1970: Double(Self.runStart - 60)))
+            XCTAssertEqual(workout.routePoints.last?.timestamp, Date(timeIntervalSince1970: Double(Self.runStart + 660)))
+            XCTAssertEqual(workout.summary, expected.summary)
+            XCTAssertEqual(workout.summary.distanceProvenance, .gpsDerived)
+            XCTAssertNotEqual(workout.summary.totalDistanceMeters, 6_000)
+        }
+    }
+
+    func testTrimmingPreservesRecordingGapsInsteadOfJoiningAcrossThem() async throws {
+        let offsets: [Int64] = [-61, -60, 0, 30, 60, 120, 300, 600, 660, 661]
+        let original = try GPXImporter().importWorkout(from: WorkoutImportInput(
+            data: timedGPX(offsets), fileExtension: "gpx", suggestedName: "gaps.gpx"))
+        XCTAssertGreaterThan(original.summary.totalPausedSeconds, 0)
+        let retained = Array(original.routePoints.dropFirst().dropLast())
+        let (report, workouts) = try await importTimedRoute(offsets)
+        let trimmed = try XCTUnwrap(workouts.first)
+        XCTAssertEqual(report.trimmedRouteCount, 1)
+        XCTAssertEqual(trimmed.summary.totalPausedSeconds, original.summary.totalPausedSeconds)
+        XCTAssertEqual(trimmed.summary.totalDistanceMeters,
+            retained.last!.distanceFromStartMeters - retained.first!.distanceFromStartMeters,
+            accuracy: 0.000001)
+        XCTAssertEqual(Set(trimmed.routePoints.map(\.routeSegmentIndex)).count,
+            Set(retained.map(\.routeSegmentIndex)).count)
+    }
+
+    func testOverFiveMinutesAtEitherEndFallsBackKeepingHRSourceTotalsAndOffset() async throws {
+        for offsets: [Int64] in [[-301, 0, 300, 600], [0, 300, 600, 901]] {
+            let (report, workouts) = try await importTimedRoute(offsets, recordedOffset: 19_800)
+            let workout = try XCTUnwrap(workouts.first)
+            XCTAssertEqual(report.routeWindowMismatchCount, 1)
+            XCTAssertEqual(report.trimmedRouteCount, 0)
+            XCTAssertEqual(report.items.first?.routeFallbackReason, .routeWindowMismatch)
+            XCTAssertFalse(workout.hasRoute)
+            XCTAssertEqual(workout.summary.distanceProvenance, .sourceReported)
+            XCTAssertEqual(workout.summary.totalDistanceMeters, 6_000)
+            XCTAssertEqual(workout.summary.totalElapsedSeconds, 600)
+            XCTAssertEqual(workout.metadata.recordedUTCOffsetSeconds, 19_800)
+            XCTAssertEqual(workout.heartRateSamples.map(\.heartRateBPM), [150])
+        }
+    }
+
+    func testSharedRouteFitsOneWindowButNotTheOther() async throws {
+        let (report, workouts) = try await importTimedRoute([0, 300, 600], windows: [(0, 600), (1_000, 1_600)])
+        XCTAssertEqual(report.addedWorkoutCount, 2)
+        XCTAssertEqual(report.routeWindowMismatchCount, 1)
+        XCTAssertEqual(workouts.filter(\.hasRoute).count, 1)
+        XCTAssertEqual(workouts.filter { !$0.hasRoute }.count, 1)
+    }
+
+    func testSharedRouteFitsNeitherWindowCountsEachWorkoutAndKeepsHR() async throws {
+        let (report, workouts) = try await importTimedRoute([0, 300, 600], windows: [(2_000, 2_600), (4_000, 4_600)])
+        XCTAssertEqual(report.routeWindowMismatchCount, 2)
+        XCTAssertEqual(workouts.count, 2)
+        XCTAssertTrue(workouts.allSatisfy { !$0.hasRoute && $0.summary.distanceProvenance == .sourceReported })
+        XCTAssertTrue(workouts.allSatisfy { $0.heartRateSamples.map(\.heartRateBPM) == [150] })
+    }
+
+    func testNoOverlapEvenInsideToleranceFallsBack() async throws {
+        let (report, workouts) = try await importTimedRoute([-50, -10])
+        XCTAssertEqual(report.routeWindowMismatchCount, 1)
+        XCTAssertFalse(try XCTUnwrap(workouts.first).hasRoute)
+    }
+
     // MARK: - Route provenance
 
     func testRoutedCandidateImportsWithGPSDerivedDistance() async throws {
