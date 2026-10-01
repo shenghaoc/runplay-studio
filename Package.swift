@@ -9,6 +9,11 @@ import PackageDescription
 // resolves (and therefore fetches) the package but compiles none of it;
 // only the target-level product dependency below sits inside #if os(macOS).
 let remoteDependencies: [Package.Dependency] = [
+    // A version bump MUST re-check the ZIP64 local-header-offset defect pinned by
+    // AppleHealthArchiveServiceTests.testZip64OffsetSentinelArchiveIsRefusedBecauseZIPFoundationListsNoEntries:
+    // 0.9.20's Entry.CentralDirectoryStructure.effectiveRelativeOffsetOfLocalHeader
+    // (Entry.swift:311) reads the ZIP64 extra field only when the offset is > 0, so
+    // an archive whose first entry stores offset 0 there lists zero entries.
     .package(url: "https://github.com/weichsel/ZIPFoundation", exact: "0.9.20"),
 ]
 
@@ -101,6 +106,12 @@ targets.append(contentsOf: [
         name: "RunPlayPlatformTests",
         dependencies: ["RunPlayCore", "RunPlayPlatform"],
         path: "RunPlayPlatform/Tests/RunPlayPlatformTests",
+        // `Fixtures` holds one generated archive plus the script that wrote it.
+        // Copied rather than processed so the bytes are exactly what the
+        // generator produced.
+        resources: [
+            .copy("Fixtures")
+        ],
         swiftSettings: cxxInteropSettings
     ),
     // macOS UI layer: owns the app lifecycle and all SwiftUI/Charts code.
