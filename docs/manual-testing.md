@@ -2478,6 +2478,9 @@ VoiceOver were not exercised in this pass.
 
 ## Apple Health review layout and full flag reasons (synthetic)
 
-- [ ] Open a synthetic export containing long duplicate/overlap reasons in the ad-hoc-signed bundle. At the sheet minimum, every column header and value fits; Flag takes the remaining width and long reasons end in an ellipsis.
-- [ ] Increase text size, reopen the review, and repeat the minimum-size check. Footer and filtering controls remain reachable. Restore the original text size afterwards.
-- [ ] Hover a truncated flag to read its complete help text. Focus the row's selection checkbox with the keyboard and verify VoiceOver reads the full reason, activity, duration, distance provenance, route and heart-rate status.
+- [ ] Open a synthetic export containing duplicate/overlap reasons in the ad-hoc-signed bundle. At the sheet minimum, every column header and value fits; flagged rows show a warning icon and unflagged rows have an empty Flag cell.
+- [ ] Focus a flagged row without checking it for import. Its complete reason appears below the table and wraps freely. Select an unflagged row or clear focus; the line shows the flagged-row count, or is absent when there are no flags.
+
+Dynamic Type / larger text: **not applicable on macOS** for this view. Restore any system Text Size preference changed during verification to its original value.
+
+- [ ] Read a warning icon's full help text and focus its row with the keyboard. Verify VoiceOver reads the full reason, activity, duration, distance provenance, route and heart-rate status.
