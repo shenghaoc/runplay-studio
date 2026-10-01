@@ -589,6 +589,10 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     batch,
                     selectedWorkoutID: selectedID
                 )
+            } catch is CancellationError {
+                // The commit refuses a cancelled task before saving anything, so
+                // this is a cancellation, handled below, not a failed commit.
+                throw CancellationError()
             } catch {
                 await storeActor.rollbackBatchImport(batch)
                 return WorkoutBatchImportReport(
