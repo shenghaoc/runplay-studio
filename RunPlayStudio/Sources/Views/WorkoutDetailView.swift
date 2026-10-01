@@ -17,6 +17,9 @@ struct WorkoutDetailView: View {
     /// Whole-library standing records held by this workout, recomputed only
     /// when the library's record windows change — never on replay ticks.
     @State private var standingRecordBadges: [StandingRecordBadge] = []
+    /// How this workout's heart rate is charted. Derived from the workout, so it
+    /// is recomputed only when the workout changes — never on replay ticks.
+    @State private var heartRateChartPlan: HeartRateChartPlan = .none
 
     init(workout: RunWorkout, appState: AppState) {
         self.workout = workout
@@ -153,6 +156,7 @@ struct WorkoutDetailView: View {
         .onAppear {
             refreshRouteMapModel()
             refreshStandingRecordBadges()
+            refreshHeartRateChartPlan()
         }
         .onChange(of: appState.personalRecordsLibraryRevision) { _, _ in
             refreshStandingRecordBadges()
@@ -160,15 +164,19 @@ struct WorkoutDetailView: View {
         .onChange(of: workout.id) { _, _ in
             refreshRouteMapModel()
             refreshStandingRecordBadges()
+            refreshHeartRateChartPlan()
         }
         .onChange(of: workout.routePoints.count) { _, _ in
             refreshRouteMapModel()
+            refreshHeartRateChartPlan()
         }
         .onChange(of: workout.normalizationVersion) { _, _ in
             refreshRouteMapModel()
+            refreshHeartRateChartPlan()
         }
         .onChange(of: workout.analysisVersion) { _, _ in
             refreshRouteMapModel()
+            refreshHeartRateChartPlan()
         }
         .onDisappear {
             routeMapViewModel.cancel()
@@ -180,6 +188,10 @@ struct WorkoutDetailView: View {
             workout: workout,
             analysisContext: appState.analysisContext(for: workout)
         )
+    }
+
+    private func refreshHeartRateChartPlan() {
+        heartRateChartPlan = HeartRateChartPlan.plan(for: workout)
     }
 
     /// The active record-window highlight, when it belongs to this workout.
@@ -275,7 +287,8 @@ struct WorkoutDetailView: View {
                 elevationSource: ElevationSourceSummary(
                     workout: workout,
                     sourceCounts: elevationProfile.sourceCounts
-                )
+                ),
+                heartRate: heartRateChartPlan
             )
             .padding(.vertical, AppDesign.Spacing.large)
 
