@@ -2475,3 +2475,9 @@ VoiceOver were not exercised in this pass.
 - [ ] Review and the final import report state the number of non-running workouts skipped. Verify VoiceOver reads this static message and keyboard selection/import still work.
 - [ ] Import an archive containing only non-running workouts. Review shows no candidates and explicitly states the skipped count.
 - [ ] Reimport selected runs into the same disposable library; no additional workouts are added. Never use or screenshot private data for this checklist.
+
+## Apple Health review layout and full flag reasons (synthetic)
+
+- [ ] Open a synthetic export containing long duplicate/overlap reasons in the ad-hoc-signed bundle. At the sheet minimum, every column header and value fits; Flag takes the remaining width and long reasons end in an ellipsis.
+- [ ] Increase text size, reopen the review, and repeat the minimum-size check. Footer and filtering controls remain reachable. Restore the original text size afterwards.
+- [ ] Hover a truncated flag to read its complete help text. Focus the row's selection checkbox with the keyboard and verify VoiceOver reads the full reason, activity, duration, distance provenance, route and heart-rate status.

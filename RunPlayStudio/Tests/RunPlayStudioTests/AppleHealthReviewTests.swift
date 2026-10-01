@@ -214,6 +214,39 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(AppleHealthReviewPresentation.heartRateAccessibilityLabel(withNeither), "No heart rate")
     }
 
+    func testRowAccessibilityLabelIncludesTheEntireFlagReasonAndProvenance() {
+        let row = candidate(index: 0, start: 0, end: 60,
+                            heartRateBeats: [140], status: .possibleDuplicate, origin: .withinExport)
+        let reason = AppleHealthReviewPresentation.flagText(row)!
+        let label = AppleHealthReviewPresentation.rowAccessibilityLabel(row)
+        XCTAssertTrue(label.contains(reason))
+        XCTAssertTrue(label.contains("Running"))
+        XCTAssertTrue(label.contains("Duration 1m 0s"))
+        XCTAssertTrue(label.contains("Distance 5.00 km, Reported by the export itself"))
+        XCTAssertTrue(label.contains("No route; Has heart rate"))
+    }
+
+    func testColumnBudgetFitsAtItsMinimumAndFlagGetsTheRemainingWidth() {
+        let rows = [candidate(index: 0, start: 0, end: 60, utcOffsetSeconds: 19_800)]
+        for fontSize: CGFloat in [13, 20] {
+            let layout = AppleHealthReviewColumnLayout(candidates: rows, fontSize: fontSize)
+            for column in AppleHealthReviewColumnLayout.Column.allCases {
+                XCTAssertEqual(layout.width(column, availableWidth: layout.minimumSheetWidth),
+                               layout[column].minimum, accuracy: 0.001)
+            }
+            let wide = layout.minimumSheetWidth + 500
+            let fixedGrowth = AppleHealthReviewColumnLayout.Column.allCases
+                .filter { $0 != .flag }.reduce(CGFloat.zero) { total, column in
+                    total + layout.width(column, availableWidth: wide) - layout[column].minimum
+                }
+            XCTAssertEqual(layout.width(.flag, availableWidth: wide) - layout[.flag].minimum,
+                           500 - fixedGrowth, accuracy: 0.001)
+        }
+        XCTAssertGreaterThan(
+            AppleHealthReviewColumnLayout(candidates: rows, fontSize: 20).minimumSheetWidth,
+            AppleHealthReviewColumnLayout(candidates: rows, fontSize: 13).minimumSheetWidth)
+    }
+
     func testEveryFlagStatesWhatItIsAndWhatItMatched() {
         XCTAssertEqual(
             AppleHealthReviewPresentation.flagText(candidate(
