@@ -90,6 +90,9 @@ struct MetricsChartView: View {
     /// Cumulative-distance window emphasized as a translucent band
     /// (personal-record navigation); `nil` draws no band.
     var highlightedRangeMeters: ClosedRange<Double>? = nil
+    /// How this workout's heart rate is charted. `.routePoints` is the
+    /// historical behaviour, so a caller that does not say keeps it.
+    var heartRate: HeartRateChartPlan = .routePoints
 
     @State private var selectedMetric: MetricType = .elevation
     @State private var isDragging: Bool = false
@@ -106,7 +109,8 @@ struct MetricsChartView: View {
         currentDistance: Double = 0,
         smoothingWindow: Int = 5,
         onSeek: ((Double) -> Void)? = nil,
-        highlightedRangeMeters: ClosedRange<Double>? = nil
+        highlightedRangeMeters: ClosedRange<Double>? = nil,
+        heartRate: HeartRateChartPlan = .routePoints
     ) {
         self.routePoints = routePoints
         self.elevationProfile = elevationProfile ?? ElevationProfile(routePoints: routePoints)
@@ -114,6 +118,15 @@ struct MetricsChartView: View {
         self.smoothingWindow = smoothingWindow
         self.onSeek = onSeek
         self.highlightedRangeMeters = highlightedRangeMeters
+        self.heartRate = heartRate
+        self._selectedMetric = State(initialValue: Self.initialMetric(for: heartRate))
+    }
+
+    /// The metric the picker opens on. A run with no route has nothing to show
+    /// for elevation, pace, power or speed, so it opens on the one chart that
+    /// has data.
+    static func initialMetric(for plan: HeartRateChartPlan) -> MetricType {
+        plan.opensOnHeartRate ? .heartRate : .elevation
     }
 
     enum MetricType: String, CaseIterable {
@@ -174,145 +187,149 @@ struct MetricsChartView: View {
             }
             .padding(.horizontal)
 
-            // Chart
-            ZStack {
-                Chart {
-                    ForEach(chartData) { point in
-                        AreaMark(
-                            x: .value("Distance (km)", point.distanceKm),
-                            y: .value(selectedMetric.rawValue, point.value),
-                            series: .value("Continuous route", point.seriesID)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [chartColor.opacity(0.15), chartColor.opacity(0.02)],
-                                startPoint: .top,
-                                endPoint: .bottom
+            if let timeModel = timeDomainModel {
+                TimeDomainHeartRateChart(model: timeModel)
+            } else {
+                // Chart
+                ZStack {
+                    Chart {
+                        ForEach(chartData) { point in
+                            AreaMark(
+                                x: .value("Distance (km)", point.distanceKm),
+                                y: .value(selectedMetric.rawValue, point.value),
+                                series: .value("Continuous route", point.seriesID)
                             )
-                        )
-                        .interpolationMethod(.catmullRom)
-
-                        LineMark(
-                            x: .value("Distance (km)", point.distanceKm),
-                            y: .value(selectedMetric.rawValue, point.value),
-                            series: .value("Continuous route", point.seriesID)
-                        )
-                        .foregroundStyle(chartColor)
-                        .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                    }
-
-                    // Highlighted record-window band. Decorative emphasis of a
-                    // distance range; the spoken summary and current-value
-                    // readout remain the accessibility surface.
-                    if let highlight = highlightedRangeMeters,
-                       let yRange = highlightYRange {
-                        RectangleMark(
-                            xStart: .value("Highlight start", highlight.lowerBound / 1000),
-                            xEnd: .value("Highlight end", highlight.upperBound / 1000),
-                            yStart: .value("Highlight y start", yRange.lowerBound),
-                            yEnd: .value("Highlight y end", yRange.upperBound)
-                        )
-                        .foregroundStyle(AppDesign.primaryBlue.opacity(0.08))
-                        .accessibilityHidden(true)
-                    }
-
-                    // Current position indicator
-                    let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
-                    if displayDistance > 0 {
-                        RuleMark(x: .value("Current", displayDistance / 1000))
-                            .foregroundStyle(isDragging ? AppDesign.comparisonOrange : AppDesign.warmYellow)
-                            .lineStyle(StrokeStyle(lineWidth: isDragging ? 2.5 : 1.5, dash: [6, 4]))
-                            .annotation(position: .top, alignment: .center) {
-                                Text(formatValue(valueForDistance(displayDistance)))
-                                    .font(AppDesign.Typography.compactMetric)
-                                    .padding(.horizontal, AppDesign.Spacing.small)
-                                    .padding(.vertical, AppDesign.Spacing.xxSmall)
-                                    .background(
-                                        Capsule()
-                                            .fill(.ultraThinMaterial)
-                                    )
-                            }
-                    }
-                }
-                .chartOverlay { proxy in
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(Color.clear)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        handleChartDrag(at: value.location, proxy: proxy, geometry: geometry)
-                                    }
-                                    .onEnded { _ in
-                                        handleChartDragEnd()
-                                    }
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [chartColor.opacity(0.15), chartColor.opacity(0.02)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
+                            .interpolationMethod(chartInterpolation)
+
+                            LineMark(
+                                x: .value("Distance (km)", point.distanceKm),
+                                y: .value(selectedMetric.rawValue, point.value),
+                                series: .value("Continuous route", point.seriesID)
+                            )
+                            .foregroundStyle(chartColor)
+                            .interpolationMethod(chartInterpolation)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                        }
+
+                        // Highlighted record-window band. Decorative emphasis of a
+                        // distance range; the spoken summary and current-value
+                        // readout remain the accessibility surface.
+                        if let highlight = highlightedRangeMeters,
+                           let yRange = highlightYRange {
+                            RectangleMark(
+                                xStart: .value("Highlight start", highlight.lowerBound / 1000),
+                                xEnd: .value("Highlight end", highlight.upperBound / 1000),
+                                yStart: .value("Highlight y start", yRange.lowerBound),
+                                yEnd: .value("Highlight y end", yRange.upperBound)
+                            )
+                            .foregroundStyle(AppDesign.primaryBlue.opacity(0.08))
+                            .accessibilityHidden(true)
+                        }
+
+                        // Current position indicator
+                        let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
+                        if displayDistance > 0 {
+                            RuleMark(x: .value("Current", displayDistance / 1000))
+                                .foregroundStyle(isDragging ? AppDesign.comparisonOrange : AppDesign.warmYellow)
+                                .lineStyle(StrokeStyle(lineWidth: isDragging ? 2.5 : 1.5, dash: [6, 4]))
+                                .annotation(position: .top, alignment: .center) {
+                                    Text(formatValue(valueForDistance(displayDistance)))
+                                        .font(AppDesign.Typography.compactMetric)
+                                        .padding(.horizontal, AppDesign.Spacing.small)
+                                        .padding(.vertical, AppDesign.Spacing.xxSmall)
+                                        .background(
+                                            Capsule()
+                                                .fill(.ultraThinMaterial)
+                                        )
+                                }
+                        }
                     }
-                }
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                        AxisValueLabel {
-                            if let km = value.as(Double.self) {
-                                Text("\(Int(km)) km")
+                    .chartOverlay { proxy in
+                        GeometryReader { geometry in
+                            Rectangle()
+                                .fill(Color.clear)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 0)
+                                        .onChanged { value in
+                                            handleChartDrag(at: value.location, proxy: proxy, geometry: geometry)
+                                        }
+                                        .onEnded { _ in
+                                            handleChartDragEnd()
+                                        }
+                                )
+                        }
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                            AxisValueLabel {
+                                if let km = value.as(Double.self) {
+                                    Text("\(Int(km)) km")
+                                }
                             }
+                            AxisGridLine()
+                                .foregroundStyle(.quaternary)
                         }
-                        AxisGridLine()
-                            .foregroundStyle(.quaternary)
                     }
-                }
-                .chartYScale(domain: .automatic(includesZero: false))
-                .chartYAxis {
-                    AxisMarks(values: .automatic(desiredCount: 5)) { value in
-                        AxisValueLabel {
-                            Text(formatAxisValue(value.as(Double.self) ?? 0))
+                    .chartYScale(domain: .automatic(includesZero: false))
+                    .chartYAxis {
+                        AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                            AxisValueLabel {
+                                Text(formatAxisValue(value.as(Double.self) ?? 0))
+                            }
+                            AxisGridLine()
+                                .foregroundStyle(.quaternary)
                         }
-                        AxisGridLine()
-                            .foregroundStyle(.quaternary)
                     }
-                }
-                .accessibilityChartDescriptor(MetricChartDescriptor(
-                    model: accessibilityModel,
-                    samples: downsampledChartSamples,
-                    metric: selectedMetric
-                ))
-                .accessibilityLabel(accessibilityModel.title)
-                .accessibilityValue(accessibilityModel.spokenSummary)
-                .accessibilityAction(named: "Seek earlier") {
-                    seekRelative(meters: -100)
-                }
-                .accessibilityAction(named: "Seek later") {
-                    seekRelative(meters: 100)
-                }
-                .frame(height: 180)
-                .padding(.horizontal)
-
-                if chartData.isEmpty {
-                    noDataOverlay
-                }
-            }
-
-            // Always-visible summary for VoiceOver and sighted keyboard users.
-            if !chartData.isEmpty {
-                Text(accessibilityModel.spokenSummary)
-                    .font(AppDesign.Typography.compactLabel)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .accessibilityLabel("Chart summary")
+                    .accessibilityChartDescriptor(MetricChartDescriptor(
+                        model: accessibilityModel,
+                        samples: downsampledChartSamples,
+                        metric: selectedMetric
+                    ))
+                    .accessibilityLabel(accessibilityModel.title)
                     .accessibilityValue(accessibilityModel.spokenSummary)
-            }
+                    .accessibilityAction(named: "Seek earlier") {
+                        seekRelative(meters: -100)
+                    }
+                    .accessibilityAction(named: "Seek later") {
+                        seekRelative(meters: 100)
+                    }
+                    .frame(height: 180)
+                    .padding(.horizontal)
 
-            // Keyboard-accessible seek alternative
-            if !chartData.isEmpty {
-                DisclosureGroup("Jump to distance") {
-                    seekDistanceContent
-                        .padding(.top, AppDesign.Spacing.xSmall)
+                    if chartData.isEmpty {
+                        noDataOverlay
+                    }
                 }
-                .font(AppDesign.Typography.compactMetric)
-                .padding(.horizontal)
-                .accessibilityHint("Keyboard alternative to dragging the chart")
+
+                // Always-visible summary for VoiceOver and sighted keyboard users.
+                if !chartData.isEmpty {
+                    Text(accessibilityModel.spokenSummary)
+                        .font(AppDesign.Typography.compactLabel)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .accessibilityLabel("Chart summary")
+                        .accessibilityValue(accessibilityModel.spokenSummary)
+                }
+
+                // Keyboard-accessible seek alternative
+                if !chartData.isEmpty {
+                    DisclosureGroup("Jump to distance") {
+                        seekDistanceContent
+                            .padding(.top, AppDesign.Spacing.xSmall)
+                    }
+                    .font(AppDesign.Typography.compactMetric)
+                    .padding(.horizontal)
+                    .accessibilityHint("Keyboard alternative to dragging the chart")
+                }
             }
         }
         .onAppear {
@@ -322,6 +339,12 @@ struct MetricsChartView: View {
         .onChange(of: selectedMetric) { _, _ in refreshChartData() }
         .onChange(of: routePoints) { _, _ in refreshChartData() }
         .onChange(of: smoothingWindow) { _, _ in refreshChartData() }
+        .onChange(of: heartRate) { previous, current in
+            if HeartRateChartPlan.movesPickerToHeartRate(from: previous, to: current) {
+                selectedMetric = .heartRate
+            }
+            refreshChartData()
+        }
         .onChange(of: currentDistance) { _, newValue in
             if !seekFieldFocused {
                 seekDistanceKmText = String(format: "%.2f", newValue / 1000)
@@ -459,7 +482,12 @@ struct MetricsChartView: View {
         case .pace:
             smoothedValues = MetricSmoother.smoothPace(from: routePoints, windowSize: smoothingWindow)
         case .heartRate:
-            smoothedValues = MetricSmoother.smoothHeartRate(from: routePoints, windowSize: smoothingWindow)
+            // A standalone series is charted as the held readings the accessor
+            // resolves for each route point, unsmoothed. Heart rate on the route
+            // points is the historical, smoothed chart: the accessor returns
+            // each point's own reading verbatim there, so nothing changes.
+            smoothedValues = heartRate.heldValuesByRoutePoint
+                ?? MetricSmoother.smoothHeartRate(from: routePoints, windowSize: smoothingWindow)
         case .power:
             smoothedValues = MetricSmoother.smoothPower(from: routePoints, windowSize: smoothingWindow)
         case .speed:
@@ -476,13 +504,23 @@ struct MetricsChartView: View {
         // raw series' min/max/average — otherwise a VoiceOver user hears a
         // smoothed maximum that contradicts the panel a sighted user reads
         // on the same screen.
-        let aggregatesFromValues: [Double]? = selectedMetric == .power
-            ? routePoints.compactMap { point in
+        //
+        // A held standalone series is reported the same way, for the same
+        // reason: the line repeats each reading across many route points, and
+        // the readings themselves are what the header's average is taken over.
+        let aggregatesFromValues: [Double]?
+        switch selectedMetric {
+        case .power:
+            aggregatesFromValues = routePoints.compactMap { point in
                 guard let watts = point.powerWatts,
                       MetricValidation.isValidPower(watts) else { return nil }
                 return watts
             }
-            : nil
+        case .heartRate:
+            aggregatesFromValues = heartRate.reportedReadings
+        case .elevation, .pace, .speed:
+            aggregatesFromValues = nil
+        }
         chartAccessibilityBaseModel = ChartAccessibilityModel.make(
             metricName: selectedMetric.rawValue,
             unit: selectedMetric.unit,
@@ -493,6 +531,24 @@ struct MetricsChartView: View {
             aggregatesFromValues: aggregatesFromValues
         )
         downsampledChartSamples = MetricChartAccessibilityBuilder.downsample(updatedData)
+    }
+
+    /// The over-time heart-rate chart, when that is what this run shows: Heart
+    /// Rate selected on a run whose readings have no route to be charted along.
+    private var timeDomainModel: TimeDomainHeartRateChartModel? {
+        guard selectedMetric == .heartRate, let points = heartRate.timeDomainPoints else { return nil }
+        return TimeDomainHeartRateChartModel.make(points: points)
+    }
+
+    /// A standalone series on a routed run holds each reading until the next,
+    /// so it is drawn as the steps the source reported. A curve through
+    /// readings would show values nothing measured, and the smoothing the
+    /// route-point metrics get would average readings into numbers the source
+    /// never produced.
+    private var chartInterpolation: InterpolationMethod {
+        selectedMetric == .heartRate && heartRate.heldValuesByRoutePoint != nil
+            ? .stepEnd
+            : .catmullRom
     }
 
     private var chartColor: Color {
@@ -538,7 +594,11 @@ struct MetricsChartView: View {
                 profile: elevationProfile
             )
         case .pace: return routePoints[index].paceSecondsPerKilometer
-        case .heartRate: return routePoints[index].heartRateBPM
+        case .heartRate:
+            if let held = heartRate.heldValuesByRoutePoint {
+                return held.indices.contains(index) ? held[index] : nil
+            }
+            return routePoints[index].heartRateBPM
         case .power: return routePoints[index].powerWatts
         case .speed: return routePoints[index].speedMetersPerSecond
         }
