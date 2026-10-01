@@ -92,7 +92,19 @@ public struct SegmentDetector {
         let timeline = context.timeline
         let elevationProfile = context.elevationProfile
 
-        guard points.count >= 2 else {
+        // Distance-window segments and personal-record windows are both
+        // distance-domain: every search slides a fixed-metre window along
+        // cumulative route distance. A route-less workout — including an Apple
+        // Health export run carrying summary and heart rate — has no distance
+        // domain to slide along, so it yields no segments and no windows.
+        //
+        // `hasRoute` is implied by the two-point minimum below and is stated
+        // first so this is the segment detector's explicit route-less decision
+        // rather than an emergent consequence of a point-count floor.
+        //
+        // The result is a *present, empty* set, not the `nil` backfill marker:
+        // record computation ran and attempted no window, which is the truth.
+        guard workout.hasRoute, points.count >= 2 else {
             return DetectionResult(segments: [], records: [])
         }
 

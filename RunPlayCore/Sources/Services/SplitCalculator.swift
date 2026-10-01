@@ -42,7 +42,22 @@ public struct SplitCalculator {
         isCancelled: @Sendable () -> Bool
     ) throws -> [RunSplit] {
         let timeline = context.timeline
-        guard workout.routePoints.count >= 2,
+        // Splits are distance-domain: each one is a fixed 1 km window walked
+        // along cumulative route distance, so its pace, moving/stopped split
+        // and heart rate are all evidence about ground actually covered.
+        //
+        // A route-less workout has a source-reported total distance but no
+        // distance domain to walk, so this is the split calculator's explicit
+        // route-less decision: no splits, rather than synthesizing them by
+        // dividing the reported total into uniform kilometres. A uniform
+        // division would fabricate per-kilometre pace variation the source
+        // never recorded, which is worse than saying the breakdown is
+        // unavailable. The UI marks splits unavailable for these workouts.
+        //
+        // `hasRoute` is implied by the two-point minimum below and is stated
+        // first so the decision is named rather than emergent.
+        guard workout.hasRoute,
+              workout.routePoints.count >= 2,
               timeline.totalDistanceMeters > timeline.startDistanceMeters
         else {
             return []
