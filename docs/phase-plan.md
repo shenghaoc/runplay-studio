@@ -125,7 +125,8 @@
 - [x] Running candidates, HR window join, overlap flags unchecked by default and non-running exclusions counted by type
 - [x] Local archive service, declared-size extraction guard, capacity fallback and temporary-file cleanup; ZIP64 limitation documented
 - [x] Transactional import with independent route-window validation, small-overrun trimming and route-less mismatch fallback
-- [x] Studio review/report, separate menu command, time-domain HR and explicit no-GPS presentation
+- [x] Studio review/report and separate menu command
+- [x] Heart rate on the run detail: summary average/maximum, header and sidebar; a stepped chart aligned by timestamp on a routed run's distance axis and a chart over time for a route-less run; a distance-provenance label; explicit no-GPS wording on the banner, Overview and Splits
 - [ ] Owner's manual GUI/keyboard/VoiceOver pass on the ad-hoc-signed bundle ([checklist](manual-testing.md#apple-health-export-acceptance))
 
 ### Phase: Advanced Export
