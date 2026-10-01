@@ -280,7 +280,7 @@ struct WorkoutRow: View {
                         .help("Elapsed time, including pauses and recording gaps.")
                         .accessibilityLabel("Elapsed \(workout.summary.formattedElapsed)")
 
-                    if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
+                    if let avgHR = AverageHeartRateDisplay.value(for: workout.summary) {
                         metadataSeparator
                         metricPill(
                             icon: "heart.fill",
@@ -316,7 +316,7 @@ struct WorkoutRow: View {
     }
 
     private var accentColor: Color {
-        if let avgHR = workout.summary.averageHeartRateBPM, avgHR.isFinite, avgHR > 0 {
+        if AverageHeartRateDisplay.value(for: workout.summary) != nil {
             return AppDesign.MetricColor.heartRate.opacity(0.6)
         }
         return AppDesign.MetricColor.distance.opacity(0.4)
