@@ -387,6 +387,31 @@ final class HeartRateChartPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: - The header and the chart cannot disagree
+
+    func testHeaderAverageIsTheMeanOfTheReadingsTheAlignedChartReports() throws {
+        let workout = Fixtures.workout(
+            routePoints: Fixtures.routePoints(count: 8),
+            series: Fixtures.series([(0, 118), (50, 126), (95, 137), (140, 149), (200, 152)])
+        )
+
+        let readings = try XCTUnwrap(HeartRateChartPlan.plan(for: workout).reportedReadings)
+        let mean = readings.reduce(0, +) / Double(readings.count)
+        let average = try XCTUnwrap(AverageHeartRateDisplay.value(for: workout.summary))
+
+        XCTAssertEqual(average, mean, accuracy: 1e-9)
+    }
+
+    func testHeaderAverageIsTheMeanOfTheReadingsTheTimeChartDraws() throws {
+        let workout = Fixtures.workout(series: Fixtures.series([(0, 118), (60, 126), (120, 137), (180, 149)]))
+
+        let points = try XCTUnwrap(HeartRateChartPlan.plan(for: workout).timeDomainPoints)
+        let model = try XCTUnwrap(TimeDomainHeartRateChartModel.make(points: points))
+        let average = try XCTUnwrap(AverageHeartRateDisplay.value(for: workout.summary))
+
+        XCTAssertEqual(average, model.average, accuracy: 1e-9)
+    }
+
     // MARK: - The time-domain model
 
     func testNothingToChartMakesNoModel() {
