@@ -122,6 +122,19 @@ enum AppleHealthReviewPresentation {
         return "\(candidate.status.userFacingSummary) — \(detail)"
     }
 
+    /// Kept complete even when the visible flag is truncated to one line.
+    static func rowAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
+        [
+            "Import \(activityName(candidate.window.activityType))",
+            dateText(candidate.window),
+            "Duration \(durationText(candidate.window))",
+            "Distance \(distanceText(candidate)), \(distanceHelp(candidate))",
+            routeAccessibilityLabel(candidate),
+            heartRateAccessibilityLabel(candidate),
+            flagText(candidate) ?? "Ready, no duplicates found",
+        ].joined(separator: "; ")
+    }
+
     /// The candidates that start checked: only the unflagged ones.
     static func defaultSelection(_ candidates: [AppleHealthWorkoutCandidate]) -> Set<String> {
         Set(candidates.filter(\.isSelectedByDefault).map(\.id))

@@ -38,7 +38,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 - **Keyboard and VoiceOver** — Native menus for File, Workout, Replay, Library, View, and Help → Keyboard Shortcuts; chart descriptors, map summaries, and deliberate announcements without 30 fps spam
 - **Local-only privacy** — No app-operated cloud backend, account, telemetry, analytics, or AI API
 - **Strava bulk archive import** — Import running activities from a local Strava export ZIP (no login or network)
-- **Apple Health export review** — Keeps running workouts, including indoor and treadmill runs, counts skipped non-running activities, and leaves duplicate or overlapping runs unchecked by default
+- **Apple Health export review** — Keeps running workouts, including indoor and treadmill runs, counts skipped non-running activities, and leaves duplicate or overlapping runs unchecked by default; the review fits its measured column minimums and exposes full flag reasons through tooltips and VoiceOver
 - **Multi-session FIT import** — Review every session in a multi-session `.fit` file and import the supported runs as separate workouts in one transaction
 - **Watch-folder import** — Optionally watch one or more local folders and import new GPX, TCX, FIT, and JSON files automatically: a settle check never imports a file being written, a per-folder SHA-256 ledger never imports the same content twice, and results appear in a non-modal toolbar panel with per-file success/skip/error and Reveal in Finder
 
