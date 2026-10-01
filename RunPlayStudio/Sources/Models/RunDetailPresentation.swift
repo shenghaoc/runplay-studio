@@ -43,6 +43,14 @@ enum RouteLessNoticePresentation {
             : "only summary metrics are available"
         return "No GPS route — \(available). The map, replay, splits and segments need a route."
     }
+
+    /// What the Overview shows in place of a map it has no route to draw on.
+    static let mapTitle = "No GPS route"
+
+    static func mapDetail(hasHeartRate: Bool) -> String {
+        let base = "This run has no route to draw, so there is no map or replay."
+        return hasHeartRate ? base + " Its heart rate is on the Charts tab." : base
+    }
 }
 
 /// The Splits tab's wording.
