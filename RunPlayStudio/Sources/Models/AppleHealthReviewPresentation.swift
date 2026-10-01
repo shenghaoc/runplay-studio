@@ -122,7 +122,7 @@ enum AppleHealthReviewPresentation {
         return "\(candidate.status.userFacingSummary) — \(detail)"
     }
 
-    /// Kept complete even when the visible flag is truncated to one line.
+    /// Includes the full reason represented visually by the warning icon.
     static func rowAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
         [
             "Import \(activityName(candidate.window.activityType))",
@@ -133,6 +133,15 @@ enum AppleHealthReviewPresentation {
             heartRateAccessibilityLabel(candidate),
             flagText(candidate) ?? "Ready, no duplicates found",
         ].joined(separator: "; ")
+    }
+
+    /// Focus is independent of which rows are checked for import.
+    static func flagDetailText(
+        selectedCandidate: AppleHealthWorkoutCandidate?, flaggedCount: Int
+    ) -> String? {
+        if let selectedCandidate, let reason = flagText(selectedCandidate) { return reason }
+        guard flaggedCount > 0 else { return nil }
+        return "\(flaggedCount) \(flaggedCount == 1 ? "row" : "rows") flagged as duplicates or possible duplicates."
     }
 
     /// The candidates that start checked: only the unflagged ones.

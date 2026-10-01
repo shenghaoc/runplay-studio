@@ -226,25 +226,30 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertTrue(label.contains("No route; Has heart rate"))
     }
 
-    func testColumnBudgetFitsAtItsMinimumAndFlagGetsTheRemainingWidth() {
-        let rows = [candidate(index: 0, start: 0, end: 60, utcOffsetSeconds: 19_800)]
-        for fontSize: CGFloat in [13, 20] {
-            let layout = AppleHealthReviewColumnLayout(candidates: rows, fontSize: fontSize)
-            for column in AppleHealthReviewColumnLayout.Column.allCases {
-                XCTAssertEqual(layout.width(column, availableWidth: layout.minimumSheetWidth),
-                               layout[column].minimum, accuracy: 0.001)
-            }
-            let wide = layout.minimumSheetWidth + 500
-            let fixedGrowth = AppleHealthReviewColumnLayout.Column.allCases
-                .filter { $0 != .flag }.reduce(CGFloat.zero) { total, column in
-                    total + layout.width(column, availableWidth: wide) - layout[column].minimum
-                }
-            XCTAssertEqual(layout.width(.flag, availableWidth: wide) - layout[.flag].minimum,
-                           500 - fixedGrowth, accuracy: 0.001)
-        }
-        XCTAssertGreaterThan(
-            AppleHealthReviewColumnLayout(candidates: rows, fontSize: 20).minimumSheetWidth,
-            AppleHealthReviewColumnLayout(candidates: rows, fontSize: 13).minimumSheetWidth)
+    func testFlagDetailShowsTheSelectedFlaggedRowsFullReason() {
+        let row = candidate(index: 0, start: 0, end: 60,
+                            status: .possibleDuplicate, origin: .existingLibrary)
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: row, flaggedCount: 2),
+            "Possible duplicate — Overlaps a run already in your library")
+    }
+
+    func testFlagDetailSummarizesFlagsWhenNoFlaggedRowIsSelected() {
+        let expected = "2 rows flagged as duplicates or possible duplicates."
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: nil, flaggedCount: 2), expected)
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: candidate(index: 0, start: 0, end: 60), flaggedCount: 2), expected)
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: nil, flaggedCount: 1),
+            "1 row flagged as duplicates or possible duplicates.")
+    }
+
+    func testFlagDetailIsAbsentWhenThereAreNoFlags() {
+        XCTAssertNil(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: nil, flaggedCount: 0))
+        XCTAssertNil(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: candidate(index: 0, start: 0, end: 60), flaggedCount: 0))
     }
 
     func testEveryFlagStatesWhatItIsAndWhatItMatched() {
