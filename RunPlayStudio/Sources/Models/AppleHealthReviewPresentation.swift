@@ -295,6 +295,11 @@ struct AppleHealthImportSummary: Equatable {
         }
 
         var lines: [String] = []
+        // A cancelled pass committed nothing, however far it had got. Say so
+        // first, so the outcome is never ambiguous.
+        if outcome == .cancelled {
+            lines.append(BatchImportReportPresentation.cancelledNotice)
+        }
         if let skipped = AppleHealthReviewPresentation.skippedNonRunningText(report.excludedWorkoutCount) {
             lines.append(skipped)
         }

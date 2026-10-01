@@ -183,7 +183,11 @@ security-scoped access is held for the whole scan → review → import lifetime
 then released on dismissal. Cancellation is checked before the file read,
 during parsing, during attribution, between candidate imports, before staging,
 and before commit; it rolls staging back and returns a structured cancelled
-report rather than a parse error.
+report rather than a parse error. Cancelling during the import keeps the sheet
+open on that report, titled **Import Cancelled**, which says nothing was saved
+and the library was left unchanged; it stays until dismissed. The Strava archive
+and Apple Health sheets share this lifecycle. Cancelling the review before an
+import starts has staged nothing, so it simply closes the sheet.
 
 ### Accessibility
 

@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 import RunPlayCore
 import RunPlayPlatform
@@ -118,13 +119,16 @@ final class AppleHealthReviewTests: XCTestCase {
         )
     }
 
-    private func makeAppState() -> AppState {
+    private func makeAppState(
+        announcer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
+    ) -> AppState {
         AppState(
             storeActor: WorkoutLibraryStoreActor(
                 store: FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library"))
             ),
             importService: WorkoutImportService(),
-            appleHealthArchiveService: AppleHealthArchiveService()
+            appleHealthArchiveService: AppleHealthArchiveService(),
+            accessibilityAnnouncer: announcer
         )
     }
 
@@ -580,5 +584,151 @@ final class AppleHealthReviewTests: XCTestCase {
         let stored = appState.workouts.count
         XCTAssertTrue(stored == 0 || stored == 40, "a cancelled import stored \(stored) of 40 workouts")
         XCTAssertEqual(appState.operationState, .idle)
+    }
+
+    // MARK: - A cancelled import ends on a report
+
+    /// Assert the library holds nothing, in memory and on disk. A library that
+    /// was never written has no manifest, which is exactly the state an import
+    /// that rolled back leaves behind.
+    private func assertLibraryUntouched(
+        _ appState: AppState,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        XCTAssertTrue(appState.workouts.isEmpty, "a cancelled import must add nothing", file: file, line: line)
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library"))
+        XCTAssertThrowsError(try store.loadManifest(), "a cancelled import must write no manifest", file: file, line: line) { error in
+            guard case WorkoutLibraryError.manifestMissing = error else {
+                return XCTFail("unexpected error: \(error)", file: file, line: line)
+            }
+        }
+        let hasActiveBatch = await appState.storeActor?.hasActiveBatch
+        XCTAssertEqual(hasActiveBatch, false, "a cancelled import must release the batch", file: file, line: line)
+    }
+
+    func testCancellingAfterStagingEndsOnACancelledReportAndLeavesTheLibraryUnchanged() async throws {
+        let announcer = RecordingAccessibilityAnnouncer()
+        let appState = makeAppState(announcer: announcer)
+        let candidates = (0..<6).map { index in
+            candidate(index: index, start: Int64(index) * 600, end: Int64(index) * 600 + 500)
+        }
+        present(appState, scanResult(candidates: candidates))
+        let session = try XCTUnwrap(appState.appleHealthSession)
+
+        // Cancel from inside the progress stream once two workouts are staged.
+        // That fixes the cancel at a point of the pass, after staging and before
+        // the commit, instead of racing it.
+        let cancelOnceTwoAreStaged = session.$progress.sink { progress in
+            if progress.stagedCount >= 2 { appState.cancelAppleHealthImport() }
+        }
+        defer { cancelOnceTwoAreStaged.cancel() }
+
+        appState.confirmAppleHealthImport()
+        await waitForTerminalPhase(appState)
+
+        // The sheet stays open on a report until the user dismisses it.
+        let open = try XCTUnwrap(appState.appleHealthSession, "a cancelled import must not close the sheet")
+        XCTAssertEqual(open.phase, .report)
+        let report = try XCTUnwrap(open.report)
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertGreaterThanOrEqual(report.discardedCount, 2, "the staged workouts were rolled back")
+        XCTAssertEqual(report.importedCount, 0)
+        XCTAssertEqual(report.addedWorkoutCount, 0)
+
+        let summary = AppleHealthImportSummary(report: report)
+        XCTAssertEqual(summary.outcome, .cancelled)
+        XCTAssertEqual(summary.headline, "Import cancelled")
+        XCTAssertEqual(summary.lines.first, BatchImportReportPresentation.cancelledNotice)
+
+        await assertLibraryUntouched(appState)
+        XCTAssertEqual(appState.operationState, .idle)
+        XCTAssertTrue(appState.isModalPresentationActive, "the report is the open sheet")
+        XCTAssertEqual(announcer.messages, ["Import cancelled."], "announced once, when the report appears")
+
+        appState.dismissAppleHealthSession()
+        XCTAssertNil(appState.appleHealthSession)
+        XCTAssertFalse(appState.isModalPresentationActive)
+    }
+
+    func testCancellingBeforeAnythingIsStagedEndsOnTheSameCancelledReport() async throws {
+        let announcer = RecordingAccessibilityAnnouncer()
+        let appState = makeAppState(announcer: announcer)
+        present(appState, scanResult(
+            candidates: [candidate(index: 0, start: 0, end: 600)],
+            dropped: 3,
+            unmatchedRoutes: 2,
+            excluded: ["HKWorkoutActivityTypeCycling": 5]
+        ))
+
+        // The task has not started when the cancel arrives, so the service
+        // stops before it stages anything.
+        appState.confirmAppleHealthImport()
+        appState.cancelAppleHealthImport()
+        await waitForTerminalPhase(appState)
+
+        let open = try XCTUnwrap(appState.appleHealthSession, "a cancelled import must not close the sheet")
+        XCTAssertEqual(open.phase, .report)
+        let report = try XCTUnwrap(open.report)
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertTrue(report.items.isEmpty, "nothing had been staged")
+
+        // The scan's own counts survive, so the report does not understate the export.
+        XCTAssertEqual(report.droppedWorkoutCount, 3)
+        XCTAssertEqual(report.unmatchedRouteReferenceCount, 2)
+        XCTAssertEqual(report.excludedWorkoutsByActivityType, ["HKWorkoutActivityTypeCycling": 5])
+
+        let summary = AppleHealthImportSummary(report: report)
+        XCTAssertEqual(summary.outcome, .cancelled)
+        XCTAssertEqual(summary.lines.first, BatchImportReportPresentation.cancelledNotice)
+
+        await assertLibraryUntouched(appState)
+        XCTAssertEqual(appState.operationState, .idle)
+        XCTAssertTrue(appState.isModalPresentationActive, "the report is the open sheet")
+        XCTAssertEqual(announcer.messages, ["Import cancelled."], "announced once, when the report appears")
+    }
+
+    func testANormalCompletionStillEndsOnTheAddedOutcome() async throws {
+        let appState = makeAppState()
+        present(appState, scanResult(candidates: [
+            candidate(index: 0, start: 0, end: 600),
+            candidate(index: 1, start: 5_000, end: 5_600),
+        ]))
+
+        appState.confirmAppleHealthImport()
+        await waitForTerminalPhase(appState)
+
+        let open = try XCTUnwrap(appState.appleHealthSession)
+        XCTAssertEqual(open.phase, .report)
+        let report = try XCTUnwrap(open.report)
+        XCTAssertFalse(report.wasCancelled)
+        let summary = AppleHealthImportSummary(report: report)
+        XCTAssertEqual(summary.outcome, .added)
+        XCTAssertEqual(summary.headline, "Imported 2 runs")
+        XCTAssertFalse(summary.lines.contains(BatchImportReportPresentation.cancelledNotice))
+        XCTAssertEqual(appState.workouts.count, 2)
+    }
+
+    func testACancelledReportSaysNothingWasSavedBeforeAnythingElse() {
+        let cancelled = AppleHealthImportSummary(report: AppleHealthImportReport(
+            wasCancelled: true,
+            droppedWorkoutCount: 1,
+            excludedWorkoutsByActivityType: ["HKWorkoutActivityTypeCycling": 2]
+        ))
+        XCTAssertEqual(cancelled.outcome, .cancelled)
+        XCTAssertEqual(cancelled.lines.first, BatchImportReportPresentation.cancelledNotice)
+        XCTAssertGreaterThan(cancelled.lines.count, 1, "the export's own counts still follow the notice")
+
+        // Only a cancel carries the notice: a failed commit is never softened by
+        // it, and a completed pass has nothing to say about cancelling.
+        for report in [
+            AppleHealthImportReport(commitFailed: true),
+            AppleHealthImportReport(),
+            AppleHealthImportReport(importedWorkoutIDs: [UUID()]),
+        ] {
+            XCTAssertFalse(
+                AppleHealthImportSummary(report: report).lines.contains(BatchImportReportPresentation.cancelledNotice)
+            )
+        }
     }
 }
