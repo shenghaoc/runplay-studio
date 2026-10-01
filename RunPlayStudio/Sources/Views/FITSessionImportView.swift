@@ -319,10 +319,16 @@ struct FITSessionImportView: View {
     private var reportBody: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.large) {
             if let report = session.report {
-                Text(reportTitle(for: report))
+                Text(BatchImportReportPresentation.fitTitle(for: report))
                     .font(AppDesign.Typography.heading2)
                     .padding(.horizontal)
                     .padding(.top)
+
+                if let notice = BatchImportReportPresentation.fitNotice(for: report) {
+                    Text(notice)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal)
+                }
 
                 if let error = session.errorMessage ?? report.errorMessage {
                     Text(error)
@@ -360,19 +366,19 @@ struct FITSessionImportView: View {
                             Text(item.sessionName)
                                 .lineLimit(1)
                             Spacer()
-                            if let elevation = elevationDetail(item, commitFailed: report.commitFailed) {
+                            if let elevation = elevationDetail(item, in: report) {
                                 Text(elevation)
                                     .foregroundStyle(.secondary)
                             }
-                            Text(itemStatusText(item, commitFailed: report.commitFailed))
+                            Text(BatchImportReportPresentation.fitItemLabel(item, in: report))
                                 .foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(
                             "\(item.sessionName), "
-                                + itemStatusText(item, commitFailed: report.commitFailed)
+                                + BatchImportReportPresentation.fitItemLabel(item, in: report)
                                 + (item.detail.map { ". \($0)" } ?? "")
-                                + (elevationDetail(item, commitFailed: report.commitFailed).map { ". \($0)" } ?? "")
+                                + (elevationDetail(item, in: report).map { ". \($0)" } ?? "")
                         )
                     }
                     .frame(minHeight: 120, maxHeight: 220)
@@ -399,24 +405,12 @@ struct FITSessionImportView: View {
         }
     }
 
-    private func reportTitle(for report: FITSessionBatchImportReport) -> String {
-        if report.commitFailed { return "Import Failed" }
-        if report.wasCancelled { return "Import Cancelled" }
-        return "Import Complete"
-    }
-
-    /// A staged session whose commit failed was never imported; say so.
-    private func itemStatusText(
-        _ item: FITSessionImportItemResult,
-        commitFailed: Bool
-    ) -> String {
-        // Report label is authoritative: item.status alone is process-time
-        // classification, not commit outcome.
-        item.reportLabel(commitFailed: commitFailed)
-    }
-
-    private func elevationDetail(_ item: FITSessionImportItemResult, commitFailed: Bool) -> String? {
-        guard item.status == .ready, !commitFailed else { return nil }
+    /// Elevation detail for a session that was saved. A rolled-back session reads
+    /// "Not saved", so it says nothing about the elevation it would have had.
+    private func elevationDetail(_ item: FITSessionImportItemResult, in report: FITSessionBatchImportReport) -> String? {
+        guard item.status == .ready,
+              !BatchImportReportPresentation.fitStagedSessionsWereRolledBack(in: report)
+        else { return nil }
         return DEMImportReportText.itemDetail(item.elevationCorrection, correctsElevation: session.correctsElevation)
     }
 
