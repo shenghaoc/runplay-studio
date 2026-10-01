@@ -94,7 +94,7 @@ final class TrainingLoadBackfillTests: XCTestCase {
         let missing = makeWorkout(id: UUID())
         var current = makeWorkout(id: UUID())
         current.trainingLoad = try TrainingLoadCalculator.compute(
-            routePoints: current.routePoints,
+            heartRateSamples: current.heartRateSamples,
             activeSeconds: current.summary.totalActiveSeconds,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
