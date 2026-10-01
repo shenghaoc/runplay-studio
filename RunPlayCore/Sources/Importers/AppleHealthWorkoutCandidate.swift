@@ -61,6 +61,43 @@ public struct AppleHealthLibraryRunWindow: Hashable, Sendable {
         self.startSeconds = startSeconds
         self.endSeconds = endSeconds
     }
+
+    /// The window of a run already in the library.
+    ///
+    /// Returns `nil` when the snapshot carries no usable start, or an end that
+    /// does not follow it. Inventing a window for such a run would flag
+    /// unrelated workouts as duplicates, so a run that cannot state when it
+    /// happened is compared against nothing rather than against a guess.
+    ///
+    /// A missing end falls back to the start plus the summary's elapsed time,
+    /// which is the same span every other consumer derives from those two
+    /// fields. The result is rounded to whole seconds because that is the
+    /// resolution both sides of the comparison are recorded at.
+    public init?(workout: RunWorkout) {
+        guard let start = workout.metadata.startDate else { return nil }
+        let startSeconds = Int64(start.timeIntervalSince1970.rounded())
+
+        let end: Date
+        if let endDate = workout.metadata.endDate {
+            end = endDate
+        } else {
+            let elapsed = workout.summary.totalElapsedSeconds
+            guard elapsed.isFinite, elapsed >= 0 else { return nil }
+            end = start.addingTimeInterval(elapsed)
+        }
+        let endSeconds = Int64(end.timeIntervalSince1970.rounded())
+        guard endSeconds >= startSeconds else { return nil }
+
+        self.init(startSeconds: startSeconds, endSeconds: endSeconds)
+    }
+
+    /// The windows of every library run that can state one, for a duplicate scan.
+    ///
+    /// Order follows the input and runs that cannot state a window are dropped,
+    /// so the caller can compare counts without matching up indices.
+    public static func windows(for workouts: [RunWorkout]) -> [AppleHealthLibraryRunWindow] {
+        workouts.compactMap(AppleHealthLibraryRunWindow.init(workout:))
+    }
 }
 
 /// One workout the export offers for import, with everything the review needs.
