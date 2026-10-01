@@ -112,6 +112,21 @@ final class RunDetailPresentationTests: XCTestCase {
         }
     }
 
+    func testTheOverviewSaysSoInsteadOfShowingABlankMap() {
+        XCTAssertEqual(RouteLessNoticePresentation.mapTitle, "No GPS route")
+
+        let withHeartRate = RouteLessNoticePresentation.mapDetail(hasHeartRate: true)
+        let without = RouteLessNoticePresentation.mapDetail(hasHeartRate: false)
+
+        XCTAssertTrue(withHeartRate.contains("no map or replay"), withHeartRate)
+        XCTAssertTrue(withHeartRate.contains("heart rate is on the Charts tab"), withHeartRate)
+        XCTAssertTrue(without.contains("no map or replay"), without)
+        XCTAssertFalse(
+            without.localizedCaseInsensitiveContains("heart rate"),
+            "a run with no heart rate is never pointed at a chart that has none"
+        )
+    }
+
     func testTheNoticeFollowsWhetherTheWorkoutReallyHasHeartRate() {
         XCTAssertTrue(Fixtures.workout(series: Fixtures.series([(0, 120), (60, 130)])).hasHeartRateData)
         XCTAssertFalse(Fixtures.workout().hasHeartRateData)
