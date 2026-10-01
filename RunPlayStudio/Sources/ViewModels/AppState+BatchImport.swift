@@ -3,9 +3,11 @@ import RunPlayCore
 import RunPlayPlatform
 import SwiftUI
 
-// Batch import (Strava archive + multi-session FIT) lives here so AppState.swift
-// stays focused on library/workspace state. Members used by these flows are
-// module-internal so this extension can own the lifecycle helpers.
+// Batch import (Strava archive + multi-session FIT + Apple Health export) lives
+// here so AppState.swift stays focused on library/workspace state. Members used
+// by these flows are module-internal so the per-source extensions can share one
+// lifecycle: the Apple Health sheet installs its state in
+// `AppState+AppleHealthImport.swift` and reuses the helpers below.
 
 extension AppState {
 
@@ -123,23 +125,20 @@ extension AppState {
                     errorMessage: report.errorMessage,
                     completedName: completedName,
                     commitFailedFallback: "Could not save imported workouts.",
-                    // Cancel during import keeps the sheet and announces here
-                    // once (review-phase cancel announces in cancelBatchSheet).
-                    announceQuietCancel: true,
                     storeActor: storeActor,
                     applyReport: { message in
                         session.report = report
                         session.phase = .report
                         if let message { session.errorMessage = message }
                     },
-                    dismissSession: { self.archiveSession = nil },
                     onLoadFailure: { message in session.errorMessage = message }
                 )
             } catch is CancellationError {
-                self.finishBatchSheetTaskCancellation(
-                    announce: true,
-                    dismissSession: { self.archiveSession = nil }
-                )
+                // Cancelled before the service could return its own report.
+                self.finishBatchSheetTaskCancellation(applyReport: {
+                    session.report = WorkoutBatchImportReport(wasCancelled: true)
+                    session.phase = .report
+                })
             } catch {
                 self.finishBatchSheetTaskError(
                     message: error.localizedDescription,
@@ -302,23 +301,20 @@ extension AppState {
                     errorMessage: report.errorMessage,
                     completedName: completedName,
                     commitFailedFallback: "Could not save the imported sessions.",
-                    // Cancel during import does not announce in
-                    // `cancelFITSessionImport`; the task completion does.
-                    announceQuietCancel: true,
                     storeActor: storeActor,
                     applyReport: { message in
                         session.report = report
                         session.phase = .report
                         if let message { session.errorMessage = message }
                     },
-                    dismissSession: { self.fitSessionImportSession = nil },
                     onLoadFailure: { message in session.errorMessage = message }
                 )
             } catch is CancellationError {
-                self.finishBatchSheetTaskCancellation(
-                    announce: true,
-                    dismissSession: { self.fitSessionImportSession = nil }
-                )
+                // Cancelled before the service could return its own report.
+                self.finishBatchSheetTaskCancellation(applyReport: {
+                    session.report = FITSessionBatchImportReport(wasCancelled: true)
+                    session.phase = .report
+                })
             } catch {
                 self.finishBatchSheetTaskError(
                     message: error.localizedDescription,
@@ -339,8 +335,9 @@ extension AppState {
     ///
     /// During `.importing`, only requests cooperative cancellation and keeps
     /// the sheet until the task returns a cancelled (or committed) report so
-    /// the user always sees a structured outcome. Announcement happens once on
-    /// task completion, not here.
+    /// the user always sees a structured outcome; that report stays until the
+    /// user dismisses it. Announcement happens once on task completion, not
+    /// here.
     func cancelFITSessionImport() {
         cancelBatchSheet(
             task: &fitImportTask,
@@ -382,20 +379,23 @@ extension AppState {
 
     // MARK: - Shared batch-sheet lifecycle
 
-    /// UI phases shared by Strava archive and multi-session FIT sheets.
-    private enum BatchSheetPhase {
+    /// UI phases shared by the Strava archive, multi-session FIT, and Apple
+    /// Health review sheets.
+    enum BatchSheetPhase {
         case reviewing
         case importing
         case report
     }
 
-    /// Shared cancel semantics for archive and FIT review sheets.
+    /// Shared cancel semantics for the batch review sheets.
     ///
     /// During `.importing`, only requests cooperative cancellation and keeps
-    /// the sheet until the task returns a structured report. Announcement for
-    /// that path happens on task completion (when `announceQuietCancel` is set
-    /// on the finish helper). Review-phase cancel dismisses immediately.
-    private func cancelBatchSheet(
+    /// the sheet: the task then ends in a report (cancelled, or committed when
+    /// the commit won the race) that stays until the user dismisses it.
+    /// Announcement for that path happens on task completion. Review-phase
+    /// cancel dismisses immediately, because nothing has been staged yet and
+    /// there is no outcome to report.
+    func cancelBatchSheet(
         task: inout Task<Void, Never>?,
         phase: BatchSheetPhase?,
         dismissSession: () -> Void
@@ -414,27 +414,29 @@ extension AppState {
         }
     }
 
-    /// Shared post-import sheet finish path for archive and FIT batch reports.
-    private func finishBatchSheetImport(
+    /// Shared post-import sheet finish path for the batch sheets.
+    ///
+    /// Every outcome ends on a report the user dismisses, a cancelled pass
+    /// included. The batch seam rolls back everything a cancelled pass staged,
+    /// so its report says nothing was saved; closing the sheet instead would
+    /// leave the user to guess whether the import finished.
+    func finishBatchSheetImport(
         wasCancelled: Bool,
         commitFailed: Bool,
         importedCount: Int,
         errorMessage: String?,
         completedName: String,
         commitFailedFallback: String,
-        announceQuietCancel: Bool,
         storeActor: WorkoutLibraryStoreActor,
         applyReport: (_ errorMessage: String?) -> Void,
-        dismissSession: () -> Void,
         onLoadFailure: (String) -> Void
     ) async {
-        // Cancellation that committed nothing simply closes the sheet.
+        // A cancel that raced a successful commit falls through: the library
+        // changed, so it is reported as the import it was.
         if wasCancelled, importedCount == 0, !commitFailed {
+            applyReport(nil)
             operationState = .idle
-            dismissSession()
-            if announceQuietCancel {
-                announcementPolicy.handle(.importCancelled)
-            }
+            announcementPolicy.handle(.importCancelled)
             return
         }
 
@@ -460,18 +462,16 @@ extension AppState {
         }
     }
 
-    private func finishBatchSheetTaskCancellation(
-        announce: Bool,
-        dismissSession: () -> Void
-    ) {
+    /// A cancel that reached the caller as a thrown `CancellationError`, before
+    /// the service could return a report of its own, ends the same way: a
+    /// cancelled report on the open sheet.
+    func finishBatchSheetTaskCancellation(applyReport: () -> Void) {
         operationState = .idle
-        dismissSession()
-        if announce {
-            announcementPolicy.handle(.importCancelled)
-        }
+        applyReport()
+        announcementPolicy.handle(.importCancelled)
     }
 
-    private func finishBatchSheetTaskError(
+    func finishBatchSheetTaskError(
         message: String,
         applyReport: () -> Void
     ) {

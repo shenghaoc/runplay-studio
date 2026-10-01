@@ -8,6 +8,9 @@ import RunPlayCore
 struct SplitTableView: View {
     let splits: [RunSplit]
     let recordedLaps: [RecordedLap]
+    /// Whether the workout has a GPS route. Calculated splits are walked along
+    /// it, so without one there are none and the tab says so.
+    var hasRoute: Bool = true
     var currentSplitIndex: Int? = nil
     var currentRecordedLapIndex: Int? = nil
     var onSeekToRecordedLap: ((RecordedLap) -> Void)? = nil
@@ -35,8 +38,11 @@ struct SplitTableView: View {
                 .labelsHidden()
                 .accessibilityLabel("Interval type")
                 .help("Distance Splits are calculated by RunPlay Studio. Recorded Laps come from the source file.")
-            } else if recordedLaps.isEmpty {
-                Text("No recorded laps in this file. Calculated distance splits are still available.")
+            } else if let notice = SplitsPresentation.noRecordedLapsNotice(
+                hasRoute: hasRoute,
+                hasRecordedLaps: !recordedLaps.isEmpty
+            ) {
+                Text(notice)
                     .font(AppDesign.Typography.secondary)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("No recorded laps available")
@@ -44,11 +50,19 @@ struct SplitTableView: View {
 
             switch effectiveMode {
             case .distanceSplits:
-                DistanceSplitsTableView(
-                    splits: splits,
-                    currentSplitIndex: currentSplitIndex,
-                    showsPower: splits.contains { $0.averagePowerWatts != nil }
-                )
+                switch SplitsPresentation.distanceSplitsContent(hasRoute: hasRoute) {
+                case .table:
+                    DistanceSplitsTableView(
+                        splits: splits,
+                        currentSplitIndex: currentSplitIndex,
+                        showsPower: splits.contains { $0.averagePowerWatts != nil }
+                    )
+                case .needsRoute:
+                    Label(SplitsPresentation.needsRouteMessage, systemImage: "location.slash")
+                        .font(AppDesign.Typography.secondary)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(SplitsPresentation.needsRouteMessage)
+                }
             case .recordedLaps:
                 RecordedLapsTableView(
                     recordedLaps: recordedLaps,
@@ -57,6 +71,9 @@ struct SplitTableView: View {
                 )
             }
         }
+        // A table fills the width, but a message alone is only as wide as its
+        // text and would be centred by the tab's frame, away from its header.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var showsModeSelector: Bool {

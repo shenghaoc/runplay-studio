@@ -1206,7 +1206,8 @@ completed manual pass.
     but disabled with an explanation.
 13. Import a file with one valid and one malformed session → the valid session
     commits and the malformed one is reported.
-14. Cancel during processing → nothing commits.
+14. Cancel during processing → nothing commits, and the sheet stays on an
+    **Import Cancelled** report that says nothing was saved until it is dismissed.
 15. Keyboard-only pass: Tab through the table, toggle Include with Space, use
     Select All Importable / Select None, Return to import, Escape to cancel.
 16. VoiceOver: row summaries read name, sport, timing, counts, and status; the
@@ -2111,7 +2112,8 @@ Use a **synthetic** ZIP only — never commit real exports.
 2. Confirm review counts and candidate statuses.
 3. Filter/search; Select All Importable / Select None; keyboard navigation.
 4. Import mixed FIT/GPX/TCX/GZIP running activities.
-5. Cancel a second large import; confirm no partial library additions.
+5. Cancel a second large import; confirm no partial library additions and that
+   the sheet stays on an **Import Cancelled** report until it is dismissed.
 6. Archive with one corrupt activity → valid siblings still import.
 7. Import the same archive again → zero new workouts.
 8. Completion report counts match expectations.
@@ -2467,3 +2469,43 @@ Not covered: the fifteen-entry window contained only single-run routes, so a
 multi-month span ("5 runs · Mar – Aug 2026") was checked only by unit tests
 (`RouteGroupMenuDetailTests`). Dark appearance, the 720×552 minimum and
 VoiceOver were not exercised in this pass.
+
+## Apple Health running-only review (synthetic)
+
+- [ ] Assemble a bundle with `scripts/assemble-app-bundle.sh`, ad-hoc-sign it, and open **Import Apple Health Export…** with a synthetic mixed-activity archive.
+- [ ] Include a running workout, a route-less indoor/treadmill running workout, and walking/cycling workouts overlapping the run. Only the two runs appear; excluded activities do not flag either run.
+- [ ] Review and the final import report state the number of non-running workouts skipped. Verify VoiceOver reads this static message and keyboard selection/import still work.
+- [ ] Import an archive containing only non-running workouts. Review shows no candidates and explicitly states the skipped count.
+- [ ] Reimport selected runs into the same disposable library; no additional workouts are added. Never use or screenshot private data for this checklist.
+
+## Apple Health cancelled import (synthetic)
+
+- [ ] Open a synthetic export large enough to leave time to cancel (a few hundred runs), start the import, and press Cancel partway through. Progress stops, and the sheet stays open on a report headed **Import cancelled** that says nothing was saved and the library was left unchanged. It stays until **Done** is pressed.
+- [ ] Compare the disposable library before and after: no workout was added and the manifest is unchanged.
+- [ ] Cancel immediately after pressing Import, before the first run is staged. The sheet ends on the same report. Cancelling the review before any import starts still just closes the sheet.
+- [ ] Finish an import normally in the same library afterwards: the report is headed **Imported N runs** and carries no cancel notice.
+
+## Heart rate on the run detail (synthetic)
+
+Use a disposable library and a synthetic Health export with four runs: a routed run with heart rate, a routed run without, a route-less run with heart rate, and a route-less run without. Never use private data for this checklist.
+
+- [ ] The sidebar row and the detail header show an average heart rate for both runs that have heart rate, and none for the two that do not (no `0`, no empty pill).
+- [ ] Routed run with heart rate only in the Health series: **Charts → Heart Rate** draws a stepped line over distance, not a smoothed curve. Scrub the chart and compare its readout with the replay metrics panel at the same position; they name the same bpm.
+- [ ] Route-less run with heart rate: **Charts** opens on **Heart Rate** and draws the readings over time, with minutes on the x axis. There is no **Jump to distance** control, and the other metrics say no chart data is available.
+- [ ] Select the route-less run after a routed one while **Elevation** is chosen. The picker moves to **Heart Rate** instead of leaving an empty chart.
+- [ ] A route-less run's banner offers heart rate only when the run has it, and never mentions cadence. Its **Overview** tab says there is no GPS route instead of showing a blank map, and points at the Charts tab only when the run has heart rate.
+- [ ] Route-less **Splits** says that splits need a GPS route and shows no table. A routed run's Splits are unchanged.
+- [ ] A route-less run's detail shows "Distance from Apple Health (no GPS route)" under the header. A routed run shows no such line.
+- [ ] At the 720×552 window minimum nothing is clipped on any tab of a route-less run.
+- [ ] VoiceOver spot check, by hand: the over-time chart's summary reads as readings over minutes with no distance, and the caption is read with the header.
+
+## Apple Health review layout and full flag reasons (synthetic)
+
+- [ ] Open a synthetic export containing duplicate/overlap reasons in the ad-hoc-signed bundle. At the sheet minimum, every column header and value fits; flagged rows show a warning icon and unflagged rows have an empty Flag cell.
+- [ ] Focus a flagged row without checking it for import. Its complete reason appears below the table and wraps freely. Select an unflagged row or clear focus; the line shows the flagged-row count, or is absent when there are no flags.
+
+Dynamic Type / larger text: **not applicable on macOS** for this view. Restore any system Text Size preference changed during verification to its original value.
+
+- [ ] Read a warning icon's full help text and focus its row with the keyboard. Verify VoiceOver reads the full reason, activity, duration, distance provenance, route and heart-rate status.
+
+- [ ] In Accessibility Inspector, verify the Apple Health title and report headline are headings; Cancel, filters, row checkboxes, import, Details, Done and View Imported Run keep their own control names and roles. Confirm VoiceOver actually speaks the header, Cancel, a flagged row with its full reason, and the import button. Restore VoiceOver and keyboard settings afterwards.
