@@ -40,6 +40,8 @@ struct AppleHealthImportView: View {
             VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
                 Text("Import Apple Health Export")
                     .font(AppDesign.Typography.heading2)
+                    .accessibilityLabel("Import Apple Health Export")
+                    .accessibilityAddTraits(.isHeader)
                 Text(session.archiveName)
                     .font(AppDesign.Typography.secondary)
                     .foregroundStyle(.secondary)
@@ -49,11 +51,11 @@ struct AppleHealthImportView: View {
             if session.phase == .reviewing {
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Cancel")
             }
         }
         .padding()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Import Apple Health Export, \(session.archiveName)")
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Review
@@ -301,6 +303,7 @@ struct AppleHealthImportView: View {
                     let summary = AppleHealthImportSummary(report: report)
                     Text(summary.headline)
                         .font(AppDesign.Typography.heading2)
+                        .accessibilityAddTraits(.isHeader)
                         .foregroundStyle(headlineColor(summary.outcome))
 
                     if let error = session.errorMessage ?? report.errorMessage {
