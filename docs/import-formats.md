@@ -11,7 +11,8 @@ app does not upload files, create accounts, call analytics, or use AI APIs.
 | GPX | Track support | Parses `trk/trkseg/trkpt` GPS trackpoints, time, elevation, heart rate, and cadence extensions. Each track segment remains disconnected; waypoints and routes are ignored. Standard GPX does **not** define device laps — `recordedLaps` stays empty and `<trkseg>` is never treated as a lap. At least one timestamp is required for elapsed/active pace analysis; partial missing timestamps are interpolated. |
 | TCX | Track support | Parses one GPS-bearing activity's laps (including summary fields and `TriggerMethod`), tracks, trackpoints, distance, elevation, heart rate, and cadence. A `<Lap>` boundary alone does **not** create a route gap; multi-`<Track>` continuity is resolved deterministically. Files with multiple GPS activities are rejected as ambiguous. Partial missing timestamps are interpolated. |
 | FIT | Common running activities | Decodes CRC-validated file-ID, record, event, lap, session, activity, device-info, field_description (206), and developer_data_id (207) messages in source order. Lap messages from the selected session become `RecordedLap` values with FIT `lap_trigger` mapping. Compressed timestamps, enhanced altitude/speed, timer-derived route gaps, native record power and running dynamics, and developer fields (running power and dynamics) are supported; see "FIT developer data" below. Lap messages never create route segments. A container with two or more session messages opens the multi-session review flow described below. Importing real device activity files landed in #143 — earlier releases rejected every genuine file at the header. |
-| HealthKit | Not implemented | Research-only future phase. Requires entitlements and a separate privacy review. |
+| Apple Health export archive | Supported | Running workouts from `export.zip`, with route-less and HR support; use **Import Apple Health Export…**. See [the import guide](apple-health-import.md). |
+| Direct HealthKit | Not planned | A provisioned HealthKit capability is outside this project's signing policy. See [the decision record](healthkit-viability.md). |
 
 ## Workout size limits
 
@@ -487,7 +488,9 @@ reimporting a FIT file records its sensor.
 
 ## Recorded UTC offset
 
-Text formats that carry an explicit zone designator record it on
+Apple Health export timestamps retain their explicit `±hhmm` start offset;
+Trends uses that recorded local date. Other text formats that carry an explicit
+zone designator record it on
 `WorkoutMetadata.recordedUTCOffsetSeconds`: GPX and TCX capture the literal
 offset of the first timestamp text/attribute that both parses as an instant
 and carries a designator (`Z` is `0`, `+09:00` is `32_400`), and the JSON
@@ -513,3 +516,8 @@ above the route-point limit, so a route the app accepts can never be rejected
 by the engine. Raising the product limit requires raising that ceiling to
 preserve the margin; a parity test enforces the relationship. Do not add a
 second copy of either number to an importer.
+
+Apple Health `export.xml` is streamed and is exempt from the individual-source
+payload limit. Each linked route GPX still obeys that limit and the per-workout
+point limit. Archive, memory and free-space restrictions are described in
+[the Apple Health import guide](apple-health-import.md#limits-and-refusals).
