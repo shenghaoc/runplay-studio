@@ -139,38 +139,30 @@ extension AppState {
                     errorMessage: report.errorMessage,
                     completedName: completedName,
                     commitFailedFallback: "Could not save the imported workouts.",
-                    announceQuietCancel: true,
                     storeActor: storeActor,
                     applyReport: { message in
                         session.report = report
                         session.phase = .report
                         if let message { session.errorMessage = message }
                     },
-                    dismissSession: { self.appleHealthSession = nil },
                     onLoadFailure: { message in session.errorMessage = message }
                 )
             } catch is CancellationError {
-                // Cancelled before anything was staged. The service rolls back
-                // on every path that does not commit, so the library is intact
-                // and there is nothing to report.
-                self.finishBatchSheetTaskCancellation(
-                    announce: true,
-                    dismissSession: { self.appleHealthSession = nil }
-                )
+                // Cancelled before the service could return its own report, so
+                // before anything was staged. The service rolls back on every
+                // path that does not commit, so the library is intact; the
+                // report says so rather than the sheet closing unexplained.
+                self.finishBatchSheetTaskCancellation(applyReport: {
+                    session.report = Self.unfinishedReport(of: scan, wasCancelled: true)
+                    session.phase = .report
+                })
             } catch {
-                // An unexpected throw is still reported as a failed import, and
-                // it still carries the scan's own loss counts: a report showing
-                // zero dropped workouts here would understate what the export
-                // held.
+                // An unexpected throw is still reported as a failed import.
                 self.finishBatchSheetTaskError(
                     message: error.localizedDescription,
                     applyReport: {
-                        session.report = AppleHealthImportReport(
-                            commitFailed: true,
-                            errorMessage: error.localizedDescription,
-                            droppedWorkoutCount: scan.report.droppedWorkoutCount,
-                            unmatchedRouteReferenceCount: scan.report.unmatchedRouteReferenceCount,
-                            excludedWorkoutsByActivityType: scan.report.excludedWorkoutsByActivityType
+                        session.report = Self.unfinishedReport(
+                            of: scan, errorMessage: error.localizedDescription
                         )
                         session.phase = .report
                         session.errorMessage = error.localizedDescription
@@ -180,7 +172,29 @@ extension AppState {
         }
     }
 
+    /// The report for a pass that ended before the service could return one.
+    ///
+    /// It still carries the scan's own loss counts: a report showing zero
+    /// dropped workouts here would understate what the export held.
+    private static func unfinishedReport(
+        of scan: AppleHealthArchiveScanResult,
+        wasCancelled: Bool = false,
+        errorMessage: String? = nil
+    ) -> AppleHealthImportReport {
+        AppleHealthImportReport(
+            wasCancelled: wasCancelled,
+            commitFailed: !wasCancelled,
+            errorMessage: errorMessage,
+            droppedWorkoutCount: scan.report.droppedWorkoutCount,
+            unmatchedRouteReferenceCount: scan.report.unmatchedRouteReferenceCount,
+            excludedWorkoutsByActivityType: scan.report.excludedWorkoutsByActivityType
+        )
+    }
+
     /// Cancel an in-progress Apple Health scan or import, or close the review.
+    ///
+    /// During an import this only asks the service to stop: the sheet stays and
+    /// ends on a Cancelled report, which the user dismisses.
     func cancelAppleHealthImport() {
         cancelBatchSheet(
             task: &appleHealthTask,

@@ -246,10 +246,16 @@ struct StravaArchiveImportView: View {
     private var reportBody: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.large) {
             if let report = session.report {
-                Text(report.commitFailed ? "Import Incomplete" : "Import Complete")
+                Text(BatchImportReportPresentation.archiveTitle(for: report))
                     .font(AppDesign.Typography.heading2)
                     .padding(.horizontal)
                     .padding(.top)
+
+                if let notice = BatchImportReportPresentation.archiveNotice(for: report) {
+                    Text(notice)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal)
+                }
 
                 if let error = session.errorMessage ?? report.errorMessage {
                     Text(error)

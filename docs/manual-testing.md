@@ -1206,7 +1206,8 @@ completed manual pass.
     but disabled with an explanation.
 13. Import a file with one valid and one malformed session → the valid session
     commits and the malformed one is reported.
-14. Cancel during processing → nothing commits.
+14. Cancel during processing → nothing commits, and the sheet stays on an
+    **Import Cancelled** report that says nothing was saved until it is dismissed.
 15. Keyboard-only pass: Tab through the table, toggle Include with Space, use
     Select All Importable / Select None, Return to import, Escape to cancel.
 16. VoiceOver: row summaries read name, sport, timing, counts, and status; the
@@ -2111,7 +2112,8 @@ Use a **synthetic** ZIP only — never commit real exports.
 2. Confirm review counts and candidate statuses.
 3. Filter/search; Select All Importable / Select None; keyboard navigation.
 4. Import mixed FIT/GPX/TCX/GZIP running activities.
-5. Cancel a second large import; confirm no partial library additions.
+5. Cancel a second large import; confirm no partial library additions and that
+   the sheet stays on an **Import Cancelled** report until it is dismissed.
 6. Archive with one corrupt activity → valid siblings still import.
 7. Import the same archive again → zero new workouts.
 8. Completion report counts match expectations.
@@ -2475,6 +2477,13 @@ VoiceOver were not exercised in this pass.
 - [ ] Review and the final import report state the number of non-running workouts skipped. Verify VoiceOver reads this static message and keyboard selection/import still work.
 - [ ] Import an archive containing only non-running workouts. Review shows no candidates and explicitly states the skipped count.
 - [ ] Reimport selected runs into the same disposable library; no additional workouts are added. Never use or screenshot private data for this checklist.
+
+## Apple Health cancelled import (synthetic)
+
+- [ ] Open a synthetic export large enough to leave time to cancel (a few hundred runs), start the import, and press Cancel partway through. Progress stops, and the sheet stays open on a report headed **Import cancelled** that says nothing was saved and the library was left unchanged. It stays until **Done** is pressed.
+- [ ] Compare the disposable library before and after: no workout was added and the manifest is unchanged.
+- [ ] Cancel immediately after pressing Import, before the first run is staged. The sheet ends on the same report. Cancelling the review before any import starts still just closes the sheet.
+- [ ] Finish an import normally in the same library afterwards: the report is headed **Imported N runs** and carries no cancel notice.
 
 ## Apple Health review layout and full flag reasons (synthetic)
 

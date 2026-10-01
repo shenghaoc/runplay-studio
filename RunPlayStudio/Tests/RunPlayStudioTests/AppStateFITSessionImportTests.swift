@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 import RunPlayCore
 import RunPlayPlatform
@@ -23,12 +24,15 @@ final class AppStateFITSessionImportTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeAppState() -> AppState {
+    private func makeAppState(
+        announcer: any AccessibilityAnnouncing = AccessibilityAnnouncer.shared
+    ) -> AppState {
         let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library"))
         return AppState(
             storeActor: WorkoutLibraryStoreActor(store: store),
             importService: WorkoutImportService(),
-            fitSessionService: FITSessionImportService(digest: CryptoKitContentDigest())
+            fitSessionService: FITSessionImportService(digest: CryptoKitContentDigest()),
+            accessibilityAnnouncer: announcer
         )
     }
 
@@ -68,6 +72,11 @@ final class AppStateFITSessionImportTests: XCTestCase {
 
     private func importAndWaitForReport(_ appState: AppState) async {
         appState.confirmFITSessionImport()
+        await waitForTerminalPhase(appState)
+    }
+
+    /// Wait for the sheet to reach a terminal phase, or to be dismissed.
+    private func waitForTerminalPhase(_ appState: AppState) async {
         for _ in 0..<400 {
             if appState.fitSessionImportSession?.phase == .report
                 || appState.fitSessionImportSession == nil {
@@ -235,6 +244,9 @@ final class AppStateFITSessionImportTests: XCTestCase {
         let report = try XCTUnwrap(session.report)
         XCTAssertEqual(report.importedCount, 2)
         XCTAssertFalse(report.commitFailed)
+        XCTAssertFalse(report.wasCancelled)
+        XCTAssertEqual(BatchImportReportPresentation.fitTitle(for: report), "Import Complete")
+        XCTAssertNil(BatchImportReportPresentation.fitNotice(for: report))
         XCTAssertEqual(appState.workouts.count, 2)
         XCTAssertEqual(appState.libraryWorkoutIDs.count, 2)
         XCTAssertTrue(appState.hasPersistedLibrary)
@@ -295,6 +307,101 @@ final class AppStateFITSessionImportTests: XCTestCase {
         XCTAssertNil(appState.fitSessionImportSession)
         XCTAssertTrue(appState.workouts.isEmpty)
         XCTAssertEqual(appState.operationState, .idle)
+    }
+
+    /// Assert the library holds nothing, in memory and on disk. A library that
+    /// was never written has no manifest, which is exactly the state an import
+    /// that rolled back leaves behind.
+    private func assertLibraryUntouched(
+        _ appState: AppState,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        XCTAssertTrue(appState.workouts.isEmpty, "a cancelled import must add nothing", file: file, line: line)
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library"))
+        XCTAssertThrowsError(try store.loadManifest(), "a cancelled import must write no manifest", file: file, line: line) { error in
+            guard case WorkoutLibraryError.manifestMissing = error else {
+                return XCTFail("unexpected error: \(error)", file: file, line: line)
+            }
+        }
+        let hasActiveBatch = await appState.storeActor?.hasActiveBatch
+        XCTAssertEqual(hasActiveBatch, false, "a cancelled import must release the batch", file: file, line: line)
+    }
+
+    func testCancellingAfterStagingKeepsTheSheetOnACancelledReport() async throws {
+        let announcer = RecordingAccessibilityAnnouncer()
+        let appState = makeAppState(announcer: announcer)
+        let url = try writeFixture(FITFixtureBuilder.buildTwoRunningSessions(), named: "multi.fit")
+        await appState.importWorkout(from: url)
+        let session = try XCTUnwrap(appState.fitSessionImportSession)
+
+        // Cancel from inside the progress stream once a session is staged. That
+        // fixes the cancel at a point of the pass, after staging and before the
+        // commit, instead of racing it.
+        let cancelOnceStaged = session.$progress.sink { progress in
+            if progress.stagedCount >= 1 { appState.cancelFITSessionImport() }
+        }
+        defer { cancelOnceStaged.cancel() }
+
+        await importAndWaitForReport(appState)
+
+        // The sheet stays open on a report until the user dismisses it.
+        let open = try XCTUnwrap(appState.fitSessionImportSession, "a cancelled import must not close the sheet")
+        XCTAssertEqual(open.phase, .report)
+        let report = try XCTUnwrap(open.report)
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertEqual(report.importedCount, 0)
+        XCTAssertEqual(BatchImportReportPresentation.fitTitle(for: report), "Import Cancelled")
+        XCTAssertEqual(
+            BatchImportReportPresentation.fitNotice(for: report),
+            BatchImportReportPresentation.cancelledNotice
+        )
+
+        // A session that had staged was rolled back, so it is never "Imported".
+        let staged = report.items.filter { $0.status == .ready }
+        XCTAssertFalse(staged.isEmpty, "a session had been staged when the cancel landed")
+        for item in staged {
+            XCTAssertEqual(BatchImportReportPresentation.fitItemLabel(item, in: report), "Not saved")
+        }
+
+        await assertLibraryUntouched(appState)
+        XCTAssertEqual(appState.operationState, .idle)
+        XCTAssertTrue(appState.isModalPresentationActive, "the report is the open sheet")
+        XCTAssertEqual(announcer.messages, ["Import cancelled."], "announced once, when the report appears")
+
+        appState.dismissFITSessionImport()
+        XCTAssertNil(appState.fitSessionImportSession)
+        XCTAssertFalse(appState.isModalPresentationActive)
+    }
+
+    func testCancellingBeforeAnythingIsStagedEndsOnTheSameCancelledReport() async throws {
+        let announcer = RecordingAccessibilityAnnouncer()
+        let appState = makeAppState(announcer: announcer)
+        let url = try writeFixture(FITFixtureBuilder.buildTwoRunningSessions(), named: "multi.fit")
+        await appState.importWorkout(from: url)
+        XCTAssertNotNil(appState.fitSessionImportSession)
+
+        // The task has not started when the cancel arrives, so the service
+        // stops before it stages anything.
+        appState.confirmFITSessionImport()
+        appState.cancelFITSessionImport()
+        await waitForTerminalPhase(appState)
+
+        let open = try XCTUnwrap(appState.fitSessionImportSession, "a cancelled import must not close the sheet")
+        XCTAssertEqual(open.phase, .report)
+        let report = try XCTUnwrap(open.report)
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertTrue(report.items.isEmpty, "nothing had been staged")
+        XCTAssertEqual(BatchImportReportPresentation.fitTitle(for: report), "Import Cancelled")
+        XCTAssertEqual(
+            BatchImportReportPresentation.fitNotice(for: report),
+            BatchImportReportPresentation.cancelledNotice
+        )
+
+        await assertLibraryUntouched(appState)
+        XCTAssertEqual(appState.operationState, .idle)
+        XCTAssertTrue(appState.isModalPresentationActive, "the report is the open sheet")
+        XCTAssertEqual(announcer.messages, ["Import cancelled."], "announced once, when the report appears")
     }
 
     func testDismissingTheReportClearsTheSession() async throws {
