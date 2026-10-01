@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import RunPlayCore
 import RunPlayPlatform
 
@@ -17,11 +16,7 @@ struct AppleHealthImportView: View {
     var onDone: () -> Void
     var onViewImported: () -> Void
 
-    @ScaledMetric(relativeTo: .body) private var tableFontSize = NSFont.systemFontSize
-
-    private var columnLayout: AppleHealthReviewColumnLayout {
-        AppleHealthReviewColumnLayout(candidates: session.candidates, fontSize: tableFontSize)
-    }
+    @State private var focusedCandidateID: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,7 +31,7 @@ struct AppleHealthImportView: View {
                 reportBody
             }
         }
-        .frame(minWidth: columnLayout.minimumSheetWidth, minHeight: 540)
+        .frame(minWidth: 900, minHeight: 540)
         .background(AppDesign.workspaceBackground)
     }
 
@@ -78,6 +73,7 @@ struct AppleHealthImportView: View {
             }
             filterBar
             candidateTable
+            flagDetail
             reviewFooter
         }
     }
@@ -132,80 +128,78 @@ struct AppleHealthImportView: View {
     }
 
     private var candidateTable: some View {
-        let layout = columnLayout
-        return GeometryReader { geometry in
-            Table(session.filteredCandidates) {
-                TableColumn("Import") { candidate in
-                    Toggle("", isOn: selectionBinding(for: candidate))
-                        .labelsHidden()
-                        .accessibilityLabel(AppleHealthReviewPresentation.rowAccessibilityLabel(candidate))
-                }
-                .width(min: layout[.selection].minimum,
-                       ideal: layout.width(.selection, availableWidth: geometry.size.width),
-                       max: layout.width(.selection, availableWidth: geometry.size.width))
-
-                TableColumn("Date") { candidate in
-                    Text(AppleHealthReviewPresentation.dateText(candidate.window))
-                }
-                .width(min: layout[.date].minimum,
-                       ideal: layout.width(.date, availableWidth: geometry.size.width),
-                       max: layout.width(.date, availableWidth: geometry.size.width))
-
-                TableColumn("Type") { candidate in
-                    Text(AppleHealthReviewPresentation.activityName(candidate.window.activityType))
-                        .lineLimit(1)
-                }
-                .width(min: layout[.type].minimum,
-                       ideal: layout.width(.type, availableWidth: geometry.size.width),
-                       max: layout.width(.type, availableWidth: geometry.size.width))
-
-                TableColumn("Duration") { candidate in
-                    Text(AppleHealthReviewPresentation.durationText(candidate.window))
-                        .monospacedDigit()
-                }
-                .width(min: layout[.duration].minimum,
-                       ideal: layout.width(.duration, availableWidth: geometry.size.width),
-                       max: layout.width(.duration, availableWidth: geometry.size.width))
-
-                TableColumn("Distance") { candidate in
-                    Text(AppleHealthReviewPresentation.distanceText(candidate))
-                        .monospacedDigit()
-                        .help(AppleHealthReviewPresentation.distanceHelp(candidate))
-                }
-                .width(min: layout[.distance].minimum,
-                       ideal: layout.width(.distance, availableWidth: geometry.size.width),
-                       max: layout.width(.distance, availableWidth: geometry.size.width))
-
-                TableColumn("Route") { candidate in
-                    indicator(AppleHealthReviewPresentation.hasRoute(candidate))
-                        .accessibilityLabel(AppleHealthReviewPresentation.routeAccessibilityLabel(candidate))
-                }
-                .width(min: layout[.route].minimum,
-                       ideal: layout.width(.route, availableWidth: geometry.size.width),
-                       max: layout.width(.route, availableWidth: geometry.size.width))
-
-                TableColumn("HR") { candidate in
-                    indicator(AppleHealthReviewPresentation.hasHeartRate(candidate))
-                        .accessibilityLabel(AppleHealthReviewPresentation.heartRateAccessibilityLabel(candidate))
-                }
-                .width(min: layout[.heartRate].minimum,
-                       ideal: layout.width(.heartRate, availableWidth: geometry.size.width),
-                       max: layout.width(.heartRate, availableWidth: geometry.size.width))
-
-                TableColumn("Flag") { candidate in
-                    Text(AppleHealthReviewPresentation.flagText(candidate) ?? "Ready")
-                        .foregroundStyle(candidate.status == .ready ? Color.secondary : Color.orange)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(AppleHealthReviewPresentation.flagText(candidate) ?? "No duplicates found")
-                }
-                .width(min: layout[.flag].minimum,
-                       ideal: layout.width(.flag, availableWidth: geometry.size.width),
-                       max: .infinity)
+        Table(session.filteredCandidates, selection: $focusedCandidateID) {
+            TableColumn("Import") { candidate in
+                Toggle("", isOn: selectionBinding(for: candidate))
+                    .labelsHidden()
+                    .accessibilityLabel(AppleHealthReviewPresentation.rowAccessibilityLabel(candidate))
             }
-            .font(.system(size: tableFontSize))
-            .tableStyle(.inset(alternatesRowBackgrounds: true))
-            .accessibilityLabel("Apple Health workout candidates")
+            .width(56)
+
+            TableColumn("Date") { candidate in
+                Text(AppleHealthReviewPresentation.dateText(candidate.window))
+                    .font(AppDesign.Typography.compactLabel)
+            }
+            .width(min: 220, ideal: 230, max: 260)
+
+            TableColumn("Type") { candidate in
+                Text(AppleHealthReviewPresentation.activityName(candidate.window.activityType))
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 90, max: 110)
+
+            TableColumn("Duration") { candidate in
+                Text(AppleHealthReviewPresentation.durationText(candidate.window))
+                    .monospacedDigit()
+            }
+            .width(min: 80, ideal: 90, max: 100)
+
+            TableColumn("Distance") { candidate in
+                Text(AppleHealthReviewPresentation.distanceText(candidate))
+                    .monospacedDigit()
+                    .help(AppleHealthReviewPresentation.distanceHelp(candidate))
+            }
+            .width(min: 80, ideal: 90, max: 110)
+
+            TableColumn("Route") { candidate in
+                indicator(AppleHealthReviewPresentation.hasRoute(candidate))
+                    .accessibilityLabel(AppleHealthReviewPresentation.routeAccessibilityLabel(candidate))
+            }
+            .width(52)
+
+            TableColumn("HR") { candidate in
+                indicator(AppleHealthReviewPresentation.hasHeartRate(candidate))
+                    .accessibilityLabel(AppleHealthReviewPresentation.heartRateAccessibilityLabel(candidate))
+            }
+            .width(40)
+
+            TableColumn("Flag") { candidate in
+                if let reason = AppleHealthReviewPresentation.flagText(candidate) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .help(reason)
+                        .accessibilityLabel(reason)
+                }
+            }
+            .width(48)
+        }
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .accessibilityLabel("Apple Health workout candidates")
+    }
+
+    private var flagDetail: some View {
+        let focused = session.filteredCandidates.first { $0.id == focusedCandidateID }
+        return Group {
+            if let text = AppleHealthReviewPresentation.flagDetailText(
+                selectedCandidate: focused, flaggedCount: session.flaggedCount
+            ) {
+                Text(text)
+                    .font(AppDesign.Typography.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.top, AppDesign.Spacing.small)
+            }
         }
     }
 
@@ -213,6 +207,7 @@ struct AppleHealthImportView: View {
         Binding(
             get: { session.selectedIDs.contains(candidate.id) },
             set: { isOn in
+                focusedCandidateID = candidate.id
                 if isOn {
                     session.selectedIDs.insert(candidate.id)
                 } else {
