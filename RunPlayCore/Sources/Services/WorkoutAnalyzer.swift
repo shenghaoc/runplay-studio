@@ -270,7 +270,10 @@ public struct WorkoutAnalyzer: Sendable {
                     warnings.append(.movementEstimatedStoppedTime)
                 }
             }
-            if movementProfile.diagnostics.usedConservativeFallback {
+            // Movement detection judges route points, so the note is about a
+            // route. A workout with none has nothing for it to be unreliable
+            // about, and the note would claim sparse GPS where there is no GPS.
+            if workout.hasRoute, movementProfile.diagnostics.usedConservativeFallback {
                 if !warnings.contains(.movementLowReliability) {
                     warnings.append(.movementLowReliability)
                 }
