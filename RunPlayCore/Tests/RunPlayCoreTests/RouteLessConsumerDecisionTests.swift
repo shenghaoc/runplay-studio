@@ -14,7 +14,8 @@ import XCTest
 /// Expected decisions, all asserted below:
 /// - **include** route-less: training load, trends, longest run (summary distance)
 /// - **exclude** route-less: heatmap, route grouping, distance-window records,
-///   comparison, replay, PNG export, MP4 export, splits, segments
+///   comparison, replay, PNG export, MP4 export, splits, segments, and the
+///   movement-reliability analysis note
 final class RouteLessConsumerDecisionTests: XCTestCase {
 
     private let origin = Date(timeIntervalSince1970: 1_700_000_000)
@@ -258,5 +259,27 @@ final class RouteLessConsumerDecisionTests: XCTestCase {
     func testSegmentsExcludeRouteLessRun() {
         XCTAssertTrue(SegmentDetector.detectSegments(from: routeLessWorkout()).isEmpty)
         XCTAssertFalse(SegmentDetector.detectSegments(from: routedWorkout()).isEmpty)
+    }
+
+    /// An analysis note says what the analyzer could not trust in a *route*. A
+    /// run with no route has none to distrust, so analysing it must not leave a
+    /// "sparse or irregular GPS data" note on a run that never had any GPS.
+    func testAnalysisNotesDoNotClaimUnreliableMovementForRouteLessRun() {
+        var workout = routeLessWorkout()
+        WorkoutAnalyzer().analyze(&workout)
+
+        XCTAssertFalse(workout.analysisWarnings.contains(.movementLowReliability))
+    }
+
+    /// The control for the decision above: a route too sparse for movement
+    /// detection still carries the note, so the rule is "no route, no note",
+    /// not "no note".
+    func testAnalysisNotesStillFlagARouteTooSparseForMovementDetection() {
+        var workout = routedWorkout()
+        workout.routePoints = Array(workout.routePoints.prefix(1))
+        WorkoutAnalyzer().analyze(&workout)
+
+        XCTAssertTrue(workout.hasRoute)
+        XCTAssertTrue(workout.analysisWarnings.contains(.movementLowReliability))
     }
 }
