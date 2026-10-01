@@ -71,6 +71,9 @@ struct SplitTableView: View {
                 )
             }
         }
+        // A table fills the width, but a message alone is only as wide as its
+        // text and would be centred by the tab's frame, away from its header.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var showsModeSelector: Bool {
