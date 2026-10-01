@@ -2516,13 +2516,15 @@ Use the ad-hoc-signed bundle produced by `scripts/assemble-app-bundle.sh`, not
 `swift run` or a test-process hosting view. Keep this pass in a disposable
 library. The checks below use synthetic archives so screenshots or issue
 attachments contain no private health data.
-The assembly script does not sign; ad-hoc signing is a separate local step:
+The assembly script does not sign; ad-hoc signing is a separate local step. The
+script accepts only an output path that ends in `RunPlayStudio.app`, so the
+bundle goes inside a scratch folder:
 
 ```bash
-./scripts/assemble-app-bundle.sh --output /tmp/RunPlayStudio-HealthGUI.app
-codesign --force --sign - /tmp/RunPlayStudio-HealthGUI.app
-codesign --verify --strict /tmp/RunPlayStudio-HealthGUI.app
-open -n --env RUNPLAY_LIBRARY_ROOT=/tmp/runplay-health-gui-check -a /tmp/RunPlayStudio-HealthGUI.app
+./scripts/assemble-app-bundle.sh --output /tmp/RunPlayStudio-HealthGUI/RunPlayStudio.app
+codesign --force --sign - /tmp/RunPlayStudio-HealthGUI/RunPlayStudio.app
+codesign --verify --strict /tmp/RunPlayStudio-HealthGUI/RunPlayStudio.app
+open -n --env RUNPLAY_LIBRARY_ROOT=/tmp/runplay-health-gui-check -a /tmp/RunPlayStudio-HealthGUI/RunPlayStudio.app
 ```
 
 Choose a fresh scratch-library path for `RUNPLAY_LIBRARY_ROOT` and delete that
