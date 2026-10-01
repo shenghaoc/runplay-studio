@@ -134,6 +134,7 @@
 - [x] Window state persistence across relaunches
 
 ### Phase: Expanded Import
+- [x] Apple Health review/report headings preserve independent control labels and roles
 - [x] Apple Health review uses warning icons for flagged rows; full reasons remain in help, row accessibility labels and a wrapping focused-row detail line
 - [x] Apple Health export candidate policy: running-only, including route-less indoor/treadmill runs; excluded activity counts in review and import reports; overlap flags computed after filtering
 - [x] Strava export (.zip) importer

@@ -2484,3 +2484,5 @@ VoiceOver were not exercised in this pass.
 Dynamic Type / larger text: **not applicable on macOS** for this view. Restore any system Text Size preference changed during verification to its original value.
 
 - [ ] Read a warning icon's full help text and focus its row with the keyboard. Verify VoiceOver reads the full reason, activity, duration, distance provenance, route and heart-rate status.
+
+- [ ] In Accessibility Inspector, verify the Apple Health title and report headline are headings; Cancel, filters, row checkboxes, import, Details, Done and View Imported Run keep their own control names and roles. Confirm VoiceOver actually speaks the header, Cancel, a flagged row with its full reason, and the import button. Restore VoiceOver and keyboard settings afterwards.
