@@ -474,26 +474,32 @@ public actor AppleHealthImportService {
     ///
     /// The distance is the export's reported total and says so, because nothing
     /// here measured it; the duration is the window the export gave the workout.
+    ///
+    /// Only those two reported totals go in. The analyzer's route-less path
+    /// turns them into the summary — active and moving time, pace and
+    /// `.sourceReported` provenance — and adds average and maximum heart rate
+    /// from the workout's single heart-rate accessor, so no part of the summary
+    /// is built by hand here.
     private static func routeLessWorkout(
         for candidate: AppleHealthWorkoutCandidate
     ) -> RunWorkout {
         let elapsed = Double(max(0, candidate.window.endSeconds - candidate.window.startSeconds))
 
-        var summary = RunSummary()
-        summary.totalDistanceMeters = max(0, candidate.sourceDistanceMeters ?? 0)
-        summary.totalElapsedSeconds = elapsed
-        summary.totalActiveSeconds = elapsed
-        summary.distanceProvenance = .sourceReported
+        var reported = RunSummary()
+        reported.totalDistanceMeters = max(0, candidate.sourceDistanceMeters ?? 0)
+        reported.totalElapsedSeconds = elapsed
 
-        return RunWorkout(
+        var workout = RunWorkout(
             metadata: Self.metadata(for: candidate),
             source: .healthKit,
             routePoints: [],
-            summary: summary,
+            summary: reported,
             analysisVersion: RunWorkout.currentAnalysisVersion,
             importProvenance: Self.provenance(for: candidate, contentSHA256: nil),
             heartRateSeries: Self.heartRateSeries(for: candidate, routePoints: [])
         )
+        WorkoutAnalyzer().analyze(&workout)
+        return workout
     }
 
     /// A workout built from the GPX file the export names.
@@ -523,7 +529,7 @@ public actor AppleHealthImportService {
         var wasTrimmed = false
         switch AppleHealthRouteWindowPolicy.decision(for: workout.routePoints, window: candidate.window) {
         case .keep:
-            break // Preserve the ordinary GPX route and summary byte for byte.
+            break // The ordinary GPX route is kept; see the analysis below.
         case .mismatch:
             return BuiltWorkout(
                 workout: routeLessWorkout(for: candidate),
@@ -535,9 +541,6 @@ public actor AppleHealthImportService {
             // The new first point has no preceding interval in this route.
             workout.routePoints[0].speedMetersPerSecond = nil
             workout.routePoints[0].paceSecondsPerKilometer = nil
-            try WorkoutAnalyzer().normalizeAndAnalyze(
-                &workout, distancePolicy: .computeFromCoordinates, isCancelled: isCancelled
-            )
             wasTrimmed = true
         }
         workout.source = .healthKit
@@ -546,6 +549,22 @@ public actor AppleHealthImportService {
             for: candidate,
             routePoints: workout.routePoints
         )
+
+        // The GPX file holds no heart rate, so the importer's own analysis built
+        // this summary without any. Analyse again now that the series is
+        // attached, and the summary and training load read it through the
+        // analyzer's single heart-rate accessor. A trimmed route needs its
+        // geometry analysed again anyway. A kept route is analysed again only
+        // when there is heart rate to add, so one without any stays exactly
+        // what the ordinary GPX import produced.
+        if wasTrimmed {
+            try WorkoutAnalyzer().normalizeAndAnalyze(
+                &workout, distancePolicy: .computeFromCoordinates, isCancelled: isCancelled
+            )
+        } else if workout.heartRateSeries != nil {
+            WorkoutAnalyzer().analyze(&workout)
+            if isCancelled() { throw CancellationError() }
+        }
         return BuiltWorkout(workout: workout, routeFailure: nil, wasTrimmed: wasTrimmed)
     }
 
