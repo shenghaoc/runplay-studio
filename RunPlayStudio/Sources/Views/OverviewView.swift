@@ -26,13 +26,23 @@ struct OverviewView: View {
     var highlightedRangeMeters: ClosedRange<Double>? = nil
 
     var body: some View {
-        MapReferenceView(
-            routePoints: workout.routePoints,
-            currentPointIndex: currentPointIndex,
-            mapViewModel: mapViewModel,
-            displayMode: displayMode,
-            highlightedRangeMeters: highlightedRangeMeters
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if workout.hasRoute {
+            MapReferenceView(
+                routePoints: workout.routePoints,
+                currentPointIndex: currentPointIndex,
+                mapViewModel: mapViewModel,
+                displayMode: displayMode,
+                highlightedRangeMeters: highlightedRangeMeters
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            // A map with nothing to draw is a blank canvas, not an answer.
+            ContentUnavailableView {
+                Label(RouteLessNoticePresentation.mapTitle, systemImage: "location.slash")
+            } description: {
+                Text(RouteLessNoticePresentation.mapDetail(hasHeartRate: workout.hasHeartRateData))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
