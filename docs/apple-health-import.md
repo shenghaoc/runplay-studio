@@ -60,11 +60,28 @@ Each route is checked independently against its workout's absolute time window:
 A run without a route retains source-reported distance when present, duration
 from its workout window, joined HR and the recorded UTC offset. Its summary
 records `.sourceReported` provenance. The app invents no route or kilometre
-splits. Route-less runs offer summary metrics and a time-domain HR chart when
-samples exist; the map shows an explicit no-GPS state and distance splits and
-segments are unavailable. They participate in Trends and Training Load, and
+splits. Route-less runs participate in Trends and Training Load, and
 longest-run records use summary distance. Heatmap, route grouping,
 distance-window records, comparison and replay exclude them.
+
+Heart rate is read through the workout's single accessor, wherever it lives. The
+summary's average and maximum, the run header and the sidebar row therefore show
+it for any run that has readings, and show nothing, not zero, for a run that has
+none. The run detail presents it according to whether the run has a route:
+
+- **A route-less run.** The header labels the distance "Distance from Apple
+  Health (no GPS route)", so a figure the app did not measure is not read as one
+  it did. A banner above the tabs, and the Overview in place of a map, say there
+  is no GPS route. **Charts** opens on Heart Rate and charts the readings over
+  elapsed time; there is no distance to plot them against, so the other metrics
+  have no data. **Splits** says that splits need a GPS route and shows no table,
+  and **Segments** lists none.
+- **A routed run.** Its route GPX holds no heart rate, so the readings come from
+  the Health series. The Heart Rate chart stays on the distance axis: each route
+  point takes the reading that applies at its own timestamp, held until the next
+  as replay and the scrub readout hold it, and drawn as steps. Nothing is
+  interpolated or smoothed, because an average of two readings is a value Health
+  never reported. A GPS-derived distance carries no provenance label.
 
 PNG export can produce a metrics-only card without a map; MP4 replay requires
 a usable route and explains its absence. Library JSON snapshots retain the summary provenance.
