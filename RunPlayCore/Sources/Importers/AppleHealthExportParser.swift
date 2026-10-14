@@ -21,7 +21,19 @@ public enum AppleHealthExportError: Error, Equatable, LocalizedError, Sendable {
     case dtdSuppliesValue(String)
 
     /// `XMLParser` reported a failure and no more specific cause was known.
+    ///
+    /// Raised whenever the parser reports an error, even when `parse()` itself
+    /// returned true: corelibs builds its parser in libxml2's recovery mode,
+    /// which can report success for a document it had to repair.
     case malformedDocument(String)
+
+    /// Reading the document failed partway, so what was read is not the whole
+    /// export.
+    ///
+    /// Taken from the stream's own report, not from `XMLParser`: Apple's parser
+    /// reports a generic parse error, or none, in place of a stream's error,
+    /// so its verdict alone would call a read failure a malformed document.
+    case readFailed(String)
 
     /// The export contained no `HealthData` root element, so it is not the
     /// document this parser reads.
@@ -53,6 +65,8 @@ public enum AppleHealthExportError: Error, Equatable, LocalizedError, Sendable {
             return message
         case .malformedDocument(let detail):
             return "This Apple Health export could not be read. \(detail)"
+        case .readFailed(let detail):
+            return "This Apple Health export could not be read to the end. \(detail)"
         case .notAHealthExport:
             return "This file is not an Apple Health export. "
                 + "Export your data from the Health app and try again."
@@ -359,10 +373,12 @@ public struct AppleHealthExportParser: Sendable {
     /// factory also keeps every test here executable on Linux against a generated
     /// document, with no fixture files and no ZIP reader involved.
     ///
-    /// Each stream is wrapped in `DTDStrippingInputStream`. `policyViolation` is
-    /// checked before `XMLParser`'s own error is trusted, because after a
-    /// violation the parser sees a truncated document and would report a
-    /// misleading failure.
+    /// Each stream is wrapped in `DTDStrippingInputStream`.
+    /// `parse()` returning true is not taken as the verdict: each pass
+    /// checks, in order, the elider's policy violation, cancellation, the
+    /// ceiling refusal, a failed read, and then any error the parser reported,
+    /// because every earlier cause can leave the parser reporting a misleading
+    /// failure of its own.
     public func parse(
         openStream: () throws -> InputStream,
         isCancelled: @Sendable () -> Bool = { false }
@@ -397,6 +413,8 @@ public struct AppleHealthExportParser: Sendable {
         // that is what makes pass two cheaper in memory rather than merely
         // slower. Measured on the real export: 65,828 of 871,413 readings
         // (7.6%) land inside a window, about 1.6 MB against 48 MB.
+        // A filtered pass that exceeds the ceiling again is refused inside
+        // `runPass`, which stops parsing as soon as the refusal is certain.
         let windows = first.scan.workouts.map(\.window)
         let second = try runPass(
             openStream: openStream,
@@ -404,14 +422,6 @@ public struct AppleHealthExportParser: Sendable {
             windowFilter: windows,
             isCancelled: isCancelled
         )
-
-        guard !second.releasedByCeiling else {
-            // Even filtered retention exceeded the ceiling, so no bounded pass
-            // can succeed. This is a refusal, not another retry.
-            throw AppleHealthExportError.heartRateCeilingExceededEvenWhenFiltered(
-                ceiling: heartRateCeiling
-            )
-        }
 
         var scan = second.scan
         scan.passCount = 2
@@ -478,19 +488,44 @@ public struct AppleHealthExportParser: Sendable {
 
         let parsed = parser.parse()
 
-        guard !isCancelled() else { throw CancellationError() }
-
-        // Check the elider's verdict before the parser's. After a policy
-        // violation the elider stops feeding bytes, so the parser reports a
-        // truncated-document error that says nothing about the real cause.
+        // `parse()` alone is not the verdict. The causes are checked in this
+        // order, each before the parser's own error, because each can leave
+        // that error set and misleading.
+        //
+        // 1. The elider's verdict. After a policy violation the elider stops
+        //    feeding bytes, so the parser reports a truncated-document error
+        //    that says nothing about the real cause.
         if let violation = elider?.policyViolation {
             throw AppleHealthExportError.dtdSuppliesValue(violation.description)
         }
 
+        // 2. Cancellation.
+        guard !isCancelled() else { throw CancellationError() }
+
+        // 3. The ceiling refusal. A filtered pass that reached the ceiling
+        //    stopped itself with `abortParsing()`, which sets `parserError`.
+        if windowFilter != nil, delegate.releasedByCeiling {
+            throw AppleHealthExportError.heartRateCeilingExceededEvenWhenFiltered(
+                ceiling: heartRateCeiling
+            )
+        }
+
+        // 4. A failed read, named as itself: Apple's parser reports a generic
+        //    parse error, or none, in place of the stream's error.
+        let readFailure = elider?.readFailure
+            ?? (input.streamStatus == .error ? input.streamError : nil)
+        if let readFailure {
+            throw AppleHealthExportError.readFailed(readFailure.localizedDescription)
+        }
+
+        // 5. Any parser error, even when `parse()` returned true: corelibs
+        //    builds its parser in libxml2's recovery mode, which can report
+        //    success for a document it had to repair.
+        if let parserError = parser.parserError {
+            throw AppleHealthExportError.malformedDocument(parserError.localizedDescription)
+        }
         guard parsed else {
-            let detail = parser.parserError.map { $0.localizedDescription }
-                ?? "The document ended unexpectedly."
-            throw AppleHealthExportError.malformedDocument(detail)
+            throw AppleHealthExportError.malformedDocument("The document ended unexpectedly.")
         }
 
         guard delegate.sawHealthData else {
@@ -551,11 +586,15 @@ private final class Delegate: NSObject, XMLParserDelegate {
     private var ignoredNonHeartRateRecords: [String: Int] = [:]
     private var droppedWorkoutCount = 0
 
+    /// True on the filtered second pass, where reaching the ceiling is final.
+    private let isFilteredPass: Bool
+
     init(
         windowFilter: [AppleHealthWorkoutWindow]?,
         heartRateCeiling: Int
     ) {
         index = AppleHealthHeartRateIndex(sampleCountCeiling: heartRateCeiling)
+        isFilteredPass = windowFilter != nil
         super.init()
         if let windows = windowFilter {
             // A second pass restricts retention to readings that overlap a
@@ -689,6 +728,12 @@ private final class Delegate: NSObject, XMLParserDelegate {
             heartRateRecordCount += 1
             guard let reading = Self.reading(from: attributeDict) else { return }
             index.append(reading)
+            // A filtered pass that reaches the ceiling has its answer, a
+            // refusal, so the rest of the document is not parsed. `runPass`
+            // reports the refusal ahead of the error `abortParsing()` sets.
+            if isFilteredPass, index.releasedByCeiling {
+                parser.abortParsing()
+            }
 
         default:
             break
