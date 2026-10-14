@@ -227,14 +227,18 @@ struct AppleHealthHeartRateIndex: Sendable {
     ///
     /// Sorting is what makes the range query a binary search rather than a
     /// scan, and it is required because the source order is not chronological
-    /// (see the type comment). Ties break on duration so the result is
-    /// deterministic for a given input regardless of Swift's sort stability.
+    /// (see the type comment). Ties break on duration and then on the rate, in
+    /// IEEE total order, so distinct readings always land in one order and the
+    /// result does not depend on Swift's sort stability.
     mutating func finalize() -> AppleHealthHeartRateLookup {
         readings.sort { lhs, rhs in
             if lhs.startSeconds != rhs.startSeconds {
                 return lhs.startSeconds < rhs.startSeconds
             }
-            return lhs.durationSeconds < rhs.durationSeconds
+            if lhs.durationSeconds != rhs.durationSeconds {
+                return lhs.durationSeconds < rhs.durationSeconds
+            }
+            return !rhs.beatsPerMinute.isTotallyOrdered(belowOrEqualTo: lhs.beatsPerMinute)
         }
         return AppleHealthHeartRateLookup(
             readings: readings,

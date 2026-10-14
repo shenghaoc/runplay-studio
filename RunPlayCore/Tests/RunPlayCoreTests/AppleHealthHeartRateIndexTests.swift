@@ -225,4 +225,18 @@ final class AppleHealthHeartRateIndexTests: XCTestCase {
         XCTAssertEqual(index.offeredCount, 5)
         XCTAssertEqual(index.finalize().count, 0)
     }
+
+    func testFinalizeOrdersEqualSpansByRateWhateverTheInsertionOrder() {
+        let low = reading(at: 10, duration: 5, bpm: 120)
+        let high = reading(at: 10, duration: 5, bpm: 150)
+        var highFirst = AppleHealthHeartRateIndex(sampleCountCeiling: 10)
+        highFirst.append(high)
+        highFirst.append(low)
+        var lowFirst = AppleHealthHeartRateIndex(sampleCountCeiling: 10)
+        lowFirst.append(low)
+        lowFirst.append(high)
+
+        XCTAssertEqual(highFirst.finalize().allReadings, [low, high])
+        XCTAssertEqual(lowFirst.finalize().allReadings, [low, high])
+    }
 }
