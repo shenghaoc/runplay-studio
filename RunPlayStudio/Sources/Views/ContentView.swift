@@ -222,7 +222,7 @@ struct ContentView: View {
         .alert("RunPlay Studio", isPresented: $appState.showingError) {
             Button("Got it") { appState.errorMessage = nil }
         } message: {
-            Text(appState.errorMessage ?? "Something went wrong. Please try again.")
+            Text(appState.errorMessage ?? studioLocalized("Something went wrong. Please try again."))
         }
         .task {
             await sessionController.startIfNeeded()

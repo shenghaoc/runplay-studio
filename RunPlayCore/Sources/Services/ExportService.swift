@@ -36,10 +36,10 @@ public enum ExportError: Error, LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .noData: return "No workout data to export"
-        case .encodingFailed(let detail): return "Encoding failed: \(detail)"
-        case .fileWriteFailed(let detail): return "File write failed: \(detail)"
-        case .renderingFailed(let detail): return "Rendering failed: \(detail)"
+        case .noData: return coreLocalized("No workout data to export")
+        case .encodingFailed(let detail): return coreLocalized("Encoding failed: \(detail)")
+        case .fileWriteFailed(let detail): return coreLocalized("File write failed: \(detail)")
+        case .renderingFailed(let detail): return coreLocalized("Rendering failed: \(detail)")
         }
     }
 }
@@ -87,7 +87,7 @@ public struct ExportService: Sendable {
     public func exportSplitsCSV(workout: RunWorkout) throws -> ExportResult {
         let csv = generateSplitsCSV(workout: workout)
         guard let data = csv.data(using: .utf8) else {
-            throw ExportError.encodingFailed("Could not encode CSV as UTF-8")
+            throw ExportError.encodingFailed(coreLocalized("Could not encode CSV as UTF-8"))
         }
         let filename = ExportFilenameBuilder.filename(for: workout, format: .splitsCSV)
         return ExportResult(format: .splitsCSV, filename: filename, data: data)
@@ -97,7 +97,7 @@ public struct ExportService: Sendable {
     public func exportRecordedLapsCSV(workout: RunWorkout) throws -> ExportResult {
         let csv = generateRecordedLapsCSV(workout: workout)
         guard let data = csv.data(using: .utf8) else {
-            throw ExportError.encodingFailed("Could not encode CSV as UTF-8")
+            throw ExportError.encodingFailed(coreLocalized("Could not encode CSV as UTF-8"))
         }
         let filename = ExportFilenameBuilder.filename(
             for: workout,
@@ -111,7 +111,7 @@ public struct ExportService: Sendable {
     public func exportSegmentsCSV(segments: [SegmentHighlight]) throws -> ExportResult {
         let csv = generateSegmentsCSV(segments: segments)
         guard let data = csv.data(using: .utf8) else {
-            throw ExportError.encodingFailed("Could not encode CSV as UTF-8")
+            throw ExportError.encodingFailed(coreLocalized("Could not encode CSV as UTF-8"))
         }
         let filename = ExportFilenameBuilder.filename(for: nil, format: .segmentsCSV)
         return ExportResult(format: .segmentsCSV, filename: filename, data: data)
@@ -121,7 +121,7 @@ public struct ExportService: Sendable {
     public func exportCombinedCSV(workout: RunWorkout, segments: [SegmentHighlight]) throws -> ExportResult {
         let csv = generateCombinedCSV(workout: workout, segments: segments)
         guard let data = csv.data(using: .utf8) else {
-            throw ExportError.encodingFailed("Could not encode CSV as UTF-8")
+            throw ExportError.encodingFailed(coreLocalized("Could not encode CSV as UTF-8"))
         }
         let filename = ExportFilenameBuilder.filename(for: workout, format: .combinedCSV)
         return ExportResult(format: .combinedCSV, filename: filename, data: data)

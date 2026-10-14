@@ -139,8 +139,12 @@ final class PNGSummaryExportViewModel: Identifiable {
     }
 
     func previewAccessibilityLabel() -> String {
-        let mapPart = configuration.includeMap && hasUsableRoute ? "map included" : "metrics only"
-        return "\(workout.displayName), \(configuration.appearance.displayName) appearance, \(mapPart), \(configuration.routeColorMode.displayName) route color"
+        let appearance = configuration.appearance.displayName
+        let routeColor = configuration.routeColorMode.displayName
+        if configuration.includeMap && hasUsableRoute {
+            return studioLocalized("\(workout.displayName), \(appearance) appearance, map included, \(routeColor) route color")
+        }
+        return studioLocalized("\(workout.displayName), \(appearance) appearance, metrics only, \(routeColor) route color")
     }
 
     // MARK: - Generation

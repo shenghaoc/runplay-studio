@@ -58,6 +58,13 @@ public enum WorkoutArchiveMetadataApplier {
 /// Builds candidates from metadata rows and archive entry inventory.
 public enum WorkoutArchiveCandidateBuilder {
 
+    /// Status detail for a provider activity ID that repeats within one
+    /// archive, in the app's language. Importers that must recognise this
+    /// duplicate compare against it rather than against English text.
+    public static var duplicateProviderActivityIDWithinArchiveDetail: String {
+        coreLocalized("Duplicate provider activity ID within archive")
+    }
+
     public static func buildCandidates(
         metadataRows: [StravaActivityMetadataRow],
         entryPaths: [String],
@@ -78,7 +85,7 @@ public enum WorkoutArchiveCandidateBuilder {
         if !metadataRows.isEmpty {
             for row in metadataRows {
                 if candidates.count >= policy.maxCandidateActivityCount {
-                    warnings.append("Candidate activity limit reached; remaining rows skipped.")
+                    warnings.append(coreLocalized("Candidate activity limit reached; remaining rows skipped."))
                     break
                 }
 
@@ -107,26 +114,26 @@ public enum WorkoutArchiveCandidateBuilder {
                 case .ambiguous:
                     archivePath = row.filename ?? ""
                     status = .unsafeArchiveEntry
-                    detail = "Ambiguous path match for activity file"
+                    detail = coreLocalized("Ambiguous path match for activity file")
                 case .none:
                     if let filename = row.filename, !filename.isEmpty {
                         archivePath = filename
                         format = WorkoutArchiveActivityFormat.detect(fromPath: filename)
                         status = .missingActivityFile
-                        detail = "Activity file not found in archive"
+                        detail = coreLocalized("Activity file not found in archive")
                     } else {
                         archivePath = ""
                         status = .missingActivityFile
                         detail = hasFilenameColumn
-                            ? "No filename for activity"
-                            : "No filename column; activity file not mapped"
+                            ? coreLocalized("No filename for activity")
+                            : coreLocalized("No filename column; activity file not mapped")
                     }
                 }
 
                 if status == .ready {
                     if format == .unsupported {
                         status = .unsupportedFormat
-                        detail = "Unsupported activity file format"
+                        detail = coreLocalized("Unsupported activity file format")
                     }
                 }
 
@@ -137,22 +144,26 @@ public enum WorkoutArchiveCandidateBuilder {
                         break
                     case .unsupported:
                         status = .unsupportedActivityType
-                        detail = "Activity type “\(row.activityType ?? "unknown")” is not a running activity"
+                        if let activityType = row.activityType {
+                            detail = coreLocalized("Activity type “\(activityType)” is not a running activity")
+                        } else {
+                            detail = coreLocalized("Activity type “unknown” is not a running activity")
+                        }
                     case .unknown:
                         status = .unsupportedActivityType
-                        detail = "Unknown activity type “\(row.activityType ?? "")”"
+                        detail = coreLocalized("Unknown activity type “\(row.activityType ?? "")”")
                     }
                 }
 
                 if let pid = row.activityID, !pid.isEmpty {
                     if !seenProviderIDs.insert(pid).inserted {
                         status = .duplicate
-                        detail = "Duplicate provider activity ID within archive"
+                        detail = duplicateProviderActivityIDWithinArchiveDetail
                     } else if existingByProviderID[pid] != nil {
                         // Scan-time: treat matching provider IDs as duplicates.
                         // Import-time refineStatus distinguishes providerConflict via content hash.
                         status = .duplicate
-                        detail = "Already imported (provider activity ID)"
+                        detail = coreLocalized("Already imported (provider activity ID)")
                     }
                 }
 
@@ -160,17 +171,17 @@ public enum WorkoutArchiveCandidateBuilder {
                 if status == .ready || status == .possibleDuplicate {
                     if let c = compressed, c > policy.maxCompressedEntryBytes {
                         status = .exceedsResourceLimit
-                        detail = "Compressed entry exceeds size limit"
+                        detail = coreLocalized("Compressed entry exceeds size limit")
                     }
                     if let u = uncompressed, u > policy.maxUncompressedEntryBytes {
                         status = .exceedsResourceLimit
-                        detail = "Declared uncompressed size exceeds limit"
+                        detail = coreLocalized("Declared uncompressed size exceeds limit")
                     }
                     if let c = compressed, c > 0, let u = uncompressed, u > 0 {
                         let ratio = Double(u) / Double(c)
                         if ratio > policy.maxCompressionRatio {
                             status = .exceedsResourceLimit
-                            detail = "Implausible compression ratio"
+                            detail = coreLocalized("Implausible compression ratio")
                         }
                     }
                 }
@@ -255,20 +266,20 @@ public enum WorkoutArchiveCandidateBuilder {
     ) -> (WorkoutArchiveCandidateStatus, String?) {
         let hash = contentSHA256.lowercased()
         if !seenHashesInBatch.insert(hash).inserted {
-            return (.duplicate, "Duplicate content within this import batch")
+            return (.duplicate, coreLocalized("Duplicate content within this import batch"))
         }
         for workout in existingWorkouts {
             let prov = workout.importProvenance
             if let existingHash = prov?.contentSHA256?.lowercased(), existingHash == hash {
-                return (.duplicate, "Already imported (identical file content)")
+                return (.duplicate, coreLocalized("Already imported (identical file content)"))
             }
             if let pid = candidate.providerActivityID,
                let existingPID = prov?.providerActivityID,
                existingPID == pid {
                 if let existingHash = prov?.contentSHA256?.lowercased(), existingHash != hash {
-                    return (.providerConflict, "Same activity ID with different content; delete the existing workout first")
+                    return (.providerConflict, coreLocalized("Same activity ID with different content; delete the existing workout first"))
                 }
-                return (.duplicate, "Already imported (provider activity ID)")
+                return (.duplicate, coreLocalized("Already imported (provider activity ID)"))
             }
         }
         return (candidate.status, candidate.statusDetail)

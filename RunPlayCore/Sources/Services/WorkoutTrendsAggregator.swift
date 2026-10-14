@@ -1,5 +1,47 @@
 import Foundation
 
+/// How weeks are delimited for weekly Trends buckets: the first weekday and
+/// the minimum number of days a year's first week must contain.
+///
+/// ISO 8601 (Monday, four days) is the default. The app passes the user's
+/// convention — the locale's (CLDR week data), or the first weekday chosen in
+/// System Settings — so weeks start on Sunday in the United States and in
+/// Chinese locales and on Monday in most of Europe.
+public struct WorkoutTrendsWeekConvention: Hashable, Sendable {
+    /// 1 is Sunday, 2 is Monday, … 7 is Saturday (`Calendar.firstWeekday`).
+    public let firstWeekday: Int
+    /// 1…7 (`Calendar.minimumDaysInFirstWeek`).
+    public let minimumDaysInFirstWeek: Int
+
+    public init(firstWeekday: Int, minimumDaysInFirstWeek: Int) {
+        self.firstWeekday = min(max(firstWeekday, 1), 7)
+        self.minimumDaysInFirstWeek = min(max(minimumDaysInFirstWeek, 1), 7)
+    }
+
+    /// ISO 8601 weeks: Monday start, first week holds at least four days.
+    public static let iso8601 = WorkoutTrendsWeekConvention(firstWeekday: 2, minimumDaysInFirstWeek: 4)
+
+    /// The convention a calendar already carries — `Calendar.autoupdatingCurrent`
+    /// in the app, which includes the user's first-weekday preference.
+    public init(calendar: Calendar) {
+        self.init(
+            firstWeekday: calendar.firstWeekday,
+            minimumDaysInFirstWeek: calendar.minimumDaysInFirstWeek
+        )
+    }
+
+    /// The Gregorian calendar the buckets use, in `timeZone`.
+    func calendar(in timeZone: TimeZone) -> Calendar {
+        var calendar = self == .iso8601
+            ? Calendar(identifier: .iso8601)
+            : Calendar(identifier: .gregorian)
+        calendar.firstWeekday = firstWeekday
+        calendar.minimumDaysInFirstWeek = minimumDaysInFirstWeek
+        calendar.timeZone = timeZone
+        return calendar
+    }
+}
+
 /// Deterministic bucketing of Trends summary rows.
 ///
 /// Bucketing rules:
@@ -9,9 +51,10 @@ import Foundation
 ///   boundary counts entirely in its start period.
 /// - The local date is resolved in the run's recorded UTC offset when the
 ///   source format carried one; otherwise in the caller's fallback zone.
-/// - Weeks are ISO 8601 (Monday start; the key's year is the ISO week-date
-///   year). Months and years use Gregorian boundaries, which the ISO calendar
-///   shares.
+/// - Weeks follow a `WorkoutTrendsWeekConvention` — ISO 8601 by default
+///   (Monday start; the key's year is the week-date year), the user's
+///   locale convention in the app. Months and years use Gregorian
+///   boundaries under every convention.
 /// - Month-count ranges include whole periods only: the anchor instant
 ///   `now - N months` (display zone) resolves to its period and periods with a
 ///   nominal key at or after that anchor's key are included. `allTime` starts
@@ -42,10 +85,10 @@ public enum WorkoutTrendsAggregator {
     public static func periodKey(
         for date: Date,
         period: WorkoutTrendsPeriod,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        weekConvention: WorkoutTrendsWeekConvention = .iso8601
     ) -> WorkoutTrendsPeriodKey {
-        var calendar = Calendar(identifier: .iso8601)
-        calendar.timeZone = timeZone
+        let calendar = weekConvention.calendar(in: timeZone)
         switch period {
         case .week:
             let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
@@ -73,10 +116,10 @@ public enum WorkoutTrendsAggregator {
     /// Absolute interval of a nominal key in a zone.
     public static func periodBounds(
         for key: WorkoutTrendsPeriodKey,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        weekConvention: WorkoutTrendsWeekConvention = .iso8601
     ) -> (start: Date, end: Date) {
-        var calendar = Calendar(identifier: .iso8601)
-        calendar.timeZone = timeZone
+        let calendar = weekConvention.calendar(in: timeZone)
         var components = DateComponents()
         switch key.kind {
         case .week:
@@ -108,13 +151,13 @@ public enum WorkoutTrendsAggregator {
         now: Date,
         period: WorkoutTrendsPeriod,
         range: WorkoutTrendsRange,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        weekConvention: WorkoutTrendsWeekConvention = .iso8601
     ) -> WorkoutTrendsPeriodKey? {
         guard let monthCount = range.monthCount else { return nil }
-        var calendar = Calendar(identifier: .iso8601)
-        calendar.timeZone = timeZone
+        let calendar = weekConvention.calendar(in: timeZone)
         let anchorDate = calendar.date(byAdding: .month, value: -monthCount, to: now) ?? now
-        return periodKey(for: anchorDate, period: period, timeZone: timeZone)
+        return periodKey(for: anchorDate, period: period, timeZone: timeZone, weekConvention: weekConvention)
     }
 
     /// Buckets rows into a contiguous period series.
@@ -129,10 +172,22 @@ public enum WorkoutTrendsAggregator {
         range: WorkoutTrendsRange,
         now: Date,
         displayTimeZone: TimeZone,
-        fallbackBucketingTimeZone: TimeZone
+        fallbackBucketingTimeZone: TimeZone,
+        weekConvention: WorkoutTrendsWeekConvention = .iso8601
     ) -> WorkoutTrendsAggregation {
-        let currentKey = periodKey(for: now, period: period, timeZone: displayTimeZone)
-        let anchor = anchorKey(now: now, period: period, range: range, timeZone: displayTimeZone)
+        let currentKey = periodKey(
+            for: now,
+            period: period,
+            timeZone: displayTimeZone,
+            weekConvention: weekConvention
+        )
+        let anchor = anchorKey(
+            now: now,
+            period: period,
+            range: range,
+            timeZone: displayTimeZone,
+            weekConvention: weekConvention
+        )
 
         struct Accumulator {
             var runCount = 0
@@ -157,7 +212,7 @@ public enum WorkoutTrendsAggregator {
                 recordedUTCOffsetSeconds: row.recordedUTCOffsetSeconds,
                 fallback: fallbackBucketingTimeZone
             )
-            let key = periodKey(for: row.startDate, period: period, timeZone: zone)
+            let key = periodKey(for: row.startDate, period: period, timeZone: zone, weekConvention: weekConvention)
             if let anchor, key < anchor {
                 outOfWindow += 1
                 continue
@@ -196,7 +251,7 @@ public enum WorkoutTrendsAggregator {
         // window entirely. Such rows are counted in `outOfWindowRunCount`,
         // never silently dropped.
         let newestRowKey = accumulators.keys.max()
-        let periodAfterCurrent = nextKey(after: currentKey)
+        let periodAfterCurrent = nextKey(after: currentKey, weekConvention: weekConvention)
         let windowEnd: WorkoutTrendsPeriodKey
         if let newestRowKey, newestRowKey > currentKey, newestRowKey <= periodAfterCurrent {
             windowEnd = newestRowKey
@@ -219,7 +274,7 @@ public enum WorkoutTrendsAggregator {
         while keys.count < maximumRenderedPeriods {
             keys.append(cursor)
             if cursor <= windowStart { break }
-            let previous = previousKey(before: cursor)
+            let previous = previousKey(before: cursor, weekConvention: weekConvention)
             // `previousKey` returns its argument when the component domain
             // cannot go lower; stop rather than repeat a key.
             if previous >= cursor { break }
@@ -337,9 +392,11 @@ public enum WorkoutTrendsAggregator {
     /// The nominal key following `key` within its kind. Ascends by one unit;
     /// when addition overflows the component domain this returns `key` itself,
     /// which stops enumeration safely.
-    static func nextKey(after key: WorkoutTrendsPeriodKey) -> WorkoutTrendsPeriodKey {
-        var calendar = Calendar(identifier: .iso8601)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    static func nextKey(
+        after key: WorkoutTrendsPeriodKey,
+        weekConvention: WorkoutTrendsWeekConvention = .iso8601
+    ) -> WorkoutTrendsPeriodKey {
+        let calendar = weekConvention.calendar(in: TimeZone(secondsFromGMT: 0)!)
         var components = DateComponents()
         switch key.kind {
         case .week:
@@ -362,15 +419,17 @@ public enum WorkoutTrendsAggregator {
         case .year: unit = .year
         }
         guard let next = calendar.date(byAdding: unit, value: 1, to: start) else { return key }
-        return periodKey(for: next, period: key.kind, timeZone: calendar.timeZone)
+        return periodKey(for: next, period: key.kind, timeZone: calendar.timeZone, weekConvention: weekConvention)
     }
 
     /// The nominal key preceding `key` within its kind. Descends by one unit;
     /// when subtraction leaves the component domain this returns `key` itself,
     /// which stops enumeration safely.
-    static func previousKey(before key: WorkoutTrendsPeriodKey) -> WorkoutTrendsPeriodKey {
-        var calendar = Calendar(identifier: .iso8601)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    static func previousKey(
+        before key: WorkoutTrendsPeriodKey,
+        weekConvention: WorkoutTrendsWeekConvention = .iso8601
+    ) -> WorkoutTrendsPeriodKey {
+        let calendar = weekConvention.calendar(in: TimeZone(secondsFromGMT: 0)!)
         var components = DateComponents()
         switch key.kind {
         case .week:
@@ -394,6 +453,6 @@ public enum WorkoutTrendsAggregator {
         guard let start = calendar.date(from: components),
               let previous = calendar.date(byAdding: unit, value: -1, to: start)
         else { return key }
-        return periodKey(for: previous, period: key.kind, timeZone: calendar.timeZone)
+        return periodKey(for: previous, period: key.kind, timeZone: calendar.timeZone, weekConvention: weekConvention)
     }
 }

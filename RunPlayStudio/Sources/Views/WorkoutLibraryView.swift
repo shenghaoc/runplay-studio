@@ -217,7 +217,7 @@ struct WorkoutLibraryView: View {
                     let succeeded = await appState.deleteSmartCollection(id: collection.id)
                     if !succeeded {
                         collectionDeleteError = appState.organizationEditError
-                            ?? "The smart collection could not be deleted."
+                            ?? studioLocalized("The smart collection could not be deleted.")
                     }
                 }
             }
@@ -232,7 +232,7 @@ struct WorkoutLibraryView: View {
         )) {
             Button("OK") { collectionDeleteError = nil }
         } message: {
-            Text(collectionDeleteError ?? "The smart collection could not be deleted.")
+            Text(collectionDeleteError ?? studioLocalized("The smart collection could not be deleted."))
         }
     }
 
@@ -240,7 +240,7 @@ struct WorkoutLibraryView: View {
         if let collection = viewModel.activeSmartCollection {
             return collection.name
         }
-        return "All Runs"
+        return studioLocalized("All Runs")
     }
 
     private var assignmentCounts: [UUID: Int] {
@@ -314,12 +314,12 @@ struct WorkoutLibraryView: View {
 
     private var resultSummary: String {
         if viewModel.totalCount == 0 {
-            return "No runs in your library"
+            return studioLocalized("No runs in your library")
         }
         if viewModel.filteredCount == viewModel.totalCount {
-            return "\(viewModel.totalCount) run\(viewModel.totalCount == 1 ? "" : "s")"
+            return studioLocalized("\(viewModel.totalCount) runs")
         }
-        return "\(viewModel.filteredCount) of \(viewModel.totalCount) runs"
+        return studioLocalized("\(viewModel.filteredCount) of \(viewModel.totalCount) runs")
     }
 
     // MARK: - Controls
@@ -379,7 +379,7 @@ struct WorkoutLibraryView: View {
             }
 
             if viewModel.activeFilterCount > 0 {
-                Text("\(viewModel.activeFilterCount) filter\(viewModel.activeFilterCount == 1 ? "" : "s") active")
+                Text("\(viewModel.activeFilterCount) filters active")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.secondary)
             }
@@ -402,7 +402,7 @@ struct WorkoutLibraryView: View {
     private var bulkTagActionLabel: String? {
         let ids = viewModel.persistedSelectedWorkoutIDs(libraryIDs: appState.libraryWorkoutIDs)
         guard ids.count > 1 else { return nil }
-        return "Edit Tags for \(ids.count) Runs…"
+        return studioLocalized("Edit Tags for \(ids.count) Runs…")
     }
 
     private var filterMenu: some View {
@@ -629,7 +629,7 @@ struct WorkoutLibraryView: View {
             return name
         }
         return derivedNames[group.id]
-            ?? String(localized: "route_group.unnamed", defaultValue: "Route")
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
     }
 
     // MARK: - Content
@@ -781,10 +781,10 @@ struct WorkoutLibraryView: View {
             .width(min: 50, ideal: 60)
 
             TableColumn("Device") { entry in
-                Text(entry.deviceName ?? "Unavailable")
+                Text(entry.deviceName ?? studioLocalized("Unavailable"))
                     .lineLimit(1)
                     .foregroundStyle(entry.deviceName == nil ? .secondary : .primary)
-                    .accessibilityLabel(entry.deviceName ?? "Device unavailable")
+                    .accessibilityLabel(entry.deviceName ?? studioLocalized("Device unavailable"))
             }
             .width(min: 80, ideal: 120)
         }
@@ -885,7 +885,7 @@ struct WorkoutLibraryView: View {
                 WorkoutTagEditorSheet(
                     availableTags: appState.tags,
                     initialSelected: viewModel.entry(for: id)?.tagIDs ?? [],
-                    title: "Edit Tags",
+                    title: studioLocalized("Edit Tags"),
                     onCancel: { tagEditorWorkoutIDs = nil },
                     onSave: { selected in
                         Task {

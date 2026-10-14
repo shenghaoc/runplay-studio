@@ -146,7 +146,9 @@ final class MapKitSnapshotterSession<Output: Sendable>: @unchecked Sendable {
 
                 guard let snap else {
                     continuation.resume(
-                        throwing: WorkoutMapSnapshotError.snapshotFailed("Snapshot returned no image")
+                        throwing: WorkoutMapSnapshotError.snapshotFailed(
+                            platformLocalized("Snapshot returned no image")
+                        )
                     )
                     return
                 }
@@ -178,13 +180,17 @@ enum WorkoutMapSnapshotImageNormalizer {
         guard targetSize.width.isFinite, targetSize.height.isFinite,
               targetSize.width > 0, targetSize.height > 0,
               targetSize.width <= CGFloat(Int.max), targetSize.height <= CGFloat(Int.max) else {
-            throw WorkoutMapSnapshotError.compositionFailed("Basemap target size is invalid")
+            throw WorkoutMapSnapshotError.compositionFailed(
+                platformLocalized("Basemap target size is invalid")
+            )
         }
 
         let width = Int(targetSize.width.rounded())
         let height = Int(targetSize.height.rounded())
         guard width > 0, height > 0 else {
-            throw WorkoutMapSnapshotError.compositionFailed("Basemap target size is invalid")
+            throw WorkoutMapSnapshotError.compositionFailed(
+                platformLocalized("Basemap target size is invalid")
+            )
         }
 
         var proposedRect = CGRect(origin: .zero, size: image.size)
@@ -193,7 +199,9 @@ enum WorkoutMapSnapshotImageNormalizer {
             context: nil,
             hints: nil
         ) else {
-            throw WorkoutMapSnapshotError.compositionFailed("Could not obtain basemap CGImage")
+            throw WorkoutMapSnapshotError.compositionFailed(
+                platformLocalized("Could not obtain basemap CGImage")
+            )
         }
 
         if source.width == width, source.height == height {
@@ -210,13 +218,17 @@ enum WorkoutMapSnapshotImageNormalizer {
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
-            throw WorkoutMapSnapshotError.compositionFailed("Could not normalize basemap pixels")
+            throw WorkoutMapSnapshotError.compositionFailed(
+                platformLocalized("Could not normalize basemap pixels")
+            )
         }
 
         context.interpolationQuality = .high
         context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
         guard let normalized = context.makeImage() else {
-            throw WorkoutMapSnapshotError.compositionFailed("Could not finalize normalized basemap")
+            throw WorkoutMapSnapshotError.compositionFailed(
+                platformLocalized("Could not finalize normalized basemap")
+            )
         }
         return normalized
     }

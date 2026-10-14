@@ -80,18 +80,18 @@ enum TrainingLoadUncertainty {
     /// first in both modes would describe the chart wrongly in one of them.
     static func biasCopy(includesEstimatedLoads: Bool) -> String {
         if includesEstimatedLoads {
-            return """
+            return studioLocalized("""
                 Shaded spans are days with runs but no usable heart rate. Where \
                 an estimate stands in for one it is an invented value; where \
                 none does, the model decays as if you had rested. The values \
                 are unchanged — only the confidence is shown.
-                """
+                """)
         }
-        return """
+        return studioLocalized("""
             Shaded spans are days with runs but no usable heart rate. The model \
             has no load for them and decays as if you had rested, so a stretch \
             of strapless running reads as lost fitness and gained freshness. \
             The values are unchanged — only the confidence is shown.
-            """
+            """)
     }
 }

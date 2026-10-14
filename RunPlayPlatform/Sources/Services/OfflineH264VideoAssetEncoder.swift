@@ -35,11 +35,13 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
     ) async throws -> WorkoutVideoExportResult {
         try policy.validate()
         guard frameCount >= 2 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Video requires at least two frames")
+            throw WorkoutVideoExportError.invalidConfiguration(
+                platformLocalized("Video requires at least two frames")
+            )
         }
         guard provider.frameCount == frameCount else {
             throw WorkoutVideoExportError.invalidConfiguration(
-                "Frame provider count \(provider.frameCount) does not match plan \(frameCount)"
+                platformLocalized("Frame provider count \(provider.frameCount) does not match plan \(frameCount)")
             )
         }
 
@@ -301,12 +303,16 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
     ) async throws {
         try Task.checkCancellation()
         guard fileManager.fileExists(atPath: url.path) else {
-            throw WorkoutVideoExportError.validationFailed("Temporary output file is missing")
+            throw WorkoutVideoExportError.validationFailed(
+                platformLocalized("Temporary output file is missing")
+            )
         }
         let attrs = try fileManager.attributesOfItem(atPath: url.path)
         let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
         guard size > 0 else {
-            throw WorkoutVideoExportError.validationFailed("Temporary output file is empty")
+            throw WorkoutVideoExportError.validationFailed(
+                platformLocalized("Temporary output file is empty")
+            )
         }
 
         let asset = AVURLAsset(url: url)
@@ -314,29 +320,31 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
         try Task.checkCancellation()
         guard videoTracks.count == 1 else {
             throw WorkoutVideoExportError.validationFailed(
-                "Expected exactly one video track, found \(videoTracks.count)"
+                platformLocalized("Expected exactly one video track, found \(videoTracks.count)")
             )
         }
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         guard audioTracks.isEmpty else {
-            throw WorkoutVideoExportError.validationFailed("Output must not contain an audio track")
+            throw WorkoutVideoExportError.validationFailed(
+                platformLocalized("Output must not contain an audio track")
+            )
         }
 
         let duration = try await asset.load(.duration)
         try Task.checkCancellation()
         guard duration.isNumeric, !duration.isIndefinite else {
-            throw WorkoutVideoExportError.validationFailed("Output duration is not finite")
+            throw WorkoutVideoExportError.validationFailed(
+                platformLocalized("Output duration is not finite")
+            )
         }
         let durationSeconds = CMTimeGetSeconds(duration)
         let expected = expectedOutputDurationSeconds
         let tolerance = 1.0 / Double(policy.framesPerSecond) + 0.01
         guard abs(durationSeconds - expected) <= tolerance else {
+            let actualText = String(format: "%.3f", durationSeconds)
+            let expectedText = String(format: "%.3f", expected)
             throw WorkoutVideoExportError.validationFailed(
-                String(
-                    format: "Duration %.3fs outside expected range around %.3fs",
-                    durationSeconds,
-                    expected
-                )
+                platformLocalized("Duration \(actualText)s outside expected range around \(expectedText)s")
             )
         }
 
@@ -349,21 +357,26 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
         let height = Int(abs(transformed.height).rounded())
         guard width == policy.width, height == policy.height else {
             throw WorkoutVideoExportError.validationFailed(
-                "Dimensions \(width)×\(height) do not match \(policy.width)×\(policy.height)"
+                platformLocalized("Dimensions \(width)×\(height) do not match \(policy.width)×\(policy.height)")
             )
         }
 
         let formatDescriptions = try await track.load(.formatDescriptions)
         guard let format = formatDescriptions.first else {
-            throw WorkoutVideoExportError.validationFailed("Video track has no format description")
+            throw WorkoutVideoExportError.validationFailed(
+                platformLocalized("Video track has no format description")
+            )
         }
         guard CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_H264 else {
-            throw WorkoutVideoExportError.validationFailed("Video track is not H.264")
+            throw WorkoutVideoExportError.validationFailed(
+                platformLocalized("Video track is not H.264")
+            )
         }
         let nominalFrameRate = try await track.load(.nominalFrameRate)
         guard abs(Double(nominalFrameRate) - Double(policy.framesPerSecond)) <= 0.01 else {
+            let frameRateText = "\(nominalFrameRate)"
             throw WorkoutVideoExportError.validationFailed(
-                "Frame rate \(nominalFrameRate) does not match \(policy.framesPerSecond) fps"
+                platformLocalized("Frame rate \(frameRateText) does not match \(policy.framesPerSecond) fps")
             )
         }
         guard CMFormatDescriptionGetExtension(
@@ -379,7 +392,7 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
             extensionKey: kCMFormatDescriptionExtension_YCbCrMatrix
         ) != nil else {
             throw WorkoutVideoExportError.validationFailed(
-                "Video track is missing required color metadata"
+                platformLocalized("Video track is missing required color metadata")
             )
         }
 
@@ -402,13 +415,13 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else {
             throw WorkoutVideoExportError.validationFailed(
-                "Could not inspect encoded video samples"
+                platformLocalized("Could not inspect encoded video samples")
             )
         }
         reader.add(output)
         guard reader.startReading() else {
             throw WorkoutVideoExportError.validationFailed(
-                "Could not read encoded video samples"
+                platformLocalized("Could not read encoded video samples")
             )
         }
 
@@ -417,7 +430,7 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
             guard CMSampleBufferIsValid(sample) else {
                 reader.cancelReading()
                 throw WorkoutVideoExportError.validationFailed(
-                    "Video contains an invalid encoded sample"
+                    platformLocalized("Video contains an invalid encoded sample")
                 )
             }
             samplesRead += CMSampleBufferGetNumSamples(sample)
@@ -427,12 +440,12 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
         }
         guard reader.status == .completed else {
             throw WorkoutVideoExportError.validationFailed(
-                "Could not finish reading encoded video samples"
+                platformLocalized("Could not finish reading encoded video samples")
             )
         }
         guard samplesRead == frameCount else {
             throw WorkoutVideoExportError.validationFailed(
-                "Frame count \(samplesRead) does not match \(frameCount)"
+                platformLocalized("Frame count \(samplesRead) does not match \(frameCount)")
             )
         }
 

@@ -169,7 +169,7 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         if let date = metadata.startDate {
             return RunWorkout.displayFormatter.string(from: date)
         }
-        return "Untitled Run"
+        return coreLocalized("Untitled Run")
     }
 
     public var pointCount: Int { routePoints.count }

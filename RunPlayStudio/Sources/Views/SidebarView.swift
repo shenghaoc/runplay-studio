@@ -284,7 +284,7 @@ struct WorkoutRow: View {
                         metadataSeparator
                         metricPill(
                             icon: "heart.fill",
-                            value: String(format: "%.0f bpm", avgHR),
+                            value: DisplayFormatter.formatHeartRate(avgHR),
                             color: AppDesign.MetricColor.heartRate
                         )
                     }

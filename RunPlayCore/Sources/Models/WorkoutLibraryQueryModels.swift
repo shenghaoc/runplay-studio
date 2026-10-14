@@ -18,17 +18,17 @@ public enum WorkoutLibrarySort: String, CaseIterable, Codable, Hashable, Sendabl
 
     public var displayName: String {
         switch self {
-        case .dateNewest: return "Date — Newest First"
-        case .dateOldest: return "Date — Oldest First"
-        case .nameAZ: return "Name — A to Z"
-        case .nameZA: return "Name — Z to A"
-        case .distanceLongest: return "Distance — Longest First"
-        case .distanceShortest: return "Distance — Shortest First"
-        case .paceFastest: return "Active Pace — Fastest First"
-        case .paceSlowest: return "Active Pace — Slowest First"
-        case .elapsedLongest: return "Elapsed Time — Longest First"
-        case .elapsedShortest: return "Elapsed Time — Shortest First"
-        case .libraryOrder: return "Library Order"
+        case .dateNewest: return coreLocalized("Date — Newest First")
+        case .dateOldest: return coreLocalized("Date — Oldest First")
+        case .nameAZ: return coreLocalized("Name — A to Z")
+        case .nameZA: return coreLocalized("Name — Z to A")
+        case .distanceLongest: return coreLocalized("Distance — Longest First")
+        case .distanceShortest: return coreLocalized("Distance — Shortest First")
+        case .paceFastest: return coreLocalized("Active Pace — Fastest First")
+        case .paceSlowest: return coreLocalized("Active Pace — Slowest First")
+        case .elapsedLongest: return coreLocalized("Elapsed Time — Longest First")
+        case .elapsedShortest: return coreLocalized("Elapsed Time — Shortest First")
+        case .libraryOrder: return coreLocalized("Library Order")
         }
     }
 }
@@ -44,11 +44,11 @@ public enum WorkoutLibraryDateFilter: Hashable, Sendable, Codable {
 
     public var displayName: String {
         switch self {
-        case .allTime: return "All Time"
-        case .last30Days: return "Last 30 Days"
-        case .last90Days: return "Last 90 Days"
-        case .currentCalendarYear: return "Current Calendar Year"
-        case .custom: return "Custom Date Range"
+        case .allTime: return coreLocalized("All Time")
+        case .last30Days: return coreLocalized("Last 30 Days")
+        case .last90Days: return coreLocalized("Last 90 Days")
+        case .currentCalendarYear: return coreLocalized("Current Calendar Year")
+        case .custom: return coreLocalized("Custom Date Range")
         }
     }
 }
@@ -61,8 +61,8 @@ public enum WorkoutLibraryFavoriteFilter: String, CaseIterable, Codable, Hashabl
 
     public var displayName: String {
         switch self {
-        case .all: return "All Workouts"
-        case .favoritesOnly: return "Favourites Only"
+        case .all: return coreLocalized("All Workouts")
+        case .favoritesOnly: return coreLocalized("Favourites Only")
         }
     }
 }
@@ -79,7 +79,7 @@ public enum WorkoutLibrarySourceFilter: String, CaseIterable, Codable, Hashable,
 
     public var displayName: String {
         switch self {
-        case .all: return "All Sources"
+        case .all: return coreLocalized("All Sources")
         case .gpx: return "GPX"
         case .tcx: return "TCX"
         case .fit: return "FIT"

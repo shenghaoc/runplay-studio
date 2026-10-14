@@ -33,11 +33,11 @@ enum PersonalHeatmapDatePreset: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .allTime: return "All Time"
-        case .last30Days: return "Last 30 Days"
-        case .last90Days: return "Last 90 Days"
-        case .currentYear: return "This Year"
-        case .custom: return "Custom"
+        case .allTime: return studioLocalized("All Time")
+        case .last30Days: return studioLocalized("Last 30 Days")
+        case .last90Days: return studioLocalized("Last 90 Days")
+        case .currentYear: return studioLocalized("This Year")
+        case .custom: return studioLocalized("Custom")
         }
     }
 }

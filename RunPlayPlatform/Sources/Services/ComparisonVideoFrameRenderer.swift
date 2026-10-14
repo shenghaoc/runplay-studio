@@ -14,6 +14,9 @@ public struct ComparisonVideoFrameModel: Sendable {
     public let comparisonMarkerPixel: CGPoint?
     public let appearance: PNGSummaryExportAppearance
     public let routesAreWidelySeparated: Bool
+    /// Language and number format of the frame's text; `nil` follows the app.
+    /// Exports pass `nil`; tests pin a locale.
+    public let locale: Locale?
 
     public init(
         sample: ComparisonVideoFrameSample,
@@ -22,7 +25,8 @@ public struct ComparisonVideoFrameModel: Sendable {
         primaryMarkerPixel: CGPoint?,
         comparisonMarkerPixel: CGPoint?,
         appearance: PNGSummaryExportAppearance,
-        routesAreWidelySeparated: Bool = false
+        routesAreWidelySeparated: Bool = false,
+        locale: Locale? = nil
     ) {
         self.sample = sample
         self.primaryTitle = primaryTitle
@@ -31,40 +35,59 @@ public struct ComparisonVideoFrameModel: Sendable {
         self.comparisonMarkerPixel = comparisonMarkerPixel
         self.appearance = appearance
         self.routesAreWidelySeparated = routesAreWidelySeparated
+        self.locale = locale
     }
 
     public var progressPercentLabel: String {
-        "\(Int((sample.progress * 100).rounded(.down)))%"
+        let wholePercent = (sample.progress * 100).rounded(.down)
+        return (wholePercent / 100).formatted(
+            .percent.precision(.fractionLength(0)).locale(locale ?? .autoupdatingCurrent)
+        )
     }
 
     public var domainProgressLabel: String {
-        let currentKm = sample.domainPositionMeters / 1000
-        let totalKm = sample.domainLengthMeters / 1000
+        // "1.23 / 5.00 km": the position as a bare number, the length with its unit.
+        let position = DisplayFormatter.formatDecimal(sample.domainPositionMeters / 1000, fractionDigits: 2, locale: locale)
+        let length = DisplayFormatter.formatDistanceKm(sample.domainLengthMeters, locale: locale)
         switch sample.alignmentMode {
         case .distance:
-            return String(format: "Common Distance %.2f / %.2f km", currentKm, totalKm)
+            return platformLocalized("Common Distance \(position) / \(length)", locale: locale)
         case .routeAware:
-            return String(format: "Matched Route %.2f / %.2f km", currentKm, totalKm)
+            return platformLocalized("Matched Route \(position) / \(length)", locale: locale)
         }
     }
 
     public var elapsedLabel: String {
-        sample.alignmentMode == .routeAware ? "Matched Elapsed" : "Elapsed"
+        sample.alignmentMode == .routeAware
+            ? platformLocalized("Matched Elapsed", locale: locale)
+            : platformLocalized("Elapsed", locale: locale)
     }
 
     public var activeLabel: String {
-        sample.alignmentMode == .routeAware ? "Matched Active" : "Active"
+        sample.alignmentMode == .routeAware
+            ? platformLocalized("Matched Active", locale: locale)
+            : platformLocalized("Active", locale: locale)
     }
 
     public var paceLabel: String {
-        sample.alignmentMode == .routeAware ? "Matched Pace" : "Active Pace"
+        sample.alignmentMode == .routeAware
+            ? platformLocalized("Matched Pace", locale: locale)
+            : platformLocalized("Active Pace", locale: locale)
     }
 
     public var blockLabel: String? {
         guard let index = sample.alignmentBlockIndex,
               let count = sample.alignmentBlockCount,
               count > 1 else { return nil }
-        return "Block \(index + 1) of \(count)"
+        let ordinal = index + 1
+        return platformLocalized("Block \(ordinal) of \(count)", locale: locale)
+    }
+
+    /// The caption under the progress bar.
+    public var progressCaption: String {
+        let domain = domainProgressLabel
+        let percent = progressPercentLabel
+        return platformLocalized("\(domain)  ·  Output \(percent)", locale: locale)
     }
 }
 
@@ -249,40 +272,129 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         let titleFont = NSFont.systemFont(ofSize: 20, weight: .semibold)
         let metaFont = NSFont.systemFont(ofSize: 14, weight: .medium)
         let nameWidth = (panelRect.width - 80) / 2
+        let language = VideoHUDText.languageTag(for: frame.locale)
+        let versus = platformLocalized("vs", locale: frame.locale)
+        let versusWidth = VideoHUDText.width(versus, font: metaFont, language: language)
 
-        drawText(
+        // "P" and "C" match the map markers' glyphs, so they stay Latin.
+        VideoHUDText.draw(
             "P  \(frame.primaryTitle)",
             font: titleFont,
             color: palette.primaryMarkerFill,
+            language: language,
             at: CGPoint(x: panelRect.minX + 16, y: panelRect.maxY - 34),
             maxWidth: nameWidth,
             in: context
         )
-        drawText(
-            "vs",
+        VideoHUDText.draw(
+            versus,
             font: metaFont,
             color: palette.secondaryText,
-            at: CGPoint(x: panelRect.midX - 10, y: panelRect.maxY - 32),
+            language: language,
+            at: CGPoint(x: panelRect.midX + 7 - versusWidth / 2, y: panelRect.maxY - 32),
             maxWidth: 40,
             in: context
         )
-        drawText(
+        VideoHUDText.draw(
             "C  \(frame.comparisonTitle)",
             font: titleFont,
             color: palette.comparisonMarkerFill,
+            language: language,
             at: CGPoint(x: panelRect.midX + 24, y: panelRect.maxY - 34),
             maxWidth: nameWidth,
             in: context
         )
-        drawText(
-            frame.sample.alignmentMode.displayName + " Alignment",
+        let modeName = frame.sample.alignmentMode.displayName
+        VideoHUDText.draw(
+            platformLocalized("\(modeName) Alignment", locale: frame.locale),
             font: metaFont,
             color: palette.secondaryText,
+            language: language,
             at: CGPoint(x: panelRect.minX + 16, y: panelRect.minY + 14),
             maxWidth: panelRect.width - 32,
             in: context
         )
     }
+
+    /// The three panels' titles and label/value rows in the frame's language.
+    struct PanelRows {
+        var primaryTitle: String
+        var primary: [(label: String, value: String)]
+        var comparisonTitle: String
+        var comparison: [(label: String, value: String)]
+        var deltasTitle: String
+        var deltas: [(label: String, value: String)]
+    }
+
+    func panelRows(for frame: ComparisonVideoFrameModel) -> PanelRows {
+        let sample = frame.sample
+        let locale = frame.locale
+        var deltaRows: [(label: String, value: String)] = [
+            (platformLocalized("Elapsed Δ", locale: locale), formatDelta(sample.elapsedDeltaSeconds, kind: .time, locale: locale)),
+            (platformLocalized("Active Δ", locale: locale), formatDelta(sample.activeDeltaSeconds, kind: .time, locale: locale)),
+            (platformLocalized("Pace Δ", locale: locale), formatDelta(sample.activePaceDeltaSecondsPerKm, kind: .pace, locale: locale)),
+        ]
+        if sample.alignmentMode == .routeAware {
+            if let separation = sample.spatialSeparationMeters {
+                deltaRows.append((platformLocalized("Separation", locale: locale), formatSeparation(separation, locale: locale)))
+            }
+            if let quality = sample.alignmentQuality {
+                deltaRows.append((platformLocalized("Quality", locale: locale), quality.displayName))
+            }
+            if let block = frame.blockLabel {
+                deltaRows.append((platformLocalized("Block", locale: locale), block))
+            }
+        }
+        if frame.routesAreWidelySeparated {
+            deltaRows.append((platformLocalized("Note", locale: locale), platformLocalized("Routes far apart", locale: locale)))
+        }
+        // "P" and "C" match the map markers' glyphs, so they stay Latin.
+        let primaryName = platformLocalized("Primary", locale: locale)
+        let comparisonName = platformLocalized("Comparison", locale: locale)
+        return PanelRows(
+            primaryTitle: "P  \(primaryName)",
+            primary: sideRows(
+                distance: sample.primaryDistanceMeters,
+                elapsed: sample.primaryElapsedSeconds,
+                active: sample.primaryActiveSeconds,
+                pace: sample.primaryActivePaceSecondsPerKm,
+                labels: frame
+            ),
+            comparisonTitle: "C  \(comparisonName)",
+            comparison: sideRows(
+                distance: sample.comparisonDistanceMeters,
+                elapsed: sample.comparisonElapsedSeconds,
+                active: sample.comparisonActiveSeconds,
+                pace: sample.comparisonActivePaceSecondsPerKm,
+                labels: frame
+            ),
+            deltasTitle: platformLocalized("Deltas", locale: locale),
+            deltas: deltaRows
+        )
+    }
+
+    /// One shared column layout for all three panels so their values align:
+    /// values start after the widest label (never left of the original
+    /// 130 pt) and panels widen for long values, within the frame.
+    func panelColumns(for rows: PanelRows, language: String, frameWidth: CGFloat) -> VideoHUDText.RowColumns {
+        let all = rows.primary + rows.comparison + rows.deltas
+        return VideoHUDText.rowColumns(
+            labels: all.map(\.label),
+            values: all.map(\.value),
+            labelFont: Self.panelLabelFont,
+            valueFont: Self.panelValueFont,
+            language: language,
+            inset: 14,
+            gap: 12,
+            minimumValueOffset: 130,
+            minimumPanelWidth: 300,
+            maximumPanelWidth: max(300, (frameWidth - 28 * 2 - 24) / 2)
+        )
+    }
+
+    private static var panelTitleFont: NSFont { .systemFont(ofSize: 13, weight: .semibold) }
+    private static var panelLabelFont: NSFont { .systemFont(ofSize: 12, weight: .medium) }
+    private static var panelValueFont: NSFont { .monospacedDigitSystemFont(ofSize: 13, weight: .semibold) }
 
     private func drawPanels(
         frame: ComparisonVideoFrameModel,
@@ -291,79 +403,53 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         palette: Palette
     ) {
         let margin: CGFloat = 28
-        let panelWidth: CGFloat = 300
-        let sample = frame.sample
-
-        let primaryRows = sideRows(
-            distance: sample.primaryDistanceMeters,
-            elapsed: sample.primaryElapsedSeconds,
-            active: sample.primaryActiveSeconds,
-            pace: sample.primaryActivePaceSecondsPerKm,
-            labels: frame
-        )
-        let comparisonRows = sideRows(
-            distance: sample.comparisonDistanceMeters,
-            elapsed: sample.comparisonElapsedSeconds,
-            active: sample.comparisonActiveSeconds,
-            pace: sample.comparisonActivePaceSecondsPerKm,
-            labels: frame
-        )
-        var deltaRows: [(String, String)] = [
-            ("Elapsed Δ", formatDelta(sample.elapsedDeltaSeconds, kind: .time)),
-            ("Active Δ", formatDelta(sample.activeDeltaSeconds, kind: .time)),
-            ("Pace Δ", formatDelta(sample.activePaceDeltaSecondsPerKm, kind: .pace)),
-        ]
-        if sample.alignmentMode == .routeAware {
-            if let separation = sample.spatialSeparationMeters {
-                deltaRows.append(("Separation", formatSeparation(separation)))
-            }
-            if let quality = sample.alignmentQuality {
-                deltaRows.append(("Quality", quality.displayName))
-            }
-            if let block = frame.blockLabel {
-                deltaRows.append(("Block", block))
-            }
-        }
-        if frame.routesAreWidelySeparated {
-            deltaRows.append(("Note", "Routes far apart"))
-        }
+        let language = VideoHUDText.languageTag(for: frame.locale)
+        let rows = panelRows(for: frame)
+        let columns = panelColumns(for: rows, language: language, frameWidth: bounds.width)
+        let panelWidth = columns.panelWidth
 
         let rowHeight: CGFloat = 24
-        let primaryHeight = CGFloat(primaryRows.count) * rowHeight + 28
-        let comparisonHeight = CGFloat(comparisonRows.count) * rowHeight + 28
-        let deltaHeight = CGFloat(deltaRows.count) * rowHeight + 28
+        let primaryHeight = CGFloat(rows.primary.count) * rowHeight + 28
+        let comparisonHeight = CGFloat(rows.comparison.count) * rowHeight + 28
+        let deltaHeight = CGFloat(rows.deltas.count) * rowHeight + 28
         let baseY = margin + 56
 
         drawMetricPanel(
-            title: "P  Primary",
-            rows: primaryRows,
+            title: rows.primaryTitle,
+            rows: rows.primary,
             rect: CGRect(x: margin, y: baseY, width: panelWidth, height: primaryHeight),
+            columns: columns,
+            language: language,
             accent: palette.primaryMarkerFill,
             in: context,
             palette: palette
         )
         drawMetricPanel(
-            title: "C  Comparison",
-            rows: comparisonRows,
+            title: rows.comparisonTitle,
+            rows: rows.comparison,
             rect: CGRect(
                 x: margin,
                 y: baseY + primaryHeight + 12,
                 width: panelWidth,
                 height: comparisonHeight
             ),
+            columns: columns,
+            language: language,
             accent: palette.comparisonMarkerFill,
             in: context,
             palette: palette
         )
         drawMetricPanel(
-            title: "Deltas",
-            rows: deltaRows,
+            title: rows.deltasTitle,
+            rows: rows.deltas,
             rect: CGRect(
                 x: bounds.width - margin - panelWidth,
                 y: baseY,
                 width: panelWidth,
                 height: deltaHeight
             ),
+            columns: columns,
+            language: language,
             accent: palette.secondaryText,
             in: context,
             palette: palette
@@ -376,53 +462,55 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         active: Double?,
         pace: Double?,
         labels: ComparisonVideoFrameModel
-    ) -> [(String, String)] {
+    ) -> [(label: String, value: String)] {
         [
-            ("Distance", DisplayFormatter.formatDistanceKm(distance)),
+            (platformLocalized("Distance", locale: labels.locale), DisplayFormatter.formatDistanceKm(distance, locale: labels.locale)),
             (labels.elapsedLabel, DisplayFormatter.formatElapsed(elapsed)),
             (labels.activeLabel, DisplayFormatter.formatElapsed(active)),
-            (labels.paceLabel, DisplayFormatter.formatPace(pace)),
+            (labels.paceLabel, DisplayFormatter.formatPace(pace, locale: labels.locale)),
         ]
     }
 
     private func drawMetricPanel(
         title: String,
-        rows: [(String, String)],
+        rows: [(label: String, value: String)],
         rect: CGRect,
+        columns: VideoHUDText.RowColumns,
+        language: String,
         accent: NSColor,
         in context: CGContext,
         palette: Palette
     ) {
         fillRoundedPanel(rect, in: context, color: palette.panelBackground, radius: 12)
-        let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        let labelFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-        let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
 
-        drawText(
+        VideoHUDText.draw(
             title,
-            font: titleFont,
+            font: Self.panelTitleFont,
             color: accent,
-            at: CGPoint(x: rect.minX + 14, y: rect.maxY - 22),
-            maxWidth: rect.width - 28,
+            language: language,
+            at: CGPoint(x: rect.minX + columns.inset, y: rect.maxY - 22),
+            maxWidth: rect.width - columns.inset * 2,
             in: context
         )
 
         var y = rect.maxY - 44
         for (label, value) in rows {
-            drawText(
+            VideoHUDText.draw(
                 label,
-                font: labelFont,
+                font: Self.panelLabelFont,
                 color: palette.secondaryText,
-                at: CGPoint(x: rect.minX + 14, y: y - 2),
-                maxWidth: 120,
+                language: language,
+                at: CGPoint(x: rect.minX + columns.inset, y: y - 2),
+                maxWidth: columns.valueOffset - columns.inset - 6,
                 in: context
             )
-            drawText(
+            VideoHUDText.draw(
                 value,
-                font: valueFont,
+                font: Self.panelValueFont,
                 color: palette.primaryText,
-                at: CGPoint(x: rect.minX + 130, y: y - 2),
-                maxWidth: rect.width - 144,
+                language: language,
+                at: CGPoint(x: rect.minX + columns.valueOffset, y: y - 2),
+                maxWidth: columns.valueWidth,
                 in: context
             )
             y -= 24
@@ -469,12 +557,12 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         }
         context.restoreGState()
 
-        let caption = "\(frame.domainProgressLabel)  ·  Output \(frame.progressPercentLabel)"
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        drawText(
-            caption,
+        VideoHUDText.draw(
+            frame.progressCaption,
             font: font,
             color: palette.primaryText,
+            language: VideoHUDText.languageTag(for: frame.locale),
             at: CGPoint(x: margin, y: margin),
             maxWidth: barWidth,
             in: context
@@ -483,56 +571,58 @@ public struct ComparisonVideoFrameRenderer: Sendable {
 
     enum DeltaKind { case time, pace }
 
-    func formatDelta(_ value: Double?, kind: DeltaKind) -> String {
-        guard let value, value.isFinite else { return "Unavailable" }
+    func formatDelta(_ value: Double?, kind: DeltaKind, locale: Locale? = nil) -> String {
+        guard let value, value.isFinite else { return platformLocalized("Unavailable", locale: locale) }
         if abs(value) < (kind == .pace ? 0.5 : 0.05) {
-            return "Tie"
+            return platformLocalized("Tie", locale: locale)
         }
-        let formatted: String
         switch kind {
         case .time:
-            formatted = DisplayFormatter.formatSignedDurationDelta(
+            let amount = stripSign(DisplayFormatter.formatSignedDurationDelta(
                 value,
                 positiveLabel: "",
-                negativeLabel: ""
-            )
+                negativeLabel: "",
+                locale: locale
+            ))
             // delta = primary - comparison; positive means P took more time.
             if value > 0 {
-                return "C ahead by \(stripSign(formatted))"
+                return platformLocalized("C ahead by \(amount)", locale: locale)
             }
-            return "P ahead by \(stripSign(formatted))"
+            return platformLocalized("P ahead by \(amount)", locale: locale)
         case .pace:
             // Positive pace delta = primary slower (higher sec/km).
             // The faster/slower identity is carried by the P/C prefix below, so
             // the formatter's own trailing label must stay empty.
-            let text = DisplayFormatter.formatSignedDurationDelta(
+            let amount = stripSign(DisplayFormatter.formatSignedDurationDelta(
                 value,
-                suffix: "/km",
+                suffix: DisplayFormatter.perKilometerSuffix(locale: locale),
                 positiveLabel: "",
-                negativeLabel: ""
-            )
+                negativeLabel: "",
+                locale: locale
+            ))
             if value > 0 {
-                return "C faster by \(stripSign(text))"
+                return platformLocalized("C faster by \(amount)", locale: locale)
             }
-            return "P faster by \(stripSign(text))"
+            return platformLocalized("P faster by \(amount)", locale: locale)
         }
     }
 
+    /// Drops the leading sign; the empty direction labels leave only
+    /// trailing whitespace to trim.
     private func stripSign(_ text: String) -> String {
         var result = text
         if result.hasPrefix("+") || result.hasPrefix("−") || result.hasPrefix("-") {
             result = String(result.dropFirst())
         }
-        return result
-            .replacingOccurrences(of: " longer", with: "")
-            .replacingOccurrences(of: " shorter", with: "")
-            .trimmingCharacters(in: .whitespaces)
+        return result.trimmingCharacters(in: .whitespaces)
     }
 
-    private func formatSeparation(_ meters: Double) -> String {
-        guard meters.isFinite else { return "Unavailable" }
-        if meters < 1 { return "<1 m" }
-        return String(format: "%.0f m", meters)
+    /// Whole metres with the locale's unit ("12 m", "12米"); under a metre
+    /// reads "<1 m".
+    private func formatSeparation(_ meters: Double, locale: Locale?) -> String {
+        guard meters.isFinite else { return platformLocalized("Unavailable", locale: locale) }
+        if meters < 1 { return "<" + DisplayFormatter.formatElevation(1, locale: locale) }
+        return DisplayFormatter.formatElevation(meters, locale: locale)
     }
 
     private func fillRoundedPanel(
@@ -551,32 +641,6 @@ public struct ComparisonVideoFrameRenderer: Sendable {
         context.addPath(path)
         context.setFillColor(color.cgColor)
         context.fillPath()
-        context.restoreGState()
-    }
-
-    private func drawText(
-        _ string: String,
-        font: NSFont,
-        color: NSColor,
-        at origin: CGPoint,
-        maxWidth: CGFloat,
-        in context: CGContext
-    ) {
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: color,
-        ]
-        let attributed = NSAttributedString(string: string, attributes: attrs)
-        let line = CTLineCreateWithAttributedString(attributed)
-        context.saveGState()
-        context.textPosition = origin
-        context.clip(to: CGRect(
-            x: origin.x,
-            y: origin.y - 4,
-            width: maxWidth,
-            height: font.pointSize + 12
-        ))
-        CTLineDraw(line, context)
         context.restoreGState()
     }
 

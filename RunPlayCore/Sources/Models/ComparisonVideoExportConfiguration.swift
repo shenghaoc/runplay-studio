@@ -26,8 +26,8 @@ public enum ComparisonVideoDomain: String, Hashable, Sendable, Codable {
 
     public var displayName: String {
         switch self {
-        case .commonDistance: return "Common Distance"
-        case .alignedProgress: return "Matched Route"
+        case .commonDistance: return coreLocalized("Common Distance")
+        case .alignedProgress: return coreLocalized("Matched Route")
         }
     }
 }
@@ -53,19 +53,19 @@ public enum ComparisonVideoExportPhase: String, Hashable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .idle: return "Idle"
-        case .preparingAlignment: return "Aligning routes"
-        case .alignmentUnavailable: return "Route-Aware unavailable"
-        case .preparingRoute: return "Preparing routes"
-        case .loadingMap: return "Loading map"
-        case .renderingPoster: return "Rendering preview"
-        case .awaitingDestination: return "Choose destination"
-        case .encoding: return "Encoding video"
-        case .cancelling: return "Cancelling"
-        case .finalizing: return "Finalizing"
-        case .completed: return "Completed"
-        case .cancelled: return "Cancelled"
-        case .failed: return "Failed"
+        case .idle: return coreLocalized("Idle")
+        case .preparingAlignment: return coreLocalized("Aligning routes")
+        case .alignmentUnavailable: return coreLocalized("Route-Aware unavailable")
+        case .preparingRoute: return coreLocalized("Preparing routes")
+        case .loadingMap: return coreLocalized("Loading map")
+        case .renderingPoster: return coreLocalized("Rendering preview")
+        case .awaitingDestination: return coreLocalized("Choose destination")
+        case .encoding: return coreLocalized("Encoding video")
+        case .cancelling: return coreLocalized("Cancelling")
+        case .finalizing: return coreLocalized("Finalizing")
+        case .completed: return coreLocalized("Completed")
+        case .cancelled: return coreLocalized("Cancelled")
+        case .failed: return coreLocalized("Failed")
         }
     }
 
@@ -105,21 +105,21 @@ public enum ComparisonVideoExportError: Error, LocalizedError, Sendable, Equatab
         case .ineligiblePair(let detail):
             return detail
         case .noUsableRoute:
-            return "One or both workouts have no usable GPS route for comparison video export."
+            return coreLocalized("One or both workouts have no usable GPS route for comparison video export.")
         case .noCommonDistance:
-            return "These workouts have no positive common distance for Distance-aligned export."
+            return coreLocalized("These workouts have no positive common distance for Distance-aligned export.")
         case .routeAwareUnavailable(let reason):
             return reason.userFacingExplanation
         case .routeAwarePolicyMismatch:
-            return "Route-Aware alignment is incompatible with the current alignment policy."
+            return coreLocalized("Route-Aware alignment is incompatible with the current alignment policy.")
         case .invalidConfiguration(let detail):
-            return "Invalid comparison video configuration: \(detail)"
+            return coreLocalized("Invalid comparison video configuration: \(detail)")
         case .mapPreparationFailed(let detail):
-            return "Map preparation failed: \(detail)"
+            return coreLocalized("Map preparation failed: \(detail)")
         case .encodingFailed(let error):
             return error.errorDescription
         case .cancelled:
-            return "Comparison video export cancelled."
+            return coreLocalized("Comparison video export cancelled.")
         }
     }
 
@@ -183,8 +183,8 @@ public enum ComparisonVideoExportEligibility: Sendable {
             return Assessment(
                 canExportDistance: false,
                 canExportRouteAware: false,
-                distanceUnavailableHelp: "Select two different workouts to export a comparison video.",
-                routeAwareUnavailableHelp: "Select two different workouts to export a comparison video."
+                distanceUnavailableHelp: coreLocalized("Select two different workouts to export a comparison video."),
+                routeAwareUnavailableHelp: coreLocalized("Select two different workouts to export a comparison video.")
             )
         }
         let primaryRoute = hasUsableRoute(pair.primary)
@@ -194,9 +194,9 @@ public enum ComparisonVideoExportEligibility: Sendable {
                 canExportDistance: false,
                 canExportRouteAware: false,
                 distanceUnavailableHelp:
-                    "One or both workouts have no usable GPS route for comparison video export.",
+                    coreLocalized("One or both workouts have no usable GPS route for comparison video export."),
                 routeAwareUnavailableHelp:
-                    "One or both workouts have no usable GPS route for comparison video export.",
+                    coreLocalized("One or both workouts have no usable GPS route for comparison video export."),
                 routeAwareUnavailableReason: .insufficientRouteData
             )
         }
@@ -209,16 +209,16 @@ public enum ComparisonVideoExportEligibility: Sendable {
                 canExportDistance: false,
                 canExportRouteAware: false,
                 distanceUnavailableHelp:
-                    "These workouts have no positive common distance for Distance-aligned export.",
+                    coreLocalized("These workouts have no positive common distance for Distance-aligned export."),
                 routeAwareUnavailableHelp:
-                    "These workouts have no positive common distance for Distance-aligned export."
+                    coreLocalized("These workouts have no positive common distance for Distance-aligned export.")
             )
         }
         return Assessment(
             canExportDistance: true,
             canExportRouteAware: false,
             distanceUnavailableHelp: nil,
-            routeAwareUnavailableHelp: "Route-Aware alignment has not been prepared yet.",
+            routeAwareUnavailableHelp: coreLocalized("Route-Aware alignment has not been prepared yet."),
             routeAwareUnavailableReason: nil
         )
     }
@@ -248,7 +248,7 @@ public enum ComparisonVideoExportEligibility: Sendable {
                 canExportRouteAware: false,
                 distanceUnavailableHelp: nil,
                 routeAwareUnavailableHelp:
-                    "Route-Aware alignment is incompatible with the current alignment policy.",
+                    coreLocalized("Route-Aware alignment is incompatible with the current alignment policy."),
                 routeAwareUnavailableReason: .algorithmFailure
             )
         }

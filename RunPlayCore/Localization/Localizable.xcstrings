@@ -1,0 +1,2943 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "\"%@\" declares accumulation; values were decoded as instantaneous samples." : {
+
+    },
+    "%@ %@, set on %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@, set on %3$@."
+          }
+        }
+      }
+    },
+    "%@ (%lld m cells)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$lld m cells)"
+          }
+        }
+      }
+    },
+    "%@ apart" : {
+
+    },
+    "%@ bpm" : {
+
+    },
+    "%@ chart" : {
+
+    },
+    "%@ contains an invalid character." : {
+
+    },
+    "%@ even" : {
+
+    },
+    "%@ higher" : {
+
+    },
+    "%@ in %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ in %2$@."
+          }
+        }
+      }
+    },
+    "%@ kilometres" : {
+
+    },
+    "%@ longer" : {
+
+    },
+    "%@ lower" : {
+
+    },
+    "%@ matched · %@ / %@ coverage · %@ median separation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ matched · %2$@ / %3$@ coverage · %4$@ median separation"
+          }
+        }
+      }
+    },
+    "%@ metres" : {
+
+    },
+    "%@ metres per second" : {
+
+    },
+    "%@ not attempted." : {
+
+    },
+    "%@ per %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ per %2$@."
+          }
+        }
+      }
+    },
+    "%@ per kilometre" : {
+
+    },
+    "%@ sessions are not supported." : {
+
+    },
+    "%@ shorter" : {
+
+    },
+    "%@ spm" : {
+
+    },
+    "%@. No data available." : {
+
+    },
+    "%lld additional developer fields not retained (cap %lld)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@fields@ not retained (cap %2$lld)."
+          },
+          "substitutions" : {
+            "fields" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg additional developer field"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg additional developer fields"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld beats per minute" : {
+
+    },
+    "%lld corrected" : {
+
+    },
+    "%lld days with runs have no heart rate and contribute nothing to the model." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld day with runs has no heart rate and contributes nothing to the model."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld days with runs have no heart rate and contribute nothing to the model."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld days with runs have no measured heart rate; where no estimate stands in, the model decays as if you had rested." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld day with runs has no measured heart rate; where no estimate stands in, the model decays as if you had rested."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld days with runs have no measured heart rate; where no estimate stands in, the model decays as if you had rested."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld developer field values dropped: retention limit reached." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld developer field value dropped: retention limit reached."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld developer field values dropped: retention limit reached."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld developer field values skipped: invalid or non-numeric." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld developer field value skipped: invalid or non-numeric."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld developer field values skipped: invalid or non-numeric."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld developer field values skipped: no field_description message defined them." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld developer field value skipped: no field_description message defined it."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld developer field values skipped: no field_description message defined them."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld developer fields declare a non-default scale or offset (%@ and %lld more); decoded as raw / scale - offset, matching the Garmin Swift SDK." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld developer fields declare a non-default scale or offset (%2$@ and %3$lld more); decoded as raw / scale - offset, matching the Garmin Swift SDK."
+          }
+        }
+      }
+    },
+    "%lld developer fields declare a non-default scale or offset (%@); decoded as raw / scale - offset, matching the Garmin Swift SDK." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@fields@ a non-default scale or offset (%2$@); decoded as raw / scale - offset, matching the Garmin Swift SDK."
+          },
+          "substitutions" : {
+            "fields" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg developer field declares"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg developer fields declare"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld disconnected route sections." : {
+
+    },
+    "%lld field_description messages dropped: description table limit reached." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld field_description message dropped: description table limit reached."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld field_description messages dropped: description table limit reached."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld h %lld min" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld h %2$lld min"
+          }
+        }
+      }
+    },
+    "%lld metres" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld metre"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld metres"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld min" : {
+
+    },
+    "%lld needing more tiles than one correction may read" : {
+
+    },
+    "%lld not corrected after an error" : {
+
+    },
+    "%lld outside the tiles" : {
+
+    },
+    "%lld periods use runs that carry only part of this metric." : {
+
+    },
+    "%lld points" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld point"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld points"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld power values ignored: more than one developer source supplied power; the first was kept." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld power value ignored: more than one developer source supplied power; the first was kept."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld power values ignored: more than one developer source supplied power; the first was kept."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld recording gaps break the series." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld recording gap breaks the series."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld recording gaps break the series."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld records could not be attributed to any session and were excluded." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld record could not be attributed to any session and was excluded."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld records could not be attributed to any session and were excluded."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs fall outside the selected range." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run falls outside the selected range."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs fall outside the selected range."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs have no date and are excluded." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run has no date and is excluded."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs have no date and are excluded."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs in %lld periods." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@runs@ in %#@periods@."
+          },
+          "substitutions" : {
+            "periods" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg period"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg periods"
+                    }
+                  }
+                }
+              }
+            },
+            "runs" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs in scope." : {
+
+    },
+    "%lld runs included." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run included."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs included."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs still need record computation." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run still needs record computation."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs still need record computation."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld seconds" : {
+
+    },
+    "%lld sessions overlap in time and cannot be separated reliably." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld session overlaps in time and cannot be separated reliably."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld sessions overlap in time and cannot be separated reliably."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld tiles could not be read." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tile could not be read."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tiles could not be read."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "A batch import is already in progress" : {
+
+    },
+    "A collection named “%@” already exists." : {
+
+    },
+    "A disconnected GPS relocation was treated as a recording gap." : {
+
+    },
+    "A library can have at most %lld smart collections." : {
+
+    },
+    "A library can have at most %lld tags." : {
+
+    },
+    "A tag named “%@” already exists." : {
+
+    },
+    "A workout can have at most %lld tags." : {
+
+    },
+    "About the same" : {
+
+    },
+    "Active Pace — Fastest First" : {
+
+    },
+    "Active Pace — Slowest First" : {
+
+    },
+    "Activity" : {
+
+    },
+    "Activity file not found in archive" : {
+
+    },
+    "Activity type “%@” is not a running activity" : {
+
+    },
+    "Activity type “unknown” is not a running activity" : {
+
+    },
+    "Aligning routes" : {
+
+    },
+    "Alignment algorithm failed." : {
+
+    },
+    "Alignment mode %@." : {
+
+    },
+    "All Sources" : {
+
+    },
+    "All Time" : {
+
+    },
+    "All Workouts" : {
+
+    },
+    "All sports" : {
+
+    },
+    "Alpine skiing" : {
+
+    },
+    "Already imported" : {
+
+    },
+    "Already imported (identical file content)" : {
+
+    },
+    "Already imported (provider activity ID)" : {
+
+    },
+    "Ambiguous path match for activity file" : {
+
+    },
+    "Ambiguous session data" : {
+
+    },
+    "American football" : {
+
+    },
+    "Another library change is already in progress." : {
+
+    },
+    "Another session in this file produced the same identity." : {
+
+    },
+    "At current replay position %@." : {
+
+    },
+    "Average %@." : {
+
+    },
+    "Average bit rate must be positive" : {
+
+    },
+    "Barometric altimeter" : {
+
+    },
+    "Barometric altimeter and DEM tiles" : {
+
+    },
+    "Barometric elevation kept." : {
+
+    },
+    "Barometric elevation kept; DEM tiles filled %lld points without it." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Barometric elevation kept; DEM tiles filled %lld point without it."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Barometric elevation kept; DEM tiles filled %lld points without it."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Baseball" : {
+
+    },
+    "Basketball" : {
+
+    },
+    "Batch promote is not supported by this store" : {
+
+    },
+    "Batch staging is not supported by this store" : {
+
+    },
+    "Between %@ and %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Between %1$@ and %2$@."
+          }
+        }
+      }
+    },
+    "Biggest Climb" : {
+
+    },
+    "Biggest Descent" : {
+
+    },
+    "Biggest Single-Run Ascent" : {
+
+    },
+    "Biggest single-run ascent %@ on %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Biggest single-run ascent %1$@ on %2$@."
+          }
+        }
+      }
+    },
+    "Boating" : {
+
+    },
+    "Boxing" : {
+
+    },
+    "Broad" : {
+
+    },
+    "CSV field exceeds size limit" : {
+
+    },
+    "CSV has a malformed quoted field" : {
+
+    },
+    "CSV has too many rows" : {
+
+    },
+    "CSV parsing was cancelled" : {
+
+    },
+    "CSV row exceeds size limit" : {
+
+    },
+    "Cancelled" : {
+
+    },
+    "Cancelling" : {
+
+    },
+    "Candidate activity limit reached; remaining rows skipped." : {
+
+    },
+    "Cannot decode manifest: %@" : {
+
+    },
+    "Cannot decode staged file: %@" : {
+
+    },
+    "Cannot decode: %@" : {
+
+    },
+    "Cannot delete workout %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot delete workout %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Cannot encode manifest: %@" : {
+
+    },
+    "Cannot encode staged workout %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot encode staged workout %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Cannot encode workout %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot encode workout %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Cannot list staging root: %@" : {
+
+    },
+    "Cannot list workouts directory: %@" : {
+
+    },
+    "Cannot merge a route into itself." : {
+
+    },
+    "Cannot read file: %@" : {
+
+    },
+    "Cannot read manifest: %@" : {
+
+    },
+    "Cannot read staged file: %@" : {
+
+    },
+    "Cannot remove staging %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot remove staging %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Cannot write to %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot write to %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Cell size was increased to stay within the render budget." : {
+
+    },
+    "Checked" : {
+
+    },
+    "Choose destination" : {
+
+    },
+    "Collection name cannot be empty." : {
+
+    },
+    "Collection name contains an invalid character." : {
+
+    },
+    "Collection name must be a single line." : {
+
+    },
+    "Collection name must be at most %lld characters." : {
+
+    },
+    "Colour mode %@." : {
+
+    },
+    "Common Distance" : {
+
+    },
+    "Common distance %@." : {
+
+    },
+    "Compared run faster" : {
+
+    },
+    "Compared run has no recorded laps" : {
+
+    },
+    "Compared run may require reimport to recover source laps" : {
+
+    },
+    "Comparison C: %@." : {
+
+    },
+    "Comparison domain length must be positive and finite" : {
+
+    },
+    "Comparison map." : {
+
+    },
+    "Comparison time %@." : {
+
+    },
+    "Comparison video export cancelled." : {
+
+    },
+    "Completed" : {
+
+    },
+    "Compressed entry exceeds size limit" : {
+
+    },
+    "Compressed timestamp header references invalid definition" : {
+
+    },
+    "Compressed timestamp headers are not supported for this definition" : {
+
+    },
+    "Compressed timestamp received before any baseline timestamp" : {
+
+    },
+    "Conflicts with existing workout" : {
+
+    },
+    "Corrected elevation within this workout" : {
+
+    },
+    "Corrupted FIT data: %@" : {
+
+    },
+    "Could not add a video track to the export." : {
+
+    },
+    "Could not allocate a video frame buffer." : {
+
+    },
+    "Could not create the video writer." : {
+
+    },
+    "Could not encode CSV as UTF-8" : {
+
+    },
+    "Could not finalize the video." : {
+
+    },
+    "Could not parse" : {
+
+    },
+    "Could not read the FIT file. %@" : {
+
+    },
+    "Could not render a video frame." : {
+
+    },
+    "Could not repair library manifest: %@" : {
+
+    },
+    "Could not repair the empty library manifest: %@" : {
+
+    },
+    "Could not save the video. Check that the destination is writable and has enough free space." : {
+
+    },
+    "Could not start writing the video." : {
+
+    },
+    "Could not update the manifest (%@); cleanup of the saved workout also failed (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not update the manifest (%1$@); cleanup of the saved workout also failed (%2$@)"
+          }
+        }
+      }
+    },
+    "Could not write a video frame." : {
+
+    },
+    "Could not write frame %lld." : {
+
+    },
+    "Coverage %lld percent primary, %lld percent comparison." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Coverage %1$lld percent primary, %2$lld percent comparison."
+          }
+        }
+      }
+    },
+    "Cross-country skiing" : {
+
+    },
+    "Current Calendar Year" : {
+
+    },
+    "Custom" : {
+
+    },
+    "Custom Date Range" : {
+
+    },
+    "Cycling" : {
+
+    },
+    "DEM correction is off for this workout because Use Recorded Elevation is chosen." : {
+
+    },
+    "DEM elevation for %lld runs: %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEM elevation for %#@runs@: %2$@."
+          },
+          "substitutions" : {
+            "runs" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "DEM tiles" : {
+
+    },
+    "DEM tiles and recorded altitude" : {
+
+    },
+    "DEM tiles covered %@ of the route." : {
+
+    },
+    "DEM tiles covered %@ of the route; %lld tiles are missing from the folder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEM tiles covered %1$@ of the route; %#@tiles@ missing from the folder."
+          },
+          "substitutions" : {
+            "tiles" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg tile is"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg tiles are"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "DEM tiles filled %lld points that had no recorded altitude." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "DEM tiles filled %lld point that had no recorded altitude."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "DEM tiles filled %lld points that had no recorded altitude."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "DEM tiles replaced the recorded altitude at %@ of points. This file does not say which sensor recorded that altitude; if it was a barometric altimeter, choose Use Recorded Elevation to keep it." : {
+
+    },
+    "Dark" : {
+
+    },
+    "Data in %lld of %lld periods." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Data in %1$lld of %2$lld periods."
+          }
+        }
+      }
+    },
+    "Data in all %lld periods." : {
+
+    },
+    "Date filter %@." : {
+
+    },
+    "Date — Newest First" : {
+
+    },
+    "Date — Oldest First" : {
+
+    },
+    "Declared uncompressed size exceeds limit" : {
+
+    },
+    "Decoded message count exceeds maximum of %lld" : {
+
+    },
+    "Definition count exceeds maximum of %lld" : {
+
+    },
+    "Delta %@." : {
+
+    },
+    "Developer field %u has zero size" : {
+
+    },
+    "Developer field count must be between 1 and %lld; received %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Developer field count must be between 1 and %1$lld; received %2$lld"
+          }
+        }
+      }
+    },
+    "Distance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "距离"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "距離"
+          }
+        }
+      }
+    },
+    "Distance %@." : {
+
+    },
+    "Distance — Longest First" : {
+
+    },
+    "Distance — Shortest First" : {
+
+    },
+    "Diving" : {
+
+    },
+    "Drawing route" : {
+
+    },
+    "Driving" : {
+
+    },
+    "Duplicate content within this import batch" : {
+
+    },
+    "Duplicate provider activity ID within archive" : {
+
+    },
+    "Duplicate session identity within this file." : {
+
+    },
+    "Duplicate smart collection ID %@." : {
+
+    },
+    "Duplicate tag ID %@." : {
+
+    },
+    "Duration must be positive" : {
+
+    },
+    "E-biking" : {
+
+    },
+    "Effective cell size %lld metres." : {
+
+    },
+    "Elapsed Time — Longest First" : {
+
+    },
+    "Elapsed Time — Shortest First" : {
+
+    },
+    "Elevation" : {
+
+    },
+    "Elevation coloring needs meaningful corrected elevation in this workout." : {
+
+    },
+    "Elevation corrected from DEM tiles covering %@ of the route, replacing recorded altitude from an unstated sensor." : {
+
+    },
+    "Elevation corrected from DEM tiles covering %@ of the route." : {
+
+    },
+    "Elevation not corrected: no DEM tile covers this route." : {
+
+    },
+    "Elevation not corrected: the route needs more DEM tiles than one correction may read." : {
+
+    },
+    "Elevation source: %@." : {
+
+    },
+    "Encoding failed: %@" : {
+
+    },
+    "Encoding video" : {
+
+    },
+    "Estimated loads are included in the model on your explicit request; they are invented values and make the curve less trustworthy." : {
+
+    },
+    "Exceeds resource limit" : {
+
+    },
+    "Excellent" : {
+
+    },
+    "Exported video failed validation: %@" : {
+
+    },
+    "FIT definition reserved byte must be zero" : {
+
+    },
+    "FIT file" : {
+
+    },
+    "FIT file appears to be corrupted. Try re-exporting it from your device." : {
+
+    },
+    "FIT file contains trailing bytes after its CRC" : {
+
+    },
+    "FIT file exceeds maximum size of %lld MB" : {
+
+    },
+    "FIT file is empty" : {
+
+    },
+    "FIT record header has reserved bits set" : {
+
+    },
+    "FIT session %lld is not present in this file" : {
+
+    },
+    "Failed" : {
+
+    },
+    "Failed to load library: %@" : {
+
+    },
+    "Fastest 1 Mile" : {
+
+    },
+    "Fastest 1 km" : {
+
+    },
+    "Fastest 10 km" : {
+
+    },
+    "Fastest 400 m" : {
+
+    },
+    "Fastest 400m" : {
+
+    },
+    "Fastest 5 km" : {
+
+    },
+    "Fastest Half Marathon" : {
+
+    },
+    "Fastest Kilometer" : {
+
+    },
+    "Fastest Marathon" : {
+
+    },
+    "Fatigue %lld." : {
+
+    },
+    "Favourites" : {
+
+    },
+    "Favourites Only" : {
+
+    },
+    "Field %u has zero size" : {
+
+    },
+    "Field count must be between 1 and %lld; received %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Field count must be between 1 and %1$lld; received %2$lld"
+          }
+        }
+      }
+    },
+    "Field size %u exceeds maximum %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Field size %1$u exceeds maximum %2$lld"
+          }
+        }
+      }
+    },
+    "File not found: %@" : {
+
+    },
+    "File write failed: %@" : {
+
+    },
+    "Finalizing" : {
+
+    },
+    "Fine" : {
+
+    },
+    "Finish marker present." : {
+
+    },
+    "First %lld of %lld segments" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "First %1$lld of %2$lld segments"
+          }
+        }
+      }
+    },
+    "First %lld of %lld splits" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "First %1$lld of %2$lld splits"
+          }
+        }
+      }
+    },
+    "Fishing" : {
+
+    },
+    "Fitness %lld." : {
+
+    },
+    "Fitness equipment" : {
+
+    },
+    "Floor climbing" : {
+
+    },
+    "Flying" : {
+
+    },
+    "Form %@." : {
+
+    },
+    "Frame count %lld exceeds maximum %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Frame count %1$lld exceeds maximum %2$lld"
+          }
+        }
+      }
+    },
+    "Frame count overflow" : {
+
+    },
+    "Frame rate must be in 1...60" : {
+
+    },
+    "Frame rate must be positive" : {
+
+    },
+    "GPX file has no timestamps; cannot compute pace or duration" : {
+
+    },
+    "Generated locally by RunPlay Studio • Map imagery via Apple Maps • No account required" : {
+
+    },
+    "Generated locally by RunPlay Studio • No cloud upload • No account required" : {
+
+    },
+    "Generic" : {
+
+    },
+    "Golf" : {
+
+    },
+    "Good" : {
+
+    },
+    "H.264 dimensions must be even (%lld×%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "H.264 dimensions must be even (%1$lld×%2$lld)"
+          }
+        }
+      }
+    },
+    "HIIT" : {
+
+    },
+    "Hang gliding" : {
+
+    },
+    "Has Corrected Elevation" : {
+
+    },
+    "Has Heart Rate" : {
+
+    },
+    "Has Recorded Laps" : {
+
+    },
+    "HealthKit import is not yet available. Use file import (JSON, GPX) instead." : {
+
+    },
+    "Heart Rate" : {
+
+    },
+    "Heart-rate coloring needs meaningful HR coverage in this workout." : {
+
+    },
+    "Heart-rate coverage %lld percent of days with runs." : {
+
+    },
+    "Hiking" : {
+
+    },
+    "Horseback riding" : {
+
+    },
+    "Hunting" : {
+
+    },
+    "Ice skating" : {
+
+    },
+    "Idle" : {
+
+    },
+    "Implausible compression ratio" : {
+
+    },
+    "Import error: %@" : {
+
+    },
+    "Imported" : {
+
+    },
+    "Imported Run" : {
+
+    },
+    "Indoor" : {
+
+    },
+    "Inline skating" : {
+
+    },
+    "Invalid FIT architecture byte: %u" : {
+
+    },
+    "Invalid FIT data type (expected '.FIT')" : {
+
+    },
+    "Invalid FIT file header" : {
+
+    },
+    "Invalid comparison video configuration: %@" : {
+
+    },
+    "Invalid coordinates in FIT file" : {
+
+    },
+    "Invalid file format: %@" : {
+
+    },
+    "Invalid metadata" : {
+
+    },
+    "Invalid or inactive batch token" : {
+
+    },
+    "Invalid video configuration: %@" : {
+
+    },
+    "Jumpmaster" : {
+
+    },
+    "Kayaking" : {
+
+    },
+    "Kitesurfing" : {
+
+    },
+    "Lap counts differ (%lld vs %lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Lap counts differ (%1$lld vs %2$lld)"
+          }
+        }
+      }
+    },
+    "Lap distances differ materially" : {
+
+    },
+    "Last 30 Days" : {
+
+    },
+    "Last 90 Days" : {
+
+    },
+    "Latest %@." : {
+
+    },
+    "Latest daily load %lld TRIMP." : {
+
+    },
+    "Library Order" : {
+
+    },
+    "Library manifest corrupted: %@" : {
+
+    },
+    "Library manifest missing: %@" : {
+
+    },
+    "Library query was cancelled." : {
+
+    },
+    "Library recovery:\n%@" : {
+
+    },
+    "Library warnings:\n%@" : {
+
+    },
+    "Light" : {
+
+    },
+    "Limited" : {
+
+    },
+    "Load %lld TRIMP" : {
+
+    },
+    "Load %lld TRIMP, estimated, not in model" : {
+
+    },
+    "Loading map" : {
+
+    },
+    "Longest Run" : {
+
+    },
+    "Longest run %@ on %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Longest run %1$@ on %2$@."
+          }
+        }
+      }
+    },
+    "Manual" : {
+
+    },
+    "Map preparation failed: %@" : {
+
+    },
+    "Mapped distances %@ and %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mapped distances %1$@ and %2$@."
+          }
+        }
+      }
+    },
+    "Matched Route" : {
+
+    },
+    "Matched distance %@." : {
+
+    },
+    "Matched positions %lld metres apart." : {
+
+    },
+    "Matched route progress %@." : {
+
+    },
+    "Matches corresponding route positions using GPS route shape." : {
+
+    },
+    "Matches equal cumulative distances in both runs." : {
+
+    },
+    "Maximum frame count must be at least 2" : {
+
+    },
+    "Maximum overlap %lld runs." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Maximum overlap %lld run."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Maximum overlap %lld runs."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Mean active pace %@." : {
+
+    },
+    "Mean active pace unavailable." : {
+
+    },
+    "Mean heart rate %lld beats per minute from %lld of %lld runs." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mean heart rate %1$lld beats per minute from %2$lld of %3$lld runs."
+          }
+        }
+      }
+    },
+    "Metric data covers %lld percent of the route." : {
+
+    },
+    "Minimum %lld runs per cell." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Minimum %lld run per cell."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Minimum %lld runs per cell."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Missing activity file" : {
+
+    },
+    "Missing data: %@" : {
+
+    },
+    "Missing definition for message type %u" : {
+
+    },
+    "Missing session boundaries" : {
+
+    },
+    "Mixed" : {
+
+    },
+    "Motorcycling" : {
+
+    },
+    "Mountaineering" : {
+
+    },
+    "Movement detection has low reliability due to sparse or irregular GPS data." : {
+
+    },
+    "Moving" : {
+
+    },
+    "Multisport" : {
+
+    },
+    "N/A" : {
+
+    },
+    "Name contains an invalid character." : {
+
+    },
+    "Name must be at most %lld characters." : {
+
+    },
+    "Name — A to Z" : {
+
+    },
+    "Name — Z to A" : {
+
+    },
+    "No GPS coordinates found in FIT file" : {
+
+    },
+    "No GPS records could be attributed to this session." : {
+
+    },
+    "No GPS route" : {
+
+    },
+    "No GPS route available." : {
+
+    },
+    "No GPS route data found in this GPX file" : {
+
+    },
+    "No GPS route data with valid coordinates found" : {
+
+    },
+    "No activities found in TCX file" : {
+
+    },
+    "No data." : {
+
+    },
+    "No elevation data" : {
+
+    },
+    "No elevation data." : {
+
+    },
+    "No filename column; activity file not mapped" : {
+
+    },
+    "No filename for activity" : {
+
+    },
+    "No heart-rate data." : {
+
+    },
+    "No heart-rate load, modelled as rest" : {
+
+    },
+    "No manifest at %@" : {
+
+    },
+    "No record messages found in FIT file" : {
+
+    },
+    "No records found in FIT file" : {
+
+    },
+    "No route points found" : {
+
+    },
+    "No valid GPS coordinates found in FIT file" : {
+
+    },
+    "No valid coordinates found in GPX file" : {
+
+    },
+    "No valid coordinates found in TCX file" : {
+
+    },
+    "No valid route points found" : {
+
+    },
+    "No workout data to export" : {
+
+    },
+    "Not corrected: no DEM tile in the folder covers this route." : {
+
+    },
+    "Not corrected: this route needs at least %lld DEM tiles, more than the %lld one correction may read. Tiles at a lower zoom cover more ground each." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not corrected: this route needs at least %1$lld DEM tiles, more than the %2$lld one correction may read. Tiles at a lower zoom cover more ground each."
+          }
+        }
+      }
+    },
+    "Not enough overlapping distance to compare" : {
+
+    },
+    "Not saved" : {
+
+    },
+    "Notes contains an invalid character." : {
+
+    },
+    "Notes must be at most %lld characters." : {
+
+    },
+    "Obvious isolated GPS outliers were removed from route analysis." : {
+
+    },
+    "One or both runs have very few data points" : {
+
+    },
+    "One or both runs lack elevation data" : {
+
+    },
+    "One or both runs lack heart rate data" : {
+
+    },
+    "One or both workouts have no usable GPS route for comparison video export." : {
+
+    },
+    "One run used a conservative moving-time fallback; moving-time comparisons are approximate" : {
+
+    },
+    "Only a limited portion of the routes could be matched reliably." : {
+
+    },
+    "Only a member of the route can be its representative." : {
+
+    },
+    "Only a short fragment of the routes could be matched reliably." : {
+
+    },
+    "Only local file URLs are supported" : {
+
+    },
+    "Only local files can be imported." : {
+
+    },
+    "Opposite direction detected; cumulative-time alignment is unavailable." : {
+
+    },
+    "Pace" : {
+
+    },
+    "Pace coloring needs more valid active distance and time in this workout." : {
+
+    },
+    "Paddling" : {
+
+    },
+    "Paused" : {
+
+    },
+    "Personal Heatmap." : {
+
+    },
+    "Personal records." : {
+
+    },
+    "Position" : {
+
+    },
+    "Possible duplicate" : {
+
+    },
+    "Power" : {
+
+    },
+    "Power coloring needs meaningful power coverage in this workout." : {
+
+    },
+    "Preparing route" : {
+
+    },
+    "Preparing routes" : {
+
+    },
+    "Primary P: %@." : {
+
+    },
+    "Primary time %@." : {
+
+    },
+    "Progress update stride must be at least 1" : {
+
+    },
+    "Promote failed: %@" : {
+
+    },
+    "Racket sports" : {
+
+    },
+    "Rafting" : {
+
+    },
+    "Range %@ to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Range %1$@ to %2$@."
+          }
+        }
+      }
+    },
+    "Range %@." : {
+
+    },
+    "Ready" : {
+
+    },
+    "Recorded altitude (sensor unknown)" : {
+
+    },
+    "Recorded elevation kept." : {
+
+    },
+    "Recorded laps: %lld" : {
+
+    },
+    "Recording Gap" : {
+
+    },
+    "Relative heart rate within this workout" : {
+
+    },
+    "Relative pace within this workout" : {
+
+    },
+    "Relative power within this workout" : {
+
+    },
+    "Removed duplicate route group %@…" : {
+
+    },
+    "Removed duplicate smart collection %@…" : {
+
+    },
+    "Removed duplicate tag definition %@…" : {
+
+    },
+    "Removed empty route groups." : {
+
+    },
+    "Removed missing tag references from smart collection “%@”." : {
+
+    },
+    "Rendering card" : {
+
+    },
+    "Rendering failed: %@" : {
+
+    },
+    "Rendering preview" : {
+
+    },
+    "Replay position %@." : {
+
+    },
+    "Requested cell size %lld metres." : {
+
+    },
+    "Rest day" : {
+
+    },
+    "Rock climbing" : {
+
+    },
+    "Route %@." : {
+
+    },
+    "Route alignment %@." : {
+
+    },
+    "Route alignment could not be completed." : {
+
+    },
+    "Route alignment was cancelled." : {
+
+    },
+    "Route correspondence requires too much stretching to be reliable." : {
+
+    },
+    "Route geometry is somewhat ambiguous; treat local deltas cautiously." : {
+
+    },
+    "Route group %@ is not in the library" : {
+
+    },
+    "Route-Aware" : {
+
+    },
+    "Route-Aware alignment has not been prepared yet." : {
+
+    },
+    "Route-Aware alignment is incompatible with the current alignment policy." : {
+
+    },
+    "Route-Aware unavailable" : {
+
+    },
+    "Routes appear to be travelled in opposite directions." : {
+
+    },
+    "Routes differ; comparison based on distance" : {
+
+    },
+    "Rowing" : {
+
+    },
+    "Run %lld" : {
+
+    },
+    "Running" : {
+
+    },
+    "Runs contain different pause durations; active and elapsed comparisons may differ" : {
+
+    },
+    "Runs have significantly different distances" : {
+
+    },
+    "Sailing" : {
+
+    },
+    "Same activity ID with different content; delete the existing workout first" : {
+
+    },
+    "Saving" : {
+
+    },
+    "Scope %@." : {
+
+    },
+    "Search text must be at most %lld characters." : {
+
+    },
+    "Search: “%@”" : {
+
+    },
+    "Select at most %lld sessions to import at once." : {
+
+    },
+    "Select two different workouts to export a comparison video." : {
+
+    },
+    "Selected distance %@." : {
+
+    },
+    "Selected run faster" : {
+
+    },
+    "Selected run has no recorded laps" : {
+
+    },
+    "Selected run may require reimport to recover source laps" : {
+
+    },
+    "Session end" : {
+
+    },
+    "Skydiving" : {
+
+    },
+    "Slowdown" : {
+
+    },
+    "Slowest Kilometer" : {
+
+    },
+    "Smart collection %@ is not in the library" : {
+
+    },
+    "Smart collection reorder list must include every collection exactly once." : {
+
+    },
+    "Smart collection “%@” no longer restricts by tags (all referenced tags were removed)." : {
+
+    },
+    "Snowboarding" : {
+
+    },
+    "Snowmobiling" : {
+
+    },
+    "Snowshoeing" : {
+
+    },
+    "Soccer" : {
+
+    },
+    "Solid" : {
+
+    },
+    "Some source-recorded laps were incomplete or malformed and were skipped." : {
+
+    },
+    "Source-reported lap totals differ materially from route-derived values; route-derived metrics were used." : {
+
+    },
+    "Split %lld" : {
+
+    },
+    "Stand-up paddleboarding" : {
+
+    },
+    "Standard" : {
+
+    },
+    "Start marker present." : {
+
+    },
+    "Stopped" : {
+
+    },
+    "Stopped time is estimated from GPS movement patterns and may differ from user-perceived stops." : {
+
+    },
+    "Stopped time is estimated from GPS; comparisons involving stopped time are approximate" : {
+
+    },
+    "Street" : {
+
+    },
+    "Surfing" : {
+
+    },
+    "Swimming" : {
+
+    },
+    "TCX file contains multiple GPS activities; only single-activity files are supported" : {
+
+    },
+    "TCX file has no timestamps; cannot compute pace or duration" : {
+
+    },
+    "Tactical" : {
+
+    },
+    "Tag %@ is not in the library" : {
+
+    },
+    "Tag name cannot be empty." : {
+
+    },
+    "Tag name contains an invalid character." : {
+
+    },
+    "Tag name must be a single line." : {
+
+    },
+    "Tag name must be at most %lld characters." : {
+
+    },
+    "Tag reorder list must include every tag exactly once." : {
+
+    },
+    "Tag: %@" : {
+
+    },
+    "Tags (all): %@" : {
+
+    },
+    "Tennis" : {
+
+    },
+    "The FIT session elapsed time differs from the recorded route; route timestamps were used." : {
+
+    },
+    "The FIT session timer time differs from the recorded route; route segments were used." : {
+
+    },
+    "The file could not be found." : {
+
+    },
+    "The geographic extent of these routes is too large for local alignment." : {
+
+    },
+    "The model has no load for those days and decays as if you had rested, so that stretch reads as lost fitness and gained freshness." : {
+
+    },
+    "The recorded barometric altitude is kept wherever it exists." : {
+
+    },
+    "The routes are too far apart for route-aware comparison." : {
+
+    },
+    "There is not enough continuous GPS route data for route-aware comparison." : {
+
+    },
+    "There is not enough reliable altitude data for elevation analysis." : {
+
+    },
+    "These loop recordings begin too far apart for this alignment mode." : {
+
+    },
+    "These routes are too large for route-aware comparison with the current budget." : {
+
+    },
+    "These workouts have no positive common distance for Distance-aligned export." : {
+
+    },
+    "This FIT file contains %lld runs. Only single-run files are supported." : {
+
+    },
+    "This FIT file contains a non-running activity (%@). Only running workouts are supported." : {
+
+    },
+    "This FIT file contains more than %lld sessions, which is more than RunPlay Studio can review safely." : {
+
+    },
+    "This FIT file exceeds the maximum supported size." : {
+
+    },
+    "This GPX file could not be read. Try re-exporting it." : {
+
+    },
+    "This TCX file could not be read. Try re-exporting it." : {
+
+    },
+    "This file could not be read: %@" : {
+
+    },
+    "This file exceeds the supported record, event, or lap limit." : {
+
+    },
+    "This file is larger than %lld MB, which is the maximum RunPlay Studio reads. It was not imported." : {
+
+    },
+    "This saved workout was imported before recorded laps were preserved. Reimport the original FIT or TCX file to recover device laps." : {
+
+    },
+    "This session has no recognised sport and is being treated as a run." : {
+
+    },
+    "This session has no usable end time." : {
+
+    },
+    "This session has no usable start time." : {
+
+    },
+    "This session is already in your library." : {
+
+    },
+    "This session is no longer present in the file." : {
+
+    },
+    "This session's end time precedes its start time." : {
+
+    },
+    "This session's time range overlaps another session, so its data cannot be separated reliably." : {
+
+    },
+    "This workout exceeds the %@ route point maximum RunPlay Studio supports. It was not imported." : {
+
+    },
+    "This workout has more than %@ route points, which is the maximum RunPlay Studio supports. It was not imported. Split the recording into shorter workouts and import them separately." : {
+
+    },
+    "This workout has no playable elapsed timeline for video export." : {
+
+    },
+    "This workout has no usable GPS route for video export." : {
+
+    },
+    "Time" : {
+
+    },
+    "Total active time %@." : {
+
+    },
+    "Total ascent %@ from %lld of %lld runs." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Total ascent %1$@ from %2$lld of %3$lld runs."
+          }
+        }
+      }
+    },
+    "Total distance %@." : {
+
+    },
+    "Track" : {
+
+    },
+    "Trail" : {
+
+    },
+    "Training" : {
+
+    },
+    "Training load by day." : {
+
+    },
+    "Transition" : {
+
+    },
+    "Treadmill" : {
+
+    },
+    "Trends by %@." : {
+
+    },
+    "Trigger types differ" : {
+
+    },
+    "Truncated route group assignments to %lld." : {
+
+    },
+    "Truncated route groups to %lld." : {
+
+    },
+    "Truncated search text in smart collection “%@”." : {
+
+    },
+    "Truncated smart collections to %lld." : {
+
+    },
+    "Truncated tag assignments to %lld." : {
+
+    },
+    "Truncated tags to %lld definitions." : {
+
+    },
+    "Unavailable" : {
+
+    },
+    "Unchecked" : {
+
+    },
+    "Unexpected end of FIT file" : {
+
+    },
+    "Unexpected error loading library: %@" : {
+
+    },
+    "Unknown" : {
+
+    },
+    "Unknown (%@)" : {
+
+    },
+    "Unknown (FIT %lld)" : {
+
+    },
+    "Unknown activity type “%@”" : {
+
+    },
+    "Unknown date" : {
+
+    },
+    "Unknown smart collection %@." : {
+
+    },
+    "Unknown tag %@." : {
+
+    },
+    "Unknown tag in assignment." : {
+
+    },
+    "Unknown tag in bulk update." : {
+
+    },
+    "Unknown workout %@." : {
+
+    },
+    "Unknown workout in bulk tag update." : {
+
+    },
+    "Unrecognised" : {
+
+    },
+    "Unreliable altitude spikes were ignored in elevation analysis." : {
+
+    },
+    "Unsafe archive entry" : {
+
+    },
+    "Unspecified" : {
+
+    },
+    "Unsupported" : {
+
+    },
+    "Unsupported FIT protocol version: %u" : {
+
+    },
+    "Unsupported activity file format" : {
+
+    },
+    "Unsupported activity type" : {
+
+    },
+    "Unsupported format" : {
+
+    },
+    "Unsupported format: .%@" : {
+
+    },
+    "Unsupported library schema version: %lld" : {
+
+    },
+    "Unsupported sport" : {
+
+    },
+    "Untagged" : {
+
+    },
+    "Untitled Run" : {
+
+    },
+    "Video dimensions must be positive" : {
+
+    },
+    "Video export cancelled." : {
+
+    },
+    "Video requires at least two frames" : {
+
+    },
+    "Virtual" : {
+
+    },
+    "Wakeboarding" : {
+
+    },
+    "Wakesurfing" : {
+
+    },
+    "Walking" : {
+
+    },
+    "Water skiing" : {
+
+    },
+    "Water tubing" : {
+
+    },
+    "Windsurfing" : {
+
+    },
+    "Workout %@ already exists in the library" : {
+
+    },
+    "Workout %@ corrupted: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Workout %1$@ corrupted: %2$@"
+          }
+        }
+      }
+    },
+    "Workout %@ is not in the library" : {
+
+    },
+    "Workout %@ was removed from the library, but its file could not be deleted: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Workout %1$@ was removed from the library, but its file could not be deleted: %2$@"
+          }
+        }
+      }
+    },
+    "Workout %@… corrupted — skipped" : {
+
+    },
+    "Workout %@… error: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Workout %1$@… error: %2$@"
+          }
+        }
+      }
+    },
+    "Workout %@… file missing — skipped" : {
+
+    },
+    "Workout %@… route quality could not be upgraded: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Workout %1$@… route quality could not be upgraded: %2$@"
+          }
+        }
+      }
+    },
+    "Workout %@… unexpected error: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Workout %1$@… unexpected error: %2$@"
+          }
+        }
+      }
+    },
+    "Workout %@… was upgraded in memory but could not be saved: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Workout %1$@… was upgraded in memory but could not be saved: %2$@"
+          }
+        }
+      }
+    },
+    "Workout file missing for ID: %@" : {
+
+    },
+    "Workout total elapsed duration must be positive and finite" : {
+
+    },
+    "Write failed: %@" : {
+
+    },
+    "Zero element size for base type" : {
+
+    },
+    "bpm" : {
+
+    },
+    "faster" : {
+
+    },
+    "fatigue %lld" : {
+
+    },
+    "fitness %lld" : {
+
+    },
+    "form %@" : {
+
+    },
+    "less moving" : {
+
+    },
+    "less paused" : {
+
+    },
+    "less stopped" : {
+
+    },
+    "less than %@" : {
+
+    },
+    "longer" : {
+
+    },
+    "more moving" : {
+
+    },
+    "more paused" : {
+
+    },
+    "more stopped" : {
+
+    },
+    "route_group.compass.east" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "E"
+          }
+        }
+      }
+    },
+    "route_group.compass.east_northeast" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ENE"
+          }
+        }
+      }
+    },
+    "route_group.compass.east_southeast" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ESE"
+          }
+        }
+      }
+    },
+    "route_group.compass.north" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "N"
+          }
+        }
+      }
+    },
+    "route_group.compass.north_northeast" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "NNE"
+          }
+        }
+      }
+    },
+    "route_group.compass.north_northwest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "NNW"
+          }
+        }
+      }
+    },
+    "route_group.compass.northeast" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "NE"
+          }
+        }
+      }
+    },
+    "route_group.compass.northwest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "NW"
+          }
+        }
+      }
+    },
+    "route_group.compass.south" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "S"
+          }
+        }
+      }
+    },
+    "route_group.compass.south_southeast" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSE"
+          }
+        }
+      }
+    },
+    "route_group.compass.south_southwest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSW"
+          }
+        }
+      }
+    },
+    "route_group.compass.southeast" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SE"
+          }
+        }
+      }
+    },
+    "route_group.compass.southwest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SW"
+          }
+        }
+      }
+    },
+    "route_group.compass.west" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "W"
+          }
+        }
+      }
+    },
+    "route_group.compass.west_northwest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "WNW"
+          }
+        }
+      }
+    },
+    "route_group.compass.west_southwest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "WSW"
+          }
+        }
+      }
+    },
+    "route_group.default_name" : {
+      "comment" : "Default route name: a distance such as “5.2 km”, then the shape (Loop or Route)",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "route_group.disambiguated_suffix" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : " (%@)"
+          }
+        }
+      }
+    },
+    "route_group.shape.loop" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loop"
+          }
+        }
+      }
+    },
+    "route_group.shape.route" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Route"
+          }
+        }
+      }
+    },
+    "route_group.unnamed" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Route"
+          }
+        }
+      }
+    },
+    "shorter" : {
+
+    },
+    "slower" : {
+
+    },
+    "spm" : {
+
+    },
+    "unavailable" : {
+
+    }
+  },
+  "version" : "1.0"
+}

@@ -26,11 +26,11 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .duplicateWorkoutID(let id):
-            return "Workout \(id) already exists in the library"
+            return coreLocalized("Workout \(id.uuidString) already exists in the library")
         case .orphanedFile(let id, let detail):
-            return "Workout \(id) was removed from the library, but its file could not be deleted: \(detail)"
+            return coreLocalized("Workout \(id.uuidString) was removed from the library, but its file could not be deleted: \(detail)")
         case .workoutNotInLibrary(let id):
-            return "Workout \(id) is not in the library"
+            return coreLocalized("Workout \(id.uuidString) is not in the library")
         case .invalidMetadata(let detail):
             return detail
         case .invalidTag(let detail):
@@ -38,11 +38,11 @@ public enum WorkoutLibraryStoreError: Error, LocalizedError, Equatable {
         case .invalidSmartCollection(let detail):
             return detail
         case .tagNotFound(let id):
-            return "Tag \(id) is not in the library"
+            return coreLocalized("Tag \(id.uuidString) is not in the library")
         case .smartCollectionNotFound(let id):
-            return "Smart collection \(id) is not in the library"
+            return coreLocalized("Smart collection \(id.uuidString) is not in the library")
         case .routeGroupNotFound(let id):
-            return "Route group \(id) is not in the library"
+            return coreLocalized("Route group \(id.uuidString) is not in the library")
         case .invalidRouteGroup(let detail):
             return detail
         }
@@ -134,7 +134,7 @@ public actor WorkoutLibraryStoreActor {
                         try store.saveManifest(repaired)
                     } catch {
                         return .demos(
-                            errorMessage: "Could not repair the empty library manifest: \(error.localizedDescription)",
+                            errorMessage: coreLocalized("Could not repair the empty library manifest: \(error.localizedDescription)"),
                             organization: WorkoutLibraryOrganizationSnapshot(
                                 tags: repaired.tags,
                                 smartCollections: repaired.smartCollections
@@ -159,6 +159,7 @@ public actor WorkoutLibraryStoreActor {
             var warnings: [String] = []
 
             for id in manifest.workoutIDs {
+                let shortID = String(id.uuidString.prefix(8))
                 do {
                     var workout = try store.loadWorkout(id: id)
                     validIDs.append(id)
@@ -200,8 +201,7 @@ public actor WorkoutLibraryStoreActor {
                             // A decoded workout remains usable even if quality
                             // processing fails. Keep it visible and retry later.
                             warnings.append(
-                                "Workout \(id.uuidString.prefix(8))… route quality could not be upgraded: "
-                                    + error.localizedDescription
+                                coreLocalized("Workout \(shortID)… route quality could not be upgraded: \(error.localizedDescription)")
                             )
                         }
                     } else if workout.normalizationVersion <= RunWorkout.currentNormalizationVersion,
@@ -220,22 +220,21 @@ public actor WorkoutLibraryStoreActor {
                             try store.saveWorkout(workout)
                         } catch {
                             warnings.append(
-                                "Workout \(id.uuidString.prefix(8))… was upgraded in memory "
-                                    + "but could not be saved: \(error.localizedDescription)"
+                                coreLocalized("Workout \(shortID)… was upgraded in memory but could not be saved: \(error.localizedDescription)")
                             )
                         }
                     }
                 } catch let error as WorkoutLibraryError {
                     switch error {
                     case .workoutFileMissing:
-                        warnings.append("Workout \(id.uuidString.prefix(8))… file missing — skipped")
+                        warnings.append(coreLocalized("Workout \(shortID)… file missing — skipped"))
                     case .workoutCorrupted:
-                        warnings.append("Workout \(id.uuidString.prefix(8))… corrupted — skipped")
+                        warnings.append(coreLocalized("Workout \(shortID)… corrupted — skipped"))
                     default:
-                        warnings.append("Workout \(id.uuidString.prefix(8))… error: \(error.localizedDescription)")
+                        warnings.append(coreLocalized("Workout \(shortID)… error: \(error.localizedDescription)"))
                     }
                 } catch {
-                    warnings.append("Workout \(id.uuidString.prefix(8))… unexpected error: \(error.localizedDescription)")
+                    warnings.append(coreLocalized("Workout \(shortID)… unexpected error: \(error.localizedDescription)"))
                 }
             }
 
@@ -278,14 +277,14 @@ public actor WorkoutLibraryStoreActor {
                     try store.saveManifest(workingManifest)
                     favoriteIDs = workingManifest.favoriteWorkoutIDs
                 } catch {
-                    warnings.append("Could not repair library manifest: \(error.localizedDescription)")
+                    warnings.append(coreLocalized("Could not repair library manifest: \(error.localizedDescription)"))
                 }
             }
 
             guard !loaded.isEmpty else {
                 let warning = warnings.isEmpty
                     ? nil
-                    : "Library recovery:\n" + warnings.joined(separator: "\n")
+                    : coreLocalized("Library recovery:\n\(warnings.joined(separator: "\n"))")
                 // All workout files missing/corrupt — keep organisation for an
                 // empty persisted library rather than wiping tags/collections.
                 return .demos(
@@ -308,7 +307,7 @@ public actor WorkoutLibraryStoreActor {
             )
             let warning = warnings.isEmpty
                 ? nil
-                : "Library warnings:\n" + warnings.joined(separator: "\n")
+                : coreLocalized("Library warnings:\n\(warnings.joined(separator: "\n"))")
             return .workouts(
                 loaded,
                 selectedWorkoutID: selectedWorkoutID,
@@ -320,9 +319,9 @@ public actor WorkoutLibraryStoreActor {
             if case .manifestMissing = error {
                 return .demos(errorMessage: nil)
             }
-            return .demos(errorMessage: "Failed to load library: \(error.localizedDescription)")
+            return .demos(errorMessage: coreLocalized("Failed to load library: \(error.localizedDescription)"))
         } catch {
-            return .demos(errorMessage: "Unexpected error loading library: \(error.localizedDescription)")
+            return .demos(errorMessage: coreLocalized("Unexpected error loading library: \(error.localizedDescription)"))
         }
     }
 
@@ -369,8 +368,7 @@ public actor WorkoutLibraryStoreActor {
                 try store.deleteWorkout(id: workout.id)
             } catch let cleanupError {
                 throw WorkoutLibraryError.writeFailed(
-                    "Could not update the manifest (\(error.localizedDescription)); "
-                    + "cleanup of the saved workout also failed (\(cleanupError.localizedDescription))"
+                    coreLocalized("Could not update the manifest (\(error.localizedDescription)); cleanup of the saved workout also failed (\(cleanupError.localizedDescription))")
                 )
             }
             throw error
@@ -516,7 +514,7 @@ public actor WorkoutLibraryStoreActor {
     public func beginBatchImport() throws -> WorkoutLibraryBatchToken {
         try Task.checkCancellation()
         if activeBatch != nil {
-            throw WorkoutLibraryError.writeFailed("A batch import is already in progress")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("A batch import is already in progress"))
         }
         var knownLibraryIDs = Set<UUID>()
         do {
@@ -542,7 +540,7 @@ public actor WorkoutLibraryStoreActor {
     public func stageWorkout(_ workout: RunWorkout, in batch: WorkoutLibraryBatchToken) throws {
         try Task.checkCancellation()
         guard var active = activeBatch, active.token == batch else {
-            throw WorkoutLibraryError.writeFailed("Invalid or inactive batch token")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Invalid or inactive batch token"))
         }
         // Reject duplicate IDs within the batch and against the library snapshot
         // captured at beginBatchImport. commitBatchImport re-validates against
@@ -570,7 +568,7 @@ public actor WorkoutLibraryStoreActor {
     ) throws -> [UUID] {
         try Task.checkCancellation()
         guard let active = activeBatch, active.token == batch else {
-            throw WorkoutLibraryError.writeFailed("Invalid or inactive batch token")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Invalid or inactive batch token"))
         }
         let stagedIDs = active.stagedIDs
         if stagedIDs.isEmpty {
@@ -1499,7 +1497,7 @@ public actor WorkoutLibraryStoreActor {
     public func mergeRouteGroups(sourceID: UUID, into targetID: UUID) throws {
         var manifest = try loadOrCreateManifest()
         guard sourceID != targetID else {
-            throw WorkoutLibraryStoreError.invalidRouteGroup("Cannot merge a route into itself.")
+            throw WorkoutLibraryStoreError.invalidRouteGroup(coreLocalized("Cannot merge a route into itself."))
         }
         guard let sourceIndex = manifest.routeGroups.firstIndex(where: { $0.id == sourceID }) else {
             throw WorkoutLibraryStoreError.routeGroupNotFound(sourceID)
@@ -1587,7 +1585,7 @@ public actor WorkoutLibraryStoreActor {
         }
         guard manifest.routeGroupID(forWorkoutID: workoutID) == groupID else {
             throw WorkoutLibraryStoreError.invalidRouteGroup(
-                "Only a member of the route can be its representative."
+                coreLocalized("Only a member of the route can be its representative.")
             )
         }
         guard let workout = try? store.loadWorkout(id: workoutID) else {
@@ -1845,7 +1843,7 @@ public actor WorkoutLibraryStoreActor {
         var manifest = try loadOrCreateManifest()
         let currentIDs = manifest.tags.map(\.id)
         guard Set(orderedIDs) == Set(currentIDs), orderedIDs.count == currentIDs.count else {
-            throw WorkoutLibraryStoreError.invalidTag("Tag reorder list must include every tag exactly once.")
+            throw WorkoutLibraryStoreError.invalidTag(coreLocalized("Tag reorder list must include every tag exactly once."))
         }
         if orderedIDs == currentIDs {
             return
@@ -1875,7 +1873,7 @@ public actor WorkoutLibraryStoreActor {
             if let missing = tagIDs.first(where: { !validTagIDs.contains($0) }) {
                 throw WorkoutLibraryStoreError.tagNotFound(missing)
             }
-            throw WorkoutLibraryStoreError.invalidTag("Unknown tag in assignment.")
+            throw WorkoutLibraryStoreError.invalidTag(coreLocalized("Unknown tag in assignment."))
         }
         do {
             try policy.validateAssignmentCount(tagIDs.count)
@@ -1910,7 +1908,7 @@ public actor WorkoutLibraryStoreActor {
             if let missing = workoutIDs.first(where: { !libraryIDs.contains($0) }) {
                 throw WorkoutLibraryStoreError.workoutNotInLibrary(missing)
             }
-            throw WorkoutLibraryStoreError.invalidTag("Unknown workout in bulk tag update.")
+            throw WorkoutLibraryStoreError.invalidTag(coreLocalized("Unknown workout in bulk tag update."))
         }
 
         let validTagIDs = Set(manifest.tags.map(\.id))
@@ -1919,7 +1917,7 @@ public actor WorkoutLibraryStoreActor {
             if let missing = referenced.first(where: { !validTagIDs.contains($0) }) {
                 throw WorkoutLibraryStoreError.tagNotFound(missing)
             }
-            throw WorkoutLibraryStoreError.invalidTag("Unknown tag in bulk update.")
+            throw WorkoutLibraryStoreError.invalidTag(coreLocalized("Unknown tag in bulk update."))
         }
 
         var changed = false
@@ -2038,7 +2036,7 @@ public actor WorkoutLibraryStoreActor {
         let currentIDs = manifest.smartCollections.map(\.id)
         guard Set(orderedIDs) == Set(currentIDs), orderedIDs.count == currentIDs.count else {
             throw WorkoutLibraryStoreError.invalidSmartCollection(
-                "Smart collection reorder list must include every collection exactly once."
+                coreLocalized("Smart collection reorder list must include every collection exactly once.")
             )
         }
         if orderedIDs == currentIDs {

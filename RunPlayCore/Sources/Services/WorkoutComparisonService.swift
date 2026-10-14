@@ -166,26 +166,26 @@ public struct WorkoutComparisonService: Sendable {
             var caveats: [String] = []
 
             if primaryLaps.isEmpty {
-                caveats.append("Selected run has no recorded laps")
+                caveats.append(coreLocalized("Selected run has no recorded laps"))
             } else if comparisonLaps.isEmpty {
-                caveats.append("Compared run has no recorded laps")
+                caveats.append(coreLocalized("Compared run has no recorded laps"))
             }
             if primary.mayRequireReimportForRecordedLaps {
-                caveats.append("Selected run may require reimport to recover source laps")
+                caveats.append(coreLocalized("Selected run may require reimport to recover source laps"))
             }
             if comparison.mayRequireReimportForRecordedLaps {
-                caveats.append("Compared run may require reimport to recover source laps")
+                caveats.append(coreLocalized("Compared run may require reimport to recover source laps"))
             }
             if primaryLaps.count != comparisonLaps.count {
-                caveats.append("Lap counts differ (\(primaryLaps.count) vs \(comparisonLaps.count))")
+                caveats.append(coreLocalized("Lap counts differ (\(primaryLaps.count) vs \(comparisonLaps.count))"))
             }
             if let primaryLap, let comparisonLap {
                 if primaryLap.trigger != comparisonLap.trigger {
-                    caveats.append("Trigger types differ")
+                    caveats.append(coreLocalized("Trigger types differ"))
                 }
                 let distanceDelta = abs(primaryLap.distanceMeters - comparisonLap.distanceMeters)
                 if distanceDelta > max(50, primaryLap.distanceMeters * 0.05) {
-                    caveats.append("Lap distances differ materially")
+                    caveats.append(coreLocalized("Lap distances differ materially"))
                 }
             }
 

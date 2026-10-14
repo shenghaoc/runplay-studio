@@ -4,6 +4,17 @@ import SwiftUI
 
 /// Displays both comparison routes on one Apple Maps surface with a native 2D/3D toggle.
 struct ComparisonMapView: View {
+    /// Column heading for the selected (primary) run's values — not the
+    /// "Selected" count shown in the import sheets.
+    static var selectedRunColumnTitle: String {
+        String(
+            localized: "comparison.column.selected_run",
+            defaultValue: "Selected",
+            bundle: .module,
+            comment: "Column heading: values of the selected (primary) run in a comparison"
+        )
+    }
+
     let primaryWorkout: RunWorkout
     let comparisonWorkout: RunWorkout
     let warnings: [ComparisonWarning]
@@ -39,7 +50,7 @@ struct ComparisonMapView: View {
                 primaryTimeLabel: metrics.primaryElapsedFormatted,
                 comparisonTimeLabel: metrics.comparisonElapsedFormatted,
                 deltaLabel: metrics.elapsedDeltaFormatted,
-                warnings: warnings.map(\.rawValue) + (snapshot?.diagnostics.warnings ?? []),
+                warnings: warnings.map(\.message) + (snapshot?.diagnostics.warnings ?? []),
                 alignmentModeName: ComparisonAlignmentMode.routeAware.displayName,
                 routeAlignmentQualityName: snapshot?.availability.quality?.displayName,
                 matchedDistanceMeters: snapshot?.totalAlignedDistanceMeters,
@@ -60,7 +71,7 @@ struct ComparisonMapView: View {
             primaryTimeLabel: metrics.primaryElapsedFormatted,
             comparisonTimeLabel: metrics.comparisonElapsedFormatted,
             deltaLabel: metrics.elapsedTimeDeltaFormatted,
-            warnings: warnings.map(\.rawValue),
+            warnings: warnings.map(\.message),
             alignmentModeName: ComparisonAlignmentMode.distance.displayName
         )
     }
@@ -81,14 +92,14 @@ struct ComparisonMapView: View {
         var markers = RouteMapContent.endpointMarkers(
             points: primaryWorkout.routePoints,
             idPrefix: "primary",
-            startTitle: "Primary Start",
-            finishTitle: "Primary Finish"
+            startTitle: studioLocalized("Primary Start"),
+            finishTitle: studioLocalized("Primary Finish")
         )
         markers += RouteMapContent.endpointMarkers(
             points: comparisonWorkout.routePoints,
             idPrefix: "comparison",
-            startTitle: "Comp. Start",
-            finishTitle: "Comp. Finish"
+            startTitle: studioLocalized("Comp. Start"),
+            finishTitle: studioLocalized("Comp. Finish")
         )
 
         if isRouteAware {
@@ -98,7 +109,7 @@ struct ComparisonMapView: View {
                     points: primaryWorkout.routePoints,
                     distance: metrics.primaryDistanceMeters,
                     id: "primary-current",
-                    title: "Selected run at matched position",
+                    title: studioLocalized("Selected run at matched position"),
                     style: .primaryCurrent
                 ) {
                     markers.append(marker)
@@ -107,7 +118,7 @@ struct ComparisonMapView: View {
                     points: comparisonWorkout.routePoints,
                     distance: metrics.comparisonDistanceMeters,
                     id: "comparison-current",
-                    title: "Compared run at matched position",
+                    title: studioLocalized("Compared run at matched position"),
                     style: .comparisonCurrent
                 ) {
                     markers.append(marker)
@@ -120,7 +131,7 @@ struct ComparisonMapView: View {
                     points: primaryWorkout.routePoints,
                     distance: distance,
                     id: "primary-current",
-                    title: "Primary at selected distance",
+                    title: studioLocalized("Primary at selected distance"),
                     style: .primaryCurrent
                 ) {
                     markers.append(marker)
@@ -129,7 +140,7 @@ struct ComparisonMapView: View {
                     points: comparisonWorkout.routePoints,
                     distance: distance,
                     id: "comparison-current",
-                    title: "Comparison at selected distance",
+                    title: studioLocalized("Comparison at selected distance"),
                     style: .comparisonCurrent
                 ) {
                     markers.append(marker)
@@ -198,15 +209,16 @@ struct ComparisonMapView: View {
     private var comparisonLegend: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
             MapModeBadge(displayMode: displayMode)
+            // The symbol repeats the map marker's glyph for this route.
             legendRow(
                 color: AppDesign.primaryBlue,
-                symbol: "P",
-                label: "Primary: \(primaryWorkout.displayName)"
+                symbol: RouteMapMarkerStyle.primaryCurrent.glyph,
+                label: studioLocalized("Primary: \(primaryWorkout.displayName)")
             )
             legendRow(
                 color: AppDesign.comparisonOrange,
-                symbol: "C",
-                label: "Comparison: \(comparisonWorkout.displayName)"
+                symbol: RouteMapMarkerStyle.comparisonCurrent.glyph,
+                label: studioLocalized("Comparison: \(comparisonWorkout.displayName)")
             )
 
             Divider()
@@ -254,7 +266,7 @@ struct ComparisonMapView: View {
     private var comparisonWarnings: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.xxSmall) {
             ForEach(warnings, id: \.self) { warning in
-                Label(warning.rawValue, systemImage: warning.icon)
+                Label(warning.message, systemImage: warning.icon)
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(AppDesign.comparisonOrange)
             }
@@ -274,7 +286,7 @@ struct ComparisonMapView: View {
                 Text(appState.comparisonDistanceMetrics.selectedDistanceFormatted)
                     .font(AppDesign.Typography.compactMetric.monospacedDigit())
                 if commonDistance > 0 {
-                    Text("/ \(String(format: "%.2f km", commonDistance / 1000))")
+                    Text(verbatim: "/ \(DisplayFormatter.formatDistanceKm(commonDistance))")
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.tertiary)
                 }
@@ -330,23 +342,19 @@ struct ComparisonMapView: View {
         let total = appState.comparisonViewModel.totalAlignedDistanceMeters
         let progress = appState.comparisonViewModel.clampedAlignedProgressMeters
         let metrics = alignedMetrics
+        let primaryDistance = DisplayFormatter.formatDistanceKm(metrics.primaryDistanceMeters)
+        let comparisonDistance = DisplayFormatter.formatDistanceKm(metrics.comparisonDistanceMeters)
         return VStack(spacing: AppDesign.Spacing.small) {
             HStack {
                 Text("Matched Route Progress")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.tertiary)
                 Spacer()
-                Text(String(format: "%.2f / %.2f km", progress / 1000, total / 1000))
+                Text(verbatim: "\(DisplayFormatter.formatDecimal(progress / 1000, fractionDigits: 2)) / \(DisplayFormatter.formatDistanceKm(total))")
                     .font(AppDesign.Typography.compactMetric.monospacedDigit())
             }
 
-            Text(
-                String(
-                    format: "Selected run %.2f km ↔ Compared run %.2f km",
-                    metrics.primaryDistanceMeters / 1000,
-                    metrics.comparisonDistanceMeters / 1000
-                )
-            )
+            Text("Selected run \(primaryDistance) ↔ Compared run \(comparisonDistance)")
             .font(AppDesign.Typography.compactLabel)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -409,7 +417,7 @@ struct ComparisonMapView: View {
         return Grid(horizontalSpacing: AppDesign.Spacing.large, verticalSpacing: AppDesign.Spacing.xSmall) {
             GridRow {
                 Text("")
-                Text("Selected")
+                Text(ComparisonMapView.selectedRunColumnTitle)
                 Text("Comparison")
                 Text("Delta")
             }
@@ -417,35 +425,35 @@ struct ComparisonMapView: View {
             .foregroundStyle(.tertiary)
 
             GridRow {
-                metricLabel("Elapsed")
+                metricLabel(studioLocalized("Elapsed"))
                 metricValue(metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.elapsedTimeDeltaFormatted, color: deltaColor(metrics.elapsedTimeDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Active")
+                metricLabel(studioLocalized("Active"))
                 metricValue(metrics.primaryActiveFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonActiveFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.activeTimeDeltaFormatted, color: deltaColor(metrics.activeTimeDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Moving (est.)")
+                metricLabel(studioLocalized("Moving (est.)"))
                 metricValue(metrics.primaryMovingFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonMovingFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.movingTimeDeltaFormatted, color: deltaColor(metrics.movingTimeDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Stopped (est.)")
+                metricLabel(studioLocalized("Stopped (est.)"))
                 metricValue(metrics.primaryStoppedFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonStoppedFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.stoppedTimeDeltaFormatted, color: deltaColor(metrics.stoppedTimeDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Active Pace")
+                metricLabel(studioLocalized("Active Pace"))
                 metricValue(metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.paceDeltaFormatted, color: deltaColor(metrics.paceDeltaSecondsPerKm))
@@ -458,7 +466,7 @@ struct ComparisonMapView: View {
         Grid(horizontalSpacing: AppDesign.Spacing.large, verticalSpacing: AppDesign.Spacing.xSmall) {
             GridRow {
                 Text("")
-                Text("Selected")
+                Text(ComparisonMapView.selectedRunColumnTitle)
                 Text("Comparison")
                 Text("Delta")
             }
@@ -466,35 +474,35 @@ struct ComparisonMapView: View {
             .foregroundStyle(.tertiary)
 
             GridRow {
-                metricLabel("Elapsed")
+                metricLabel(studioLocalized("Elapsed"))
                 metricValue(metrics.primaryElapsedFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonElapsedFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.elapsedDeltaFormatted, color: deltaColor(metrics.elapsedDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Active")
+                metricLabel(studioLocalized("Active"))
                 metricValue(metrics.primaryActiveFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonActiveFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.activeDeltaFormatted, color: deltaColor(metrics.activeDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Moving (est.)")
+                metricLabel(studioLocalized("Moving (est.)"))
                 metricValue(metrics.primaryMovingFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonMovingFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.movingDeltaFormatted, color: deltaColor(metrics.movingDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Stopped (est.)")
+                metricLabel(studioLocalized("Stopped (est.)"))
                 metricValue(metrics.primaryStoppedFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonStoppedFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.stoppedDeltaFormatted, color: deltaColor(metrics.stoppedDeltaSeconds))
             }
 
             GridRow {
-                metricLabel("Active Pace")
+                metricLabel(studioLocalized("Active Pace"))
                 metricValue(metrics.primaryPaceFormatted, color: AppDesign.primaryBlue)
                 metricValue(metrics.comparisonPaceFormatted, color: AppDesign.comparisonOrange)
                 metricValue(metrics.paceDeltaFormatted, color: deltaColor(metrics.activePaceDeltaSecondsPerKm))

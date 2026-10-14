@@ -82,12 +82,12 @@ struct RouteGroupDetailView: View {
     private func summaryLine(_ row: RouteGroupRow) -> String {
         var parts: [String] = []
         parts.append(String(
-            format: String(localized: "route_group.detail.runs", defaultValue: "%d runs"),
+            format: String(localized: "route_group.detail.runs", defaultValue: "%d runs", bundle: .module),
             row.runCount
         ))
         if let last = row.lastRunDate {
             parts.append(String(
-                format: String(localized: "route_group.detail.last", defaultValue: "last %@"),
+                format: String(localized: "route_group.detail.last", defaultValue: "last %@", bundle: .module),
                 last.formatted(date: .abbreviated, time: .omitted)
             ))
         }
@@ -100,15 +100,15 @@ struct RouteGroupDetailView: View {
     private func statsRow(_ row: RouteGroupRow) -> some View {
         HStack(spacing: AppDesign.Spacing.large) {
             paceStat(
-                title: String(localized: "route_group.stat.best", defaultValue: "Best Pace"),
+                title: String(localized: "route_group.stat.best", defaultValue: "Best Pace", bundle: .module),
                 value: row.bestPaceSecondsPerKilometer
             )
             paceStat(
-                title: String(localized: "route_group.stat.median", defaultValue: "Median Pace"),
+                title: String(localized: "route_group.stat.median", defaultValue: "Median Pace", bundle: .module),
                 value: row.medianPaceSecondsPerKilometer
             )
             paceStat(
-                title: String(localized: "route_group.stat.latest", defaultValue: "Latest Pace"),
+                title: String(localized: "route_group.stat.latest", defaultValue: "Latest Pace", bundle: .module),
                 value: row.latestPaceSecondsPerKilometer
             )
         }
@@ -147,7 +147,7 @@ struct RouteGroupDetailView: View {
                 .panelBackground()
                 .accessibilityLabel("Representative route map")
                 .accessibilityValue(String(
-                    format: String(localized: "route_group.map.ax", defaultValue: "Route overlay for %@, %.1f kilometres"),
+                    format: String(localized: "route_group.map.ax", defaultValue: "Route overlay for %@, %.1f kilometres", bundle: .module),
                     representative.displayName,
                     max(0, representative.summary.totalDistanceMeters) / 1_000
                 ))
@@ -259,10 +259,10 @@ struct RouteGroupDetailView: View {
         }
         parts.append(DisplayFormatter.formatPace(member.paceSecondsPerKilometer))
         if member.isRepresentative {
-            parts.append(String(localized: "route_group.member.representative.ax", defaultValue: "representative"))
+            parts.append(String(localized: "route_group.member.representative.ax", defaultValue: "representative", bundle: .module))
         }
         if member.isReversed {
-            parts.append(String(localized: "route_group.member.reversed.ax", defaultValue: "run in the opposite direction"))
+            parts.append(String(localized: "route_group.member.reversed.ax", defaultValue: "run in the opposite direction", bundle: .module))
         }
         return parts.joined(separator: ", ")
     }
@@ -313,12 +313,12 @@ struct RouteProgressionChart: View {
 
     private var spokenSummary: String {
         guard let first = points.first, let last = points.last, points.count >= 2 else {
-            return String(localized: "route_group.chart.empty.ax", defaultValue: "Not enough runs for a progression")
+            return String(localized: "route_group.chart.empty.ax", defaultValue: "Not enough runs for a progression", bundle: .module)
         }
         let count = points.count
         let best = points.map(\.paceSecondsPerKilometer).min() ?? 0
         return String(
-            format: String(localized: "route_group.chart.summary.ax", defaultValue: "%d runs from %@ to %@, best active pace %@"),
+            format: String(localized: "route_group.chart.summary.ax", defaultValue: "%d runs from %@ to %@, best active pace %@", bundle: .module),
             count,
             first.date.formatted(date: .abbreviated, time: .omitted),
             last.date.formatted(date: .abbreviated, time: .omitted),
@@ -335,7 +335,7 @@ private struct RouteProgressionChartDescriptor: AXChartDescriptorRepresentable {
         let times = points.map { $0.date.timeIntervalSince1970 }
         let paces = points.map(\.paceSecondsPerKilometer)
         let xScale = AXNumericDataAxisDescriptor(
-            title: "Date",
+            title: studioLocalized("Date"),
             range: (times.min() ?? 0)...(times.max() ?? 1),
             gridlinePositions: []
         ) { value in
@@ -344,21 +344,21 @@ private struct RouteProgressionChartDescriptor: AXChartDescriptorRepresentable {
         let paceMin = paces.min() ?? 0
         let paceMax = paces.max() ?? 1
         let yScale = AXNumericDataAxisDescriptor(
-            title: "Active pace (seconds per kilometre)",
+            title: studioLocalized("Active pace (seconds per kilometre)"),
             range: min(paceMin, paceMax)...max(paceMin, paceMax, paceMin + 0.001),
             gridlinePositions: []
         ) { value in
             DisplayFormatter.formatPaceShort(value)
         }
         let series = AXDataSeriesDescriptor(
-            name: "Active Pace",
+            name: studioLocalized("Active Pace"),
             isContinuous: true,
             dataPoints: points.map {
                 AXDataPoint(x: $0.date.timeIntervalSince1970, y: $0.paceSecondsPerKilometer)
             }
         )
         return AXChartDescriptor(
-            title: "Active pace over date",
+            title: studioLocalized("Active pace over date"),
             summary: nil,
             xAxis: xScale,
             yAxis: yScale,

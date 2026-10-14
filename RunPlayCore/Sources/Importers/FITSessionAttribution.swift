@@ -12,11 +12,11 @@ public enum FITSessionBoundaryProblem: String, Hashable, Sendable {
     public var detail: String {
         switch self {
         case .missingStart:
-            return "This session has no usable start time."
+            return coreLocalized("This session has no usable start time.")
         case .missingEnd:
-            return "This session has no usable end time."
+            return coreLocalized("This session has no usable end time.")
         case .invalidOrder:
-            return "This session's end time precedes its start time."
+            return coreLocalized("This session's end time precedes its start time.")
         }
     }
 }

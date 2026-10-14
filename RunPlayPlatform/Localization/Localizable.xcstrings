@@ -1,0 +1,426 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@  ·  Output %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@  ·  Output %2$@"
+          }
+        }
+      }
+    },
+    "%@ Alignment" : {
+
+    },
+    "%lld candidates exceed the total archive import size limit." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld candidate exceeds the total archive import size limit."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld candidates exceed the total archive import size limit."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Active" : {
+
+    },
+    "Active Pace" : {
+
+    },
+    "Active Δ" : {
+
+    },
+    "Already imported (identical file content)" : {
+
+    },
+    "Another library change is already in progress." : {
+
+    },
+    "Archive operation was cancelled." : {
+
+    },
+    "Basemap has zero size" : {
+
+    },
+    "Basemap target size is invalid" : {
+
+    },
+    "Block" : {
+
+    },
+    "Block %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Block %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "C ahead by %@" : {
+
+    },
+    "C faster by %@" : {
+
+    },
+    "Common Distance %@ / %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Common Distance %1$@ / %2$@"
+          }
+        }
+      }
+    },
+    "Comparison" : {
+
+    },
+    "Comparison domain is not ready for poster rendering" : {
+
+    },
+    "Comparison video export is not available for this pair." : {
+
+    },
+    "Concatenated GZIP members are not supported" : {
+
+    },
+    "Could not create graphics context" : {
+
+    },
+    "Could not draw route on map: %@" : {
+
+    },
+    "Could not finalize composited image" : {
+
+    },
+    "Could not finalize normalized basemap" : {
+
+    },
+    "Could not finish reading encoded video samples" : {
+
+    },
+    "Could not inspect encoded video samples" : {
+
+    },
+    "Could not normalize basemap pixels" : {
+
+    },
+    "Could not obtain basemap CGImage" : {
+
+    },
+    "Could not open the archive. %@" : {
+
+    },
+    "Could not plan a valid map region for this route." : {
+
+    },
+    "Could not read encoded video samples" : {
+
+    },
+    "Current position" : {
+
+    },
+    "Deltas" : {
+
+    },
+    "Dimensions %lld×%lld do not match %lld×%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dimensions %1$lld×%2$lld do not match %3$lld×%4$lld"
+          }
+        }
+      }
+    },
+    "Distance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "距离"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "距離"
+          }
+        }
+      }
+    },
+    "Duration %@s outside expected range around %@s" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Duration %1$@s outside expected range around %2$@s"
+          }
+        }
+      }
+    },
+    "Elapsed" : {
+
+    },
+    "Elapsed Δ" : {
+
+    },
+    "Elevation" : {
+
+    },
+    "Encrypted or unsupported GZIP flags" : {
+
+    },
+    "Entry checksum does not match" : {
+
+    },
+    "Entry compressed size exceeds the supported limit" : {
+
+    },
+    "Entry compression ratio exceeds limit" : {
+
+    },
+    "Entry exceeds compressed size limit" : {
+
+    },
+    "Entry exceeds uncompressed size limit" : {
+
+    },
+    "Entry not found: %@" : {
+
+    },
+    "Entry uncompressed size exceeds the supported limit" : {
+
+    },
+    "Expected exactly one video track, found %lld" : {
+
+    },
+    "Filename column missing; metadata matching and deduplication are less complete." : {
+
+    },
+    "Finish" : {
+
+    },
+    "Frame count %lld does not match %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Frame count %1$lld does not match %2$lld"
+          }
+        }
+      }
+    },
+    "Frame provider count %lld does not match plan %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Frame provider count %1$lld does not match plan %2$lld"
+          }
+        }
+      }
+    },
+    "Frame rate %@ does not match %lld fps" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Frame rate %1$@ does not match %2$lld fps"
+          }
+        }
+      }
+    },
+    "GZIP CRC32 mismatch" : {
+
+    },
+    "GZIP decoding was cancelled" : {
+
+    },
+    "GZIP header is truncated" : {
+
+    },
+    "GZIP inflate failed: %@" : {
+
+    },
+    "GZIP output exceeds size limit" : {
+
+    },
+    "GZIP stream is truncated" : {
+
+    },
+    "GZIP uncompressed size mismatch" : {
+
+    },
+    "Heart Rate" : {
+
+    },
+    "Map imagery unavailable: %@" : {
+
+    },
+    "Map snapshot cancelled." : {
+
+    },
+    "Map snapshot is unavailable: %@" : {
+
+    },
+    "Matched Active" : {
+
+    },
+    "Matched Elapsed" : {
+
+    },
+    "Matched Pace" : {
+
+    },
+    "Matched Route %@ / %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Matched Route %1$@ / %2$@"
+          }
+        }
+      }
+    },
+    "Missing activity file" : {
+
+    },
+    "No usable route coordinates for a map snapshot." : {
+
+    },
+    "Not a GZIP stream" : {
+
+    },
+    "Note" : {
+
+    },
+    "Only local file URLs are supported" : {
+
+    },
+    "Output duration is not finite" : {
+
+    },
+    "Output must not contain an audio track" : {
+
+    },
+    "P ahead by %@" : {
+
+    },
+    "P faster by %@" : {
+
+    },
+    "Pace Δ" : {
+
+    },
+    "Primary" : {
+
+    },
+    "Progress %@  ·  Source %@ / %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Progress %1$@  ·  Source %2$@ / %3$@"
+          }
+        }
+      }
+    },
+    "Quality" : {
+
+    },
+    "Route Color" : {
+
+    },
+    "Routes far apart" : {
+
+    },
+    "Selected archive entries exceed the total size limit" : {
+
+    },
+    "Separation" : {
+
+    },
+    "Snapshot returned no image" : {
+
+    },
+    "Start" : {
+
+    },
+    "State" : {
+
+    },
+    "Temporary output file is empty" : {
+
+    },
+    "Temporary output file is missing" : {
+
+    },
+    "This ZIP does not appear to be a supported Strava bulk export." : {
+
+    },
+    "This archive exceeds the maximum supported size." : {
+
+    },
+    "This archive has too many entries to process safely." : {
+
+    },
+    "Tie" : {
+
+    },
+    "Total selected candidate size exceeds limit" : {
+
+    },
+    "Unavailable" : {
+
+    },
+    "Unsupported GZIP compression method" : {
+
+    },
+    "Unsupported entry type" : {
+
+    },
+    "Video contains an invalid encoded sample" : {
+
+    },
+    "Video requires at least two frames" : {
+
+    },
+    "Video track has no format description" : {
+
+    },
+    "Video track is missing required color metadata" : {
+
+    },
+    "Video track is not H.264" : {
+
+    },
+    "activities.csv compressed size exceeds limit." : {
+
+    },
+    "activities.csv exceeds size limit." : {
+
+    },
+    "vs" : {
+
+    }
+  },
+  "version" : "1.0"
+}

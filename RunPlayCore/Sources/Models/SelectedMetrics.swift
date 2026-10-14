@@ -105,9 +105,9 @@ public struct SelectedMetrics: Sendable {
 
     public var movementStateLabel: String {
         switch movementState {
-        case .moving: return NSLocalizedString("Moving", comment: "Replay movement state")
-        case .stopped: return NSLocalizedString("Stopped", comment: "Replay movement state")
-        case .paused: return NSLocalizedString("Paused", comment: "Replay movement state")
+        case .moving: return coreLocalized("Moving")
+        case .stopped: return coreLocalized("Stopped")
+        case .paused: return coreLocalized("Paused")
         case .uncertain: return "---"
         case .none: return "---"
         }
@@ -143,7 +143,7 @@ public struct SelectedMetrics: Sendable {
 
     public var formattedSplit: String {
         guard let idx = splitIndex else { return "---" }
-        return "Split \(idx + 1)"
+        return coreLocalized("Split \(idx + 1)")
     }
 
 }

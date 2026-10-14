@@ -20,7 +20,7 @@ extension AppState {
               fitSessionImportSession == nil
         else { return }
         guard let archiveService, storeActor != nil else {
-            errorMessage = "Archive import is unavailable in this session."
+            errorMessage = studioLocalized("Archive import is unavailable in this session.")
             showingError = true
             return
         }
@@ -47,10 +47,10 @@ extension AppState {
                     if accessing { url.stopAccessingSecurityScopedResource() }
                     self.operationState = .idle
                     self.errorMessage = result.rejectionMessage
-                        ?? "This ZIP does not appear to be a supported Strava bulk export."
+                        ?? studioLocalized("This ZIP does not appear to be a supported Strava bulk export.")
                     self.showingError = true
                     self.announcementPolicy.handle(
-                        .importFailed(message: self.errorMessage ?? "Unsupported archive.")
+                        .importFailed(message: self.errorMessage ?? studioLocalized("Unsupported archive."))
                     )
                     return
                 }
@@ -122,7 +122,7 @@ extension AppState {
                     importedCount: report.importedCount,
                     errorMessage: report.errorMessage,
                     completedName: completedName,
-                    commitFailedFallback: "Could not save imported workouts.",
+                    commitFailedFallback: studioLocalized("Could not save imported workouts."),
                     // Cancel during import keeps the sheet and announces here
                     // once (review-phase cancel announces in cancelBatchSheet).
                     announceQuietCancel: true,
@@ -301,7 +301,7 @@ extension AppState {
                     importedCount: report.importedCount,
                     errorMessage: report.errorMessage,
                     completedName: completedName,
-                    commitFailedFallback: "Could not save the imported sessions.",
+                    commitFailedFallback: studioLocalized("Could not save the imported sessions."),
                     // Cancel during import does not announce in
                     // `cancelFITSessionImport`; the task completion does.
                     announceQuietCancel: true,

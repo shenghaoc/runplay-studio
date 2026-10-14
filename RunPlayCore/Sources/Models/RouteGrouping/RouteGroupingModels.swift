@@ -352,23 +352,29 @@ public struct WorkoutRouteGroup: Codable, Hashable, Identifiable, Sendable {
         distanceMeters: Double,
         closesLoop: Bool
     ) -> String {
-        let kilometres = max(0, distanceMeters) / 1_000
         // `String(localized:defaultValue:)` takes literal-only
         // String.LocalizationValue arguments, so the platform split happens
         // here rather than in a helper: Swift Foundation on Linux does not
-        // expose the initializer at all (same limitation the
-        // `routeMetricLocalized` adapter handles), and the English default
-        // is the Linux fallback.
+        // expose the initializer at all (the same limitation `coreLocalized`
+        // handles), and the English default is the Linux fallback.
         #if canImport(Darwin)
         let shape = closesLoop
-            ? String(localized: "route_group.shape.loop", defaultValue: "Loop")
-            : String(localized: "route_group.shape.route", defaultValue: "Route")
-        let format = String(localized: "route_group.default_name", defaultValue: "%.1f km %@")
+            ? String(localized: "route_group.shape.loop", defaultValue: "Loop", bundle: .module)
+            : String(localized: "route_group.shape.route", defaultValue: "Route", bundle: .module)
+        // Foundation formats the distance with the locale's unit ("5.2 km",
+        // "5.2公里"); the catalog only orders distance and shape.
+        let distance = DisplayFormatter.formatKilometers(max(0, distanceMeters), fractionDigits: 1)
+        let format = String(
+            localized: "route_group.default_name",
+            defaultValue: "%1$@ %2$@",
+            bundle: .module,
+            comment: "Default route name: a distance such as “5.2 km”, then the shape (Loop or Route)"
+        )
+        return String(format: format, distance, shape)
         #else
         let shape = closesLoop ? "Loop" : "Route"
-        let format = "%.1f km %@"
+        return String(format: "%.1f km %@", max(0, distanceMeters) / 1_000, shape)
         #endif
-        return String(format: format, kilometres, shape)
     }
 }
 

@@ -49,17 +49,12 @@ public enum WorkoutResourceLimitError: Error, LocalizedError, Sendable, Equatabl
         case .routePointLimitExceeded(let count, let limit):
             let formattedLimit = Self.formatted(limit)
             if count > limit {
-                return "This workout has more than \(formattedLimit) route points, "
-                    + "which is the maximum RunPlay Studio supports. "
-                    + "It was not imported. Split the recording into shorter "
-                    + "workouts and import them separately."
+                return coreLocalized("This workout has more than \(formattedLimit) route points, which is the maximum RunPlay Studio supports. It was not imported. Split the recording into shorter workouts and import them separately.")
             }
-            return "This workout exceeds the \(formattedLimit) route point maximum "
-                + "RunPlay Studio supports. It was not imported."
+            return coreLocalized("This workout exceeds the \(formattedLimit) route point maximum RunPlay Studio supports. It was not imported.")
         case .sourceFileTooLarge(let limitBytes):
             let megabytes = limitBytes / (1024 * 1024)
-            return "This file is larger than \(megabytes) MB, which is the maximum "
-                + "RunPlay Studio reads. It was not imported."
+            return coreLocalized("This file is larger than \(megabytes) MB, which is the maximum RunPlay Studio reads. It was not imported.")
         }
     }
 

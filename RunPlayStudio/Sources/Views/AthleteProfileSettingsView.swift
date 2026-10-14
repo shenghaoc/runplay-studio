@@ -65,7 +65,8 @@ struct AthleteProfileSettingsView: View {
         }
         guard let year = Int(birthYearText), year > 1900, year <= currentYear else { return nil }
         let age = currentYear - year
-        return "Estimated maximum from age \(age): \(Int((208.0 - 0.7 * Double(age)).rounded())) bpm (Tanaka) — entering a measured value is the upgrade."
+        let estimate = Int((208.0 - 0.7 * Double(age)).rounded())
+        return studioLocalized("Estimated maximum from age \(age): \(estimate) bpm (Tanaka) — entering a measured value is the upgrade.")
     }
 
     private var currentYear: Int {
@@ -95,9 +96,9 @@ struct AthleteProfileSettingsView: View {
     private var effectiveZoneSummary: String {
         let effective = draftProfile.effectiveProfile(referenceYear: currentYear)
         let bounds = effective.zoneLowerBoundsBPM
-            .map { $0 == 0 ? "open" : "\(Int($0.rounded()))" }
+            .map { $0 == 0 ? studioLocalized("open") : "\(Int($0.rounded()))" }
             .joined(separator: " / ")
-        return "Effective zone bounds: \(bounds) bpm"
+        return studioLocalized("Effective zone bounds: \(bounds) bpm")
     }
 
     private func zonePlaceholder(_ index: Int) -> String {
@@ -105,7 +106,7 @@ struct AthleteProfileSettingsView: View {
             .effectiveProfile(referenceYear: currentYear)
             .zoneLowerBoundsBPM
         let value = derived[index]
-        return index == 0 && value == 0 ? "open" : "\(Int(value.rounded()))"
+        return index == 0 && value == 0 ? studioLocalized("open") : "\(Int(value.rounded()))"
     }
 
     // MARK: - Coefficients
@@ -128,8 +129,8 @@ struct AthleteProfileSettingsView: View {
         _ profile: AthleteProfile.TRIMPCoefficientProfile
     ) -> String {
         switch profile {
-        case .standardMale: return "Standard (male cohort)"
-        case .standardFemale: return "Female cohort"
+        case .standardMale: return studioLocalized("Standard (male cohort)")
+        case .standardFemale: return studioLocalized("Female cohort")
         }
     }
 
@@ -157,7 +158,7 @@ struct AthleteProfileSettingsView: View {
     private var staleLoadDisclosure: some View {
         let staleCount = appState.staleTrainingLoadCount
         if staleCount > 0 {
-            Text("\(staleCount) run\(staleCount == 1 ? "" : "s") would be recomputed under the saved profile.")
+            Text("\(staleCount) runs would be recomputed under the saved profile.")
                 .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(.secondary)
         }
@@ -174,7 +175,9 @@ struct AthleteProfileSettingsView: View {
         case .running(let completed, let total, let name):
             VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
                 ProgressView(value: total > 0 ? Double(completed) / Double(total) : 0) {
-                    Text("Recomputing — \(completed) of \(total) runs\(name.isEmpty ? "" : " — \(name)")")
+                    Text(name.isEmpty
+                        ? studioLocalized("Recomputing — \(completed) of \(total) runs")
+                        : studioLocalized("Recomputing — \(completed) of \(total) runs — \(name)"))
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.secondary)
                 }

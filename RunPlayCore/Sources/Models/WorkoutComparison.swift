@@ -65,78 +65,82 @@ public struct WorkoutComparisonSummary: Sendable {
     public var durationDeltaSeconds: Double { elapsedTimeDeltaSeconds }
 
     public var distanceDeltaFormatted: String {
-        guard distanceDeltaMeters.isFinite else { return "N/A" }
+        guard distanceDeltaMeters.isFinite else { return coreLocalized("N/A") }
         let kilometers = distanceDeltaMeters / 1000
-        if abs(kilometers) < 0.005 { return "0.00 km even" }
-        return String(
-            format: "%+.2f km %@",
-            kilometers,
-            kilometers > 0 ? "longer" : "shorter"
-        )
+        if abs(kilometers) < 0.005 {
+            let delta = DisplayFormatter.formatKilometers(0, fractionDigits: 2)
+            return coreLocalized("\(delta) even")
+        }
+        let delta = DisplayFormatter.formatKilometers(distanceDeltaMeters, fractionDigits: 2, signed: true)
+        return kilometers > 0
+            ? coreLocalized("\(delta) longer")
+            : coreLocalized("\(delta) shorter")
     }
 
     public var elapsedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedTimeDeltaSeconds,
-            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
-            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
 
     public var activeTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeTimeDeltaSeconds,
-            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
-            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
 
     public var pausedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             pausedTimeDeltaSeconds,
-            positiveLabel: "more paused",
-            negativeLabel: "less paused"
+            positiveLabel: coreLocalized("more paused"),
+            negativeLabel: coreLocalized("less paused")
         )
     }
 
     public var movingTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             movingTimeDeltaSeconds,
-            positiveLabel: NSLocalizedString("more moving", comment: "Comparison moving-time delta"),
-            negativeLabel: NSLocalizedString("less moving", comment: "Comparison moving-time delta")
+            positiveLabel: coreLocalized("more moving"),
+            negativeLabel: coreLocalized("less moving")
         )
     }
 
     public var stoppedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             stoppedTimeDeltaSeconds,
-            positiveLabel: NSLocalizedString("more stopped", comment: "Comparison stopped-time delta"),
-            negativeLabel: NSLocalizedString("less stopped", comment: "Comparison stopped-time delta")
+            positiveLabel: coreLocalized("more stopped"),
+            negativeLabel: coreLocalized("less stopped")
         )
     }
 
     public var movingPaceDeltaFormatted: String {
-        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 
     public var durationDeltaFormatted: String { elapsedTimeDeltaFormatted }
 
     public var paceDeltaFormatted: String {
-        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 
     public var elapsedPaceDeltaFormatted: String {
-        DisplayFormatter.formatSignedDurationDelta(elapsedPaceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(elapsedPaceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 
     public var elevationGainDeltaFormatted: String {
-        guard let elevationGainDeltaMeters, elevationGainDeltaMeters.isFinite else { return "N/A" }
-        if abs(elevationGainDeltaMeters) < 0.5 { return "0 m even" }
-        return String(
-            format: "%+.0f m %@",
-            elevationGainDeltaMeters,
-            elevationGainDeltaMeters > 0 ? "higher" : "lower"
-        )
+        guard let elevationGainDeltaMeters, elevationGainDeltaMeters.isFinite else { return coreLocalized("N/A") }
+        if abs(elevationGainDeltaMeters) < 0.5 {
+            let delta = DisplayFormatter.formatMeters(0)
+            return coreLocalized("\(delta) even")
+        }
+        let delta = DisplayFormatter.formatMeters(elevationGainDeltaMeters, signed: true)
+        return elevationGainDeltaMeters > 0
+            ? coreLocalized("\(delta) higher")
+            : coreLocalized("\(delta) lower")
     }
 
     public var avgHRDeltaFormatted: String? { Self.formatHeartRateDelta(avgHRDelta) }
@@ -158,8 +162,14 @@ public struct WorkoutComparisonSummary: Sendable {
 
     private static func formatHeartRateDelta(_ delta: Double?) -> String? {
         guard let delta, delta.isFinite else { return nil }
-        if abs(delta) < 0.5 { return "0 bpm even" }
-        return String(format: "%+.0f bpm %@", delta, delta > 0 ? "higher" : "lower")
+        if abs(delta) < 0.5 {
+            let difference = DisplayFormatter.formatHeartRate(0)
+            return coreLocalized("\(difference) even")
+        }
+        let difference = DisplayFormatter.formatHeartRateDelta(delta)
+        return delta > 0
+            ? coreLocalized("\(difference) higher")
+            : coreLocalized("\(difference) lower")
     }
 }
 
@@ -171,10 +181,10 @@ public enum ComparisonResult: Sendable {
 
     public var label: String {
         switch self {
-        case .primary: return "Selected run faster"
-        case .comparison: return "Compared run faster"
-        case .tie: return "About the same"
-        case .unavailable: return "N/A"
+        case .primary: return coreLocalized("Selected run faster")
+        case .comparison: return coreLocalized("Compared run faster")
+        case .tie: return coreLocalized("About the same")
+        case .unavailable: return coreLocalized("N/A")
         }
     }
 }
@@ -196,8 +206,8 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedDurationDeltaSeconds,
-            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
-            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
 
@@ -206,29 +216,29 @@ public struct SplitComparison: Identifiable, Sendable {
     public var formattedActiveDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeDurationDeltaSeconds,
-            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
-            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
 
     public var formattedMovingDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             movingDurationDeltaSeconds,
-            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
-            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
 
     public var formattedStoppedDurationDelta: String {
         DisplayFormatter.formatSignedDurationDelta(
             stoppedDurationDeltaSeconds,
-            positiveLabel: NSLocalizedString("longer", comment: "Comparison duration delta"),
-            negativeLabel: NSLocalizedString("shorter", comment: "Comparison duration delta")
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
 
     public var formattedPaceDelta: String {
-        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 }
 
@@ -251,18 +261,21 @@ public struct RecordedLapComparison: Identifiable, Sendable {
     public let caveats: [String]
 
     public var formattedDistanceDelta: String {
-        guard let distanceDeltaMeters, distanceDeltaMeters.isFinite else { return "N/A" }
+        guard let distanceDeltaMeters, distanceDeltaMeters.isFinite else { return coreLocalized("N/A") }
         let kilometers = distanceDeltaMeters / 1000
-        if abs(kilometers) < 0.005 { return "0.00 km even" }
-        return String(format: "%+.2f km", kilometers)
+        if abs(kilometers) < 0.005 {
+            let delta = DisplayFormatter.formatKilometers(0, fractionDigits: 2)
+            return coreLocalized("\(delta) even")
+        }
+        return DisplayFormatter.formatKilometers(distanceDeltaMeters, fractionDigits: 2, signed: true)
     }
 
     public var formattedActivePaceDelta: String {
-        DisplayFormatter.formatSignedDurationDelta(activePaceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(activePaceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 
     public var formattedMovingPaceDelta: String {
-        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(movingPaceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 }
 
@@ -393,35 +406,35 @@ public struct ComparisonDistanceMetrics: Sendable {
     public var elapsedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedTimeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
     public var activeTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeTimeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
     public var movingTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             movingTimeDeltaSeconds,
-            positiveLabel: "more moving",
-            negativeLabel: "less moving"
+            positiveLabel: coreLocalized("more moving"),
+            negativeLabel: coreLocalized("less moving")
         )
     }
     public var stoppedTimeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             stoppedTimeDeltaSeconds,
-            positiveLabel: "more stopped",
-            negativeLabel: "less stopped"
+            positiveLabel: coreLocalized("more stopped"),
+            negativeLabel: coreLocalized("less stopped")
         )
     }
     public var primaryPaceFormatted: String { DisplayFormatter.formatPace(primaryPaceSecondsPerKm) }
     public var comparisonPaceFormatted: String { DisplayFormatter.formatPace(comparisonPaceSecondsPerKm) }
     public var paceDeltaFormatted: String {
-        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(paceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
 
     private static func nonNegativeFinite(_ value: Double) -> Double {
@@ -451,6 +464,31 @@ public enum ComparisonWarning: String, CaseIterable, Sendable {
     case tooFewPoints = "One or both runs have very few data points"
     case movementEstimated = "Stopped time is estimated from GPS; comparisons involving stopped time are approximate"
     case movementEstimateReliabilityDiffers = "One run used a conservative moving-time fallback; moving-time comparisons are approximate"
+
+    /// The warning in the app's language, for display. `rawValue` stays the
+    /// stable English identifier.
+    public var message: String {
+        switch self {
+        case .differentDistances:
+            return coreLocalized("Runs have significantly different distances")
+        case .insufficientOverlap:
+            return coreLocalized("Not enough overlapping distance to compare")
+        case .differentRouteShape:
+            return coreLocalized("Routes differ; comparison based on distance")
+        case .differentPauseDurations:
+            return coreLocalized("Runs contain different pause durations; active and elapsed comparisons may differ")
+        case .missingHeartRate:
+            return coreLocalized("One or both runs lack heart rate data")
+        case .missingElevation:
+            return coreLocalized("One or both runs lack elevation data")
+        case .tooFewPoints:
+            return coreLocalized("One or both runs have very few data points")
+        case .movementEstimated:
+            return coreLocalized("Stopped time is estimated from GPS; comparisons involving stopped time are approximate")
+        case .movementEstimateReliabilityDiffers:
+            return coreLocalized("One run used a conservative moving-time fallback; moving-time comparisons are approximate")
+        }
+    }
 
     public var icon: String {
         switch self {

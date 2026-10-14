@@ -59,7 +59,7 @@ public struct ReplayState: Sendable, Equatable {
 
     /// Formatted current distance in km.
     public var formattedCurrentDistance: String {
-        String(format: "%.2f km", currentDistance / 1000.0)
+        DisplayFormatter.formatKilometers(currentDistance, fractionDigits: 2)
     }
 
     /// Formatted playback speed.

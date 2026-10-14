@@ -1,3 +1,4 @@
+import Foundation
 import RunPlayCore
 
 /// Import-report wording for DEM elevation correction, shared by the archive
@@ -17,15 +18,18 @@ enum DEMImportReportText {
     /// A few words on one imported run's elevation, for the details list.
     static func itemDetail(_ record: DEMElevationCorrection?, correctsElevation: Bool) -> String? {
         guard correctsElevation else { return nil }
-        guard let record else { return "Elevation not corrected" }
+        guard let record else { return studioLocalized("Elevation not corrected") }
         switch record.outcome {
         case .applied:
-            guard let fraction = record.coverage.tileCoverageFraction else { return "DEM elevation" }
-            return "DEM tiles cover \(ElevationSourceSummary.percent(fraction))"
+            guard let fraction = record.coverage.tileCoverageFraction else {
+                return studioLocalized("DEM elevation")
+            }
+            let coverage = ElevationSourceSummary.percent(fraction)
+            return studioLocalized("DEM tiles cover \(coverage)")
         case .noCoverage:
-            return "No DEM tile covers this run"
+            return studioLocalized("No DEM tile covers this run")
         case .tileBudgetExceeded:
-            return "Needs too many DEM tiles"
+            return studioLocalized("Needs too many DEM tiles")
         case .optedOut:
             return nil
         }

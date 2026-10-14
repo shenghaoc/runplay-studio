@@ -32,9 +32,9 @@ enum TrainingLoadBackfillState: Equatable {
 extension WorkoutTrendsPeriod {
     var title: String {
         switch self {
-        case .week: return "Week"
-        case .month: return "Month"
-        case .year: return "Year"
+        case .week: return studioLocalized("Week")
+        case .month: return studioLocalized("Month")
+        case .year: return studioLocalized("Year")
         }
     }
 }
@@ -42,10 +42,10 @@ extension WorkoutTrendsPeriod {
 extension WorkoutTrendsRange {
     var title: String {
         switch self {
-        case .last3Months: return "Last 3 Months"
-        case .last6Months: return "Last 6 Months"
-        case .last12Months: return "Last 12 Months"
-        case .allTime: return "All Time"
+        case .last3Months: return studioLocalized("Last 3 Months")
+        case .last6Months: return studioLocalized("Last 6 Months")
+        case .last12Months: return studioLocalized("Last 12 Months")
+        case .allTime: return studioLocalized("All Time")
         }
     }
 }
@@ -97,10 +97,10 @@ enum TrendsMetric: CaseIterable, Identifiable {
 
     var chartTitle: String {
         switch self {
-        case .distance: return "Distance"
-        case .pace: return "Active Pace"
-        case .heartRate: return "Heart Rate"
-        case .ascent: return "Ascent"
+        case .distance: return studioLocalized("Distance")
+        case .pace: return studioLocalized("Active Pace")
+        case .heartRate: return studioLocalized("Heart Rate")
+        case .ascent: return studioLocalized("Ascent")
         }
     }
 
@@ -110,15 +110,6 @@ enum TrendsMetric: CaseIterable, Identifiable {
         case .pace: return "s/km"
         case .heartRate: return "bpm"
         case .ascent: return "m"
-        }
-    }
-
-    var accessibilityUnit: String {
-        switch self {
-        case .distance: return "kilometres"
-        case .pace: return "s/km"
-        case .heartRate: return "beats per minute"
-        case .ascent: return "metres"
         }
     }
 }
@@ -227,6 +218,12 @@ final class TrendsViewModel: ObservableObject {
 
     private let queryService: any WorkoutLibraryQuerying
     private let calendar: Calendar
+
+    /// Weekly buckets start on the user's first weekday (the locale's, or
+    /// the one chosen in System Settings), carried by `calendar`.
+    var weekConvention: WorkoutTrendsWeekConvention {
+        WorkoutTrendsWeekConvention(calendar: calendar)
+    }
     private let displayTimeZone: TimeZone
     private let announcementPolicy: AccessibilityAnnouncementPolicy
     private var computeTask: Task<Void, Never>?
@@ -252,16 +249,20 @@ final class TrendsViewModel: ObservableObject {
         let month: DateFormatter
         let year: DateFormatter
 
+        /// Locale templates, not fixed patterns: the locale orders and
+        /// marks the fields ("14 Mar 2026" in en_GB, "Mar 14, 2026" in
+        /// en_US, "2026年3月14日" in Chinese).
         init(timeZone: TimeZone) {
-            week = Self.make(timeZone: timeZone, format: "d MMM yyyy")
-            month = Self.make(timeZone: timeZone, format: "MMM yyyy")
-            year = Self.make(timeZone: timeZone, format: "yyyy")
+            week = Self.make(timeZone: timeZone, template: "yMMMd")
+            month = Self.make(timeZone: timeZone, template: "yMMM")
+            year = Self.make(timeZone: timeZone, template: "y")
         }
 
-        private static func make(timeZone: TimeZone, format: String) -> DateFormatter {
+        private static func make(timeZone: TimeZone, template: String) -> DateFormatter {
             let formatter = DateFormatter()
+            formatter.locale = .autoupdatingCurrent
             formatter.timeZone = timeZone
-            formatter.dateFormat = format
+            formatter.setLocalizedDateFormatFromTemplate(template)
             return formatter
         }
 
@@ -331,12 +332,12 @@ final class TrendsViewModel: ObservableObject {
     var scopeTitle: String {
         switch scope {
         case .entireLibrary:
-            return "All Workouts"
+            return studioLocalized("All Workouts")
         case .currentLibraryFilter:
-            return "Current All Runs Filter"
+            return studioLocalized("Current All Runs Filter")
         case .smartCollection(let id):
             let name = lastInputs.smartCollections.first { $0.id == id }?.name
-            return name ?? "Missing Collection"
+            return name ?? studioLocalized("Missing Collection")
         }
     }
 
@@ -477,7 +478,8 @@ final class TrendsViewModel: ObservableObject {
             range: range,
             now: now,
             displayTimeZone: displayTimeZone,
-            fallbackBucketingTimeZone: displayTimeZone
+            fallbackBucketingTimeZone: displayTimeZone,
+            weekConvention: WorkoutTrendsWeekConvention(calendar: calendar)
         )
         try Task.checkCancellation()
 
@@ -522,7 +524,11 @@ final class TrendsViewModel: ObservableObject {
             aggregation: aggregation,
             undatedRunCount: undated,
             emptyReason: emptyReason,
-            chartPoints: chartPoints(for: aggregation, displayTimeZone: displayTimeZone),
+            chartPoints: chartPoints(
+                for: aggregation,
+                displayTimeZone: displayTimeZone,
+                weekConvention: WorkoutTrendsWeekConvention(calendar: calendar)
+            ),
             trainingLoad: trainingLoadSeries
         )
     }
@@ -581,7 +587,8 @@ final class TrendsViewModel: ObservableObject {
     /// shared by all four metrics, instead of once per metric per body pass.
     private nonisolated static func chartPoints(
         for aggregation: WorkoutTrendsAggregation,
-        displayTimeZone: TimeZone
+        displayTimeZone: TimeZone,
+        weekConvention: WorkoutTrendsWeekConvention
     ) -> [TrendsMetric: [TrendsChartPoint]] {
         let formatters = PeriodLabelFormatters(timeZone: displayTimeZone)
         var points: [TrendsMetric: [TrendsChartPoint]] = [:]
@@ -592,7 +599,8 @@ final class TrendsViewModel: ObservableObject {
         for bucket in aggregation.buckets {
             let start = WorkoutTrendsAggregator.periodBounds(
                 for: bucket.id,
-                timeZone: displayTimeZone
+                timeZone: displayTimeZone,
+                weekConvention: weekConvention
             ).start
             let label = formatters.label(for: bucket.id.kind, start: start)
             for metric in TrendsMetric.allCases {
@@ -641,7 +649,11 @@ final class TrendsViewModel: ObservableObject {
         if let cached = appliedPeriodLabels[key] {
             return cached
         }
-        let start = WorkoutTrendsAggregator.periodBounds(for: key, timeZone: displayTimeZone).start
+        let start = WorkoutTrendsAggregator.periodBounds(
+            for: key,
+            timeZone: displayTimeZone,
+            weekConvention: weekConvention
+        ).start
         return PeriodLabelFormatters(timeZone: displayTimeZone).label(for: key.kind, start: start)
     }
 

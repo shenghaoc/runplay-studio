@@ -143,23 +143,23 @@ public struct WorkoutSmartCollectionPolicy: Hashable, Sendable {
         public var errorDescription: String? {
             switch self {
             case .emptyName:
-                return "Collection name cannot be empty."
+                return coreLocalized("Collection name cannot be empty.")
             case .containsNUL:
-                return "Collection name contains an invalid character."
+                return coreLocalized("Collection name contains an invalid character.")
             case .containsLineBreak:
-                return "Collection name must be a single line."
+                return coreLocalized("Collection name must be a single line.")
             case .nameTooLong(let limit):
-                return "Collection name must be at most \(limit) characters."
+                return coreLocalized("Collection name must be at most \(limit) characters.")
             case .duplicateName(let name):
-                return "A collection named “\(name)” already exists."
+                return coreLocalized("A collection named “\(name)” already exists.")
             case .collectionLimitReached(let limit):
-                return "A library can have at most \(limit) smart collections."
+                return coreLocalized("A library can have at most \(limit) smart collections.")
             case .searchTextTooLong(let limit):
-                return "Search text must be at most \(limit) characters."
+                return coreLocalized("Search text must be at most \(limit) characters.")
             case .unknownCollection(let id):
-                return "Unknown smart collection \(id.uuidString)."
+                return coreLocalized("Unknown smart collection \(id.uuidString).")
             case .duplicateCollectionID(let id):
-                return "Duplicate smart collection ID \(id.uuidString)."
+                return coreLocalized("Duplicate smart collection ID \(id.uuidString).")
             }
         }
     }
@@ -232,11 +232,11 @@ public enum WorkoutSmartCollectionQuerySummary: Sendable {
 
         let trimmedSearch = query.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedSearch.isEmpty {
-            parts.append("Search: “\(trimmedSearch)”")
+            parts.append(coreLocalized("Search: “\(trimmedSearch)”"))
         }
 
         if query.filter.favorite == .favoritesOnly {
-            parts.append("Favourites")
+            parts.append(coreLocalized("Favourites"))
         }
 
         switch query.filter.date {
@@ -246,7 +246,7 @@ public enum WorkoutSmartCollectionQuerySummary: Sendable {
             parts.append(query.filter.date.displayName)
         case .custom(let start, let end):
             if start != nil || end != nil {
-                parts.append("Custom Date Range")
+                parts.append(coreLocalized("Custom Date Range"))
             }
         }
 
@@ -255,20 +255,20 @@ public enum WorkoutSmartCollectionQuerySummary: Sendable {
         }
 
         if query.filter.data.requiresHeartRate {
-            parts.append("Has Heart Rate")
+            parts.append(coreLocalized("Has Heart Rate"))
         }
         if query.filter.data.requiresCorrectedElevation {
-            parts.append("Has Corrected Elevation")
+            parts.append(coreLocalized("Has Corrected Elevation"))
         }
         if query.filter.data.requiresRecordedLaps {
-            parts.append("Has Recorded Laps")
+            parts.append(coreLocalized("Has Recorded Laps"))
         }
 
         switch query.filter.tags {
         case .anyTags:
             break
         case .untaggedOnly:
-            parts.append("Untagged")
+            parts.append(coreLocalized("Untagged"))
         case .selected(let tagIDs, let match):
             let names = tagIDs
                 .compactMap { tagsByID[$0]?.name }
@@ -277,9 +277,9 @@ public enum WorkoutSmartCollectionQuerySummary: Sendable {
                 let joined = names.joined(separator: ", ")
                 switch match {
                 case .any:
-                    parts.append("Tag: \(joined)")
+                    parts.append(coreLocalized("Tag: \(joined)"))
                 case .all:
-                    parts.append("Tags (all): \(joined)")
+                    parts.append(coreLocalized("Tags (all): \(joined)"))
                 }
             }
         }

@@ -21,15 +21,15 @@ public enum PersonalRecordCategory: String, Codable, Hashable, CaseIterable, Sen
 
     public var displayName: String {
         switch self {
-        case .fastest400m: return "Fastest 400 m"
-        case .fastest1km: return "Fastest 1 km"
-        case .fastest1mile: return "Fastest 1 Mile"
-        case .fastest5km: return "Fastest 5 km"
-        case .fastest10km: return "Fastest 10 km"
-        case .fastestHalfMarathon: return "Fastest Half Marathon"
-        case .fastestMarathon: return "Fastest Marathon"
-        case .longestRun: return "Longest Run"
-        case .biggestAscent: return "Biggest Single-Run Ascent"
+        case .fastest400m: return coreLocalized("Fastest 400 m")
+        case .fastest1km: return coreLocalized("Fastest 1 km")
+        case .fastest1mile: return coreLocalized("Fastest 1 Mile")
+        case .fastest5km: return coreLocalized("Fastest 5 km")
+        case .fastest10km: return coreLocalized("Fastest 10 km")
+        case .fastestHalfMarathon: return coreLocalized("Fastest Half Marathon")
+        case .fastestMarathon: return coreLocalized("Fastest Marathon")
+        case .longestRun: return coreLocalized("Longest Run")
+        case .biggestAscent: return coreLocalized("Biggest Single-Run Ascent")
         }
     }
 

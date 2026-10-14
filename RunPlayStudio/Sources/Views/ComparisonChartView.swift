@@ -8,6 +8,17 @@ import Charts
 /// Uses semantic colors from the design system for primary/comparison routes.
 /// Route-Aware series are split per alignment block so gaps are not bridged.
 struct ComparisonChartView: View {
+    /// Column heading for the selected (primary) run's values — not the
+    /// "Selected" count shown in the import sheets.
+    static var selectedRunColumnTitle: String {
+        String(
+            localized: "comparison.column.selected_run",
+            defaultValue: "Selected",
+            bundle: .module,
+            comment: "Column heading: values of the selected (primary) run in a comparison"
+        )
+    }
+
     let metrics: [ComparisonMetricPoint]
     let alignedMetrics: [AlignedComparisonMetricPoint]
     let alignmentMode: ComparisonAlignmentMode
@@ -124,7 +135,7 @@ struct ComparisonChartView: View {
             AxisMarks(values: .automatic(desiredCount: 6)) { value in
                 AxisValueLabel {
                     if let km = value.as(Double.self) {
-                        Text(String(format: "%.1f km", km))
+                        Text(DisplayFormatter.formatKilometers(km * 1_000, fractionDigits: 1))
                     }
                 }
                 AxisGridLine()
@@ -185,15 +196,15 @@ struct ComparisonChartView: View {
                 seriesIDs.append(metric.blockIndex)
             }
             return ChartAccessibilityModel.make(
-                metricName: "Active Pace Over Matched Route",
+                metricName: studioLocalized("Active Pace Over Matched Route"),
                 unit: "s/km",
                 values: paces,
                 seriesIDs: seriesIDs,
                 currentValue: nil,
                 totalDistanceMeters: alignedMetrics.last?.alignedProgressMeters ?? 0
             ).updatingTitles(
-                title: "Active Pace Over Matched Route",
-                xAxisTitle: "Matched route",
+                title: studioLocalized("Active Pace Over Matched Route"),
+                xAxisTitle: studioLocalized("Matched route"),
                 xAxisUnit: "km"
             )
         }
@@ -205,7 +216,7 @@ struct ComparisonChartView: View {
             if let c = metric.comparisonPace { paces.append(c) }
         }
         return ChartAccessibilityModel.make(
-            metricName: "Active Pace",
+            metricName: studioLocalized("Active Pace"),
             unit: "s/km",
             values: paces,
             seriesIDs: [0],
@@ -286,7 +297,7 @@ struct SplitComparisonTableView: View {
                     }
                     .width(35)
 
-                    TableColumn("Selected") { split in
+                    TableColumn(ComparisonChartView.selectedRunColumnTitle) { split in
                         if let s = split.primarySplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
@@ -375,7 +386,7 @@ struct RecordedLapComparisonTableView: View {
                     }
                     .width(40)
 
-                    TableColumn("Selected") { row in
+                    TableColumn(ComparisonChartView.selectedRunColumnTitle) { row in
                         if let lap = row.primaryLap {
                             Text(lap.formattedActivePace)
                                 .monospacedDigit()

@@ -139,12 +139,12 @@ final class PersonalRecordsViewModel: ObservableObject {
     var scopeTitle: String {
         switch scope {
         case .entireLibrary:
-            return "All Workouts"
+            return studioLocalized("All Workouts")
         case .currentLibraryFilter:
-            return "Current All Runs Filter"
+            return studioLocalized("Current All Runs Filter")
         case .smartCollection(let id):
             let name = lastInputs.smartCollections.first { $0.id == id }?.name
-            return name ?? "Missing Collection"
+            return name ?? studioLocalized("Missing Collection")
         }
     }
 

@@ -23,14 +23,14 @@ public enum FITSessionCandidateStatus: String, Codable, Hashable, Sendable, Case
 
     public var userFacingSummary: String {
         switch self {
-        case .ready: return "Ready"
-        case .duplicate: return "Already imported"
-        case .unsupportedSport: return "Unsupported sport"
-        case .noGPSRoute: return "No GPS route"
-        case .invalidBoundaries: return "Missing session boundaries"
-        case .ambiguousAttribution: return "Ambiguous session data"
-        case .exceedsResourceLimit: return "Exceeds resource limit"
-        case .parseFailed: return "Could not parse"
+        case .ready: return coreLocalized("Ready")
+        case .duplicate: return coreLocalized("Already imported")
+        case .unsupportedSport: return coreLocalized("Unsupported sport")
+        case .noGPSRoute: return coreLocalized("No GPS route")
+        case .invalidBoundaries: return coreLocalized("Missing session boundaries")
+        case .ambiguousAttribution: return coreLocalized("Ambiguous session data")
+        case .exceedsResourceLimit: return coreLocalized("Exceeds resource limit")
+        case .parseFailed: return coreLocalized("Could not parse")
         }
     }
 }
@@ -230,7 +230,7 @@ public struct FITSessionImportItemResult: Hashable, Sendable {
     /// User-facing report row label. Never treat bare `.ready` as “Imported”.
     public func reportLabel(commitFailed: Bool) -> String {
         if status == .ready {
-            return commitFailed ? "Not saved" : "Imported"
+            return commitFailed ? coreLocalized("Not saved") : coreLocalized("Imported")
         }
         return status.userFacingSummary
     }
@@ -292,17 +292,17 @@ public enum FITSessionImportError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .notLocalFile:
-            return "Only local files can be imported."
+            return coreLocalized("Only local files can be imported.")
         case .containerTooLarge:
-            return "This FIT file exceeds the maximum supported size."
+            return coreLocalized("This FIT file exceeds the maximum supported size.")
         case .cannotReadFile(let detail):
-            return "Could not read the FIT file. \(detail)"
+            return coreLocalized("Could not read the FIT file. \(detail)")
         case .tooManySessions(let limit):
-            return "This FIT file contains more than \(limit) sessions, which is more than RunPlay Studio can review safely."
+            return coreLocalized("This FIT file contains more than \(limit) sessions, which is more than RunPlay Studio can review safely.")
         case .tooManySelectedSessions(let limit):
-            return "Select at most \(limit) sessions to import at once."
+            return coreLocalized("Select at most \(limit) sessions to import at once.")
         case .batchConflict:
-            return "Another library change is already in progress."
+            return coreLocalized("Another library change is already in progress.")
         }
     }
 }

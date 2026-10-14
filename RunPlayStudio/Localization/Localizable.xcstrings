@@ -1,0 +1,5013 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@" : {
+
+    },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ %@ per kilometre, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ per kilometre, %3$@, %4$@"
+          }
+        }
+      }
+    },
+    "%@ %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@."
+          }
+        }
+      }
+    },
+    "%@ (adjusted)" : {
+
+    },
+    "%@ (from %lld of %lld runs)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (from %2$lld of %3$lld runs)"
+          }
+        }
+      }
+    },
+    "%@ (when focused)" : {
+
+    },
+    "%@ alignment" : {
+
+    },
+    "%@ ascent" : {
+
+    },
+    "%@ ascent (from %lld of %lld runs)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ ascent (from %2$lld of %3$lld runs)"
+          }
+        }
+      }
+    },
+    "%@ has several sessions and is waiting for review." : {
+
+    },
+    "%@ legend. %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ legend. %2$@."
+          }
+        }
+      }
+    },
+    "%@ of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "%@ per period" : {
+
+    },
+    "%@ record" : {
+
+    },
+    "%@ tag" : {
+
+    },
+    "%@ versus %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ versus %2$@"
+          }
+        }
+      }
+    },
+    "%@ vs %@, preview loading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ vs %2$@, preview loading"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ — %2$@"
+          }
+        }
+      }
+    },
+    "%@ — Relative to this workout" : {
+
+    },
+    "%@ — Unavailable" : {
+
+    },
+    "%@ — improvement history" : {
+
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@ appearance, %@ route color, midpoint %@, elapsed %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@ appearance, %3$@ route color, midpoint %4$@, elapsed %5$@"
+          }
+        }
+      }
+    },
+    "%@, %@ appearance, map included, %@ route color" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@ appearance, map included, %3$@ route color"
+          }
+        }
+      }
+    },
+    "%@, %@ appearance, metrics only, %@ route color" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@ appearance, metrics only, %3$@ route color"
+          }
+        }
+      }
+    },
+    "%@, %@, active time %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, active time %3$@"
+          }
+        }
+      }
+    },
+    "%@, preview loading" : {
+
+    },
+    "%@, section %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, section %2$lld"
+          }
+        }
+      }
+    },
+    "%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
+    "%@: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$lld"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld GPS points" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld GPS point"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld GPS points"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld filters active" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld filter active"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld filters active"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld fps" : {
+
+    },
+    "%lld km" : {
+
+    },
+    "%lld laps" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld lap"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld laps"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld more tags" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more tag"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more tags"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld of %lld frames, %lld percent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld frames, %3$lld percent"
+          }
+        }
+      }
+    },
+    "%lld of %lld importable sessions selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld importable sessions selected"
+          }
+        }
+      }
+    },
+    "%lld of %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld runs"
+          }
+        }
+      }
+    },
+    "%lld of %lld runs — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld runs — %3$@"
+          }
+        }
+      }
+    },
+    "%lld of %lld · staged %lld · skipped %lld · failed %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld · staged %3$lld · skipped %4$lld · failed %5$lld"
+          }
+        }
+      }
+    },
+    "%lld pixels" : {
+
+    },
+    "%lld runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs could not be analyzed; they will be retried the next time you open Records." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run could not be analyzed; it will be retried the next time you open Records."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs could not be analyzed; they will be retried the next time you open Records."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs could not be corrected and keep their previous elevation." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run could not be corrected and keeps its previous elevation."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs could not be corrected and keep their previous elevation."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs could not be saved; the next pass retries them." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run could not be saved; the next pass retries it."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs could not be saved; the next pass retries them."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs in scope" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run in scope"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs in scope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs were analyzed but could not be saved; they will be recomputed on the next launch." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run was analyzed but could not be saved; it will be recomputed on the next launch."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs were analyzed but could not be saved; they will be recomputed on the next launch."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs would be recomputed under the saved profile." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run would be recomputed under the saved profile."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs would be recomputed under the saved profile."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld runs." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld run."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld runs."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld sec" : {
+
+    },
+    "%lld+ runs" : {
+
+    },
+    "%lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "%lld:%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld:%2$@"
+          }
+        }
+      }
+    },
+    "'%@' could not be imported." : {
+
+    },
+    "'%@' couldn't be parsed. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "'%1$@' couldn't be parsed. %2$@"
+          }
+        }
+      }
+    },
+    "'%@' disappeared before it could be imported." : {
+
+    },
+    "'%@' has an invalid format. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "'%1$@' has an invalid format. %2$@"
+          }
+        }
+      }
+    },
+    "'%@' is missing required data. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "'%1$@' is missing required data. %2$@"
+          }
+        }
+      }
+    },
+    "'%@' uses the .%@ format, which isn't supported. Import a GPX, TCX, FIT, or JSON file instead." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "'%1$@' uses the .%2$@ format, which isn't supported. Import a GPX, TCX, FIT, or JSON file instead."
+          }
+        }
+      }
+    },
+    "'%@' uses the .%@ format, which isn't supported. Watch folders import GPX, TCX, FIT, and JSON files." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "'%1$@' uses the .%2$@ format, which isn't supported. Watch folders import GPX, TCX, FIT, and JSON files."
+          }
+        }
+      }
+    },
+    "(lower is faster)" : {
+
+    },
+    "+%lld" : {
+
+    },
+    "1 run" : {
+
+    },
+    "2D" : {
+
+    },
+    "3D" : {
+
+    },
+    "A custom name for this route; leave empty to use the derived default" : {
+
+    },
+    "A folder of Terrarium PNG elevation tiles in z/x/y.png layout that you downloaded yourself, such as the free AWS Terrain Tiles. RunPlay Studio only reads it and never downloads tiles. Zoom 13 or 14 suits running." : {
+
+    },
+    "A measured value always wins over the age estimate" : {
+
+    },
+    "ACTIVE PACE RESULT" : {
+
+    },
+    "Activate Review to choose which sessions to import, or dismiss to keep it queued" : {
+
+    },
+    "Activate to change assignment for all selected runs" : {
+
+    },
+    "Activates seeking replay to this lap start" : {
+
+    },
+    "Active" : {
+
+    },
+    "Active %@" : {
+
+    },
+    "Active Pace" : {
+
+    },
+    "Active Pace Over Distance" : {
+
+    },
+    "Active Pace Over Matched Route" : {
+
+    },
+    "Active Pace over Date" : {
+
+    },
+    "Active Time" : {
+
+    },
+    "Active delta %@" : {
+
+    },
+    "Active pace %@" : {
+
+    },
+    "Active pace %@, active time %@, elapsed time %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Active pace %1$@, active time %2$@, elapsed time %3$@"
+          }
+        }
+      }
+    },
+    "Active pace (seconds per kilometre)" : {
+
+    },
+    "Active pace difference %@; %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Active pace difference %1$@; %2$@"
+          }
+        }
+      }
+    },
+    "Active pace over date" : {
+
+    },
+    "Active pace progression" : {
+
+    },
+    "Active pace uses recorded time and excludes recording gaps." : {
+
+    },
+    "Active time excludes recording gaps between route segments." : {
+
+    },
+    "Active time excludes recording gaps." : {
+
+    },
+    "Active time remains fixed during recording gaps." : {
+
+    },
+    "Activities" : {
+
+    },
+    "Acute (fatigue) time constant in days; Banister's default is 7" : {
+
+    },
+    "Add Folder…" : {
+
+    },
+    "Adds Apple Maps imagery to the summary card" : {
+
+    },
+    "Adjust jump distance" : {
+
+    },
+    "Adjust settings or retry map preparation." : {
+
+    },
+    "Adjustable. Drag or use arrow keys when focused." : {
+
+    },
+    "Aligned over %@" : {
+
+    },
+    "Aligning routes" : {
+
+    },
+    "Aligning routes…" : {
+
+    },
+    "Alignment" : {
+
+    },
+    "All" : {
+
+    },
+    "All (CSV)…" : {
+
+    },
+    "All Favourites…" : {
+
+    },
+    "All Runs" : {
+
+    },
+    "All Runs table" : {
+
+    },
+    "All Runs table, %lld selected" : {
+
+    },
+    "All Runs, %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "All Runs, %lld run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "All Runs, %lld runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "All Smart Collections…" : {
+
+    },
+    "All Time" : {
+
+    },
+    "All Workouts" : {
+
+    },
+    "Already imported" : {
+
+    },
+    "Altitude from a watch that records a barometric altimeter is kept, and DEM elevation fills its gaps. Other recorded altitude is replaced wherever a tile covers the route. Choose Workout ▸ Use Recorded Elevation to undo it for one run." : {
+
+    },
+    "Ambiguous" : {
+
+    },
+    "An unknown error occurred while exporting." : {
+
+    },
+    "Analyse the whole workout library over time by week, month, or year" : {
+
+    },
+    "Analyse your whole library over time (⌘⇧R)" : {
+
+    },
+    "Analysis notes" : {
+
+    },
+    "Analyzing routes" : {
+
+    },
+    "Analyzing routes…" : {
+
+    },
+    "Any" : {
+
+    },
+    "Any Route" : {
+
+    },
+    "Any Tags" : {
+
+    },
+    "AppState unavailable." : {
+
+    },
+    "Appearance" : {
+
+    },
+    "Archive activity candidates" : {
+
+    },
+    "Archive import is unavailable in this session." : {
+
+    },
+    "Ascent" : {
+
+    },
+    "At least %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "At least %lld run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "At least %lld runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "At least two runs with an active pace are needed for a progression." : {
+
+    },
+    "Athlete" : {
+
+    },
+    "Athlete profile could not be saved: %@" : {
+
+    },
+    "Audio" : {
+
+    },
+    "Auto-detected segments (⌘4)" : {
+
+    },
+    "Average Ground Contact Time" : {
+
+    },
+    "Average Power" : {
+
+    },
+    "Average Stance Time Balance" : {
+
+    },
+    "Average Step Length" : {
+
+    },
+    "Average Vertical Oscillation" : {
+
+    },
+    "Average Vertical Ratio" : {
+
+    },
+    "Average recorded heart rate." : {
+
+    },
+    "Avg HR" : {
+
+    },
+    "Best %@" : {
+
+    },
+    "Best 20 min Power" : {
+
+    },
+    "Birth year (optional)" : {
+
+    },
+    "Blank fields use population defaults (resting 60 bpm) and the Tanaka age estimate for maximum heart rate — both are estimates, clearly disclosed on every computed load. None of this is medical guidance." : {
+
+    },
+    "Blue" : {
+
+    },
+    "Both runs need GPS route points with timing data to build a pace comparison." : {
+
+    },
+    "Browse and search the full local workout library" : {
+
+    },
+    "Browse, search, and organise your full local library" : {
+
+    },
+    "Building heatmap…" : {
+
+    },
+    "Bundled demo workouts are unavailable. You can still import a GPX, TCX, FIT, or JSON file." : {
+
+    },
+    "C · Orange" : {
+
+    },
+    "COMPARE" : {
+
+    },
+    "Cad" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Cancel Export" : {
+
+    },
+    "Cancel import and leave the library unchanged" : {
+
+    },
+    "Cancel the import and leave the library unchanged" : {
+
+    },
+    "Cancel video export" : {
+
+    },
+    "Cancelled" : {
+
+    },
+    "Cancelling video export and removing temporary output" : {
+
+    },
+    "Cancelling…" : {
+
+    },
+    "Cell size" : {
+
+    },
+    "Cell size in metres. Broader cells are less precise but faster for large libraries." : {
+
+    },
+    "Cell size was increased so the map stays within the rendered-cell budget." : {
+
+    },
+    "Chart metric" : {
+
+    },
+    "Chart summary" : {
+
+    },
+    "Charts" : {
+
+    },
+    "Checking metric availability…" : {
+
+    },
+    "Checking whether this workout can be exported as video." : {
+
+    },
+    "Choose Another Folder…" : {
+
+    },
+    "Choose Folder…" : {
+
+    },
+    "Choose a different run to compare." : {
+
+    },
+    "Choose a folder of Terrarium PNG elevation tiles (z/x/y.png)" : {
+
+    },
+    "Choose a folder to watch for new workout files" : {
+
+    },
+    "Choose a run in the sidebar to begin" : {
+
+    },
+    "Choose another run to compare" : {
+
+    },
+    "Choose how the workout route is colored on the map" : {
+
+    },
+    "Choose the next faster supported playback speed" : {
+
+    },
+    "Choose the previous slower supported playback speed" : {
+
+    },
+    "Choose where to save the comparison MP4 video." : {
+
+    },
+    "Chooses a destination and encodes the offline route replay MP4" : {
+
+    },
+    "Chronic (fitness) time constant in days; Banister's default is 42" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Clear Comparison" : {
+
+    },
+    "Clear Filters" : {
+
+    },
+    "Clear Search" : {
+
+    },
+    "Clear Segment Selection" : {
+
+    },
+    "Clear Selection" : {
+
+    },
+    "Clear all active filters" : {
+
+    },
+    "Clear all personal heatmap filters" : {
+
+    },
+    "Clear search and filters" : {
+
+    },
+    "Clear search query" : {
+
+    },
+    "Click a recorded lap to seek replay to that lap start. Replay pauses first." : {
+
+    },
+    "Codec" : {
+
+    },
+    "Coefficient set" : {
+
+    },
+    "Collection modified" : {
+
+    },
+    "Collection name" : {
+
+    },
+    "Color" : {
+
+    },
+    "Color the route by corrected elevation within this workout." : {
+
+    },
+    "Color the route by relative heart rate within this workout." : {
+
+    },
+    "Color the route by relative pace within this workout." : {
+
+    },
+    "Color the route by relative running power within this workout." : {
+
+    },
+    "Color the route by solid, relative pace, heart rate, power, or corrected elevation" : {
+
+    },
+    "Color the workout route by corrected elevation. Disabled when elevation coloring is unavailable." : {
+
+    },
+    "Color the workout route by relative heart rate. Disabled when heart-rate coloring is unavailable." : {
+
+    },
+    "Color the workout route by relative pace. Disabled when pace coloring is unavailable." : {
+
+    },
+    "Color the workout route by relative running power. Disabled when power coloring is unavailable." : {
+
+    },
+    "Command" : {
+
+    },
+    "Comp. Finish" : {
+
+    },
+    "Comp. Start" : {
+
+    },
+    "Compare" : {
+
+    },
+    "Compare With" : {
+
+    },
+    "Compare runs" : {
+
+    },
+    "Compare with another run" : {
+
+    },
+    "Compared run at matched position" : {
+
+    },
+    "Comparison" : {
+
+    },
+    "Comparison alignment mode" : {
+
+    },
+    "Comparison at selected distance" : {
+
+    },
+    "Comparison distance %@" : {
+
+    },
+    "Comparison route map" : {
+
+    },
+    "Comparison video export cancelled." : {
+
+    },
+    "Comparison video export failed. %@" : {
+
+    },
+    "Comparison video exported %@." : {
+
+    },
+    "Comparison video preview ready." : {
+
+    },
+    "Comparison: %@" : {
+
+    },
+    "Complete" : {
+
+    },
+    "Compresses the full workout elapsed timeline into the selected length" : {
+
+    },
+    "Computing personal records, %lld of %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Computing personal records, %1$lld of %2$lld runs"
+          }
+        }
+      }
+    },
+    "Computing records — %lld of %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Computing records — %1$lld of %2$lld runs"
+          }
+        }
+      }
+    },
+    "Computing records…" : {
+
+    },
+    "Computing training load for earlier runs" : {
+
+    },
+    "Configure map, appearance, and route color before saving a 1200×1600 PNG." : {
+
+    },
+    "Container" : {
+
+    },
+    "Continuous route" : {
+
+    },
+    "Controls" : {
+
+    },
+    "Correct Elevation" : {
+
+    },
+    "Correct Elevation of %lld Runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Correct Elevation of %lld Run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Correct Elevation of %lld Runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Correct Library Elevation" : {
+
+    },
+    "Correct new imports" : {
+
+    },
+    "Correct this run's elevation from DEM tiles" : {
+
+    },
+    "Correct this run's elevation from the DEM tile folder again, for example after adding tiles" : {
+
+    },
+    "Corrected %lld runs; %lld runs needed no change." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corrected %#@corrected@; %#@unchanged@ needed no change."
+          },
+          "substitutions" : {
+            "corrected" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            },
+            "unchanged" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Corrected Gain" : {
+
+    },
+    "Corrected Loss" : {
+
+    },
+    "Corrected elevation covers %lld%% of route distance." : {
+
+    },
+    "Corrected, threshold-confirmed elevation gain." : {
+
+    },
+    "Correcting — %lld of %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Correcting — %1$lld of %2$lld runs"
+          }
+        }
+      }
+    },
+    "Correcting — %lld of %lld runs — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Correcting — %1$lld of %2$lld runs — %3$@"
+          }
+        }
+      }
+    },
+    "Corrects runs already in your library. Runs that were only partly covered are checked again, in case you have added tiles. Cancelling keeps every run corrected so far." : {
+
+    },
+    "Could not delete workout; no changes were made: %@" : {
+
+    },
+    "Could not re-cluster routes; the previous routes are unchanged: %@" : {
+
+    },
+    "Could not save imported workouts." : {
+
+    },
+    "Could not save the imported sessions." : {
+
+    },
+    "Could not update favourite: %@" : {
+
+    },
+    "Could not update results" : {
+
+    },
+    "Couldn't find the selected file. Try importing again." : {
+
+    },
+    "Couldn’t build heatmap" : {
+
+    },
+    "Create" : {
+
+    },
+    "Create Tag" : {
+
+    },
+    "Create Tag…" : {
+
+    },
+    "Current" : {
+
+    },
+    "Current All Runs Filter" : {
+
+    },
+    "Current Calendar Year" : {
+
+    },
+    "Current distance" : {
+
+    },
+    "Current recorded lap %lld" : {
+
+    },
+    "Current split %lld" : {
+
+    },
+    "Current: Recorded lap %lld" : {
+
+    },
+    "Current: Split %lld" : {
+
+    },
+    "Custom" : {
+
+    },
+    "Custom Date Range…" : {
+
+    },
+    "Custom range end" : {
+
+    },
+    "Custom range start" : {
+
+    },
+    "Cyan" : {
+
+    },
+    "DEM correction is allowed for this run again." : {
+
+    },
+    "DEM elevation" : {
+
+    },
+    "DEM tile folder" : {
+
+    },
+    "DEM tiles cover %@" : {
+
+    },
+    "Daily TRIMP with the fitness, fatigue, and form model. Fitness and fatigue are exponentially weighted averages of daily load; form is fitness minus fatigue." : {
+
+    },
+    "Dashed sections are DEM elevation filling gaps in the barometric altitude." : {
+
+    },
+    "Dashed sections use recorded altitude where no DEM tile covers the route." : {
+
+    },
+    "Data Points" : {
+
+    },
+    "Date" : {
+
+    },
+    "Date range" : {
+
+    },
+    "Day" : {
+
+    },
+    "Default tag" : {
+
+    },
+    "Default tag for %@" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete Run" : {
+
+    },
+    "Delete RunPlay Studio’s stored copy of \"%@\"? The original imported file will not be changed." : {
+
+    },
+    "Delete Smart Collection" : {
+
+    },
+    "Delete Tag" : {
+
+    },
+    "Delete “%@”? Workouts and tags are not affected." : {
+
+    },
+    "Delete…" : {
+
+    },
+    "Deleting stored workout copy" : {
+
+    },
+    "Deleting…" : {
+
+    },
+    "Delta" : {
+
+    },
+    "Deselect the currently highlighted segment" : {
+
+    },
+    "Details" : {
+
+    },
+    "Details can only be edited for imported library workouts." : {
+
+    },
+    "Detected highlights" : {
+
+    },
+    "Device" : {
+
+    },
+    "Device unavailable" : {
+
+    },
+    "Dismiss multi-session review banner" : {
+
+    },
+    "Distance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "距离"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "距離"
+          }
+        }
+      }
+    },
+    "Distance %@" : {
+
+    },
+    "Distance (km)" : {
+
+    },
+    "Distance Along Route" : {
+
+    },
+    "Distance Splits" : {
+
+    },
+    "Distance Splits (CSV)…" : {
+
+    },
+    "Distance Splits (not route-aligned)" : {
+
+    },
+    "Distance Splits are calculated by RunPlay Studio. Recorded Laps come from the source file." : {
+
+    },
+    "Distance along route" : {
+
+    },
+    "Distinct workouts per cell · local only" : {
+
+    },
+    "Do not restrict by route" : {
+
+    },
+    "Do not restrict the heatmap by route" : {
+
+    },
+    "Done" : {
+
+    },
+    "Draw this run's route as the route overlay" : {
+
+    },
+    "Duplicates" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Edit Details" : {
+
+    },
+    "Edit Details…" : {
+
+    },
+    "Edit Tags" : {
+
+    },
+    "Edit Tags for %lld Runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Edit Tags for %lld Run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Edit Tags for %lld Runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Edit Tags for %lld Runs…" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Edit Tags for %lld Run…"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Edit Tags for %lld Runs…"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Edit Tags…" : {
+
+    },
+    "Edit tags for selection" : {
+
+    },
+    "Edit tags for the selected library workout(s)" : {
+
+    },
+    "Effective zone bounds: %@ bpm" : {
+
+    },
+    "Elapsed" : {
+
+    },
+    "Elapsed %@" : {
+
+    },
+    "Elapsed Pace" : {
+
+    },
+    "Elapsed Time" : {
+
+    },
+    "Elapsed delta %@" : {
+
+    },
+    "Elapsed includes pauses. Active excludes recording gaps. Moving and stopped time are estimates." : {
+
+    },
+    "Elapsed replay time" : {
+
+    },
+    "Elapsed replay timeline" : {
+
+    },
+    "Elapsed time follows the replay clock and includes recording gaps." : {
+
+    },
+    "Elapsed time includes pauses and recording gaps." : {
+
+    },
+    "Elapsed time, including pauses and recording gaps." : {
+
+    },
+    "Elev" : {
+
+    },
+    "Elevation" : {
+
+    },
+    "Elevation analysis is unavailable for this workout." : {
+
+    },
+    "Elevation correction finished. %@" : {
+
+    },
+    "Elevation could not be corrected: %@" : {
+
+    },
+    "Elevation not corrected" : {
+
+    },
+    "Elevation settings could not be saved: %@" : {
+
+    },
+    "Encoding %lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Encoding %1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "Encoding comparison video" : {
+
+    },
+    "Encoding comparison video, %lld percent complete" : {
+
+    },
+    "Encoding video" : {
+
+    },
+    "Encoding video %lld of %lld frames, %lld percent complete" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Encoding video %1$lld of %2$lld frames, %3$lld percent complete"
+          }
+        }
+      }
+    },
+    "End Comparison" : {
+
+    },
+    "Ended comparison." : {
+
+    },
+    "Entered comparison." : {
+
+    },
+    "Estimated loads are included in the model at your request — they are invented values and make the curve less trustworthy." : {
+
+    },
+    "Estimated maximum from age %lld: %lld bpm (Tanaka) — entering a measured value is the upgrade." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Estimated maximum from age %1$lld: %2$lld bpm (Tanaka) — entering a measured value is the upgrade."
+          }
+        }
+      }
+    },
+    "Estimated movement state: %@" : {
+
+    },
+    "Estimated moving time. Uncertain active intervals count as moving." : {
+
+    },
+    "Estimated pace while moving. The canonical Pace remains active-time based." : {
+
+    },
+    "Estimated total source size of activity files" : {
+
+    },
+    "Exit comparison mode" : {
+
+    },
+    "Exit comparison mode and return to single-workout view" : {
+
+    },
+    "Export" : {
+
+    },
+    "Export All (CSV)" : {
+
+    },
+    "Export Comparison Replay" : {
+
+    },
+    "Export Comparison Replay (MP4)…" : {
+
+    },
+    "Export Comparison Video…" : {
+
+    },
+    "Export Complete" : {
+
+    },
+    "Export Distance Splits (CSV)" : {
+
+    },
+    "Export Failed" : {
+
+    },
+    "Export PNG" : {
+
+    },
+    "Export Recorded Laps (CSV)" : {
+
+    },
+    "Export Route Replay" : {
+
+    },
+    "Export Route Replay (MP4)" : {
+
+    },
+    "Export Segments (CSV)" : {
+
+    },
+    "Export Summary (JSON)" : {
+
+    },
+    "Export Summary Card" : {
+
+    },
+    "Export Summary Card (PNG)" : {
+
+    },
+    "Export Video…" : {
+
+    },
+    "Export Without Map" : {
+
+    },
+    "Export a deterministic offline H.264 MP4 of this comparison." : {
+
+    },
+    "Export a deterministic offline H.264 MP4 of this route replay." : {
+
+    },
+    "Export appearance" : {
+
+    },
+    "Export calculated kilometer splits as CSV" : {
+
+    },
+    "Export combined CSV" : {
+
+    },
+    "Export comparison replay as MP4 video" : {
+
+    },
+    "Export detected segments as CSV" : {
+
+    },
+    "Export distance splits as CSV" : {
+
+    },
+    "Export distance splits, recorded laps, and segments as combined CSV" : {
+
+    },
+    "Export distance splits, recorded laps, and segments as one combined CSV" : {
+
+    },
+    "Export failed" : {
+
+    },
+    "Export failed. %@" : {
+
+    },
+    "Export failed: %@. Try choosing a different location or format." : {
+
+    },
+    "Export preview ready." : {
+
+    },
+    "Export recorded laps as CSV" : {
+
+    },
+    "Export route replay as MP4 video" : {
+
+    },
+    "Export source-recorded laps as CSV" : {
+
+    },
+    "Export source-recorded laps as CSV. Disabled when the workout has no recorded laps." : {
+
+    },
+    "Export status %@" : {
+
+    },
+    "Export summary card as PNG image" : {
+
+    },
+    "Export the workout summary as JSON" : {
+
+    },
+    "Export video" : {
+
+    },
+    "Export workout summary as JSON" : {
+
+    },
+    "Exported %@." : {
+
+    },
+    "FIT session import progress" : {
+
+    },
+    "FIT sessions in %@" : {
+
+    },
+    "Failed" : {
+
+    },
+    "Failed to save: %@" : {
+
+    },
+    "Faster" : {
+
+    },
+    "Faster replay speed" : {
+
+    },
+    "Faster → Slower" : {
+
+    },
+    "Fatigue" : {
+
+    },
+    "Fatigue %lld days" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Fatigue %lld day"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Fatigue %lld days"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Fatigue time constant in days" : {
+
+    },
+    "Favourite" : {
+
+    },
+    "Favourites" : {
+
+    },
+    "Favourites apply to imported library workouts, not bundled demos." : {
+
+    },
+    "Female cohort" : {
+
+    },
+    "Files still being written are detected by a size-stability check and imported once they settle. Each folder keeps a local content-hash ledger so nothing is imported twice." : {
+
+    },
+    "Filter the library" : {
+
+    },
+    "Filter workouts by start date" : {
+
+    },
+    "Filters" : {
+
+    },
+    "Filters (%lld)" : {
+
+    },
+    "Final output: %@ H.264 MP4 · source elapsed timeline compressed to %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Final output: %1$@ H.264 MP4 · source elapsed timeline compressed to %2$@"
+          }
+        }
+      }
+    },
+    "Final output: %lld×%lld pixels" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Final output: %1$lld×%2$lld pixels"
+          }
+        }
+      }
+    },
+    "Find in All Runs" : {
+
+    },
+    "Finish" : {
+
+    },
+    "Fit Heatmap" : {
+
+    },
+    "Fit Map" : {
+
+    },
+    "Fit Route" : {
+
+    },
+    "Fit Routes" : {
+
+    },
+    "Fit the visible map content" : {
+
+    },
+    "Fit the visible route, comparison routes, or heatmap" : {
+
+    },
+    "Fitness" : {
+
+    },
+    "Fitness %lld days" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Fitness %lld day"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Fitness %lld days"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Fitness (CTL)" : {
+
+    },
+    "Fitness time constant in days" : {
+
+    },
+    "Fitness, fatigue, and form use measured heart-rate loads only. Estimated loads are shown on the bars but excluded from the model." : {
+
+    },
+    "Five ascending lower bounds in bpm. Leave blank to derive the default zones (60, 70, 80, 90 percent of maximum heart rate, zone 1 unbounded low)." : {
+
+    },
+    "Focus library search" : {
+
+    },
+    "Focus the All Runs search field" : {
+
+    },
+    "Folder" : {
+
+    },
+    "Folders persist as security-scoped bookmarks and keep working across launches." : {
+
+    },
+    "Form" : {
+
+    },
+    "Format" : {
+
+    },
+    "Frame rate" : {
+
+    },
+    "Frequency" : {
+
+    },
+    "From" : {
+
+    },
+    "GPS Points" : {
+
+    },
+    "Generating preview…" : {
+
+    },
+    "Got it" : {
+
+    },
+    "Gray" : {
+
+    },
+    "Green" : {
+
+    },
+    "Group Routes Now" : {
+
+    },
+    "Group runs that follow the same route and show pace progression on each" : {
+
+    },
+    "Group runs that follow the same route and show progression on each (⌘⇧G)" : {
+
+    },
+    "Group workouts by ISO week, calendar month, or calendar year" : {
+
+    },
+    "Groups every library run onto routes" : {
+
+    },
+    "Groups runs that follow substantially the same route and shows pace progression on each route" : {
+
+    },
+    "HR" : {
+
+    },
+    "Has Corrected Elevation" : {
+
+    },
+    "Has Heart Rate" : {
+
+    },
+    "Has Recorded Laps" : {
+
+    },
+    "Heart Rate" : {
+
+    },
+    "Heart-rate coverage: %lld%% of days with runs." : {
+
+    },
+    "Heart-rate data covers %lld%% of route distance." : {
+
+    },
+    "Heart-rate zones" : {
+
+    },
+    "Heatmap legend. Low frequency: 1 run. Medium: %lld runs. High: up to %lld runs. Color shows how many distinct workouts crossed each cell." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heatmap legend. Low frequency: 1 run. Medium: %1$lld runs. High: up to %2$lld runs. Color shows how many distinct workouts crossed each cell."
+          }
+        }
+      }
+    },
+    "Heatmap ready. %lld runs included." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heatmap ready. %lld run included."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heatmap ready. %lld runs included."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Heatmap statistics unavailable" : {
+
+    },
+    "Hide cells visited by fewer than this many distinct workouts" : {
+
+    },
+    "Higher" : {
+
+    },
+    "Higher zooms hold finer detail but need more tiles per run" : {
+
+    },
+    "Highlight end" : {
+
+    },
+    "Highlight start" : {
+
+    },
+    "Highlight y end" : {
+
+    },
+    "Highlight y start" : {
+
+    },
+    "Hover the chart to read one day's load, fitness, fatigue, and form." : {
+
+    },
+    "Import" : {
+
+    },
+    "Import %@" : {
+
+    },
+    "Import %lld Runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import %lld Run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import %lld Runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Import Cancelled" : {
+
+    },
+    "Import Complete" : {
+
+    },
+    "Import Existing Files Now" : {
+
+    },
+    "Import FIT Sessions" : {
+
+    },
+    "Import FIT Sessions, %@" : {
+
+    },
+    "Import Failed" : {
+
+    },
+    "Import File" : {
+
+    },
+    "Import File…" : {
+
+    },
+    "Import GPS workouts to build your personal heatmap." : {
+
+    },
+    "Import Incomplete" : {
+
+    },
+    "Import Strava Archive" : {
+
+    },
+    "Import Strava Archive, %@" : {
+
+    },
+    "Import Strava Archive…" : {
+
+    },
+    "Import a GPX, TCX, FIT, or JSON file\nto visualize your run" : {
+
+    },
+    "Import a GPX, TCX, FIT, or JSON file, or a Strava archive." : {
+
+    },
+    "Import a GPX, TCX, FIT, or JSON workout file" : {
+
+    },
+    "Import a Strava archive" : {
+
+    },
+    "Import a run to start collecting records." : {
+
+    },
+    "Import a single workout file" : {
+
+    },
+    "Import a workout file or Strava archive" : {
+
+    },
+    "Import another run" : {
+
+    },
+    "Import another run to compare" : {
+
+    },
+    "Import cancelled." : {
+
+    },
+    "Import error: %@" : {
+
+    },
+    "Import failed. %@" : {
+
+    },
+    "Import progress" : {
+
+    },
+    "Import run" : {
+
+    },
+    "Import running activities from a local Strava bulk-export ZIP" : {
+
+    },
+    "Import runs first; routes group runs that follow substantially the same path." : {
+
+    },
+    "Import was cancelled." : {
+
+    },
+    "Import workout file" : {
+
+    },
+    "Import workouts from a Strava bulk-export archive" : {
+
+    },
+    "Import workouts to see distance, pace, heart-rate, and ascent trends over time." : {
+
+    },
+    "Importable" : {
+
+    },
+    "Imported" : {
+
+    },
+    "Imported %@." : {
+
+    },
+    "Imported %@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Imported %1$@. %2$@"
+          }
+        }
+      }
+    },
+    "Imported but could not save to your library. %@" : {
+
+    },
+    "Imported but could not save to your library. Check available storage and app permissions. Details: %@" : {
+
+    },
+    "Importing %@" : {
+
+    },
+    "Importing %@…" : {
+
+    },
+    "Importing activities…" : {
+
+    },
+    "Importing sessions…" : {
+
+    },
+    "Imports" : {
+
+    },
+    "Imports from watched folders will appear here." : {
+
+    },
+    "Include" : {
+
+    },
+    "Include Map" : {
+
+    },
+    "Include a static Apple Maps region with the workout route." : {
+
+    },
+    "Include estimated loads" : {
+
+    },
+    "Include estimated loads in the model" : {
+
+    },
+    "Include map" : {
+
+    },
+    "Include this session in the import" : {
+
+    },
+    "Included" : {
+
+    },
+    "Included %lld runs, total distance %@, maximum overlap %lld runs, cell size %lld meters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Included %1$lld runs, total distance %2$@, maximum overlap %3$lld runs, cell size %4$lld meters"
+          }
+        }
+      }
+    },
+    "Inspect trends period" : {
+
+    },
+    "Interval type" : {
+
+    },
+    "Jump to" : {
+
+    },
+    "Jump to distance" : {
+
+    },
+    "Jump to distance in kilometers" : {
+
+    },
+    "Jump to end" : {
+
+    },
+    "Jump to end (%@)" : {
+
+    },
+    "Jump to end of matched route" : {
+
+    },
+    "Jump to start" : {
+
+    },
+    "Jump to start (0 km)" : {
+
+    },
+    "Jump to start of matched route" : {
+
+    },
+    "Keep the run in the library but off this route" : {
+
+    },
+    "Keep this run's recorded altitude instead of DEM elevation" : {
+
+    },
+    "Keeps every completed run; the pass resumes next time you open Records" : {
+
+    },
+    "Key Segments" : {
+
+    },
+    "Keyboard Shortcuts" : {
+
+    },
+    "Keyboard alternative to dragging the chart" : {
+
+    },
+    "Keyboard shortcuts" : {
+
+    },
+    "Kilometer breakdown" : {
+
+    },
+    "Kilometer split table (⌘3)" : {
+
+    },
+    "Kilometre splits remain ordinary cumulative-distance splits. They are not DTW aligned." : {
+
+    },
+    "Lap" : {
+
+    },
+    "Lap, trigger, distance, elapsed, active, moving, active pace, moving pace, heart rate, elevation" : {
+
+    },
+    "Laps" : {
+
+    },
+    "Last 12 Months" : {
+
+    },
+    "Last 3 Months" : {
+
+    },
+    "Last 30 Days" : {
+
+    },
+    "Last 6 Months" : {
+
+    },
+    "Last 90 Days" : {
+
+    },
+    "Leave the name empty to return to the automatic description." : {
+
+    },
+    "Library" : {
+
+    },
+    "Library loaded. %lld runs." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Library loaded. %lld run."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Library loaded. %lld runs."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Limit records to the whole library, the current All Runs query, or one smart collection" : {
+
+    },
+    "Limit trends to the whole library, the current All Runs query, or one smart collection" : {
+
+    },
+    "Load" : {
+
+    },
+    "Loading library" : {
+
+    },
+    "Loading library…" : {
+
+    },
+    "Loading workout library" : {
+
+    },
+    "Loading workout library…" : {
+
+    },
+    "Loading…" : {
+
+    },
+    "Local coverage across your workout library. Intensity is distinct runs per cell, not GPS sample density." : {
+
+    },
+    "Lower" : {
+
+    },
+    "Lower Elevation → Higher Elevation" : {
+
+    },
+    "Lower HR → Higher HR" : {
+
+    },
+    "Lower Power → Higher Power" : {
+
+    },
+    "Manage Smart Collections…" : {
+
+    },
+    "Manage Tags" : {
+
+    },
+    "Manage Tags…" : {
+
+    },
+    "Manage folders that import new workout files automatically" : {
+
+    },
+    "Map and route visualization (⌘1)" : {
+
+    },
+    "Map preview unavailable" : {
+
+    },
+    "Map unavailable" : {
+
+    },
+    "Map zoom" : {
+
+    },
+    "Match All Selected" : {
+
+    },
+    "Match Any Selected" : {
+
+    },
+    "Matched Route Progress" : {
+
+    },
+    "Matched positions are %@" : {
+
+    },
+    "Matched route" : {
+
+    },
+    "Matched route (km)" : {
+
+    },
+    "Matched route progress" : {
+
+    },
+    "Matched-section clocks begin at the current alignment block start. Unmatched prefixes are excluded." : {
+
+    },
+    "Matches equal cumulative distances." : {
+
+    },
+    "Max HR" : {
+
+    },
+    "Max Power" : {
+
+    },
+    "Max overlap" : {
+
+    },
+    "Maximum heart rate (optional, bpm)" : {
+
+    },
+    "Mean HR" : {
+
+    },
+    "Mean Pace" : {
+
+    },
+    "Median" : {
+
+    },
+    "Median %@." : {
+
+    },
+    "Menu" : {
+
+    },
+    "Merge into…" : {
+
+    },
+    "Merge this route into %@" : {
+
+    },
+    "Metric" : {
+
+    },
+    "Midpoint %@ of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Midpoint %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "Minimum repeats" : {
+
+    },
+    "Missing Collection" : {
+
+    },
+    "Missing boundaries" : {
+
+    },
+    "Mixed" : {
+
+    },
+    "Mixed tags are applied to all selected runs when activated." : {
+
+    },
+    "Modified" : {
+
+    },
+    "Month" : {
+
+    },
+    "Mostly running without a strap? Estimated loads can join the model, but they are invented values and bias the curve downward." : {
+
+    },
+    "Moves to the next route point" : {
+
+    },
+    "Moves to the previous route point" : {
+
+    },
+    "Moving" : {
+
+    },
+    "Moving (est.)" : {
+
+    },
+    "Moving (est.) %@" : {
+
+    },
+    "Moving Pace" : {
+
+    },
+    "Moving Pace (est.)" : {
+
+    },
+    "Moving pace is estimated from moving time and does not replace active pace." : {
+
+    },
+    "Moving time is estimated from route movement. Uncertain active time counts as moving." : {
+
+    },
+    "Multi-session FIT file %@ is waiting for review" : {
+
+    },
+    "Multi-session FIT ready for review" : {
+
+    },
+    "My Run" : {
+
+    },
+    "Name" : {
+
+    },
+    "Needs too many DEM tiles" : {
+
+    },
+    "New tag name" : {
+
+    },
+    "No DEM tile covers this run" : {
+
+    },
+    "No Dated Workouts" : {
+
+    },
+    "No GPS" : {
+
+    },
+    "No GPS route data — only HR, cadence, and summary metrics are available." : {
+
+    },
+    "No HR data" : {
+
+    },
+    "No Run Selected" : {
+
+    },
+    "No Runs In Scope" : {
+
+    },
+    "No Terrarium PNG tiles were found. The folder should hold z/x/y.png tiles, such as 13/4265/2903.png." : {
+
+    },
+    "No Workouts" : {
+
+    },
+    "No beats per minute data in this scope." : {
+
+    },
+    "No chart data available" : {
+
+    },
+    "No data" : {
+
+    },
+    "No dated runs in this scope." : {
+
+    },
+    "No elevation data" : {
+
+    },
+    "No heart rate data available" : {
+
+    },
+    "No heatmap cells for the current filters." : {
+
+    },
+    "No kilometres data in this scope." : {
+
+    },
+    "No metres data in this scope." : {
+
+    },
+    "No other workouts" : {
+
+    },
+    "No pace data" : {
+
+    },
+    "No pace data to chart" : {
+
+    },
+    "No power data" : {
+
+    },
+    "No power data available" : {
+
+    },
+    "No readable Terrarium tile was found at zoom %lld." : {
+
+    },
+    "No recorded laps available" : {
+
+    },
+    "No recorded laps in this file. Calculated distance splits are still available." : {
+
+    },
+    "No recorded laps to compare" : {
+
+    },
+    "No report available." : {
+
+    },
+    "No routes yet" : {
+
+    },
+    "No runs in your library" : {
+
+    },
+    "No runs loaded yet. Import a GPX, TCX, FIT, or JSON file to get started." : {
+
+    },
+    "No runs match the current records scope." : {
+
+    },
+    "No runs match the current search or filters." : {
+
+    },
+    "No runs match the selected filters." : {
+
+    },
+    "No runs match “%@”" : {
+
+    },
+    "No runs yet" : {
+
+    },
+    "No s/km data in this scope." : {
+
+    },
+    "No segments detected" : {
+
+    },
+    "No smart collections yet. Save the current All Runs query to create one." : {
+
+    },
+    "No speed data" : {
+
+    },
+    "No splits to compare" : {
+
+    },
+    "No start time" : {
+
+    },
+    "No tags" : {
+
+    },
+    "No tile folder chosen. Runs keep their recorded elevation." : {
+
+    },
+    "No usable GPS route — metrics-only card will be exported." : {
+
+    },
+    "No watch-folder imports yet" : {
+
+    },
+    "No watched folders yet. Add one to import new GPX, TCX, FIT, and JSON files automatically." : {
+
+    },
+    "No workouts match this date range." : {
+
+    },
+    "None" : {
+
+    },
+    "None of your workouts carries a start date, so they cannot be placed on a timeline." : {
+
+    },
+    "Not a favourite" : {
+
+    },
+    "Not attempted" : {
+
+    },
+    "Not attempted in this scope." : {
+
+    },
+    "Not on a Route" : {
+
+    },
+    "Not selected" : {
+
+    },
+    "Notes" : {
+
+    },
+    "OK" : {
+
+    },
+    "Offline H.264 MP4 · %lld×%lld · %lld fps · no audio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Offline H.264 MP4 · %1$lld×%2$lld · %3$lld fps · no audio"
+          }
+        }
+      }
+    },
+    "Only one run is loaded. Import another to compare side-by-side." : {
+
+    },
+    "Open" : {
+
+    },
+    "Open All Runs" : {
+
+    },
+    "Open Imported Run" : {
+
+    },
+    "Open Personal Heatmap" : {
+
+    },
+    "Open Records" : {
+
+    },
+    "Open Routes" : {
+
+    },
+    "Open Run" : {
+
+    },
+    "Open Selected Run" : {
+
+    },
+    "Open Trends" : {
+
+    },
+    "Open keyboard shortcuts help" : {
+
+    },
+    "Open options for exporting the route replay as an MP4 video. Disabled when the workout cannot be exported as video." : {
+
+    },
+    "Open options for exporting the workout summary card as a PNG image" : {
+
+    },
+    "Open selected workout" : {
+
+    },
+    "Open smart collection “%@”" : {
+
+    },
+    "Open the single selected All Runs row" : {
+
+    },
+    "Open watch folder settings" : {
+
+    },
+    "Opening archive…" : {
+
+    },
+    "Opens options for offline H.264 comparison replay export" : {
+
+    },
+    "Opens options for offline H.264 route replay export" : {
+
+    },
+    "Opens that workout and highlights the record window" : {
+
+    },
+    "Opens the workout holding this record and highlights the window" : {
+
+    },
+    "Orange" : {
+
+    },
+    "Organise" : {
+
+    },
+    "Other sports" : {
+
+    },
+    "Output" : {
+
+    },
+    "Over limit" : {
+
+    },
+    "Overview" : {
+
+    },
+    "P %@  vs  C %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "P %1$@  vs  C %2$@"
+          }
+        }
+      }
+    },
+    "P · Blue" : {
+
+    },
+    "Pace" : {
+
+    },
+    "Pace delta %@" : {
+
+    },
+    "Pace is calculated from active time." : {
+
+    },
+    "Pace uses active time along matched route progress. Alignment blocks are not connected across gaps." : {
+
+    },
+    "Pace uses active time and excludes recording gaps." : {
+
+    },
+    "Pace uses active time." : {
+
+    },
+    "Pace, HR, and elevation charts (⌘2)" : {
+
+    },
+    "Pairs lap 1 with lap 1 only. Not route-aligned, even in Route-Aware mode." : {
+
+    },
+    "Parse failed" : {
+
+    },
+    "Pause" : {
+
+    },
+    "Pause (Space)" : {
+
+    },
+    "Pause Watching" : {
+
+    },
+    "Pause replay" : {
+
+    },
+    "Pause watching %@" : {
+
+    },
+    "Pause watching all folders" : {
+
+    },
+    "Paused" : {
+
+    },
+    "Paused time is elapsed time minus active time." : {
+
+    },
+    "Pauses route playback" : {
+
+    },
+    "Period" : {
+
+    },
+    "Period detail" : {
+
+    },
+    "Period start" : {
+
+    },
+    "Personal Heatmap" : {
+
+    },
+    "Personal records" : {
+
+    },
+    "Personal records ready. %lld runs included." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Personal records ready. %lld run included."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Personal records ready. %lld runs included."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Personal route heatmap" : {
+
+    },
+    "Pin as Representative" : {
+
+    },
+    "Play (Space)" : {
+
+    },
+    "Play or pause replay" : {
+
+    },
+    "Play replay" : {
+
+    },
+    "Play/Pause" : {
+
+    },
+    "Playing" : {
+
+    },
+    "Poster Preview" : {
+
+    },
+    "Power" : {
+
+    },
+    "Power & Running Dynamics" : {
+
+    },
+    "Power & Running Dynamics (%lld metrics)" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Power & Running Dynamics (%lld metric)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Power & Running Dynamics (%lld metrics)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Power data covers %lld%% of route distance." : {
+
+    },
+    "Power from developer data index %lld (application id %@)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Power from developer data index %1$lld (application id %2$@)."
+          }
+        }
+      }
+    },
+    "Power from developer data index %lld." : {
+
+    },
+    "Power from the watch's native power field." : {
+
+    },
+    "Preparing map and preview…" : {
+
+    },
+    "Preparing preview…" : {
+
+    },
+    "Preview" : {
+
+    },
+    "Preview failed" : {
+
+    },
+    "Preview unavailable" : {
+
+    },
+    "Preview will appear here" : {
+
+    },
+    "Primary" : {
+
+    },
+    "Primary Finish" : {
+
+    },
+    "Primary Start" : {
+
+    },
+    "Primary at selected distance" : {
+
+    },
+    "Primary distance %@" : {
+
+    },
+    "Primary: %@" : {
+
+    },
+    "Provider conflicts" : {
+
+    },
+    "Purple" : {
+
+    },
+    "Purpose" : {
+
+    },
+    "Query summary: %@" : {
+
+    },
+    "Range" : {
+
+    },
+    "Re-cluster Routes" : {
+
+    },
+    "Re-cluster routes" : {
+
+    },
+    "Reading FIT file…" : {
+
+    },
+    "Reading metadata…" : {
+
+    },
+    "Ready" : {
+
+    },
+    "Ready to export" : {
+
+    },
+    "Recent" : {
+
+    },
+    "Recent Imports" : {
+
+    },
+    "Recent imports" : {
+
+    },
+    "Recent imports, %lld with errors" : {
+
+    },
+    "Recompute Training Loads" : {
+
+    },
+    "Recompute every route group from scratch with progress and cancellation" : {
+
+    },
+    "Recomputes every route group from scratch" : {
+
+    },
+    "Recomputing — %lld of %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recomputing — %1$lld of %2$lld runs"
+          }
+        }
+      }
+    },
+    "Recomputing — %lld of %lld runs — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recomputing — %1$lld of %2$lld runs — %3$@"
+          }
+        }
+      }
+    },
+    "Record" : {
+
+    },
+    "Recorded Laps" : {
+
+    },
+    "Recorded Laps (CSV)…" : {
+
+    },
+    "Recorded Laps (ordinal)" : {
+
+    },
+    "Recorded lap %lld" : {
+
+    },
+    "Recorded lap columns" : {
+
+    },
+    "Recording gap: elapsed time is advancing while active time and distance remain fixed" : {
+
+    },
+    "Recording gap: elapsed time is advancing while active time and distance remain fixed." : {
+
+    },
+    "Records" : {
+
+    },
+    "Records could not be computed.\n%@" : {
+
+    },
+    "Records scope" : {
+
+    },
+    "Red" : {
+
+    },
+    "Remove from Route" : {
+
+    },
+    "Remove “%@” from %lld runs?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove “%1$@” from %#@runs@?"
+          },
+          "substitutions" : {
+            "runs" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Rename" : {
+
+    },
+    "Rename %@" : {
+
+    },
+    "Rename Route" : {
+
+    },
+    "Rename Route…" : {
+
+    },
+    "Rename this route" : {
+
+    },
+    "Rename…" : {
+
+    },
+    "Replay" : {
+
+    },
+    "Replay at %@ speed" : {
+
+    },
+    "Replay at normal speed" : {
+
+    },
+    "Replay controls" : {
+
+    },
+    "Replay finished." : {
+
+    },
+    "Replay follows elapsed time, including pauses and recording gaps." : {
+
+    },
+    "Replay paused." : {
+
+    },
+    "Replay playing." : {
+
+    },
+    "Replay restarted." : {
+
+    },
+    "Replay speed" : {
+
+    },
+    "Replay speed %@" : {
+
+    },
+    "Replay speed %@." : {
+
+    },
+    "Representative" : {
+
+    },
+    "Representative Route" : {
+
+    },
+    "Representative route map" : {
+
+    },
+    "Reset Filters" : {
+
+    },
+    "Reset all personal heatmap filters" : {
+
+    },
+    "Resolution" : {
+
+    },
+    "Resolution adjusted for this library." : {
+
+    },
+    "Restart" : {
+
+    },
+    "Restart replay from the beginning" : {
+
+    },
+    "Restart replay from the beginning and pause" : {
+
+    },
+    "Resting heart rate (optional, bpm)" : {
+
+    },
+    "Restore the saved collection query" : {
+
+    },
+    "Restoring workspace…" : {
+
+    },
+    "Restrict the heatmap to one route" : {
+
+    },
+    "Resume" : {
+
+    },
+    "Resume watching %@" : {
+
+    },
+    "Retry" : {
+
+    },
+    "Retry Preview" : {
+
+    },
+    "Retry building heatmap" : {
+
+    },
+    "Retry building the heatmap" : {
+
+    },
+    "Retry loading the library" : {
+
+    },
+    "Reveal" : {
+
+    },
+    "Reveal %@ in Finder" : {
+
+    },
+    "Reversed" : {
+
+    },
+    "Revert" : {
+
+    },
+    "Review %@ sessions" : {
+
+    },
+    "Review…" : {
+
+    },
+    "Route" : {
+
+    },
+    "Route Color" : {
+
+    },
+    "Route Replay (MP4)…" : {
+
+    },
+    "Route alignment %@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Route alignment %1$@. %2$@"
+          }
+        }
+      }
+    },
+    "Route alignment could not be completed." : {
+
+    },
+    "Route alignment ready." : {
+
+    },
+    "Route alignment unavailable." : {
+
+    },
+    "Route color by elevation" : {
+
+    },
+    "Route color by heart rate" : {
+
+    },
+    "Route color by pace" : {
+
+    },
+    "Route color by power" : {
+
+    },
+    "Route color mode" : {
+
+    },
+    "Route color solid" : {
+
+    },
+    "Route filter" : {
+
+    },
+    "Route name" : {
+
+    },
+    "Route replay" : {
+
+    },
+    "Route-Aware comparison video unavailable." : {
+
+    },
+    "Route-Aware unavailable" : {
+
+    },
+    "Routes" : {
+
+    },
+    "Run" : {
+
+    },
+    "Run route grouping across your library to find the routes you repeat." : {
+
+    },
+    "RunPlay Studio" : {
+
+    },
+    "RunPlay Studio could not keep access to that folder." : {
+
+    },
+    "Running dynamics from developer data index %lld." : {
+
+    },
+    "Running dynamics from developer data." : {
+
+    },
+    "Running dynamics from the watch's native record fields." : {
+
+    },
+    "Running power and dynamics summary with source provenance" : {
+
+    },
+    "Running power in watts at the replay position." : {
+
+    },
+    "Running types" : {
+
+    },
+    "Runs" : {
+
+    },
+    "Runs count entirely in the period they start in, on their recorded local date. “Last N months” always starts on a whole period. Ascent uses corrected elevation when available, otherwise the raw source ascent." : {
+
+    },
+    "Runs on this Route" : {
+
+    },
+    "Runs without usable heart rate get a clearly-labelled estimated load from pace and duration. Estimates are informative per run but stay out of the fitness/fatigue/form model by default — inventing inputs would bias the curve downward, which understates fatigue. You can opt in on the Trends chart if you mostly run without a strap." : {
+
+    },
+    "Save" : {
+
+    },
+    "Save as Smart Collection" : {
+
+    },
+    "Save as Smart Collection…" : {
+
+    },
+    "Save the current search and filters to this collection" : {
+
+    },
+    "Save the offline H.264 MP4. Map imagery may have contacted Apple; the file stays on this Mac." : {
+
+    },
+    "Saved to %@" : {
+
+    },
+    "Saves the current search, filters, tags, and sort. Membership updates automatically." : {
+
+    },
+    "Saves the generated summary card image" : {
+
+    },
+    "Saving library…" : {
+
+    },
+    "Scanning %@…" : {
+
+    },
+    "Scanning FIT file %@" : {
+
+    },
+    "Scanning archive %@" : {
+
+    },
+    "Scanning entries…" : {
+
+    },
+    "Scanning sessions…" : {
+
+    },
+    "Scope" : {
+
+    },
+    "Search activities" : {
+
+    },
+    "Search runs" : {
+
+    },
+    "Search tags" : {
+
+    },
+    "Section" : {
+
+    },
+    "Seek Backward 5 Seconds" : {
+
+    },
+    "Seek Forward 5 Seconds" : {
+
+    },
+    "Seek earlier" : {
+
+    },
+    "Seek later" : {
+
+    },
+    "Seek replay backward by five elapsed seconds" : {
+
+    },
+    "Seek replay backward five seconds" : {
+
+    },
+    "Seek replay forward by five elapsed seconds" : {
+
+    },
+    "Seek replay forward five seconds" : {
+
+    },
+    "Seek to Lap Start" : {
+
+    },
+    "Segment duration and pace use active time and exclude recording gaps." : {
+
+    },
+    "Segments" : {
+
+    },
+    "Segments (CSV)…" : {
+
+    },
+    "Select %@" : {
+
+    },
+    "Select All Importable" : {
+
+    },
+    "Select None" : {
+
+    },
+    "Select a comparison run" : {
+
+    },
+    "Select a file to import and compare" : {
+
+    },
+    "Select a primary run" : {
+
+    },
+    "Select a primary run first." : {
+
+    },
+    "Select a route to see its runs and pace progression" : {
+
+    },
+    "Select every ready running activity" : {
+
+    },
+    "Select every session that is ready to import" : {
+
+    },
+    "Select imported library workouts to edit tags." : {
+
+    },
+    "Select the metric shown over distance." : {
+
+    },
+    "Select two workouts to export a comparison video." : {
+
+    },
+    "Select workout" : {
+
+    },
+    "Selected" : {
+
+    },
+    "Selected Run" : {
+
+    },
+    "Selected mode is unavailable for this workout; export will use Solid." : {
+
+    },
+    "Selected run %@ ↔ Compared run %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Selected run %1$@ ↔ Compared run %2$@"
+          }
+        }
+      }
+    },
+    "Selected run at matched position" : {
+
+    },
+    "Selection changed, but could not be saved: %@" : {
+
+    },
+    "Separation %lld meters" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Separation %lld meter"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Separation %lld meters"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Series" : {
+
+    },
+    "Session" : {
+
+    },
+    "Session %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Session %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Session %lld of %lld · staged %lld · skipped %lld · failed %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Session %1$lld of %2$lld · staged %3$lld · skipped %4$lld · failed %5$lld"
+          }
+        }
+      }
+    },
+    "Session summary" : {
+
+    },
+    "Sessions" : {
+
+    },
+    "Shaded spans are days with runs but no usable heart rate. The model has no load for them and decays as if you had rested, so a stretch of strapless running reads as lost fitness and gained freshness. The values are unchanged — only the confidence is shown." : {
+
+    },
+    "Shaded spans are days with runs but no usable heart rate. Where an estimate stands in for one it is an invented value; where none does, the model decays as if you had rested. The values are unchanged — only the confidence is shown." : {
+
+    },
+    "Sheet" : {
+
+    },
+    "Shortcut" : {
+
+    },
+    "Show all favourites in All Runs" : {
+
+    },
+    "Show all smart collections" : {
+
+    },
+    "Show detected segment highlights" : {
+
+    },
+    "Show distance splits and recorded laps" : {
+
+    },
+    "Show heat only from runs on this route" : {
+
+    },
+    "Show metric charts" : {
+
+    },
+    "Show only runs on this route" : {
+
+    },
+    "Show personal records across the local workout library" : {
+
+    },
+    "Show personal route heatmap across the local library" : {
+
+    },
+    "Show running and walk/hike candidates" : {
+
+    },
+    "Show runs that are not currently on any route" : {
+
+    },
+    "Show the keyboard shortcuts reference" : {
+
+    },
+    "Show the route in the primary color." : {
+
+    },
+    "Show the workout overview and map" : {
+
+    },
+    "Show the workout route in the primary color" : {
+
+    },
+    "Show this file in Finder" : {
+
+    },
+    "Show where you run most often across your local library (⌘⇧H)" : {
+
+    },
+    "Show whole periods covering the selected time range" : {
+
+    },
+    "Show workouts from all time" : {
+
+    },
+    "Show your fastest fixed-distance windows, longest run, and biggest ascent across your local library (⌘⇧P)" : {
+
+    },
+    "Shows a density map of places you have run across your workout library" : {
+
+    },
+    "Shows distance, pace, heart rate, and ascent trends across your workout library over time" : {
+
+    },
+    "Shows personal records across your workout library, scoped to the whole library or a filtered subset" : {
+
+    },
+    "Shows watch-folder import results with per-file status" : {
+
+    },
+    "Skipped, already imported" : {
+
+    },
+    "Slower" : {
+
+    },
+    "Slower replay speed" : {
+
+    },
+    "Smart Collections" : {
+
+    },
+    "Smart collection %@" : {
+
+    },
+    "Smart collection updated." : {
+
+    },
+    "Smart collections require a saved local library." : {
+
+    },
+    "Smart collections that use this tag will drop that criterion." : {
+
+    },
+    "Solid" : {
+
+    },
+    "Some sections have no metric data." : {
+
+    },
+    "Something went wrong. Please try again." : {
+
+    },
+    "Sort" : {
+
+    },
+    "Sort library results" : {
+
+    },
+    "Source" : {
+
+    },
+    "Source: %@" : {
+
+    },
+    "Source: %@." : {
+
+    },
+    "Space" : {
+
+    },
+    "Speed" : {
+
+    },
+    "Split" : {
+
+    },
+    "Split %lld, distance %@, elapsed %@, active %@, active pace %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Split %1$lld, distance %2$@, elapsed %3$@, active %4$@, active pace %5$@"
+          }
+        }
+      }
+    },
+    "Split Active Pace (min/km)" : {
+
+    },
+    "Split comparison uses active time and excludes recording gaps." : {
+
+    },
+    "Splits" : {
+
+    },
+    "Sport" : {
+
+    },
+    "Staging workouts…" : {
+
+    },
+    "Standard (male cohort)" : {
+
+    },
+    "Standing personal records across the scoped runs. A window longer than any single run is not attempted; equal efforts never replace the earlier holder. Select a record to see its improvement history." : {
+
+    },
+    "Start" : {
+
+    },
+    "Starts route playback" : {
+
+    },
+    "Status" : {
+
+    },
+    "Step backward" : {
+
+    },
+    "Step backward one route point when replay controls are focused" : {
+
+    },
+    "Step forward" : {
+
+    },
+    "Step forward one route point when replay controls are focused" : {
+
+    },
+    "Stop Using Folder" : {
+
+    },
+    "Stopped (est.)" : {
+
+    },
+    "Stopped time is an estimate of stationary active recording time." : {
+
+    },
+    "Stopped time is estimated from stationary active recording time." : {
+
+    },
+    "Stops the re-cluster and keeps the previous routes" : {
+
+    },
+    "Summary" : {
+
+    },
+    "Summary (JSON)…" : {
+
+    },
+    "Summary Card (PNG)…" : {
+
+    },
+    "Switch to 2D" : {
+
+    },
+    "Switch to 3D" : {
+
+    },
+    "Switch to Charts tab" : {
+
+    },
+    "Switch to Overview tab" : {
+
+    },
+    "Switch to Segments tab" : {
+
+    },
+    "Switch to Splits tab" : {
+
+    },
+    "Switch to distance-based comparison video when route-aware alignment cannot be used" : {
+
+    },
+    "Switch to distance-based comparison when route-aware alignment cannot be used" : {
+
+    },
+    "TRIMP by day · Fitness %lld d · Fatigue %lld d" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TRIMP by day · Fitness %1$lld d · Fatigue %2$lld d"
+          }
+        }
+      }
+    },
+    "TRIMP coefficients" : {
+
+    },
+    "Tag %@" : {
+
+    },
+    "Tag applied to workouts imported from this folder. Leave empty for none." : {
+
+    },
+    "Tag name" : {
+
+    },
+    "Tags" : {
+
+    },
+    "Tags and smart collections" : {
+
+    },
+    "Tags apply to imported library workouts, not bundled demos." : {
+
+    },
+    "Tags require a saved local library." : {
+
+    },
+    "Tags updated." : {
+
+    },
+    "The elevation source could not be changed: %@" : {
+
+    },
+    "The folder is remembered as a bookmark beside your workout library on this Mac. Tiles never leave it, and nothing is uploaded." : {
+
+    },
+    "The latest month is still in progress." : {
+
+    },
+    "The latest week is still in progress." : {
+
+    },
+    "The latest year is still in progress." : {
+
+    },
+    "The profile shown above is not saved yet." : {
+
+    },
+    "The selected scope matches no workouts. Try All Workouts or another collection." : {
+
+    },
+    "The smart collection could not be deleted." : {
+
+    },
+    "The tile folder “%@” could not be opened. If it moved, choose it again." : {
+
+    },
+    "The two published Banister coefficient sets come from male and female cohorts. The choice scales the magnitude of your loads more than their shape, so fitness, fatigue, and form trends are largely unaffected by picking the 'wrong' one. Leave the default if unsure." : {
+
+    },
+    "This Year" : {
+
+    },
+    "This ZIP does not appear to be a supported Strava bulk export." : {
+
+    },
+    "This file exceeds a RunPlay Studio import limit." : {
+
+    },
+    "This profile is stored only on this Mac, beside your workout library. RunPlay Studio has no accounts, no cloud, and no telemetry." : {
+
+    },
+    "This route no longer exists. Re-cluster or pick another route." : {
+
+    },
+    "This run currently holds the whole-library %@ record. Runs whose records were later beaten show no badge; their history is in the Records workspace." : {
+
+    },
+    "This watched folder could not be opened. It may have been moved, renamed, or unmounted. RunPlay Studio will retry automatically; if it stays unavailable, remove it in Watch Folder settings and add it again." : {
+
+    },
+    "This watched folder is not available. It may have been ejected, moved, renamed, or deleted. RunPlay Studio will resume watching automatically if it returns." : {
+
+    },
+    "This workout has no usable GPS route for a map export." : {
+
+    },
+    "Tile size" : {
+
+    },
+    "Time / Value" : {
+
+    },
+    "To" : {
+
+    },
+    "Toggle 2D/3D" : {
+
+    },
+    "Toggle map 2D or 3D" : {
+
+    },
+    "Toggle route replay. Disabled while editing text." : {
+
+    },
+    "Toggle the visible map between 2D and 3D presentation" : {
+
+    },
+    "Total recorded route distance." : {
+
+    },
+    "Totals use active time; pauses never contribute. Missing heart-rate or elevation shows as a gap, not zero." : {
+
+    },
+    "Training Load" : {
+
+    },
+    "Training load" : {
+
+    },
+    "Training load by day" : {
+
+    },
+    "Training load could not be computed for %lld runs and could not be saved for %lld runs. They will be retried next time Trends opens." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Training load could not be computed for %#@failed@ and could not be saved for %#@unsaved@. They will be retried next time Trends opens."
+          },
+          "substitutions" : {
+            "failed" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            },
+            "unsaved" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Training load could not be computed for %lld runs. They will be retried next time Trends opens." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Training load could not be computed for %lld run. It will be retried next time Trends opens."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Training load could not be computed for %lld runs. They will be retried next time Trends opens."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Training load could not be saved for %lld runs. They will be retried next time Trends opens." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Training load could not be saved for %lld run. It will be retried next time Trends opens."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Training load could not be saved for %lld runs. They will be retried next time Trends opens."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Training load." : {
+
+    },
+    "Trends" : {
+
+    },
+    "Trends Unavailable" : {
+
+    },
+    "Trends period" : {
+
+    },
+    "Trends range" : {
+
+    },
+    "Trends ready. %lld runs included." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Trends ready. %lld run included."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Trends ready. %lld runs included."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Trends scope" : {
+
+    },
+    "Trigger" : {
+
+    },
+    "Try Again…" : {
+
+    },
+    "Type" : {
+
+    },
+    "Unable to Delete Smart Collection" : {
+
+    },
+    "Unable to build metric route colors." : {
+
+    },
+    "Unavailable" : {
+
+    },
+    "Unavailable because this workout has no GPS route" : {
+
+    },
+    "Unavailable — watching resumes if it returns" : {
+
+    },
+    "Unfavourite" : {
+
+    },
+    "Unknown load from" : {
+
+    },
+    "Unknown load until" : {
+
+    },
+    "Unsafe entries" : {
+
+    },
+    "Unsupported" : {
+
+    },
+    "Unsupported archive." : {
+
+    },
+    "Unsupported format" : {
+
+    },
+    "Untagged Only" : {
+
+    },
+    "Up to %lld characters." : {
+
+    },
+    "Up to %lld characters. Leave empty for automatic naming." : {
+
+    },
+    "Up to %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Up to %lld run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Up to %lld runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Update Collection" : {
+
+    },
+    "Update Profile" : {
+
+    },
+    "Updating heatmap" : {
+
+    },
+    "Updating records" : {
+
+    },
+    "Updating route colors" : {
+
+    },
+    "Updating trends" : {
+
+    },
+    "Use Distance Alignment" : {
+
+    },
+    "Use Folder" : {
+
+    },
+    "Use Jump to distance or chart accessibility actions to seek" : {
+
+    },
+    "Use Recorded Elevation" : {
+
+    },
+    "Use recorded elevation for this run" : {
+
+    },
+    "Use the \"Compare With\" picker above to select a second run." : {
+
+    },
+    "Used only to estimate maximum heart rate when no measured value is entered" : {
+
+    },
+    "Using Distance alignment." : {
+
+    },
+    "Using Route-Aware alignment." : {
+
+    },
+    "Using recorded elevation for this run." : {
+
+    },
+    "Valid pace covers %lld%% of route distance." : {
+
+    },
+    "Video Length" : {
+
+    },
+    "Video export cancelled." : {
+
+    },
+    "Video export failed. %@" : {
+
+    },
+    "Video exported %@." : {
+
+    },
+    "Video length" : {
+
+    },
+    "Video preview failed. %@" : {
+
+    },
+    "Video preview ready." : {
+
+    },
+    "View" : {
+
+    },
+    "View Imported Run" : {
+
+    },
+    "View Runs (%lld)" : {
+
+    },
+    "View Workout" : {
+
+    },
+    "View the %lld runs in %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View the %#@runs@ in %2$@"
+          },
+          "substitutions" : {
+            "runs" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "WORKOUT" : {
+
+    },
+    "Waiting for review" : {
+
+    },
+    "Watch" : {
+
+    },
+    "Watch Folders" : {
+
+    },
+    "Watch Folders…" : {
+
+    },
+    "Watch folder import failed for %lld files. See Recent Imports." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Watch folder import failed for %lld file. See Recent Imports."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Watch folder import failed for %lld files. See Recent Imports."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Watch folder imported %lld runs." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Watch folder imported %lld run."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Watch folder imported %lld runs."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Watch-folder import is unavailable in this session." : {
+
+    },
+    "Watch-folder import results" : {
+
+    },
+    "Watched Folders" : {
+
+    },
+    "Watched folder %@ is unavailable. Watching resumes if it returns." : {
+
+    },
+    "Watched folders stay on this Mac. RunPlay Studio stores the folder bookmarks, a SHA-256 content hash and filename per processed file, and the outcome — nothing else, and nothing leaves the machine." : {
+
+    },
+    "Watching" : {
+
+    },
+    "Watching paused" : {
+
+    },
+    "Week" : {
+
+    },
+    "Whole-library trends by month." : {
+
+    },
+    "Whole-library trends by week." : {
+
+    },
+    "Whole-library trends by year." : {
+
+    },
+    "Workout" : {
+
+    },
+    "Workout is not in the library." : {
+
+    },
+    "Workout name" : {
+
+    },
+    "Workout notes" : {
+
+    },
+    "Workout route map" : {
+
+    },
+    "Workouts themselves will not be deleted." : {
+
+    },
+    "Workspace" : {
+
+    },
+    "Year" : {
+
+    },
+    "Yellow" : {
+
+    },
+    "Your selected run for comparison" : {
+
+    },
+    "Zoom" : {
+
+    },
+    "Zoom and center the map to show all heat cells" : {
+
+    },
+    "Zoom and center the map to show both routes" : {
+
+    },
+    "Zoom and center the map to show the full route" : {
+
+    },
+    "Zooms and centers the map on the full route" : {
+
+    },
+    "active %@" : {
+
+    },
+    "active pace %@" : {
+
+    },
+    "average heart rate %lld" : {
+
+    },
+    "compare.delta.elevation_gain" : {
+      "comment" : "Difference in elevation gain (total climb) between the two runs",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Elevation"
+          }
+        }
+      }
+    },
+    "compare.delta.paused_time" : {
+      "comment" : "Difference in total paused time between the two runs",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Paused"
+          }
+        }
+      }
+    },
+    "comparison.column.selected_run" : {
+      "comment" : "Column heading: values of the selected (primary) run in a comparison",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Selected"
+          }
+        }
+      }
+    },
+    "distance %@" : {
+
+    },
+    "elapsed %@" : {
+
+    },
+    "fatigue" : {
+
+    },
+    "fitness" : {
+
+    },
+    "form" : {
+
+    },
+    "from %lld of %lld runs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "from %1$lld of %2$lld runs"
+          }
+        }
+      }
+    },
+    "heatmap.route.any" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Any Route"
+          }
+        }
+      }
+    },
+    "heatmap.route.ungrouped" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not on a Route"
+          }
+        }
+      }
+    },
+    "km" : {
+
+    },
+    "longer" : {
+
+    },
+    "min/km" : {
+
+    },
+    "moving estimated %@" : {
+
+    },
+    "open" : {
+
+    },
+    "route_group.chart.empty.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not enough runs for a progression"
+          }
+        }
+      }
+    },
+    "route_group.chart.summary.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d runs from %2$@ to %3$@, best active pace %4$@"
+          }
+        }
+      }
+    },
+    "route_group.detail.last" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "last %@"
+          }
+        }
+      }
+    },
+    "route_group.detail.runs" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%d runs"
+          }
+        }
+      }
+    },
+    "route_group.header" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%d routes"
+          }
+        }
+      }
+    },
+    "route_group.header.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%d routes"
+          }
+        }
+      }
+    },
+    "route_group.header.pending" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d routes · %2$d runs awaiting analysis"
+          }
+        }
+      }
+    },
+    "route_group.header.pending.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d routes, %2$d runs awaiting route analysis"
+          }
+        }
+      }
+    },
+    "route_group.map.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Route overlay for %1$@, %2$.1f kilometres"
+          }
+        }
+      }
+    },
+    "route_group.member.representative.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "representative"
+          }
+        }
+      }
+    },
+    "route_group.member.reversed.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "run in the opposite direction"
+          }
+        }
+      }
+    },
+    "route_group.recluster.summary" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d runs on %2$d routes"
+          }
+        }
+      }
+    },
+    "route_group.row.best.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "best active pace %@"
+          }
+        }
+      }
+    },
+    "route_group.row.runs.ax" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%d runs"
+          }
+        }
+      }
+    },
+    "route_group.stat.best" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Best Pace"
+          }
+        }
+      }
+    },
+    "route_group.stat.latest" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Latest Pace"
+          }
+        }
+      }
+    },
+    "route_group.stat.median" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Median Pace"
+          }
+        }
+      }
+    },
+    "route_group.unnamed" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Route"
+          }
+        }
+      }
+    },
+    "shorter" : {
+
+    },
+    "summary_card.paused_time" : {
+      "comment" : "Card tile: the run's total paused time",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Paused"
+          }
+        }
+      }
+    },
+    "to" : {
+
+    },
+    "trigger %@" : {
+
+    },
+    "vs." : {
+
+    },
+    "workout.header.elevation_gain" : {
+      "comment" : "Header metric: the run's total elevation gain",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Elevation"
+          }
+        }
+      }
+    },
+    "·" : {
+
+    },
+    "Δ" : {
+
+    },
+    "Δ Active" : {
+
+    },
+    "—" : {
+
+    },
+    "“%@” from “%@” has several sessions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“%1$@” from “%2$@” has several sessions."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

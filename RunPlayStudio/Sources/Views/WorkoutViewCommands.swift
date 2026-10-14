@@ -326,7 +326,7 @@ struct WorkoutViewCommands: Commands {
 
             // Mirrors the map's Route Color pull-down, which Tab does not reach
             // while Full Keyboard Access is off (the macOS default).
-            Menu(String(localized: "Route Color")) {
+            Menu(studioLocalized("Route Color")) {
                 ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
                     let command = CommandRegistry.definition(
                         for: CommandRegistry.routeColorCommand(for: mode)

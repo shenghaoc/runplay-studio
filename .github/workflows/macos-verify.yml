@@ -28,6 +28,10 @@ on:
         description: "Compile every test target in release configuration."
         type: boolean
         default: false
+      localization:
+        description: "Check the String Catalogs against the source (scripts/check-localization.sh)."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -95,3 +99,12 @@ jobs:
         # reverted this command fails at `SyntheticWorkoutVideoMapPreparer`
         # not being in scope; with them present it passes.
         run: swift test -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
+
+      # Every String Catalog must list exactly the strings its module's
+      # source uses (no missing, no stale keys), each translated into zh-Hans
+      # and zh-Hant with matching placeholders. The check compiles with
+      # -emit-localized-strings in its own scratch path (.build-localization),
+      # so it never invalidates the .build the steps above share.
+      - name: Check String Catalogs
+        if: inputs.localization
+        run: ./scripts/check-localization.sh
