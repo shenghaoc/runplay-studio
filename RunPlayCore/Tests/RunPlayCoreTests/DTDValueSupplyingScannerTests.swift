@@ -12,7 +12,7 @@ final class DTDValueSupplyingScannerTests: XCTestCase {
         <!ELEMENT Root (A*)>
         <!ELEMENT A EMPTY>
         <!ATTLIST A v CDATA #REQUIRED w CDATA #IMPLIED>
-        <!ATTLIST Root x (a|b) #IMPLIED>
+        <!ATTLIST Root x CDATA #IMPLIED>
         """
         XCTAssertNil(DTDValueSupplyingScanner.findViolation(in: subset))
     }
@@ -114,5 +114,62 @@ final class DTDValueSupplyingScannerTests: XCTestCase {
     func testEmptyAndWhitespaceSubsetsAreClean() {
         XCTAssertNil(DTDValueSupplyingScanner.findViolation(in: ""))
         XCTAssertNil(DTDValueSupplyingScanner.findViolation(in: "\n\t  \r\n"))
+    }
+
+    // MARK: - Attribute types other than CDATA
+
+    // The parser normalizes a value of any other type using its declaration, so
+    // eliding the DTD would change the value. Each type is refused on its own.
+
+    func testIDAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v ID #IMPLIED>", as: "ID")
+    }
+
+    func testIDREFAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v IDREF #IMPLIED>", as: "IDREF")
+    }
+
+    func testIDREFSAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v IDREFS #IMPLIED>", as: "IDREFS")
+    }
+
+    func testENTITYAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v ENTITY #IMPLIED>", as: "ENTITY")
+    }
+
+    func testENTITIESAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v ENTITIES #IMPLIED>", as: "ENTITIES")
+    }
+
+    func testNMTOKENAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v NMTOKEN #IMPLIED>", as: "NMTOKEN")
+    }
+
+    func testNMTOKENSAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v NMTOKENS #IMPLIED>", as: "NMTOKENS")
+    }
+
+    func testNOTATIONAttributeTypeIsRefused() {
+        assertRefused("<!ATTLIST A v NOTATION (n1|n2) #IMPLIED>", as: "NOTATION")
+    }
+
+    func testEnumeratedAttributeTypeIsRefused() {
+        // After a CDATA attribute in the same declaration, with spaces inside
+        // the list, so the type is read where it stands, not only first.
+        assertRefused("<!ATTLIST A v CDATA #REQUIRED w ( one | two ) #IMPLIED>", as: "enumeration")
+    }
+
+    private func assertRefused(
+        _ subset: String,
+        as type: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            DTDValueSupplyingScanner.findViolation(in: subset),
+            .nonCDATAAttributeType(type),
+            file: file,
+            line: line
+        )
     }
 }

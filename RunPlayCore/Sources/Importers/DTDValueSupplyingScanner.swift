@@ -8,18 +8,23 @@ import Foundation
 /// when the DTD supplies no value, and that is a property of the *document*, not
 /// of DTDs in general — so it is enforced here rather than assumed.
 ///
-/// Each case names a construct that could supply a value. A real Apple Health
-/// export contains none of them (measured: 24 `ELEMENT`, 23 `ATTLIST`, 0
-/// `ENTITY`, 0 `NOTATION`, 0 `#FIXED`, 0 quoted defaults), so the guard is
-/// invisible in practice. It exists for the case a future iOS release adds one:
-/// then the import fails loudly instead of silently dropping an attribute from
-/// every record that omits it, which would misreport distance, duration or heart
-/// rate for an entire library with no error anywhere.
+/// Each case names a construct that could supply a value, or change one: an
+/// attribute declared with any type but `CDATA` has its value normalized by the
+/// parser using the declaration (XML 1.0 §3.3.3, which trims and collapses
+/// spaces), so eliding the DTD would hand the importer a different value. A
+/// real Apple Health export contains none of them (measured: 24 `ELEMENT`, 23
+/// `ATTLIST`, 0 `ENTITY`, 0 `NOTATION`, 0 `#FIXED`, 0 quoted defaults), so the
+/// guard is invisible in practice. It exists for the case a future iOS release
+/// adds one: then the import fails loudly instead of silently dropping an
+/// attribute from every record that omits it, which would misreport distance,
+/// duration or heart rate for an entire library with no error anywhere.
 enum DTDPolicyViolation: Error, Equatable, CustomStringConvertible {
     case entityDeclaration
     case notationDeclaration
     case fixedAttributeDefault
     case quotedAttributeDefault
+    /// The declared type, or "enumeration" for a list such as `(a|b)`.
+    case nonCDATAAttributeType(String)
     case internalSubsetTooLarge(observedBytes: Int, limit: Int)
 
     var description: String {
@@ -36,6 +41,10 @@ enum DTDPolicyViolation: Error, Equatable, CustomStringConvertible {
         case .quotedAttributeDefault:
             return "This file's DTD supplies a quoted attribute default, which "
                 + "eliding it would silently drop."
+        case .nonCDATAAttributeType(let type):
+            return "This file's DTD declares an attribute of type \(type), whose "
+                + "value the XML parser normalizes using the DTD. Eliding the DTD "
+                + "would silently change that value."
         case .internalSubsetTooLarge(let observedBytes, let limit):
             return "This file's DTD internal subset is \(observedBytes) bytes, "
                 + "above the \(limit)-byte limit RunPlay Studio inspects, so it "
@@ -121,11 +130,14 @@ enum DTDValueSupplyingScanner {
                     return .fixedAttributeDefault
                 }
                 // A quote anywhere in an ATTLIST body is a supplied default:
-                // `#REQUIRED`/`#IMPLIED` are bare keywords and enumerated
-                // defaults are unquoted NMTOKENs like `(a|b)`.
+                // every other token in it (a name, a type, `#REQUIRED`,
+                // `#IMPLIED`) is unquoted.
                 if indexOfByte(bytes, in: body, UInt8(ascii: "\"")) != nil
                     || indexOfByte(bytes, in: body, UInt8(ascii: "'")) != nil {
                     return .quotedAttributeDefault
+                }
+                if let type = firstNonCDATAAttributeType(bytes, in: body) {
+                    return .nonCDATAAttributeType(type)
                 }
             default:
                 if contains(bytes, in: body, "#FIXED") {
@@ -138,7 +150,55 @@ enum DTDValueSupplyingScanner {
         return nil
     }
 
+    /// The declared type of the first attribute in an ATTLIST body that is not
+    /// CDATA, or `nil` when every attribute is CDATA.
+    ///
+    /// The body is the element name followed by one name, type and default per
+    /// attribute. The caller has already refused `#FIXED` and quoted defaults,
+    /// so each default here is one `#REQUIRED` or `#IMPLIED` token. An
+    /// enumeration such as `( a | b )` is one token, spaces included, and is
+    /// reported as "enumeration"; `NOTATION (a|b)` is reported as "NOTATION".
+    private static func firstNonCDATAAttributeType(_ bytes: [UInt8], in body: Range<Int>) -> String? {
+        let tokens = declarationTokens(bytes, in: body)
+        var t = 1
+        while t + 1 < tokens.count {
+            let type = tokens[t + 1]
+            if bytes[type.lowerBound] == UInt8(ascii: "(") { return "enumeration" }
+            let name = String(decoding: bytes[type], as: UTF8.self)
+            if name != "CDATA" { return name }
+            t += 3
+        }
+        return nil
+    }
+
     // MARK: - Byte helpers (all indices absolute `Int` into `bytes`)
+
+    /// The whitespace-separated tokens of a declaration body. A parenthesized
+    /// group is one token, so an enumeration with spaces inside stays whole.
+    private static func declarationTokens(_ bytes: [UInt8], in body: Range<Int>) -> [Range<Int>] {
+        var tokens: [Range<Int>] = []
+        let upper = min(body.upperBound, bytes.count)
+        var i = max(body.lowerBound, 0)
+        while i < upper {
+            if isSpaceByte(bytes[i]) {
+                i += 1
+                continue
+            }
+            let start = i
+            if bytes[i] == UInt8(ascii: "(") {
+                while i < upper, bytes[i] != UInt8(ascii: ")") { i += 1 }
+                i = min(i + 1, upper)
+            } else {
+                while i < upper, !isSpaceByte(bytes[i]), bytes[i] != UInt8(ascii: "(") { i += 1 }
+            }
+            tokens.append(start..<i)
+        }
+        return tokens
+    }
+
+    private static func isSpaceByte(_ c: UInt8) -> Bool {
+        c == UInt8(ascii: " ") || c == UInt8(ascii: "\t") || c == UInt8(ascii: "\n") || c == UInt8(ascii: "\r")
+    }
 
     private static func isNameByte(_ c: UInt8) -> Bool {
         (c >= UInt8(ascii: "A") && c <= UInt8(ascii: "Z"))
