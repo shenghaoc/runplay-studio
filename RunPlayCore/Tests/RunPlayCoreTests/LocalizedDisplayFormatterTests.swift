@@ -28,7 +28,8 @@ final class LocalizedDisplayFormatterTests: XCTestCase {
         XCTAssertEqual(DisplayFormatter.formatCadence(178, locale: english), "178 spm")
         XCTAssertEqual(DisplayFormatter.formatPower(250, locale: english), "250 W")
         XCTAssertEqual(DisplayFormatter.formatSpeedKmh(3, locale: english), "10.8 km/h")
-        XCTAssertEqual(DisplayFormatter.formatSpeed(1.25, locale: english), "1.2 m/s")
+        // Ties round half away from zero (printf rounded this exact tie to even).
+        XCTAssertEqual(DisplayFormatter.formatSpeed(1.25, locale: english), "1.3 m/s")
         XCTAssertEqual(DisplayFormatter.formatGroundContactTime(220, locale: english), "220 ms")
         XCTAssertEqual(DisplayFormatter.formatVerticalOscillation(8.5, locale: english), "8.5 mm")
         XCTAssertEqual(DisplayFormatter.formatStepLength(1.2, locale: english), "1.20 m")
@@ -99,8 +100,8 @@ final class LocalizedDisplayFormatterTests: XCTestCase {
             ),
             "0:00 /km even"
         )
-        XCTAssertEqual(DisplayFormatter.formatSignedDurationDelta(12, locale: simplified), "+0:12 较慢")
-        XCTAssertEqual(DisplayFormatter.formatSignedDurationDelta(-12, locale: traditional), "-0:12 較快")
+        XCTAssertEqual(DisplayFormatter.formatSignedDurationDelta(12, locale: simplified), "+0:12 更慢")
+        XCTAssertEqual(DisplayFormatter.formatSignedDurationDelta(-12, locale: traditional), "-0:12 更快")
     }
 
     func testPerKilometerSuffixFollowsTheLocale() {

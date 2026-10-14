@@ -179,6 +179,23 @@ def sync_catalog(catalog_path, stringsdata, work_dir):
     return after, added, stale
 
 
+def english_units(entry):
+    """Every English string unit of an entry, plural substitutions included."""
+    english = entry.get("localizations", {}).get("en", {})
+    units = [unit for _, unit in unit_values(english)]
+    for substitution in english.get("substitutions", {}).values():
+        units.extend(unit for _, unit in unit_values(substitution))
+    return units
+
+
+def promote_source_units(catalog):
+    """Mark every English (source-language) string unit as translated."""
+    for entry in catalog.get("strings", {}).values():
+        for unit in english_units(entry):
+            if unit.get("state") == "new":
+                unit["state"] = "translated"
+
+
 def write_catalog(path, catalog):
     """Write in xcstringstool's own layout so a later Xcode sync is a no-op:
     two-space indent, " : " separators, code-point key order, raw UTF-8, and
@@ -219,6 +236,11 @@ def main():
             if args.update:
                 for key in stale:
                     del synced["strings"][key]
+                # xcstringstool sync records the English of a semantic or
+                # multi-argument key as state "new", and compile leaves "new"
+                # units out of the tables. English is the source language, so
+                # its text is final as extracted.
+                promote_source_units(synced)
                 write_catalog(catalog_path, synced)
                 if added or stale:
                     print(f"{name}: updated {relative_catalog} (+{len(added)} added, -{len(stale)} stale removed)")
@@ -226,6 +248,12 @@ def main():
                 failures.extend(f"{name}: missing from catalog: {key!r}" for key in added)
                 failures.extend(f"{name}: stale (not in source): {key!r}" for key in stale)
             failures.extend(check_translations(name, synced))
+            failures.extend(
+                f"{name}: English source unit still 'new' (run --update): {key!r}"
+                for key, entry in synced.get("strings", {}).items()
+                if entry.get("extractionState") != "stale"
+                and any(unit.get("state") == "new" for unit in english_units(entry))
+            )
 
     if failures:
         for line in failures:

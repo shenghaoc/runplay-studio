@@ -420,7 +420,7 @@ public enum DisplayFormatter {
             ? positiveLabel ?? coreLocalized("slower", locale: locale)
             : negativeLabel ?? coreLocalized("faster", locale: locale)
         // Value, then the localized word for its direction: "+0:12 slower",
-        // "+0:12 较慢".
+        // "+0:12 更慢".
         return "\(value) \(label)"
     }
 
