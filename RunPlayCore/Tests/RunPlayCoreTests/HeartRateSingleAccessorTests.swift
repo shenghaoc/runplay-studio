@@ -162,6 +162,42 @@ final class HeartRateSingleAccessorTests: XCTestCase {
         }
     }
 
+    // MARK: - Exclusivity enforcement on later writes
+
+    /// Assigning the series after construction runs the same sanitizer, so a
+    /// caller cannot store an unsorted, non-finite or inert series that way.
+    func testAssigningTheSeriesAfterConstructionIsSanitized() throws {
+        var workout = RunWorkout(analysisVersion: 1)
+        workout.heartRateSeries = [
+            sample(elapsed: 120, rate: 150),
+            sample(elapsed: .nan, rate: 155),
+            sample(elapsed: 0, rate: 140),
+            sample(elapsed: .infinity, rate: 160),
+            sample(elapsed: 60, rate: 145),
+        ]
+        XCTAssertEqual(try XCTUnwrap(workout.heartRateSeries).map(\.elapsedSeconds), [0, 60, 120])
+
+        // A write in place goes through the same path.
+        workout.heartRateSeries?.append(sample(elapsed: 30, rate: 142))
+        XCTAssertEqual(try XCTUnwrap(workout.heartRateSeries).map(\.elapsedSeconds), [0, 30, 60, 120])
+
+        // A series with no valid reading keeps the historical nil shape.
+        workout.heartRateSeries = [sample(elapsed: 0, rate: nil)]
+        XCTAssertNil(workout.heartRateSeries)
+    }
+
+    /// Assigning a series to a workout whose route points carry heart rate
+    /// leaves the route as the only source, exactly as construction does.
+    func testAssigningASeriesToARouteThatCarriesHeartRateDropsIt() {
+        let points = (0...10).map { point(elapsed: Double($0) * 30, rate: 140) }
+        var workout = RunWorkout(routePoints: points, analysisVersion: 1)
+        workout.heartRateSeries = (0...10).map { sample(elapsed: Double($0) * 30, rate: 999) }
+
+        XCTAssertNil(workout.heartRateSeries)
+        XCTAssertEqual(workout.heartRateSampleSource, .routePoints)
+        XCTAssertEqual(workout.heartRateSamples.first?.heartRateBPM, 140)
+    }
+
     // MARK: - The allocation-free and materializing forms agree
 
     /// `forEachHeartRateSample` and `heartRateSamples` resolve the same source

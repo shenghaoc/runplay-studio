@@ -69,10 +69,20 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Nil on every snapshot written before this field existed, and on every
     /// workout imported from FIT/TCX/GPX/JSON where heart rate rides on
     /// `routePoints`. The single-heart-rate-source invariant is enforced at
-    /// construction: when `routePoints` carry heart rate this series is
-    /// cleared, so the two representations can never both hold data. Read it
-    /// through `heartRateSamples`, never directly.
-    public var heartRateSeries: [HeartRateSample]?
+    /// construction and on every later write of this property: when
+    /// `routePoints` carry heart rate this series is cleared, so the two
+    /// representations can never both hold data. A later write of `routePoints`
+    /// does not re-check it. Read it through `heartRateSamples`, never directly.
+    public var heartRateSeries: [HeartRateSample]? {
+        // Every write after construction (an assignment, an `append`, a write
+        // through a subscript) runs the sanitizer the initializers run. They
+        // set this property directly, because observers do not run inside the
+        // type's own initializers, and sanitize it themselves. Assigning here
+        // does not trigger `didSet` again.
+        didSet {
+            heartRateSeries = Self.sanitizedHeartRateSeries(heartRateSeries, routePoints: routePoints)
+        }
+    }
 
     public init(
         id: UUID = UUID(),
