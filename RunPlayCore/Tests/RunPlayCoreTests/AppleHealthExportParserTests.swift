@@ -442,16 +442,17 @@ final class AppleHealthExportParserTests: XCTestCase {
         let xml = document(records: "", workouts: workouts)
 
         // A full parse consults cancellation once before the native parse, once
-        // after it, and once per workout in the join loop: 2 + 6 here. Pinning
-        // that count is what makes the cancel-at value below provably land
-        // inside the loop; if the parser gains or loses a check, this assertion
-        // fails instead of the next one quietly testing the wrong thing.
+        // after it, once per workout in the join loop, and once after the loop:
+        // 2 + 6 + 1 here. Pinning that count is what makes the cancel-at value
+        // below provably land inside the loop; if the parser gains or loses a
+        // check, this assertion fails instead of the next one quietly testing
+        // the wrong thing.
         let baseline = CancellationProbe()
         _ = try parser.parse(
             openStream: { InputStream(data: Data(xml.utf8)) },
             isCancelled: baseline.predicate
         )
-        XCTAssertEqual(baseline.callCount, 2 + 6)
+        XCTAssertEqual(baseline.callCount, 2 + 6 + 1)
 
         // Four calls in: the two around the parse, then two workouts already
         // joined, leaving four untranslated.
@@ -467,6 +468,25 @@ final class AppleHealthExportParserTests: XCTestCase {
         // complete one — there is no partial result to return.
         XCTAssertEqual(cancelling.callCount, 4)
         XCTAssertLessThan(cancelling.callCount, baseline.callCount)
+    }
+
+    func testCancellationDuringTheLastHeartRateQueryIsReported() {
+        // Two workouts. The pass checks cancellation before the parse and after
+        // it, and the join checks before each workout's range query: four checks.
+        // Cancellation arrives after the fourth, while the last query runs.
+        let xml = document(
+            records: heartRate("150", start: "2026-09-01 08:30:00 +0800", end: "2026-09-01 08:30:00 +0800"),
+            workouts: runningWorkout(start: "2026-09-01 08:00:00 +0800", end: "2026-09-01 09:00:00 +0800", route: nil)
+                + runningWorkout(start: "2026-09-02 08:00:00 +0800", end: "2026-09-02 09:00:00 +0800", route: nil)
+        )
+        let probe = CancellationProbe(cancelAtCall: 5)
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { InputStream(data: Data(xml.utf8)) },
+            isCancelled: probe.predicate
+        )) { error in
+            XCTAssertTrue(error is CancellationError, "expected cancellation, got \(error)")
+        }
+        XCTAssertEqual(probe.callCount, 5)
     }
 
     // MARK: - Ceiling and the second pass

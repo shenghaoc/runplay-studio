@@ -637,6 +637,8 @@ private final class Delegate: NSObject, XMLParserDelegate {
             let window = workouts[position].window
             workouts[position].heartRate = lookup.readings(in: window)
         }
+        // A cancellation that arrived during the last query is still seen.
+        guard !isCancelled() else { throw CancellationError() }
 
         return AppleHealthExportScan(
             locale: locale,
