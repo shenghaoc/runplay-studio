@@ -157,7 +157,20 @@ struct AppleHealthHeartRateIndex: Sendable {
     let sampleCountCeiling: Int
 
     private var readings: [AppleHealthHeartRateReading] = []
-    private var windowFilter: [AppleHealthWorkoutWindow]?
+
+    /// The second pass's window filter: the windows' union as sorted, disjoint
+    /// closed spans, so a reading's overlap test is one bisection instead of a
+    /// scan over every window. Nil outside a filtered pass.
+    private var windowSpans: [ClosedSpan]?
+
+    /// Windows whose end precedes their start. The parser never produces one,
+    /// but the type allows it, and such a window keeps the scan's exact rule.
+    private var reversedWindows: [AppleHealthWorkoutWindow] = []
+
+    private struct ClosedSpan {
+        var start: Int64
+        var end: Int64
+    }
 
     /// Set when the ceiling was reached and the buffer was released.
     ///
@@ -188,7 +201,8 @@ struct AppleHealthHeartRateIndex: Sendable {
     /// pass's buffer was too large to keep.
     mutating func beginFilteredPass(windows: [AppleHealthWorkoutWindow]) {
         readings.removeAll(keepingCapacity: false)
-        windowFilter = windows.isEmpty ? [] : windows
+        reversedWindows = windows.filter { $0.endSeconds < $0.startSeconds }
+        windowSpans = Self.mergedSpans(windows.filter { $0.endSeconds >= $0.startSeconds })
         releasedByCeiling = false
         offeredCount = 0
         maximumDurationSeconds = 0
@@ -202,7 +216,7 @@ struct AppleHealthHeartRateIndex: Sendable {
     mutating func append(_ reading: AppleHealthHeartRateReading) {
         offeredCount += 1
 
-        if let windows = windowFilter, !overlapsAnyWindow(reading, windows: windows) {
+        if windowSpans != nil, !overlapsAnyWindow(reading) {
             return
         }
 
@@ -246,21 +260,41 @@ struct AppleHealthHeartRateIndex: Sendable {
         )
     }
 
-    private func overlapsAnyWindow(
-        _ reading: AppleHealthHeartRateReading,
-        windows: [AppleHealthWorkoutWindow]
-    ) -> Bool {
+    /// Closed-interval span overlap with any window. A reading that starts
+    /// exactly when a workout ends still counts, which is what makes a boundary
+    /// sample attributable rather than silently dropped.
+    private func overlapsAnyWindow(_ reading: AppleHealthHeartRateReading) -> Bool {
+        let readingStart = reading.startSeconds
         let readingEnd = reading.endSeconds
-        for window in windows {
-            // Closed-interval span overlap. A reading that starts exactly when a
-            // workout ends still counts, which is what makes a boundary sample
-            // attributable rather than silently dropped.
-            if reading.startSeconds <= window.endSeconds,
-               readingEnd >= window.startSeconds {
-                return true
+        if let spans = windowSpans, !spans.isEmpty {
+            // The last span starting at or before the reading's end is the only
+            // candidate: the spans are disjoint and sorted, so it ends latest.
+            var low = 0
+            var high = spans.count
+            while low < high {
+                let middle = (low + high) / 2
+                if spans[middle].start <= readingEnd { low = middle + 1 } else { high = middle }
+            }
+            if low > 0, spans[low - 1].end >= readingStart { return true }
+        }
+        return reversedWindows.contains { window in
+            readingStart <= window.endSeconds && readingEnd >= window.startSeconds
+        }
+    }
+
+    /// The windows' union as sorted, disjoint closed spans. Windows that overlap
+    /// or touch merge, which leaves the overlap rule above unchanged.
+    private static func mergedSpans(_ windows: [AppleHealthWorkoutWindow]) -> [ClosedSpan] {
+        var spans: [ClosedSpan] = []
+        spans.reserveCapacity(windows.count)
+        for window in windows.sorted(by: { $0.startSeconds < $1.startSeconds }) {
+            if let last = spans.last, window.startSeconds <= last.end {
+                spans[spans.count - 1].end = max(last.end, window.endSeconds)
+            } else {
+                spans.append(ClosedSpan(start: window.startSeconds, end: window.endSeconds))
             }
         }
-        return false
+        return spans
     }
 }
 

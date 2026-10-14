@@ -239,4 +239,57 @@ final class AppleHealthHeartRateIndexTests: XCTestCase {
         XCTAssertEqual(highFirst.finalize().allReadings, [low, high])
         XCTAssertEqual(lowFirst.finalize().allReadings, [low, high])
     }
+
+    /// The filtered pass keeps exactly the readings a scan over every window
+    /// keeps: random windows (overlapping, touching, nested, and the odd
+    /// reversed one) against random readings, from a fixed seed.
+    func testFilteredPassKeepsWhatAScanOverEveryWindowKeeps() {
+        var state: UInt64 = 0x5EED_0F_C0FFEE
+        func next(_ bound: Int64) -> Int64 {
+            // SplitMix64: deterministic on every platform.
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return Int64((z ^ (z >> 31)) % UInt64(bound))
+        }
+        for _ in 0..<60 {
+            // Deliberate edges first: a one-second gap between two windows, two
+            // windows that touch, and a window nested in another, each with
+            // readings on and around the boundaries.
+            let base = next(9_000)
+            var windows: [AppleHealthWorkoutWindow] = [
+                window(from: base, to: base + 50),
+                window(from: base + 52, to: base + 100),
+                window(from: base + 200, to: base + 250),
+                window(from: base + 250, to: base + 290),
+                window(from: base + 400, to: base + 500),
+                window(from: base + 420, to: base + 440),
+            ]
+            var readings: [AppleHealthHeartRateReading] = [50, 51, 52, 199, 250, 291, 399, 501].map {
+                reading(at: base + $0, duration: 0, bpm: 120)
+            }
+            readings.append(reading(at: base + 45, duration: 10, bpm: 130))
+            for _ in 0..<(1 + next(40)) {
+                let start = next(10_000)
+                windows.append(next(25) == 0
+                    ? window(from: start + 300, to: start)
+                    : window(from: start, to: start + next(600)))
+            }
+            for _ in 0..<400 {
+                readings.append(reading(at: next(10_800) - 100, duration: UInt32(next(120)), bpm: Double(60 + next(140))))
+            }
+            let expected = readings.filter { candidate in
+                windows.contains { candidate.startSeconds <= $0.endSeconds && candidate.endSeconds >= $0.startSeconds }
+            }
+
+            var index = AppleHealthHeartRateIndex(sampleCountCeiling: 1_000_000)
+            index.beginFilteredPass(windows: windows)
+            for candidate in readings { index.append(candidate) }
+            var reference = AppleHealthHeartRateIndex(sampleCountCeiling: 1_000_000)
+            for candidate in expected { reference.append(candidate) }
+
+            XCTAssertEqual(index.finalize().allReadings, reference.finalize().allReadings)
+        }
+    }
 }
