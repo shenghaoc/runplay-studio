@@ -5,7 +5,7 @@ import XCTest
 /// any existing workout.
 ///
 /// The goldens in `HeartRateRefactorGoldens.swift` were captured at commit
-/// `1f5ee25`, before the refactor, by running these exact fixtures through the
+/// `1ac05da`, before the refactor, by running these exact fixtures through the
 /// same public entry points used here. This suite is therefore expected to pass
 /// **both** before and after the refactor; a failure after it means a value
 /// moved, which is the whole thing this layer must not do.
@@ -30,8 +30,9 @@ import XCTest
 ///   across two segments rather than falling back to the estimator.
 /// - F: measured path with nil readings interspersed among valid ones, so
 ///   `intervalRate` is sometimes nil while weights still accrue.
-/// - G: measured path with rates spread across all five zones (with maxHR 150
-///   the zone lower bounds are 0/90/105/120/135), pinning zone bucketing.
+/// - G: measured path with interval rates in all five zones (analysed with the
+///   max-150 profile, so the zone lower bounds are 0/90/105/120/135), pinning
+///   zone bucketing.
 final class HeartRateRefactorBehaviourPreservationTests: XCTestCase {
 
     private let profile = AthleteProfile(
@@ -83,7 +84,10 @@ final class HeartRateRefactorBehaviourPreservationTests: XCTestCase {
             point(elapsed: 120, rate: 145.5),
             point(elapsed: 180, rate: 0),
             point(elapsed: 240, rate: 152.25),
-            point(elapsed: 240, rate: 160, segment: 1),
+            // Same elapsed time, same segment: the interval builder sees the
+            // zero-length interval itself instead of rejecting the pair as a
+            // segment boundary first.
+            point(elapsed: 240, rate: 160),
             point(elapsed: 300, rate: 88, segment: 1),
         ]
 
@@ -101,10 +105,13 @@ final class HeartRateRefactorBehaviourPreservationTests: XCTestCase {
             f.append(point(elapsed: Double(index) * 30, rate: rate))
         }
 
+        // Each rate is held for two samples: an interval's rate is the mean of
+        // its two endpoints, so only a flat interval puts 85 in zone 1 and 140 in
+        // zone 5. Alternating every sample would reach zones 2 to 4 only.
         let gRates: [Double] = [85, 95, 110, 125, 140]
         var g: [RoutePoint] = []
         for index in 0...39 {
-            g.append(point(elapsed: Double(index) * 30, rate: gRates[index % gRates.count]))
+            g.append(point(elapsed: Double(index) * 30, rate: gRates[(index / 2) % gRates.count]))
         }
 
         return [("A", a), ("B", b), ("C", c), ("D", d), ("E", e), ("F", f), ("G", g)]
@@ -120,7 +127,7 @@ final class HeartRateRefactorBehaviourPreservationTests: XCTestCase {
                 routePoints: points,
                 summary: RunSummary(totalActiveSeconds: 0)
             )
-            WorkoutAnalyzer().analyze(&workout)
+            WorkoutAnalyzer(athleteProfile: profile).analyze(&workout)
             let summary = workout.summary
 
             XCTAssertEqual(
@@ -152,7 +159,7 @@ final class HeartRateRefactorBehaviourPreservationTests: XCTestCase {
                 routePoints: points,
                 summary: RunSummary(totalActiveSeconds: 0)
             )
-            WorkoutAnalyzer().analyze(&workout)
+            WorkoutAnalyzer(athleteProfile: profile).analyze(&workout)
             let load = try XCTUnwrap(workout.trainingLoad, "\(name): no training load")
 
             XCTAssertEqual(load.kind, golden.kind, "\(name): measured/estimated decision moved")
@@ -205,7 +212,7 @@ final class HeartRateRefactorBehaviourPreservationTests: XCTestCase {
                 routePoints: points,
                 summary: RunSummary(totalActiveSeconds: 0)
             )
-            WorkoutAnalyzer().analyze(&workout)
+            WorkoutAnalyzer(athleteProfile: profile).analyze(&workout)
             let load = try XCTUnwrap(workout.trainingLoad, "\(name): no training load")
             let expected = BehaviourPreservationGoldens.load[name]!.kind
 

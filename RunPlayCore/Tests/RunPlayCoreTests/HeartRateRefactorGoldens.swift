@@ -1,4 +1,4 @@
-//  Generated from a capture taken at commit 1f5ee25, before the heart-rate
+//  Generated from a capture taken at commit 1ac05da, before the heart-rate
 //  single-accessor refactor. Do not hand-edit the bit patterns: regenerate
 //  from the pre-refactor commit if a fixture changes.
 //
@@ -51,10 +51,10 @@ enum BehaviourPreservationGoldens {
     static let load: [String: LoadGolden] = [
         "A": LoadGolden(
             kind: .measured,
-            banisterTRIMP: Double(bitPattern: 0x401e495e604f5cd0),
+            banisterTRIMP: Double(bitPattern: 0x4030b700e582c1df),
             zoneSeconds: [
-                Double(bitPattern: 0x4092c00000000000),  // 1200.0
                 Double(bitPattern: 0x0),  // 0.0
+                Double(bitPattern: 0x4092c00000000000),  // 1200.0
                 Double(bitPattern: 0x0),  // 0.0
                 Double(bitPattern: 0x0),  // 0.0
                 Double(bitPattern: 0x0),  // 0.0
@@ -87,23 +87,23 @@ enum BehaviourPreservationGoldens {
         ),
         "D": LoadGolden(
             kind: .estimated,
-            banisterTRIMP: Double(bitPattern: 0x40184db0dc5daf2a),
+            banisterTRIMP: Double(bitPattern: 0x401b7c103c9ca33d),
             zoneSeconds: nil,
             meanHeartRateBPM: nil,
-            validHeartRateSeconds: Double(bitPattern: 0x404e000000000000),  // 60.0
-            coveredActiveSeconds: Double(bitPattern: 0x4072c00000000000),  // 300.0
+            validHeartRateSeconds: Double(bitPattern: 0x0),  // 0.0
+            coveredActiveSeconds: Double(bitPattern: 0x406e000000000000),  // 240.0
             estimateBasis: .paceDuration,
-            assumedHeartRateReserve: Double(bitPattern: 0x3fe3333333333333),  // 0.6
+            assumedHeartRateReserve: Double(bitPattern: 0x3fe6666666666666),  // 0.7
         ),
         "E": LoadGolden(
             kind: .measured,
-            banisterTRIMP: Double(bitPattern: 0x404096c1ccbb6c7b),
+            banisterTRIMP: Double(bitPattern: 0x405211a06aa832cc),
             zoneSeconds: [
                 Double(bitPattern: 0x0),  // 0.0
                 Double(bitPattern: 0x0),  // 0.0
-                Double(bitPattern: 0x4081d00000000000),  // 570.0
-                Double(bitPattern: 0x4081d00000000000),  // 570.0
                 Double(bitPattern: 0x0),  // 0.0
+                Double(bitPattern: 0x0),  // 0.0
+                Double(bitPattern: 0x4091d00000000000),  // 1140.0
             ],
             meanHeartRateBPM: Double(bitPattern: 0x4062700000000000),  // 147.5
             validHeartRateSeconds: Double(bitPattern: 0x4091d00000000000),  // 1140.0
@@ -113,13 +113,13 @@ enum BehaviourPreservationGoldens {
         ),
         "F": LoadGolden(
             kind: .measured,
-            banisterTRIMP: Double(bitPattern: 0x402a453357353194),
+            banisterTRIMP: Double(bitPattern: 0x403def099c7f2173),
             zoneSeconds: [
                 Double(bitPattern: 0x0),  // 0.0
                 Double(bitPattern: 0x0),  // 0.0
-                Double(bitPattern: 0x4085900000000000),  // 690.0
                 Double(bitPattern: 0x0),  // 0.0
-                Double(bitPattern: 0x0),  // 0.0
+                Double(bitPattern: 0x4082c00000000000),  // 600.0
+                Double(bitPattern: 0x4056800000000000),  // 90.0
             ],
             meanHeartRateBPM: Double(bitPattern: 0x40609a6f4de9bd38),  // 132.82608695652175
             validHeartRateSeconds: Double(bitPattern: 0x4085900000000000),  // 690.0
@@ -129,13 +129,13 @@ enum BehaviourPreservationGoldens {
         ),
         "G": LoadGolden(
             kind: .measured,
-            banisterTRIMP: Double(bitPattern: 0x40283f02a134b214),
+            banisterTRIMP: Double(bitPattern: 0x403c7402f85dfe76),
             zoneSeconds: [
-                Double(bitPattern: 0x407e000000000000),  // 480.0
-                Double(bitPattern: 0x407c200000000000),  // 450.0
+                Double(bitPattern: 0x405e000000000000),  // 120.0
+                Double(bitPattern: 0x4076800000000000),  // 360.0
+                Double(bitPattern: 0x4074a00000000000),  // 330.0
                 Double(bitPattern: 0x406e000000000000),  // 240.0
-                Double(bitPattern: 0x0),  // 0.0
-                Double(bitPattern: 0x0),  // 0.0
+                Double(bitPattern: 0x405e000000000000),  // 120.0
             ],
             meanHeartRateBPM: Double(bitPattern: 0x405bbd89d89d89d9),  // 110.96153846153847
             validHeartRateSeconds: Double(bitPattern: 0x4092480000000000),  // 1170.0
@@ -167,7 +167,7 @@ enum BehaviourPreservationGoldens {
         "D": SummaryGolden(
             averageHeartRateBPM: Double(bitPattern: 0x40610e0000000000),  // 136.4375
             maxHeartRateBPM: Double(bitPattern: 0x4064000000000000),  // 160.0
-            totalActiveSeconds: Double(bitPattern: 0x4072c00000000000),  // 300.0
+            totalActiveSeconds: Double(bitPattern: 0x406e000000000000),  // 240.0
             totalDistanceMeters: Double(bitPattern: 0x408c200000000000),  // 900.0
         ),
         "E": SummaryGolden(
@@ -270,4 +270,3 @@ enum BehaviourPreservationGoldens {
         ),
     ]
 }
-
