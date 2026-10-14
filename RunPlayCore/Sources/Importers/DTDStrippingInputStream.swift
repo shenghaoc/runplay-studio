@@ -77,6 +77,29 @@ final class DTDStrippingInputStream: InputStream {
     /// over the parser's own error.
     private(set) var policyViolation: DTDPolicyViolation?
 
+    /// The error behind a failed upstream read, if one failed.
+    ///
+    /// A read that returns -1 is a failure, not the end of the document; only a
+    /// read of 0 means the upstream is exhausted. Treating a failure as the end
+    /// would hand `XMLParser` a truncated document, which it reports as
+    /// malformed, or as a successful parse when the cut lands after the root
+    /// element closes. Once this is set, `read` returns -1 after handing over
+    /// the bytes produced before the failure, `streamStatus` is `.error`, and
+    /// `streamError` returns this error.
+    ///
+    /// Callers check this after `parse()` returns, as they do
+    /// `policyViolation`: Apple's `XMLParser` does not report a stream's error
+    /// as its own `parserError` (it reports a generic parse error, or none), so
+    /// the parser's verdict cannot tell a read failure from a malformed document.
+    private(set) var readFailure: Error?
+
+    /// Stands in for the upstream's error when a read fails without one.
+    struct UpstreamReadFailed: Error, CustomStringConvertible {
+        var description: String {
+            "The document could not be read: its stream failed without reporting why."
+        }
+    }
+
     /// Bytes removed from the stream, for diagnostics. Zero when the document
     /// carries no DOCTYPE declaration.
     private(set) var elidedByteCount = 0
@@ -180,16 +203,17 @@ final class DTDStrippingInputStream: InputStream {
 
     override var streamStatus: Stream.Status {
         if let statusOverride { return statusOverride }
-        if policyViolation != nil { return .error }
+        if policyViolation != nil || readFailure != nil { return .error }
         return upstream.streamStatus
     }
 
     override var streamError: Error? {
-        policyViolation ?? upstream.streamError
+        policyViolation ?? readFailure ?? upstream.streamError
     }
 
     override var hasBytesAvailable: Bool {
         if policyViolation != nil { return false }
+        if readFailure != nil { return outPos < out.count }
         return outPos < out.count || pendingPos < pending.count || !reachedEnd
     }
 
@@ -199,11 +223,15 @@ final class DTDStrippingInputStream: InputStream {
 
         // Bulk fast path: the DOCTYPE is behind us and nothing is buffered, so
         // let upstream fill the caller's buffer directly with no copy.
-        if state == .passthrough, outPos >= out.count, pendingPos >= pending.count {
+        if state == .passthrough, outPos >= out.count, pendingPos >= pending.count, readFailure == nil {
             ensureUpstreamOpen()
             let n = upstream.read(buffer, maxLength: len)
-            if n <= 0 { finish() }
-            return max(n, 0)
+            if n < 0 {
+                recordReadFailure()
+                return -1
+            }
+            if n == 0 { finish() }
+            return n
         }
 
         var written = 0
@@ -222,6 +250,9 @@ final class DTDStrippingInputStream: InputStream {
             outPos += take
             written += take
         }
+        // A failed upstream read is reported once everything produced before
+        // it has been handed over, and never as the end of the document.
+        if written == 0, readFailure != nil { return -1 }
         return written
     }
 
@@ -233,14 +264,25 @@ final class DTDStrippingInputStream: InputStream {
 
     private func finish() {
         reachedEnd = true
-        if policyViolation == nil { statusOverride = .atEnd }
+        if policyViolation == nil, readFailure == nil { statusOverride = .atEnd }
+    }
+
+    /// Records a failed upstream read: the stream is now in error, not at end.
+    private func recordReadFailure() {
+        guard readFailure == nil else { return }
+        readFailure = upstream.streamError ?? UpstreamReadFailed()
+        reachedEnd = true
+        statusOverride = .error
     }
 
     // MARK: - Input buffering
 
     /// Appends one upstream chunk to `pending`, compacting the consumed prefix.
-    /// Returns false at end of stream.
+    /// Returns false at end of stream and when the read failed; callers tell
+    /// the two apart by `readFailure`, because only a read of 0 means the
+    /// upstream is exhausted.
     private func refill() -> Bool {
+        guard readFailure == nil else { return false }
         ensureUpstreamOpen()
         if pendingPos > 0 {
             pending.removeFirst(pendingPos)
@@ -248,6 +290,10 @@ final class DTDStrippingInputStream: InputStream {
         }
         var chunk = [UInt8](repeating: 0, count: 1 << 16)
         let n = chunk.withUnsafeMutableBufferPointer { upstream.read($0.baseAddress!, maxLength: $0.count) }
+        if n < 0 {
+            recordReadFailure()
+            return false
+        }
         guard n > 0 else { return false }
         chunk.removeLast(chunk.count - n)
         pending.append(contentsOf: chunk)
@@ -289,6 +335,8 @@ final class DTDStrippingInputStream: InputStream {
     private func pump() -> Bool {
         while true {
             if policyViolation != nil { finish(); return false }
+            // A failed read ends output; `read` reports it once `out` is drained.
+            if readFailure != nil { return false }
 
             // Passthrough: hand over whatever is already buffered, else refill.
             if state == .passthrough {
@@ -336,6 +384,8 @@ final class DTDStrippingInputStream: InputStream {
         }
         // `pending[pendingPos]` is `<`. Classify, asking for enough lookahead.
         guard have(9) else {
+            // A failed read is not a short tail; `pump` reports it.
+            if readFailure != nil { return false }
             // Short tail at end of stream: it cannot be `<!DOCTYPE`, so treat
             // the remainder as ordinary content.
             state = .passthrough
@@ -384,6 +434,8 @@ final class DTDStrippingInputStream: InputStream {
             return emit
         }
         if !refill() {
+            // A failed read is not the end of the comment; `pump` reports it.
+            if readFailure != nil { return false }
             // Stream ended mid-comment: emit the remainder and stop.
             if emit { emitPendingBytes(pending.count - pendingPos) } else { pendingPos = pending.count }
             state = nextState
@@ -488,6 +540,8 @@ final class DTDStrippingInputStream: InputStream {
                 // cannot be present in a truncated tail, so the subset is
                 // unterminated; drain the remainder and stop.
                 guard refill() else {
+                    // A failed read is not an unterminated subset; `pump` reports it.
+                    if readFailure != nil { return }
                     while pendingPos < pending.count { consumeSubsetBytes(1) }
                     return
                 }

@@ -521,4 +521,153 @@ final class DTDStrippingInputStreamTests: XCTestCase {
         XCTAssertEqual(elided.attributes, direct.attributes, "attribute count must match")
         #endif
     }
+
+    // MARK: - Upstream read failures
+
+    private struct InjectedReadError: Error {}
+
+    /// An `InputStream` that serves `text`, at most `chunk` bytes per read,
+    /// until `failAt` bytes have been served, and then fails every read with
+    /// -1: the shape of a disk or archive read error partway through a file.
+    private final class FailingStream: InputStream {
+        private let bytes: [UInt8]
+        private let failAt: Int
+        private let chunk: Int
+        private let reportsError: Bool
+        private var served = 0
+        private var failed = false
+
+        init(_ text: String, failAt: Int, chunk: Int, reportsError: Bool = true) {
+            bytes = Array(text.utf8)
+            self.failAt = failAt
+            self.chunk = chunk
+            self.reportsError = reportsError
+            super.init(data: Data())
+        }
+
+        override func open() {}
+        override func close() {}
+        override var streamStatus: Stream.Status { failed ? .error : .open }
+        override var streamError: Error? { failed && reportsError ? InjectedReadError() : nil }
+        override var hasBytesAvailable: Bool { !failed }
+
+        override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+            guard served < failAt else {
+                failed = true
+                return -1
+            }
+            let n = min(len, chunk, failAt - served, bytes.count - served)
+            for i in 0..<n { buffer[i] = bytes[served + i] }
+            served += n
+            return n
+        }
+    }
+
+    /// A small Health export in the real document's shape: the XML
+    /// declaration, a value-free inline DTD, then records and a workout.
+    /// Invented values only.
+    private let healthDocument = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE HealthData [
+        <!ELEMENT HealthData (ExportDate,Record*,Workout*)>
+        <!ATTLIST HealthData locale CDATA #REQUIRED>
+        <!ELEMENT ExportDate EMPTY>
+        <!ATTLIST ExportDate value CDATA #REQUIRED>
+        <!ELEMENT Record EMPTY>
+        <!ATTLIST Record type CDATA #REQUIRED value CDATA #IMPLIED startDate CDATA #REQUIRED endDate CDATA #REQUIRED>
+        <!ELEMENT Workout EMPTY>
+        <!ATTLIST Workout workoutActivityType CDATA #REQUIRED startDate CDATA #REQUIRED endDate CDATA #REQUIRED>
+        ]>
+        <HealthData locale="en_US">
+         <ExportDate value="2026-09-02 09:00:00 +0800"/>
+         <Record type="HKQuantityTypeIdentifierHeartRate" value="141" startDate="2026-09-01 08:10:00 +0800" endDate="2026-09-01 08:10:00 +0800"/>
+         <Record type="HKQuantityTypeIdentifierHeartRate" value="152" startDate="2026-09-01 08:20:00 +0800" endDate="2026-09-01 08:20:00 +0800"/>
+         <Record type="HKQuantityTypeIdentifierHeartRate" value="147" startDate="2026-09-01 08:30:00 +0800" endDate="2026-09-01 08:30:00 +0800"/>
+         <Workout workoutActivityType="HKWorkoutActivityTypeRunning" startDate="2026-09-01 08:00:00 +0800" endDate="2026-09-01 09:00:00 +0800"/>
+        </HealthData>
+        """
+
+    /// Byte offset of `marker` in `healthDocument`, plus `extra`.
+    private func offset(of marker: String, plus extra: Int = 0, file: StaticString = #filePath, line: UInt = #line) -> Int {
+        let bytes = Array(healthDocument.utf8)
+        let needle = Array(marker.utf8)
+        for start in 0...(bytes.count - needle.count) where Array(bytes[start..<(start + needle.count)]) == needle {
+            return start + extra
+        }
+        XCTFail("\(marker) is not in the fixture", file: file, line: line)
+        return 0
+    }
+
+    func testReadFailureBeforeTheDTDIsAnErrorNotTheEndOfTheDocument() {
+        assertReadFailure(at: offset(of: "encoding="))
+    }
+
+    func testReadFailureInsideTheDTDIsAnErrorNotTheEndOfTheDocument() {
+        assertReadFailure(at: offset(of: "<!ATTLIST Record", plus: 12))
+    }
+
+    func testReadFailurePartwayThroughAHealthDocumentIsAnErrorNotTheEndOfTheDocument() {
+        assertReadFailure(at: offset(of: "value=\"152\"", plus: 3))
+    }
+
+    func testReadFailureWithoutAnUpstreamErrorStillFailsTheStream() {
+        let failAt = offset(of: "value=\"152\"", plus: 3)
+        let elider = DTDStrippingInputStream(
+            upstream: FailingStream(healthDocument, failAt: failAt, chunk: 64, reportsError: false)
+        )
+        let delegate = CountingDelegate()
+        let parser = XMLParser(stream: elider)
+        parser.delegate = delegate
+        parser.shouldResolveExternalEntities = false
+        XCTAssertFalse(parser.parse(), "a failed read must not parse as success")
+        XCTAssertEqual(elider.streamStatus, .error)
+        XCTAssertTrue(elider.readFailure is DTDStrippingInputStream.UpstreamReadFailed,
+                      "got \(String(describing: elider.readFailure))")
+        XCTAssertTrue(elider.streamError is DTDStrippingInputStream.UpstreamReadFailed)
+    }
+
+    /// Asserts, across the chunk sweep, that a failed upstream read reaches the
+    /// caller as -1 with the upstream's error and never as the end of the
+    /// stream, and that a parse through the elider fails instead of succeeding
+    /// on a truncated document. The elider, not the parser, says why: Apple's
+    /// `XMLParser` reports a generic parse error in place of the stream's.
+    private func assertReadFailure(at failAt: Int, file: StaticString = #filePath, line: UInt = #line) {
+        for chunk in chunkSizes {
+            let direct = DTDStrippingInputStream(
+                upstream: FailingStream(healthDocument, failAt: failAt, chunk: chunk)
+            )
+            direct.open()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            var reads: [Int] = []
+            while reads.count < 100_000 {
+                let n = buffer.withUnsafeMutableBufferPointer { direct.read($0.baseAddress!, maxLength: $0.count) }
+                reads.append(n)
+                if n <= 0 { break }
+            }
+            direct.close()
+            XCTAssertEqual(reads.last, -1, "chunk=\(chunk): a failed read must surface as -1, not as end of stream",
+                           file: file, line: line)
+            XCTAssertEqual(direct.streamStatus, .error, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertTrue(direct.streamError is InjectedReadError,
+                          "chunk=\(chunk): got \(String(describing: direct.streamError))", file: file, line: line)
+            XCTAssertTrue(direct.readFailure is InjectedReadError, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertNil(direct.policyViolation, "chunk=\(chunk): a read failure is not a DTD violation",
+                         file: file, line: line)
+            XCTAssertFalse(direct.hasBytesAvailable, "chunk=\(chunk)", file: file, line: line)
+
+            let elider = DTDStrippingInputStream(
+                upstream: FailingStream(healthDocument, failAt: failAt, chunk: chunk)
+            )
+            let delegate = CountingDelegate()
+            let parser = XMLParser(stream: elider)
+            parser.delegate = delegate
+            parser.shouldResolveExternalEntities = false
+            XCTAssertFalse(parser.parse(), "chunk=\(chunk): a failed read must not parse as success",
+                           file: file, line: line)
+            XCTAssertTrue(elider.readFailure is InjectedReadError,
+                          "chunk=\(chunk): got \(String(describing: elider.readFailure))", file: file, line: line)
+            XCTAssertEqual(elider.streamStatus, .error, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertNil(elider.policyViolation, "chunk=\(chunk)", file: file, line: line)
+        }
+    }
 }
