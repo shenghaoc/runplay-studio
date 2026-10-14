@@ -257,6 +257,28 @@ final class AppleHealthExportParserTests: XCTestCase {
         XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
     }
 
+    func testIgnoredRecordTypesAreCappedWithTheRestCountedTogether() throws {
+        // Six more distinct types than the map keeps by name.
+        let cap = AppleHealthExportScan.maximumIgnoredRecordTypes
+        let instant = "2026-09-01 08:30:00 +0800"
+        let nested = (0..<(cap + 6)).map {
+            record(type: "HKQuantityTypeIdentifierInvented\($0)", value: "1", start: instant, end: instant)
+        }.joined()
+        let scan = try parse(document(
+            records: "",
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil,
+                nestedRecord: nested
+            )
+        ))
+
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords.count, cap + 1)
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords[AppleHealthExportScan.otherIgnoredRecordTypes], 6)
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords.values.reduce(0, +), cap + 6)
+    }
+
     func testOtherActivityTypesAreKeptForALaterLayerToFilter() throws {
         let cycling = "<Workout workoutActivityType=\"HKWorkoutActivityTypeCycling\" "
             + "startDate=\"2026-09-01 10:00:00 +0800\" endDate=\"2026-09-01 11:00:00 +0800\"/>"

@@ -167,8 +167,16 @@ public struct AppleHealthExportScan: Sendable {
 
     /// Non-heart-rate `Record` elements ignored inside `Workout`, counted by
     /// their type identifier. These are unsupported metrics, not lost heart rate.
-    /// Records without a type use the diagnostic key `missing-type`.
+    /// Records without a type use the diagnostic key `missing-type`. The types
+    /// come from the document, so at most 64 are kept by name; any further type
+    /// is counted under `other-types`.
     public var ignoredNonHeartRateRecords: [String: Int]
+
+    /// Distinct record types `ignoredNonHeartRateRecords` keeps by name.
+    static let maximumIgnoredRecordTypes = 64
+
+    /// The key that counts record types past `maximumIgnoredRecordTypes`.
+    static let otherIgnoredRecordTypes = "other-types"
 
     /// All `Record` elements ignored inside `Workout`, including any nested
     /// heart rate. Retained as a nesting diagnostic; only the non-HR subset is
@@ -721,7 +729,13 @@ private final class Delegate: NSObject, XMLParserDelegate {
                 nestedRecordCount += 1
                 let type = attributeDict[AppleHealthExportParser.Attribute.type] ?? "missing-type"
                 if type != AppleHealthExportParser.heartRateType {
-                    ignoredNonHeartRateRecords[type, default: 0] += 1
+                    // The type is chosen by the document, so the map is capped: a
+                    // file with endless distinct types cannot grow it without bound.
+                    let key = ignoredNonHeartRateRecords[type] != nil
+                        || ignoredNonHeartRateRecords.count < AppleHealthExportScan.maximumIgnoredRecordTypes
+                        ? type
+                        : AppleHealthExportScan.otherIgnoredRecordTypes
+                    ignoredNonHeartRateRecords[key, default: 0] += 1
                 }
                 return
             }
