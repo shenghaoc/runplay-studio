@@ -174,7 +174,12 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
         _ series: [HeartRateSample]?,
         routePoints: [RoutePoint]
     ) -> [HeartRateSample]? {
-        guard let series, !series.isEmpty else { return nil }
+        // A non-finite elapsed time has no place on the time axis: NaN breaks the
+        // sort's ordering below and infinity cannot be encoded when the workout
+        // is saved, so such samples are dropped before anything else is decided.
+        guard let series = series?.filter({ $0.elapsedSeconds.isFinite }), !series.isEmpty else {
+            return nil
+        }
 
         let routeCarriesHeartRate = routePoints.contains { point in
             point.heartRateBPM.map(MetricValidation.isValidHeartRate) ?? false

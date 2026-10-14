@@ -367,4 +367,26 @@ final class HeartRateSingleAccessorTests: XCTestCase {
             XCTAssertNotNil(window.averageHeartRateBPM, "\(window.category) lost the series' heart rate")
         }
     }
+
+    // MARK: - Non-finite elapsed times
+
+    func testNonFiniteElapsedTimesAreDroppedFromTheSeries() throws {
+        let workout = RunWorkout(
+            analysisVersion: 1,
+            heartRateSeries: [
+                sample(elapsed: 0, rate: 140),
+                sample(elapsed: .nan, rate: 150),
+                sample(elapsed: 60, rate: 145),
+                sample(elapsed: .infinity, rate: 155),
+                sample(elapsed: -.infinity, rate: 135),
+                sample(elapsed: 120, rate: 150),
+            ]
+        )
+
+        let kept = try XCTUnwrap(workout.heartRateSeries)
+        XCTAssertEqual(kept.map(\.elapsedSeconds), [0, 60, 120])
+        XCTAssertEqual(kept.map(\.heartRateBPM), [140, 145, 150])
+        // Infinity would make JSONEncoder throw when the workout is saved.
+        XCTAssertNoThrow(try JSONEncoder().encode(workout))
+    }
 }
