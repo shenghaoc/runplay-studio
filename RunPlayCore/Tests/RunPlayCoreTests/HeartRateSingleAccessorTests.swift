@@ -306,4 +306,65 @@ final class HeartRateSingleAccessorTests: XCTestCase {
         XCTAssertEqual(decoded.heartRateSampleSource, .standaloneSeries)
         XCTAssertEqual(decoded.heartRateSamples.count, series.count)
     }
+
+    // MARK: - Derived analysis reads the standalone series
+
+    /// A routed run whose heart rate lives only in the standalone series, the
+    /// shape an Apple Health export run takes: 3.6 km of route points with no
+    /// reading on any of them, and a reading every 30 seconds in the series.
+    private func routedRunWithStandaloneSeries() -> RunWorkout {
+        RunWorkout(
+            routePoints: (0...40).map { point(elapsed: Double($0) * 30, rate: nil) },
+            analysisVersion: 1,
+            heartRateSeries: (0...40).map { sample(elapsed: Double($0) * 30, rate: $0 < 20 ? 120 : 160) }
+        )
+    }
+
+    func testAnalysisKeepsTheStandaloneSeriesForSplitAndRecordAverages() throws {
+        var workout = routedRunWithStandaloneSeries()
+        WorkoutAnalyzer().analyze(&workout)
+
+        XCTAssertEqual(workout.heartRateSampleSource, .standaloneSeries)
+        XCTAssertGreaterThanOrEqual(workout.splits.count, 3)
+        for split in workout.splits {
+            XCTAssertNotNil(split.averageHeartRateBPM, "split \(split.splitIndex) lost the series' heart rate")
+        }
+        // The first kilometre lies entirely in the 120 bpm half.
+        XCTAssertEqual(try XCTUnwrap(workout.splits.first?.averageHeartRateBPM), 120, accuracy: 0.5)
+        let windows = try XCTUnwrap(workout.personalRecords?.windows)
+        XCTAssertFalse(windows.isEmpty)
+        for window in windows {
+            XCTAssertNotNil(window.averageHeartRateBPM, "\(window.category) lost the series' heart rate")
+        }
+    }
+
+    func testPersonalRecordBackfillKeepsTheStandaloneSeries() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hr-backfill-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WorkoutLibraryStoreActor(store: FileWorkoutLibraryStore(rootURL: root))
+        var workout = routedRunWithStandaloneSeries()
+        WorkoutAnalyzer().analyze(&workout)
+        // A snapshot written before personal records existed.
+        workout.personalRecords = nil
+        try await store.addWorkout(workout, select: true)
+
+        final class Latest: @unchecked Sendable {
+            private let lock = NSLock()
+            private var stored: RunWorkout?
+            func set(_ workout: RunWorkout) { lock.lock(); stored = workout; lock.unlock() }
+            var workout: RunWorkout? { lock.lock(); defer { lock.unlock() }; return stored }
+        }
+        let latest = Latest()
+        let result = await store.backfillPersonalRecords { update in
+            if let computed = update.computedWorkout { latest.set(computed) }
+        }
+
+        XCTAssertEqual(result.computedCount, 1)
+        let windows = try XCTUnwrap(latest.workout?.personalRecords?.windows)
+        XCTAssertFalse(windows.isEmpty)
+        for window in windows {
+            XCTAssertNotNil(window.averageHeartRateBPM, "\(window.category) lost the series' heart rate")
+        }
+    }
 }

@@ -752,7 +752,9 @@ public actor WorkoutLibraryStoreActor {
             )
             let context = WorkoutAnalysisContext(
                 routePoints: workout.routePoints,
-                elevationProfile: elevationProfile
+                elevationProfile: elevationProfile,
+                movementProfile: nil,
+                standaloneHeartRateSamples: workout.heartRateSourceSeries
             )
             do {
                 let detection = try SegmentDetector.detectSegmentsAndPersonalRecords(

@@ -34,11 +34,29 @@ public struct WorkoutAnalysisContext: Sendable {
     }
 
     public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile, movementProfile: MovementProfile?) {
+        self.init(
+            routePoints: routePoints,
+            elevationProfile: elevationProfile,
+            movementProfile: movementProfile,
+            standaloneHeartRateSamples: nil
+        )
+    }
+
+    /// Rebinds a context to the route points analysis works on, keeping the
+    /// workout's standalone heart-rate series so split, segment and
+    /// record-window averages read the same source `init(workout:)` gives them.
+    init(
+        routePoints: [RoutePoint],
+        elevationProfile: ElevationProfile,
+        movementProfile: MovementProfile?,
+        standaloneHeartRateSamples: [HeartRateSample]?
+    ) {
         self.elevationProfile = elevationProfile
         self.movementProfile = movementProfile
         self.timeline = WorkoutTimeline(
             routePoints: routePoints,
-            elevationProfile: elevationProfile
+            elevationProfile: elevationProfile,
+            standaloneHeartRateSamples: standaloneHeartRateSamples
         )
     }
 

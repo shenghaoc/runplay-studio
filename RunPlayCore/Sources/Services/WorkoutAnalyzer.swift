@@ -176,7 +176,8 @@ public struct WorkoutAnalyzer: Sendable {
             ctx = WorkoutAnalysisContext(
                 routePoints: workout.routePoints,
                 elevationProfile: context.elevationProfile,
-                movementProfile: movementProfile
+                movementProfile: movementProfile,
+                standaloneHeartRateSamples: workout.heartRateSourceSeries
             )
             profile?.contextRebindNanoseconds = HotspotProfileClock.nanoseconds(
                 from: start,
@@ -186,7 +187,8 @@ public struct WorkoutAnalyzer: Sendable {
             ctx = WorkoutAnalysisContext(
                 routePoints: workout.routePoints,
                 elevationProfile: context.elevationProfile,
-                movementProfile: movementProfile
+                movementProfile: movementProfile,
+                standaloneHeartRateSamples: workout.heartRateSourceSeries
             )
         }
 
