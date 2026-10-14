@@ -9,9 +9,11 @@ import XCTest
 /// The PNG summary card in English, Simplified Chinese, and Traditional
 /// Chinese, rendered from one synthetic run.
 ///
-/// Snapshots catch what only pixels show — missing CJK glyphs, Simplified
-/// glyph shapes in a Traditional card, labels truncated by widths sized for
-/// Latin text. The structural tests pin the same properties without images.
+/// Snapshots catch what only pixels show — missing CJK glyphs, a card in the
+/// wrong language or script, labels truncated by widths sized for Latin text.
+/// The structural tests pin the same properties without images, and the
+/// typesetting test checks the one thing snapshots are too coarse for: that
+/// Traditional text is drawn with Traditional glyph shapes.
 @MainActor
 final class ExportSummaryCardLocalizationTests: XCTestCase {
     private static let locales: [(name: String, locale: Locale)] = [
@@ -44,9 +46,9 @@ final class ExportSummaryCardLocalizationTests: XCTestCase {
 
     func testChineseCardsCarryNoUntranslatedWords() {
         let workout = Self.syntheticRun()
-        // Words allowed to stay Latin: the brand, the workout's own name and
-        // source format, and the replay legend's units.
-        let allowed = ["RunPlay Studio", "Apple Maps", "Synthetic Riverside 5K", "GPX", "/km"]
+        // Words allowed to stay Latin: the app and map brands (Apple 地图),
+        // and the workout's own name and source format.
+        let allowed = ["RunPlay Studio", "Apple", "Synthetic Riverside 5K", "GPX"]
         for (name, locale) in Self.locales where name != "en" {
             let model = Self.model(for: workout, locale: locale, includeMap: true)
             let presentation = Self.presentation(model: model, locale: locale, includeMap: true)
@@ -113,6 +115,40 @@ final class ExportSummaryCardLocalizationTests: XCTestCase {
             try render(workout: workout, locale: Locale(identifier: "zh-Hans_CN"), includeMap: false).dataProvider?.data,
             try render(workout: workout, locale: Locale(identifier: "zh-Hant_TW"), includeMap: false).dataProvider?.data
         )
+    }
+
+    /// The card pins its own typesetting language, so the language around it
+    /// (the app's, or a caller's modifier) cannot swap in the other script's
+    /// glyph shapes. Same text, same machine: the two renders must be
+    /// byte-identical, which a tolerance-based snapshot cannot check.
+    func testCardTypesettingIgnoresTheSurroundingLanguage() throws {
+        let workout = Self.syntheticRun()
+        let simplified = Locale.Language(identifier: "zh-Hans")
+        let traditional = Locale.Language(identifier: "zh-Hant")
+        for (name, locale) in Self.locales where name != "en" {
+            let model = Self.model(for: workout, locale: locale, includeMap: false)
+            let card = ExportSummaryCardView(
+                presentation: Self.presentation(model: model, locale: locale, includeMap: false)
+            )
+            // Not vacuous: the card's own text has glyphs whose Simplified and
+            // Traditional shapes differ, so an unpinned card would change. The
+            // renderer is opaque, so the probe brings its own background.
+            let probe = Text(card.labels.all.joined(separator: " ") + model.dateText)
+                .font(.system(size: 32))
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.white)
+            XCTAssertNotEqual(
+                try PNGExportRenderer.renderPNG(from: probe.typesettingLanguage(simplified)),
+                try PNGExportRenderer.renderPNG(from: probe.typesettingLanguage(traditional)),
+                "\(name): no glyph on the card differs between the two scripts"
+            )
+            XCTAssertEqual(
+                try PNGExportRenderer.renderPNG(from: card.typesettingLanguage(simplified)),
+                try PNGExportRenderer.renderPNG(from: card.typesettingLanguage(traditional)),
+                "\(name) card follows the surrounding typesetting language"
+            )
+        }
     }
 
     // MARK: - Fixtures

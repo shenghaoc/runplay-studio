@@ -9,20 +9,27 @@ import XCTest
 /// References live in `RunPlayStudio/Tests/Snapshots/<group>/<name>.png`,
 /// outside the test target so SwiftPM does not treat them as resources. They
 /// are stored at half the rendered size: small enough to commit, still sharp
-/// enough to show a missing glyph, a truncated label, or a wrong-script font.
+/// enough to show a missing glyph, a truncated label, or a moved column.
 ///
 /// A render matches when fewer than `maximumDifferingPixelFraction` of its
 /// pixels differ from the reference by more than `channelTolerance` in any
-/// channel, which absorbs antialiasing differences between machines.
+/// channel, which absorbs antialiasing differences between machines. The
+/// bound is tight enough to fail a card whose text is in the other Chinese
+/// script: the Simplified and Traditional summary cards differ in 0.19–0.26%
+/// of pixels at this tolerance, four to five times the allowance. Glyph
+/// shapes alone stay under it — a Traditional card drawn with Simplified
+/// glyph shapes passes — so `ExportSummaryCardLocalizationTests` checks font
+/// selection directly.
 ///
 /// To (re)record after an intended visual change, run the suite with
 /// `RUNPLAY_RECORD_SNAPSHOTS=1`, then inspect the written PNGs before
-/// committing them. A missing reference fails rather than recording itself,
-/// so CI cannot silently accept a new image.
+/// committing them. A new macOS release that updates system fonts can need a
+/// re-record too. A missing reference fails rather than recording itself, so
+/// CI cannot silently accept a new image.
 enum SnapshotAssertion {
     static let referenceScale: CGFloat = 0.5
-    static let channelTolerance = 40
-    static let maximumDifferingPixelFraction = 0.004
+    static let channelTolerance = 32
+    static let maximumDifferingPixelFraction = 0.0005
 
     static func referencesDirectory(group: String, filePath: StaticString = #filePath) -> URL {
         URL(filePath: "\(filePath)")
@@ -175,9 +182,13 @@ enum SnapshotAssertion {
         return data
     }
 
+    /// Failure renders go to `RUNPLAY_SNAPSHOT_FAILURES_DIR` when it is set
+    /// (CI uploads that directory), otherwise to the temporary directory.
     private static func writeFailureArtifact(_ image: CGImage, name: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RunPlaySnapshotFailures", isDirectory: true)
+        let directory = ProcessInfo.processInfo.environment["RUNPLAY_SNAPSHOT_FAILURES_DIR"]
+            .map { URL(filePath: $0, directoryHint: .isDirectory) }
+            ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("RunPlaySnapshotFailures", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("\(name).png")
         try pngData(image).write(to: url, options: .atomic)
