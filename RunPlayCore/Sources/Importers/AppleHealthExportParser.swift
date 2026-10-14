@@ -337,13 +337,26 @@ public struct AppleHealthExportParser: Sendable {
     /// factory also keeps every test here executable on Linux against a generated
     /// document, with no fixture files and no ZIP reader involved.
     ///
-    /// Each stream is wrapped in `DTDStrippingInputStream` unless `elideDTD` is
-    /// false. `policyViolation` is checked before `XMLParser`'s own error is
-    /// trusted, because after a violation the parser sees a truncated document
-    /// and would report a misleading failure.
+    /// Each stream is wrapped in `DTDStrippingInputStream`. `policyViolation` is
+    /// checked before `XMLParser`'s own error is trusted, because after a
+    /// violation the parser sees a truncated document and would report a
+    /// misleading failure.
     public func parse(
         openStream: () throws -> InputStream,
-        elideDTD: Bool = true,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> AppleHealthExportScan {
+        try parse(openStream: openStream, elideDTD: true, isCancelled: isCancelled)
+    }
+
+    /// Test seam for DTD elision.
+    ///
+    /// Internal, like the ceiling seam: without elision an export's inline DTD
+    /// reaches `XMLParser`, which crashes on Linux on its `ATTLIST` declarations
+    /// (swift-corelibs-foundation#5573), so no product caller may turn it off.
+    /// Tests turn it off only for a document that has no DTD.
+    func parse(
+        openStream: () throws -> InputStream,
+        elideDTD: Bool,
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> AppleHealthExportScan {
         let first = try runPass(
@@ -390,7 +403,6 @@ public struct AppleHealthExportParser: Sendable {
     /// entry point has no way to read the document again.
     public func parse(
         stream: InputStream,
-        elideDTD: Bool = true,
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> AppleHealthExportScan {
         var isOpen = true
@@ -402,7 +414,6 @@ public struct AppleHealthExportParser: Sendable {
                 isOpen = false
                 return stream
             },
-            elideDTD: elideDTD,
             isCancelled: isCancelled
         )
     }
