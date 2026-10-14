@@ -673,6 +673,32 @@ final class DTDStrippingInputStreamTests: XCTestCase {
 
     // MARK: - Unterminated and oversized subsets
 
+    /// Serves `bytes` and counts what it served, so a test can see how much of
+    /// a document the elider read.
+    private final class CountingStream: InputStream {
+        private let bytes: [UInt8]
+        private(set) var served = 0
+
+        init(_ bytes: [UInt8]) {
+            self.bytes = bytes
+            super.init(data: Data())
+        }
+
+        override func open() {}
+        override func close() {}
+        override var streamStatus: Stream.Status { served < bytes.count ? .open : .atEnd }
+        override var hasBytesAvailable: Bool { served < bytes.count }
+
+        override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+            let n = min(len, bytes.count - served)
+            bytes.withUnsafeBufferPointer { source in
+                buffer.update(from: source.baseAddress! + served, count: n)
+            }
+            served += n
+            return n
+        }
+    }
+
     /// What one drain of an elider produced, handed back from a worker thread.
     private final class DrainResult: @unchecked Sendable {
         private let lock = NSLock()
@@ -712,5 +738,22 @@ final class DTDStrippingInputStreamTests: XCTestCase {
                 XCTAssertEqual(drained.result?.status, .atEnd, "chunk=\(chunk)")
             }
         }
+    }
+
+    func testOversizedSubsetStopsReadingNearTheLimit() {
+        let limit = DTDStrippingInputStream.maxInspectedDTDBytes
+        // A subset four times the limit that never closes.
+        var bytes = Array(#"<?xml version="1.0"?><!DOCTYPE r ["#.utf8)
+        bytes += [UInt8](repeating: UInt8(ascii: "x"), count: 4 * limit)
+        let upstream = CountingStream(bytes)
+        let elider = DTDStrippingInputStream(upstream: upstream)
+        elider.open()
+        var buffer = [UInt8](repeating: 0, count: 65_536)
+        while buffer.withUnsafeMutableBufferPointer({ elider.read($0.baseAddress!, maxLength: $0.count) }) > 0 {}
+
+        XCTAssertEqual(elider.policyViolation, .internalSubsetTooLarge(observedBytes: limit + 1, limit: limit))
+        // Reading stops within a refill of the limit instead of consuming the
+        // rest of the file once failure is certain.
+        XCTAssertLessThanOrEqual(upstream.served, limit + 2 * 65_536 + 64)
     }
 }

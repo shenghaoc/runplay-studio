@@ -484,6 +484,11 @@ final class DTDStrippingInputStream: InputStream {
     /// DOCTYPE by `stepLeading`.
     private func stepInternalSubset() {
         while true {
+            // Once the subset has overflowed the inspection limit the stream has
+            // already failed; `pump` reports it. Reading on would consume the
+            // rest of the file for nothing.
+            if policyViolation != nil { return }
+
             // Lookahead states need several bytes available before they can
             // decide, and must not consume a partial terminator.
             switch subsetSkip {
