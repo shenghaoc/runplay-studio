@@ -210,4 +210,19 @@ final class AppleHealthHeartRateIndexTests: XCTestCase {
     func testEndSecondsIsTheStartPlusTheDuration() {
         XCTAssertEqual(reading(at: 1_000, duration: 120).endSeconds, 1_120)
     }
+
+    // MARK: - Review fixes: the ceiling, ordering and the window filter
+
+    func testReadingsAfterTheCeilingTripsAreCountedButNotRetained() {
+        var index = AppleHealthHeartRateIndex(sampleCountCeiling: 2)
+        for second in 0..<3 { index.append(reading(at: Int64(second), duration: 1, bpm: 140)) }
+        XCTAssertTrue(index.releasedByCeiling)
+        XCTAssertEqual(index.retainedCount, 0)
+
+        // Fewer than the ceiling, so a refilled buffer is not released again.
+        for second in 3..<5 { index.append(reading(at: Int64(second), duration: 1, bpm: 140)) }
+        XCTAssertEqual(index.retainedCount, 0, "readings after the trip must not refill the buffer")
+        XCTAssertEqual(index.offeredCount, 5)
+        XCTAssertEqual(index.finalize().count, 0)
+    }
 }

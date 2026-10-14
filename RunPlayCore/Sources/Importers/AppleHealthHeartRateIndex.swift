@@ -206,6 +206,10 @@ struct AppleHealthHeartRateIndex: Sendable {
             return
         }
 
+        // Once the ceiling has released the buffer the pass's answer is
+        // fixed; later readings are counted but never retained again.
+        guard !releasedByCeiling else { return }
+
         guard readings.count < sampleCountCeiling else {
             releasedByCeiling = true
             readings.removeAll(keepingCapacity: false)
