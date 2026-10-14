@@ -55,6 +55,14 @@ import Foundation
 /// subset is accepted: the external subset is never fetched, because every
 /// caller sets `shouldResolveExternalEntities = false`, so it supplies nothing.
 ///
+/// ## Encodings
+///
+/// The DOCTYPE is recognised by its ASCII bytes, so only an ASCII-compatible
+/// encoding such as UTF-8 is elided. A UTF-16 or UTF-32 document passes through
+/// unchanged, DTD included. Apple Health exports are UTF-8; adopting this filter
+/// for GPX or TCX (#228) has to detect the byte-order mark or declared encoding
+/// first.
+///
 /// ## Performance
 ///
 /// The filter inspects only the leading region. Once the DOCTYPE has closed it
