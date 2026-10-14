@@ -33,7 +33,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         return try importWorkout(
             data: input.data,
             suggestedName: input.suggestedName.isEmpty
-                ? "Imported Run"
+                ? coreLocalized("Imported Run")
                 : (input.suggestedName as NSString).deletingPathExtension
         )
     }
@@ -55,7 +55,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         let rawActivities = parsed.activities
 
         guard !rawActivities.isEmpty else {
-            throw WorkoutImportError.missingData("No activities found in TCX file")
+            throw WorkoutImportError.missingData(coreLocalized("No activities found in TCX file"))
         }
 
         // Select the activity with GPS data.
@@ -70,11 +70,11 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         if gpsActivities.isEmpty {
-            throw WorkoutImportError.missingData("No GPS route data with valid coordinates found")
+            throw WorkoutImportError.missingData(coreLocalized("No GPS route data with valid coordinates found"))
         }
 
         if gpsActivities.count > 1 {
-            throw WorkoutImportError.invalidFormat("TCX file contains multiple GPS activities; only single-activity files are supported")
+            throw WorkoutImportError.invalidFormat(coreLocalized("TCX file contains multiple GPS activities; only single-activity files are supported"))
         }
 
         let activity = gpsActivities[0]
@@ -145,12 +145,12 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         guard !flat.isEmpty else {
-            throw WorkoutImportError.missingData("No GPS route data with valid coordinates found")
+            throw WorkoutImportError.missingData(coreLocalized("No GPS route data with valid coordinates found"))
         }
 
         guard let timestamps = RouteTimestampResolver.resolve(flat.map(\.raw.time)),
               let startDate = timestamps.first else {
-            throw WorkoutImportError.missingData("TCX file has no timestamps; cannot compute pace or duration")
+            throw WorkoutImportError.missingData(coreLocalized("TCX file has no timestamps; cannot compute pace or duration"))
         }
 
         var currentLapFirstIndex: [Int: Int] = [:]
@@ -235,7 +235,7 @@ public struct TCXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         guard !routePoints.isEmpty else {
-            throw WorkoutImportError.missingData("No valid coordinates found in TCX file")
+            throw WorkoutImportError.missingData(coreLocalized("No valid coordinates found in TCX file"))
         }
 
         // Build provisional recorded laps from TCX Lap metadata.
@@ -451,7 +451,7 @@ private class TCXXMLParser: NSObject, XMLParserDelegate {
             throw limitError
         }
         guard parsed else {
-            throw WorkoutImportError.parsingError("This TCX file could not be read. Try re-exporting it.")
+            throw WorkoutImportError.parsingError(coreLocalized("This TCX file could not be read. Try re-exporting it."))
         }
 
         return activities

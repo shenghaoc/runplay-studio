@@ -17,7 +17,15 @@ import RunPlayCore
 /// Its sizes are output pixels, like the rest of the HUD: the same badge
 /// serves the 1920×1080 video and the 960×540 poster.
 enum VideoMapAttribution {
-    static let text = "Map imagery via Apple Maps"
+    /// The credit in the app's language; the same wording as the map-inclusive
+    /// PNG card's footer.
+    static var text: String { text(locale: nil) }
+
+    /// The credit in `locale`'s language, so an export in Chinese is credited in
+    /// Chinese like the rest of its HUD.
+    static func text(locale: Locale?) -> String {
+        platformLocalized("Map imagery via Apple Maps", locale: locale)
+    }
 
     static let fontSize: CGFloat = 13
     static let badgeHeight: CGFloat = 22
@@ -51,15 +59,11 @@ enum VideoMapAttribution {
         }
     }
 
-    /// The rasterized badge for `appearance`. Throws when Core Graphics could
-    /// not allocate it, so a frame fails rather than ship map imagery uncredited.
-    static func badge(for appearance: PNGSummaryExportAppearance) throws -> CGImage {
-        let badge: CGImage?
-        switch appearance {
-        case .light: badge = lightBadge
-        case .dark: badge = darkBadge
-        }
-        guard let badge else {
+    /// The rasterized badge for `appearance` in `locale`'s language. Throws when
+    /// Core Graphics could not allocate it, so a frame fails rather than ship map
+    /// imagery uncredited.
+    static func badge(for appearance: PNGSummaryExportAppearance, locale: Locale? = nil) throws -> CGImage {
+        guard let badge = BadgeCache.shared.badge(for: appearance, locale: locale) else {
             throw WorkoutVideoExportError.frameRenderingFailed(
                 "Could not prepare the Apple Maps attribution"
             )
@@ -87,8 +91,24 @@ enum VideoMapAttribution {
 
     // MARK: - Rasterization
 
-    private static let lightBadge = render(appearance: .light)
-    private static let darkBadge = render(appearance: .dark)
+    /// One badge per appearance and language, rasterized on first use. A
+    /// successful rasterization is kept; a failure is not, so a later frame may
+    /// try again.
+    private final class BadgeCache: @unchecked Sendable {
+        static let shared = BadgeCache()
+        private let lock = NSLock()
+        private var badges: [String: CGImage] = [:]
+
+        func badge(for appearance: PNGSummaryExportAppearance, locale: Locale?) -> CGImage? {
+            let key = "\(appearance)|\(VideoHUDText.languageTag(for: locale))"
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = badges[key] { return cached }
+            guard let made = VideoMapAttribution.render(appearance: appearance, locale: locale) else { return nil }
+            badges[key] = made
+            return made
+        }
+    }
 
     /// Text baseline height inside the badge: centres the capital letters.
     private static let textBaselineOffset = ((badgeHeight - makeFont().capHeight) / 2).rounded()
@@ -97,14 +117,14 @@ enum VideoMapAttribution {
         NSFont.systemFont(ofSize: fontSize, weight: .medium)
     }
 
-    private static func render(appearance: PNGSummaryExportAppearance) -> CGImage? {
+    private static func render(appearance: PNGSummaryExportAppearance, locale: Locale?) -> CGImage? {
         let colors = Colors(appearance: appearance)
-        let attributed = NSAttributedString(
-            string: text,
-            attributes: [.font: makeFont(), .foregroundColor: colors.text]
-        )
-        let line = CTLineCreateWithAttributedString(attributed)
-        let textWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        let language = VideoHUDText.languageTag(for: locale)
+        let credit = text(locale: locale)
+        let font = makeFont()
+        // Measured with the language's own font, so Han glyphs are not sized
+        // as Latin ones.
+        let textWidth = VideoHUDText.width(credit, font: font, language: language)
         let width = Int((textWidth + horizontalPadding * 2).rounded(.up))
         let height = Int(badgeHeight)
 
@@ -135,8 +155,15 @@ enum VideoMapAttribution {
         context.setFillColor(colors.background.cgColor)
         context.fillPath()
 
-        context.textPosition = CGPoint(x: horizontalPadding, y: textBaselineOffset)
-        CTLineDraw(line, context)
+        VideoHUDText.draw(
+            credit,
+            font: font,
+            color: colors.text,
+            language: language,
+            at: CGPoint(x: horizontalPadding, y: textBaselineOffset),
+            maxWidth: textWidth + 1,
+            in: context
+        )
         return context.makeImage()
     }
 }

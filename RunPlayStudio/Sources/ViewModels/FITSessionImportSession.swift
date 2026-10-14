@@ -105,7 +105,7 @@ final class FITSessionImportSession: ObservableObject {
     /// Status is text, never colour alone.
     func accessibilityLabel(for candidate: FITSessionDescriptor) -> String {
         var parts: [String] = [
-            "Session \(candidate.displayOrdinal) of \(scanResult.candidates.count)",
+            studioLocalized("Session \(candidate.displayOrdinal) of \(scanResult.candidates.count)"),
             candidate.displayName,
             candidate.sportDescription
         ]
@@ -115,16 +115,18 @@ final class FITSessionImportSession: ObservableObject {
         if let start = candidate.startDate {
             parts.append(start.formatted(date: .abbreviated, time: .shortened))
         } else {
-            parts.append("No start time")
+            parts.append(studioLocalized("No start time"))
         }
         if let elapsed = candidate.elapsedSeconds {
-            parts.append("Elapsed \(DisplayFormatter.formatDuration(elapsed))")
+            let duration = DisplayFormatter.formatDuration(elapsed)
+            parts.append(studioLocalized("Elapsed \(duration)"))
         }
         if let distance = candidate.reportedDistanceMeters {
-            parts.append("Distance \(DisplayFormatter.formatDistance(distance))")
+            let formattedDistance = DisplayFormatter.formatDistance(distance)
+            parts.append(studioLocalized("Distance \(formattedDistance)"))
         }
-        parts.append("\(candidate.gpsRecordCount) GPS points")
-        parts.append("\(candidate.recordedLapCount) laps")
+        parts.append(studioLocalized("\(candidate.gpsRecordCount) GPS points"))
+        parts.append(studioLocalized("\(candidate.recordedLapCount) laps"))
         parts.append(candidate.status.userFacingSummary)
         if let detail = candidate.statusDetail {
             parts.append(detail)
@@ -133,6 +135,6 @@ final class FITSessionImportSession: ObservableObject {
     }
 
     var selectionAccessibilityValue: String {
-        "\(selectedCount) of \(scanResult.readyCount) importable sessions selected"
+        studioLocalized("\(selectedCount) of \(scanResult.readyCount) importable sessions selected")
     }
 }

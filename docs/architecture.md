@@ -533,8 +533,11 @@ user-visible gain.
   format carried one (GPX/TCX/JSON capture the literal designator, `Z` being
   0); FIT logs UTC instants only, so those runs fall back to the system zone.
   `WorkoutMetadata.recordedUTCOffsetSeconds` carries the value.
-- Weeks are ISO 8601 (Monday start; the key year is the ISO week-date year);
-  months and years share Gregorian boundaries in the same calendar.
+- Weeks follow a `WorkoutTrendsWeekConvention` (first weekday and minimum
+  days in the first week). Core defaults to ISO 8601 (Monday start; the key
+  year is the week-date year); the app passes the user's calendar convention,
+  so weeks start on the locale's first weekday or the one chosen in System
+  Settings. Months and years share Gregorian boundaries in every convention.
 - "Last N months" includes whole periods: the anchor instant `now − N months`
   (display zone) resolves to its period and every period with a nominal key
   at or after the anchor's is included. The trailing in-progress period is

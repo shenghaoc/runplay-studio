@@ -235,7 +235,7 @@ struct PersonalHeatmapView: View {
     private func minimumRepeatsPicker(labelled: Bool) -> some View {
         Picker(selection: $viewModel.minimumWorkoutCount) {
             ForEach(PersonalHeatmapViewModel.minimumRepeatOptions, id: \.self) { count in
-                Text(count == 1 ? "At least 1 run" : "At least \(count) runs").tag(count)
+                Text("At least \(count) runs").tag(count)
             }
         } label: {
             if labelled { Text("Minimum repeats") }
@@ -335,14 +335,14 @@ struct PersonalHeatmapView: View {
     private func heatmapRouteFilterTitle(derivedNames: [UUID: String]) -> String {
         switch viewModel.routeFilter {
         case .anyRoute:
-            return String(localized: "heatmap.route.any", defaultValue: "Any Route")
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .module)
         case .ungroupedOnly:
-            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route")
+            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route", bundle: .module)
         case .group(let groupID):
             if let group = viewModel.routeGroups.first(where: { $0.id == groupID }) {
                 return Self.heatmapRouteMenuName(for: group, derivedNames: derivedNames)
             }
-            return String(localized: "heatmap.route.any", defaultValue: "Any Route")
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .module)
         }
     }
 
@@ -356,7 +356,7 @@ struct PersonalHeatmapView: View {
             return name
         }
         return derivedNames[group.id]
-            ?? String(localized: "route_group.unnamed", defaultValue: "Route")
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
     }
 
     // Each picker is bounded by the other, so an inverted range cannot be
@@ -401,10 +401,10 @@ struct PersonalHeatmapView: View {
     private var statisticsRow: some View {
         let stats = viewModel.snapshot?.statistics
         return HStack(spacing: AppDesign.Spacing.xxLarge) {
-            stat("Included", value: "\(stats?.includedWorkoutCount ?? 0) runs")
-            stat("Distance", value: formatDistance(stats?.totalDistanceMeters ?? 0))
-            stat("Max overlap", value: maxOverlapLabel(stats?.maximumOverlap ?? 0))
-            stat("Cell size", value: cellSizeLabel(stats))
+            stat(studioLocalized("Included"), value: studioLocalized("\(stats?.includedWorkoutCount ?? 0) runs"))
+            stat(studioLocalized("Distance"), value: formatDistance(stats?.totalDistanceMeters ?? 0))
+            stat(studioLocalized("Max overlap"), value: maxOverlapLabel(stats?.maximumOverlap ?? 0))
+            stat(studioLocalized("Cell size"), value: cellSizeLabel(stats))
 
             if stats?.resolutionWasAdjusted == true {
                 Text("Resolution adjusted for this library.")
@@ -608,27 +608,28 @@ struct PersonalHeatmapView: View {
     private func formatDistance(_ meters: Double) -> String {
         guard meters.isFinite, meters >= 0 else { return "—" }
         if meters >= 1_000 {
-            return String(format: "%.1f km", meters / 1_000)
+            return DisplayFormatter.formatKilometers(meters, fractionDigits: 1)
         }
-        return String(format: "%.0f m", meters)
+        return DisplayFormatter.formatMeters(meters)
     }
 
     private func maxOverlapLabel(_ count: Int) -> String {
-        count <= 0 ? "—" : "Up to \(count) runs"
+        count <= 0 ? "—" : studioLocalized("Up to \(count) runs")
     }
 
     private func cellSizeLabel(_ stats: PersonalHeatmapStatistics?) -> String {
         guard let stats else { return "—" }
         let effective = Int(stats.effectiveCellSizeMeters.rounded())
+        let size = DisplayFormatter.formatMeters(Double(effective))
         if stats.resolutionWasAdjusted {
-            return "\(effective) m (adjusted)"
+            return studioLocalized("\(size) (adjusted)")
         }
-        return "\(effective) m"
+        return size
     }
 
     private func statisticsAccessibilityLabel(_ stats: PersonalHeatmapStatistics?) -> String {
-        guard let stats else { return "Heatmap statistics unavailable" }
-        return "Included \(stats.includedWorkoutCount) runs, total distance \(formatDistance(stats.totalDistanceMeters)), maximum overlap \(stats.maximumOverlap) runs, cell size \(Int(stats.effectiveCellSizeMeters.rounded())) meters"
+        guard let stats else { return studioLocalized("Heatmap statistics unavailable") }
+        return studioLocalized("Included \(stats.includedWorkoutCount) runs, total distance \(formatDistance(stats.totalDistanceMeters)), maximum overlap \(stats.maximumOverlap) runs, cell size \(Int(stats.effectiveCellSizeMeters.rounded())) meters")
     }
 }
 

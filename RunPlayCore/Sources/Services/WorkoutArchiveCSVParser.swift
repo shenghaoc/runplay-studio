@@ -10,11 +10,11 @@ public enum WorkoutArchiveCSVError: Error, LocalizedError, Equatable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .oversizedField: return "CSV field exceeds size limit"
-        case .oversizedRow: return "CSV row exceeds size limit"
-        case .tooManyRows: return "CSV has too many rows"
-        case .malformedQuotation: return "CSV has a malformed quoted field"
-        case .cancelled: return "CSV parsing was cancelled"
+        case .oversizedField: return coreLocalized("CSV field exceeds size limit")
+        case .oversizedRow: return coreLocalized("CSV row exceeds size limit")
+        case .tooManyRows: return coreLocalized("CSV has too many rows")
+        case .malformedQuotation: return coreLocalized("CSV has a malformed quoted field")
+        case .cancelled: return coreLocalized("CSV parsing was cancelled")
         }
     }
 }

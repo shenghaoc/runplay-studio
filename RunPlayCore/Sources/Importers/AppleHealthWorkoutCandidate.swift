@@ -20,9 +20,9 @@ public enum AppleHealthCandidateStatus: String, Codable, Hashable, Sendable, Cas
 
     public var userFacingSummary: String {
         switch self {
-        case .ready: return "Ready"
-        case .duplicate: return "Duplicate"
-        case .possibleDuplicate: return "Possible duplicate"
+        case .ready: return coreLocalized("Ready")
+        case .duplicate: return coreLocalized("Duplicate")
+        case .possibleDuplicate: return coreLocalized("Possible duplicate")
         }
     }
 }
@@ -38,8 +38,8 @@ public enum AppleHealthDuplicateOrigin: String, Codable, Hashable, Sendable, Cas
 
     public var userFacingDetail: String {
         switch self {
-        case .withinExport: return "Overlaps another workout in this export"
-        case .existingLibrary: return "Overlaps a run already in your library"
+        case .withinExport: return coreLocalized("Overlaps another workout in this export")
+        case .existingLibrary: return coreLocalized("Overlaps a run already in your library")
         }
     }
 }

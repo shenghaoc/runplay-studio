@@ -167,6 +167,38 @@ final class ComparisonVideoExporterTests: XCTestCase {
         XCTAssertEqual(image.height, 180)
     }
 
+    func testComparisonHUDUsesTheFramesLocaleForModeAndQuality() throws {
+        let renderer = ComparisonVideoFrameRenderer()
+        func frame(locale: String) -> ComparisonVideoFrameModel {
+            ComparisonVideoFrameModel(
+                sample: makeFrameSample(alignmentMode: .routeAware, progress: 0.5),
+                primaryTitle: "Primary Run",
+                comparisonTitle: "Comparison Run",
+                primaryMarkerPixel: nil,
+                comparisonMarkerPixel: nil,
+                appearance: .light,
+                locale: Locale(identifier: locale)
+            )
+        }
+
+        // The export overrides the test process language; the frame is the
+        // input to the real caption and panel drawing code.
+        let english = frame(locale: "en_US")
+        XCTAssertEqual(english.alignmentCaption, "Route-Aware Alignment")
+        XCTAssertEqual(renderer.panelRows(for: english).deltas.first { $0.label == "Quality" }?.value, "Excellent")
+
+        let simplified = frame(locale: "zh-Hans_CN")
+        XCTAssertEqual(simplified.alignmentCaption, "对齐方式：路线感知")
+        XCTAssertEqual(renderer.panelRows(for: simplified).deltas.first { $0.label == "质量" }?.value, "优秀")
+        let policy = WorkoutVideoExportPolicy.poster
+        let map = try makeSolidMap(width: policy.width, height: policy.height)
+        let image = try renderer.renderImage(
+            frame: simplified, staticMap: map, width: policy.width, height: policy.height,
+            mapSize: CGSize(width: policy.width, height: policy.height)
+        )
+        XCTAssertEqual(image.width, policy.width)
+    }
+
     /// Frames at the video and poster sizes carry the Apple Maps credit in both
     /// appearances and alignment modes, with the tallest Deltas panel (every
     /// Route-Aware row plus the far-apart note), the stacked P and C panels,

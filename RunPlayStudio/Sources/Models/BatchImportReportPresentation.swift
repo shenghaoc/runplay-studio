@@ -12,14 +12,14 @@ enum BatchImportReportPresentation {
 
     /// What a cancelled pass guarantees. The batch seam rolls back everything a
     /// cancelled pass staged, so this holds however far the pass had got.
-    static let cancelledNotice = "Nothing was saved. Your library was left unchanged."
+    static let cancelledNotice = studioLocalized("Nothing was saved. Your library was left unchanged.")
 
     // MARK: - Strava archive
 
     static func archiveTitle(for report: WorkoutBatchImportReport) -> String {
-        if report.commitFailed { return "Import Incomplete" }
-        if report.wasCancelled { return "Import Cancelled" }
-        return "Import Complete"
+        if report.commitFailed { return studioLocalized("Import Incomplete") }
+        if report.wasCancelled { return studioLocalized("Import Cancelled") }
+        return studioLocalized("Import Complete")
     }
 
     static func archiveNotice(for report: WorkoutBatchImportReport) -> String? {
@@ -29,9 +29,9 @@ enum BatchImportReportPresentation {
     // MARK: - Multi-session FIT
 
     static func fitTitle(for report: FITSessionBatchImportReport) -> String {
-        if report.commitFailed { return "Import Failed" }
-        if report.wasCancelled { return "Import Cancelled" }
-        return "Import Complete"
+        if report.commitFailed { return studioLocalized("Import Failed") }
+        if report.wasCancelled { return studioLocalized("Import Cancelled") }
+        return studioLocalized("Import Complete")
     }
 
     static func fitNotice(for report: FITSessionBatchImportReport) -> String? {

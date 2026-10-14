@@ -18,17 +18,17 @@ public enum GZIPDecoderError: Error, LocalizedError, Equatable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .truncatedHeader: return "GZIP header is truncated"
-        case .invalidMagic: return "Not a GZIP stream"
-        case .unsupportedCompressionMethod: return "Unsupported GZIP compression method"
-        case .encryptedOrUnsupportedFlags: return "Encrypted or unsupported GZIP flags"
-        case .truncatedData: return "GZIP stream is truncated"
-        case .crcMismatch: return "GZIP CRC32 mismatch"
-        case .sizeMismatch: return "GZIP uncompressed size mismatch"
-        case .outputLimitExceeded: return "GZIP output exceeds size limit"
-        case .inflateFailed(let detail): return "GZIP inflate failed: \(detail)"
-        case .concatenatedMembersNotSupported: return "Concatenated GZIP members are not supported"
-        case .cancelled: return "GZIP decoding was cancelled"
+        case .truncatedHeader: return platformLocalized("GZIP header is truncated")
+        case .invalidMagic: return platformLocalized("Not a GZIP stream")
+        case .unsupportedCompressionMethod: return platformLocalized("Unsupported GZIP compression method")
+        case .encryptedOrUnsupportedFlags: return platformLocalized("Encrypted or unsupported GZIP flags")
+        case .truncatedData: return platformLocalized("GZIP stream is truncated")
+        case .crcMismatch: return platformLocalized("GZIP CRC32 mismatch")
+        case .sizeMismatch: return platformLocalized("GZIP uncompressed size mismatch")
+        case .outputLimitExceeded: return platformLocalized("GZIP output exceeds size limit")
+        case .inflateFailed(let detail): return platformLocalized("GZIP inflate failed: \(detail)")
+        case .concatenatedMembersNotSupported: return platformLocalized("Concatenated GZIP members are not supported")
+        case .cancelled: return platformLocalized("GZIP decoding was cancelled")
         }
     }
 }

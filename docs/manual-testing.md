@@ -51,6 +51,72 @@ Accessibility Inspector alone.
 - [ ] Increased Contrast / Reduce Transparency: panels and controls remain legible.
 - [ ] VoiceOver: no announcement spam during replay, archive, or FIT session progress.
 
+## Chinese Localisation Checklist (zh-Hans / zh-Hant)
+
+Run the **packaged** app: `swift run` has no `CFBundleLocalizations` and always
+runs in English (see [localization.md](localization.md)). Build it with
+`./script/build_and_run.sh`, then either choose the language per app in System
+Settings → General → Language & Region → Applications → RunPlay Studio, or
+launch once with a launch argument and a throwaway library:
+
+```bash
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-zh ./dist/RunPlayStudio.app/Contents/MacOS/RunPlayStudio -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN
+```
+
+Repeat with `-AppleLanguages '(zh-Hant)' -AppleLocale zh_TW` for Traditional
+Chinese. Use synthetic or bundled demo workouts only.
+
+- [ ] Menu bar: AppKit's own items (About, Hide, Quit, Edit, Window) and the
+  RunPlay menus are Chinese; menu commands keep their trailing "…" and shortcuts.
+- [ ] Sidebar, All Runs (columns, filters, sort, empty states), tags, and smart
+  collections read fully in Chinese, with no English fragments and no clipped
+  labels at the 720×552 minimum window.
+- [ ] Workout detail: Overview metrics, Splits (分段) and recorded laps (圈)
+  tables, segment highlights (路段), and chart axes and units (公里; 米 in zh-Hans,
+  公尺 in zh-Hant; 次/分; 步/分; pace `5:30 /公里`).
+- [ ] Times of day: zh_CN shows 24-hour time; zh_TW shows 上午/下午 until
+  System Settings → Language & Region → 24-hour time is on, then 24-hour.
+- [ ] Trends: weekly bars start on the first weekday set in System Settings →
+  Language & Region → First day of week; change it, relaunch, and confirm the
+  buckets move. Period labels read 2026年3月14日 / 2026年3月.
+- [ ] Personal Records (个人纪录 / 個人紀錄), Compare (爬升 delta, 暂停时长,
+  P/C legend, alignment picker), Personal Heatmap, Routes, training load, and
+  the Athlete Profile, Elevation, and Watch Folder settings panes.
+- [ ] Errors: import an unsupported file and a non-running FIT; both alerts are
+  Chinese and name the sport in Chinese.
+- [ ] PNG summary card (metrics-only and map, Light and Dark): no missing-glyph
+  boxes; the zh-Hant card uses Traditional glyph shapes (距離); split headers and
+  tile labels are not truncated; the footer note is translated.
+- [ ] MP4 replay and comparison video: HUD labels and progress caption are
+  Chinese, a long Chinese title ends in "…", and values stay aligned with their
+  labels; the poster preview matches the encoded video.
+- [ ] Help → Keyboard Shortcuts lists Chinese purposes (空格键 / 空白鍵 for Space).
+
+### VoiceOver in zh-Hans
+
+Set System Settings → Accessibility → VoiceOver → Speech to a Chinese (China
+mainland) voice. Do not record a pass from Accessibility Inspector alone.
+
+- [ ] Menu titles, toolbar buttons, and sidebar rows are spoken in Chinese.
+- [ ] All Runs rows speak name, date, and distance with spoken units
+  (5.2 公里, not "k m").
+- [ ] Chart summaries (VO-Shift-arrow into a chart, or Audio Graph) speak the
+  Chinese descriptor: title, axes with units, range, average, current value.
+- [ ] Map route summary and colour-legend summary are spoken in Chinese.
+- [ ] Replay speed changes and library load announce once in Chinese, with no
+  announcement spam during replay, archive import, or FIT session progress.
+- [ ] Comparison summary speaks P/C identities, delta words, and warnings.
+- [ ] Personal Heatmap, Trends, and Personal Records summaries are spoken in
+  Chinese, including counts ("3 次跑步").
+- [ ] Record the macOS version, voice, date, and result in the PR that claims
+  this pass.
+
+Automated coverage: `CatalogResolutionTests`,
+`ExportSummaryCardLocalizationTests` (snapshots and Traditional glyph
+selection), `VideoHUDLocalizationTests`,
+`LocalizedDisplayFormatterTests`, `SegmentHighlightLocalizationTests`,
+`WorkoutTrendsWeekConventionTests`, and `scripts/check-localization.sh`.
+
 ## Native Route Metric Coloring Checklist
 
 Use only synthetic or approved repository fixtures. Do not claim scenarios that

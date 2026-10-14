@@ -69,7 +69,7 @@ struct ExportView: View {
             .help(videoExportHelp)
             .accessibilityLabel("Export route replay as MP4 video")
             .accessibilityHint(canExportVideo
-                ? "Opens options for offline H.264 route replay export"
+                ? studioLocalized("Opens options for offline H.264 route replay export")
                 : videoExportHelp)
 
             Divider()
@@ -84,7 +84,7 @@ struct ExportView: View {
         .alert("Export Failed", isPresented: $showingError) {
             Button("OK") { exportError = nil }
         } message: {
-            Text(exportError ?? "An unknown error occurred while exporting.")
+            Text(exportError ?? studioLocalized("An unknown error occurred while exporting."))
         }
         .alert("Export Complete", isPresented: $showingSuccess) {
             Button("OK") { exportSuccess = nil }
@@ -98,7 +98,7 @@ struct ExportView: View {
                     pngViewModel = nil
                 },
                 onSaved: { filename in
-                    showSuccess("Saved to \(filename)")
+                    showSuccess(savedFilename: filename)
                 }
             )
         }
@@ -109,7 +109,7 @@ struct ExportView: View {
                     videoViewModel = nil
                 },
                 onExported: { filename in
-                    showSuccess("Saved to \(filename)", announce: false)
+                    showSuccess(savedFilename: filename, announce: false)
                 }
             )
         }
@@ -140,12 +140,12 @@ struct ExportView: View {
 
     private var videoExportHelp: String {
         guard videoEligibility?.key == videoEligibilityKey else {
-            return "Checking whether this workout can be exported as video."
+            return studioLocalized("Checking whether this workout can be exported as video.")
         }
         if let unavailableHelp = videoEligibility?.assessment.unavailableHelp {
             return unavailableHelp
         }
-        return "Export a deterministic offline H.264 MP4 of this route replay."
+        return studioLocalized("Export a deterministic offline H.264 MP4 of this route replay.")
     }
 
     private var videoEligibilityKey: VideoEligibilityKey {
@@ -262,27 +262,26 @@ struct ExportView: View {
             if response == .OK, let url = panel.url {
                 do {
                     try result.data.write(to: url)
-                    showSuccess("Saved to \(url.lastPathComponent)")
+                    showSuccess(savedFilename: url.lastPathComponent)
                 } catch {
-                    showError("Failed to save: \(error.localizedDescription)")
+                    showError(studioLocalized("Failed to save: \(error.localizedDescription)"))
                 }
             }
         }
     }
 
     private func showError(_ message: String) {
-        exportError = "Export failed: \(message). Try choosing a different location or format."
+        exportError = studioLocalized("Export failed: \(message). Try choosing a different location or format.")
         showingError = true
         announcementPolicy.handle(.exportFailed(message: message))
     }
 
-    private func showSuccess(_ message: String, announce: Bool = true) {
-        exportSuccess = message
+    /// Takes the filename rather than the finished message, so the
+    /// announcement names the file in every language.
+    private func showSuccess(savedFilename filename: String, announce: Bool = true) {
+        exportSuccess = studioLocalized("Saved to \(filename)")
         showingSuccess = true
         guard announce else { return }
-        let filename = message.hasPrefix("Saved to ")
-            ? String(message.dropFirst("Saved to ".count))
-            : message
         announcementPolicy.handle(.exportCompleted(name: filename))
     }
 }

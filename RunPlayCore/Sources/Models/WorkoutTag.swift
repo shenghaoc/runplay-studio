@@ -181,25 +181,25 @@ public struct WorkoutTagPolicy: Hashable, Sendable {
         public var errorDescription: String? {
             switch self {
             case .emptyName:
-                return "Tag name cannot be empty."
+                return coreLocalized("Tag name cannot be empty.")
             case .containsNUL:
-                return "Tag name contains an invalid character."
+                return coreLocalized("Tag name contains an invalid character.")
             case .containsLineBreak:
-                return "Tag name must be a single line."
+                return coreLocalized("Tag name must be a single line.")
             case .nameTooLong(let limit):
-                return "Tag name must be at most \(limit) characters."
+                return coreLocalized("Tag name must be at most \(limit) characters.")
             case .duplicateName(let name):
-                return "A tag named “\(name)” already exists."
+                return coreLocalized("A tag named “\(name)” already exists.")
             case .tagLimitReached(let limit):
-                return "A library can have at most \(limit) tags."
+                return coreLocalized("A library can have at most \(limit) tags.")
             case .tagsPerWorkoutLimit(let limit):
-                return "A workout can have at most \(limit) tags."
+                return coreLocalized("A workout can have at most \(limit) tags.")
             case .unknownTag(let id):
-                return "Unknown tag \(id.uuidString)."
+                return coreLocalized("Unknown tag \(id.uuidString).")
             case .unknownWorkout(let id):
-                return "Unknown workout \(id.uuidString)."
+                return coreLocalized("Unknown workout \(id.uuidString).")
             case .duplicateTagID(let id):
-                return "Duplicate tag ID \(id.uuidString)."
+                return coreLocalized("Duplicate tag ID \(id.uuidString).")
             }
         }
     }

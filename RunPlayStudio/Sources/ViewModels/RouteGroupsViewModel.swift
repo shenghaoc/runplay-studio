@@ -143,7 +143,7 @@ final class RouteGroupsViewModel: ObservableObject {
             }
             let dates = members.compactMap { WorkoutLibraryEntry.canonicalStartDate(for: $0) }
             let displayName = derivedNames[group.id]
-                ?? String(localized: "route_group.unnamed", defaultValue: "Route")
+                ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
             built.append(RouteGroupRow(
                 id: group.id,
                 displayName: displayName,

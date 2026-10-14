@@ -104,59 +104,70 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
     case extractionUnavailable(String)
 
     public var errorDescription: String? {
+        // Whole sentences, one catalog key each, so a translator can reorder them.
         switch self {
         case .notALocalFile:
-            return "Only local files can be read. Choose an export.zip saved on this Mac."
+            return platformLocalized("Only local files can be read. Choose an export.zip saved on this Mac.")
         case .cannotOpenArchive(let detail):
-            return "This file could not be opened as a ZIP archive. \(detail)"
+            return platformLocalized("This file could not be opened as a ZIP archive. \(detail)")
         case .archiveTooLarge(let limitBytes):
-            return "This archive is larger than the \(Self.formatted(limitBytes)) limit."
+            return platformLocalized("This archive is larger than the \(Self.formatted(limitBytes)) limit.")
         case .tooManyEntries(let limit):
-            return "This archive holds more than \(limit) entries."
+            return platformLocalized("This archive holds more than \(limit) entries.")
         case .tooManyCandidates(let limit):
-            return "This export holds more than \(limit) runs, more than one import can review."
+            return platformLocalized("This export holds more than \(limit) runs, more than one import can review.")
         case .exportXMLNotFound:
-            return "This ZIP does not contain an Apple Health export. "
-                + "It should hold \(AppleHealthExportParser.archiveRoot)/export.xml."
+            return platformLocalized(
+                "This ZIP does not contain an Apple Health export. It should hold \(AppleHealthExportParser.archiveRoot)/export.xml."
+            )
         case .ambiguousExportXML(let candidateCount):
-            return "This ZIP holds \(candidateCount) possible Apple Health export documents. "
-                + "It should hold exactly one: \(AppleHealthExportParser.archiveRoot)/export.xml."
+            return platformLocalized(
+                "This ZIP holds \(candidateCount) possible Apple Health export documents. It should hold exactly one: \(AppleHealthExportParser.archiveRoot)/export.xml."
+            )
         case .documentIsNotAHealthExport(let path):
-            return "The file \(path) is not an Apple Health export document."
+            return platformLocalized("The file \(path) is not an Apple Health export document.")
         case .entryTooLarge(let path, let limitBytes):
-            return "\(path) is larger than the \(Self.formatted(limitBytes)) limit."
+            return platformLocalized("\(path) is larger than the \(Self.formatted(limitBytes)) limit.")
         case .invalidCentralDirectory:
-            return "This archive has an unreadable central directory."
+            return platformLocalized("This archive has an unreadable central directory.")
         case .entryExceedsDeclaredSize:
-            return "The export document expands beyond the size declared by its archive. It was not imported."
+            return platformLocalized(
+                "The export document expands beyond the size declared by its archive. It was not imported."
+            )
         case .routeEntryNotFound(let path):
-            return "The archive has no route file at \(path)."
+            return platformLocalized("The archive has no route file at \(path).")
         case .routePathRejected(let path, let reason):
-            return "The archive path \(path) is not usable as a route file (\(Self.describe(reason)))."
+            return platformLocalized(
+                "The archive path \(path) is not usable as a route file (\(Self.describe(reason)))."
+            )
         case .routeEntryIsSymlink(let path):
-            return "The route file \(path) is a symbolic link, which is not read."
+            return platformLocalized("The route file \(path) is a symbolic link, which is not read.")
         case .ambiguousRouteEntry(let path, let matchCount):
-            return "\(matchCount) route files in the archive match \(path) when letter case "
-                + "is ignored, so none of them is read."
+            return platformLocalized(
+                "\(matchCount) route files in the archive match \(path) when letter case is ignored, so none of them is read."
+            )
         case .entryChecksumMismatch(let path):
-            return "\(path) is damaged: its contents do not match the checksum the archive records."
+            return platformLocalized(
+                "\(path) is damaged: its contents do not match the checksum the archive records."
+            )
         case .insufficientFreeSpace(let requiredBytes, let availableBytes):
-            return "Importing needs about \(Self.formatted(requiredBytes)) of free space, "
-                + "but only \(Self.formatted(availableBytes)) is available."
+            return platformLocalized(
+                "Importing needs about \(Self.formatted(requiredBytes)) of free space, but only \(Self.formatted(availableBytes)) is available."
+            )
         case .extractionUnavailable(let detail):
-            return "The import could not prepare a private working file. \(detail)"
+            return platformLocalized("The import could not prepare a private working file. \(detail)")
         }
     }
 
     private static func describe(_ reason: AppleHealthRoutePathRejection) -> String {
         switch reason {
-        case .empty: return "it is empty"
-        case .tooLong: return "it is too long"
-        case .absolute: return "it is an absolute path"
-        case .backslash: return "it contains a backslash separator"
-        case .traversal: return "it contains a parent-directory segment"
-        case .malformedSeparator: return "it has an empty path component"
-        case .notUnderRouteDirectory: return "it is not under the route directory"
+        case .empty: return platformLocalized("it is empty")
+        case .tooLong: return platformLocalized("it is too long")
+        case .absolute: return platformLocalized("it is an absolute path")
+        case .backslash: return platformLocalized("it contains a backslash separator")
+        case .traversal: return platformLocalized("it contains a parent-directory segment")
+        case .malformedSeparator: return platformLocalized("it has an empty path component")
+        case .notUnderRouteDirectory: return platformLocalized("it is not under the route directory")
         }
     }
 

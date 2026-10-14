@@ -30,19 +30,19 @@ public enum FITSessionCandidateClassifier: Sendable {
         if sport == .unsupported {
             return (
                 .unsupportedSport,
-                "\(sportDisplayName) sessions are not supported."
+                coreLocalized("\(sportDisplayName) sessions are not supported.")
             )
         }
         if !isUniqueWithinFile {
             return (
                 .duplicate,
-                "Another session in this file produced the same identity."
+                coreLocalized("Another session in this file produced the same identity.")
             )
         }
         if isExistingInLibrary {
             return (
                 .duplicate,
-                "This session is already in your library."
+                coreLocalized("This session is already in your library.")
             )
         }
         if let boundaryProblem {
@@ -51,25 +51,25 @@ public enum FITSessionCandidateClassifier: Sendable {
         if isAmbiguous {
             return (
                 .ambiguousAttribution,
-                "This session's time range overlaps another session, so its data cannot be separated reliably."
+                coreLocalized("This session's time range overlaps another session, so its data cannot be separated reliably.")
             )
         }
         if overLimit {
             return (
                 .exceedsResourceLimit,
-                "This file exceeds the supported record, event, or lap limit."
+                coreLocalized("This file exceeds the supported record, event, or lap limit.")
             )
         }
         if gpsRecordCount == 0 {
             return (
                 .noGPSRoute,
-                "No GPS records could be attributed to this session."
+                coreLocalized("No GPS records could be attributed to this session.")
             )
         }
         if sport == .unknownTreatedAsRunning {
             return (
                 .ready,
-                "This session has no recognised sport and is being treated as a run."
+                coreLocalized("This session has no recognised sport and is being treated as a run.")
             )
         }
         return (.ready, nil)

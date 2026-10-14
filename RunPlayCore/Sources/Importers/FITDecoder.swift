@@ -129,7 +129,7 @@ public struct FITDecoder {
         }
         guard index.decodedFile.sessions.indices.contains(sessionIndex) else {
             throw WorkoutImportError.parsingError(
-                "FIT session \(sessionIndex + 1) is not present in this file"
+                coreLocalized("FIT session \(sessionIndex + 1) is not present in this file")
             )
         }
 
@@ -322,7 +322,7 @@ public struct FITDecoder {
         } else if gpsRunningSessions.count > 1 {
             // Multiple GPS-bearing running sessions - ambiguous
             throw WorkoutImportError.parsingError(
-                "This FIT file contains \(gpsRunningSessions.count) runs. Only single-run files are supported."
+                coreLocalized("This FIT file contains \(gpsRunningSessions.count) runs. Only single-run files are supported.")
             )
         } else if anyGPSSessions.isEmpty {
             // No GPS sessions at all - try legacy fallback
@@ -337,11 +337,11 @@ public struct FITDecoder {
                 // All sessions are non-running
                 let sportNames = gpsSessions.compactMap { entry -> String? in
                     guard entry.hasGPS, let sport = entry.session.sport else { return nil }
-                    return FITSport(rawValue: sport).map { String(describing: $0) } ?? "unknown"
+                    return FITSportPolicy.displayName(sport: sport)
                 }
+                let sportList = sportNames.joined(separator: ", ")
                 throw WorkoutImportError.parsingError(
-                    "This FIT file contains a \(sportNames.joined(separator: ", ")) activity. "
-                        + "Only running workouts are supported."
+                    coreLocalized("This FIT file contains a non-running activity (\(sportList)). Only running workouts are supported.")
                 )
             }
 

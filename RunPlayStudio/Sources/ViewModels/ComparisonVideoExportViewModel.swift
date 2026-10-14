@@ -115,11 +115,11 @@ final class ComparisonVideoExportViewModel: Identifiable {
     }
 
     var outputFrameRateText: String {
-        "\(policy.framesPerSecond) fps"
+        studioLocalized("\(policy.framesPerSecond) fps")
     }
 
     var outputSummaryText: String {
-        "Offline H.264 MP4 · \(policy.width)×\(policy.height) · \(policy.framesPerSecond) fps · no audio"
+        studioLocalized("Offline H.264 MP4 · \(policy.width)×\(policy.height) · \(policy.framesPerSecond) fps · no audio")
     }
 
     var currentAssessment: ComparisonVideoExportEligibility.Assessment {
@@ -134,10 +134,10 @@ final class ComparisonVideoExportViewModel: Identifiable {
     var alignmentHelpText: String {
         switch configuration.alignmentMode {
         case .distance:
-            return "Matches equal cumulative distances."
+            return studioLocalized("Matches equal cumulative distances.")
         case .routeAware:
             if isPreparingAlignment {
-                return "Aligning routes…"
+                return studioLocalized("Aligning routes…")
             }
             if let reason = routeAwareUnavailableReason {
                 return reason.userFacingExplanation
@@ -174,7 +174,7 @@ final class ComparisonVideoExportViewModel: Identifiable {
             mapPreparer: MapKitComparisonVideoMapPreparer()
         )
         self.posterAccessibilityLabel =
-            "\(pair.primary.displayName) vs \(pair.comparison.displayName), preview loading"
+            studioLocalized("\(pair.primary.displayName) vs \(pair.comparison.displayName), preview loading")
         if let seed = alignmentSeed,
            seed.matches(
                pair: pair,
@@ -604,24 +604,40 @@ final class ComparisonVideoExportViewModel: Identifiable {
 
     private func makePosterAccessibilityLabel(_ poster: ComparisonVideoPoster) -> String {
         let sample = poster.sample
+        let midpoint = DisplayFormatter.formatDistanceKm(sample.domainPositionMeters)
+        let domainLength = DisplayFormatter.formatDistanceKm(sample.domainLengthMeters)
+        let primaryDistance = DisplayFormatter.formatDistanceKm(sample.primaryDistanceMeters)
+        let comparisonDistance = DisplayFormatter.formatDistanceKm(sample.comparisonDistanceMeters)
         var parts: [String] = [
-            "\(pair.primary.displayName) versus \(pair.comparison.displayName)",
-            "\(sample.alignmentMode.displayName) alignment",
-            "Midpoint \(DisplayFormatter.formatDistanceKm(sample.domainPositionMeters)) of \(DisplayFormatter.formatDistanceKm(sample.domainLengthMeters))",
-            "Primary distance \(DisplayFormatter.formatDistanceKm(sample.primaryDistanceMeters))",
-            "Comparison distance \(DisplayFormatter.formatDistanceKm(sample.comparisonDistanceMeters))",
+            studioLocalized("\(pair.primary.displayName) versus \(pair.comparison.displayName)"),
+            studioLocalized("\(sample.alignmentMode.displayName) alignment"),
+            studioLocalized("Midpoint \(midpoint) of \(domainLength)"),
+            studioLocalized("Primary distance \(primaryDistance)"),
+            studioLocalized("Comparison distance \(comparisonDistance)"),
         ]
         if let elapsed = sample.elapsedDeltaSeconds {
-            parts.append("Elapsed delta \(DisplayFormatter.formatSignedDurationDelta(elapsed, positiveLabel: "longer", negativeLabel: "shorter"))")
+            let delta = DisplayFormatter.formatSignedDurationDelta(
+                elapsed,
+                positiveLabel: studioLocalized("longer"),
+                negativeLabel: studioLocalized("shorter")
+            )
+            parts.append(studioLocalized("Elapsed delta \(delta)"))
         }
         if let active = sample.activeDeltaSeconds {
-            parts.append("Active delta \(DisplayFormatter.formatSignedDurationDelta(active, positiveLabel: "longer", negativeLabel: "shorter"))")
+            let delta = DisplayFormatter.formatSignedDurationDelta(
+                active,
+                positiveLabel: studioLocalized("longer"),
+                negativeLabel: studioLocalized("shorter")
+            )
+            parts.append(studioLocalized("Active delta \(delta)"))
         }
         if let pace = sample.activePaceDeltaSecondsPerKm {
-            parts.append("Pace delta \(DisplayFormatter.formatSignedDurationDelta(pace, suffix: "/km"))")
+            let delta = DisplayFormatter.formatSignedDurationDelta(pace, suffix: DisplayFormatter.perKilometerSuffix())
+            parts.append(studioLocalized("Pace delta \(delta)"))
         }
         if let separation = sample.spatialSeparationMeters {
-            parts.append("Separation \(Int(separation.rounded())) meters")
+            let separationMeters = Int(separation.rounded())
+            parts.append(studioLocalized("Separation \(separationMeters) meters"))
         }
         return parts.joined(separator: ". ")
     }

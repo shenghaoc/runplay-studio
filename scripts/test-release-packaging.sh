@@ -202,6 +202,14 @@ else
   printf 'FAIL: LSApplicationCategoryType\n' >&2
   FAIL=$((FAIL + 1))
 fi
+BLOC="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations' "$PLIST_OUT" | awk 'NR > 1 && $1 != "}" { printf "%s%s", sep, $1; sep = " " }')"
+if [[ "$BLOC" == "$RUNPLAY_LOCALIZATIONS" ]]; then
+  printf 'PASS: CFBundleLocalizations matches RUNPLAY_LOCALIZATIONS\n'
+  PASS=$((PASS + 1))
+else
+  printf 'FAIL: CFBundleLocalizations (got %s, expected %s)\n' "$BLOC" "$RUNPLAY_LOCALIZATIONS" >&2
+  FAIL=$((FAIL + 1))
+fi
 
 DEV_PLIST_OUT="$TMP_ROOT/Info-dev.plist"
 bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_generate_info_plist '$REPO_ROOT/Packaging/RunPlayStudio-Info.plist.in' '$DEV_PLIST_OUT' '0.1.0' '1' 'com.shenghaoc.RunPlayStudio'"
@@ -308,6 +316,24 @@ assert_fail "assemble missing resource bundle fails" \
     --output "$TMP_ROOT/nores/RunPlayStudio.app" \
     --skip-build \
     --bin-dir "$FAKE_BIN" \
+    --version 0.1.0 \
+    --build-number 1
+
+# A bin dir with the Studio bundle but not the Core string bundle: Core's
+# Bundle.module would trap at first use, so assembly must refuse it.
+NO_CORE_BIN="$TMP_ROOT/no-core-bin"
+mkdir -p "$NO_CORE_BIN"
+cp "$TEST_BIN/$RUNPLAY_EXECUTABLE_NAME" "$NO_CORE_BIN/"
+for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
+  [[ "$bundle_name" == "RunPlayStudio_RunPlayCore.bundle" ]] && continue
+  cp -R "$TEST_BIN/$bundle_name" "$NO_CORE_BIN/"
+done
+assert_fail_contains "assemble missing Core string bundle fails" \
+  "RunPlayStudio_RunPlayCore.bundle (localized strings required)" \
+  "$SCRIPT_DIR/assemble-app-bundle.sh" \
+    --output "$TMP_ROOT/nocore/RunPlayStudio.app" \
+    --skip-build \
+    --bin-dir "$NO_CORE_BIN" \
     --version 0.1.0 \
     --build-number 1
 

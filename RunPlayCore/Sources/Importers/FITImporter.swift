@@ -24,7 +24,7 @@ public struct FITImporter: WorkoutImporting {
         return try importWorkout(
             data: input.data,
             suggestedName: input.suggestedName.isEmpty
-                ? "Imported Run"
+                ? coreLocalized("Imported Run")
                 : (input.suggestedName as NSString).deletingPathExtension
         )
     }
@@ -44,7 +44,7 @@ public struct FITImporter: WorkoutImporting {
         }
 
         guard !decodedFile.records.isEmpty else {
-            throw WorkoutImportError.missingData("No records found in FIT file")
+            throw WorkoutImportError.missingData(coreLocalized("No records found in FIT file"))
         }
 
         // Resolve the single-workout selection policy, then hand off to the
@@ -105,7 +105,7 @@ public struct FITImporter: WorkoutImporting {
         let routePoints = decodedRoute.routePoints
 
         guard !routePoints.isEmpty else {
-            throw WorkoutImportError.missingData("No valid GPS coordinates found in FIT file")
+            throw WorkoutImportError.missingData(coreLocalized("No valid GPS coordinates found in FIT file"))
         }
 
         // Explicit per-session limit. The decoded-message ceiling bounds the

@@ -19,7 +19,7 @@ public struct RouteAccessibilitySummary: Equatable, Sendable {
         hasStart: Bool,
         hasFinish: Bool,
         currentDistanceMeters: Double? = nil,
-        colorModeName: String = "Solid",
+        colorModeName: String = WorkoutRouteColorMode.solid.displayName,
         coverageFraction: Double? = nil,
         metricCoverageLabel: String? = nil
     ) {
@@ -37,7 +37,7 @@ public struct RouteAccessibilitySummary: Equatable, Sendable {
     public static func make(
         routePoints: [RoutePoint],
         currentDistanceMeters: Double? = nil,
-        colorModeName: String = "Solid",
+        colorModeName: String = WorkoutRouteColorMode.solid.displayName,
         coverageFraction: Double? = nil,
         metricCoverageLabel: String? = nil
     ) -> RouteAccessibilitySummary {
@@ -57,25 +57,25 @@ public struct RouteAccessibilitySummary: Equatable, Sendable {
 
     public var spokenSummary: String {
         guard hasStart else {
-            return "No GPS route available."
+            return coreLocalized("No GPS route available.")
         }
         var parts: [String] = [
-            "Route \(formatDistance(distanceMeters)).",
-            "Colour mode \(colorModeName)."
+            coreLocalized("Route \(formatDistance(distanceMeters))."),
+            coreLocalized("Colour mode \(colorModeName).")
         ]
         if segmentCount > 1 {
-            parts.append("\(segmentCount) disconnected route sections.")
+            parts.append(coreLocalized("\(segmentCount) disconnected route sections."))
         }
-        if hasStart { parts.append("Start marker present.") }
-        if hasFinish { parts.append("Finish marker present.") }
+        if hasStart { parts.append(coreLocalized("Start marker present.")) }
+        if hasFinish { parts.append(coreLocalized("Finish marker present.")) }
         if let current = currentDistanceMeters {
-            parts.append("Replay position \(formatDistance(current)).")
+            parts.append(coreLocalized("Replay position \(formatDistance(current))."))
         }
         if let label = metricCoverageLabel, !label.isEmpty {
             parts.append(label)
         } else if let coverage = coverageFraction, coverage < 0.92 {
             let percent = Int((coverage * 100).rounded())
-            parts.append("Metric data covers \(percent) percent of the route.")
+            parts.append(coreLocalized("Metric data covers \(percent) percent of the route."))
         }
         return parts.joined(separator: " ")
     }
@@ -143,46 +143,46 @@ public struct ComparisonAccessibilitySummary: Equatable, Sendable {
 
     public var spokenSummary: String {
         var parts: [String] = [
-            "Comparison map.",
-            "Primary P: \(primaryName).",
-            "Comparison C: \(comparisonName)."
+            coreLocalized("Comparison map."),
+            coreLocalized("Primary P: \(primaryName)."),
+            coreLocalized("Comparison C: \(comparisonName).")
         ]
         if let alignmentModeName {
-            parts.append("Alignment mode \(alignmentModeName).")
+            parts.append(coreLocalized("Alignment mode \(alignmentModeName)."))
         }
         if let routeAlignmentQualityName {
-            parts.append("Route alignment \(routeAlignmentQualityName).")
+            parts.append(coreLocalized("Route alignment \(routeAlignmentQualityName)."))
         }
         if let matchedDistanceMeters {
-            parts.append("Matched distance \(formatDistance(matchedDistanceMeters)).")
+            parts.append(coreLocalized("Matched distance \(formatDistance(matchedDistanceMeters))."))
         }
         if let primaryCoverageFraction, let comparisonCoverageFraction {
             let p = Int((primaryCoverageFraction * 100).rounded())
             let c = Int((comparisonCoverageFraction * 100).rounded())
-            parts.append("Coverage \(p) percent primary, \(c) percent comparison.")
+            parts.append(coreLocalized("Coverage \(p) percent primary, \(c) percent comparison."))
         }
         if let alignedProgressMeters {
-            parts.append("Matched route progress \(formatDistance(alignedProgressMeters)).")
+            parts.append(coreLocalized("Matched route progress \(formatDistance(alignedProgressMeters))."))
         }
         if let mappedPrimaryDistanceMeters, let mappedComparisonDistanceMeters {
-            parts.append(
+            parts.append(coreLocalized(
                 "Mapped distances \(formatDistance(mappedPrimaryDistanceMeters)) and \(formatDistance(mappedComparisonDistanceMeters))."
-            )
+            ))
         } else {
-            parts.append("Common distance \(formatDistance(commonDistanceMeters)).")
-            parts.append("Selected distance \(formatDistance(selectedDistanceMeters)).")
+            parts.append(coreLocalized("Common distance \(formatDistance(commonDistanceMeters))."))
+            parts.append(coreLocalized("Selected distance \(formatDistance(selectedDistanceMeters))."))
         }
         if let spatialSeparationMeters {
-            parts.append("Matched positions \(Int(spatialSeparationMeters.rounded())) metres apart.")
+            parts.append(coreLocalized("Matched positions \(Int(spatialSeparationMeters.rounded())) metres apart."))
         }
         if let primaryTimeLabel {
-            parts.append("Primary time \(primaryTimeLabel).")
+            parts.append(coreLocalized("Primary time \(primaryTimeLabel)."))
         }
         if let comparisonTimeLabel {
-            parts.append("Comparison time \(comparisonTimeLabel).")
+            parts.append(coreLocalized("Comparison time \(comparisonTimeLabel)."))
         }
         if let deltaLabel {
-            parts.append("Delta \(deltaLabel).")
+            parts.append(coreLocalized("Delta \(deltaLabel)."))
         }
         for warning in warnings where !warning.isEmpty {
             parts.append(warning)
@@ -223,18 +223,18 @@ public struct HeatmapAccessibilitySummary: Equatable, Sendable {
 
     public var spokenSummary: String {
         var parts: [String] = [
-            "Personal Heatmap.",
-            "\(includedRunCount) runs included.",
-            "Total distance \(formatDistance(totalDistanceMeters)).",
-            "Maximum overlap \(maximumOverlap) runs.",
-            "Requested cell size \(Int(requestedCellSizeMeters)) metres.",
-            "Effective cell size \(Int(effectiveCellSizeMeters)) metres.",
-            "Date filter \(dateFilterDescription).",
-            "Minimum \(minimumRepeatCount) runs per cell."
+            coreLocalized("Personal Heatmap."),
+            coreLocalized("\(includedRunCount) runs included."),
+            coreLocalized("Total distance \(formatDistance(totalDistanceMeters))."),
+            coreLocalized("Maximum overlap \(maximumOverlap) runs."),
+            coreLocalized("Requested cell size \(Int(requestedCellSizeMeters)) metres."),
+            coreLocalized("Effective cell size \(Int(effectiveCellSizeMeters)) metres."),
+            coreLocalized("Date filter \(dateFilterDescription)."),
+            coreLocalized("Minimum \(minimumRepeatCount) runs per cell.")
         ]
         if requestedCellSizeMeters > 0,
            abs(effectiveCellSizeMeters - requestedCellSizeMeters) > 0.5 {
-            parts.append("Cell size was increased to stay within the render budget.")
+            parts.append(coreLocalized("Cell size was increased to stay within the render budget."))
         }
         return parts.joined(separator: " ")
     }
@@ -293,9 +293,15 @@ public struct ChartAccessibilityModel: Equatable, Sendable {
     public let totalDistanceMeters: Double
     public let gapCount: Int
 
+    /// "Distance" in the app's language: the x-axis a workout metric chart
+    /// plots against unless the caller names another. `@usableFromInline`
+    /// so the public initializer can use it as a default argument.
+    @usableFromInline
+    static var defaultXAxisTitle: String { coreLocalized("Distance") }
+
     public init(
         title: String,
-        xAxisTitle: String = "Distance",
+        xAxisTitle: String = ChartAccessibilityModel.defaultXAxisTitle,
         xAxisUnit: String = "km",
         yAxisTitle: String,
         yAxisUnit: String,
@@ -315,26 +321,30 @@ public struct ChartAccessibilityModel: Equatable, Sendable {
 
     public var spokenSummary: String {
         if series.missingData || series.pointCount == 0 {
-            return "\(title). No data available."
+            return coreLocalized("\(title). No data available.")
         }
+        let xUnit = DisplayFormatter.unitSymbol(forToken: xAxisUnit)
+        let yUnit = DisplayFormatter.unitSymbol(forToken: yAxisUnit)
         var parts: [String] = [
             title + ".",
-            "\(xAxisTitle) in \(xAxisUnit).",
-            "\(yAxisTitle) in \(yAxisUnit)."
+            coreLocalized("\(xAxisTitle) in \(xUnit)."),
+            coreLocalized("\(yAxisTitle) in \(yUnit).")
         ]
         if let minimum = series.minimum, let maximum = series.maximum {
-            parts.append("Range \(formatMetric(minimum, unit: series.unit)) to \(formatMetric(maximum, unit: series.unit)).")
+            parts.append(coreLocalized(
+                "Range \(formatMetric(minimum, unit: series.unit)) to \(formatMetric(maximum, unit: series.unit))."
+            ))
         }
         if let average = series.average {
-            parts.append("Average \(formatMetric(average, unit: series.unit)).")
+            parts.append(coreLocalized("Average \(formatMetric(average, unit: series.unit))."))
         }
         if let current = series.currentValue {
-            parts.append("At current replay position \(formatMetric(current, unit: series.unit)).")
+            parts.append(coreLocalized("At current replay position \(formatMetric(current, unit: series.unit))."))
         }
         if gapCount > 0 {
-            parts.append("\(gapCount) recording gaps break the series.")
+            parts.append(coreLocalized("\(gapCount) recording gaps break the series."))
         }
-        parts.append("Distance \(formatDistance(totalDistanceMeters)).")
+        parts.append(coreLocalized("Distance \(formatDistance(totalDistanceMeters))."))
         return parts.joined(separator: " ")
     }
 
@@ -408,7 +418,7 @@ public struct ChartAccessibilityModel: Equatable, Sendable {
             missingData: missing
         )
         return ChartAccessibilityModel(
-            title: "\(metricName) chart",
+            title: coreLocalized("\(metricName) chart"),
             yAxisTitle: metricName,
             yAxisUnit: unit,
             series: series,
@@ -428,9 +438,9 @@ public enum TagSelectionAccessibilityState: String, Sendable, Equatable {
 
     public var spokenValue: String {
         switch self {
-        case .unchecked: return "Unchecked"
-        case .checked: return "Checked"
-        case .mixed: return "Mixed"
+        case .unchecked: return coreLocalized("Unchecked")
+        case .checked: return coreLocalized("Checked")
+        case .mixed: return coreLocalized("Mixed")
         }
     }
 }
@@ -470,42 +480,42 @@ public struct TrendsAccessibilitySummary: Equatable, Sendable {
 
     public var spokenSummary: String {
         var parts: [String] = [
-            "Trends by \(periodDescription).",
-            "Range \(rangeDescription).",
-            "Scope \(scopeDescription).",
-            "\(includedRunCount) runs in \(aggregation.buckets.count) periods.",
-            "Total distance \(formatDistance(aggregation.totalDistanceMeters)).",
-            "Total active time \(formatDuration(aggregation.totalActiveSeconds))."
+            coreLocalized("Trends by \(periodDescription)."),
+            coreLocalized("Range \(rangeDescription)."),
+            coreLocalized("Scope \(scopeDescription)."),
+            coreLocalized("\(includedRunCount) runs in \(aggregation.buckets.count) periods."),
+            coreLocalized("Total distance \(formatDistance(aggregation.totalDistanceMeters))."),
+            coreLocalized("Total active time \(formatDuration(aggregation.totalActiveSeconds)).")
         ]
         if let pace = aggregation.meanActivePaceSecondsPerKilometer {
             // `formatMetric` already renders the "per kilometre" unit.
-            parts.append("Mean active pace \(formatMetric(pace, unit: "s/km")).")
+            parts.append(coreLocalized("Mean active pace \(formatMetric(pace, unit: "s/km"))."))
         } else {
-            parts.append("Mean active pace unavailable.")
+            parts.append(coreLocalized("Mean active pace unavailable."))
         }
         if let heartRate = aggregation.meanHeartRateBPM {
-            parts.append(
-                "Mean heart rate \(Int(heartRate)) beats per minute from "
-                    + "\(aggregation.heartRateContributingRuns) of \(includedRunCount) runs."
-            )
+            parts.append(coreLocalized("""
+                Mean heart rate \(Int(heartRate)) beats per minute from \
+                \(aggregation.heartRateContributingRuns) of \(includedRunCount) runs.
+                """))
         } else {
-            parts.append("No heart-rate data.")
+            parts.append(coreLocalized("No heart-rate data."))
         }
         if let ascent = aggregation.totalAscentMeters {
             // Ascent is a climb, not a horizontal distance: metres always,
             // never rolled up into kilometres.
-            parts.append(
-                "Total ascent \(formatMetric(ascent, unit: "m")) from "
-                    + "\(aggregation.ascentContributingRuns) of \(includedRunCount) runs."
-            )
+            parts.append(coreLocalized("""
+                Total ascent \(formatMetric(ascent, unit: "m")) from \
+                \(aggregation.ascentContributingRuns) of \(includedRunCount) runs.
+                """))
         } else {
-            parts.append("No elevation data.")
+            parts.append(coreLocalized("No elevation data."))
         }
         if outOfWindowRunCount > 0 {
-            parts.append("\(outOfWindowRunCount) runs fall outside the selected range.")
+            parts.append(coreLocalized("\(outOfWindowRunCount) runs fall outside the selected range."))
         }
         if undatedRunCount > 0 {
-            parts.append("\(undatedRunCount) runs have no date and are excluded.")
+            parts.append(coreLocalized("\(undatedRunCount) runs have no date and are excluded."))
         }
         return parts.joined(separator: " ")
     }
@@ -542,22 +552,24 @@ public struct TrendsChartAccessibilitySummary: Equatable, Sendable {
 
     public var spokenSummary: String {
         let populated = values.compactMap { $0 }
-        var parts = [ "\(metricName) per \(periodDescription)." ]
+        var parts = [ coreLocalized("\(metricName) per \(periodDescription).") ]
         if populated.isEmpty {
-            parts.append("No data.")
+            parts.append(coreLocalized("No data."))
             return parts.joined(separator: " ")
         }
         let gaps = values.count - populated.count
         if gaps > 0 {
-            parts.append("Data in \(populated.count) of \(values.count) periods.")
+            parts.append(coreLocalized("Data in \(populated.count) of \(values.count) periods."))
         } else {
-            parts.append("Data in all \(values.count) periods.")
+            parts.append(coreLocalized("Data in all \(values.count) periods."))
         }
         if let minimum = populated.min(), let maximum = populated.max() {
-            parts.append("Between \(formatMetric(minimum, unit: unit)) and \(formatMetric(maximum, unit: unit)).")
+            parts.append(coreLocalized(
+                "Between \(formatMetric(minimum, unit: unit)) and \(formatMetric(maximum, unit: unit))."
+            ))
         }
         if let latest = populated.last {
-            parts.append("Latest \(formatMetric(latest, unit: unit)).")
+            parts.append(coreLocalized("Latest \(formatMetric(latest, unit: unit))."))
         }
         if let contributorCounts {
             var partialPeriods = 0
@@ -569,7 +581,7 @@ public struct TrendsChartAccessibilitySummary: Equatable, Sendable {
                 }
             }
             if partialPeriods > 0 {
-                parts.append("\(partialPeriods) periods use runs that carry only part of this metric.")
+                parts.append(coreLocalized("\(partialPeriods) periods use runs that carry only part of this metric."))
             }
         }
         return parts.joined(separator: " ")
@@ -579,41 +591,45 @@ public struct TrendsChartAccessibilitySummary: Equatable, Sendable {
 // MARK: - Formatting helpers
 
 private func formatDistance(_ meters: Double) -> String {
-    guard meters.isFinite else { return "unavailable" }
+    guard meters.isFinite else { return coreLocalized("unavailable") }
     if meters >= 1000 {
-        return String(format: "%.2f kilometres", meters / 1000)
+        let kilometres = String(format: "%.2f", meters / 1000)
+        return coreLocalized("\(kilometres) kilometres")
     }
-    return String(format: "%.0f metres", meters)
+    let metres = String(format: "%.0f", meters)
+    return coreLocalized("\(metres) metres")
 }
 
 private func formatDuration(_ seconds: Double) -> String {
-    guard seconds.isFinite, seconds > 0 else { return "unavailable" }
+    guard seconds.isFinite, seconds > 0 else { return coreLocalized("unavailable") }
     let total = Int(seconds)
     let hours = total / 3_600
     let minutes = (total % 3_600) / 60
     if hours > 0 {
-        return "\(hours) h \(minutes) min"
+        return coreLocalized("\(hours) h \(minutes) min")
     }
-    return "\(minutes) min"
+    return coreLocalized("\(minutes) min")
 }
 
 private func formatMetric(_ value: Double, unit: String) -> String {
-    guard value.isFinite else { return "unavailable" }
+    guard value.isFinite else { return coreLocalized("unavailable") }
     if unit == "s/km" || unit.contains("pace") {
         let mins = Int(value) / 60
         let secs = Int(value) % 60
-        return String(format: "%d:%02d per kilometre", mins, secs)
+        let pace = String(format: "%d:%02d", mins, secs)
+        return coreLocalized("\(pace) per kilometre")
     }
     if unit == "bpm" {
-        return "\(Int(value.rounded())) beats per minute"
+        return coreLocalized("\(Int(value.rounded())) beats per minute")
     }
     if unit == "m" {
-        return "\(Int(value.rounded())) metres"
+        return coreLocalized("\(Int(value.rounded())) metres")
     }
     if unit == "m/s" {
-        return String(format: "%.1f metres per second", value)
+        let speed = String(format: "%.1f", value)
+        return coreLocalized("\(speed) metres per second")
     }
-    return String(format: "%.2f %@", value, unit)
+    return "\(DisplayFormatter.formatDecimal(value, fractionDigits: 2)) \(DisplayFormatter.unitSymbol(forToken: unit))"
 }
 
 // MARK: - Personal records
@@ -637,36 +653,34 @@ public struct PersonalRecordsAccessibilitySummary: Equatable, Sendable {
 
     public var spokenSummary: String {
         var parts: [String] = [
-            "Personal records.",
-            "Scope \(scopeDescription).",
-            "\(snapshot.includedWorkoutCount) runs in scope."
+            coreLocalized("Personal records."),
+            coreLocalized("Scope \(scopeDescription)."),
+            coreLocalized("\(snapshot.includedWorkoutCount) runs in scope.")
         ]
         if snapshot.pendingBackfillWorkoutCount > 0 {
-            parts.append(
+            parts.append(coreLocalized(
                 "\(snapshot.pendingBackfillWorkoutCount) runs still need record computation."
-            )
+            ))
         }
         for row in snapshot.rows {
             guard let best = row.best else {
-                parts.append("\(row.category.displayName) not attempted.")
+                parts.append(coreLocalized("\(row.category.displayName) not attempted."))
                 continue
             }
             if row.category.isPaceWindow {
-                parts.append(
-                    "\(row.category.displayName) "
-                        + formatMetric(best.value, unit: "s/km")
-                        + ", set on \(spokenDate(best.date))."
-                )
+                parts.append(coreLocalized("""
+                    \(row.category.displayName) \(formatMetric(best.value, unit: "s/km")), \
+                    set on \(spokenDate(best.date)).
+                    """))
             } else if row.category == .biggestAscent {
-                parts.append(
-                    "Biggest single-run ascent \(formatMetric(best.value, unit: "m")) "
-                        + "on \(spokenDate(best.date))."
-                )
+                parts.append(coreLocalized("""
+                    Biggest single-run ascent \(formatMetric(best.value, unit: "m")) \
+                    on \(spokenDate(best.date)).
+                    """))
             } else {
-                parts.append(
-                    "Longest run \(formatDistance(best.value)) "
-                        + "on \(spokenDate(best.date))."
-                )
+                parts.append(coreLocalized(
+                    "Longest run \(formatDistance(best.value)) on \(spokenDate(best.date))."
+                ))
             }
         }
         return parts.joined(separator: " ")
@@ -720,37 +734,38 @@ public struct TrainingLoadChartAccessibilitySummary: Equatable, Sendable {
     }
 
     public var spokenSummary: String {
-        var parts = ["Training load by day."]
+        var parts = [coreLocalized("Training load by day.")]
         guard dayCount > 0, let latestCTL else {
-            parts.append("No data.")
+            parts.append(coreLocalized("No data."))
             return parts.joined(separator: " ")
         }
         if let latestLoad {
-            parts.append("Latest daily load \(Int(latestLoad.rounded())) TRIMP.")
+            parts.append(coreLocalized("Latest daily load \(Int(latestLoad.rounded())) TRIMP."))
         }
-        parts.append("Fitness \(Int(latestCTL.rounded())).")
+        parts.append(coreLocalized("Fitness \(Int(latestCTL.rounded()))."))
         if let latestATL {
-            parts.append("Fatigue \(Int(latestATL.rounded())).")
+            parts.append(coreLocalized("Fatigue \(Int(latestATL.rounded()))."))
         }
         if let latestTSB {
             let signed = latestTSB >= 0 ? "+" : ""
-            parts.append("Form \(signed)\(Int(latestTSB.rounded())).")
+            let form = "\(signed)\(Int(latestTSB.rounded()))"
+            parts.append(coreLocalized("Form \(form)."))
         }
         // The bias disclosure is spoken in both modes. The shading on the
         // chart does not depend on the opt-in — an unmeasured day is still
         // unmeasured when an invented value is standing in for it — so the
         // spoken channel must not disclose it in only one mode.
         if includesEstimatedLoads {
-            parts.append("Estimated loads are included in the model on your explicit request; they are invented values and make the curve less trustworthy.")
+            parts.append(coreLocalized("Estimated loads are included in the model on your explicit request; they are invented values and make the curve less trustworthy."))
             if noHRDataDayCount > 0 {
-                parts.append("\(noHRDataDayCount) days with runs have no measured heart rate; where no estimate stands in, the model decays as if you had rested.")
+                parts.append(coreLocalized("\(noHRDataDayCount) days with runs have no measured heart rate; where no estimate stands in, the model decays as if you had rested."))
             }
         } else if noHRDataDayCount > 0 {
-            parts.append("\(noHRDataDayCount) days with runs have no heart rate and contribute nothing to the model.")
-            parts.append("The model has no load for those days and decays as if you had rested, so that stretch reads as lost fitness and gained freshness.")
+            parts.append(coreLocalized("\(noHRDataDayCount) days with runs have no heart rate and contribute nothing to the model."))
+            parts.append(coreLocalized("The model has no load for those days and decays as if you had rested, so that stretch reads as lost fitness and gained freshness."))
         }
         if let coverage = hrCoverageFraction {
-            parts.append("Heart-rate coverage \(Int((coverage * 100).rounded())) percent of days with runs.")
+            parts.append(coreLocalized("Heart-rate coverage \(Int((coverage * 100).rounded())) percent of days with runs."))
         }
         return parts.joined(separator: " ")
     }
@@ -773,18 +788,19 @@ public struct TrainingLoadChartAccessibilitySummary: Equatable, Sendable {
         var parts: [String] = []
         switch contribution {
         case .hrDay:
-            parts.append("Load \(Int(load.rounded())) TRIMP")
+            parts.append(coreLocalized("Load \(Int(load.rounded())) TRIMP"))
         case .noHRData where estimatedLoad:
-            parts.append("Load \(Int(load.rounded())) TRIMP, estimated, not in model")
+            parts.append(coreLocalized("Load \(Int(load.rounded())) TRIMP, estimated, not in model"))
         case .noHRData:
-            parts.append("No heart-rate load, modelled as rest")
+            parts.append(coreLocalized("No heart-rate load, modelled as rest"))
         case .restDay:
-            parts.append("Rest day")
+            parts.append(coreLocalized("Rest day"))
         }
-        parts.append("fitness \(Int(ctl.rounded()))")
-        parts.append("fatigue \(Int(atl.rounded()))")
+        parts.append(coreLocalized("fitness \(Int(ctl.rounded()))"))
+        parts.append(coreLocalized("fatigue \(Int(atl.rounded()))"))
         let signed = tsb >= 0 ? "+" : ""
-        parts.append("form \(signed)\(Int(tsb.rounded()))")
+        let form = "\(signed)\(Int(tsb.rounded()))"
+        parts.append(coreLocalized("form \(form)"))
         return parts.joined(separator: ", ")
     }
 }

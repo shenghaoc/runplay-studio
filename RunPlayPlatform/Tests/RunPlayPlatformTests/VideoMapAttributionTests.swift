@@ -15,6 +15,29 @@ final class VideoMapAttributionTests: XCTestCase {
         )
     }
 
+    /// The credit is written in the export's language, like the rest of the HUD,
+    /// and the badge is rasterized for that language and kept for the next frame.
+    func testCreditIsTranslatedAndTheBadgeIsRasterizedPerLanguage() throws {
+        let english = Locale(identifier: "en_US")
+        let simplified = Locale(identifier: "zh-Hans_CN")
+        let traditional = Locale(identifier: "zh-Hant_TW")
+        XCTAssertEqual(VideoMapAttribution.text(locale: english), "Map imagery via Apple Maps")
+        XCTAssertEqual(VideoMapAttribution.text(locale: simplified), "地图影像来自 Apple 地图")
+        XCTAssertEqual(VideoMapAttribution.text(locale: traditional), "地圖影像來自 Apple 地圖")
+
+        for appearance in PNGSummaryExportAppearance.allCases {
+            let latin = try VideoMapAttribution.badge(for: appearance, locale: english)
+            let hans = try VideoMapAttribution.badge(for: appearance, locale: simplified)
+            let hant = try VideoMapAttribution.badge(for: appearance, locale: traditional)
+            // Sized to the translated text, not to the English one.
+            XCTAssertNotEqual(latin.width, hans.width)
+            XCTAssertEqual(hans.height, latin.height)
+            // The same language and appearance reuse the rasterized badge.
+            XCTAssertTrue(hans === (try VideoMapAttribution.badge(for: appearance, locale: simplified)))
+            XCTAssertTrue(hant === (try VideoMapAttribution.badge(for: appearance, locale: traditional)))
+        }
+    }
+
     /// WCAG AA for normal text (4.5:1), whatever the map shows through the
     /// translucent badge: checked over a black and a white basemap.
     func testCreditIsLegibleInBothAppearancesOverAnyMap() throws {

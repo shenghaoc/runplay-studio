@@ -47,14 +47,14 @@ public enum PersonalHeatmapResolution: String, CaseIterable, Hashable, Sendable,
 
     public var displayName: String {
         switch self {
-        case .fine: return "Fine"
-        case .standard: return "Standard"
-        case .broad: return "Broad"
+        case .fine: return coreLocalized("Fine")
+        case .standard: return coreLocalized("Standard")
+        case .broad: return coreLocalized("Broad")
         }
     }
 
     public var helpText: String {
-        "\(displayName) (\(Int(cellSizeMeters)) m cells)"
+        coreLocalized("\(displayName) (\(Int(cellSizeMeters)) m cells)")
     }
 }
 

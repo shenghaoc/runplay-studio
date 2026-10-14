@@ -202,7 +202,7 @@ struct MapReferenceView: View {
                     } label: {
                         HStack {
                             if !available {
-                                Text("\(mode.displayName) — \(String(localized: "Unavailable"))")
+                                Text("\(mode.displayName) — Unavailable")
                             } else {
                                 Text(mode.displayName)
                             }
@@ -216,7 +216,7 @@ struct MapReferenceView: View {
                     .accessibilityHint(modeHelp)
                 }
             } label: {
-                Label(String(localized: "Route Color"), systemImage: "paintpalette")
+                Label(studioLocalized("Route Color"), systemImage: "paintpalette")
                     .font(AppDesign.Typography.compactMetric)
             }
             .menuStyle(.borderlessButton)
@@ -224,15 +224,15 @@ struct MapReferenceView: View {
             .padding(.vertical, AppDesign.Spacing.small)
             .background(.regularMaterial)
             .clipShape(Capsule())
-            .help(String(localized: "Color the route by solid, relative pace, heart rate, power, or corrected elevation"))
-            .accessibilityLabel(String(localized: "Route Color"))
+            .help(studioLocalized("Color the route by solid, relative pace, heart rate, power, or corrected elevation"))
+            .accessibilityLabel(studioLocalized("Route Color"))
             .accessibilityValue(preferredMode.displayName)
-            .accessibilityHint(String(localized: "Choose how the workout route is colored on the map"))
+            .accessibilityHint(studioLocalized("Choose how the workout route is colored on the map"))
 
             if mapViewModel?.isBuilding == true {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Updating route colors"))
+                    .accessibilityLabel(studioLocalized("Updating route colors"))
             }
         }
     }
@@ -284,15 +284,15 @@ struct MapReferenceView: View {
         }
         switch mode {
         case .solid:
-            return String(localized: "Show the route in the primary color.")
+            return studioLocalized("Show the route in the primary color.")
         case .pace:
-            return String(localized: "Color the route by relative pace within this workout.")
+            return studioLocalized("Color the route by relative pace within this workout.")
         case .heartRate:
-            return String(localized: "Color the route by relative heart rate within this workout.")
+            return studioLocalized("Color the route by relative heart rate within this workout.")
         case .power:
-            return String(localized: "Color the route by relative running power within this workout.")
+            return studioLocalized("Color the route by relative running power within this workout.")
         case .correctedElevation:
-            return String(localized: "Color the route by corrected elevation within this workout.")
+            return studioLocalized("Color the route by corrected elevation within this workout.")
         }
     }
 }

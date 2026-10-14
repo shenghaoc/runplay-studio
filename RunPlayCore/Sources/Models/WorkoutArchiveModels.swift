@@ -30,18 +30,18 @@ public enum WorkoutArchiveCandidateStatus: String, Codable, Hashable, Sendable, 
 
     public var userFacingSummary: String {
         switch self {
-        case .ready: return "Ready"
-        case .duplicate: return "Already imported"
-        case .possibleDuplicate: return "Possible duplicate"
-        case .unsupportedActivityType: return "Unsupported activity type"
-        case .unsupportedFormat: return "Unsupported format"
-        case .missingActivityFile: return "Missing activity file"
-        case .invalidMetadata: return "Invalid metadata"
-        case .unsafeArchiveEntry: return "Unsafe archive entry"
-        case .exceedsResourceLimit: return "Exceeds resource limit"
-        case .parseFailed: return "Could not parse"
-        case .noGPSRoute: return "No GPS route"
-        case .providerConflict: return "Conflicts with existing workout"
+        case .ready: return coreLocalized("Ready")
+        case .duplicate: return coreLocalized("Already imported")
+        case .possibleDuplicate: return coreLocalized("Possible duplicate")
+        case .unsupportedActivityType: return coreLocalized("Unsupported activity type")
+        case .unsupportedFormat: return coreLocalized("Unsupported format")
+        case .missingActivityFile: return coreLocalized("Missing activity file")
+        case .invalidMetadata: return coreLocalized("Invalid metadata")
+        case .unsafeArchiveEntry: return coreLocalized("Unsafe archive entry")
+        case .exceedsResourceLimit: return coreLocalized("Exceeds resource limit")
+        case .parseFailed: return coreLocalized("Could not parse")
+        case .noGPSRoute: return coreLocalized("No GPS route")
+        case .providerConflict: return coreLocalized("Conflicts with existing workout")
         }
     }
 }
@@ -85,7 +85,7 @@ public enum WorkoutArchiveActivityFormat: String, Codable, Hashable, Sendable, C
         case .fitGzip: return "FIT.GZ"
         case .gpxGzip: return "GPX.GZ"
         case .tcxGzip: return "TCX.GZ"
-        case .unsupported: return "Unsupported"
+        case .unsupported: return coreLocalized("Unsupported")
         }
     }
 
@@ -160,7 +160,7 @@ public struct WorkoutArchiveCandidate: Identifiable, Hashable, Sendable {
         if !archiveRelativePath.isEmpty {
             return (archiveRelativePath as NSString).lastPathComponent
         }
-        return providerActivityID ?? "Activity"
+        return providerActivityID ?? coreLocalized("Activity")
     }
 }
 

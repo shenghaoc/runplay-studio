@@ -49,7 +49,7 @@ struct CompareView: View {
                             }
                         }
                         .padding(AppDesign.Spacing.large)
-                        .frame(minWidth: 380, maxWidth: 480, maxHeight: .infinity)
+                        .frame(minWidth: splitTablesColumnWidth.minimum, maxWidth: splitTablesColumnWidth.maximum, maxHeight: .infinity)
                         .panelBackground()
                     }
                     .layoutPriority(1)
@@ -93,7 +93,7 @@ struct CompareView: View {
                     comparisonVideoViewModel = nil
                 },
                 onExported: { filename in
-                    exportSuccessMessage = "Saved to \(filename)"
+                    exportSuccessMessage = studioLocalized("Saved to \(filename)")
                     showingExportSuccess = true
                 }
             )
@@ -240,7 +240,10 @@ struct CompareView: View {
                 .tracking(1.2)
                 .foregroundStyle(.tertiary)
 
-            workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
+            workoutLabel(
+                studioLocalized("My Run"),
+                name: appState.selectedWorkout?.displayName ?? studioLocalized("None")
+            )
 
             Spacer(minLength: AppDesign.Spacing.large)
 
@@ -262,7 +265,10 @@ struct CompareView: View {
     private var compactComparisonSelector: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             HStack {
-                workoutLabel("My Run", name: appState.selectedWorkout?.displayName ?? "None")
+                workoutLabel(
+                    studioLocalized("My Run"),
+                    name: appState.selectedWorkout?.displayName ?? studioLocalized("None")
+                )
                 Spacer()
                 comparisonActions
             }
@@ -291,6 +297,20 @@ struct CompareView: View {
         }
     }
 
+    /// The column beside the map is 380...480 pt, widened to the split tables'
+    /// measured width in the active language: "0:00 /公里 持平" is longer than
+    /// "0:00 /km", and a column sized for English cut the Δ column.
+    private var splitTablesColumnWidth: (minimum: CGFloat, maximum: CGFloat) {
+        let tables = max(
+            SplitComparisonTableView.columnWidths(for: appState.splitComparisons).tableWidth,
+            appState.recordedLapComparisons.isEmpty
+                ? 0
+                : RecordedLapComparisonTableView.columnWidths(for: appState.recordedLapComparisons).tableWidth
+        )
+        let minimum = max(380, tables + 2 * AppDesign.Spacing.large)
+        return (minimum, max(480, minimum))
+    }
+
     private var canExportComparisonVideo: Bool {
         guard let pair = appState.comparisonPair else { return false }
         let assessment = ComparisonVideoExportEligibility.distanceAssessment(
@@ -303,7 +323,7 @@ struct CompareView: View {
 
     private var comparisonVideoExportHelp: String {
         guard let pair = appState.comparisonPair else {
-            return "Select two workouts to export a comparison video."
+            return studioLocalized("Select two workouts to export a comparison video.")
         }
         let assessment = ComparisonVideoExportEligibility.distanceAssessment(
             pair: pair,
@@ -313,7 +333,7 @@ struct CompareView: View {
         if let help = assessment.distanceUnavailableHelp {
             return help
         }
-        return "Export a deterministic offline H.264 MP4 of this comparison."
+        return studioLocalized("Export a deterministic offline H.264 MP4 of this comparison.")
     }
 
     private var comparisonVideoExportButton: some View {
@@ -329,7 +349,7 @@ struct CompareView: View {
         .accessibilityLabel("Export comparison replay as MP4 video")
         .accessibilityHint(
             canExportComparisonVideo
-                ? "Opens options for offline H.264 comparison replay export"
+                ? studioLocalized("Opens options for offline H.264 comparison replay export")
                 : comparisonVideoExportHelp
         )
     }
@@ -493,24 +513,40 @@ struct ComparisonSummaryView: View {
                 columns: [GridItem(.adaptive(minimum: 104), spacing: AppDesign.Spacing.small)],
                 spacing: AppDesign.Spacing.small
             ) {
-                DeltaCard(label: "Distance", value: summary.distanceDeltaFormatted)
-                DeltaCard(label: "Active Time", value: summary.activeTimeDeltaFormatted)
+                DeltaCard(label: studioLocalized("Distance"), value: summary.distanceDeltaFormatted)
+                DeltaCard(label: studioLocalized("Active Time"), value: summary.activeTimeDeltaFormatted)
                     .help("Active time excludes recording gaps.")
-                DeltaCard(label: "Elapsed Time", value: summary.elapsedTimeDeltaFormatted)
+                DeltaCard(label: studioLocalized("Elapsed Time"), value: summary.elapsedTimeDeltaFormatted)
                     .help("Elapsed time includes pauses and recording gaps.")
-                DeltaCard(label: "Paused", value: summary.pausedTimeDeltaFormatted)
+                DeltaCard(
+                    label: String(
+                        localized: "compare.delta.paused_time",
+                        defaultValue: "Paused",
+                        bundle: .module,
+                        comment: "Difference in total paused time between the two runs"
+                    ),
+                    value: summary.pausedTimeDeltaFormatted
+                )
                     .help("Paused time is elapsed time minus active time.")
-                DeltaCard(label: "Moving (est.)", value: summary.movingTimeDeltaFormatted)
+                DeltaCard(label: studioLocalized("Moving (est.)"), value: summary.movingTimeDeltaFormatted)
                     .help("Moving time is estimated from route movement. Uncertain active time counts as moving.")
-                DeltaCard(label: "Stopped (est.)", value: summary.stoppedTimeDeltaFormatted)
+                DeltaCard(label: studioLocalized("Stopped (est.)"), value: summary.stoppedTimeDeltaFormatted)
                     .help("Stopped time is estimated from stationary active recording time.")
-                DeltaCard(label: "Active Pace", value: summary.paceDeltaFormatted)
+                DeltaCard(label: studioLocalized("Active Pace"), value: summary.paceDeltaFormatted)
                     .help("Pace is calculated from active time.")
-                DeltaCard(label: "Moving Pace (est.)", value: summary.movingPaceDeltaFormatted)
+                DeltaCard(label: studioLocalized("Moving Pace (est.)"), value: summary.movingPaceDeltaFormatted)
                     .help("Moving pace is estimated from moving time and does not replace active pace.")
-                DeltaCard(label: "Elevation", value: summary.elevationGainDeltaFormatted)
+                DeltaCard(
+                    label: String(
+                        localized: "compare.delta.elevation_gain",
+                        defaultValue: "Elevation",
+                        bundle: .module,
+                        comment: "Difference in elevation gain (total climb) between the two runs"
+                    ),
+                    value: summary.elevationGainDeltaFormatted
+                )
                 if let avgHR = summary.avgHRDeltaFormatted {
-                    DeltaCard(label: "Avg HR", value: avgHR)
+                    DeltaCard(label: studioLocalized("Avg HR"), value: avgHR)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -552,8 +588,8 @@ struct ComparisonSummaryView: View {
     }
 
     private var commonDistanceLabel: String {
-        let commonKm = min(summary.primaryDistanceMeters, summary.comparisonDistanceMeters) / 1000
-        return String(format: "%.1f km", commonKm)
+        let common = min(summary.primaryDistanceMeters, summary.comparisonDistanceMeters)
+        return DisplayFormatter.formatKilometers(common, fractionDigits: 1)
     }
 }
 
@@ -619,15 +655,15 @@ struct ComparisonEmptyView: View {
     }
 
     private var title: String {
-        if workoutCount < 2 { return "Import another run to compare" }
-        if primaryName == nil { return "Select a primary run" }
-        return "Select a comparison run"
+        if workoutCount < 2 { return studioLocalized("Import another run to compare") }
+        if primaryName == nil { return studioLocalized("Select a primary run") }
+        return studioLocalized("Select a comparison run")
     }
 
     private var message: String {
-        if workoutCount == 0 { return "No runs loaded yet. Import a GPX, TCX, FIT, or JSON file to get started." }
-        if workoutCount == 1 { return "Only one run is loaded. Import another to compare side-by-side." }
-        if let primaryName { return "Primary: \(primaryName)" }
-        return "Choose a run in the sidebar to begin"
+        if workoutCount == 0 { return studioLocalized("No runs loaded yet. Import a GPX, TCX, FIT, or JSON file to get started.") }
+        if workoutCount == 1 { return studioLocalized("Only one run is loaded. Import another to compare side-by-side.") }
+        if let primaryName { return studioLocalized("Primary: \(primaryName)") }
+        return studioLocalized("Choose a run in the sidebar to begin")
     }
 }

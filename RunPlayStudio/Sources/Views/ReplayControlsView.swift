@@ -177,7 +177,7 @@ struct ReplayControlsView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? AppDesign.primaryBlue : .secondary)
-        .help("Replay at \(speed == 1.0 ? "normal" : String(format: "%.1f", speed)) speed")
+        .help(speed == 1.0 ? "Replay at normal speed" : "Replay at \(String(format: "%.1f", speed)) speed")
         .accessibilityLabel("Replay speed \(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }

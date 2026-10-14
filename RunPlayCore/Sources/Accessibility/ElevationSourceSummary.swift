@@ -50,13 +50,17 @@ public struct ElevationSourceSummary: Equatable, Sendable {
         let barometric = recordedAltitudeSensor == .barometric
         switch source {
         case .none:
-            return "No elevation data"
+            return coreLocalized("No elevation data")
         case .recorded:
-            return barometric ? "Barometric altimeter" : "Recorded altitude (sensor unknown)"
+            return barometric
+                ? coreLocalized("Barometric altimeter")
+                : coreLocalized("Recorded altitude (sensor unknown)")
         case .dem:
-            return "DEM tiles"
+            return coreLocalized("DEM tiles")
         case .demAndRecorded:
-            return barometric ? "Barometric altimeter and DEM tiles" : "DEM tiles and recorded altitude"
+            return barometric
+                ? coreLocalized("Barometric altimeter and DEM tiles")
+                : coreLocalized("DEM tiles and recorded altitude")
         }
     }
 
@@ -67,43 +71,48 @@ public struct ElevationSourceSummary: Equatable, Sendable {
         let coverage = correction.coverage
         switch correction.outcome {
         case .optedOut:
-            return ["DEM correction is off for this workout because Use Recorded Elevation is chosen."]
+            return [coreLocalized("DEM correction is off for this workout because Use Recorded Elevation is chosen.")]
         case .noCoverage:
-            return ["Not corrected: no DEM tile in the folder covers this route."]
+            return [coreLocalized("Not corrected: no DEM tile in the folder covers this route.")]
         case .tileBudgetExceeded(let minimumRequiredTileCount, let tileBudget):
             return [
-                "Not corrected: this route needs at least \(minimumRequiredTileCount) DEM tiles, "
-                    + "more than the \(tileBudget) one correction may read. "
-                    + "Tiles at a lower zoom cover more ground each."
+                coreLocalized("""
+                    Not corrected: this route needs at least \(minimumRequiredTileCount) DEM tiles, \
+                    more than the \(tileBudget) one correction may read. \
+                    Tiles at a lower zoom cover more ground each.
+                    """)
             ]
         case .applied:
             var notes: [String] = []
             if coverage.replacedRecordedPointCount > 0 {
-                notes.append(
-                    "DEM tiles replaced the recorded altitude at "
-                        + "\(Self.percent(coverage.replacedRecordedPointCount, of: coverage.pointCount)) of points. "
-                        + "This file does not say which sensor recorded that altitude; if it was a "
-                        + "barometric altimeter, choose Use Recorded Elevation to keep it."
-                )
+                let replaced = Self.percent(coverage.replacedRecordedPointCount, of: coverage.pointCount)
+                notes.append(coreLocalized("""
+                    DEM tiles replaced the recorded altitude at \(replaced) of points. \
+                    This file does not say which sensor recorded that altitude; if it was a \
+                    barometric altimeter, choose Use Recorded Elevation to keep it.
+                    """))
             }
             if coverage.keptBarometricPointCount > 0 {
-                notes.append("The recorded barometric altitude is kept wherever it exists.")
+                notes.append(coreLocalized("The recorded barometric altitude is kept wherever it exists."))
             }
             if coverage.filledMissingPointCount > 0 {
-                notes.append(
-                    "DEM tiles filled \(Self.count(coverage.filledMissingPointCount, "point", "points")) "
-                        + "that had no recorded altitude."
-                )
+                notes.append(coreLocalized(
+                    "DEM tiles filled \(coverage.filledMissingPointCount) points that had no recorded altitude."
+                ))
             }
             if let fraction = coverage.tileCoverageFraction, fraction < 1 {
-                var sentence = "DEM tiles covered \(Self.percent(fraction)) of the route"
+                let covered = Self.percent(fraction)
                 if coverage.missingTileCount > 0 {
-                    sentence += "; \(Self.count(coverage.missingTileCount, "tile is", "tiles are")) missing from the folder"
+                    notes.append(coreLocalized("""
+                        DEM tiles covered \(covered) of the route; \
+                        \(coverage.missingTileCount) tiles are missing from the folder.
+                        """))
+                } else {
+                    notes.append(coreLocalized("DEM tiles covered \(covered) of the route."))
                 }
-                notes.append(sentence + ".")
             }
             if coverage.unreadableTileCount > 0 {
-                notes.append("\(Self.count(coverage.unreadableTileCount, "tile", "tiles")) could not be read.")
+                notes.append(coreLocalized("\(coverage.unreadableTileCount) tiles could not be read."))
             }
             return notes
         }
@@ -111,7 +120,7 @@ public struct ElevationSourceSummary: Equatable, Sendable {
 
     /// The label and every note, for VoiceOver.
     public var spokenSummary: String {
-        (["Elevation source: \(label)."] + notes).joined(separator: " ")
+        ([coreLocalized("Elevation source: \(label).")] + notes).joined(separator: " ")
     }
 
     // MARK: - Formatting
@@ -121,15 +130,13 @@ public struct ElevationSourceSummary: Equatable, Sendable {
     public static func percent(_ fraction: Double) -> String {
         guard fraction.isFinite, fraction > 0 else { return "0%" }
         let whole = Int((min(fraction, 1) * 100).rounded(.down))
-        return whole == 0 ? "less than 1%" : "\(whole)%"
+        // "1%" is a formatted number, interpolated rather than part of the key.
+        let onePercent = "1%"
+        return whole == 0 ? coreLocalized("less than \(onePercent)") : "\(whole)%"
     }
 
     static func percent(_ part: Int, of whole: Int) -> String {
         whole > 0 ? percent(Double(part) / Double(whole)) : "0%"
-    }
-
-    static func count(_ value: Int, _ singular: String, _ plural: String) -> String {
-        "\(value) \(value == 1 ? singular : plural)"
     }
 }
 
@@ -139,24 +146,27 @@ extension DEMElevationCorrection {
     public func importSummary(recordedAltitudeSensor: RecordedAltitudeSensor) -> String {
         switch outcome {
         case .optedOut:
-            return "Recorded elevation kept."
+            return coreLocalized("Recorded elevation kept.")
         case .noCoverage:
-            return "Elevation not corrected: no DEM tile covers this route."
+            return coreLocalized("Elevation not corrected: no DEM tile covers this route.")
         case .tileBudgetExceeded:
-            return "Elevation not corrected: the route needs more DEM tiles than one correction may read."
+            return coreLocalized("Elevation not corrected: the route needs more DEM tiles than one correction may read.")
         case .applied:
             let covered = coverage.tileCoverageFraction.map(ElevationSourceSummary.percent) ?? "0%"
             if recordedAltitudeSensor == .barometric {
                 return coverage.filledMissingPointCount > 0
-                    ? "Barometric elevation kept; DEM tiles filled "
-                        + "\(ElevationSourceSummary.count(coverage.filledMissingPointCount, "point", "points")) without it."
-                    : "Barometric elevation kept."
+                    ? coreLocalized(
+                        "Barometric elevation kept; DEM tiles filled \(coverage.filledMissingPointCount) points without it."
+                    )
+                    : coreLocalized("Barometric elevation kept.")
             }
             if coverage.replacedRecordedPointCount > 0 {
-                return "Elevation corrected from DEM tiles covering \(covered) of the route, "
-                    + "replacing recorded altitude from an unstated sensor."
+                return coreLocalized("""
+                    Elevation corrected from DEM tiles covering \(covered) of the route, \
+                    replacing recorded altitude from an unstated sensor.
+                    """)
             }
-            return "Elevation corrected from DEM tiles covering \(covered) of the route."
+            return coreLocalized("Elevation corrected from DEM tiles covering \(covered) of the route.")
         }
     }
 
@@ -179,12 +189,12 @@ extension DEMElevationCorrection {
             }
         }
         var parts: [String] = []
-        if corrected > 0 { parts.append("\(corrected) corrected") }
-        if uncovered > 0 { parts.append("\(uncovered) outside the tiles") }
-        if overBudget > 0 { parts.append("\(overBudget) needing more tiles than one correction may read") }
-        if failed > 0 { parts.append("\(failed) not corrected after an error") }
+        if corrected > 0 { parts.append(coreLocalized("\(corrected) corrected")) }
+        if uncovered > 0 { parts.append(coreLocalized("\(uncovered) outside the tiles")) }
+        if overBudget > 0 { parts.append(coreLocalized("\(overBudget) needing more tiles than one correction may read")) }
+        if failed > 0 { parts.append(coreLocalized("\(failed) not corrected after an error")) }
         guard !parts.isEmpty else { return nil }
-        let runs = ElevationSourceSummary.count(records.count, "run", "runs")
-        return "DEM elevation for \(runs): " + parts.joined(separator: ", ") + "."
+        let outcomes = parts.joined(separator: ", ")
+        return coreLocalized("DEM elevation for \(records.count) runs: \(outcomes).")
     }
 }

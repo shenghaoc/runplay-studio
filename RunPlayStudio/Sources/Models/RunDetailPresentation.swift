@@ -15,26 +15,30 @@ enum DistanceProvenancePresentation {
         let fromHealth = workout.source == .healthKit
         guard reportsDistance(workout) else {
             return fromHealth
-                ? "No distance from Apple Health (no GPS route)"
-                : "No distance reported by the source (no GPS route)"
+                ? studioLocalized("No distance from Apple Health (no GPS route)")
+                : studioLocalized("No distance reported by the source (no GPS route)")
         }
         return fromHealth
-            ? "Distance from Apple Health (no GPS route)"
-            : "Distance reported by the source (no GPS route)"
+            ? studioLocalized("Distance from Apple Health (no GPS route)")
+            : studioLocalized("Distance reported by the source (no GPS route)")
     }
 
     /// Help for the Distance metric. "Total recorded route distance" is only
     /// true of a distance measured along a route.
     static func distanceHelp(for workout: RunWorkout) -> String {
         guard workout.summary.distanceProvenance == .sourceReported else {
-            return "Total recorded route distance."
+            return studioLocalized("Total recorded route distance.")
         }
+        // Whole sentences, one per source, so a translator can reorder each.
+        let fromHealth = workout.source == .healthKit
         guard reportsDistance(workout) else {
-            let source = workout.source == .healthKit ? "Apple Health" : "The source"
-            return "\(source) reported no distance for this run, and it has no GPS route to measure one."
+            return fromHealth
+                ? studioLocalized("Apple Health reported no distance for this run, and it has no GPS route to measure one.")
+                : studioLocalized("The source reported no distance for this run, and it has no GPS route to measure one.")
         }
-        let origin = workout.source == .healthKit ? "Apple Health" : "the source"
-        return "Distance reported by \(origin). This run has no GPS route, so RunPlay Studio did not measure it."
+        return fromHealth
+            ? studioLocalized("Distance reported by Apple Health. This run has no GPS route, so RunPlay Studio did not measure it.")
+            : studioLocalized("Distance reported by the source. This run has no GPS route, so RunPlay Studio did not measure it.")
     }
 
     /// A run imported with only a duration keeps a zero distance and is still
@@ -53,18 +57,18 @@ enum DistanceProvenancePresentation {
 enum RouteLessNoticePresentation {
 
     static func message(hasHeartRate: Bool) -> String {
-        let available = hasHeartRate
-            ? "heart rate and summary metrics are available"
-            : "only summary metrics are available"
-        return "No GPS route — \(available). The map, replay, splits and segments need a route."
+        hasHeartRate
+            ? studioLocalized("No GPS route — heart rate and summary metrics are available. The map, replay, splits and segments need a route.")
+            : studioLocalized("No GPS route — only summary metrics are available. The map, replay, splits and segments need a route.")
     }
 
     /// What the Overview shows in place of a map it has no route to draw on.
-    static let mapTitle = "No GPS route"
+    static var mapTitle: String { studioLocalized("No GPS route") }
 
     static func mapDetail(hasHeartRate: Bool) -> String {
-        let base = "This run has no route to draw, so there is no map or replay."
-        return hasHeartRate ? base + " Its heart rate is on the Charts tab." : base
+        hasHeartRate
+            ? studioLocalized("This run has no route to draw, so there is no map or replay. Its heart rate is on the Charts tab.")
+            : studioLocalized("This run has no route to draw, so there is no map or replay.")
     }
 }
 
@@ -75,11 +79,12 @@ enum RouteLessNoticePresentation {
 /// showing an empty table under a sentence that promises splits.
 enum SplitsPresentation {
 
-    static let needsRouteMessage =
-        "Splits need a GPS route. This run has none, so there are no distance splits to show."
+    static var needsRouteMessage: String {
+        studioLocalized("Splits need a GPS route. This run has none, so there are no distance splits to show.")
+    }
 
     static let noRecordedLapsMessage =
-        "No recorded laps in this file. Calculated distance splits are still available."
+        studioLocalized("No recorded laps in this file. Calculated distance splits are still available.")
 
     /// What the Distance Splits view shows.
     enum DistanceSplitsContent: Equatable {

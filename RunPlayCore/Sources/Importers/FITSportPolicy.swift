@@ -45,8 +45,8 @@ public enum FITSportPolicy {
     /// Human-readable sport name for the review sheet. Never exposes raw
     /// numeric profile internals for values the profile enum recognises.
     public static func displayName(sport rawSport: UInt8?) -> String {
-        guard let rawSport else { return "Unspecified" }
-        guard let sport = FITSport(rawValue: rawSport) else { return "Unrecognised" }
+        guard let rawSport else { return coreLocalized("Unspecified") }
+        guard let sport = FITSport(rawValue: rawSport) else { return coreLocalized("Unrecognised") }
         return displayName(sport)
     }
 
@@ -58,12 +58,12 @@ public enum FITSportPolicy {
             return nil
         }
         switch rawSubSport {
-        case 1: return "Treadmill"
-        case 2: return "Street"
-        case 3: return "Trail"
-        case 4: return "Track"
-        case 6: return "Indoor"
-        case 17: return "Virtual"
+        case 1: return coreLocalized("Treadmill")
+        case 2: return coreLocalized("Street")
+        case 3: return coreLocalized("Trail")
+        case 4: return coreLocalized("Track")
+        case 6: return coreLocalized("Indoor")
+        case 17: return coreLocalized("Virtual")
         default: return nil
         }
     }
@@ -84,27 +84,62 @@ public enum FITSportPolicy {
 
     private static func displayName(_ sport: FITSport) -> String {
         switch sport {
-        case .running: return "Running"
-        case .cycling: return "Cycling"
-        case .swimming: return "Swimming"
-        case .walking: return "Walking"
-        case .hiking: return "Hiking"
-        case .generic: return "Generic"
-        case .training: return "Training"
-        case .transition: return "Transition"
-        case .multisport: return "Multisport"
-        case .rowing: return "Rowing"
-        case .fitnessEquipment: return "Fitness equipment"
-        case .crossCountrySkiing: return "Cross-country skiing"
-        case .alpineSkiing: return "Alpine skiing"
-        case .snowboarding: return "Snowboarding"
-        case .paddling: return "Paddling"
-        case .inlineSkating: return "Inline skating"
-        case .rockClimbing: return "Rock climbing"
-        case .hiit: return "HIIT"
-        default:
-            // Profile-known but not individually named: use the case name.
-            return String(describing: sport)
+        case .running: return coreLocalized("Running")
+        case .cycling: return coreLocalized("Cycling")
+        case .swimming: return coreLocalized("Swimming")
+        case .walking: return coreLocalized("Walking")
+        case .hiking: return coreLocalized("Hiking")
+        case .generic: return coreLocalized("Generic")
+        case .training: return coreLocalized("Training")
+        case .transition: return coreLocalized("Transition")
+        case .multisport: return coreLocalized("Multisport")
+        case .rowing: return coreLocalized("Rowing")
+        case .fitnessEquipment: return coreLocalized("Fitness equipment")
+        case .crossCountrySkiing: return coreLocalized("Cross-country skiing")
+        case .alpineSkiing: return coreLocalized("Alpine skiing")
+        case .snowboarding: return coreLocalized("Snowboarding")
+        case .paddling: return coreLocalized("Paddling")
+        case .inlineSkating: return coreLocalized("Inline skating")
+        case .rockClimbing: return coreLocalized("Rock climbing")
+        case .hiit: return coreLocalized("HIIT")
+        case .basketball: return coreLocalized("Basketball")
+        case .soccer: return coreLocalized("Soccer")
+        case .tennis: return coreLocalized("Tennis")
+        case .americanFootball: return coreLocalized("American football")
+        case .mountaineering: return coreLocalized("Mountaineering")
+        case .flying: return coreLocalized("Flying")
+        case .eBiking: return coreLocalized("E-biking")
+        case .motorcycling: return coreLocalized("Motorcycling")
+        case .boating: return coreLocalized("Boating")
+        case .driving: return coreLocalized("Driving")
+        case .golf: return coreLocalized("Golf")
+        case .hangGliding: return coreLocalized("Hang gliding")
+        case .horsebackRiding: return coreLocalized("Horseback riding")
+        case .hunting: return coreLocalized("Hunting")
+        case .fishing: return coreLocalized("Fishing")
+        case .sailing: return coreLocalized("Sailing")
+        case .iceSkating: return coreLocalized("Ice skating")
+        case .skyDiving: return coreLocalized("Skydiving")
+        case .snowshoeing: return coreLocalized("Snowshoeing")
+        case .snowmobiling: return coreLocalized("Snowmobiling")
+        case .standUpPaddleboarding: return coreLocalized("Stand-up paddleboarding")
+        case .surfing: return coreLocalized("Surfing")
+        case .wakeboarding: return coreLocalized("Wakeboarding")
+        case .waterSkiing: return coreLocalized("Water skiing")
+        case .kayaking: return coreLocalized("Kayaking")
+        case .rafting: return coreLocalized("Rafting")
+        case .windsurfing: return coreLocalized("Windsurfing")
+        case .kitesurfing: return coreLocalized("Kitesurfing")
+        case .tactical: return coreLocalized("Tactical")
+        case .jumpmaster: return coreLocalized("Jumpmaster")
+        case .boxing: return coreLocalized("Boxing")
+        case .floorClimbing: return coreLocalized("Floor climbing")
+        case .baseball: return coreLocalized("Baseball")
+        case .diving: return coreLocalized("Diving")
+        case .racket: return coreLocalized("Racket sports")
+        case .waterTubing: return coreLocalized("Water tubing")
+        case .wakesurfing: return coreLocalized("Wakesurfing")
+        case .all: return coreLocalized("All sports")
         }
     }
 }

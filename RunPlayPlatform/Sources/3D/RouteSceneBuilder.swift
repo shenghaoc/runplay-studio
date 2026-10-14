@@ -443,7 +443,7 @@ public class RouteSceneBuilder {
         parent.addChildNode(SCNNode(geometry: glow))
 
         // Label
-        let label = createTextSprite("START", color: startMarkerColor, fontSize: 2.5)
+        let label = createTextSprite(platformLocalized("Start").uppercased(), color: startMarkerColor, fontSize: 2.5)
         label.position = SCNVector3(0, markerRadius * 3, 0)
         parent.addChildNode(label)
 
@@ -468,7 +468,7 @@ public class RouteSceneBuilder {
         parent.addChildNode(SCNNode(geometry: glow))
 
         // Label
-        let label = createTextSprite("FINISH", color: finishMarkerColor, fontSize: 2.5)
+        let label = createTextSprite(platformLocalized("Finish").uppercased(), color: finishMarkerColor, fontSize: 2.5)
         label.position = SCNVector3(0, markerRadius * 3, 0)
         parent.addChildNode(label)
 

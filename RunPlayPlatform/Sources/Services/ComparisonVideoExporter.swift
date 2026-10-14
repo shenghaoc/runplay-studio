@@ -150,7 +150,7 @@ public struct ComparisonVideoExporter: ComparisonVideoExporting, Sendable {
         guard distanceAssessment.canExportDistance else {
             throw ComparisonVideoExportError.ineligiblePair(
                 distanceAssessment.distanceUnavailableHelp
-                    ?? "Comparison video export is not available for this pair."
+                    ?? platformLocalized("Comparison video export is not available for this pair.")
             )
         }
 
@@ -311,7 +311,7 @@ public struct ComparisonVideoExporter: ComparisonVideoExporting, Sendable {
         )
         guard sampler.isReady else {
             throw ComparisonVideoExportError.invalidConfiguration(
-                "Comparison domain is not ready for poster rendering"
+                platformLocalized("Comparison domain is not ready for poster rendering")
             )
         }
         let plan = try ComparisonVideoFramePlan.make(

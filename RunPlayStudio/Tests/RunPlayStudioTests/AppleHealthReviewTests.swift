@@ -227,7 +227,9 @@ final class AppleHealthReviewTests: XCTestCase {
             let window = AppleHealthWorkoutWindow(
                 startSeconds: 0, endSeconds: span, activityType: Self.running, utcOffsetSeconds: 0
             )
-            XCTAssertEqual(AppleHealthReviewPresentation.durationText(window), text)
+            XCTAssertEqual(
+                AppleHealthReviewPresentation.durationText(window, locale: Locale(identifier: "en_US")), text
+            )
         }
     }
 
@@ -250,7 +252,7 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(AppleHealthReviewPresentation.distanceText(
             candidate(index: 0, start: 0, end: 60, distanceMeters: 5_000)), "5.00 km")
         XCTAssertEqual(AppleHealthReviewPresentation.distanceText(
-            candidate(index: 0, start: 0, end: 60, distanceMeters: 21_097)), "21.1 km")
+            candidate(index: 0, start: 0, end: 60, distanceMeters: 21_097)), "21.10 km")
         XCTAssertEqual(AppleHealthReviewPresentation.distanceText(
             candidate(index: 0, start: 0, end: 60, distanceMeters: nil)), "—")
         XCTAssertEqual(AppleHealthReviewPresentation.distanceText(
@@ -361,7 +363,7 @@ final class AppleHealthReviewTests: XCTestCase {
             selectedCandidate: candidate(index: 0, start: 0, end: 60), flaggedCount: 2), expected)
         XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
             selectedCandidate: nil, flaggedCount: 1),
-            "1 row flagged as duplicates or possible duplicates.")
+            "1 row flagged as a duplicate or possible duplicate.")
     }
 
     func testFlagDetailIsAbsentWhenThereAreNoFlags() {
@@ -520,7 +522,10 @@ final class AppleHealthReviewTests: XCTestCase {
                     startSeconds: 0, outcome: .importedWithoutRoute, routeFallbackReason: .routeWindowMismatch)
             }
             let summary = AppleHealthImportSummary(report: AppleHealthImportReport(items: items))
-            XCTAssertEqual(summary.lines, ["\(count) \(count == 1 ? "run" : "runs") imported without a map because their route file didn't match the run's time."])
+            let expected = count == 1
+                ? "1 run imported without a map because its route file didn't match the run's time."
+                : "\(count) runs imported without a map because their route file didn't match the run's time."
+            XCTAssertEqual(summary.lines, [expected])
         }
     }
 
@@ -537,7 +542,7 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(report.routeWindowMismatchCount, 0)
         XCTAssertEqual(report.trimmedRouteCount, 1)
         let summary = AppleHealthImportSummary(report: report)
-        XCTAssertTrue(summary.lines.contains("1 run had their route trimmed to match the run's recorded time."))
+        XCTAssertTrue(summary.lines.contains("1 run had its route trimmed to match the run's recorded time."))
         XCTAssertTrue(summary.lines.contains("1 run has no route, because its route file could not be read."))
         XCTAssertFalse(summary.lines.contains { $0.contains("didn't match") })
     }

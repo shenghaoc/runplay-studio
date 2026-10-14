@@ -17,14 +17,14 @@ public struct WorkoutVideoFramePlan: Hashable, Sendable {
         sourceTotalElapsedSeconds: Double
     ) throws {
         guard frameCount >= 2 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Video requires at least two frames")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Video requires at least two frames"))
         }
         guard framesPerSecond > 0 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Frame rate must be positive")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Frame rate must be positive"))
         }
         guard sourceTotalElapsedSeconds.isFinite, sourceTotalElapsedSeconds > 0 else {
             throw WorkoutVideoExportError.invalidConfiguration(
-                "Workout total elapsed duration must be positive and finite"
+                coreLocalized("Workout total elapsed duration must be positive and finite")
             )
         }
         self.frameCount = frameCount
@@ -59,25 +59,25 @@ public struct WorkoutVideoFramePlan: Hashable, Sendable {
         maximumFrameCount: Int
     ) throws -> Int {
         guard durationSeconds > 0 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Duration must be positive")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Duration must be positive"))
         }
         guard framesPerSecond > 0 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Frame rate must be positive")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Frame rate must be positive"))
         }
         guard maximumFrameCount >= 2 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Maximum frame count must be at least 2")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Maximum frame count must be at least 2"))
         }
 
         let (product, overflow) = durationSeconds.multipliedReportingOverflow(by: framesPerSecond)
         if overflow || product < 0 {
-            throw WorkoutVideoExportError.invalidConfiguration("Frame count overflow")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Frame count overflow"))
         }
         guard product >= 2 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Video requires at least two frames")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Video requires at least two frames"))
         }
         guard product <= maximumFrameCount else {
             throw WorkoutVideoExportError.invalidConfiguration(
-                "Frame count \(product) exceeds maximum \(maximumFrameCount)"
+                coreLocalized("Frame count \(product) exceeds maximum \(maximumFrameCount)")
             )
         }
         return product

@@ -20,33 +20,27 @@ public enum RecordedLapTrigger: Hashable, Sendable, Codable {
     public var displayName: String {
         switch self {
         case .manual:
-            return NSLocalizedString("Manual", comment: "Recorded lap trigger")
+            return coreLocalized("Manual")
         case .distance:
-            return NSLocalizedString("Distance", comment: "Recorded lap trigger")
+            return coreLocalized("Distance")
         case .time:
-            return NSLocalizedString("Time", comment: "Recorded lap trigger")
+            return coreLocalized("Time")
         case .position:
-            return NSLocalizedString("Position", comment: "Recorded lap trigger")
+            return coreLocalized("Position")
         case .sessionEnd:
-            return NSLocalizedString("Session end", comment: "Recorded lap trigger")
+            return coreLocalized("Session end")
         case .fitnessEquipment:
-            return NSLocalizedString("Fitness equipment", comment: "Recorded lap trigger")
+            return coreLocalized("Fitness equipment")
         case .unknownFIT(let code):
-            return String(
-                format: NSLocalizedString("Unknown (FIT %d)", comment: "Unknown FIT lap trigger"),
-                Int(code)
-            )
+            return coreLocalized("Unknown (FIT \(Int(code)))")
         case .unknownTCX(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
-                return NSLocalizedString("Unknown", comment: "Unknown TCX lap trigger")
+                return coreLocalized("Unknown")
             }
-            return String(
-                format: NSLocalizedString("Unknown (%@)", comment: "Unknown TCX lap trigger"),
-                trimmed
-            )
+            return coreLocalized("Unknown (\(trimmed))")
         case .unavailable:
-            return NSLocalizedString("Unavailable", comment: "Missing lap trigger")
+            return coreLocalized("Unavailable")
         }
     }
 

@@ -60,25 +60,25 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
 
     public func loadManifest() throws -> WorkoutLibraryManifest {
         guard manifestURL.isFileURL else {
-            throw WorkoutLibraryError.manifestCorrupted("Only local file URLs are supported")
+            throw WorkoutLibraryError.manifestCorrupted(coreLocalized("Only local file URLs are supported"))
         }
 
         guard fileManager.fileExists(atPath: manifestURL.path) else {
-            throw WorkoutLibraryError.manifestMissing("No manifest at \(manifestURL.path)")
+            throw WorkoutLibraryError.manifestMissing(coreLocalized("No manifest at \(manifestURL.path)"))
         }
 
         let data: Data
         do {
             data = try Data(contentsOf: manifestURL)
         } catch {
-            throw WorkoutLibraryError.manifestCorrupted("Cannot read manifest: \(error.localizedDescription)")
+            throw WorkoutLibraryError.manifestCorrupted(coreLocalized("Cannot read manifest: \(error.localizedDescription)"))
         }
 
         let manifest: WorkoutLibraryManifest
         do {
             manifest = try decoder.decode(WorkoutLibraryManifest.self, from: data)
         } catch {
-            throw WorkoutLibraryError.manifestCorrupted("Cannot decode manifest: \(error.localizedDescription)")
+            throw WorkoutLibraryError.manifestCorrupted(coreLocalized("Cannot decode manifest: \(error.localizedDescription)"))
         }
 
         guard WorkoutLibraryManifest.isSupportedSchemaVersion(manifest.version) else {
@@ -103,7 +103,7 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         do {
             data = try encoder.encode(toSave)
         } catch {
-            throw WorkoutLibraryError.writeFailed("Cannot encode manifest: \(error.localizedDescription)")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Cannot encode manifest: \(error.localizedDescription)"))
         }
 
         try atomicWrite(data, to: manifestURL)
@@ -115,7 +115,7 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         let url = workoutURL(for: id)
 
         guard url.isFileURL else {
-            throw WorkoutLibraryError.workoutCorrupted(id, "Only local file URLs are supported")
+            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Only local file URLs are supported"))
         }
 
         guard fileManager.fileExists(atPath: url.path) else {
@@ -126,13 +126,13 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         do {
             data = try Data(contentsOf: url)
         } catch {
-            throw WorkoutLibraryError.workoutCorrupted(id, "Cannot read file: \(error.localizedDescription)")
+            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Cannot read file: \(error.localizedDescription)"))
         }
 
         do {
             return try decoder.decode(RunWorkout.self, from: data)
         } catch {
-            throw WorkoutLibraryError.workoutCorrupted(id, "Cannot decode: \(error.localizedDescription)")
+            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Cannot decode: \(error.localizedDescription)"))
         }
     }
 
@@ -143,7 +143,7 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         do {
             data = try encoder.encode(workout)
         } catch {
-            throw WorkoutLibraryError.writeFailed("Cannot encode workout \(workout.id): \(error.localizedDescription)")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Cannot encode workout \(workout.id.uuidString): \(error.localizedDescription)"))
         }
 
         let url = workoutURL(for: workout.id)
@@ -156,7 +156,7 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         do {
             try fileManager.removeItem(at: url)
         } catch {
-            throw WorkoutLibraryError.writeFailed("Cannot delete workout \(id): \(error.localizedDescription)")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Cannot delete workout \(id.uuidString): \(error.localizedDescription)"))
         }
     }
 
@@ -175,7 +175,7 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
         do {
             try data.write(to: destination, options: .atomic)
         } catch {
-            throw WorkoutLibraryError.writeFailed("Cannot write to \(destination.path): \(error.localizedDescription)")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Cannot write to \(destination.path): \(error.localizedDescription)"))
         }
     }
 }
@@ -206,7 +206,7 @@ extension FileWorkoutLibraryStore {
             data = try encoder.encode(workout)
         } catch {
             throw WorkoutLibraryError.writeFailed(
-                "Cannot encode staged workout \(workout.id): \(error.localizedDescription)"
+                coreLocalized("Cannot encode staged workout \(workout.id.uuidString): \(error.localizedDescription)")
             )
         }
         try atomicWrite(data, to: stagedWorkoutURL(id: workout.id, batchID: batchID))
@@ -215,7 +215,7 @@ extension FileWorkoutLibraryStore {
     public func loadStagedWorkout(id: UUID, batchID: UUID) throws -> RunWorkout {
         let url = stagedWorkoutURL(id: id, batchID: batchID)
         guard url.isFileURL else {
-            throw WorkoutLibraryError.workoutCorrupted(id, "Only local file URLs are supported")
+            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Only local file URLs are supported"))
         }
         guard fileManager.fileExists(atPath: url.path) else {
             throw WorkoutLibraryError.workoutFileMissing(id)
@@ -224,12 +224,12 @@ extension FileWorkoutLibraryStore {
         do {
             data = try Data(contentsOf: url)
         } catch {
-            throw WorkoutLibraryError.workoutCorrupted(id, "Cannot read staged file: \(error.localizedDescription)")
+            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Cannot read staged file: \(error.localizedDescription)"))
         }
         do {
             return try decoder.decode(RunWorkout.self, from: data)
         } catch {
-            throw WorkoutLibraryError.workoutCorrupted(id, "Cannot decode staged file: \(error.localizedDescription)")
+            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Cannot decode staged file: \(error.localizedDescription)"))
         }
     }
 
@@ -261,7 +261,7 @@ extension FileWorkoutLibraryStore {
             if let libraryError = error as? WorkoutLibraryError {
                 throw libraryError
             }
-            throw WorkoutLibraryError.writeFailed("Promote failed: \(error.localizedDescription)")
+            throw WorkoutLibraryError.writeFailed(coreLocalized("Promote failed: \(error.localizedDescription)"))
         }
     }
 
@@ -272,7 +272,7 @@ extension FileWorkoutLibraryStore {
             try fileManager.removeItem(at: dir)
         } catch {
             throw WorkoutLibraryError.writeFailed(
-                "Cannot remove staging \(batchID): \(error.localizedDescription)"
+                coreLocalized("Cannot remove staging \(batchID.uuidString): \(error.localizedDescription)")
             )
         }
         // Remove empty .staging root when possible.
@@ -293,7 +293,7 @@ extension FileWorkoutLibraryStore {
             )
         } catch {
             throw WorkoutLibraryError.writeFailed(
-                "Cannot list staging root: \(error.localizedDescription)"
+                coreLocalized("Cannot list staging root: \(error.localizedDescription)")
             )
         }
         for url in contents {
@@ -313,7 +313,7 @@ extension FileWorkoutLibraryStore {
             )
         } catch {
             throw WorkoutLibraryError.writeFailed(
-                "Cannot list workouts directory: \(error.localizedDescription)"
+                coreLocalized("Cannot list workouts directory: \(error.localizedDescription)")
             )
         }
         for file in files where file.pathExtension.lowercased() == "json" {

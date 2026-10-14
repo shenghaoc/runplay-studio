@@ -77,7 +77,9 @@ public struct WorkoutExportSummary: Codable, Sendable {
         elevationAnalysisAvailable = elevationProfile.hasMeaningfulElevation
         elevationSource = ElevationSourceExport(workout: workout, sourceCounts: elevationProfile.sourceCounts)
         qualityDiagnostics = workout.qualityDiagnostics
-        analysisWarnings = workout.analysisWarnings.map(\.message)
+        // The persisted English text, not the localized `message`: JSON export
+        // content stays the same in every app language.
+        analysisWarnings = workout.analysisWarnings.map(\.rawValue)
         movementDiagnostics = workout.movementDiagnostics
 
         let summary = workout.summary

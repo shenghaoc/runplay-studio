@@ -180,9 +180,9 @@ public enum AppleHealthImportError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .notALocalFile:
-            return "Only local files can be imported. Choose an export.zip saved on this Mac."
+            return platformLocalized("Only local files can be imported. Choose an export.zip saved on this Mac.")
         case .batchConflict:
-            return "Another library import is already in progress."
+            return platformLocalized("Another library import is already in progress.")
         }
     }
 }
@@ -300,7 +300,7 @@ public actor AppleHealthImportService {
                         activityType: candidate.window.activityType,
                         startSeconds: candidate.window.startSeconds,
                         outcome: .alreadyInLibrary,
-                        detail: "Your library already has a run at this time"
+                        detail: platformLocalized("Your library already has a run at this time")
                     ))
                     continue
                 }
@@ -429,7 +429,7 @@ public actor AppleHealthImportService {
             report.items = Self.markingDiscarded(
                 items,
                 at: stagedItemIndices,
-                detail: "Cancelled before the import was committed"
+                detail: platformLocalized("Cancelled before the import was committed")
             )
             report.wasCancelled = true
             return report
@@ -475,7 +475,7 @@ public actor AppleHealthImportService {
             // never silently imported as though it had a route.
             return BuiltWorkout(
                 workout: Self.routeLessWorkout(for: candidate),
-                routeFailure: "Imported without its route: \(error.localizedDescription)",
+                routeFailure: platformLocalized("Imported without its route: \(error.localizedDescription)"),
                 fallbackReason: .routeFileUnavailable
             )
         }
@@ -544,7 +544,7 @@ public actor AppleHealthImportService {
         case .mismatch:
             return BuiltWorkout(
                 workout: routeLessWorkout(for: candidate),
-                routeFailure: "Imported without a map because its route file did not match the run's time",
+                routeFailure: platformLocalized("Imported without a map because its route file did not match the run's time"),
                 fallbackReason: .routeWindowMismatch
             )
         case .trim(let range):

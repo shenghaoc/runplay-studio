@@ -49,7 +49,7 @@ struct PersonalRecordsView: View {
         }
         .padding(AppDesign.Spacing.xLarge)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(viewModel.accessibilitySummary()?.spokenSummary ?? "Personal records")
+        .accessibilityLabel(viewModel.accessibilitySummary()?.spokenSummary ?? studioLocalized("Personal records"))
     }
 
     // MARK: - Filters
@@ -186,9 +186,9 @@ struct PersonalRecordsView: View {
     private func emptyReasonText(_ reason: PersonalRecordsEmptyReason) -> String {
         switch reason {
         case .noWorkouts:
-            return "Import a run to start collecting records."
+            return studioLocalized("Import a run to start collecting records.")
         case .scopeExcludedAll:
-            return "No runs match the current records scope."
+            return studioLocalized("No runs match the current records scope.")
         }
     }
 
@@ -225,7 +225,7 @@ struct PersonalRecordsView: View {
             .width(min: 80, ideal: 100)
 
             TableColumn("Workout") { row in
-                Text(row.best?.workoutName ?? "Not attempted")
+                Text(row.best?.workoutName ?? studioLocalized("Not attempted"))
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(row.best == nil ? .secondary : .primary)
                     .lineLimit(1)
@@ -339,7 +339,7 @@ struct PersonalRecordsView: View {
     ) -> String {
         let value = effortValueText(effort, category: category)
         if category.isPaceWindow {
-            return "\(category.displayName) \(value) per kilometre, \(effort.workoutName), \(Self.dateText(effort.date))"
+            return studioLocalized("\(category.displayName) \(value) per kilometre, \(effort.workoutName), \(Self.dateText(effort.date))")
         }
         return "\(category.displayName) \(value), \(effort.workoutName), \(Self.dateText(effort.date))"
     }

@@ -104,7 +104,7 @@ struct WorkoutVideoExportSheet: View {
                         id: \.self
                     ) { mode in
                         if !viewModel.isModeAvailable(mode) {
-                            Text("\(mode.displayName): \(mode.unavailableReason ?? "Unavailable")")
+                            Text("\(mode.displayName): \(mode.unavailableReason ?? studioLocalized("Unavailable"))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -118,7 +118,7 @@ struct WorkoutVideoExportSheet: View {
                 LabeledContent("Codec", value: "H.264")
                 LabeledContent("Resolution", value: viewModel.outputResolutionText)
                 LabeledContent("Frame rate", value: viewModel.outputFrameRateText)
-                LabeledContent("Audio", value: "None")
+                LabeledContent("Audio", value: studioLocalized("None"))
             }
 
             if let mapFailure = viewModel.mapFailureMessage {
@@ -267,12 +267,12 @@ struct WorkoutVideoExportSheet: View {
 
     private var statusAccessibilityLabel: String {
         if viewModel.isCancelling {
-            return "Cancelling video export and removing temporary output"
+            return studioLocalized("Cancelling video export and removing temporary output")
         }
         if viewModel.isExporting, viewModel.progress.totalFrames > 0 {
-            return "Encoding video \(viewModel.progress.completedFrames) of \(viewModel.progress.totalFrames) frames, \(viewModel.progress.percentComplete) percent complete"
+            return studioLocalized("Encoding video \(viewModel.progress.completedFrames) of \(viewModel.progress.totalFrames) frames, \(viewModel.progress.percentComplete) percent complete")
         }
-        return "Export status \(viewModel.phase.displayName)"
+        return studioLocalized("Export status \(viewModel.phase.displayName)")
     }
 
     private func presentSavePanel() {
@@ -281,8 +281,8 @@ struct WorkoutVideoExportSheet: View {
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
         panel.allowedContentTypes = [.mpeg4Movie]
-        panel.title = "Export Route Replay"
-        panel.message = "Save the offline H.264 MP4. Map imagery may have contacted Apple; the file stays on this Mac."
+        panel.title = studioLocalized("Export Route Replay")
+        panel.message = studioLocalized("Save the offline H.264 MP4. Map imagery may have contacted Apple; the file stays on this Mac.")
 
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
