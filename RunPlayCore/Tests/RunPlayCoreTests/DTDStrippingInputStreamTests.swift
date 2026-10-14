@@ -670,4 +670,47 @@ final class DTDStrippingInputStreamTests: XCTestCase {
             XCTAssertNil(elider.policyViolation, "chunk=\(chunk)", file: file, line: line)
         }
     }
+
+    // MARK: - Unterminated and oversized subsets
+
+    /// What one drain of an elider produced, handed back from a worker thread.
+    private final class DrainResult: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: (lastRead: Int, status: Stream.Status)?
+        func set(_ lastRead: Int, _ status: Stream.Status) { lock.lock(); value = (lastRead, status); lock.unlock() }
+        var result: (lastRead: Int, status: Stream.Status)? { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    func testDocumentEndingInsideASubsetCommentOrInstructionEnds() {
+        let truncated = [
+            #"<?xml version="1.0"?><!DOCTYPE r [<!ELEMENT r EMPTY><!-- never closed"#,
+            #"<?xml version="1.0"?><!DOCTYPE r [<!ELEMENT r EMPTY><?pi never closed"#,
+        ]
+        for xml in truncated {
+            for chunk in chunkSizes {
+                // On a worker with a deadline: a scanner that loops forever
+                // must fail this test, not hang the suite.
+                let drained = DrainResult()
+                let done = DispatchSemaphore(value: 0)
+                Thread.detachNewThread {
+                    let elider = DTDStrippingInputStream(
+                        upstream: ChunkedStream(InputStream(data: Data(xml.utf8)), chunk: chunk)
+                    )
+                    elider.open()
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    var last = 1
+                    while last > 0 {
+                        last = buffer.withUnsafeMutableBufferPointer { elider.read($0.baseAddress!, maxLength: $0.count) }
+                    }
+                    drained.set(last, elider.streamStatus)
+                    done.signal()
+                }
+                guard done.wait(timeout: .now() + 10) == .success else {
+                    return XCTFail("chunk=\(chunk): reading never ended for \(xml)")
+                }
+                XCTAssertEqual(drained.result?.lastRead, 0, "chunk=\(chunk): the stream must end for \(xml)")
+                XCTAssertEqual(drained.result?.status, .atEnd, "chunk=\(chunk)")
+            }
+        }
+    }
 }

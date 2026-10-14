@@ -488,9 +488,9 @@ final class DTDStrippingInputStream: InputStream {
             // decide, and must not consume a partial terminator.
             switch subsetSkip {
             case .comment:
-                if !have(3) {
-                    if !refill() { return }
-                    continue
+                guard have(3) else {
+                    drainUnterminatedSubset()
+                    return
                 }
                 if peek(0) == dash, peek(1) == dash, peek(2) == greaterThan {
                     consumeSubsetBytes(3)
@@ -501,9 +501,9 @@ final class DTDStrippingInputStream: InputStream {
                 continue
 
             case .processingInstruction:
-                if !have(2) {
-                    if !refill() { return }
-                    continue
+                guard have(2) else {
+                    drainUnterminatedSubset()
+                    return
                 }
                 if peek(0) == question, peek(1) == greaterThan {
                     consumeSubsetBytes(2)
@@ -581,6 +581,16 @@ final class DTDStrippingInputStream: InputStream {
                 break
             }
         }
+    }
+
+    /// The document ended inside an unterminated comment or processing
+    /// instruction in the subset. The bytes left are too few to hold its
+    /// terminator, and nothing will follow them; consume them so `pump` sees
+    /// the end of input instead of re-entering this scanner forever. A failed
+    /// read is left for `pump` to report.
+    private func drainUnterminatedSubset() {
+        guard readFailure == nil else { return }
+        while pendingPos < pending.count { consumeSubsetBytes(1) }
     }
 
     /// Advances `count` bytes through the subset, recording them for inspection.
