@@ -593,19 +593,21 @@ final class AppleHealthExportParserTests: XCTestCase {
     private final class ServingStream: InputStream {
         private let bytes: [UInt8]
         private let failAt: Int
+        private let reportsError: Bool
         private(set) var served = 0
         private var failed = false
 
-        init(_ data: Data, failAt: Int = .max) {
+        init(_ data: Data, failAt: Int = .max, reportsError: Bool = true) {
             bytes = [UInt8](data)
             self.failAt = failAt
+            self.reportsError = reportsError
             super.init(data: Data())
         }
 
         override func open() {}
         override func close() {}
         override var streamStatus: Stream.Status { failed ? .error : .open }
-        override var streamError: Error? { failed ? InjectedReadError() : nil }
+        override var streamError: Error? { failed && reportsError ? InjectedReadError() : nil }
         override var hasBytesAvailable: Bool { !failed }
 
         override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
@@ -763,6 +765,25 @@ final class AppleHealthExportParserTests: XCTestCase {
         // end. Apple's parser calls this a success; the stream says otherwise.
         let data = Data(oneRunDocument().utf8)
         XCTAssertThrowsError(try parser.parse(openStream: { ServingStream(data, failAt: data.count) })) { error in
+            guard case AppleHealthExportError.readFailed = error else {
+                return XCTFail("expected readFailed, got \(error)")
+            }
+        }
+    }
+
+    func testDirectStreamFailingWithoutAnErrorIsStillAReadFailure() {
+        // Without the DTD-eliding wrapper (`elideDTD: false`, so this document
+        // has no DTD) the parser reads the stream directly. Every byte arrives,
+        // then the next read fails and the stream enters `.error` without
+        // supplying an `Error`.
+        let data = Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <HealthData locale="en_US"><ExportDate value="2026-09-02 09:00:00 +0800"/></HealthData>
+            """.utf8)
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { ServingStream(data, failAt: data.count, reportsError: false) },
+            elideDTD: false
+        )) { error in
             guard case AppleHealthExportError.readFailed = error else {
                 return XCTFail("expected readFailed, got \(error)")
             }

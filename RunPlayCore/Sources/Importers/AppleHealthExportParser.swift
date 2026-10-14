@@ -521,7 +521,9 @@ public struct AppleHealthExportParser: Sendable {
         // 4. A failed read, named as itself: Apple's parser reports a generic
         //    parse error, or none, in place of the stream's error.
         let readFailure = elider?.readFailure
-            ?? (input.streamStatus == .error ? input.streamError : nil)
+            ?? (input.streamStatus == .error
+                ? (input.streamError ?? DTDStrippingInputStream.UpstreamReadFailed())
+                : nil)
         if let readFailure {
             throw AppleHealthExportError.readFailed(readFailure.localizedDescription)
         }
