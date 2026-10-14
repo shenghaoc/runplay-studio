@@ -436,6 +436,7 @@ swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
 swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
 swift test -Xswiftc -warnings-as-errors                               # macOS full stack
+./scripts/generate-demo-assets.sh --check                             # macOS README drift gate
 git diff --check
 ```
 
@@ -645,6 +646,11 @@ Benchmark scripts need release-mode test builds; the CI "macOS (release-compile)
 GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
 
+A change that alters the PNG summary card also changes the committed README
+cards, and the drift gate fails until `docs/assets/` is refreshed in the same
+PR, as [docs/demo-assets.md](docs/demo-assets.md) describes. The cards are
+binary, so serialize PRs that change the card.
+
 ## Detailed References
 
 - [README.md](README.md) — product overview and local build entrypoint
@@ -653,6 +659,7 @@ GUI changes additionally require the relevant honest manual check in
 - [docs/training-load.md](docs/training-load.md) — training-load model, defaults, estimator, and limits
 - [docs/dem-tiles.md](docs/dem-tiles.md) — DEM tile folders, elevation precedence, and limits
 - [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
+- [docs/demo-assets.md](docs/demo-assets.md) — README demo media generation, drift gate, and size budget
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene
 - [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior

@@ -1,0 +1,63 @@
+name: Demo Assets
+
+# Manually triggered. Renders the README demo media from the bundled
+# synthetic sample runs with scripts/generate-demo-assets.sh, on the same
+# runner image as CI's README drift check, and uploads everything as one
+# artifact. It never commits: refreshing docs/assets/ is a reviewed pull
+# request that copies the curated subset out of this artifact
+# (docs/demo-assets.md).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Dispatch-only workflow: a repeated dispatch on the same ref supersedes
+  # the previous run instead of stacking another macOS job behind it.
+  group: demo-assets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: Generate README demo assets
+    runs-on: xcode-27
+    timeout-minutes: 45
+
+    steps:
+    # A local action resolves from the workspace, so checkout must precede
+    # the setup composite.
+    - uses: actions/checkout@v7
+    - uses: ./.github/actions/setup-macos-build
+
+    # /bin/bash pins the bash 3.2 every Mac ships.
+    - name: Generate demo assets
+      run: /bin/bash ./scripts/generate-demo-assets.sh --output-dir .build/demo-assets
+
+    - name: Summarize
+      run: |
+        set -euo pipefail
+        {
+          echo "### README demo assets"
+          echo
+          echo "Rendered from the bundled synthetic sample runs with the native exporters and ImageIO."
+          echo "Commit only the curated subset (summary PNGs, route GIFs and posters) — see docs/demo-assets.md."
+          echo
+          echo "| File | Bytes |"
+          echo "| --- | ---: |"
+          for file in .build/demo-assets/demo-*; do
+            echo "| $(basename "${file}") | $(stat -f %z "${file}") |"
+          done
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+    - name: Upload demo assets
+      uses: actions/upload-artifact@v7
+      with:
+        name: runplay-demo-assets
+        path: |
+          .build/demo-assets/demo-*
+          .build/demo-assets/SHA256SUMS
+        include-hidden-files: true
+        retention-days: 30
+        if-no-files-found: error

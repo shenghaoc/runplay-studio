@@ -1,0 +1,2 @@
+macos: 27.2.1 (26B131)
+xcode: Xcode 27.2 Build version 27B52
