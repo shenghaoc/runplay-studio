@@ -2,9 +2,26 @@
 
 A native macOS post-run 2D/3D route replay and analysis app for runners.
 
-![RunPlay Studio summary export — generated from bundled synthetic demo data](docs/assets/demo-summary.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo-route-replay-dark.gif">
+    <img src="docs/assets/demo-route-replay-light.gif" width="720" alt="Route Replay export of the synthetic Morning Park Run: a top-down Apple Maps route coloured by relative heart rate, a moving position marker, and a live metrics panel">
+  </picture>
+</p>
 
-*Screenshot generated from bundled synthetic demo data — no private workout data used.*
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo-summary-dark.png">
+    <img src="docs/assets/demo-summary-light.png" width="420" alt="PNG summary card export of the same run: distance, elapsed, active, and moving time, paces, corrected elevation, heart rate, key segments, and kilometre splits">
+  </picture>
+</p>
+
+*Generated from the bundled synthetic sample runs — no private workout data,
+no screen recording. [`scripts/generate-demo-assets.sh`](scripts/generate-demo-assets.sh)
+renders the summary card and the Route Replay video through the app's own
+exporters, then cuts the GIF from that video with ffmpeg. CI fails when the
+committed summary cards drift from the current renderer. See
+[docs/demo-assets.md](docs/demo-assets.md). Map imagery: Apple Maps.*
 
 ## What It Is
 
@@ -108,6 +125,15 @@ actually exercised; secondary-display placement requires matching hardware.
 ## Demo
 
 See [docs/demo-script.md](docs/demo-script.md) for a 3–5 minute walkthrough using bundled synthetic data.
+
+The README media at the top are generated, not recorded:
+`./scripts/generate-demo-assets.sh` renders the PNG summary card, a Route
+Replay MP4, and a Comparison Replay MP4 in Light and Dark from the bundled
+synthetic sample runs, and turns each Route Replay into a short GIF with
+ffmpeg. The manually triggered **Demo Assets** workflow does the same on CI's
+runner image and uploads the files as an artifact. Only the summary cards and
+GIFs are committed; [docs/demo-assets.md](docs/demo-assets.md) covers the
+fixed settings, the size budget, and how to refresh `docs/assets/`.
 
 See [docs/release-notes/v0.1.0-demo.md](docs/release-notes/v0.1.0-demo.md) for the historical v0.1 demo notes, and
 [docs/release-notes/v0.1.0.md](docs/release-notes/v0.1.0.md) for product v0.1.0 release notes.
@@ -333,11 +359,20 @@ Both approaches use the same source code. There is no separate Xcode project fil
 
 Every push to `main` and every pull request runs:
 
-- **macOS** — C++ engine build + native C++ tests + boundary validation + full `swift test`
+- **macOS** — C++ engine build + native C++ tests + boundary validation + full `swift test` + README demo-asset drift check (`./scripts/generate-demo-assets.sh --check`)
 - **Linux** — C++ engine build + native C++ tests + boundary validation + `swift test --filter RunPlayCoreTests`
 - **Linux sanitizers** — native C++ tests under AddressSanitizer and UndefinedBehaviorSanitizer
 
 Test counts are reported in the GitHub Actions step summary.
+
+### README Demo Assets Artifact
+
+A manually-triggered **Demo Assets** workflow (`.github/workflows/demo-assets.yml`)
+renders the README demo media from the bundled synthetic sample runs and
+uploads them as the `runplay-demo-assets` artifact. It never commits; see
+[docs/demo-assets.md](docs/demo-assets.md) for refreshing `docs/assets/`.
+
+To trigger it: go to **Actions → Demo Assets → Run workflow**.
 
 ### Demo App Artifact
 
@@ -471,7 +506,8 @@ Video export streams frames through AVFoundation into a temporary file, validate
 the asset, then replaces the user-chosen destination. Map failure offers Retry
 and Cancel (basemap-free video is out of scope). The completed MP4 is never
 loaded into memory as `Data`.
-The README demo image is generated from bundled synthetic data.
+The README demo media are generated from bundled synthetic data through these
+same exporters ([docs/demo-assets.md](docs/demo-assets.md)).
 
 ### Route Comparison
 
