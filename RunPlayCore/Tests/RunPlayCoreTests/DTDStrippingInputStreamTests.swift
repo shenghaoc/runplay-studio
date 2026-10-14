@@ -468,14 +468,17 @@ final class DTDStrippingInputStreamTests: XCTestCase {
         }
     }
 
-    /// An enumerated default `(a|b)` carries no quote, so it supplies no value
-    /// and must be accepted — only quoted literals and `#FIXED` do.
-    func testEnumeratedDefaultSuppliesNoValue() {
+    /// An enumerated type `(a|b)` supplies no value, but the parser normalizes a
+    /// value of that type using the declaration, so eliding the DTD would change
+    /// it: the stream refuses it like any other type but CDATA.
+    func testEnumeratedAttributeTypeIsRefused() {
         let xml = docWithDTD("<!ELEMENT Root (A*)><!ATTLIST A v (yes|no) #IMPLIED>")
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertTrue(result.parseOK, "chunk=\(chunk)", file: file, line: line)
-            XCTAssertNil(result.violation, "chunk=\(chunk) enum tokens are unquoted", file: file, line: line)
-            XCTAssertEqual(result.attributes, 2, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(
+                result.violation, .nonCDATAAttributeType("enumeration"),
+                "chunk=\(chunk)", file: file, line: line
+            )
         }
     }
 

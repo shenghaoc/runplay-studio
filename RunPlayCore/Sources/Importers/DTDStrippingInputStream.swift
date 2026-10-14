@@ -32,22 +32,26 @@ import Foundation
 ///
 /// ## Why eliding the DTD is lossless
 ///
-/// An inline DTD can change parse output in exactly two ways: by supplying
-/// **default attribute values**, or by declaring **entities** that expand into
-/// content. `ELEMENT` declarations constrain validity but contribute no value,
+/// An inline DTD can change the values a parser reports in three ways: by
+/// supplying **default attribute values**, by declaring **entities** that expand
+/// into content, or by declaring an attribute **type** other than `CDATA`, whose
+/// values the parser then normalizes (XML 1.0 §3.3.3 trims and collapses their
+/// spaces). `ELEMENT` declarations constrain validity but contribute no value,
 /// so dropping them is unobservable.
 ///
 /// That reasoning holds only for DTDs that declare no values, which is why it is
 /// enforced at runtime rather than assumed. As the DTD is consumed it is
 /// inspected by `DTDValueSupplyingScanner` (in
-/// `DTDValueSupplyingScanner.swift`), and any construct that could supply a
-/// value fails the stream with a `DTDPolicyViolation` instead of being silently
-/// elided:
+/// `DTDValueSupplyingScanner.swift`), and any construct that could supply or
+/// change a value fails the stream with a `DTDPolicyViolation` instead of being
+/// silently elided:
 ///
 /// - `<!ENTITY …>` — could expand into content
 /// - `<!NOTATION …>` — could carry an unparsed-entity default
 /// - `#FIXED` — pins an attribute value
 /// - any quoted literal inside `<!ATTLIST …>` — a bare attribute default
+/// - any attribute type but `CDATA` inside `<!ATTLIST …>` — its values would
+///   be normalized using the declaration
 /// - an internal subset larger than `DTDStrippingInputStream.maxInspectedDTDBytes`,
 ///   because a subset too large to inspect cannot be proven value-free
 ///
