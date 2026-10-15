@@ -2,7 +2,7 @@ import Foundation
 
 /// How one FIT session's sport maps onto RunPlay Studio's running-only product.
 public enum FITSessionSportClassification: String, Codable, Hashable, Sendable, CaseIterable {
-    /// FIT profile `running`.
+    /// FIT profile `running` or `wheelchair_push_run`.
     case running
     /// Sport field missing, or a raw value outside the known profile enum.
     /// Treated as running, but the session carries an explicit warning.
@@ -24,12 +24,13 @@ public enum FITSessionSportClassification: String, Codable, Hashable, Sendable, 
 /// previously allowed a session to be listed as importable in one place and
 /// rejected in another.
 ///
-/// Policy (unchanged from the pre-existing single-session FIT importer):
-/// `FITSport.running` is supported; a missing or unrecognised sport falls back
+/// Policy: `FITSport.running` and `FITSport.wheelchairPushRun` are supported,
+/// and a push run imports as a run; a missing or unrecognised sport falls back
 /// to running with a warning; every other known profile sport — **including
-/// walking and hiking** — is unsupported. This deliberately differs from
-/// `StravaActivityTypePolicy`, whose walk/hike acceptance applies to Strava
-/// bulk-export metadata rows rather than to FIT session messages.
+/// walking, hiking, and wheelchair push walk** — is unsupported. This
+/// deliberately differs from `StravaActivityTypePolicy`, whose walk/hike
+/// acceptance applies to Strava bulk-export metadata rows rather than to FIT
+/// session messages.
 public enum FITSportPolicy {
 
     public static func classify(sport rawSport: UInt8?) -> FITSessionSportClassification {
@@ -69,6 +70,7 @@ public enum FITSportPolicy {
         case 59: return coreLocalized("Obstacle race")   // obstacle
         case 67: return coreLocalized("Ultra")           // ultra
         case 82: return coreLocalized("Adventure race")  // adventure_race
+        case 87: return coreLocalized("Indoor")          // indoor_wheelchair_run
         default: return nil
         }
     }
@@ -77,7 +79,7 @@ public enum FITSportPolicy {
     public static func activityType(sport rawSport: UInt8?) -> String {
         guard let rawSport, let sport = FITSport(rawValue: rawSport) else { return "running" }
         switch sport {
-        case .running: return "running"
+        case .running, .wheelchairPushRun: return "running"
         case .walking: return "walking"
         case .hiking: return "hiking"
         case .cycling: return "cycling"
@@ -141,9 +143,35 @@ public enum FITSportPolicy {
         case .floorClimbing: return coreLocalized("Floor climbing")
         case .baseball: return coreLocalized("Baseball")
         case .diving: return coreLocalized("Diving")
+        case .shooting: return coreLocalized("Sport shooting")
+        case .winterSport: return coreLocalized("Winter sports")
+        case .grinding: return coreLocalized("Sail grinding")
+        case .videoGaming: return coreLocalized("Video gaming")
         case .racket: return coreLocalized("Racket sports")
+        case .wheelchairPushWalk: return coreLocalized("Wheelchair push walk")
+        case .wheelchairPushRun: return coreLocalized("Wheelchair push run")
+        case .meditation: return coreLocalized("Meditation")
+        case .paraSport: return coreLocalized("Para sports")
+        case .discGolf: return coreLocalized("Disc golf")
+        case .teamSport: return coreLocalized("Team sports")
+        case .cricket: return coreLocalized("Cricket")
+        case .rugby: return coreLocalized("Rugby")
+        case .hockey: return coreLocalized("Hockey")
+        case .lacrosse: return coreLocalized("Lacrosse")
+        case .volleyball: return coreLocalized("Volleyball")
         case .waterTubing: return coreLocalized("Water tubing")
         case .wakesurfing: return coreLocalized("Wakesurfing")
+        case .waterSport: return coreLocalized("Water sports")
+        case .archery: return coreLocalized("Archery")
+        case .mixedMartialArts: return coreLocalized("Mixed martial arts")
+        case .motorSports: return coreLocalized("Motor sports")
+        case .snorkeling: return coreLocalized("Snorkeling")
+        case .dance: return coreLocalized("Dance")
+        case .jumpRope: return coreLocalized("Jump rope")
+        case .poolApnea: return coreLocalized("Pool apnea")
+        case .mobility: return coreLocalized("Mobility")
+        case .geocaching: return coreLocalized("Geocaching")
+        case .canoeing: return coreLocalized("Canoeing")
         case .all: return coreLocalized("All sports")
         }
     }
