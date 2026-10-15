@@ -38,7 +38,7 @@ struct RouteGroupMenuDetail: Equatable {
         calendar: Calendar = .current,
         timeZone: TimeZone = .current
     ) -> String {
-        let runs = "\(runCount) run\(runCount == 1 ? "" : "s")"
+        let runs = studioLocalized("\(runCount) runs")
         guard let first = firstRunDate, let last = lastRunDate else {
             return runs
         }

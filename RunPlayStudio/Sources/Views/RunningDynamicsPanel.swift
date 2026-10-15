@@ -51,28 +51,28 @@ struct RunningDynamicsPanel: View {
         var rows: [(label: String, value: String)] = []
         let summary = workout.summary
         if let value = summary.averagePowerWatts {
-            rows.append(("Average Power", DisplayFormatter.formatPower(value)))
+            rows.append((studioLocalized("Average Power"), DisplayFormatter.formatPower(value)))
         }
         if let value = summary.maxPowerWatts {
-            rows.append(("Max Power", DisplayFormatter.formatPower(value)))
+            rows.append((studioLocalized("Max Power"), DisplayFormatter.formatPower(value)))
         }
         if let value = summary.best20MinutePowerWatts {
-            rows.append(("Best 20 min Power", DisplayFormatter.formatPower(value)))
+            rows.append((studioLocalized("Best 20 min Power"), DisplayFormatter.formatPower(value)))
         }
         if let value = summary.averageGroundContactTimeMilliseconds {
-            rows.append(("Average Ground Contact Time", DisplayFormatter.formatGroundContactTime(value)))
+            rows.append((studioLocalized("Average Ground Contact Time"), DisplayFormatter.formatGroundContactTime(value)))
         }
         if let value = summary.averageVerticalOscillationMillimeters {
-            rows.append(("Average Vertical Oscillation", DisplayFormatter.formatVerticalOscillation(value)))
+            rows.append((studioLocalized("Average Vertical Oscillation"), DisplayFormatter.formatVerticalOscillation(value)))
         }
         if let value = summary.averageVerticalRatioPercent {
-            rows.append(("Average Vertical Ratio", DisplayFormatter.formatVerticalRatio(value)))
+            rows.append((studioLocalized("Average Vertical Ratio"), DisplayFormatter.formatVerticalRatio(value)))
         }
         if let value = summary.averageStanceTimeBalancePercent {
-            rows.append(("Average Stance Time Balance", DisplayFormatter.formatStanceTimeBalance(value)))
+            rows.append((studioLocalized("Average Stance Time Balance"), DisplayFormatter.formatStanceTimeBalance(value)))
         }
         if let value = summary.averageStepLengthMeters {
-            rows.append(("Average Step Length", DisplayFormatter.formatStepLength(value)))
+            rows.append((studioLocalized("Average Step Length"), DisplayFormatter.formatStepLength(value)))
         }
         return rows
     }
@@ -80,8 +80,8 @@ struct RunningDynamicsPanel: View {
     static func title(for workout: RunWorkout) -> String {
         let count = rows(for: workout).count
         return count == 0
-            ? "Power & Running Dynamics"
-            : "Power & Running Dynamics (\(count) metrics)"
+            ? studioLocalized("Power & Running Dynamics")
+            : studioLocalized("Power & Running Dynamics (\(count) metrics)")
     }
 
     /// Which device or application produced the power and dynamics data.
@@ -93,17 +93,17 @@ struct RunningDynamicsPanel: View {
 
         func powerPart() -> String? {
             guard let summary = workout.developerFieldSummary else {
-                return workout.hasPowerData ? "Power from the watch's native power field." : nil
+                return workout.hasPowerData ? studioLocalized("Power from the watch's native power field.") : nil
             }
             if summary.powerSourceIsNativeRecordField {
-                return "Power from the watch's native power field."
+                return studioLocalized("Power from the watch's native power field.")
             }
             if let index = summary.powerSourceDeveloperDataIndex {
                 let application = summary.sources.first { $0.developerDataIndex == index }
                 if let applicationID = application?.applicationIDHex {
-                    return "Power from developer data index \(index) (application id \(applicationID))."
+                    return studioLocalized("Power from developer data index \(index) (application id \(applicationID)).")
                 }
-                return "Power from developer data index \(index)."
+                return studioLocalized("Power from developer data index \(index).")
             }
             return nil
         }
@@ -111,7 +111,7 @@ struct RunningDynamicsPanel: View {
         func dynamicsPart() -> String? {
             guard let summary = workout.developerFieldSummary else { return nil }
             if summary.dynamicsSourceIsNativeRecordField {
-                return "Running dynamics from the watch's native record fields."
+                return studioLocalized("Running dynamics from the watch's native record fields.")
             }
             let carriesDeveloperDynamics = summary.fields.contains {
                 $0.mappedMetric != nil
@@ -121,10 +121,10 @@ struct RunningDynamicsPanel: View {
             if let index = summary.powerSourceDeveloperDataIndex,
                carriesDeveloperDynamics,
                summary.sources.first(where: { $0.developerDataIndex == index }) != nil {
-                return "Running dynamics from developer data index \(index)."
+                return studioLocalized("Running dynamics from developer data index \(index).")
             }
             if carriesDeveloperDynamics {
-                return "Running dynamics from developer data."
+                return studioLocalized("Running dynamics from developer data.")
             }
             return nil
         }

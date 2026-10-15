@@ -20,7 +20,7 @@ public enum WorkoutSource: String, Codable, Hashable, CaseIterable, Sendable {
         case .healthKit: return "Apple Health"
         case .strava: return "Strava"
         case .garmin: return "Garmin"
-        case .unknown: return "Unknown"
+        case .unknown: return coreLocalized("Unknown")
         }
     }
 }

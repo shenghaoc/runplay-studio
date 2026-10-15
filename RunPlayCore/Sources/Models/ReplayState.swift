@@ -59,13 +59,30 @@ public struct ReplayState: Sendable, Equatable {
 
     /// Formatted current distance in km.
     public var formattedCurrentDistance: String {
-        String(format: "%.2f km", currentDistance / 1000.0)
+        DisplayFormatter.formatKilometers(currentDistance, fractionDigits: 2)
     }
 
     /// Formatted playback speed.
     public var formattedSpeed: String {
-        if playbackSpeed == 1.0 { return "1×" }
-        return String(format: "%.1f×", playbackSpeed)
+        Self.formattedSpeed(playbackSpeed)
+    }
+
+    /// The label for a replay speed: its multiplier followed by "×" ("0.25×",
+    /// "1×", "2.0×"). Every speed control, the speed's accessibility value, and
+    /// the speed-change announcement use it.
+    public static func formattedSpeed(_ speed: Double) -> String {
+        formattedSpeedMultiplier(speed) + "×"
+    }
+
+    /// A replay speed's multiplier without the "×", locale-neutral: "1" at
+    /// normal speed, otherwise one fraction digit when that reads back as the
+    /// speed ("0.5", "2.0") and two when it does not ("0.25", which `%.1f`
+    /// rounds half to even, to "0.2").
+    public static func formattedSpeedMultiplier(_ speed: Double) -> String {
+        if speed == 1.0 { return "1" }
+        let oneFractionDigit = String(format: "%.1f", speed)
+        if Double(oneFractionDigit) == speed { return oneFractionDigit }
+        return String(format: "%.2f", speed)
     }
 
     private func formatSeconds(_ seconds: Double) -> String {

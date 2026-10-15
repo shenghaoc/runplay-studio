@@ -37,7 +37,7 @@ struct RouteMetricLegendView: View {
                 VStack(alignment: .center, spacing: 1) {
                     Text(scale.medianLabel)
                         .font(AppDesign.Typography.monoCaption)
-                    Text(String(localized: "Median"))
+                    Text(studioLocalized("Median"))
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.secondary)
                 }
@@ -57,7 +57,7 @@ struct RouteMetricLegendView: View {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppDesign.RouteMetric.noData)
                         .frame(width: 14, height: 8)
-                    Text(String(localized: "No data"))
+                    Text(studioLocalized("No data"))
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.secondary)
                 }
@@ -78,20 +78,20 @@ struct RouteMetricLegendView: View {
 
     private var lowerEndLabel: String {
         switch mode {
-        case .pace: return String(localized: "Faster")
-        case .heartRate: return String(localized: "Lower")
-        case .power: return String(localized: "Lower")
-        case .correctedElevation: return String(localized: "Lower")
+        case .pace: return studioLocalized("Faster")
+        case .heartRate: return studioLocalized("Lower")
+        case .power: return studioLocalized("Lower")
+        case .correctedElevation: return studioLocalized("Lower")
         case .solid: return ""
         }
     }
 
     private var upperEndLabel: String {
         switch mode {
-        case .pace: return String(localized: "Slower")
-        case .heartRate: return String(localized: "Higher")
-        case .power: return String(localized: "Higher")
-        case .correctedElevation: return String(localized: "Higher")
+        case .pace: return studioLocalized("Slower")
+        case .heartRate: return studioLocalized("Higher")
+        case .power: return studioLocalized("Higher")
+        case .correctedElevation: return studioLocalized("Higher")
         case .solid: return ""
         }
     }
@@ -100,13 +100,13 @@ struct RouteMetricLegendView: View {
         let percent = Int((coverageFraction * 100).rounded())
         switch mode {
         case .heartRate:
-            return String(localized: "Heart-rate data covers \(percent)% of route distance.")
+            return studioLocalized("Heart-rate data covers \(percent)% of route distance.")
         case .power:
-            return String(localized: "Power data covers \(percent)% of route distance.")
+            return studioLocalized("Power data covers \(percent)% of route distance.")
         case .correctedElevation:
-            return String(localized: "Corrected elevation covers \(percent)% of route distance.")
+            return studioLocalized("Corrected elevation covers \(percent)% of route distance.")
         case .pace:
-            return String(localized: "Valid pace covers \(percent)% of route distance.")
+            return studioLocalized("Valid pace covers \(percent)% of route distance.")
         case .solid:
             return ""
         }
@@ -114,13 +114,13 @@ struct RouteMetricLegendView: View {
 
     private var accessibilitySummary: String {
         var parts = [
-            String(localized: "\(mode.displayName) legend. \(mode.relativeScaleCaption)."),
-            String(localized: "\(lowerEndLabel) \(scale.lowerLabel)."),
-            String(localized: "Median \(scale.medianLabel)."),
-            String(localized: "\(upperEndLabel) \(scale.upperLabel).")
+            studioLocalized("\(mode.displayName) legend. \(mode.relativeScaleCaption)."),
+            studioLocalized("\(lowerEndLabel) \(scale.lowerLabel)."),
+            studioLocalized("Median \(scale.medianLabel)."),
+            studioLocalized("\(upperEndLabel) \(scale.upperLabel).")
         ]
         if showsNoData {
-            parts.append(String(localized: "Some sections have no metric data."))
+            parts.append(studioLocalized("Some sections have no metric data."))
         }
         if coverageFraction < 0.92, coverageFraction > 0 {
             parts.append(coverageText)

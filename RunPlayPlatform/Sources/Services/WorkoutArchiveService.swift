@@ -37,17 +37,17 @@ public enum WorkoutArchiveError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .archiveTooLarge:
-            return "This archive exceeds the maximum supported size."
+            return platformLocalized("This archive exceeds the maximum supported size.")
         case .cannotOpenArchive(let detail):
-            return "Could not open the archive. \(detail)"
+            return platformLocalized("Could not open the archive. \(detail)")
         case .notSupportedExport:
-            return "This ZIP does not appear to be a supported Strava bulk export."
+            return platformLocalized("This ZIP does not appear to be a supported Strava bulk export.")
         case .tooManyEntries:
-            return "This archive has too many entries to process safely."
+            return platformLocalized("This archive has too many entries to process safely.")
         case .cancelled:
-            return "Archive operation was cancelled."
+            return platformLocalized("Archive operation was cancelled.")
         case .batchConflict:
-            return "Another library change is already in progress."
+            return platformLocalized("Another library change is already in progress.")
         }
     }
 }
@@ -82,7 +82,9 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
 
         // Reject non-local URLs before any filesystem access or ZIP open.
         guard url.isFileURL else {
-            throw WorkoutArchiveError.cannotOpenArchive("Only local file URLs are supported")
+            throw WorkoutArchiveError.cannotOpenArchive(
+                platformLocalized("Only local file URLs are supported")
+            )
         }
 
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -155,8 +157,8 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 unsafe += 1
             }
 
-            let compressed = try checkedEntrySize(entry.compressedSize, label: "compressed")
-            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: "uncompressed")
+            let compressed = try checkedEntrySize(entry.compressedSize, label: .compressed)
+            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: .uncompressed)
             entryPaths.append(normalized)
             entrySizes[normalized] = (compressed, uncompressed)
 
@@ -181,10 +183,14 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         if let csvPath = activitiesCSVPath {
             let sizes = entrySizes[csvPath]
             if let uncompressed = sizes?.uncompressed, uncompressed > policy.maxMetadataCSVBytes {
-                throw WorkoutArchiveError.cannotOpenArchive("activities.csv exceeds size limit.")
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("activities.csv exceeds size limit.")
+                )
             }
             if let compressed = sizes?.compressed, compressed > policy.maxMetadataCSVBytes {
-                throw WorkoutArchiveError.cannotOpenArchive("activities.csv compressed size exceeds limit.")
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("activities.csv compressed size exceeds limit.")
+                )
             }
             do {
                 activitiesCSVData = try readEntry(
@@ -242,7 +248,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 candidates: [],
                 diagnostics: diagnostics,
                 isRecognizedStravaExport: false,
-                rejectionMessage: "This ZIP does not appear to be a supported Strava bulk export."
+                rejectionMessage: platformLocalized("This ZIP does not appear to be a supported Strava bulk export.")
             )
         }
 
@@ -258,12 +264,12 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         diagnostics.warnings.append(contentsOf: built.diagnosticsExtras)
         if totalLimitRejected > 0 {
             diagnostics.warnings.append(
-                "\(totalLimitRejected) candidate(s) exceed the total archive import size limit."
+                platformLocalized("\(totalLimitRejected) candidates exceed the total archive import size limit.")
             )
         }
         if !metadataTable.hasFilenameColumn {
             diagnostics.warnings.append(
-                "Filename column missing; metadata matching and deduplication are less complete."
+                platformLocalized("Filename column missing; metadata matching and deduplication are less complete.")
             )
         }
 
@@ -298,7 +304,9 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
 
         let archive: Archive
         guard archiveURL.isFileURL else {
-            throw WorkoutArchiveError.cannotOpenArchive("Only local file URLs are supported")
+            throw WorkoutArchiveError.cannotOpenArchive(
+                platformLocalized("Only local file URLs are supported")
+            )
         }
 
         do {
@@ -345,7 +353,8 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                 // Skip non-ready statuses that may have been force-selected.
                 if candidate.status == .providerConflict
                     || (candidate.status == .duplicate
-                        && candidate.statusDetail == "Duplicate provider activity ID within archive")
+                        && candidate.statusDetail
+                            == WorkoutArchiveCandidateBuilder.duplicateProviderActivityIDWithinArchiveDetail)
                 {
                     skipped += 1
                     items.append(WorkoutBatchImportItemResult(
@@ -366,7 +375,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                         archiveRelativePath: candidate.archiveRelativePath,
                         activityName: candidate.activityName,
                         status: .missingActivityFile,
-                        detail: candidate.statusDetail ?? "Missing activity file"
+                        detail: candidate.statusDetail ?? platformLocalized("Missing activity file")
                     ))
                     continue
                 }
@@ -440,7 +449,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                         archiveRelativePath: candidate.archiveRelativePath,
                         activityName: candidate.activityName,
                         status: .duplicate,
-                        detail: "Already imported (identical file content)"
+                        detail: platformLocalized("Already imported (identical file content)")
                     ))
                     continue
                 }
@@ -691,11 +700,24 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         try ArchiveEntryIndex(archive: archive, policy: policy)
     }
 
-    private func checkedEntrySize(_ size: UInt64, label: String) throws -> Int64 {
+    /// Which declared size of an archive entry `checkedEntrySize` checks.
+    private enum EntrySizeKind {
+        case compressed
+        case uncompressed
+    }
+
+    private func checkedEntrySize(_ size: UInt64, label: EntrySizeKind) throws -> Int64 {
         guard size <= UInt64(Int64.max) else {
-            throw WorkoutArchiveError.cannotOpenArchive(
-                "Entry \(label) size exceeds the supported limit"
-            )
+            switch label {
+            case .compressed:
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("Entry compressed size exceeds the supported limit")
+                )
+            case .uncompressed:
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("Entry uncompressed size exceeds the supported limit")
+                )
+            }
         }
         return Int64(size)
     }
@@ -715,7 +737,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                   candidateSize <= policy.maxTotalCandidateUncompressedBytes - total
             else {
                 candidates[index].status = .exceedsResourceLimit
-                candidates[index].statusDetail = "Total selected candidate size exceeds limit"
+                candidates[index].statusDetail = platformLocalized("Total selected candidate size exceeds limit")
                 candidates[index].isSelectedByDefault = false
                 rejected += 1
                 continue
@@ -737,13 +759,13 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             else {
                 continue
             }
-            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: "uncompressed")
+            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: .uncompressed)
             guard uncompressed <= policy.maxUncompressedEntryBytes,
                   policy.maxTotalCandidateUncompressedBytes >= total,
                   uncompressed <= policy.maxTotalCandidateUncompressedBytes - total
             else {
                 throw WorkoutArchiveError.cannotOpenArchive(
-                    "Selected archive entries exceed the total size limit"
+                    platformLocalized("Selected archive entries exceed the total size limit")
                 )
             }
             total += uncompressed
@@ -757,25 +779,31 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         maxUncompressed: Int
     ) throws -> Data {
         guard let entry = entryIndex.entry(for: path) else {
-            throw WorkoutArchiveError.cannotOpenArchive("Entry not found: \(path)")
+            throw WorkoutArchiveError.cannotOpenArchive(platformLocalized("Entry not found: \(path)"))
         }
 
         guard entry.type == .file else {
-            throw WorkoutArchiveError.cannotOpenArchive("Unsupported entry type")
+            throw WorkoutArchiveError.cannotOpenArchive(platformLocalized("Unsupported entry type"))
         }
 
-        let compressed = try checkedEntrySize(entry.compressedSize, label: "compressed")
-        let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: "uncompressed")
+        let compressed = try checkedEntrySize(entry.compressedSize, label: .compressed)
+        let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: .uncompressed)
         if compressed > policy.maxCompressedEntryBytes {
-            throw WorkoutArchiveError.cannotOpenArchive("Entry exceeds compressed size limit")
+            throw WorkoutArchiveError.cannotOpenArchive(
+                platformLocalized("Entry exceeds compressed size limit")
+            )
         }
         if uncompressed > Int64(maxUncompressed) {
-            throw WorkoutArchiveError.cannotOpenArchive("Entry exceeds uncompressed size limit")
+            throw WorkoutArchiveError.cannotOpenArchive(
+                platformLocalized("Entry exceeds uncompressed size limit")
+            )
         }
         if compressed > 0, uncompressed > 0 {
             let ratio = Double(uncompressed) / Double(compressed)
             if ratio > policy.maxCompressionRatio {
-                throw WorkoutArchiveError.cannotOpenArchive("Entry compression ratio exceeds limit")
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("Entry compression ratio exceeds limit")
+                )
             }
         }
 
@@ -791,13 +819,15 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                       chunk.count <= maxUncompressed - data.count
                 else {
                     throw WorkoutArchiveError.cannotOpenArchive(
-                        "Entry exceeds uncompressed size limit"
+                        platformLocalized("Entry exceeds uncompressed size limit")
                     )
                 }
                 data.append(chunk)
             }
             guard checksum == entry.checksum else {
-                throw WorkoutArchiveError.cannotOpenArchive("Entry checksum does not match")
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("Entry checksum does not match")
+                )
             }
         } catch let error as WorkoutArchiveError {
             throw error
@@ -805,7 +835,9 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
         }
         if data.count > maxUncompressed {
-            throw WorkoutArchiveError.cannotOpenArchive("Entry exceeds uncompressed size limit")
+            throw WorkoutArchiveError.cannotOpenArchive(
+                platformLocalized("Entry exceeds uncompressed size limit")
+            )
         }
         return data
     }

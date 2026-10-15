@@ -106,9 +106,9 @@ struct WatchFolderSettingsView: View {
     }
 
     private func statusText(for folder: WatchFolderConfiguration) -> String {
-        if folder.isPaused { return "Paused" }
-        if isUnavailable(folder) { return "Unavailable — watching resumes if it returns" }
-        return "Watching"
+        if folder.isPaused { return studioLocalized("Paused") }
+        if isUnavailable(folder) { return studioLocalized("Unavailable — watching resumes if it returns") }
+        return studioLocalized("Watching")
     }
 
     private func statusIcon(for folder: WatchFolderConfiguration) -> String {
@@ -160,8 +160,8 @@ struct WatchFolderSettingsView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a folder to watch for new workout files"
-        panel.prompt = "Watch"
+        panel.message = studioLocalized("Choose a folder to watch for new workout files")
+        panel.prompt = studioLocalized("Watch")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         _ = coordinator.addFolder(url: url)
     }
@@ -279,10 +279,10 @@ struct RecentImportRow: View {
 
     private var statusText: String {
         switch record.status {
-        case .imported: return "Imported"
-        case .skippedDuplicate: return "Skipped, already imported"
-        case .failed: return "Failed"
-        case .awaitingReview: return "Waiting for review"
+        case .imported: return studioLocalized("Imported")
+        case .skippedDuplicate: return studioLocalized("Skipped, already imported")
+        case .failed: return studioLocalized("Failed")
+        case .awaitingReview: return studioLocalized("Waiting for review")
         }
     }
 

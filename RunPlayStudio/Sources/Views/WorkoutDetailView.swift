@@ -31,6 +31,16 @@ struct WorkoutDetailView: View {
         case segments = "Segments"
 
         var id: String { rawValue }
+
+        /// Display title; the raw value is the persisted session value.
+        var title: String {
+            switch self {
+            case .overview: return studioLocalized("Overview")
+            case .charts: return studioLocalized("Charts")
+            case .splits: return studioLocalized("Splits")
+            case .segments: return studioLocalized("Segments")
+            }
+        }
     }
 
     private var selectedTab: ViewTab {
@@ -595,57 +605,62 @@ private struct WorkoutHeaderView: View {
     private var metrics: some View {
         HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
             headerMetric(
-                "Distance",
+                studioLocalized("Distance"),
                 workout.summary.formattedDistance,
                 AppDesign.MetricColor.distance,
-                help: "Total recorded route distance."
+                help: studioLocalized("Total recorded route distance.")
             )
             headerMetric(
-                "Elapsed",
+                studioLocalized("Elapsed"),
                 workout.summary.formattedElapsed,
                 AppDesign.MetricColor.duration,
-                help: "Elapsed time includes pauses and recording gaps."
+                help: studioLocalized("Elapsed time includes pauses and recording gaps.")
             )
             headerMetric(
-                "Active",
+                studioLocalized("Active"),
                 workout.summary.formattedActive,
                 AppDesign.MetricColor.duration,
-                help: "Active time excludes recording gaps between route segments."
+                help: studioLocalized("Active time excludes recording gaps between route segments.")
             )
             headerMetric(
-                "Moving (est.)",
+                studioLocalized("Moving (est.)"),
                 workout.summary.formattedMoving,
                 AppDesign.MetricColor.duration,
-                help: "Estimated moving time. Uncertain active intervals count as moving."
+                help: studioLocalized("Estimated moving time. Uncertain active intervals count as moving.")
             )
             headerMetric(
-                "Moving Pace (est.)",
+                studioLocalized("Moving Pace (est.)"),
                 workout.summary.formattedMovingPace,
                 AppDesign.MetricColor.pace,
-                help: "Estimated pace while moving. The canonical Pace remains active-time based."
+                help: studioLocalized("Estimated pace while moving. The canonical Pace remains active-time based.")
             )
             headerMetric(
-                "Pace",
+                studioLocalized("Pace"),
                 workout.summary.formattedPace,
                 AppDesign.MetricColor.pace,
-                help: "Pace uses active time and excludes recording gaps."
+                help: studioLocalized("Pace uses active time and excludes recording gaps.")
             )
             headerMetric(
-                "Elevation",
+                String(
+                    localized: "workout.header.elevation_gain",
+                    defaultValue: "Elevation",
+                    bundle: .module,
+                    comment: "Header metric: the run's total elevation gain"
+                ),
                 elevationAvailable
                     ? DisplayFormatter.formatElevation(workout.summary.elevationGainMeters)
                     : "—",
                 AppDesign.MetricColor.elevation,
                 help: elevationAvailable
-                    ? "Corrected, threshold-confirmed elevation gain."
-                    : "Elevation analysis is unavailable for this workout."
+                    ? studioLocalized("Corrected, threshold-confirmed elevation gain.")
+                    : studioLocalized("Elevation analysis is unavailable for this workout.")
             )
             if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
                 headerMetric(
-                    "Avg HR",
+                    studioLocalized("Avg HR"),
                     DisplayFormatter.formatHeartRate(heartRate),
                     AppDesign.MetricColor.heartRate,
-                    help: "Average recorded heart rate."
+                    help: studioLocalized("Average recorded heart rate.")
                 )
             }
         }
@@ -678,7 +693,7 @@ private struct TabBarView: View {
         HStack {
             Picker("View", selection: $selectedTab) {
                 ForEach(WorkoutDetailView.ViewTab.allCases) { tab in
-                    Text(tab.rawValue)
+                    Text(tab.title)
                         .tag(tab)
                         .help(tab == .overview
                               ? "Map and route visualization (⌘1)"
@@ -701,10 +716,10 @@ private struct TabBarView: View {
 
     private var tabContext: String {
         switch selectedTab {
-        case .overview: return "Route replay"
-        case .charts: return "Use Jump to distance or chart accessibility actions to seek"
-        case .splits: return "Kilometer breakdown"
-        case .segments: return "Detected highlights"
+        case .overview: return studioLocalized("Route replay")
+        case .charts: return studioLocalized("Use Jump to distance or chart accessibility actions to seek")
+        case .splits: return studioLocalized("Kilometer breakdown")
+        case .segments: return studioLocalized("Detected highlights")
         }
     }
 }

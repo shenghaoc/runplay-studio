@@ -1,17 +1,5 @@
 import Foundation
 
-#if canImport(Darwin)
-private func routeMetricLocalized(_ key: String.LocalizationValue) -> String {
-    String(localized: key)
-}
-#else
-/// Swift Foundation on Linux does not currently expose `String(localized:)`.
-/// Keep Core buildable there while Darwin presentation uses the localized key.
-private func routeMetricLocalized(_ key: String) -> String {
-    key
-}
-#endif
-
 // MARK: - Mode
 
 /// Native route-color presentation mode for a single workout map.
@@ -26,12 +14,18 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
     case correctedElevation
 
     public var displayName: String {
+        localizedName(locale: nil)
+    }
+
+    /// Name in the app's language, or in `locale`'s when given (exports
+    /// rendered in a pinned language).
+    public func localizedName(locale: Locale?) -> String {
         switch self {
-        case .solid: return routeMetricLocalized("Solid")
-        case .pace: return routeMetricLocalized("Pace")
-        case .heartRate: return routeMetricLocalized("Heart Rate")
-        case .power: return routeMetricLocalized("Power")
-        case .correctedElevation: return routeMetricLocalized("Elevation")
+        case .solid: return coreLocalized("Solid", locale: locale)
+        case .pace: return coreLocalized("Pace", locale: locale)
+        case .heartRate: return coreLocalized("Heart Rate", locale: locale)
+        case .power: return coreLocalized("Power", locale: locale)
+        case .correctedElevation: return coreLocalized("Elevation", locale: locale)
         }
     }
 
@@ -39,10 +33,10 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
     public var relativeScaleCaption: String {
         switch self {
         case .solid: return ""
-        case .pace: return routeMetricLocalized("Relative pace within this workout")
-        case .heartRate: return routeMetricLocalized("Relative heart rate within this workout")
-        case .power: return routeMetricLocalized("Relative power within this workout")
-        case .correctedElevation: return routeMetricLocalized("Corrected elevation within this workout")
+        case .pace: return coreLocalized("Relative pace within this workout")
+        case .heartRate: return coreLocalized("Relative heart rate within this workout")
+        case .power: return coreLocalized("Relative power within this workout")
+        case .correctedElevation: return coreLocalized("Corrected elevation within this workout")
         }
     }
 
@@ -52,13 +46,13 @@ public enum WorkoutRouteColorMode: String, CaseIterable, Codable, Hashable, Send
         case .solid:
             return nil
         case .pace:
-            return routeMetricLocalized("Pace coloring needs more valid active distance and time in this workout.")
+            return coreLocalized("Pace coloring needs more valid active distance and time in this workout.")
         case .heartRate:
-            return routeMetricLocalized("Heart-rate coloring needs meaningful HR coverage in this workout.")
+            return coreLocalized("Heart-rate coloring needs meaningful HR coverage in this workout.")
         case .power:
-            return routeMetricLocalized("Power coloring needs meaningful power coverage in this workout.")
+            return coreLocalized("Power coloring needs meaningful power coverage in this workout.")
         case .correctedElevation:
-            return routeMetricLocalized("Elevation coloring needs meaningful corrected elevation in this workout.")
+            return coreLocalized("Elevation coloring needs meaningful corrected elevation in this workout.")
         }
     }
 }

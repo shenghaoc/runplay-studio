@@ -28,6 +28,10 @@ on:
         description: "Compile every test target in release configuration."
         type: boolean
         default: false
+      localization:
+        description: "Check the String Catalogs against the source (scripts/check-localization.sh)."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -74,7 +78,22 @@ jobs:
 
       - name: Verify full package
         if: inputs.full-tests
+        env:
+          RUNPLAY_SNAPSHOT_FAILURES_DIR: ${{ runner.temp }}/snapshot-failures
         run: swift test -Xswiftc -warnings-as-errors
+
+      # A failing image snapshot (SnapshotAssertion) writes its actual render
+      # and a diff image there; without them a difference that appears only
+      # on the runner could not be inspected. One call per workflow run sets
+      # full-tests, so the name only needs the attempt.
+      - name: Upload snapshot failures
+        if: failure() && inputs.full-tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-failures-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/snapshot-failures
+          if-no-files-found: ignore
+          retention-days: 7
 
       # Release-mode compile check for every test target. Benchmark scripts
       # build tests in release, but no other suite compiles the test targets
@@ -95,3 +114,12 @@ jobs:
         # reverted this command fails at `SyntheticWorkoutVideoMapPreparer`
         # not being in scope; with them present it passes.
         run: swift test -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
+
+      # Every String Catalog must list exactly the strings its module's
+      # source uses (no missing, no stale keys), each translated into zh-Hans
+      # and zh-Hant with matching placeholders. The check compiles with
+      # -emit-localized-strings in its own scratch path (.build-localization),
+      # so it never invalidates the .build the steps above share.
+      - name: Check String Catalogs
+        if: inputs.localization
+        run: ./scripts/check-localization.sh

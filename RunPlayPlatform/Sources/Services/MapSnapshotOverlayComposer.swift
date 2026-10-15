@@ -27,7 +27,7 @@ public enum MapSnapshotOverlayComposer: Sendable {
         let width = basemap.width
         let height = basemap.height
         guard width > 0, height > 0 else {
-            throw WorkoutMapSnapshotError.compositionFailed("Basemap has zero size")
+            throw WorkoutMapSnapshotError.compositionFailed(platformLocalized("Basemap has zero size"))
         }
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
@@ -41,7 +41,7 @@ public enum MapSnapshotOverlayComposer: Sendable {
             space: colorSpace,
             bitmapInfo: bitmapInfo
         ) else {
-            throw WorkoutMapSnapshotError.compositionFailed("Could not create graphics context")
+            throw WorkoutMapSnapshotError.compositionFailed(platformLocalized("Could not create graphics context"))
         }
 
         context.setShouldAntialias(true)
@@ -131,7 +131,7 @@ public enum MapSnapshotOverlayComposer: Sendable {
         }
 
         guard let image = context.makeImage() else {
-            throw WorkoutMapSnapshotError.compositionFailed("Could not finalize composited image")
+            throw WorkoutMapSnapshotError.compositionFailed(platformLocalized("Could not finalize composited image"))
         }
         return WorkoutMapSnapshotResult(cgImage: image, containsNoDataLines: containsNoData)
     }

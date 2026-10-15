@@ -14,6 +14,6 @@ public struct HealthKitImporter {
     }
 
     public static var statusMessage: String {
-        "HealthKit import is not yet available. Use file import (JSON, GPX) instead."
+        coreLocalized("HealthKit import is not yet available. Use file import (JSON, GPX) instead.")
     }
 }

@@ -27,7 +27,7 @@ struct TrendsView: View {
                 VStack(spacing: AppDesign.Spacing.large) {
                     statisticsRow
                     if viewModel.showsInProgressPeriod {
-                        Text("The latest \(viewModel.period.title.lowercased()) is still in progress.")
+                        Text(inProgressNote)
                             .font(AppDesign.Typography.compactLabel)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,7 +101,7 @@ struct TrendsView: View {
             VStack(alignment: .leading, spacing: AppDesign.Spacing.xSmall) {
                 Text("Trends")
                     .font(AppDesign.Typography.heading2)
-                Text("Whole-library trends by \(viewModel.period.title.lowercased()). Totals use active time; pauses never contribute. Missing heart-rate or elevation shows as a gap, not zero.")
+                Text(headerDescription)
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -115,6 +115,26 @@ struct TrendsView: View {
         }
         .padding(AppDesign.Spacing.xLarge)
         .accessibilityElement(children: .combine)
+    }
+
+    /// One complete sentence per period, so no translation has to splice in
+    /// a lowercased period word.
+    private var headerDescription: String {
+        let byPeriod: String
+        switch viewModel.period {
+        case .week: byPeriod = studioLocalized("Whole-library trends by week.")
+        case .month: byPeriod = studioLocalized("Whole-library trends by month.")
+        case .year: byPeriod = studioLocalized("Whole-library trends by year.")
+        }
+        return byPeriod + " " + studioLocalized("Totals use active time; pauses never contribute. Missing heart-rate or elevation shows as a gap, not zero.")
+    }
+
+    private var inProgressNote: String {
+        switch viewModel.period {
+        case .week: return studioLocalized("The latest week is still in progress.")
+        case .month: return studioLocalized("The latest month is still in progress.")
+        case .year: return studioLocalized("The latest year is still in progress.")
+        }
     }
 
     // MARK: - Filters
@@ -180,29 +200,29 @@ struct TrendsView: View {
     private var statisticsRow: some View {
         HStack(alignment: .top, spacing: AppDesign.Spacing.xxxLarge) {
             stat(
-                title: "Distance",
+                title: studioLocalized("Distance"),
                 value: DisplayFormatter.formatDistanceKm(viewModel.aggregation?.totalDistanceMeters ?? 0)
             )
-            stat(title: "Active Time", value: DisplayFormatter.formatDuration(viewModel.aggregation?.totalActiveSeconds ?? 0))
-            stat(title: "Runs", value: "\(viewModel.aggregation?.includedRunCount ?? 0)")
+            stat(title: studioLocalized("Active Time"), value: DisplayFormatter.formatDuration(viewModel.aggregation?.totalActiveSeconds ?? 0))
+            stat(title: studioLocalized("Runs"), value: "\(viewModel.aggregation?.includedRunCount ?? 0)")
             stat(
-                title: "Mean Pace",
-                value: (viewModel.aggregation?.meanActivePaceSecondsPerKilometer).map(DisplayFormatter.formatPace) ?? "—"
+                title: studioLocalized("Mean Pace"),
+                value: (viewModel.aggregation?.meanActivePaceSecondsPerKilometer).map { DisplayFormatter.formatPace($0) } ?? "—"
             )
             stat(
-                title: "Mean HR",
+                title: studioLocalized("Mean HR"),
                 value: heartRateStat,
                 caption: heartRateCaption
             )
             stat(
-                title: "Ascent",
+                title: studioLocalized("Ascent"),
                 value: DisplayFormatter.formatElevation(viewModel.aggregation?.totalAscentMeters),
                 caption: ascentCaption
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(viewModel.accessibilitySummary()?.spokenSummary ?? "Trends")
+        .accessibilityLabel(viewModel.accessibilitySummary()?.spokenSummary ?? studioLocalized("Trends"))
     }
 
     private var heartRateStat: String {
@@ -216,7 +236,7 @@ struct TrendsView: View {
               aggregation.heartRateContributingRuns < aggregation.includedRunCount else {
             return nil
         }
-        return "from \(aggregation.heartRateContributingRuns) of \(aggregation.includedRunCount) runs"
+        return studioLocalized("from \(aggregation.heartRateContributingRuns) of \(aggregation.includedRunCount) runs")
     }
 
     private var ascentCaption: String? {
@@ -225,7 +245,7 @@ struct TrendsView: View {
               aggregation.ascentContributingRuns < aggregation.includedRunCount else {
             return nil
         }
-        return "from \(aggregation.ascentContributingRuns) of \(aggregation.includedRunCount) runs"
+        return studioLocalized("from \(aggregation.ascentContributingRuns) of \(aggregation.includedRunCount) runs")
     }
 
     private func stat(title: String, value: String, caption: String? = nil) -> some View {
@@ -305,7 +325,7 @@ struct TrendsView: View {
         if let series = viewModel.trainingLoad {
             TrainingLoadChartPanel(
                 series: series,
-                spokenSummary: viewModel.trainingLoadChartAccessibilitySummary()?.spokenSummary ?? "Training load.",
+                spokenSummary: viewModel.trainingLoadChartAccessibilitySummary()?.spokenSummary ?? studioLocalized("Training load."),
                 ctlTimeConstantDays: $viewModel.ctlTimeConstantDays,
                 atlTimeConstantDays: $viewModel.atlTimeConstantDays,
                 includeEstimatedLoads: $viewModel.includeEstimatedLoads
@@ -323,7 +343,7 @@ struct TrendsView: View {
                 Text("Computing training load for earlier runs")
                     .font(AppDesign.Typography.compactLabel)
                 ProgressView(value: total > 0 ? Double(completed) / Double(total) : 0) {
-                    Text("\(completed) of \(total) runs\(name.isEmpty ? "" : " — \(name)")")
+                    Text(name.isEmpty ? "\(completed) of \(total) runs" : "\(completed) of \(total) runs — \(name)")
                         .font(AppDesign.Typography.compactLabel)
                         .foregroundStyle(.secondary)
                 }
@@ -369,11 +389,7 @@ struct TrendsView: View {
                     } label: {
                         Label("View Runs (\(inspectedRunCount))", systemImage: "list.bullet")
                     }
-                    .accessibilityLabel(
-                        inspectedRunCount == 1
-                            ? "View the 1 run in \(viewModel.periodLabel(for: key))"
-                            : "View the \(inspectedRunCount) runs in \(viewModel.periodLabel(for: key))"
-                    )
+                    .accessibilityLabel("View the \(inspectedRunCount) runs in \(viewModel.periodLabel(for: key))")
                 }
             }
             Spacer()
@@ -414,23 +430,23 @@ struct TrendsView: View {
         }
         var parts: [String] = [
             viewModel.periodLabel(for: key),
-            "\(bucket.runCount) run\(bucket.runCount == 1 ? "" : "s")",
+            studioLocalized("\(bucket.runCount) runs"),
             DisplayFormatter.formatDistanceKm(bucket.totalDistanceMeters)
         ]
         if let pace = bucket.meanActivePaceSecondsPerKilometer {
-            parts.append("\(DisplayFormatter.formatPace(pace)) /km")
+            parts.append(DisplayFormatter.formatPace(pace))
         }
         if let heartRate = bucket.meanHeartRateBPM {
-            let qualifier = bucket.heartRateContributingRuns < bucket.runCount
-                ? " (from \(bucket.heartRateContributingRuns) of \(bucket.runCount) runs)"
-                : ""
-            parts.append("\(Int(heartRate)) bpm\(qualifier)")
+            let heartRateText = DisplayFormatter.formatHeartRate(Double(Int(heartRate)))
+            parts.append(bucket.heartRateContributingRuns < bucket.runCount
+                ? studioLocalized("\(heartRateText) (from \(bucket.heartRateContributingRuns) of \(bucket.runCount) runs)")
+                : heartRateText)
         }
         if let ascent = bucket.totalAscentMeters {
-            let qualifier = bucket.ascentContributingRuns < bucket.runCount
-                ? " (from \(bucket.ascentContributingRuns) of \(bucket.runCount) runs)"
-                : ""
-            parts.append("\(DisplayFormatter.formatElevation(ascent)) ascent\(qualifier)")
+            let ascentText = DisplayFormatter.formatElevation(ascent)
+            parts.append(bucket.ascentContributingRuns < bucket.runCount
+                ? studioLocalized("\(ascentText) ascent (from \(bucket.ascentContributingRuns) of \(bucket.runCount) runs)")
+                : studioLocalized("\(ascentText) ascent"))
         }
         return parts.joined(separator: " · ")
     }
@@ -550,12 +566,12 @@ private struct TrainingLoadChartPanel: View {
     private var captions: some View {
         var parts: [String] = []
         if series.includesEstimatedLoads {
-            parts.append("Estimated loads are included in the model at your request — they are invented values and make the curve less trustworthy.")
+            parts.append(studioLocalized("Estimated loads are included in the model at your request — they are invented values and make the curve less trustworthy."))
         } else {
-            parts.append("Fitness, fatigue, and form use measured heart-rate loads only. Estimated loads are shown on the bars but excluded from the model.")
+            parts.append(studioLocalized("Fitness, fatigue, and form use measured heart-rate loads only. Estimated loads are shown on the bars but excluded from the model."))
         }
         if let coverage = series.hrCoverageFraction {
-            parts.append("Heart-rate coverage: \(Int((coverage * 100).rounded()))% of days with runs.")
+            parts.append(studioLocalized("Heart-rate coverage: \(Int((coverage * 100).rounded()))% of days with runs."))
         }
         if !uncertaintySpans.isEmpty {
             parts.append(TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: includeEstimatedLoads))
@@ -619,21 +635,21 @@ private struct TrainingLoadChartPanel: View {
                 LineMark(
                     x: .value("Day", model.date, unit: .day),
                     y: .value("Fitness", model.ctl),
-                    series: .value("Series", "fitness")
+                    series: .value("Series", studioLocalized("fitness"))
                 )
                 .foregroundStyle(fitnessColor)
                 .lineStyle(StrokeStyle(lineWidth: 2))
                 LineMark(
                     x: .value("Day", model.date, unit: .day),
                     y: .value("Fatigue", model.atl),
-                    series: .value("Series", "fatigue")
+                    series: .value("Series", studioLocalized("fatigue"))
                 )
                 .foregroundStyle(fatigueColor)
                 .lineStyle(StrokeStyle(lineWidth: 2))
                 LineMark(
                     x: .value("Day", model.date, unit: .day),
                     y: .value("Form", model.tsb),
-                    series: .value("Series", "form")
+                    series: .value("Series", studioLocalized("form"))
                 )
                 .foregroundStyle(formColor.opacity(0.8))
                 .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
@@ -673,7 +689,7 @@ private struct TrainingLoadChartPanel: View {
         }
         .help(
             uncertaintySpans.isEmpty
-                ? "Daily TRIMP with the fitness, fatigue, and form model. Fitness and fatigue are exponentially weighted averages of daily load; form is fitness minus fatigue."
+                ? studioLocalized("Daily TRIMP with the fitness, fatigue, and form model. Fitness and fatigue are exponentially weighted averages of daily load; form is fitness minus fatigue.")
                 : TrainingLoadUncertainty.biasCopy(includesEstimatedLoads: includeEstimatedLoads)
         )
         .accessibilityLabel("Training load by day")
@@ -766,7 +782,7 @@ private struct TrainingLoadChartDescriptor: AXChartDescriptorRepresentable {
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let xScale = AXNumericDataAxisDescriptor(
-            title: "Day",
+            title: studioLocalized("Day"),
             range: xRange,
             gridlinePositions: []
         ) { value in
@@ -774,21 +790,21 @@ private struct TrainingLoadChartDescriptor: AXChartDescriptorRepresentable {
                 .formatted(.dateTime.month(.abbreviated).day())
         }
         let yScale = AXNumericDataAxisDescriptor(
-            title: "Fitness (CTL)",
+            title: studioLocalized("Fitness (CTL)"),
             range: yRange,
             gridlinePositions: []
         ) { value in
             String(Int(value))
         }
         let seriesDescriptor = AXDataSeriesDescriptor(
-            name: "Fitness",
+            name: studioLocalized("Fitness"),
             isContinuous: true,
             dataPoints: series.modelDays.map { day in
                 AXDataPoint(x: day.date.timeIntervalSince1970, y: day.ctl)
             }
         )
         return AXChartDescriptor(
-            title: "Training load by day",
+            title: studioLocalized("Training load by day"),
             summary: summary,
             xAxis: xScale,
             yAxis: yScale,
@@ -838,7 +854,7 @@ private struct TrendsChartPanel: View {
             if points.contains(where: { $0.value != nil }) {
                 chart
             } else {
-                Text("No \(metric.accessibilityUnit) data in this scope.")
+                Text(noDataMessage)
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
@@ -848,6 +864,17 @@ private struct TrendsChartPanel: View {
         .padding(AppDesign.Spacing.large)
         .background(Color(nsColor: .controlBackgroundColor))
         .accessibilityElement(children: .contain)
+    }
+
+    /// One complete sentence per metric rather than a unit word spliced into
+    /// an English sentence.
+    private var noDataMessage: String {
+        switch metric {
+        case .distance: return studioLocalized("No kilometres data in this scope.")
+        case .pace: return studioLocalized("No s/km data in this scope.")
+        case .heartRate: return studioLocalized("No beats per minute data in this scope.")
+        case .ascent: return studioLocalized("No metres data in this scope.")
+        }
     }
 
     private var chart: some View {
@@ -993,7 +1020,7 @@ private struct TrendsChartDescriptor: AXChartDescriptorRepresentable {
     func makeChartDescriptor() -> AXChartDescriptor {
         let populated = points.filter { $0.value != nil }
         let xScale = AXNumericDataAxisDescriptor(
-            title: "Period start",
+            title: studioLocalized("Period start"),
             range: xRange,
             gridlinePositions: []
         ) { value in
@@ -1004,21 +1031,19 @@ private struct TrendsChartDescriptor: AXChartDescriptorRepresentable {
         let yMin = yValues.min() ?? 0
         let yMax = yValues.max() ?? 1
         let yScale = AXNumericDataAxisDescriptor(
-            title: "\(metric.chartTitle) (\(metric.unit))",
+            title: "\(metric.chartTitle) (\(DisplayFormatter.unitSymbol(forToken: metric.unit)))",
             range: min(yMin, yMax)...max(yMin, yMax, yMin + 0.001),
             gridlinePositions: []
         ) { value in
             switch metric {
             case .pace:
-                let mins = Int(value) / 60
-                let secs = Int(value) % 60
-                return String(format: "%d:%02d /km", mins, secs)
+                return DisplayFormatter.formatPace(value)
             case .heartRate:
-                return "\(Int(value)) bpm"
+                return DisplayFormatter.formatHeartRate(Double(Int(value)))
             case .distance:
-                return String(format: "%.1f km", value)
+                return DisplayFormatter.formatKilometers(value * 1_000, fractionDigits: 1)
             case .ascent:
-                return "\(Int(value)) m"
+                return DisplayFormatter.formatMeters(Double(Int(value)))
             }
         }
 
@@ -1027,7 +1052,7 @@ private struct TrendsChartDescriptor: AXChartDescriptorRepresentable {
             AXDataSeriesDescriptor(
                 name: series.count == 1
                     ? "\(metric.chartTitle)"
-                    : "\(metric.chartTitle), section \(index + 1)",
+                    : studioLocalized("\(metric.chartTitle), section \(index + 1)"),
                 isContinuous: metric == .distance || metric == .ascent,
                 dataPoints: group.map {
                     AXDataPoint(
@@ -1038,7 +1063,7 @@ private struct TrendsChartDescriptor: AXChartDescriptorRepresentable {
             )
         }
         return AXChartDescriptor(
-            title: "\(metric.chartTitle) per period",
+            title: studioLocalized("\(metric.chartTitle) per period"),
             summary: summary,
             xAxis: xScale,
             yAxis: yScale,

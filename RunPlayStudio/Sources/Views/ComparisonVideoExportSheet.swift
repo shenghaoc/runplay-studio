@@ -124,9 +124,9 @@ struct ComparisonVideoExportSheet: View {
                 LabeledContent("Codec", value: "H.264")
                 LabeledContent("Resolution", value: viewModel.outputResolutionText)
                 LabeledContent("Frame rate", value: viewModel.outputFrameRateText)
-                LabeledContent("Audio", value: "None")
-                LabeledContent("Primary", value: "P · Blue")
-                LabeledContent("Comparison", value: "C · Orange")
+                LabeledContent("Audio", value: studioLocalized("None"))
+                LabeledContent("Primary", value: studioLocalized("P · Blue"))
+                LabeledContent("Comparison", value: studioLocalized("C · Orange"))
             }
 
             if let mapFailure = viewModel.mapFailureMessage {
@@ -256,22 +256,22 @@ struct ComparisonVideoExportSheet: View {
     }
 
     private var statusText: String {
-        if viewModel.isCancelling { return "Cancelling…" }
+        if viewModel.isCancelling { return studioLocalized("Cancelling…") }
         if viewModel.isExporting {
             if viewModel.progress.totalFrames > 0 {
-                return "Encoding \(viewModel.progress.completedFrames)/\(viewModel.progress.totalFrames)"
+                return studioLocalized("Encoding \(viewModel.progress.completedFrames)/\(viewModel.progress.totalFrames)")
             }
             return viewModel.phase.displayName
         }
-        if viewModel.isPreparingAlignment { return "Aligning routes…" }
-        if viewModel.isPreparingPoster { return "Preparing preview…" }
-        if viewModel.canExport { return "Ready to export" }
+        if viewModel.isPreparingAlignment { return studioLocalized("Aligning routes…") }
+        if viewModel.isPreparingPoster { return studioLocalized("Preparing preview…") }
+        if viewModel.canExport { return studioLocalized("Ready to export") }
         return viewModel.phase.displayName
     }
 
     private var statusAccessibilityLabel: String {
         if viewModel.isExporting, viewModel.progress.totalFrames > 0 {
-            return "Encoding comparison video, \(viewModel.progress.percentComplete) percent complete"
+            return studioLocalized("Encoding comparison video, \(viewModel.progress.percentComplete) percent complete")
         }
         return statusText
     }
@@ -282,8 +282,8 @@ struct ComparisonVideoExportSheet: View {
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = viewModel.defaultFilename()
-        panel.title = "Export Comparison Replay"
-        panel.message = "Choose where to save the comparison MP4 video."
+        panel.title = studioLocalized("Export Comparison Replay")
+        panel.message = studioLocalized("Choose where to save the comparison MP4 video.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             await viewModel.export(to: url)

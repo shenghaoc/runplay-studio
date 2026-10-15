@@ -29,6 +29,9 @@ public struct WorkoutVideoFrameModel: Sendable {
 
     public let appearance: PNGSummaryExportAppearance
     public let routeColorMode: WorkoutRouteColorMode
+    /// Language and number format of the frame's text; `nil` follows the app.
+    /// Exports pass `nil`; tests pin a locale.
+    public let locale: Locale?
 
     public init(
         frameIndex: Int,
@@ -51,7 +54,8 @@ public struct WorkoutVideoFrameModel: Sendable {
         isInRecordingGap: Bool,
         stateLabel: String?,
         appearance: PNGSummaryExportAppearance,
-        routeColorMode: WorkoutRouteColorMode
+        routeColorMode: WorkoutRouteColorMode,
+        locale: Locale? = nil
     ) {
         self.frameIndex = frameIndex
         self.frameCount = frameCount
@@ -74,6 +78,7 @@ public struct WorkoutVideoFrameModel: Sendable {
         self.stateLabel = stateLabel
         self.appearance = appearance
         self.routeColorMode = routeColorMode
+        self.locale = locale
     }
 
     public static func make(
@@ -82,7 +87,8 @@ public struct WorkoutVideoFrameModel: Sendable {
         workoutTitle: String,
         workoutDateText: String,
         appearance: PNGSummaryExportAppearance,
-        routeColorMode: WorkoutRouteColorMode
+        routeColorMode: WorkoutRouteColorMode,
+        locale: Locale? = nil
     ) -> WorkoutVideoFrameModel {
         WorkoutVideoFrameModel(
             frameIndex: sample.frameIndex,
@@ -105,7 +111,8 @@ public struct WorkoutVideoFrameModel: Sendable {
             isInRecordingGap: sample.isInRecordingGap,
             stateLabel: sample.stateLabel,
             appearance: appearance,
-            routeColorMode: routeColorMode
+            routeColorMode: routeColorMode,
+            locale: locale
         )
     }
 
@@ -120,19 +127,19 @@ public struct WorkoutVideoFrameModel: Sendable {
     }
 
     public var formattedDistance: String {
-        DisplayFormatter.formatDistanceKm(distanceMeters)
+        DisplayFormatter.formatDistanceKm(distanceMeters, locale: locale)
     }
 
     public var formattedPace: String {
-        DisplayFormatter.formatPace(activePaceSecondsPerKilometer)
+        DisplayFormatter.formatPace(activePaceSecondsPerKilometer, locale: locale)
     }
 
     public var formattedHeartRate: String {
-        DisplayFormatter.formatHeartRate(heartRateBPM)
+        DisplayFormatter.formatHeartRate(heartRateBPM, locale: locale)
     }
 
     public var formattedElevation: String {
-        DisplayFormatter.formatElevation(correctedElevationMeters)
+        DisplayFormatter.formatElevation(correctedElevationMeters, locale: locale)
     }
 
     public var formattedSourceElapsed: String {
@@ -144,6 +151,19 @@ public struct WorkoutVideoFrameModel: Sendable {
     }
 
     public var progressPercentLabel: String {
-        "\(Int((min(1, max(0, progress)) * 100).rounded()))%"
+        // Round half away from zero first (as before), then let the locale
+        // place the percent sign.
+        let wholePercent = (min(1, max(0, progress)) * 100).rounded()
+        return (wholePercent / 100).formatted(
+            .percent.precision(.fractionLength(0)).locale(locale ?? .autoupdatingCurrent)
+        )
+    }
+
+    /// The progress caption under the bar: "Progress 45%  ·  Source 12:34 / 45:00".
+    public var progressCaption: String {
+        let percent = progressPercentLabel
+        let source = formattedSourceElapsed
+        let total = formattedSourceTotal
+        return platformLocalized("Progress \(percent)  ·  Source \(source) / \(total)", locale: locale)
     }
 }

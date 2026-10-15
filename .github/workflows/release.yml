@@ -128,6 +128,7 @@ jobs:
       engine: true
       full-tests: true
       release-compile: true
+      localization: true
 
   validate-and-package:
     name: Validate and package

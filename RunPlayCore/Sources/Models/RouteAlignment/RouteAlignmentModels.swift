@@ -10,9 +10,9 @@ public enum RouteAlignmentQuality: String, CaseIterable, Codable, Hashable, Send
 
     public var displayName: String {
         switch self {
-        case .excellent: return "Excellent"
-        case .good: return "Good"
-        case .limited: return "Limited"
+        case .excellent: return coreLocalized("Excellent")
+        case .good: return coreLocalized("Good")
+        case .limited: return coreLocalized("Limited")
         }
     }
 }
@@ -34,27 +34,27 @@ public enum RouteAlignmentUnavailableReason: String, CaseIterable, Codable, Hash
     public var userFacingExplanation: String {
         switch self {
         case .insufficientRouteData:
-            return "There is not enough continuous GPS route data for route-aware comparison."
+            return coreLocalized("There is not enough continuous GPS route data for route-aware comparison.")
         case .insufficientMatchedDistance:
-            return "Only a short fragment of the routes could be matched reliably."
+            return coreLocalized("Only a short fragment of the routes could be matched reliably.")
         case .insufficientCoverage:
-            return "Only a limited portion of the routes could be matched reliably."
+            return coreLocalized("Only a limited portion of the routes could be matched reliably.")
         case .routesTooFarApart:
-            return "The routes are too far apart for route-aware comparison."
+            return coreLocalized("The routes are too far apart for route-aware comparison.")
         case .excessiveWarping:
-            return "Route correspondence requires too much stretching to be reliable."
+            return coreLocalized("Route correspondence requires too much stretching to be reliable.")
         case .oppositeDirection:
-            return "Routes appear to be travelled in opposite directions."
+            return coreLocalized("Routes appear to be travelled in opposite directions.")
         case .ambiguousGeometry:
-            return "These loop recordings begin too far apart for this alignment mode."
+            return coreLocalized("These loop recordings begin too far apart for this alignment mode.")
         case .unsupportedGeographicExtent:
-            return "The geographic extent of these routes is too large for local alignment."
+            return coreLocalized("The geographic extent of these routes is too large for local alignment.")
         case .resourceLimit:
-            return "These routes are too large for route-aware comparison with the current budget."
+            return coreLocalized("These routes are too large for route-aware comparison with the current budget.")
         case .cancelled:
-            return "Route alignment was cancelled."
+            return coreLocalized("Route alignment was cancelled.")
         case .algorithmFailure:
-            return "Route alignment could not be completed."
+            return coreLocalized("Route alignment could not be completed.")
         }
     }
 }
@@ -219,16 +219,14 @@ public struct RouteAlignmentDiagnostics: Hashable, Sendable {
     }
 
     public var compactStatusLabel: String {
-        let matchedKm = alignedDistanceMeters / 1000
         let primaryPct = Int((primaryCoverageFraction * 100).rounded())
         let comparisonPct = Int((comparisonCoverageFraction * 100).rounded())
-        let median = Int(medianSpatialSeparationMeters.rounded())
-        return String(
-            format: "%.1f km matched · %d%% / %d%% coverage · %d m median separation",
-            matchedKm,
-            primaryPct,
-            comparisonPct,
-            median
+        let matched = DisplayFormatter.formatKilometers(alignedDistanceMeters, fractionDigits: 1)
+        let primaryCoverage = "\(primaryPct)%"
+        let comparisonCoverage = "\(comparisonPct)%"
+        let medianSeparation = DisplayFormatter.formatMeters(medianSpatialSeparationMeters.rounded())
+        return coreLocalized(
+            "\(matched) matched · \(primaryCoverage) / \(comparisonCoverage) coverage · \(medianSeparation) median separation"
         )
     }
 
@@ -396,40 +394,40 @@ public struct ComparisonAlignedMetrics: Sendable {
     public var elapsedDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             elapsedDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
     public var activeDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             activeDeltaSeconds,
-            positiveLabel: "longer",
-            negativeLabel: "shorter"
+            positiveLabel: coreLocalized("longer"),
+            negativeLabel: coreLocalized("shorter")
         )
     }
     public var movingDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             movingDeltaSeconds,
-            positiveLabel: "more moving",
-            negativeLabel: "less moving"
+            positiveLabel: coreLocalized("more moving"),
+            negativeLabel: coreLocalized("less moving")
         )
     }
     public var stoppedDeltaFormatted: String {
         DisplayFormatter.formatSignedDurationDelta(
             stoppedDeltaSeconds,
-            positiveLabel: "more stopped",
-            negativeLabel: "less stopped"
+            positiveLabel: coreLocalized("more stopped"),
+            negativeLabel: coreLocalized("less stopped")
         )
     }
     public var paceDeltaFormatted: String {
-        DisplayFormatter.formatSignedDurationDelta(activePaceDeltaSecondsPerKm, suffix: "/km")
+        DisplayFormatter.formatSignedDurationDelta(activePaceDeltaSecondsPerKm, suffix: DisplayFormatter.perKilometerSuffix())
     }
     public var spatialSeparationFormatted: String {
-        guard spatialSeparationMeters.isFinite else { return "N/A" }
-        if spatialSeparationMeters < 1 {
-            return "<1 m apart"
-        }
-        return String(format: "%.0f m apart", spatialSeparationMeters)
+        guard spatialSeparationMeters.isFinite else { return coreLocalized("N/A") }
+        let separation = spatialSeparationMeters < 1
+            ? "<" + DisplayFormatter.formatMeters(1)
+            : DisplayFormatter.formatMeters(spatialSeparationMeters)
+        return coreLocalized("\(separation) apart")
     }
 
     private static func nonNegativeFinite(_ value: Double) -> Double {

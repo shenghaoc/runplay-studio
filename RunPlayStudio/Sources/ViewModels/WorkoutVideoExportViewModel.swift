@@ -105,11 +105,11 @@ final class WorkoutVideoExportViewModel: Identifiable {
     }
 
     var outputFrameRateText: String {
-        "\(policy.framesPerSecond) fps"
+        studioLocalized("\(policy.framesPerSecond) fps")
     }
 
     var outputSummaryText: String {
-        "Offline H.264 MP4 · \(policy.width)×\(policy.height) · \(policy.framesPerSecond) fps · no audio"
+        studioLocalized("Offline H.264 MP4 · \(policy.width)×\(policy.height) · \(policy.framesPerSecond) fps · no audio")
     }
 
     init(
@@ -130,7 +130,7 @@ final class WorkoutVideoExportViewModel: Identifiable {
         self.exporter = exporter ?? WorkoutVideoExporter(
             mapPreparer: MapKitWorkoutVideoMapPreparer()
         )
-        self.posterAccessibilityLabel = "\(workout.displayName), preview loading"
+        self.posterAccessibilityLabel = studioLocalized("\(workout.displayName), preview loading")
     }
 
     func onAppear() {
@@ -548,6 +548,8 @@ final class WorkoutVideoExportViewModel: Identifiable {
     ) -> String {
         let distance = DisplayFormatter.formatDistanceKm(poster.sample.distanceMeters)
         let elapsed = DisplayFormatter.formatDuration(poster.sample.elapsedSeconds)
-        return "\(workout.displayName), \(configuration.appearance.displayName) appearance, \(poster.effectiveRouteColorMode.displayName) route color, midpoint \(distance), elapsed \(elapsed)"
+        let appearance = configuration.appearance.displayName
+        let routeColor = poster.effectiveRouteColorMode.displayName
+        return studioLocalized("\(workout.displayName), \(appearance) appearance, \(routeColor) route color, midpoint \(distance), elapsed \(elapsed)")
     }
 }

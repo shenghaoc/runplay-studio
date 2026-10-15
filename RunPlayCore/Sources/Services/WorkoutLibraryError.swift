@@ -18,17 +18,17 @@ public enum WorkoutLibraryError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .manifestMissing(let detail):
-            return "Library manifest missing: \(detail)"
+            return coreLocalized("Library manifest missing: \(detail)")
         case .manifestCorrupted(let detail):
-            return "Library manifest corrupted: \(detail)"
+            return coreLocalized("Library manifest corrupted: \(detail)")
         case .workoutFileMissing(let id):
-            return "Workout file missing for ID: \(id)"
+            return coreLocalized("Workout file missing for ID: \(id.uuidString)")
         case .workoutCorrupted(let id, let detail):
-            return "Workout \(id) corrupted: \(detail)"
+            return coreLocalized("Workout \(id.uuidString) corrupted: \(detail)")
         case .writeFailed(let detail):
-            return "Write failed: \(detail)"
+            return coreLocalized("Write failed: \(detail)")
         case .unsupportedSchemaVersion(let v):
-            return "Unsupported library schema version: \(v)"
+            return coreLocalized("Unsupported library schema version: \(v)")
         }
     }
 }

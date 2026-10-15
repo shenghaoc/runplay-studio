@@ -36,8 +36,8 @@ struct ElevationChartSourceSplit: Equatable {
     /// The legend line for a chart that shows both sources.
     var legend: String {
         fallbackIsDEM
-            ? "Dashed sections are DEM elevation filling gaps in the barometric altitude."
-            : "Dashed sections use recorded altitude where no DEM tile covers the route."
+            ? studioLocalized("Dashed sections are DEM elevation filling gaps in the barometric altitude.")
+            : studioLocalized("Dashed sections use recorded altitude where no DEM tile covers the route.")
     }
 }
 
@@ -175,6 +175,17 @@ struct MetricsChartView: View {
         case power = "Power"
         case speed = "Speed"
 
+        /// Localized name for display; the raw value is an identifier.
+        var displayName: String {
+            switch self {
+            case .elevation: return studioLocalized("Elevation")
+            case .pace: return studioLocalized("Active Pace")
+            case .heartRate: return studioLocalized("Heart Rate")
+            case .power: return studioLocalized("Power")
+            case .speed: return studioLocalized("Speed")
+            }
+        }
+
         var unit: String {
             switch self {
             case .elevation: return "m"
@@ -188,12 +199,14 @@ struct MetricsChartView: View {
 
     var body: some View {
         let accessibilityModel = chartAccessibilityModel
+        // Resolved once per pass: the chart reads it for every plotted point.
+        let metricName = selectedMetric.displayName
         return VStack(spacing: AppDesign.Spacing.medium) {
             // Metric picker with semantic color indicator
             HStack {
                 Picker("Metric", selection: $selectedMetric) {
                     ForEach(MetricType.allCases, id: \.self) { metric in
-                        Text(metric.rawValue).tag(metric)
+                        Text(metric.displayName).tag(metric)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -232,7 +245,7 @@ struct MetricsChartView: View {
                     ForEach(chartData) { point in
                         AreaMark(
                             x: .value("Distance (km)", point.distanceKm),
-                            y: .value(selectedMetric.rawValue, point.value),
+                            y: .value(metricName, point.value),
                             series: .value("Continuous route", point.seriesID)
                         )
                         .foregroundStyle(
@@ -246,7 +259,7 @@ struct MetricsChartView: View {
 
                         LineMark(
                             x: .value("Distance (km)", point.distanceKm),
-                            y: .value(selectedMetric.rawValue, point.value),
+                            y: .value(metricName, point.value),
                             series: .value("Continuous route", point.seriesID)
                         )
                         .foregroundStyle(chartColor)
@@ -415,11 +428,11 @@ struct MetricsChartView: View {
                     seekDistanceKmText = String(format: "%.2f", newKm)
                 }
             ), in: 0...max(totalKm, 0.01), step: 0.1) {
-                Text(String(format: "%.2f / %.2f km", currentDistance / 1000, totalKm))
+                Text(verbatim: "\(DisplayFormatter.formatDecimal(currentDistance / 1000, fractionDigits: 2)) / \(DisplayFormatter.formatDistanceKm(totalKm * 1_000))")
                     .font(AppDesign.Typography.monoCaption)
             }
             .accessibilityLabel("Adjust jump distance")
-            .accessibilityValue(String(format: "%.2f km", currentDistance / 1000))
+            .accessibilityValue(DisplayFormatter.formatDistanceKm(currentDistance))
         }
         .padding(.horizontal)
     }
@@ -442,7 +455,7 @@ struct MetricsChartView: View {
 
     private var chartAccessibilityModel: ChartAccessibilityModel {
         let base = chartAccessibilityBaseModel ?? ChartAccessibilityModel.make(
-            metricName: selectedMetric.rawValue,
+            metricName: selectedMetric.displayName,
             unit: selectedMetric.unit,
             values: [],
             seriesIDs: [],
@@ -546,7 +559,7 @@ struct MetricsChartView: View {
             }
             : nil
         chartAccessibilityBaseModel = ChartAccessibilityModel.make(
-            metricName: selectedMetric.rawValue,
+            metricName: selectedMetric.displayName,
             unit: selectedMetric.unit,
             values: updatedData.map(\.value),
             seriesIDs: gapSeriesIDs,
@@ -614,9 +627,9 @@ struct MetricsChartView: View {
 
     private var noDataMessage: String {
         switch selectedMetric {
-        case .heartRate: return "No heart rate data available"
-        case .power: return "No power data available"
-        default: return "No chart data available"
+        case .heartRate: return studioLocalized("No heart rate data available")
+        case .power: return studioLocalized("No power data available")
+        default: return studioLocalized("No chart data available")
         }
     }
 
@@ -642,24 +655,21 @@ struct MetricsChartView: View {
     private func formatValue(_ value: Double?) -> String {
         guard let value, value.isFinite else {
             switch selectedMetric {
-            case .elevation: return "No elevation data"
-            case .pace: return "No pace data"
-            case .heartRate: return "No HR data"
-            case .power: return "No power data"
-            case .speed: return "No speed data"
+            case .elevation: return studioLocalized("No elevation data")
+            case .pace: return studioLocalized("No pace data")
+            case .heartRate: return studioLocalized("No HR data")
+            case .power: return studioLocalized("No power data")
+            case .speed: return studioLocalized("No speed data")
             }
         }
         switch selectedMetric {
-        case .elevation: return "\(Int(value))m"
-        case .pace:
-            let mins = Int(value) / 60
-            let secs = Int(value) % 60
-            return "\(mins):\(String(format: "%02d", secs)) /km"
+        case .elevation: return DisplayFormatter.formatMeters(Double(Int(value)))
+        case .pace: return DisplayFormatter.formatPace(value)
         case .heartRate:
-            guard value.isFinite else { return "No HR data" }
-            return "\(Int(value)) bpm"
-        case .power: return "\(Int(value)) W"
-        case .speed: return String(format: "%.1f m/s", value)
+            guard value.isFinite else { return studioLocalized("No HR data") }
+            return DisplayFormatter.formatHeartRate(Double(Int(value)))
+        case .power: return DisplayFormatter.formatPower(Double(Int(value)))
+        case .speed: return DisplayFormatter.formatSpeed(value)
         }
     }
 

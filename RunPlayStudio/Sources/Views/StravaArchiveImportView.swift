@@ -62,11 +62,11 @@ struct StravaArchiveImportView: View {
     private var summaryBar: some View {
         let d = session.scanResult
         return HStack(spacing: AppDesign.Spacing.large) {
-            summaryChip("Activities", value: "\(d.candidates.count)")
-            summaryChip("Ready", value: "\(d.readyCount)")
-            summaryChip("Selected", value: "\(session.selectedCount)")
-            summaryChip("Duplicates", value: "\(d.duplicateCount)")
-            summaryChip("Other sports", value: "\(d.unsupportedActivityTypeCount)")
+            summaryChip(studioLocalized("Activities"), value: "\(d.candidates.count)")
+            summaryChip(studioLocalized("Ready"), value: "\(d.readyCount)")
+            summaryChip(studioLocalized("Selected"), value: "\(session.selectedCount)")
+            summaryChip(studioLocalized("Duplicates"), value: "\(d.duplicateCount)")
+            summaryChip(studioLocalized("Other sports"), value: "\(d.unsupportedActivityTypeCount)")
             Spacer()
             Text(byteCount(d.diagnostics.estimatedTotalSourceBytes))
                 .font(AppDesign.Typography.compactLabel)
@@ -238,7 +238,7 @@ struct StravaArchiveImportView: View {
 
     private var progressCaption: String {
         let p = session.progress
-        return "\(p.completedCount) of \(p.totalCount) · staged \(p.stagedCount) · skipped \(p.skippedCount) · failed \(p.failedCount)"
+        return studioLocalized("\(p.completedCount) of \(p.totalCount) · staged \(p.stagedCount) · skipped \(p.skippedCount) · failed \(p.failedCount)")
     }
 
     // MARK: - Report
@@ -258,14 +258,14 @@ struct StravaArchiveImportView: View {
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                    reportStat("Imported", report.importedCount)
-                    reportStat("Duplicates", report.count(for: .duplicate))
-                    reportStat("Other sports", report.count(for: .unsupportedActivityType))
-                    reportStat("Unsupported format", report.count(for: .unsupportedFormat))
-                    reportStat("No GPS", report.count(for: .noGPSRoute))
-                    reportStat("Parse failed", report.count(for: .parseFailed))
-                    reportStat("Unsafe entries", report.count(for: .unsafeArchiveEntry))
-                    reportStat("Provider conflicts", report.count(for: .providerConflict))
+                    reportStat(studioLocalized("Imported"), report.importedCount)
+                    reportStat(studioLocalized("Duplicates"), report.count(for: .duplicate))
+                    reportStat(studioLocalized("Other sports"), report.count(for: .unsupportedActivityType))
+                    reportStat(studioLocalized("Unsupported format"), report.count(for: .unsupportedFormat))
+                    reportStat(studioLocalized("No GPS"), report.count(for: .noGPSRoute))
+                    reportStat(studioLocalized("Parse failed"), report.count(for: .parseFailed))
+                    reportStat(studioLocalized("Unsafe entries"), report.count(for: .unsafeArchiveEntry))
+                    reportStat(studioLocalized("Provider conflicts"), report.count(for: .providerConflict))
                 }
                 .padding(.horizontal)
 
@@ -350,16 +350,16 @@ struct StravaArchiveImportView: View {
 
     private func phaseLabel(_ phase: WorkoutBatchImportPhase) -> String {
         switch phase {
-        case .openingArchive: return "Opening archive…"
-        case .readingMetadata: return "Reading metadata…"
-        case .scanningEntries: return "Scanning entries…"
-        case .awaitingSelection: return "Ready"
-        case .importing: return "Importing activities…"
-        case .staging: return "Staging workouts…"
-        case .committing: return "Saving library…"
-        case .completed: return "Complete"
-        case .cancelled: return "Cancelled"
-        case .failed: return "Failed"
+        case .openingArchive: return studioLocalized("Opening archive…")
+        case .readingMetadata: return studioLocalized("Reading metadata…")
+        case .scanningEntries: return studioLocalized("Scanning entries…")
+        case .awaitingSelection: return studioLocalized("Ready")
+        case .importing: return studioLocalized("Importing activities…")
+        case .staging: return studioLocalized("Staging workouts…")
+        case .committing: return studioLocalized("Saving library…")
+        case .completed: return studioLocalized("Complete")
+        case .cancelled: return studioLocalized("Cancelled")
+        case .failed: return studioLocalized("Failed")
         }
     }
 

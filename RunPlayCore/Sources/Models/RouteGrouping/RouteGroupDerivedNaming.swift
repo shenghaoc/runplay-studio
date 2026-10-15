@@ -546,7 +546,7 @@ extension WorkoutRouteGroup {
     /// missing (English default; same key and text the routes list uses).
     private static var unnamedFallbackName: String {
         #if canImport(Darwin)
-        String(localized: "route_group.unnamed", defaultValue: "Route")
+        String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
         #else
         "Route"
         #endif
@@ -607,29 +607,29 @@ extension WorkoutRouteGroup {
     private static func compassAbbreviation(forSector sector: Int, fine: Bool) -> String {
         #if canImport(Darwin)
         switch (fine, sector) {
-        case (false, 0), (true, 0): return String(localized: "route_group.compass.north", defaultValue: "N")
-        case (false, 1): return String(localized: "route_group.compass.northeast", defaultValue: "NE")
-        case (false, 2): return String(localized: "route_group.compass.east", defaultValue: "E")
-        case (false, 3): return String(localized: "route_group.compass.southeast", defaultValue: "SE")
-        case (false, 4): return String(localized: "route_group.compass.south", defaultValue: "S")
-        case (false, 5): return String(localized: "route_group.compass.southwest", defaultValue: "SW")
-        case (false, 6): return String(localized: "route_group.compass.west", defaultValue: "W")
-        case (false, _): return String(localized: "route_group.compass.northwest", defaultValue: "NW")
-        case (true, 1): return String(localized: "route_group.compass.north_northeast", defaultValue: "NNE")
-        case (true, 2): return String(localized: "route_group.compass.northeast", defaultValue: "NE")
-        case (true, 3): return String(localized: "route_group.compass.east_northeast", defaultValue: "ENE")
-        case (true, 4): return String(localized: "route_group.compass.east", defaultValue: "E")
-        case (true, 5): return String(localized: "route_group.compass.east_southeast", defaultValue: "ESE")
-        case (true, 6): return String(localized: "route_group.compass.southeast", defaultValue: "SE")
-        case (true, 7): return String(localized: "route_group.compass.south_southeast", defaultValue: "SSE")
-        case (true, 8): return String(localized: "route_group.compass.south", defaultValue: "S")
-        case (true, 9): return String(localized: "route_group.compass.south_southwest", defaultValue: "SSW")
-        case (true, 10): return String(localized: "route_group.compass.southwest", defaultValue: "SW")
-        case (true, 11): return String(localized: "route_group.compass.west_southwest", defaultValue: "WSW")
-        case (true, 12): return String(localized: "route_group.compass.west", defaultValue: "W")
-        case (true, 13): return String(localized: "route_group.compass.west_northwest", defaultValue: "WNW")
-        case (true, 14): return String(localized: "route_group.compass.northwest", defaultValue: "NW")
-        default: return String(localized: "route_group.compass.north_northwest", defaultValue: "NNW")
+        case (false, 0), (true, 0): return String(localized: "route_group.compass.north", defaultValue: "N", bundle: .module)
+        case (false, 1): return String(localized: "route_group.compass.northeast", defaultValue: "NE", bundle: .module)
+        case (false, 2): return String(localized: "route_group.compass.east", defaultValue: "E", bundle: .module)
+        case (false, 3): return String(localized: "route_group.compass.southeast", defaultValue: "SE", bundle: .module)
+        case (false, 4): return String(localized: "route_group.compass.south", defaultValue: "S", bundle: .module)
+        case (false, 5): return String(localized: "route_group.compass.southwest", defaultValue: "SW", bundle: .module)
+        case (false, 6): return String(localized: "route_group.compass.west", defaultValue: "W", bundle: .module)
+        case (false, _): return String(localized: "route_group.compass.northwest", defaultValue: "NW", bundle: .module)
+        case (true, 1): return String(localized: "route_group.compass.north_northeast", defaultValue: "NNE", bundle: .module)
+        case (true, 2): return String(localized: "route_group.compass.northeast", defaultValue: "NE", bundle: .module)
+        case (true, 3): return String(localized: "route_group.compass.east_northeast", defaultValue: "ENE", bundle: .module)
+        case (true, 4): return String(localized: "route_group.compass.east", defaultValue: "E", bundle: .module)
+        case (true, 5): return String(localized: "route_group.compass.east_southeast", defaultValue: "ESE", bundle: .module)
+        case (true, 6): return String(localized: "route_group.compass.southeast", defaultValue: "SE", bundle: .module)
+        case (true, 7): return String(localized: "route_group.compass.south_southeast", defaultValue: "SSE", bundle: .module)
+        case (true, 8): return String(localized: "route_group.compass.south", defaultValue: "S", bundle: .module)
+        case (true, 9): return String(localized: "route_group.compass.south_southwest", defaultValue: "SSW", bundle: .module)
+        case (true, 10): return String(localized: "route_group.compass.southwest", defaultValue: "SW", bundle: .module)
+        case (true, 11): return String(localized: "route_group.compass.west_southwest", defaultValue: "WSW", bundle: .module)
+        case (true, 12): return String(localized: "route_group.compass.west", defaultValue: "W", bundle: .module)
+        case (true, 13): return String(localized: "route_group.compass.west_northwest", defaultValue: "WNW", bundle: .module)
+        case (true, 14): return String(localized: "route_group.compass.northwest", defaultValue: "NW", bundle: .module)
+        default: return String(localized: "route_group.compass.north_northwest", defaultValue: "NNW", bundle: .module)
         }
         #else
         let coarse = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
@@ -645,7 +645,7 @@ extension WorkoutRouteGroup {
     /// Parenthesized disambiguator appended to a colliding base name.
     private static func disambiguatedSuffix(_ disambiguator: String) -> String {
         #if canImport(Darwin)
-        let format = String(localized: "route_group.disambiguated_suffix", defaultValue: " (%@)")
+        let format = String(localized: "route_group.disambiguated_suffix", defaultValue: " (%@)", bundle: .module)
         #else
         let format = " (%@)"
         #endif

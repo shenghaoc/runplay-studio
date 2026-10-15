@@ -458,7 +458,7 @@ public struct SegmentDetector {
     ) -> SegmentHighlight {
         SegmentHighlight(
             type: type,
-            title: type.displayName,
+            title: type.canonicalTitle,
             subtitle: formatPace(result.pace),
             startDistanceMeters: startDistance,
             endDistanceMeters: endDistance,
@@ -520,7 +520,7 @@ public struct SegmentDetector {
         let type: SegmentType = ascending ? .biggestClimb : .biggestDescent
         return SegmentHighlight(
             type: type,
-            title: type.displayName,
+            title: type.canonicalTitle,
             subtitle: String(format: "%.0f m %@", abs(delta), ascending ? "↑" : "↓"),
             startDistanceMeters: candidate.startDistanceMeters,
             endDistanceMeters: candidate.endDistanceMeters,
@@ -542,7 +542,11 @@ public struct SegmentDetector {
         )
     }
 
+    /// The stored subtitle is persisted with the workout, so it is formatted
+    /// in a fixed locale; `SegmentHighlight.displaySubtitle` localizes it.
     private static func formatPace(_ paceSeconds: Double) -> String {
-        DisplayFormatter.formatPace(paceSeconds)
+        DisplayFormatter.formatPace(paceSeconds, locale: storageLocale)
     }
+
+    private static let storageLocale = Locale(identifier: "en_US_POSIX")
 }

@@ -7,7 +7,7 @@ public enum WorkoutLibraryQueryError: Error, LocalizedError, Equatable, Sendable
     public var errorDescription: String? {
         switch self {
         case .cancelled:
-            return "Library query was cancelled."
+            return coreLocalized("Library query was cancelled.")
         }
     }
 }

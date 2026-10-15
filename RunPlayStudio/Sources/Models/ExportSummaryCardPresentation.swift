@@ -10,28 +10,28 @@ struct RouteMetricLegendModel: Hashable, Sendable {
     let showsNoData: Bool
     let coverageFraction: Double
 
-    var lowerEndLabel: String {
+    func lowerEndLabel(locale: Locale? = nil) -> String {
         switch mode {
-        case .pace: return "Faster"
-        case .heartRate, .power, .correctedElevation: return "Lower"
+        case .pace: return studioLocalized("Faster", locale: locale)
+        case .heartRate, .power, .correctedElevation: return studioLocalized("Lower", locale: locale)
         case .solid: return ""
         }
     }
 
-    var upperEndLabel: String {
+    func upperEndLabel(locale: Locale? = nil) -> String {
         switch mode {
-        case .pace: return "Slower"
-        case .heartRate, .power, .correctedElevation: return "Higher"
+        case .pace: return studioLocalized("Slower", locale: locale)
+        case .heartRate, .power, .correctedElevation: return studioLocalized("Higher", locale: locale)
         case .solid: return ""
         }
     }
 
-    var directionSummary: String {
+    func directionSummary(locale: Locale? = nil) -> String {
         switch mode {
-        case .pace: return "Faster → Slower"
-        case .heartRate: return "Lower HR → Higher HR"
-        case .power: return "Lower Power → Higher Power"
-        case .correctedElevation: return "Lower Elevation → Higher Elevation"
+        case .pace: return studioLocalized("Faster → Slower", locale: locale)
+        case .heartRate: return studioLocalized("Lower HR → Higher HR", locale: locale)
+        case .power: return studioLocalized("Lower Power → Higher Power", locale: locale)
+        case .correctedElevation: return studioLocalized("Lower Elevation → Higher Elevation", locale: locale)
         case .solid: return ""
         }
     }
@@ -46,12 +46,22 @@ struct ExportSummaryCardPresentation {
     let routeLegend: RouteMetricLegendModel?
     let appearance: PNGSummaryExportAppearance
     let layout: PNGSummaryCardLayout
+    /// Language and formatting of the card's own labels; `nil` follows the
+    /// app. Must match the locale `model` was built with.
+    var locale: Locale? = nil
 
     var palette: PNGSummaryExportPalette {
         PNGSummaryExportPalette.palette(for: appearance)
     }
 
     var includesMap: Bool { mapImage != nil }
+
+    /// The language text is typeset in. Han characters shared by Simplified
+    /// and Traditional Chinese (and Japanese) take a different font per
+    /// language, and a SwiftUI `\.locale` alone does not select it.
+    var typesettingLanguage: Locale.Language {
+        (locale ?? .current).language
+    }
 }
 
 /// Deterministic Light/Dark colors for PNG export (never ambient window colors).

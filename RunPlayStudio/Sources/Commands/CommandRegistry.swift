@@ -13,12 +13,12 @@ enum CommandWorkspace: String, CaseIterable, Sendable, Equatable {
 
     var displayName: String {
         switch self {
-        case .any: return "Any"
-        case .workout: return "Workout"
-        case .library: return "All Runs"
-        case .heatmap: return "Personal Heatmap"
-        case .comparison: return "Comparison"
-        case .sheet: return "Sheet"
+        case .any: return studioLocalized("Any")
+        case .workout: return studioLocalized("Workout")
+        case .library: return studioLocalized("All Runs")
+        case .heatmap: return studioLocalized("Personal Heatmap")
+        case .comparison: return studioLocalized("Comparison")
+        case .sheet: return studioLocalized("Sheet")
         }
     }
 }
@@ -81,12 +81,15 @@ struct CommandDefinition: Equatable, Sendable, Identifiable {
 
     var displayShortcut: String {
         if keyEquivalent.isEmpty {
-            return "Menu"
+            return studioLocalized("Menu")
         }
+        // `keyEquivalent` stays the stable key name; only its display is localized.
+        let key = keyEquivalent == "Space" ? studioLocalized("Space") : keyEquivalent
+        let shortcut = "\(modifierSymbols)\(key)"
         if localOnly {
-            return "\(modifierSymbols)\(keyEquivalent) (when focused)"
+            return studioLocalized("\(shortcut) (when focused)")
         }
-        return "\(modifierSymbols)\(keyEquivalent)"
+        return shortcut
     }
 
     /// Menu-bar shortcut for a single ASCII letter or digit key equivalent.
@@ -122,420 +125,420 @@ enum CommandRegistry {
     static let all: [CommandDefinition] = [
         CommandDefinition(
             id: .importFile,
-            menuTitle: "Import File…",
+            menuTitle: studioLocalized("Import File…"),
             menu: "File",
             keyEquivalent: "I",
             modifiers: .command,
             workspace: .any,
-            purpose: "Import a GPX, TCX, FIT, or JSON workout file",
-            accessibilityDescription: "Import a single workout file",
+            purpose: studioLocalized("Import a GPX, TCX, FIT, or JSON workout file"),
+            accessibilityDescription: studioLocalized("Import a single workout file"),
             localOnly: false
         ),
         CommandDefinition(
             id: .importStravaArchive,
-            menuTitle: "Import Strava Archive…",
+            menuTitle: studioLocalized("Import Strava Archive…"),
             menu: "File",
             keyEquivalent: "I",
             modifiers: [.command, .shift],
             workspace: .any,
-            purpose: "Import running activities from a local Strava bulk-export ZIP",
-            accessibilityDescription: "Import a Strava archive",
+            purpose: studioLocalized("Import running activities from a local Strava bulk-export ZIP"),
+            accessibilityDescription: studioLocalized("Import a Strava archive"),
             localOnly: false
         ),
         CommandDefinition(
             id: .watchFoldersSettings,
-            menuTitle: "Watch Folders…",
+            menuTitle: studioLocalized("Watch Folders…"),
             menu: "File",
             keyEquivalent: "",
             modifiers: [],
             workspace: .any,
-            purpose: "Manage folders that import new workout files automatically",
-            accessibilityDescription: "Open watch folder settings",
+            purpose: studioLocalized("Manage folders that import new workout files automatically"),
+            accessibilityDescription: studioLocalized("Open watch folder settings"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportSummaryJSON,
-            menuTitle: "Summary (JSON)…",
+            menuTitle: studioLocalized("Summary (JSON)…"),
             menu: "File",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Export the workout summary as JSON",
-            accessibilityDescription: "Export workout summary as JSON",
+            purpose: studioLocalized("Export the workout summary as JSON"),
+            accessibilityDescription: studioLocalized("Export workout summary as JSON"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportDistanceSplitsCSV,
-            menuTitle: "Distance Splits (CSV)…",
+            menuTitle: studioLocalized("Distance Splits (CSV)…"),
             menu: "File",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Export calculated kilometer splits as CSV",
-            accessibilityDescription: "Export distance splits as CSV",
+            purpose: studioLocalized("Export calculated kilometer splits as CSV"),
+            accessibilityDescription: studioLocalized("Export distance splits as CSV"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportRecordedLapsCSV,
-            menuTitle: "Recorded Laps (CSV)…",
+            menuTitle: studioLocalized("Recorded Laps (CSV)…"),
             menu: "File",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Export source-recorded laps as CSV. Disabled when the workout has no recorded laps.",
-            accessibilityDescription: "Export recorded laps as CSV",
+            purpose: studioLocalized("Export source-recorded laps as CSV. Disabled when the workout has no recorded laps."),
+            accessibilityDescription: studioLocalized("Export recorded laps as CSV"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportSegmentsCSV,
-            menuTitle: "Segments (CSV)…",
+            menuTitle: studioLocalized("Segments (CSV)…"),
             menu: "File",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Export detected segments as CSV",
-            accessibilityDescription: "Export detected segments as CSV",
+            purpose: studioLocalized("Export detected segments as CSV"),
+            accessibilityDescription: studioLocalized("Export detected segments as CSV"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportSummaryCardPNG,
-            menuTitle: "Summary Card (PNG)…",
+            menuTitle: studioLocalized("Summary Card (PNG)…"),
             menu: "File",
             keyEquivalent: "E",
             modifiers: .command,
             workspace: .workout,
-            purpose: "Open options for exporting the workout summary card as a PNG image",
-            accessibilityDescription: "Export summary card as PNG image",
+            purpose: studioLocalized("Open options for exporting the workout summary card as a PNG image"),
+            accessibilityDescription: studioLocalized("Export summary card as PNG image"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportRouteReplayMP4,
-            menuTitle: "Route Replay (MP4)…",
+            menuTitle: studioLocalized("Route Replay (MP4)…"),
             menu: "File",
             keyEquivalent: "E",
             modifiers: [.command, .shift],
             workspace: .workout,
-            purpose: "Open options for exporting the route replay as an MP4 video. Disabled when the workout cannot be exported as video.",
-            accessibilityDescription: "Export route replay as MP4 video",
+            purpose: studioLocalized("Open options for exporting the route replay as an MP4 video. Disabled when the workout cannot be exported as video."),
+            accessibilityDescription: studioLocalized("Export route replay as MP4 video"),
             localOnly: false
         ),
         CommandDefinition(
             id: .exportAllCSV,
-            menuTitle: "All (CSV)…",
+            menuTitle: studioLocalized("All (CSV)…"),
             menu: "File",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Export distance splits, recorded laps, and segments as one combined CSV",
-            accessibilityDescription: "Export combined CSV",
+            purpose: studioLocalized("Export distance splits, recorded laps, and segments as one combined CSV"),
+            accessibilityDescription: studioLocalized("Export combined CSV"),
             localOnly: false
         ),
         CommandDefinition(
             id: .workoutOverview,
-            menuTitle: "Overview",
+            menuTitle: studioLocalized("Overview"),
             menu: "Workout",
             keyEquivalent: "1",
             modifiers: .command,
             workspace: .workout,
-            purpose: "Show the workout overview and map",
-            accessibilityDescription: "Switch to Overview tab",
+            purpose: studioLocalized("Show the workout overview and map"),
+            accessibilityDescription: studioLocalized("Switch to Overview tab"),
             localOnly: false
         ),
         CommandDefinition(
             id: .workoutCharts,
-            menuTitle: "Charts",
+            menuTitle: studioLocalized("Charts"),
             menu: "Workout",
             keyEquivalent: "2",
             modifiers: .command,
             workspace: .workout,
-            purpose: "Show metric charts",
-            accessibilityDescription: "Switch to Charts tab",
+            purpose: studioLocalized("Show metric charts"),
+            accessibilityDescription: studioLocalized("Switch to Charts tab"),
             localOnly: false
         ),
         CommandDefinition(
             id: .workoutSplits,
-            menuTitle: "Splits",
+            menuTitle: studioLocalized("Splits"),
             menu: "Workout",
             keyEquivalent: "3",
             modifiers: .command,
             workspace: .workout,
-            purpose: "Show distance splits and recorded laps",
-            accessibilityDescription: "Switch to Splits tab",
+            purpose: studioLocalized("Show distance splits and recorded laps"),
+            accessibilityDescription: studioLocalized("Switch to Splits tab"),
             localOnly: false
         ),
         CommandDefinition(
             id: .workoutSegments,
-            menuTitle: "Segments",
+            menuTitle: studioLocalized("Segments"),
             menu: "Workout",
             keyEquivalent: "4",
             modifiers: .command,
             workspace: .workout,
-            purpose: "Show detected segment highlights",
-            accessibilityDescription: "Switch to Segments tab",
+            purpose: studioLocalized("Show detected segment highlights"),
+            accessibilityDescription: studioLocalized("Switch to Segments tab"),
             localOnly: false
         ),
         CommandDefinition(
             id: .correctElevation,
-            menuTitle: "Correct Elevation",
+            menuTitle: studioLocalized("Correct Elevation"),
             menu: "Workout",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Correct this run's elevation from the DEM tile folder again, for example after adding tiles",
-            accessibilityDescription: "Correct this run's elevation from DEM tiles",
+            purpose: studioLocalized("Correct this run's elevation from the DEM tile folder again, for example after adding tiles"),
+            accessibilityDescription: studioLocalized("Correct this run's elevation from DEM tiles"),
             localOnly: false
         ),
         CommandDefinition(
             id: .useRecordedElevation,
-            menuTitle: "Use Recorded Elevation",
+            menuTitle: studioLocalized("Use Recorded Elevation"),
             menu: "Workout",
             keyEquivalent: "",
             modifiers: [],
             workspace: .workout,
-            purpose: "Keep this run's recorded altitude instead of DEM elevation",
-            accessibilityDescription: "Use recorded elevation for this run",
+            purpose: studioLocalized("Keep this run's recorded altitude instead of DEM elevation"),
+            accessibilityDescription: studioLocalized("Use recorded elevation for this run"),
             localOnly: false
         ),
         CommandDefinition(
             id: .showAllRuns,
-            menuTitle: "All Runs",
+            menuTitle: studioLocalized("All Runs"),
             menu: "Library",
             keyEquivalent: "L",
             modifiers: [.command, .shift],
             workspace: .any,
-            purpose: "Browse and search the full local workout library",
-            accessibilityDescription: "Open All Runs",
+            purpose: studioLocalized("Browse and search the full local workout library"),
+            accessibilityDescription: studioLocalized("Open All Runs"),
             localOnly: false
         ),
         CommandDefinition(
             id: .showPersonalHeatmap,
-            menuTitle: "Personal Heatmap",
+            menuTitle: studioLocalized("Personal Heatmap"),
             menu: "Library",
             keyEquivalent: "H",
             modifiers: [.command, .shift],
             workspace: .any,
-            purpose: "Show personal route heatmap across the local library",
-            accessibilityDescription: "Open Personal Heatmap",
+            purpose: studioLocalized("Show personal route heatmap across the local library"),
+            accessibilityDescription: studioLocalized("Open Personal Heatmap"),
             localOnly: false
         ),
         CommandDefinition(
             id: .showTrends,
-            menuTitle: "Trends",
+            menuTitle: studioLocalized("Trends"),
             menu: "Library",
             keyEquivalent: "R",
             modifiers: [.command, .shift],
             workspace: .any,
-            purpose: "Analyse the whole workout library over time by week, month, or year",
-            accessibilityDescription: "Open Trends",
+            purpose: studioLocalized("Analyse the whole workout library over time by week, month, or year"),
+            accessibilityDescription: studioLocalized("Open Trends"),
             localOnly: false
         ),
         CommandDefinition(
             id: .showPersonalRecords,
-            menuTitle: "Records",
+            menuTitle: studioLocalized("Records"),
             menu: "Library",
             keyEquivalent: "P",
             modifiers: [.command, .shift],
             workspace: .any,
-            purpose: "Show personal records across the local workout library",
-            accessibilityDescription: "Open Records",
+            purpose: studioLocalized("Show personal records across the local workout library"),
+            accessibilityDescription: studioLocalized("Open Records"),
             localOnly: false
         ),
         CommandDefinition(
             id: .showRouteGroups,
-            menuTitle: "Routes",
+            menuTitle: studioLocalized("Routes"),
             menu: "Library",
             keyEquivalent: "G",
             modifiers: [.command, .shift],
             workspace: .any,
-            purpose: "Group runs that follow the same route and show pace progression on each",
-            accessibilityDescription: "Open Routes",
+            purpose: studioLocalized("Group runs that follow the same route and show pace progression on each"),
+            accessibilityDescription: studioLocalized("Open Routes"),
             localOnly: false
         ),
         CommandDefinition(
             id: .focusLibrarySearch,
-            menuTitle: "Find in All Runs",
+            menuTitle: studioLocalized("Find in All Runs"),
             menu: "Library",
             keyEquivalent: "F",
             modifiers: .command,
             workspace: .library,
-            purpose: "Focus the All Runs search field",
-            accessibilityDescription: "Focus library search",
+            purpose: studioLocalized("Focus the All Runs search field"),
+            accessibilityDescription: studioLocalized("Focus library search"),
             localOnly: false
         ),
         CommandDefinition(
             id: .openSelectedWorkout,
-            menuTitle: "Open Selected Run",
+            menuTitle: studioLocalized("Open Selected Run"),
             menu: "Library",
             keyEquivalent: "↩",
             modifiers: [],
             workspace: .library,
-            purpose: "Open the single selected All Runs row",
-            accessibilityDescription: "Open selected workout",
+            purpose: studioLocalized("Open the single selected All Runs row"),
+            accessibilityDescription: studioLocalized("Open selected workout"),
             localOnly: true
         ),
         CommandDefinition(
             id: .editSelectedTags,
-            menuTitle: "Edit Tags…",
+            menuTitle: studioLocalized("Edit Tags…"),
             menu: "Library",
             keyEquivalent: "T",
             modifiers: [.command, .shift],
             workspace: .library,
-            purpose: "Edit tags for the selected library workout(s)",
-            accessibilityDescription: "Edit tags for selection",
+            purpose: studioLocalized("Edit tags for the selected library workout(s)"),
+            accessibilityDescription: studioLocalized("Edit tags for selection"),
             localOnly: false
         ),
         CommandDefinition(
             id: .replayPlayPause,
-            menuTitle: "Play/Pause",
+            menuTitle: studioLocalized("Play/Pause"),
             menu: "Replay",
             keyEquivalent: "Space",
             modifiers: [],
             workspace: .workout,
-            purpose: "Toggle route replay. Disabled while editing text.",
-            accessibilityDescription: "Play or pause replay",
+            purpose: studioLocalized("Toggle route replay. Disabled while editing text."),
+            accessibilityDescription: studioLocalized("Play or pause replay"),
             localOnly: false
         ),
         CommandDefinition(
             id: .replaySeekBackward,
-            menuTitle: "Seek Backward 5 Seconds",
+            menuTitle: studioLocalized("Seek Backward 5 Seconds"),
             menu: "Replay",
             keyEquivalent: "←",
             modifiers: .option,
             workspace: .workout,
-            purpose: "Seek replay backward by five elapsed seconds",
-            accessibilityDescription: "Seek replay backward five seconds",
+            purpose: studioLocalized("Seek replay backward by five elapsed seconds"),
+            accessibilityDescription: studioLocalized("Seek replay backward five seconds"),
             localOnly: false
         ),
         CommandDefinition(
             id: .replaySeekForward,
-            menuTitle: "Seek Forward 5 Seconds",
+            menuTitle: studioLocalized("Seek Forward 5 Seconds"),
             menu: "Replay",
             keyEquivalent: "→",
             modifiers: .option,
             workspace: .workout,
-            purpose: "Seek replay forward by five elapsed seconds",
-            accessibilityDescription: "Seek replay forward five seconds",
+            purpose: studioLocalized("Seek replay forward by five elapsed seconds"),
+            accessibilityDescription: studioLocalized("Seek replay forward five seconds"),
             localOnly: false
         ),
         CommandDefinition(
             id: .replaySlower,
-            menuTitle: "Slower",
+            menuTitle: studioLocalized("Slower"),
             menu: "Replay",
             keyEquivalent: "[",
             modifiers: [],
             workspace: .workout,
-            purpose: "Choose the previous slower supported playback speed",
-            accessibilityDescription: "Slower replay speed",
+            purpose: studioLocalized("Choose the previous slower supported playback speed"),
+            accessibilityDescription: studioLocalized("Slower replay speed"),
             localOnly: false
         ),
         CommandDefinition(
             id: .replayFaster,
-            menuTitle: "Faster",
+            menuTitle: studioLocalized("Faster"),
             menu: "Replay",
             keyEquivalent: "]",
             modifiers: [],
             workspace: .workout,
-            purpose: "Choose the next faster supported playback speed",
-            accessibilityDescription: "Faster replay speed",
+            purpose: studioLocalized("Choose the next faster supported playback speed"),
+            accessibilityDescription: studioLocalized("Faster replay speed"),
             localOnly: false
         ),
         CommandDefinition(
             id: .replayRestart,
-            menuTitle: "Restart",
+            menuTitle: studioLocalized("Restart"),
             menu: "Replay",
             keyEquivalent: "←",
             modifiers: [.command, .shift],
             workspace: .workout,
-            purpose: "Restart replay from the beginning and pause",
-            accessibilityDescription: "Restart replay from the beginning",
+            purpose: studioLocalized("Restart replay from the beginning and pause"),
+            accessibilityDescription: studioLocalized("Restart replay from the beginning"),
             localOnly: false
         ),
         CommandDefinition(
             id: .mapFit,
-            menuTitle: "Fit Map",
+            menuTitle: studioLocalized("Fit Map"),
             menu: "View",
             keyEquivalent: "0",
             modifiers: .command,
             workspace: .any,
-            purpose: "Fit the visible route, comparison routes, or heatmap",
-            accessibilityDescription: "Fit the visible map content",
+            purpose: studioLocalized("Fit the visible route, comparison routes, or heatmap"),
+            accessibilityDescription: studioLocalized("Fit the visible map content"),
             localOnly: false
         ),
         CommandDefinition(
             id: .mapTogglePresentation,
-            menuTitle: "Toggle 2D/3D",
+            menuTitle: studioLocalized("Toggle 2D/3D"),
             menu: "View",
             keyEquivalent: "",
             modifiers: [],
             workspace: .any,
-            purpose: "Toggle the visible map between 2D and 3D presentation",
-            accessibilityDescription: "Toggle map 2D or 3D",
+            purpose: studioLocalized("Toggle the visible map between 2D and 3D presentation"),
+            accessibilityDescription: studioLocalized("Toggle map 2D or 3D"),
             localOnly: false
         ),
         CommandDefinition(
             id: .routeColorSolid,
-            menuTitle: "Solid",
+            menuTitle: studioLocalized("Solid"),
             menu: "View",
             keyEquivalent: "0",
             modifiers: [.command, .option],
             workspace: .workout,
-            purpose: "Show the workout route in the primary color",
-            accessibilityDescription: "Route color solid",
+            purpose: studioLocalized("Show the workout route in the primary color"),
+            accessibilityDescription: studioLocalized("Route color solid"),
             localOnly: false
         ),
         CommandDefinition(
             id: .routeColorPace,
-            menuTitle: "Pace",
+            menuTitle: studioLocalized("Pace"),
             menu: "View",
             keyEquivalent: "1",
             modifiers: [.command, .option],
             workspace: .workout,
-            purpose: "Color the workout route by relative pace. Disabled when pace coloring is unavailable.",
-            accessibilityDescription: "Route color by pace",
+            purpose: studioLocalized("Color the workout route by relative pace. Disabled when pace coloring is unavailable."),
+            accessibilityDescription: studioLocalized("Route color by pace"),
             localOnly: false
         ),
         CommandDefinition(
             id: .routeColorHeartRate,
-            menuTitle: "Heart Rate",
+            menuTitle: studioLocalized("Heart Rate"),
             menu: "View",
             keyEquivalent: "2",
             modifiers: [.command, .option],
             workspace: .workout,
-            purpose: "Color the workout route by relative heart rate. Disabled when heart-rate coloring is unavailable.",
-            accessibilityDescription: "Route color by heart rate",
+            purpose: studioLocalized("Color the workout route by relative heart rate. Disabled when heart-rate coloring is unavailable."),
+            accessibilityDescription: studioLocalized("Route color by heart rate"),
             localOnly: false
         ),
         CommandDefinition(
             id: .routeColorPower,
-            menuTitle: "Power",
+            menuTitle: studioLocalized("Power"),
             menu: "View",
             keyEquivalent: "3",
             modifiers: [.command, .option],
             workspace: .workout,
-            purpose: "Color the workout route by relative running power. Disabled when power coloring is unavailable.",
-            accessibilityDescription: "Route color by power",
+            purpose: studioLocalized("Color the workout route by relative running power. Disabled when power coloring is unavailable."),
+            accessibilityDescription: studioLocalized("Route color by power"),
             localOnly: false
         ),
         CommandDefinition(
             id: .routeColorElevation,
-            menuTitle: "Elevation",
+            menuTitle: studioLocalized("Elevation"),
             menu: "View",
             keyEquivalent: "4",
             modifiers: [.command, .option],
             workspace: .workout,
-            purpose: "Color the workout route by corrected elevation. Disabled when elevation coloring is unavailable.",
-            accessibilityDescription: "Route color by elevation",
+            purpose: studioLocalized("Color the workout route by corrected elevation. Disabled when elevation coloring is unavailable."),
+            accessibilityDescription: studioLocalized("Route color by elevation"),
             localOnly: false
         ),
         CommandDefinition(
             id: .keyboardShortcutsHelp,
-            menuTitle: "Keyboard Shortcuts",
+            menuTitle: studioLocalized("Keyboard Shortcuts"),
             menu: "Help",
             keyEquivalent: "/",
             modifiers: .command,
             workspace: .any,
-            purpose: "Show the keyboard shortcuts reference",
-            accessibilityDescription: "Open keyboard shortcuts help",
+            purpose: studioLocalized("Show the keyboard shortcuts reference"),
+            accessibilityDescription: studioLocalized("Open keyboard shortcuts help"),
             localOnly: false
         )
     ]

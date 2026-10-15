@@ -19,7 +19,16 @@ extension WorkoutTagColor {
     }
 
     var displayName: String {
-        rawValue.capitalized
+        switch self {
+        case .blue: return studioLocalized("Blue")
+        case .cyan: return studioLocalized("Cyan")
+        case .green: return studioLocalized("Green")
+        case .yellow: return studioLocalized("Yellow")
+        case .orange: return studioLocalized("Orange")
+        case .red: return studioLocalized("Red")
+        case .purple: return studioLocalized("Purple")
+        case .gray: return studioLocalized("Gray")
+        }
     }
 }
 
@@ -96,7 +105,7 @@ struct WorkoutTagEditorSheet: View {
     init(
         availableTags: [WorkoutTag],
         initialSelected: Set<UUID>,
-        title: String = "Edit Tags",
+        title: String = studioLocalized("Edit Tags"),
         onCancel: @escaping () -> Void,
         onSave: @escaping (Set<UUID>) -> Void,
         onCreateTag: @escaping () -> Void,
@@ -315,9 +324,9 @@ struct BulkWorkoutTagEditorSheet: View {
 
     private func label(for state: BulkTagState) -> String {
         switch state {
-        case .allApplied: return "All"
-        case .noneApplied: return "None"
-        case .mixed: return "Mixed"
+        case .allApplied: return studioLocalized("All")
+        case .noneApplied: return studioLocalized("None")
+        case .mixed: return studioLocalized("Mixed")
         }
     }
 }
@@ -512,9 +521,9 @@ struct ManageTagsSheet: View {
             if let tag = tagPendingDelete {
                 let count = assignmentCounts[tag.id] ?? 0
                 Text(
-                    "Remove “\(tag.name)” from \(count) run\(count == 1 ? "" : "s")? "
-                        + "Smart collections that use this tag will drop that criterion. "
-                        + "Workouts themselves will not be deleted."
+                    studioLocalized("Remove “\(tag.name)” from \(count) runs?")
+                        + " " + studioLocalized("Smart collections that use this tag will drop that criterion.")
+                        + " " + studioLocalized("Workouts themselves will not be deleted.")
                 )
             }
         }

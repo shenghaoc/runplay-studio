@@ -19,6 +19,13 @@ struct SplitTableView: View {
         case recordedLaps = "Recorded Laps"
 
         var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .distanceSplits: return studioLocalized("Distance Splits")
+            case .recordedLaps: return studioLocalized("Recorded Laps")
+            }
+        }
     }
 
     var body: some View {
@@ -28,7 +35,7 @@ struct SplitTableView: View {
             if showsModeSelector {
                 Picker("Interval type", selection: $mode) {
                     ForEach(IntervalMode.allCases) { option in
-                        Text(option.rawValue).tag(option)
+                        Text(option.displayName).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -122,14 +129,14 @@ private struct DistanceSplitsTableView: View {
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(
-                            "Split \(split.splitIndex), distance \(String(format: "%.2f km", split.distanceMeters / 1000)), elapsed \(split.formattedElapsed), active \(split.formattedActive), active pace \(split.formattedPace)"
+                            "Split \(split.splitIndex), distance \(DisplayFormatter.formatDistanceKm(split.distanceMeters)), elapsed \(split.formattedElapsed), active \(split.formattedActive), active pace \(split.formattedPace)"
                         )
                     }
                     .width(50)
                     .customizationID(SplitTableColumn.split.rawValue)
 
                     TableColumn("Distance") { (split: RunSplit) in
-                        Text(String(format: "%.2f km", split.distanceMeters / 1000))
+                        Text(DisplayFormatter.formatDistanceKm(split.distanceMeters))
                             .monospacedDigit()
                     }
                     .width(80)
@@ -268,7 +275,7 @@ private struct DistanceSplitsTableView: View {
     @ViewBuilder
     private func optionalBPM(_ value: Double?) -> some View {
         if let value {
-            Text("\(Int(value)) bpm")
+            Text(DisplayFormatter.formatHeartRate(Double(Int(value))))
                 .monospacedDigit()
                 .foregroundStyle(AppDesign.MetricColor.heartRate)
         } else {
@@ -279,7 +286,7 @@ private struct DistanceSplitsTableView: View {
     @ViewBuilder
     private func optionalElev(_ value: Double?) -> some View {
         if let value {
-            Text(String(format: "+%.0f m", value))
+            Text(DisplayFormatter.formatMeters(value, signed: true))
                 .monospacedDigit()
                 .foregroundStyle(AppDesign.MetricColor.elevation)
         } else {
@@ -334,16 +341,16 @@ private struct RecordedLapsTableView: View {
     private var recordedLapHeader: some View {
         HStack(spacing: AppDesign.Spacing.medium) {
             Color.clear.frame(width: 16)
-            header("Lap", width: 28, alignment: .leading)
-            header("Trigger", width: 90, alignment: .leading)
-            header("Distance", width: 72)
-            header("Elapsed", width: 56)
-            header("Active", width: 56)
-            header("Moving", width: 64)
-            header("Active Pace", width: 72)
-            header("Moving Pace", width: 88)
-            header("HR", width: 40)
-            header("Elev", width: 56)
+            header(studioLocalized("Lap"), width: 28, alignment: .leading)
+            header(studioLocalized("Trigger"), width: 90, alignment: .leading)
+            header(studioLocalized("Distance"), width: 72)
+            header(studioLocalized("Elapsed"), width: 56)
+            header(studioLocalized("Active"), width: 56)
+            header(studioLocalized("Moving"), width: 64)
+            header(studioLocalized("Active Pace"), width: 72)
+            header(studioLocalized("Moving Pace"), width: 88)
+            header(studioLocalized("HR"), width: 40)
+            header(studioLocalized("Elev"), width: 56)
             Spacer(minLength: 0)
         }
         .foregroundStyle(.secondary)
@@ -402,7 +409,7 @@ private struct RecordedLapsTableView: View {
                 .font(AppDesign.Typography.compactMetric)
                 .frame(width: 90, alignment: .leading)
 
-            metric(String(format: "%.2f km", lap.distanceMeters / 1000), width: 72)
+            metric(DisplayFormatter.formatDistanceKm(lap.distanceMeters), width: 72)
             metric(lap.formattedElapsed, width: 56)
             metric(lap.formattedActive, width: 56)
             metric(lap.formattedMoving, width: 64)
@@ -421,7 +428,7 @@ private struct RecordedLapsTableView: View {
             }
 
             if let elev = lap.elevationGainMeters {
-                Text(String(format: "+%.0f m", elev))
+                Text(DisplayFormatter.formatMeters(elev, signed: true))
                     .font(AppDesign.Typography.compactMetric.monospacedDigit())
                     .foregroundStyle(AppDesign.MetricColor.elevation)
                     .frame(width: 56, alignment: .trailing)
@@ -460,16 +467,16 @@ private struct RecordedLapsTableView: View {
 
     private func accessibilityLabel(for lap: RecordedLap) -> String {
         var parts = [
-            "Recorded lap \(lap.lapIndex)",
-            "trigger \(lap.trigger.displayName)",
-            "distance \(String(format: "%.2f km", lap.distanceMeters / 1000))",
-            "elapsed \(lap.formattedElapsed)",
-            "active \(lap.formattedActive)",
-            "moving estimated \(lap.formattedMoving)",
-            "active pace \(lap.formattedActivePace)"
+            studioLocalized("Recorded lap \(lap.lapIndex)"),
+            studioLocalized("trigger \(lap.trigger.displayName)"),
+            studioLocalized("distance \(DisplayFormatter.formatDistanceKm(lap.distanceMeters))"),
+            studioLocalized("elapsed \(lap.formattedElapsed)"),
+            studioLocalized("active \(lap.formattedActive)"),
+            studioLocalized("moving estimated \(lap.formattedMoving)"),
+            studioLocalized("active pace \(lap.formattedActivePace)")
         ]
         if let hr = lap.averageHeartRateBPM {
-            parts.append("average heart rate \(Int(hr))")
+            parts.append(studioLocalized("average heart rate \(Int(hr))"))
         }
         return parts.joined(separator: ", ")
     }

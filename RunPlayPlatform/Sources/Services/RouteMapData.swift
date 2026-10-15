@@ -310,11 +310,17 @@ public enum RouteMapContent {
         return (coordinate, before.routeSegmentIndex, distance)
     }
 
+    /// Default marker titles, in the app's language. Public because a public
+    /// function's default argument may only reference public declarations.
+    public static let defaultStartTitle = platformLocalized("Start")
+    public static let defaultFinishTitle = platformLocalized("Finish")
+    public static let defaultCurrentPositionTitle = platformLocalized("Current position")
+
     public static func endpointMarkers(
         points: [RoutePoint],
         idPrefix: String,
-        startTitle: String = "Start",
-        finishTitle: String = "Finish"
+        startTitle: String = RouteMapContent.defaultStartTitle,
+        finishTitle: String = RouteMapContent.defaultFinishTitle
     ) -> [RouteMapMarker] {
         let coordinates = points.compactMap(RouteMapCoordinate.init)
         guard let first = coordinates.first else { return [] }
@@ -345,7 +351,7 @@ public enum RouteMapContent {
         points: [RoutePoint],
         index: Int,
         id: String = "current",
-        title: String = "Current position",
+        title: String = RouteMapContent.defaultCurrentPositionTitle,
         style: RouteMapMarkerStyle = .current
     ) -> RouteMapMarker? {
         guard points.indices.contains(index), let coordinate = RouteMapCoordinate(points[index]) else {

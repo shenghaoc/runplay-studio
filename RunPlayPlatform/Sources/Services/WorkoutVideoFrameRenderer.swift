@@ -168,23 +168,69 @@ public struct WorkoutVideoFrameRenderer: Sendable {
 
         let titleFont = NSFont.systemFont(ofSize: 22, weight: .semibold)
         let dateFont = NSFont.systemFont(ofSize: 15, weight: .regular)
-        drawText(
+        let language = VideoHUDText.languageTag(for: frame.locale)
+        VideoHUDText.draw(
             frame.workoutTitle,
             font: titleFont,
             color: palette.primaryText,
+            language: language,
             at: CGPoint(x: panelRect.minX + 16, y: panelRect.maxY - 36),
             maxWidth: panelRect.width - 32,
             in: context
         )
-        drawText(
+        VideoHUDText.draw(
             frame.workoutDateText,
             font: dateFont,
             color: palette.secondaryText,
+            language: language,
             at: CGPoint(x: panelRect.minX + 16, y: panelRect.minY + 16),
             maxWidth: panelRect.width - 32,
             in: context
         )
     }
+
+    /// The metrics panel's label/value rows in the frame's language.
+    static func metricRows(for frame: WorkoutVideoFrameModel) -> [(label: String, value: String)] {
+        let locale = frame.locale
+        var rows: [(label: String, value: String)] = [
+            (platformLocalized("Elapsed", locale: locale), frame.formattedElapsed),
+            (platformLocalized("Active", locale: locale), frame.formattedActive),
+            (platformLocalized("Distance", locale: locale), frame.formattedDistance),
+            (platformLocalized("Active Pace", locale: locale), frame.formattedPace),
+            (platformLocalized("Heart Rate", locale: locale), frame.formattedHeartRate),
+            (platformLocalized("Elevation", locale: locale), frame.formattedElevation),
+        ]
+        if let state = frame.stateLabel {
+            rows.append((platformLocalized("State", locale: locale), state))
+        }
+        rows.append((platformLocalized("Route Color", locale: locale), frame.routeColorMode.localizedName(locale: locale)))
+        return rows
+    }
+
+    /// Column layout of the metrics panel: values start after the widest
+    /// label (never left of the original 140 pt) and the panel widens for a
+    /// long value, within the frame.
+    static func metricColumns(
+        for rows: [(label: String, value: String)],
+        language: String,
+        frameWidth: CGFloat
+    ) -> VideoHUDText.RowColumns {
+        VideoHUDText.rowColumns(
+            labels: rows.map(\.label),
+            values: rows.map(\.value),
+            labelFont: metricLabelFont,
+            valueFont: metricValueFont,
+            language: language,
+            inset: 14,
+            gap: 16,
+            minimumValueOffset: 140,
+            minimumPanelWidth: 320,
+            maximumPanelWidth: max(320, frameWidth * 0.45)
+        )
+    }
+
+    private static var metricLabelFont: NSFont { .systemFont(ofSize: 13, weight: .medium) }
+    private static var metricValueFont: NSFont { .monospacedDigitSystemFont(ofSize: 14, weight: .semibold) }
 
     private func drawMetricsPanel(
         frame: WorkoutVideoFrameModel,
@@ -193,48 +239,38 @@ public struct WorkoutVideoFrameRenderer: Sendable {
         palette: Palette
     ) {
         let margin: CGFloat = 28
-        let panelWidth: CGFloat = 320
-        var rows: [(String, String)] = [
-            ("Elapsed", frame.formattedElapsed),
-            ("Active", frame.formattedActive),
-            ("Distance", frame.formattedDistance),
-            ("Active Pace", frame.formattedPace),
-            ("Heart Rate", frame.formattedHeartRate),
-            ("Elevation", frame.formattedElevation),
-        ]
-        if let state = frame.stateLabel {
-            rows.append(("State", state))
-        }
-        rows.append(("Route Color", frame.routeColorMode.displayName))
+        let language = VideoHUDText.languageTag(for: frame.locale)
+        let rows = Self.metricRows(for: frame)
+        let columns = Self.metricColumns(for: rows, language: language, frameWidth: bounds.width)
 
         let rowHeight: CGFloat = 26
         let panelHeight = CGFloat(rows.count) * rowHeight + 28
         let panelRect = CGRect(
             x: margin,
             y: margin + 52,
-            width: panelWidth,
+            width: columns.panelWidth,
             height: panelHeight
         )
         fillRoundedPanel(panelRect, in: context, color: palette.panelBackground, radius: 12)
 
-        let labelFont = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
         var y = panelRect.maxY - 22
         for (label, value) in rows {
-            drawText(
+            VideoHUDText.draw(
                 label,
-                font: labelFont,
+                font: Self.metricLabelFont,
                 color: palette.secondaryText,
-                at: CGPoint(x: panelRect.minX + 14, y: y - 4),
-                maxWidth: 120,
+                language: language,
+                at: CGPoint(x: panelRect.minX + columns.inset, y: y - 4),
+                maxWidth: columns.valueOffset - columns.inset - 8,
                 in: context
             )
-            drawText(
+            VideoHUDText.draw(
                 value,
-                font: valueFont,
+                font: Self.metricValueFont,
                 color: palette.primaryText,
-                at: CGPoint(x: panelRect.minX + 140, y: y - 4),
-                maxWidth: panelWidth - 154,
+                language: language,
+                at: CGPoint(x: panelRect.minX + columns.valueOffset, y: y - 4),
+                maxWidth: columns.valueWidth,
                 in: context
             )
             y -= rowHeight
@@ -282,12 +318,12 @@ public struct WorkoutVideoFrameRenderer: Sendable {
         }
         context.restoreGState()
 
-        let caption = "Progress \(frame.progressPercentLabel)  ·  Source \(frame.formattedSourceElapsed) / \(frame.formattedSourceTotal)"
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        drawText(
-            caption,
+        VideoHUDText.draw(
+            frame.progressCaption,
             font: font,
             color: palette.primaryText,
+            language: VideoHUDText.languageTag(for: frame.locale),
             at: CGPoint(x: margin, y: margin),
             maxWidth: captionMaxWidth,
             in: context
@@ -310,28 +346,6 @@ public struct WorkoutVideoFrameRenderer: Sendable {
         context.addPath(path)
         context.setFillColor(color.cgColor)
         context.fillPath()
-        context.restoreGState()
-    }
-
-    private func drawText(
-        _ string: String,
-        font: NSFont,
-        color: NSColor,
-        at origin: CGPoint,
-        maxWidth: CGFloat,
-        in context: CGContext
-    ) {
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: color,
-        ]
-        let attributed = NSAttributedString(string: string, attributes: attrs)
-        let line = CTLineCreateWithAttributedString(attributed)
-        context.saveGState()
-        context.textPosition = origin
-        // Soft clip long titles.
-        context.clip(to: CGRect(x: origin.x, y: origin.y - 4, width: maxWidth, height: font.pointSize + 12))
-        CTLineDraw(line, context)
         context.restoreGState()
     }
 

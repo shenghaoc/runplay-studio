@@ -84,6 +84,10 @@ jobs:
           bash -n scripts/verify-app-bundle.sh
           bash -n scripts/test-release-packaging.sh
           bash -n script/build_and_run.sh
+          # The localization check is not packaging tooling either, but it
+          # gates the macOS lane; catch a syntax slip here for free.
+          bash -n scripts/check-localization.sh
+          python3 -m py_compile scripts/check-localization.py
       # actionlint is third-party tooling: pinned by exact version with the
       # published tarball checksum verified, never a floating tag.
       - name: Install actionlint (pinned)
@@ -114,15 +118,20 @@ jobs:
             engine: true
             full-tests: true
             release-compile: false
+            localization: false
+          # The catalog check rides the release-compile leg: it runs no tests,
+          # so it has room for the extraction build.
           - suite: release-compile
             engine: false
             full-tests: false
             release-compile: true
+            localization: true
     uses: ./.github/workflows/macos-verify.yml
     with:
       engine: ${{ matrix.engine }}
       full-tests: ${{ matrix.full-tests }}
       release-compile: ${{ matrix.release-compile }}
+      localization: ${{ matrix.localization }}
 
   # RunPlayCore + portable C++ engine — test on Linux for cross-platform
   # validation. Linux CI is container-only by policy: every Linux job that

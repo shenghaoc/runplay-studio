@@ -127,7 +127,7 @@ extension WorkoutDeveloperFieldSummary {
             guard fields.count < maximumRetainedFieldCount else {
                 let omitted = orderedStats.count - fields.count
                 notes.append(
-                    "\(omitted) additional developer field(s) not retained (cap \(maximumRetainedFieldCount))."
+                    coreLocalized("\(omitted) additional developer fields not retained (cap \(maximumRetainedFieldCount)).")
                 )
                 break
             }
@@ -154,7 +154,7 @@ extension WorkoutDeveloperFieldSummary {
             ))
             if stat.declaresAccumulation {
                 notes.append(
-                    "\"\(stat.fieldName)\" declares accumulation; values were decoded as instantaneous samples."
+                    coreLocalized("\"\(stat.fieldName)\" declares accumulation; values were decoded as instantaneous samples.")
                 )
             }
         }
@@ -177,35 +177,37 @@ extension WorkoutDeveloperFieldSummary {
             let named = nonDefaultFieldNames.prefix(maximumNamedOffsetFields)
             let remainder = nonDefaultFieldNames.count - named.count
             let list = named.map { "\"\($0)\"" }.joined(separator: ", ")
-            let suffix = remainder > 0 ? " and \(remainder) more" : ""
+            let count = nonDefaultFieldNames.count
             notes.append(
-                "\(nonDefaultFieldNames.count) developer field(s) declare a non-default scale or offset (\(list)\(suffix)); decoded as raw / scale - offset, matching the Garmin Swift SDK."
+                remainder > 0
+                    ? coreLocalized("\(count) developer fields declare a non-default scale or offset (\(list) and \(remainder) more); decoded as raw / scale - offset, matching the Garmin Swift SDK.")
+                    : coreLocalized("\(count) developer fields declare a non-default scale or offset (\(list)); decoded as raw / scale - offset, matching the Garmin Swift SDK.")
             )
         }
 
         if report.missingDescriptionValueCount > 0 {
             notes.append(
-                "\(report.missingDescriptionValueCount) developer field value(s) skipped: no field_description message defined them."
+                coreLocalized("\(report.missingDescriptionValueCount) developer field values skipped: no field_description message defined them.")
             )
         }
         if report.invalidValueCount > 0 {
             notes.append(
-                "\(report.invalidValueCount) developer field value(s) skipped: invalid or non-numeric."
+                coreLocalized("\(report.invalidValueCount) developer field values skipped: invalid or non-numeric.")
             )
         }
         if report.conflictingPowerValueCount > 0 {
             notes.append(
-                "\(report.conflictingPowerValueCount) power value(s) ignored: more than one developer source supplied power; the first was kept."
+                coreLocalized("\(report.conflictingPowerValueCount) power values ignored: more than one developer source supplied power; the first was kept.")
             )
         }
         if report.droppedValueCount > 0 {
             notes.append(
-                "\(report.droppedValueCount) developer field value(s) dropped: retention limit reached."
+                coreLocalized("\(report.droppedValueCount) developer field values dropped: retention limit reached.")
             )
         }
         if report.droppedDescriptionCount > 0 {
             notes.append(
-                "\(report.droppedDescriptionCount) field_description message(s) dropped: description table limit reached."
+                coreLocalized("\(report.droppedDescriptionCount) field_description messages dropped: description table limit reached.")
             )
         }
 

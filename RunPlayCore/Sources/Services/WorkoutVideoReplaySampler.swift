@@ -73,15 +73,15 @@ public struct WorkoutVideoFrameSample: Hashable, Sendable {
     /// Concise state label for the video HUD.
     public var stateLabel: String? {
         if isInRecordingGap {
-            return "Recording Gap"
+            return coreLocalized("Recording Gap")
         }
         switch movementState {
         case .moving:
-            return "Running"
+            return coreLocalized("Running")
         case .stopped:
-            return "Stopped"
+            return coreLocalized("Stopped")
         case .paused:
-            return "Paused"
+            return coreLocalized("Paused")
         case .uncertain, .none:
             return nil
         }
@@ -230,13 +230,13 @@ public enum WorkoutVideoExportEligibility: Sendable {
         if !usableRoute {
             return Assessment(
                 canExport: false,
-                unavailableHelp: "This workout has no usable GPS route for video export."
+                unavailableHelp: coreLocalized("This workout has no usable GPS route for video export.")
             )
         }
         if !playableTimeline {
             return Assessment(
                 canExport: false,
-                unavailableHelp: "This workout has no playable elapsed timeline for video export."
+                unavailableHelp: coreLocalized("This workout has no playable elapsed timeline for video export.")
             )
         }
         return Assessment(canExport: true, unavailableHelp: nil)

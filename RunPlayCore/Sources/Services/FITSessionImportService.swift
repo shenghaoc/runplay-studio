@@ -235,7 +235,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                         sourceIndex: candidate.sourceIndex,
                         sessionName: candidate.displayName,
                         status: .parseFailed,
-                        detail: "This session is no longer present in the file."
+                        detail: coreLocalized("This session is no longer present in the file.")
                     )
                     continue
                 }
@@ -267,7 +267,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                         sourceIndex: live.sourceIndex,
                         sessionName: live.displayName,
                         status: .duplicate,
-                        detail: "Duplicate session identity within this file."
+                        detail: coreLocalized("Duplicate session identity within this file.")
                     )
                     continue
                 }
@@ -517,12 +517,12 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         let unattributed = index.unattributedRecordCount()
         if unattributed > 0 {
             warnings.append(
-                "\(unattributed) record(s) could not be attributed to any session and were excluded."
+                coreLocalized("\(unattributed) records could not be attributed to any session and were excluded.")
             )
         }
         if !index.prepared.ambiguousIndexes.isEmpty {
             warnings.append(
-                "\(index.prepared.ambiguousIndexes.count) session(s) overlap in time and cannot be separated reliably."
+                coreLocalized("\(index.prepared.ambiguousIndexes.count) sessions overlap in time and cannot be separated reliably.")
             )
         }
 
@@ -547,7 +547,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
               !isDirectory.boolValue
         else {
-            throw FITSessionImportError.cannotReadFile("The file could not be found.")
+            throw FITSessionImportError.cannotReadFile(coreLocalized("The file could not be found."))
         }
         let attributes: [FileAttributeKey: Any]
         do {
@@ -586,12 +586,12 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
     /// Concise candidate name. Never contains a UUID, a provider fingerprint,
     /// an absolute path, or a raw FIT field value.
     private func displayName(baseName: String, startDate: Date?, sourceIndex: Int) -> String {
-        let prefix = baseName.isEmpty ? "FIT file" : baseName
+        let prefix = baseName.isEmpty ? coreLocalized("FIT file") : baseName
         let suffix: String
         if let startDate {
             suffix = Self.candidateDateFormatter.string(from: startDate)
         } else {
-            suffix = "Run \(sourceIndex + 1)"
+            suffix = coreLocalized("Run \(sourceIndex + 1)")
         }
         return policy.clampDisplayName("\(prefix) — \(suffix)")
     }

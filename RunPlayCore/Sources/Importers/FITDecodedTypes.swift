@@ -475,7 +475,13 @@ public enum FITActivityField: UInt8 {
 
 // MARK: - FIT Sport Values
 
-/// FIT sport enum values from the profile.
+/// The FIT profile `sport` enum: all 82 values of Garmin FIT SDK Profile
+/// 21.218.0, named as Garmin's Swift SDK names them. The three SDKs agree on
+/// every value: C++ `src/fit_profile.hpp:524-605` (`FIT_SPORT_*`), C
+/// `example-sdk/fit_example.h:525-606`, and Swift
+/// `Sources/FITSwiftSDK/Profile/Types/Sport.swift:13-94`. `invalid` (0xFF) is
+/// left out, so it reads as an unrecognised sport, like any value outside the
+/// profile.
 public enum FITSport: UInt8, Sendable {
     case generic = 0
     case running = 1
@@ -528,14 +534,42 @@ public enum FITSport: UInt8, Sendable {
     case floorClimbing = 48
     case baseball = 49
     case diving = 53
+    case shooting = 56
+    case winterSport = 58
+    case grinding = 59
     case hiit = 62
+    case videoGaming = 63
     case racket = 64
+    case wheelchairPushWalk = 65
+    case wheelchairPushRun = 66
+    case meditation = 67
+    case paraSport = 68
+    case discGolf = 69
+    case teamSport = 70
+    case cricket = 71
+    case rugby = 72
+    case hockey = 73
+    case lacrosse = 74
+    case volleyball = 75
     case waterTubing = 76
     case wakesurfing = 77
+    case waterSport = 78
+    case archery = 79
+    case mixedMartialArts = 80
+    case motorSports = 81
+    case snorkeling = 82
+    case dance = 83
+    case jumpRope = 84
+    case poolApnea = 85
+    case mobility = 86
+    case geocaching = 87
+    case canoeing = 88
     case all = 254
 
-    /// Whether this sport represents a running activity.
+    /// Whether the product imports this sport as a run: `running` and
+    /// `wheelchair_push_run`. `wheelchair_push_walk` is unsupported, as
+    /// walking is.
     public var isRunning: Bool {
-        self == .running
+        self == .running || self == .wheelchairPushRun
     }
 }

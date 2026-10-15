@@ -228,7 +228,7 @@ final class WorkoutRouteMapViewModel {
                             profile: nil,
                             availability: .init(pace: false, heartRate: false, correctedElevation: false),
                             effectiveMode: .solid,
-                            fallbackReason: String(localized: "Unable to build metric route colors."),
+                            fallbackReason: studioLocalized("Unable to build metric route colors."),
                             lineDiagnostics: nil
                         )
                         self.presentation = solid

@@ -39,7 +39,7 @@ struct ElevationSettingsView: View {
                 }
                 .disabled(appState.demFolderStatus != .ready || passIsRunning)
                 .help("Higher zooms hold finer detail but need more tiles per run")
-                LabeledContent("Tile size", value: "\(folder.tileSize) pixels")
+                LabeledContent("Tile size", value: studioLocalized("\(folder.tileSize) pixels"))
             } else {
                 Text("No tile folder chosen. Runs keep their recorded elevation.")
                     .font(.callout)
@@ -82,8 +82,8 @@ struct ElevationSettingsView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a folder of Terrarium PNG elevation tiles (z/x/y.png)"
-        panel.prompt = "Use Folder"
+        panel.message = studioLocalized("Choose a folder of Terrarium PNG elevation tiles (z/x/y.png)")
+        panel.prompt = studioLocalized("Use Folder")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         folderMessage = appState.chooseDEMTileFolder(at: url)
     }
@@ -117,7 +117,7 @@ struct ElevationSettingsView: View {
             case .idle, .finished:
                 let uncorrected = appState.demUncorrectedCount
                 Button(uncorrected > 0
-                    ? "Correct Elevation of \(uncorrected) Run\(uncorrected == 1 ? "" : "s")"
+                    ? "Correct Elevation of \(uncorrected) Runs"
                     : "Correct Library Elevation") {
                     appState.correctLibraryElevation()
                 }
@@ -130,7 +130,9 @@ struct ElevationSettingsView: View {
             case .running(let completed, let total, let name):
                 VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
                     ProgressView(value: total > 0 ? Double(completed) / Double(total) : 0) {
-                        Text("Correcting — \(completed) of \(total) runs\(name.isEmpty ? "" : " — \(name)")")
+                        Text(name.isEmpty
+                            ? studioLocalized("Correcting — \(completed) of \(total) runs")
+                            : studioLocalized("Correcting — \(completed) of \(total) runs — \(name)"))
                             .font(AppDesign.Typography.compactLabel)
                             .foregroundStyle(.secondary)
                     }

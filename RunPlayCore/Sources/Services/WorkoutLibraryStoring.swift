@@ -53,7 +53,7 @@ extension WorkoutLibraryStoring {
     }
 
     public func stageWorkout(_ workout: RunWorkout, batchID: UUID) throws {
-        throw WorkoutLibraryError.writeFailed("Batch staging is not supported by this store")
+        throw WorkoutLibraryError.writeFailed(coreLocalized("Batch staging is not supported by this store"))
     }
 
     public func loadStagedWorkout(id: UUID, batchID: UUID) throws -> RunWorkout {
@@ -61,7 +61,7 @@ extension WorkoutLibraryStoring {
     }
 
     public func promoteStagedWorkouts(ids: [UUID], batchID: UUID) throws {
-        throw WorkoutLibraryError.writeFailed("Batch promote is not supported by this store")
+        throw WorkoutLibraryError.writeFailed(coreLocalized("Batch promote is not supported by this store"))
     }
 
     public func removeStaging(batchID: UUID) throws {}

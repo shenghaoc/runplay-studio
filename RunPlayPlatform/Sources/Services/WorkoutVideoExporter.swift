@@ -355,9 +355,11 @@ public struct WorkoutVideoExporter: WorkoutVideoExporting, Sendable {
         )
     }
 
+    /// The HUD's date line, in the app's language and date conventions
+    /// ("March 14, 2026", "2026年3月14日").
     private static let workoutDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = .autoupdatingCurrent
         formatter.dateStyle = .long
         formatter.timeStyle = .none
         return formatter

@@ -43,7 +43,7 @@ extension AppState {
             }
         } catch {
             demFolderStatus = .unavailable(
-                "The tile folder “\(folder.displayName)” could not be opened. If it moved, choose it again."
+                studioLocalized("The tile folder “\(folder.displayName)” could not be opened. If it moved, choose it again.")
             )
         }
     }
@@ -56,10 +56,10 @@ extension AppState {
         do {
             described = try DEMTileFolderAccess.describeFolder(at: url)
         } catch {
-            return "RunPlay Studio could not keep access to that folder."
+            return studioLocalized("RunPlay Studio could not keep access to that folder.")
         }
         guard let folder = described else {
-            return "No Terrarium PNG tiles were found. The folder should hold z/x/y.png tiles, such as 13/4265/2903.png."
+            return studioLocalized("No Terrarium PNG tiles were found. The folder should hold z/x/y.png tiles, such as 13/4265/2903.png.")
         }
         var settings = demTileSettings
         settings.folder = folder
@@ -88,7 +88,7 @@ extension AppState {
             return nil
         }
         guard let tileSize = TerrariumTileDirectory.tileSize(in: access.directory.rootURL, zoom: zoom) else {
-            return "No readable Terrarium tile was found at zoom \(zoom)."
+            return studioLocalized("No readable Terrarium tile was found at zoom \(zoom).")
         }
         folder.zoom = zoom
         folder.tileSize = tileSize
@@ -111,7 +111,7 @@ extension AppState {
         do {
             try demSettingsStore.save(settings)
         } catch {
-            errorMessage = "Elevation settings could not be saved: \(error.localizedDescription)"
+            errorMessage = studioLocalized("Elevation settings could not be saved: \(error.localizedDescription)")
             showingError = true
         }
     }
@@ -219,13 +219,18 @@ extension AppState {
     }
 
     static func demCorrectionPassSummary(_ result: WorkoutLibraryStoreActor.DEMElevationPassResult) -> String {
-        func runs(_ count: Int) -> String { "\(count) run\(count == 1 ? "" : "s")" }
-        var sentences = ["Corrected \(runs(result.correctedCount)); \(runs(result.skippedCount)) needed no change."]
+        var sentences = [
+            studioLocalized("Corrected \(result.correctedCount) runs; \(result.skippedCount) runs needed no change.")
+        ]
         if result.failedCount > 0 {
-            sentences.append("\(runs(result.failedCount)) could not be corrected and keep their previous elevation.")
+            sentences.append(
+                studioLocalized("\(result.failedCount) runs could not be corrected and keep their previous elevation.")
+            )
         }
         if result.saveFailureCount > 0 {
-            sentences.append("\(runs(result.saveFailureCount)) could not be saved; the next pass retries them.")
+            sentences.append(
+                studioLocalized("\(result.saveFailureCount) runs could not be saved; the next pass retries them.")
+            )
         }
         return sentences.joined(separator: " ")
     }
@@ -265,7 +270,7 @@ extension AppState {
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = "Elevation could not be corrected: \(error.localizedDescription)"
+            errorMessage = studioLocalized("Elevation could not be corrected: \(error.localizedDescription)")
             showingError = true
         }
     }
@@ -282,14 +287,14 @@ extension AppState {
             )
             applyElevationChanges([updated])
             let message = usesRecorded
-                ? "Using recorded elevation for this run."
+                ? studioLocalized("Using recorded elevation for this run.")
                 : updated.demElevationCorrection?.importSummary(recordedAltitudeSensor: updated.recordedAltitudeSensor)
-                    ?? "DEM correction is allowed for this run again."
+                    ?? studioLocalized("DEM correction is allowed for this run again.")
             announcementPolicy.handle(.elevationSourceChanged(message: message))
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = "The elevation source could not be changed: \(error.localizedDescription)"
+            errorMessage = studioLocalized("The elevation source could not be changed: \(error.localizedDescription)")
             showingError = true
         }
     }

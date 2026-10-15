@@ -51,6 +51,72 @@ Accessibility Inspector alone.
 - [ ] Increased Contrast / Reduce Transparency: panels and controls remain legible.
 - [ ] VoiceOver: no announcement spam during replay, archive, or FIT session progress.
 
+## Chinese Localisation Checklist (zh-Hans / zh-Hant)
+
+Run the **packaged** app: `swift run` has no `CFBundleLocalizations` and always
+runs in English (see [localization.md](localization.md)). Build it with
+`./script/build_and_run.sh`, then either choose the language per app in System
+Settings → General → Language & Region → Applications → RunPlay Studio, or
+launch once with a launch argument and a throwaway library:
+
+```bash
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-zh ./dist/RunPlayStudio.app/Contents/MacOS/RunPlayStudio -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN
+```
+
+Repeat with `-AppleLanguages '(zh-Hant)' -AppleLocale zh_TW` for Traditional
+Chinese. Use synthetic or bundled demo workouts only.
+
+- [ ] Menu bar: AppKit's own items (About, Hide, Quit, Edit, Window) and the
+  RunPlay menus are Chinese; menu commands keep their trailing "…" and shortcuts.
+- [ ] Sidebar, All Runs (columns, filters, sort, empty states), tags, and smart
+  collections read fully in Chinese, with no English fragments and no clipped
+  labels at the 720×552 minimum window.
+- [ ] Workout detail: Overview metrics, Splits (分段) and recorded laps (圈)
+  tables, segment highlights (路段), and chart axes and units (公里; 米 in zh-Hans,
+  公尺 in zh-Hant; 次/分; 步/分; pace `5:30 /公里`).
+- [ ] Times of day: zh_CN shows 24-hour time; zh_TW shows 上午/下午 until
+  System Settings → Language & Region → 24-hour time is on, then 24-hour.
+- [ ] Trends: weekly bars start on the first weekday set in System Settings →
+  Language & Region → First day of week; change it, relaunch, and confirm the
+  buckets move. Period labels read 2026年3月14日 / 2026年3月.
+- [ ] Personal Records (个人纪录 / 個人紀錄), Compare (爬升 delta, 暂停时长,
+  P/C legend, alignment picker), Personal Heatmap, Routes, training load, and
+  the Athlete Profile, Elevation, and Watch Folder settings panes.
+- [ ] Errors: import an unsupported file and a non-running FIT; both alerts are
+  Chinese and name the sport in Chinese.
+- [ ] PNG summary card (metrics-only and map, Light and Dark): no missing-glyph
+  boxes; the zh-Hant card uses Traditional glyph shapes (距離); split headers and
+  tile labels are not truncated; the footer note is translated.
+- [ ] MP4 replay and comparison video: HUD labels and progress caption are
+  Chinese, a long Chinese title ends in "…", and values stay aligned with their
+  labels; the poster preview matches the encoded video.
+- [ ] Help → Keyboard Shortcuts lists Chinese purposes (空格键 / 空白鍵 for Space).
+
+### VoiceOver in zh-Hans
+
+Set System Settings → Accessibility → VoiceOver → Speech to a Chinese (China
+mainland) voice. Do not record a pass from Accessibility Inspector alone.
+
+- [ ] Menu titles, toolbar buttons, and sidebar rows are spoken in Chinese.
+- [ ] All Runs rows speak name, date, and distance with spoken units
+  (5.2 公里, not "k m").
+- [ ] Chart summaries (VO-Shift-arrow into a chart, or Audio Graph) speak the
+  Chinese descriptor: title, axes with units, range, average, current value.
+- [ ] Map route summary and colour-legend summary are spoken in Chinese.
+- [ ] Replay speed changes and library load announce once in Chinese, with no
+  announcement spam during replay, archive import, or FIT session progress.
+- [ ] Comparison summary speaks P/C identities, delta words, and warnings.
+- [ ] Personal Heatmap, Trends, and Personal Records summaries are spoken in
+  Chinese, including counts ("3 次跑步").
+- [ ] Record the macOS version, voice, date, and result in the PR that claims
+  this pass.
+
+Automated coverage: `CatalogResolutionTests`,
+`ExportSummaryCardLocalizationTests` (snapshots and Traditional glyph
+selection), `VideoHUDLocalizationTests`,
+`LocalizedDisplayFormatterTests`, `SegmentHighlightLocalizationTests`,
+`WorkoutTrendsWeekConventionTests`, and `scripts/check-localization.sh`.
+
 ## Native Route Metric Coloring Checklist
 
 Use only synthetic or approved repository fixtures. Do not claim scenarios that
@@ -90,6 +156,79 @@ recording gap, and corrected elevation bounds of 12–24 m while the analysis
 reported that a raw 900 m spike had been ignored. Accessibility inspection found
 the labelled Route Color control and combined numeric legend; arrow-key/Return
 operation selected a menu mode without pointer input.
+
+### Route Color Item Chooser pass 2026-10-15 (debug configuration, bundled demo run)
+
+The map's Route Color pull-down had the #161 leak. An AX dump of a packaged
+debug bundle without the fix showed AXTitle "Route Color" from
+`accessibilityLabel`, AXValue "Solid" from `accessibilityValue`, and
+AXDescription "Paint palette", the name AppKit generates for `paintpalette`.
+In zh-Hans and zh-Hant the generated name followed the app language ("调色板",
+"調色盤"). With VoiceOver on, the Item Chooser filtered to "route color" read
+"Solid Route Color Paint palette menu button". Focus read "Solid, Route Color,
+menu button".
+
+Here the label override repeats the visible title, so the #161 rule ("differs
+from its visible title") did not predict the leak. The same build without
+`accessibilityLabel` reported no AXDescription, so any label override is
+enough. The fix keeps the label and draws the icon with `DecorativeMenuSymbol`.
+
+On the fixed bundle:
+
+- AXDescription is `" "` in English, zh-Hans, and zh-Hant. The titles are
+  "Route Color", "路线着色", and "路線著色".
+- The Item Chooser, filtered to "route color", read "Solid Route Color   menu
+  button". Focus still read "Solid, Route Color, menu button".
+- The icon rendered as before in light appearance.
+- An AX press opened the menu: Solid, Pace, Heart Rate, "Power — Unavailable"
+  (disabled), and Elevation. Choosing Pace changed the value to "Pace".
+
+An AX scan of every menu and pop-up button on the workout detail, All Runs,
+Personal Heatmap, Trends, Records, and Routes found no other generated symbol
+description. The heatmap route filter reads `" "` (#161). The toolbar Import
+pull-down and the workout toolbar's Export pull-down still report AXTitle
+`chevron.pulldown` (#194). The Organise and Merge into… pull-downs did not
+appear with the demo library; neither has a label override.
+
+Found, and present before this change:
+
+- The overlay menu shows no check mark beside the selected mode. The
+  `checkmark` image in each item's `HStack` label is dropped (seen with
+  Elevation selected).
+- The replay speed picker's AXDescription is "Speed, Replay speed":
+  `labelsHidden()` plus `accessibilityLabel` names it twice, the #160 shape.
+
+Not covered: dark appearance, VoiceOver speech in Chinese (only AX attributes
+were read there), and a release build.
+
+### Route Color check mark pass 2026-10-15 (debug configuration, bundled demo run)
+
+The overlay menu's items were `Button`s whose `HStack` label held the mode name
+and, for the selected mode, a `checkmark` image. A macOS menu keeps only the
+label's first `Text`, so no item showed a mark. On a packaged debug bundle of
+the base (the Item Chooser fix above), every item's `AXMenuItemMarkChar` was
+empty with Solid selected and again with Elevation selected. A screenshot of
+the open menu with Elevation selected showed no mark.
+
+The items are now `Toggle` rows, like the View → Route Color mirror and the
+route menus (#188). Each keeps its "— Unavailable" title, disabled state, help,
+and hint, and selects through `selectRouteColor`. On the fixed bundle, driven
+by AX presses only:
+
+- With Solid, the default, Solid's `AXMenuItemMarkChar` is "✓" and the other
+  four items' are empty.
+- Choosing Elevation set the button's AXValue to "Elevation" and moved the "✓"
+  to Elevation alone. A screenshot of the open menu shows the check mark beside
+  Elevation.
+- Choosing the checked Elevation again kept the mark and the value. Pressing
+  the disabled "Power — Unavailable" changed nothing. Choosing Solid moved the
+  mark back.
+- Item titles, enabled states, and AXHelp text match the base bundle's.
+- In zh-Hans the items read 纯色, 配速, 心率, "功率 — 不可用" (disabled), and
+  海拔, with Chinese help. Choosing 海拔 set the value to "海拔" and moved the
+  mark there.
+
+Not covered: VoiceOver speech, dark appearance, and a release build.
 
 ## Personal Heatmap Checklist
 
@@ -288,6 +427,127 @@ detail, and for Records Scope. Filed as #204. The heatmap legend read "1 run ·
 1 runs · 2 runs", filed as #205.
 
 Not covered: dark appearance (no drawing changed), and speech at 720 pt.
+
+### Any Route check mark pass 2026-10-15 (debug configuration, synthetic route-group library)
+
+The route menu listed Any Route as a `Button` above the routes' `Toggle` rows.
+A `Button` row in a macOS menu has no check mark, so the menu never marked Any
+Route while it was the active choice.
+
+The library was a throwaway `RUNPLAY_LIBRARY_ROOT` holding three runs in two
+route groups, seeded by a throwaway Core test from the bundled demo files:
+`realistic_5k_run.gpx` imported twice formed "4.4 km Route", and
+`sample-run.tcx` alone formed "5.0 km Route". Each launch used a fresh copy,
+and each bundle had its own bundle identifier. Library → Personal Heatmap was
+chosen from the menu bar, and the route menu was opened, read and chosen from
+by AX presses only.
+
+On a packaged debug bundle of the base (#270):
+
+- In the default state the button read "Any Route", and every
+  `AXMenuItemMarkChar` in the menu was empty. A screenshot of the open menu
+  shows no mark.
+- Choosing "5.0 km Route" marked that route "✓". Choosing Any Route then left
+  no row marked.
+
+Any Route is now a `Toggle`. On the fixed bundle:
+
+- The default state marks Any Route "✓" and nothing else, as a screenshot of
+  the open menu shows.
+- Choosing "5.0 km Route" moved the mark to that route alone, and
+  `session.json` saved its group. Choosing Any Route moved the mark back and
+  cleared the saved group.
+- Choosing the checked Any Route again kept it checked, and the button still
+  read "Any Route".
+- In zh-Hans the row kept its translated title and hint. The base marked
+  nothing, and the fixed bundle marked the row "✓".
+- In English and zh-Hans, the default menu's titles, enabled states and help,
+  and the button's title, value and help, match the base bundle's line by
+  line.
+
+Found, and present on the base bundle too: choosing the row that is already
+checked usually makes the button report its visible title as AXTitle instead
+of "Route filter" (#196). On the base it happened after every such choice in
+these runs: Any Route 8 of 8 times in English and 8 of 8 in zh-Hans, and a
+checked route 4 of 4 times. The fixed bundle did the same 8 of 8 times in
+English and 7 of 8 in zh-Hans. Six choices that each changed the route never
+lost the label on the base, and on the fixed bundle such a choice restored it.
+
+Not covered: VoiceOver speech, dark appearance, zh-Hant, and a release build.
+
+### Route filter label pass 2026-10-15 (#196; debug configuration, synthetic route-group library)
+
+The library, launches and AX presses were those of the Any Route pass above.
+The route button was found by its AXHelp, because its AXTitle was under test.
+"Lost" below means AXTitle read the visible title, such as "Any Route" or
+"任意路线", instead of "Route filter" or "路线筛选".
+
+On a packaged debug bundle of the base (#271):
+
+- Choosing the checked Any Route again lost the label 8 of 8 times in English,
+  in two runs, and 8 of 8 times in zh-Hans. Choosing the checked "5.0 km
+  Route" again lost it 4 of 4 times. Six choices that each changed the route
+  lost it 0 times.
+- AXValue, AXDescription `" "` and AXHelp stayed correct, and the AX element
+  was the same before and after.
+- A relaunch with "5.0 km Route" saved kept the label on first appearance and
+  after Library → Personal Heatmap. Choosing that route again lost it.
+
+To find the cause, single changes were built as throwaway bundles, never
+committed, and run through 8 choices of the checked Any Route:
+
+- Skipping the write when the filter was unchanged lost the label 0 times.
+- Removing the filter bar's `ViewThatFits` lost it 8 times, and removing the
+  map's `focusedSceneValue` lost it 8 times.
+- A trace of AppKit calls showed the mechanism. Each update of the AppKit menu
+  button runs `PlatformItemList.Item.applyAccessibilityProperties`, which sets
+  the button cell's AXTitle override from the menu label's accessibility. That
+  was the label's text alone. SwiftUI's `accessibilityLabel` won again only
+  after SwiftUI pushed the button's full accessibility, which it does when
+  that accessibility changes. Re-applying the same filter re-rendered the
+  heatmap, the button was updated, and nothing else changed, so the route
+  name stayed.
+- A throwaway hook that switched the app's own `NSApp.appearance` lost the
+  label after 6 of 6 switches, the appearance case in #196. The system
+  setting was not touched.
+- A bare SwiftUI app with the same menu kept the label when the checked row
+  was chosen again, but lost it after 3 of 4 appearance switches. With an
+  `accessibilityLabel` on the menu label it lost it 0 of 4 times.
+- An `Equatable` route-menu view that skipped the update kept the label after
+  32 re-applied choices, in English and zh-Hans. It lost it once in a traced
+  run, right after a route change, and after 6 of 6 appearance switches. That
+  approach was dropped.
+
+The menu label now carries the "Route filter" label too. Choosing the checked
+row still applies its filter again. On the fixed bundle:
+
+- Choosing the checked Any Route again lost the label 0 of 8 times in English
+  and 0 of 8 in zh-Hans. Choosing the checked route again lost it 0 of 8 times
+  in each language. Six alternating choices kept the label, with the value
+  following the route.
+- With the appearance hook, 6 of 6 switches kept the label.
+- The relaunch with a saved route kept it through first appearance, Library →
+  Personal Heatmap, and choosing the route again, in both languages.
+- In English and zh-Hans, the open menu's titles, enabled states, check marks
+  and help, and the button's title, value, description and help, match the
+  base line by line.
+- Every filter-bar control's frame matches the base at the default 1200×759
+  with Any Route, and at 720×552 with Any Route and with "5.0 km Route"
+  chosen.
+
+Other controls on the base:
+
+- All Runs → Filters has no accessibility label override. After choosing the
+  checked All Time, Any Tags and Any Route again, its AXTitle stayed
+  "Filters".
+- Route Color's accessibility label equals its visible title. After choosing
+  the checked Solid again 4 times, AXTitle stayed "Route Color" and AXValue
+  "Solid". Its "Paint palette" description is the leak fixed in #263.
+- At 720×552 the heatmap's three filter pickers are named by AXDescription.
+  Choosing each picker's selected item again 3 times left it unchanged.
+
+Not covered: VoiceOver speech, a system appearance switch, the import-report
+path from #196, a release build, and zh-Hant.
 
 ## Trends Workspace Checklist
 
@@ -1626,7 +1886,7 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Delete a favourite; manifest favourite set no longer contains it.
 - [ ] Open comparison, heatmap, and PNG export; none inherit All Runs filters.
 - [ ] Create tags; reject a folded duplicate name; rename/recolor; assign tags; search by tag name.
-- [ ] Filter by any/all selected tags and untagged only.
+- [x] Filter by any/all selected tags and untagged only.
 - [ ] Multi-select runs and bulk-add/remove tags; verify tri-state mixed tags.
 - [ ] Delete an assigned tag; confirm workouts remain and collections drop that criterion.
 - [ ] Save current query as a smart collection; open from sidebar; confirm Modified/Revert/Update.
@@ -1635,6 +1895,101 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Quit/relaunch; tags, assignments, collections, favourites, and selection persist.
 - [ ] Keyboard navigate tags/collections; inspect VoiceOver labels; light/dark tag colors.
 - [ ] Keyboard: select rows, Return to open, Delete with confirmation, focus search.
+
+### Tag filter check mark pass 2026-10-15 (debug configuration, synthetic two-run library)
+
+Filters → Tags → Match Any Selected and Match All Selected listed each tag as a
+`Button` whose `HStack` label held the tag name and, for a selected tag, a
+`checkmark` image. A macOS menu keeps only the label's first `Text`, so no tag
+ever showed a mark, although the filter applied.
+
+The library was a throwaway `RUNPLAY_LIBRARY_ROOT`, seeded by a throwaway Core
+test that imported the two bundled demo files and added three tags: Hills on
+the first run, Race on the second, and Tempo on both. Each bundle ran on a
+fresh copy under its own bundle identifier and was driven by AX presses only.
+
+On a packaged debug bundle of the base (#244):
+
+- Choosing Hills under Match Any Selected set the button to "Filters (1)" and
+  the summary to "1 of 2 runs". When the submenu was reopened, every tag's
+  `AXMenuItemMarkChar` was empty, and a screenshot showed no mark.
+- With Tempo and Hills chosen under Match All Selected ("1 of 2 runs"), every
+  mark was empty in both submenus.
+
+The rows are now `Toggle`s, like the route filter's (#188). On the fixed
+bundle:
+
+- With no tag chosen, no tag is marked. Choosing Hills, then Race, under Match
+  Any Selected marked those two "✓" there. Tempo and every Match All Selected
+  row stayed empty. A screenshot of the open submenu shows the two marks.
+- Choosing the checked Hills removed it. Race alone stayed marked, and the
+  summary went from "2 runs" to "1 of 2 runs".
+- Choosing Tempo under Match All Selected restarted the selection there, as
+  before: Tempo alone was marked, and the Match Any Selected marks cleared.
+  Adding Hills marked both ("1 of 2 runs"), as a screenshot shows.
+- Choosing the checked Tempo, then the checked Hills, removed each in turn.
+  Removing the last tag returned the button to "Filters" and the summary to
+  "2 runs", with no marks.
+- Untagged Only ("0 of 2 runs"), Any Tags, and Clear Filters left no tag
+  marked. Choosing Race after Untagged Only selected Race alone.
+- Tag titles, enabled states, and the absence of help text match the base
+  bundle's.
+
+Not covered: VoiceOver speech, dark appearance, Chinese, and a release build.
+
+### Filter choice check mark pass 2026-10-15 (debug configuration, synthetic libraries)
+
+Filters → Date listed All Time, Last 30 Days, Last 90 Days, Current Calendar
+Year and Custom Date Range… as `Button`s. Tags listed Any Tags and Untagged
+Only as `Button`s, and Route listed Any Route and Not on a Route the same way.
+A `Button` row in a macOS menu has no check mark, so the menu never showed
+which of these choices made up "Filters (3)".
+
+Two throwaway `RUNPLAY_LIBRARY_ROOT`s were used, each seeded by a throwaway
+Core test from the bundled demo files. The first was the tagged two-run library
+from the pass above. The second held three runs in two route groups:
+`realistic_5k_run.gpx` imported twice formed "4.4 km Route", and
+`sample-run.tcx` alone formed "5.0 km Route". Each bundle ran on a fresh copy
+under its own bundle identifier and was driven by AX presses only.
+
+On a packaged debug bundle of the base (#266):
+
+- In the default state (All Time, Any Tags, Any Route), every
+  `AXMenuItemMarkChar` in the Date, Tags and Route submenus was empty.
+- After Last 90 Days, Untagged Only and Not on a Route ("Filters (3)", "0 of
+  2 runs"), and then Custom Date Range…, every mark was still empty.
+  Screenshots of the open submenus show no mark.
+
+The rows are now `Toggle`s. On the fixed bundle:
+
+- The default state marks All Time, Any Tags and Any Route "✓", and nothing
+  else in the three submenus.
+- Last 90 Days, Untagged Only and Not on a Route each moved the mark to the
+  chosen row alone. Choosing a checked row again kept it checked and left the
+  button and summary unchanged.
+- Custom Date Range… was marked alone, as a screenshot of the open Date
+  submenu shows. The From and To items appear below Date as before.
+- With Hills chosen under Match Any Selected, neither Any Tags nor Untagged
+  Only is marked, and Match Any Selected marks Hills, as a screenshot shows.
+  Untagged Only then took the mark and cleared Hills, and Any Tags took it
+  back.
+- Clear Filters returned the marks to All Time, Any Tags and Any Route.
+- On the route-group library, choosing "5.0 km Route" marked that route alone
+  ("1 of 3 runs"); Any Route and Not on a Route were unmarked, as a screenshot
+  shows. Not on a Route then took the mark, and Any Route took it back.
+- In zh-Hans the rows kept their translated titles, and the marks followed
+  the same choices.
+- Item titles, enabled states, submenu flags and help (none) in the three
+  submenus match the base bundle's.
+
+Unchanged and still open: the From and To date pickers under Date are drawn
+as disabled menu items, on the base and fixed bundles alike, so a custom range
+cannot be edited from this menu.
+
+Not covered: VoiceOver speech, dark appearance, zh-Hant, and a release build.
+No smart collection was opened. Re-choosing a checked row while one is open is
+covered by unit tests only; the view-model test uses Custom Date Range… with a
+one-sided range.
 
 ## Window and application-session restoration checklist
 
@@ -1925,6 +2280,69 @@ Checklist:
 - [ ] **Restart from end**: after playback reaches the end, press Play again; playback restarts from the beginning.
 - [ ] **Speed change**: set speed to 4x, press Play, verify playback is visibly faster.
 - [ ] **Pause stops animation**: press Play then Pause; marker stops advancing immediately.
+
+### Speed picker Item Chooser pass 2026-10-15 (debug configuration, bundled demo run)
+
+At the default 1200×763 window the speed pills do not fit, so the replay
+controls show the menu-style speed `Picker` beside a visible "Speed" text. The
+picker used `labelsHidden()` plus an explicit `accessibilityLabel`, the #160
+shape. It now omits its label view instead. Packaged debug bundles of the base
+and the fix ran with a throwaway `RUNPLAY_LIBRARY_ROOT` and `CFFIXED_USER_HOME`
+on the bundled demo run. AX attributes were read with an `AXUIElement` walker.
+VoiceOver was driven with guarded System Events keystrokes, and its speech was
+read from the caption panel by OCR.
+
+- Before: AXDescription "Speed, Replay speed", AXValue "1×". The Item Chooser,
+  filtered to "replay speed", read "1× Speed, Replay speed pop up button".
+  Focus (Return in the chooser) read "1× Speed, Replay speed, pop up button".
+- After: AXDescription "Replay speed", AXValue "1×", and no title element. The
+  Item Chooser read "1× Replay speed pop up button", and focus read "1× Replay
+  speed, pop up button".
+- An AX press opened the menu on both builds: 0.2×, 0.5×, 1×, 2.0×, 4.0×, and
+  8.0×, with a check mark on the current speed. Choosing 4.0× on the fixed
+  build changed AXValue to "4.0×".
+- The pop-up kept its 75×24 pt frame. In window captures of the two builds the
+  "Speed" text and the pop-up were pixel-identical.
+
+Found, and present before this change: the 0.25× option is labelled "0.2×",
+because `%.1f` rounds 0.25 half to even. The same format names its pill, the
+pop-up value, and the speed-change announcement.
+
+Not covered: the pill arrangement (unchanged), dark appearance (no drawing
+changed), a release bundle, and VoiceOver in Chinese.
+
+### 0.25× speed label pass 2026-10-15 (debug configuration, bundled demo run)
+
+Every speed label now comes from `ReplayState.formattedSpeed(_:)` in
+RunPlayCore: the pop-up's items and value, the pills' text and accessibility
+labels, and the speed-change announcement. The pills' help uses
+`formattedSpeedMultiplier(_:)`, the same number without the "×". One fraction
+digit stays the rule except where it would round the speed, so 0.25 no longer
+reads "0.2". `ReplayStateTests` pins both for every speed option.
+
+Packaged debug bundles of the base and the fix ran with a throwaway
+`RUNPLAY_LIBRARY_ROOT` and `CFFIXED_USER_HOME` on the bundled demo run.
+Attributes were read, and controls pressed, through `AXUIElement` calls only,
+with no keystrokes. The window was moved and resized the same way.
+
+- 1200×759, pop-up: an AX press listed 0.2×, 0.5×, 1×, 2.0×, 4.0×, and 8.0×
+  on the base, and 0.25×, 0.5×, 1×, 2.0×, 4.0×, and 8.0× on the fix. Choosing
+  the first item set AXValue to "0.2×" on the base and "0.25×" on the fix. On
+  the fix, the reopened menu put the check mark on 0.25×.
+- The pop-up sizes itself to its widest item, so it grew from 75×24 pt to
+  82×24 pt.
+- 1512×759, pills: the base's first pill had AXDescription "Replay speed 0.2×"
+  and help "Replay at 0.2 speed". The fix reads "Replay speed 0.25×" and
+  "Replay at 0.25 speed", and a window capture shows "0.25×" on the pill. The
+  pill is 41 pt wide (34 pt for "0.2×"). The other five pills kept their
+  descriptions and help, from "Replay speed 0.5×" to "Replay speed 8.0×", with
+  "Replay at normal speed" on 1×.
+- Pressing the 0.5× pill and then the 0.25× pill moved the selected state with
+  each press.
+
+Not covered: VoiceOver speech for the speed-change announcement (its label is
+the one `ReplayStateTests` pins), VoiceOver in Chinese (the catalog keys are
+unchanged), dark appearance, and a release bundle.
 
 ## Delete UI Checklist
 

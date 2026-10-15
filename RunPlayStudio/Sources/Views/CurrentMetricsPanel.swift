@@ -14,33 +14,33 @@ struct CurrentMetricsPanel: View {
 
     var body: some View {
         HStack(spacing: AppDesign.Spacing.large) {
-            MetricDisplay(label: "Elapsed", value: metrics.formattedElapsed, icon: "clock", color: AppDesign.MetricColor.duration)
+            MetricDisplay(label: studioLocalized("Elapsed"), value: metrics.formattedElapsed, icon: "clock", color: AppDesign.MetricColor.duration)
                 .help("Elapsed time follows the replay clock and includes recording gaps.")
-            MetricDisplay(label: "Active", value: metrics.formattedActive, icon: "timer", color: AppDesign.MetricColor.duration)
+            MetricDisplay(label: studioLocalized("Active"), value: metrics.formattedActive, icon: "timer", color: AppDesign.MetricColor.duration)
                 .help("Active time remains fixed during recording gaps.")
-            MetricDisplay(label: "Moving (est.)", value: metrics.formattedMoving, icon: "figure.run", color: AppDesign.MetricColor.duration)
+            MetricDisplay(label: studioLocalized("Moving (est.)"), value: metrics.formattedMoving, icon: "figure.run", color: AppDesign.MetricColor.duration)
                 .help("Moving time is estimated from route movement. Uncertain active time counts as moving.")
-            MetricDisplay(label: "Stopped (est.)", value: metrics.formattedStopped, icon: "figure.stand", color: .secondary)
+            MetricDisplay(label: studioLocalized("Stopped (est.)"), value: metrics.formattedStopped, icon: "figure.stand", color: .secondary)
                 .help("Stopped time is an estimate of stationary active recording time.")
-            MetricDisplay(label: "Distance", value: metrics.formattedDistance, icon: "ruler", color: AppDesign.MetricColor.distance)
-            MetricDisplay(label: "Pace", value: metrics.formattedPace, icon: "speedometer", color: AppDesign.MetricColor.pace)
+            MetricDisplay(label: studioLocalized("Distance"), value: metrics.formattedDistance, icon: "ruler", color: AppDesign.MetricColor.distance)
+            MetricDisplay(label: studioLocalized("Pace"), value: metrics.formattedPace, icon: "speedometer", color: AppDesign.MetricColor.pace)
                 .help("Pace uses active time.")
-            MetricDisplay(label: "Elev", value: metrics.formattedElevation, icon: "mountain.2", color: AppDesign.MetricColor.elevation)
+            MetricDisplay(label: studioLocalized("Elev"), value: metrics.formattedElevation, icon: "mountain.2", color: AppDesign.MetricColor.elevation)
 
             if hasHeartRate {
-                MetricDisplay(label: "HR", value: metrics.formattedHeartRate, icon: "heart.fill", color: AppDesign.MetricColor.heartRate)
+                MetricDisplay(label: studioLocalized("HR"), value: metrics.formattedHeartRate, icon: "heart.fill", color: AppDesign.MetricColor.heartRate)
             }
 
             if hasCadence {
-                MetricDisplay(label: "Cad", value: metrics.formattedCadence, icon: "shoeprints.fill", color: AppDesign.MetricColor.cadence)
+                MetricDisplay(label: studioLocalized("Cad"), value: metrics.formattedCadence, icon: "shoeprints.fill", color: AppDesign.MetricColor.cadence)
             }
 
             if hasPower {
-                MetricDisplay(label: "Power", value: metrics.formattedPower, icon: "bolt.fill", color: AppDesign.MetricColor.power)
+                MetricDisplay(label: studioLocalized("Power"), value: metrics.formattedPower, icon: "bolt.fill", color: AppDesign.MetricColor.power)
                     .help("Running power in watts at the replay position.")
             }
 
-            MetricDisplay(label: "Split", value: metrics.formattedSplit, icon: "flag", color: AppDesign.MetricColor.split)
+            MetricDisplay(label: studioLocalized("Split"), value: metrics.formattedSplit, icon: "flag", color: AppDesign.MetricColor.split)
 
             if metrics.isInRecordingGap {
                 Label("Paused", systemImage: "pause.fill")
@@ -58,13 +58,7 @@ struct CurrentMetricsPanel: View {
                 Label(metrics.movementStateLabel, systemImage: state == .stopped ? "stop.circle.fill" : "figure.run")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(state == .stopped ? AppDesign.comparisonOrange : .secondary)
-                    .accessibilityLabel(String(
-                        format: NSLocalizedString(
-                            "Estimated movement state: %@",
-                            comment: "Accessibility label for movement state"
-                        ),
-                        metrics.movementStateLabel
-                    ))
+                    .accessibilityLabel(studioLocalized("Estimated movement state: \(metrics.movementStateLabel)"))
             }
         }
     }

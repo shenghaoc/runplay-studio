@@ -23,6 +23,9 @@ build/
 # apart from .build so container runs and host macOS builds do not
 # invalidate each other's caches.
 .build-linux/
+# Separate scratch path for scripts/check-localization.sh, whose
+# -emit-localized-strings build would otherwise invalidate .build.
+.build-localization/
 .swiftpm/
 Packages/
 Package.pins

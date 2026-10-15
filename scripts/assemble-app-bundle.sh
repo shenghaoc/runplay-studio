@@ -151,6 +151,20 @@ fi
 if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
   release_die "SwiftPM resource bundle not found at $RESOURCE_BUNDLE (demo resources required)"
 fi
+for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
+  if [[ ! -d "$BIN_DIR/$bundle_name" ]]; then
+    release_die "SwiftPM resource bundle not found at $BIN_DIR/$bundle_name (localized strings required)"
+  fi
+done
+# SwiftUI literals resolve against the main bundle, so the app carries the
+# Studio catalog's compiled tables at Contents/Resources/<language>.lproj too.
+STUDIO_TABLES="$RESOURCE_BUNDLE/Contents/Resources"
+for language in $RUNPLAY_LOCALIZATIONS; do
+  [[ "$language" == "en" ]] && continue
+  if [[ ! -f "$STUDIO_TABLES/$language.lproj/Localizable.strings" ]]; then
+    release_die "compiled $language strings missing from $RESOURCE_BUNDLE (String Catalog not compiled?)"
+  fi
+done
 
 # Detect duplicate unexpected executables at bin root (sanity).
 if [[ -f "$BIN_DIR/${RUNPLAY_EXECUTABLE_NAME}.debug.dylib" ]]; then
@@ -167,8 +181,16 @@ mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 cp "$BINARY" "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
 chmod +x "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
 
-# Install SwiftPM resource bundle where Bundle.module expects it.
-cp -R "$RESOURCE_BUNDLE" "$STAGED_APP/Contents/Resources/"
+# Install the SwiftPM resource bundles where Bundle.module expects them.
+for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
+  cp -R "$BIN_DIR/$bundle_name" "$STAGED_APP/Contents/Resources/"
+done
+
+# Install the Studio string tables in the main bundle for SwiftUI literals.
+for lproj in "$STUDIO_TABLES"/*.lproj; do
+  [[ -d "$lproj" ]] || continue
+  cp -R "$lproj" "$STAGED_APP/Contents/Resources/"
+done
 
 # Generate Info.plist from template.
 release_generate_info_plist \
