@@ -761,6 +761,10 @@ struct ReplayState {
     var formattedTotalDuration: String
     var formattedCurrentDistance: String
     var formattedSpeed: String
+
+    // Speed labels for every replay speed control and announcement
+    static func formattedSpeed(_ speed: Double) -> String            // "0.25×", "1×", "2.0×"
+    static func formattedSpeedMultiplier(_ speed: Double) -> String  // "0.25", "1", "2.0"
 }
 ```
 

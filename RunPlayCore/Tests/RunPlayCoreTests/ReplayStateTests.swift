@@ -38,4 +38,28 @@ final class ReplayStateTests: XCTestCase {
         XCTAssertEqual(state.progress, 1)
         XCTAssertEqual(state.distanceProgress, 1)
     }
+
+    func testFormattedSpeedLabelsEverySpeedOption() {
+        let speeds = PlaybackEngine.speedOptions
+
+        // `%.1f` alone labelled 0.25 "0.2×".
+        XCTAssertEqual(
+            speeds.map { ReplayState.formattedSpeed($0) },
+            ["0.25×", "0.5×", "1×", "2.0×", "4.0×", "8.0×"]
+        )
+        // The speed pop-up's value and the speed-change announcement read the
+        // state's label.
+        XCTAssertEqual(
+            speeds.map { ReplayState(playbackSpeed: $0).formattedSpeed },
+            ["0.25×", "0.5×", "1×", "2.0×", "4.0×", "8.0×"]
+        )
+    }
+
+    func testFormattedSpeedMultiplierForEverySpeedOption() {
+        // The speed pills' help text ("Replay at 0.25 speed") uses it.
+        XCTAssertEqual(
+            PlaybackEngine.speedOptions.map { ReplayState.formattedSpeedMultiplier($0) },
+            ["0.25", "0.5", "1", "2.0", "4.0", "8.0"]
+        )
+    }
 }
