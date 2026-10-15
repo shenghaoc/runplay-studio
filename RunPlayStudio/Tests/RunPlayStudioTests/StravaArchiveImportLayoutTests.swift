@@ -80,6 +80,38 @@ final class StravaArchiveImportLayoutTests: XCTestCase {
         )
     }
 
+    /// A label wider than its column wraps onto a second line, and its row
+    /// grows to show it, instead of being cut to one line.
+    func testLongTypeAndStatusWrapOntoASecondLine() throws {
+        let session = makeSession([
+            candidate(index: 0),
+            candidate(index: 1, type: "Mountain Bike Ride", status: .providerConflict),
+        ])
+        session.showRunningOnly = false
+        let host = NSHostingView(rootView: sheet(session))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: Column.idealTableWidth, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        let table = try XCTUnwrap(scrollViews(in: host).lazy.compactMap { $0.documentView as? NSTableView }.first)
+        XCTAssertEqual(table.numberOfRows, 2)
+
+        for column in [Column.type, .status] {
+            let index = try XCTUnwrap(Column.allCases.firstIndex(of: column))
+            let oneLine = try XCTUnwrap(table.view(atColumn: index, row: 0, makeIfNecessary: true)).fittingSize
+            let wrapped = try XCTUnwrap(table.view(atColumn: index, row: 1, makeIfNecessary: true)).fittingSize
+            XCTAssertGreaterThan(wrapped.height, oneLine.height, "\(column) should wrap rather than truncate")
+        }
+
+        // A row takes its height from its cells when the table draws.
+        window.displayIfNeeded()
+        XCTAssertGreaterThan(table.rect(ofRow: 1).height, table.rect(ofRow: 0).height, "the wrapped row should grow")
+    }
+
     // MARK: - Labels
 
     /// The widest date in each supported language's region fits on one line:
@@ -139,9 +171,9 @@ final class StravaArchiveImportLayoutTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func sheet() -> StravaArchiveImportView {
+    private func sheet(_ session: ArchiveImportSession? = nil) -> StravaArchiveImportView {
         StravaArchiveImportView(
-            session: makeSession(),
+            session: session ?? makeSession(),
             onImport: {},
             onCancel: {},
             onDone: {},
@@ -150,21 +182,27 @@ final class StravaArchiveImportLayoutTests: XCTestCase {
         )
     }
 
-    private func makeSession() -> ArchiveImportSession {
-        let candidates = (0..<3).map { index in
-            WorkoutArchiveCandidate(
-                id: "layout-\(index)",
-                archiveRelativePath: "activities/\(index + 1).fit.gz",
-                providerActivityID: "\(index + 1)",
-                activityName: "Layout Run \(index + 1)",
-                activityType: "Run",
-                activityDate: Date(timeIntervalSince1970: 1_700_000_000 + Double(index) * 86_400),
-                format: .fitGzip,
-                status: .ready,
-                isSelectedByDefault: true,
-                archiveOrder: index
-            )
-        }
+    private func candidate(
+        index: Int,
+        type: String = "Run",
+        status: WorkoutArchiveCandidateStatus = .ready
+    ) -> WorkoutArchiveCandidate {
+        WorkoutArchiveCandidate(
+            id: "layout-\(index)",
+            archiveRelativePath: "activities/\(index + 1).fit.gz",
+            providerActivityID: "\(index + 1)",
+            activityName: "Layout Run \(index + 1)",
+            activityType: type,
+            activityDate: Date(timeIntervalSince1970: 1_700_000_000 + Double(index) * 86_400),
+            format: .fitGzip,
+            status: status,
+            isSelectedByDefault: status.isImportableByDefault,
+            archiveOrder: index
+        )
+    }
+
+    private func makeSession(_ candidates: [WorkoutArchiveCandidate]? = nil) -> ArchiveImportSession {
+        let candidates = candidates ?? (0..<3).map { candidate(index: $0) }
         return ArchiveImportSession(
             archiveURL: URL(fileURLWithPath: "/tmp/layout.zip"),
             scanResult: WorkoutArchiveScanResult(
