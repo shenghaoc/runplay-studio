@@ -1829,6 +1829,22 @@
         }
       }
     },
+    "Archery" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "射箭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "射箭"
+          }
+        }
+      }
+    },
     "At current replay position %@." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2561,6 +2577,22 @@
         }
       }
     },
+    "Canoeing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "独木舟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輕艇"
+          }
+        }
+      }
+    },
     "Cell size was increased to stay within the render budget." : {
       "localizations" : {
         "zh-Hans" : {
@@ -3245,6 +3277,22 @@
         }
       }
     },
+    "Cricket" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "板球"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "板球"
+          }
+        }
+      }
+    },
     "Cross-country skiing" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3527,6 +3575,22 @@
         }
       }
     },
+    "Dance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "舞蹈"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "舞蹈"
+          }
+        }
+      }
+    },
     "Dark" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3727,6 +3791,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開發者欄位數必須介於 1 和 %1$lld 之間；實際為 %2$lld"
+          }
+        }
+      }
+    },
+    "Disc golf" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "飞盘高尔夫"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "飛盤高爾夫"
           }
         }
       }
@@ -4977,6 +5057,22 @@
         }
       }
     },
+    "Geocaching" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地理寻宝"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地理尋寶"
+          }
+        }
+      }
+    },
     "Golf" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5187,6 +5283,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "健行"
+          }
+        }
+      }
+    },
+    "Hockey" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曲棍球"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曲棍球"
           }
         }
       }
@@ -5495,6 +5607,22 @@
         }
       }
     },
+    "Jump rope" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳绳"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳繩"
+          }
+        }
+      }
+    },
     "Jumpmaster" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5539,6 +5667,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "風箏衝浪"
+          }
+        }
+      }
+    },
+    "Lacrosse" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "长曲棍球"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "袋棍球"
           }
         }
       }
@@ -6113,6 +6257,22 @@
         }
       }
     },
+    "Meditation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冥想"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冥想"
+          }
+        }
+      }
+    },
     "Metric data covers %lld percent of the route." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6239,6 +6399,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "部分勾選"
+          }
+        }
+      }
+    },
+    "Mixed martial arts" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "综合格斗"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "綜合格鬥"
+          }
+        }
+      }
+    },
+    "Mobility" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动度训练"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活動度訓練"
+          }
+        }
+      }
+    },
+    "Motor sports" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "赛车运动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "賽車運動"
           }
         }
       }
@@ -7129,6 +7337,22 @@
         }
       }
     },
+    "Para sports" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "残疾人运动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身障運動"
+          }
+        }
+      }
+    },
     "Paused" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7173,6 +7397,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "個人紀錄。"
+          }
+        }
+      }
+    },
+    "Pool apnea" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "泳池自由潜水"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "泳池自由潛水"
           }
         }
       }
@@ -7951,6 +8191,22 @@
         }
       }
     },
+    "Rugby" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "橄榄球"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "橄欖球"
+          }
+        }
+      }
+    },
     "Run %lld" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8011,6 +8267,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "兩次跑步的距離差異很大"
+          }
+        }
+      }
+    },
+    "Sail grinding" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帆船绞盘"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帆船絞盤"
           }
         }
       }
@@ -8319,6 +8591,22 @@
         }
       }
     },
+    "Snorkeling" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "浮潜"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "浮潛"
+          }
+        }
+      }
+    },
     "Snowboarding" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8443,6 +8731,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 %lld 段"
+          }
+        }
+      }
+    },
+    "Sport shooting" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "射击"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "射擊"
           }
         }
       }
@@ -8763,6 +9067,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標籤（全部符合）：%@"
+          }
+        }
+      }
+    },
+    "Team sports" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队运动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "團隊運動"
           }
         }
       }
@@ -10117,6 +10437,22 @@
         }
       }
     },
+    "Video gaming" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电子游戏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電玩"
+          }
+        }
+      }
+    },
     "Video requires at least two frames" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10145,6 +10481,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "虛擬"
+          }
+        }
+      }
+    },
+    "Volleyball" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排球"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排球"
           }
         }
       }
@@ -10213,6 +10565,22 @@
         }
       }
     },
+    "Water sports" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水上运动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水上運動"
+          }
+        }
+      }
+    },
     "Water tubing" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10229,6 +10597,38 @@
         }
       }
     },
+    "Wheelchair push run" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轮椅跑步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輪椅跑步"
+          }
+        }
+      }
+    },
+    "Wheelchair push walk" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轮椅步行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輪椅步行"
+          }
+        }
+      }
+    },
     "Windsurfing" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10241,6 +10641,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "風浪板"
+          }
+        }
+      }
+    },
+    "Winter sports" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冬季运动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冬季運動"
           }
         }
       }

@@ -1036,6 +1036,48 @@ final class FITParserTests: XCTestCase {
         }
     }
 
+    func testSessionSelectionAcceptsWheelchairPushRun() throws {
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.wheelchairPushRun.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        session.startTime = 1_000_000
+        session.timestamp = 1_000_100
+        decodedFile.sessions = [session]
+
+        for i in 0..<5 {
+            decodedFile.records.append(Self.record(
+                timestamp: UInt32(1_000_000 + i * 20),
+                latDegrees: 37.7749 + Double(i) * 0.0001,
+                lonDegrees: -122.4194 + Double(i) * 0.0001,
+                distanceMeters: Double(i) * 10
+            ))
+        }
+
+        let points = try FITDecoder.decode(decodedFile: decodedFile)
+        XCTAssertEqual(points.count, 5)
+    }
+
+    func testSessionSelectionRejectsWheelchairPushWalk() throws {
+        var decodedFile = FITDecodedFile()
+
+        var session = FITSessionMessage()
+        session.sport = FITSport.wheelchairPushWalk.rawValue
+        session.startPositionLat = Self.semicircles(37.7749)
+        session.startPositionLong = Self.semicircles(-122.4194)
+        decodedFile.sessions = [session]
+
+        XCTAssertThrowsError(try FITDecoder.decode(decodedFile: decodedFile)) { error in
+            guard case WorkoutImportError.parsingError(let message) = error else {
+                return XCTFail("Expected parsingError, got \(error)")
+            }
+            XCTAssertTrue(message.contains("Wheelchair push walk"))
+            XCTAssertTrue(message.contains("Only running workouts"))
+        }
+    }
+
     func testSessionSelectionFallsBackWithoutSessions() throws {
         var decodedFile = FITDecodedFile()
         // No sessions — should fall back to legacy
