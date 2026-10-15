@@ -191,6 +191,9 @@ struct MapReferenceView: View {
             .clipShape(Capsule())
     }
 
+    /// Icon of the Route Color pull-down, drawn through `DecorativeMenuSymbol`.
+    static let routeColorSymbolName = "paintpalette"
+
     private var routeColorControl: some View {
         HStack(spacing: AppDesign.Spacing.small) {
             Menu {
@@ -216,8 +219,15 @@ struct MapReferenceView: View {
                     .accessibilityHint(modeHelp)
                 }
             } label: {
-                Label(studioLocalized("Route Color"), systemImage: "paintpalette")
-                    .font(AppDesign.Typography.compactMetric)
+                // The accessibility label below repeats this title, but any
+                // label override puts the symbol's generated name ("Paint
+                // palette") in the Item Chooser entry (#161).
+                Label {
+                    Text(studioLocalized("Route Color"))
+                } icon: {
+                    DecorativeMenuSymbol.image(systemName: Self.routeColorSymbolName)
+                }
+                .font(AppDesign.Typography.compactMetric)
             }
             .menuStyle(.borderlessButton)
             .padding(.horizontal, AppDesign.Spacing.medium)
