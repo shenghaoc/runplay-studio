@@ -102,7 +102,7 @@ UTC instant so Trends uses the workout's recorded local date.
 | Not saved | Staged workouts discarded after cancellation or commit failure; not successful imports. |
 | Non-running workouts skipped | Parsed workouts excluded by activity identifier before candidate building. |
 | Workouts the import cannot read | Workout records with missing or unreadable dates, never offered in review. |
-| Unmatched route references | Export workout references naming GPX entries absent from the archive, including excluded activities. |
+| Unmatched route references | Running workouts whose named GPX the archive cannot supply: absent, matching more than one entry when letter case is ignored, or not a regular file. Workouts of excluded activities are not counted. |
 
 Scan diagnostics additionally count ignored nested non-HR `Record` elements
 by type identifier (`ignoredNonHeartRateRecords`) and whether the HR ceiling
