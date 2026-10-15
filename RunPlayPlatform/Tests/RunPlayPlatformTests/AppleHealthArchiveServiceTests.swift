@@ -561,6 +561,21 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
 
     /// Cancelling partway through extraction removes the half-written file and
     /// returns nothing.
+    /// A document whose bytes no longer match the archive's checksum is refused
+    /// before it is parsed, and its extraction is removed. The damage keeps it
+    /// well formed, so without the check it would scan as a different workout.
+    func testDocumentWhoseBytesDoNotMatchTheirChecksumIsRefused() async throws {
+        let url = try writeZip(named: "export.zip", entries: [
+            (Self.exportPath, healthDocument(workouts: runningWorkout())),
+        ])
+        try damageStoredBytes(Data("HKWorkoutActivityTypeRunning".utf8), in: url)
+
+        await assertThrows(.entryChecksumMismatch(path: Self.exportPath)) {
+            _ = try await makeService().scan(archiveAt: url)
+        }
+        XCTAssertEqual(extractionFileNames(), [])
+    }
+
     func testCancellationDuringExtractionLeavesNoExtractionFile() async throws {
         // Larger than one 64 KiB chunk, so extraction is still running when the
         // predicate first says to stop.

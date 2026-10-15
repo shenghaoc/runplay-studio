@@ -815,7 +815,7 @@ public actor AppleHealthArchiveService {
         defer { try? handle.close() }
 
         var written: UInt64 = 0
-        _ = try archive.extract(entry, bufferSize: Self.extractionBufferSize) { chunk in
+        let checksum = try archive.extract(entry, bufferSize: Self.extractionBufferSize) { chunk in
             // Check before writing and subtract before adding, avoiding overflow
             // while guaranteeing the on-disk file never exceeds its declaration.
             guard UInt64(chunk.count) <= declaredBytes - written else {
@@ -824,6 +824,11 @@ public actor AppleHealthArchiveService {
             if isCancelled() { throw CancellationError() }
             try handle.write(contentsOf: chunk)
             written += UInt64(chunk.count)
+        }
+        // As for a route: ZIPFoundation returns the checksum without comparing
+        // it, and a damaged document that still decompresses could still parse.
+        guard checksum == entry.checksum else {
+            throw AppleHealthArchiveError.entryChecksumMismatch(path: path)
         }
 
         needsCleanup = false
