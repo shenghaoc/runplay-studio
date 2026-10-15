@@ -235,6 +235,9 @@ public actor AppleHealthImportService {
         let batch: WorkoutLibraryBatchToken
         do {
             batch = try await storeActor.beginBatchImport()
+        } catch is CancellationError {
+            // A cancelled task is not a conflict with another import.
+            throw CancellationError()
         } catch {
             throw AppleHealthImportError.batchConflict
         }
@@ -371,6 +374,10 @@ public actor AppleHealthImportService {
                     batch,
                     selectedWorkoutID: selectedID
                 )
+            } catch is CancellationError {
+                // The commit refuses a cancelled task before promoting anything,
+                // so this is a cancellation, handled below, not a failed commit.
+                throw CancellationError()
             } catch {
                 await storeActor.rollbackBatchImport(batch)
                 report.items = Self.markingDiscarded(

@@ -510,6 +510,75 @@ final class AppleHealthImportServiceTests: XCTestCase {
         XCTAssertFalse(hasActiveBatch, "a cancelled import must release the batch")
     }
 
+    /// A task cancelled before the library's batch is taken ends as a
+    /// cancellation, not as a conflict with another import.
+    func testTaskCancelledBeforeTheBatchIsTakenThrowsCancellation() async throws {
+        let zip = try makeMixedArchive()
+        let result = try await scan(zip)
+        let (store, storeActor, _) = makeStore(named: "lib-cancel-begin")
+        let service = makeService()
+
+        let task = Task {
+            try await service.importSelection(
+                result.candidates,
+                from: result,
+                archiveAt: zip,
+                storeActor: storeActor,
+                progress: { progress in
+                    // The first report comes before the batch is taken.
+                    if progress.phase == .importing, progress.completedCount == 0 {
+                        withUnsafeCurrentTask { $0?.cancel() }
+                    }
+                }
+            )
+        }
+
+        do {
+            _ = try await task.value
+            XCTFail("expected the cancelled import to throw")
+        } catch is CancellationError {
+            // expected
+        } catch {
+            XCTFail("expected CancellationError, got \(error)")
+        }
+        XCTAssertTrue(try libraryWorkouts(store).isEmpty)
+        let hasActiveBatch = await storeActor.hasActiveBatch
+        XCTAssertFalse(hasActiveBatch)
+    }
+
+    /// A task cancelled as the commit begins ends as a cancelled pass with
+    /// nothing saved, not as a failed commit.
+    func testTaskCancelledAtTheCommitReportsACancelledPass() async throws {
+        let zip = try makeMixedArchive()
+        let result = try await scan(zip)
+        let (store, storeActor, _) = makeStore(named: "lib-cancel-commit")
+        let service = makeService()
+
+        let task = Task {
+            try await service.importSelection(
+                result.candidates,
+                from: result,
+                archiveAt: zip,
+                storeActor: storeActor,
+                progress: { progress in
+                    if progress.phase == .committing {
+                        withUnsafeCurrentTask { $0?.cancel() }
+                    }
+                }
+            )
+        }
+        let report = try await task.value
+
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertFalse(report.commitFailed)
+        XCTAssertNil(report.errorMessage)
+        XCTAssertEqual(report.addedWorkoutCount, 0)
+        XCTAssertEqual(report.discardedCount, result.candidates.count)
+        XCTAssertTrue(try libraryWorkouts(store).isEmpty)
+        let hasActiveBatch = await storeActor.hasActiveBatch
+        XCTAssertFalse(hasActiveBatch)
+    }
+
     func testFailingMidCommitLeavesTheLibraryUnchanged() async throws {
         let zip = try makeMixedArchive()
         let result = try await scan(zip)
