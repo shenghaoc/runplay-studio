@@ -64,6 +64,10 @@ public struct AppleHealthLibraryRunWindow: Hashable, Sendable {
 
     /// The window of a run already in the library.
     ///
+    /// The start is the library's canonical one: the recorded start, or else the
+    /// first route point's timestamp, which is what a run imported without a
+    /// recorded start is dated by everywhere else.
+    ///
     /// Returns `nil` when the snapshot carries no usable start, or an end that
     /// does not follow it. Inventing a window for such a run would flag
     /// unrelated workouts as duplicates, so a run that cannot state when it
@@ -74,7 +78,7 @@ public struct AppleHealthLibraryRunWindow: Hashable, Sendable {
     /// fields. The result is rounded to whole seconds because that is the
     /// resolution both sides of the comparison are recorded at.
     public init?(workout: RunWorkout) {
-        guard let start = workout.metadata.startDate else { return nil }
+        guard let start = WorkoutLibraryEntry.canonicalStartDate(for: workout) else { return nil }
         let startSeconds = Int64(start.timeIntervalSince1970.rounded())
 
         let end: Date

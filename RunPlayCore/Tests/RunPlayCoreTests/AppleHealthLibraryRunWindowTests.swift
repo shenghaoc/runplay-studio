@@ -8,12 +8,14 @@ final class AppleHealthLibraryRunWindowTests: XCTestCase {
     private func workout(
         start: Date?,
         end: Date? = nil,
-        elapsedSeconds: Double = 0
+        elapsedSeconds: Double = 0,
+        routeTimestamps: [Date] = []
     ) -> RunWorkout {
         var summary = RunSummary()
         summary.totalElapsedSeconds = elapsedSeconds
         return RunWorkout(
             metadata: WorkoutMetadata(startDate: start, endDate: end),
+            routePoints: routeTimestamps.map { RoutePoint(timestamp: $0, latitude: 1.3, longitude: 103.8) },
             summary: summary,
             analysisVersion: RunWorkout.currentAnalysisVersion
         )
@@ -41,6 +43,28 @@ final class AppleHealthLibraryRunWindowTests: XCTestCase {
 
     func testWindowIsNilWithoutAStart() {
         XCTAssertNil(AppleHealthLibraryRunWindow(workout: workout(start: nil, end: instant(1_756_653_600))))
+    }
+
+    /// A run imported without a recorded start is dated by its first route
+    /// point, as the library dates it everywhere else, so it still takes part in
+    /// the duplicate scan.
+    func testWindowStartsAtTheFirstRoutePointWithoutARecordedStart() throws {
+        let routed = workout(
+            start: nil,
+            end: instant(1_756_653_600),
+            routeTimestamps: [instant(1_756_650_000), instant(1_756_651_000)]
+        )
+        let window = try XCTUnwrap(AppleHealthLibraryRunWindow(workout: routed))
+        XCTAssertEqual(window.startSeconds, 1_756_650_000)
+        XCTAssertEqual(window.endSeconds, 1_756_653_600)
+
+        let undated = workout(
+            start: nil,
+            elapsedSeconds: 1_800,
+            routeTimestamps: [instant(1_756_650_000)]
+        )
+        let fallback = try XCTUnwrap(AppleHealthLibraryRunWindow(workout: undated))
+        XCTAssertEqual(fallback.endSeconds, 1_756_651_800)
     }
 
     /// A run whose end precedes its start cannot describe a window, and a
