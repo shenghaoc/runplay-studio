@@ -125,6 +125,43 @@ enum HeartRateChartPlan: Equatable {
         return nil
     }
 
+    /// The held reading at a distance, from the route point replay shows there,
+    /// so the chart's readout and the replay panel name the same reading. Nil
+    /// for every plan but `alignedToRoute`.
+    func heldReading(atDistance distance: Double, routePoints: [RoutePoint]) -> Double? {
+        guard let values = heldValuesByRoutePoint,
+              let index = Self.replayPointIndex(atDistance: distance, in: routePoints),
+              values.indices.contains(index) else { return nil }
+        return values[index]
+    }
+
+    /// The route point replay shows at a distance, as
+    /// `WorkoutTimeline.distanceSample(at:boundary: .rangeEnd)` chooses it:
+    /// between two points the earlier one, and among points that share the
+    /// distance the first, unless they end the route. A distance outside the
+    /// route is its nearer end.
+    static func replayPointIndex(atDistance distance: Double, in routePoints: [RoutePoint]) -> Int? {
+        guard !routePoints.isEmpty, distance.isFinite else { return nil }
+        // The first point at or beyond the distance.
+        var low = 0
+        var high = routePoints.count
+        while low < high {
+            let middle = (low + high) / 2
+            if routePoints[middle].distanceFromStartMeters < distance {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        guard low < routePoints.count else { return routePoints.count - 1 }
+        guard routePoints[low].distanceFromStartMeters == distance else { return max(0, low - 1) }
+        var last = low
+        while last + 1 < routePoints.count, routePoints[last + 1].distanceFromStartMeters == distance {
+            last += 1
+        }
+        return last == routePoints.count - 1 ? last : low
+    }
+
     /// The readings a standalone series on a routed run actually holds, for the
     /// chart's spoken range and average. These are the readings the summary's
     /// average is taken over, not the route-point repetitions of them, so the

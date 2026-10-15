@@ -690,8 +690,8 @@ struct MetricsChartView: View {
             )
         case .pace: return routePoints[index].paceSecondsPerKilometer
         case .heartRate:
-            if let held = heartRate.heldValuesByRoutePoint {
-                return held.indices.contains(index) ? held[index] : nil
+            if heartRate.heldValuesByRoutePoint != nil {
+                return heartRate.heldReading(atDistance: distance, routePoints: routePoints)
             }
             return routePoints[index].heartRateBPM
         case .power: return routePoints[index].powerWatts

@@ -125,6 +125,30 @@ final class HeartRateChartPresentationTests: XCTestCase {
         }
     }
 
+    /// Scrubbing the distance chart shows the reading replay shows at the same
+    /// distance: between two route points that is the earlier point's, not the
+    /// next one's.
+    func testHeldReadingAtADistanceIsTheOneReplayShows() {
+        let workout = Fixtures.workout(
+            routePoints: Fixtures.routePoints(count: 6),
+            series: Fixtures.series([(0, 118), (50, 126), (95, 137), (140, 149)])
+        )
+        let plan = HeartRateChartPlan.plan(for: workout)
+        let replay = PlaybackEngine()
+        replay.load(workout)
+        let total = workout.routePoints.last?.distanceFromStartMeters ?? 0
+
+        for step in -2...((Int(total) / 25) + 2) {
+            let distance = Double(step) * 25
+            replay.seekToDistance(distance)
+            XCTAssertEqual(
+                plan.heldReading(atDistance: distance, routePoints: workout.routePoints),
+                replay.selectedMetrics.heartRateBPM,
+                "at \(distance) m"
+            )
+        }
+    }
+
     func testAlignedValuesBuildChartDataOnTheDistanceAxis() {
         let workout = Fixtures.workout(
             routePoints: Fixtures.routePoints(count: 4),
