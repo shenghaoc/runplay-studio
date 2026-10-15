@@ -85,6 +85,18 @@ final class WorkoutLibraryQueryTests: XCTestCase {
         )
     }
 
+    /// A wall-clock time at a fixed UTC offset, for exact instants around
+    /// daylight-saving transitions.
+    private func instant(
+        _ year: Int, _ month: Int, _ day: Int,
+        _ hour: Int, _ minute: Int = 0,
+        utcOffsetHours: Int
+    ) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: utcOffsetHours * 3_600)!
+        return cal.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
     // MARK: - Search
 
     func testEmptySearchMatchesAll() async throws {
@@ -282,6 +294,64 @@ final class WorkoutLibraryQueryTests: XCTestCase {
         )
         let result = try await run([included, excluded], query: q)
         XCTAssertEqual(result.matchingIDs, [included.id])
+    }
+
+    func testCustomRangeEndsAtNextMidnightWhenEndDayStartsAtOne() async throws {
+        // Chile skips midnight into Sunday 6 September 2026: that day starts
+        // at 01:00 -03:00 and 7 September at 00:00 -03:00. The end day's
+        // start plus one day would be 01:00 on 7 September.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
+        let endDay = cal.startOfDay(for: instant(2026, 9, 6, 12, utcOffsetHours: -3))
+        XCTAssertEqual(endDay, instant(2026, 9, 6, 1, utcOffsetHours: -3))
+        let filter = WorkoutLibraryDateFilter.custom(start: endDay, end: endDay)
+
+        let bounds = WorkoutLibraryQueryService.resolveDateBounds(filter: filter, now: now, calendar: cal)
+        XCTAssertEqual(bounds.start, endDay)
+        XCTAssertEqual(bounds.end, instant(2026, 9, 7, 0, utcOffsetHours: -3))
+        XCTAssertTrue(bounds.endExclusive)
+
+        let lateOnEndDay = makeEntry(index: 0, start: instant(2026, 9, 6, 23, 30, utcOffsetHours: -3))
+        let earlyNextDay = makeEntry(index: 1, start: instant(2026, 9, 7, 0, 30, utcOffsetHours: -3))
+        let result = try await run(
+            [lateOnEndDay, earlyNextDay],
+            query: WorkoutLibraryQuery(
+                filter: WorkoutLibraryFilter(date: filter),
+                sort: .libraryOrder,
+                now: now,
+                calendar: cal
+            )
+        )
+        XCTAssertEqual(result.matchingIDs, [lateOnEndDay.id])
+    }
+
+    func testCustomRangeCoversWholeTwentyFiveHourEndDay() async throws {
+        // Control: New York repeats 01:00-02:00 on 1 November 2026, so that
+        // day runs 25 hours, from 00:00 -04:00 to 00:00 -05:00.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let endDay = cal.startOfDay(for: instant(2026, 11, 1, 12, utcOffsetHours: -5))
+        XCTAssertEqual(endDay, instant(2026, 11, 1, 0, utcOffsetHours: -4))
+        let filter = WorkoutLibraryDateFilter.custom(start: endDay, end: endDay)
+
+        let bounds = WorkoutLibraryQueryService.resolveDateBounds(filter: filter, now: now, calendar: cal)
+        XCTAssertEqual(bounds.start, endDay)
+        XCTAssertEqual(bounds.end, instant(2026, 11, 2, 0, utcOffsetHours: -5))
+        XCTAssertEqual(bounds.end?.timeIntervalSince(endDay), TimeInterval(25 * 3_600))
+        XCTAssertTrue(bounds.endExclusive)
+
+        let lateOnEndDay = makeEntry(index: 0, start: instant(2026, 11, 1, 23, 30, utcOffsetHours: -5))
+        let earlyNextDay = makeEntry(index: 1, start: instant(2026, 11, 2, 0, 30, utcOffsetHours: -5))
+        let result = try await run(
+            [lateOnEndDay, earlyNextDay],
+            query: WorkoutLibraryQuery(
+                filter: WorkoutLibraryFilter(date: filter),
+                sort: .libraryOrder,
+                now: now,
+                calendar: cal
+            )
+        )
+        XCTAssertEqual(result.matchingIDs, [lateOnEndDay.id])
     }
 
     // MARK: - Sort

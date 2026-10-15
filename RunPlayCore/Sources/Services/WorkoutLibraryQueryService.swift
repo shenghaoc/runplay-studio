@@ -134,11 +134,13 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
                 return DateBounds(start: nil, end: nil, includeMissingDates: true)
             }
             // Date pickers typically yield start-of-day values. Normalize so the
-            // selected end calendar day is fully inclusive.
+            // selected end calendar day is fully inclusive. The exclusive end is
+            // the next day's start, which is not always the end day's start plus
+            // one day: a day whose midnight daylight saving skips starts at
+            // 01:00, and one day later is 01:00 on a day that starts at 00:00.
             let normalizedStart = start.map { calendar.startOfDay(for: $0) }
             let normalizedEndExclusive: Date? = end.flatMap { endDate in
-                let startOfEndDay = calendar.startOfDay(for: endDate)
-                return calendar.date(byAdding: .day, value: 1, to: startOfEndDay)
+                calendar.dateInterval(of: .day, for: endDate)?.end
             }
             return DateBounds(
                 start: normalizedStart,
