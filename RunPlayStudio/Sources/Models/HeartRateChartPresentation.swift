@@ -55,9 +55,7 @@ enum HeartRateChartPlan: Equatable {
             if workout.hasRoute {
                 let readings = workout.heartRateSamples.compactMap { validReading($0.heartRateBPM) }
                 guard !readings.isEmpty else { return .none }
-                let values = workout.routePoints.indices.map { index in
-                    validReading(workout.heartRateBPM(atRoutePointIndex: index))
-                }
+                let values = heldValues(at: workout.routePoints, in: workout.heartRateSeries ?? [])
                 return .alignedToRoute(valuesByRoutePoint: values, readings: readings)
             }
             // A series whose readings are all invalid, or whose times are not
@@ -65,6 +63,43 @@ enum HeartRateChartPlan: Equatable {
             // chart under a title that promises one.
             let points = timePoints(from: workout.heartRateSamples)
             return points.isEmpty ? .none : .timeDomain(points: points)
+        }
+    }
+
+    /// The reading in force at each route point, by the hold rule
+    /// `RunWorkout.heartRateBPM(atRoutePointIndex:)` applies: the last reading
+    /// at or before the point's elapsed time, and none before the first.
+    ///
+    /// One pass rather than a search per route point, which at a million points
+    /// would stall selecting the run: route time and the series are both in time
+    /// order, so the position in the series only moves forward. A point earlier
+    /// than the one before it, which a normalized route never has, starts the
+    /// pass over.
+    static func heldValues(at routePoints: [RoutePoint], in series: [HeartRateSample]) -> [Double?] {
+        var comparisons = 0
+        return heldValues(at: routePoints, in: series, comparisons: &comparisons)
+    }
+
+    /// `heldValues`, also counting the series times it compared, so a test can
+    /// show the pass is linear.
+    static func heldValues(
+        at routePoints: [RoutePoint],
+        in series: [HeartRateSample],
+        comparisons: inout Int
+    ) -> [Double?] {
+        var next = 0
+        var previousTarget = -Double.infinity
+        return routePoints.map { point in
+            let target = point.elapsedSeconds
+            guard target.isFinite else { return nil }
+            if target < previousTarget { next = 0 }
+            previousTarget = target
+            while next < series.count {
+                comparisons += 1
+                guard series[next].elapsedSeconds <= target else { break }
+                next += 1
+            }
+            return next > 0 ? validReading(series[next - 1].heartRateBPM) : nil
         }
     }
 

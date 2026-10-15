@@ -149,6 +149,49 @@ final class HeartRateChartPresentationTests: XCTestCase {
         }
     }
 
+    /// The held values come from one pass over the route and the series, and
+    /// name what the accessor names at every point, through readings before the
+    /// route, shared times, missing and out-of-range readings, and readings
+    /// after it.
+    func testHeldValuesMatchTheAccessorAtEveryRoutePoint() throws {
+        let workout = Fixtures.workout(
+            routePoints: Fixtures.routePoints(count: 12),
+            series: Fixtures.series([
+                (15, nil), (40, 131), (40, 133), (90, 300), (125, 141), (180, nil), (255, 152), (400, 160),
+            ])
+        )
+        let series = try XCTUnwrap(workout.heartRateSeries)
+
+        let values = HeartRateChartPlan.heldValues(at: workout.routePoints, in: series)
+
+        XCTAssertEqual(values, workout.routePoints.indices.map { index in
+            workout.heartRateBPM(atRoutePointIndex: index).flatMap {
+                MetricValidation.isValidHeartRate($0) ? $0 : nil
+            }
+        })
+    }
+
+    /// One pass, not a search per route point: the series times compared stay
+    /// within the two lengths together. A search per point would compare about
+    /// fourteen times per point here.
+    func testHeldValuesAreFoundInOnePass() {
+        let routePoints = (0..<10_000).map { index in
+            RoutePoint(
+                timestamp: Fixtures.start.addingTimeInterval(Double(index)),
+                latitude: 1.3,
+                longitude: 103.8,
+                elapsedSeconds: Double(index)
+            )
+        }
+        let series = Fixtures.series((0..<5_000).map { (Double($0) * 2, 140) })
+
+        var comparisons = 0
+        let values = HeartRateChartPlan.heldValues(at: routePoints, in: series, comparisons: &comparisons)
+
+        XCTAssertEqual(values.count, routePoints.count)
+        XCTAssertLessThanOrEqual(comparisons, routePoints.count + series.count)
+    }
+
     func testAlignedValuesBuildChartDataOnTheDistanceAxis() {
         let workout = Fixtures.workout(
             routePoints: Fixtures.routePoints(count: 4),
