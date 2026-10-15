@@ -502,7 +502,12 @@ private final class Delegate: NSObject, XMLParserDelegate {
     /// Internal, not private: `AppleHealthExportParser.runPass` reads it after
     /// the parse to tell a health export from some other well-formed document.
     /// `Delegate` is itself file-private, so this widens nothing outside the file.
+    /// Set only when `HealthData` is the document's root element.
     var sawHealthData = false
+
+    /// Whether the document's root element has started: the first element to
+    /// start is the root.
+    private var sawRootElement = false
 
     /// Open `Workout` elements only.
     ///
@@ -573,10 +578,18 @@ private final class Delegate: NSObject, XMLParserDelegate {
         qualifiedName qName: String?,
         attributes attributeDict: [String: String]
     ) {
+        let isRoot = !sawRootElement
+        sawRootElement = true
+
         switch elementName {
         case AppleHealthExportParser.Element.healthData:
-            sawHealthData = true
-            locale = attributeDict[AppleHealthExportParser.Attribute.locale]
+            // Only a root `HealthData` makes the document an export. One nested
+            // inside another root does not, so that document is refused as not
+            // a Health export; a second one inside the export sets nothing.
+            if isRoot {
+                sawHealthData = true
+                locale = attributeDict[AppleHealthExportParser.Attribute.locale]
+            }
 
         case AppleHealthExportParser.Element.exportDate:
             // Only the first ExportDate counts; the export has exactly one.

@@ -316,6 +316,23 @@ final class AppleHealthExportParserTests: XCTestCase {
         }
     }
 
+    func testHealthDataThatIsNotTheRootIsRejected() {
+        // A well-formed document whose root is something else, wrapping a
+        // HealthData that holds a readable running workout.
+        let workout = runningWorkout(
+            start: "2026-09-01 08:00:00 +0800",
+            end: "2026-09-01 09:00:00 +0800",
+            route: nil
+        )
+        let xml = "<?xml version=\"1.0\"?><Envelope><HealthData locale=\"en_US\">"
+            + "<ExportDate value=\"2026-09-02 09:00:00 +0800\"/>\(workout)</HealthData></Envelope>"
+        XCTAssertThrowsError(try parse(xml)) { error in
+            guard case AppleHealthExportError.notAHealthExport = error else {
+                return XCTFail("expected notAHealthExport, got \(error)")
+            }
+        }
+    }
+
     func testCancellationBeforeTheParseThrows() {
         let xml = document(records: "", workouts: "")
         XCTAssertThrowsError(try parser.parse(
