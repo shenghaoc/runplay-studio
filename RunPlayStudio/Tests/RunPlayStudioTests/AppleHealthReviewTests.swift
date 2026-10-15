@@ -196,10 +196,19 @@ final class AppleHealthReviewTests: XCTestCase {
     }
 
     func testDistanceHelpSaysWhereTheNumberComesFrom() {
+        // A routed row's figure is the export's; only its dash stands for the
+        // distance the route will give.
         let routed = candidate(index: 0, start: 0, end: 60, route: "apple_health_export/workout-routes/a.gpx")
         XCTAssertEqual(routed.distanceProvenance, .gpsDerived)
         XCTAssertEqual(
             AppleHealthReviewPresentation.distanceHelp(routed),
+            "Reported by the export. The imported run's distance is measured from its route."
+        )
+        let routedWithoutFigure = candidate(
+            index: 0, start: 0, end: 60, route: "apple_health_export/workout-routes/a.gpx", distanceMeters: nil
+        )
+        XCTAssertEqual(
+            AppleHealthReviewPresentation.distanceHelp(routedWithoutFigure),
             "Measured from this workout's route when it is imported"
         )
 

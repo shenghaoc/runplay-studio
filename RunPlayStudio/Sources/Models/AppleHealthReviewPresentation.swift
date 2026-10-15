@@ -72,8 +72,7 @@ enum AppleHealthReviewPresentation {
     /// route-less one with none has no distance to state. `distanceHelp` says
     /// which of those the dash means.
     static func distanceText(_ candidate: AppleHealthWorkoutCandidate) -> String {
-        guard let meters = candidate.sourceDistanceMeters,
-              meters.isFinite, meters > 0 else { return "—" }
+        guard let meters = reportedMeters(candidate) else { return "—" }
         let kilometers = meters / 1_000
         let format = kilometers >= 100 ? "%.0f km" : kilometers >= 10 ? "%.1f km" : "%.2f km"
         return String(format: format, kilometers)
@@ -83,11 +82,24 @@ enum AppleHealthReviewPresentation {
     ///
     /// Stated rather than implied: a review that showed a figure without saying
     /// whether the export reported it or the route will measure it would invite
-    /// comparing two columns that are not the same quantity.
+    /// comparing two columns that are not the same quantity. A routed workout's
+    /// figure, when it has one, is still the export's: the route is not read
+    /// until the import, and what it measures can differ.
     static func distanceHelp(_ candidate: AppleHealthWorkoutCandidate) -> String {
-        candidate.distanceProvenance == .gpsDerived
+        guard candidate.distanceProvenance == .gpsDerived else {
+            return "Reported by the export itself"
+        }
+        return reportedMeters(candidate) == nil
             ? "Measured from this workout's route when it is imported"
-            : "Reported by the export itself"
+            : "Reported by the export. The imported run's distance is measured from its route."
+    }
+
+    /// The export's distance for a candidate, when it gives a usable one.
+    private static func reportedMeters(_ candidate: AppleHealthWorkoutCandidate) -> Double? {
+        guard let meters = candidate.sourceDistanceMeters, meters.isFinite, meters > 0 else {
+            return nil
+        }
+        return meters
     }
 
     // MARK: - Route and heart rate
