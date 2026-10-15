@@ -1859,7 +1859,11 @@ is active. On a packaged debug bundle of this change:
 
 Not covered: VoiceOver speech, typing into the date fields or using their
 steppers, light appearance, a release build, and relaunching with an edited
-range.
+range. The pass ran on a bundle of the first version of the row. A review then
+kept an open side's remembered date from passing the other date and fixed the
+day's end on days that start at 01:00, without changing the view. A re-check
+of that version on a new bundle was cut short because the Mac's screen locked,
+which hides every window from AX. Unit tests cover those changes.
 
 ## Window and application-session restoration checklist
 
