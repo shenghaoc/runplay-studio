@@ -1557,6 +1557,22 @@
         }
       }
     },
+    "Adventure race" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "探险赛"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "探險賽"
+          }
+        }
+      }
+    },
     "Aligning routes" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6857,6 +6873,22 @@
         }
       }
     },
+    "Obstacle race" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "障碍赛"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "障礙賽"
+          }
+        }
+      }
+    },
     "Obvious isolated GPS outliers were removed from route analysis." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9569,6 +9601,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已將標籤截斷為 %lld 個定義。"
+          }
+        }
+      }
+    },
+    "Ultra" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超级马拉松"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超級馬拉松"
           }
         }
       }
