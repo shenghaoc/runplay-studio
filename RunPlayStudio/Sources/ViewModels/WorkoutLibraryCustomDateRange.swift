@@ -9,10 +9,13 @@ import RunPlayCore
 /// does, so editing one side never closes the other.
 ///
 /// `rememberedStart` and `rememberedEnd` are the dates a picker shows while
-/// its bound is off, and the date that turning the bound on applies. While a
-/// bound is on, its remembered date is its own date, so turning it off keeps
-/// showing that date. They are the view model's `customDateStart` and
-/// `customDateEnd`, which Custom Date Range… applies.
+/// its bound is off, and the date that turning the bound on applies. They are
+/// the view model's `customDateStart` and `customDateEnd`, which Custom Date
+/// Range… applies. While a bound is on, its remembered date is its own date,
+/// so turning it off keeps showing that date. The remembered dates never end
+/// on a day before they start: an open side's date that would is moved onto
+/// the other date's day, so Custom Date Range… never applies a range that
+/// ends before it starts.
 ///
 /// The query service starts a range at the start of its From day and ends it
 /// after the whole of its To day. The row therefore compares calendar days: a
@@ -28,15 +31,23 @@ struct WorkoutLibraryCustomDateRange: Equatable {
     private(set) var end: Date?
     private(set) var rememberedStart: Date
     private(set) var rememberedEnd: Date
+    private let calendar: Calendar
 
     /// The range that `filter` holds, or nil for a preset, which shows no
-    /// row.
-    init?(filter: WorkoutLibraryDateFilter, rememberedStart: Date, rememberedEnd: Date) {
+    /// row. `calendar` decides where each day starts and ends.
+    init?(
+        filter: WorkoutLibraryDateFilter,
+        rememberedStart: Date,
+        rememberedEnd: Date,
+        calendar: Calendar
+    ) {
         guard case .custom(let start, let end) = filter else { return nil }
         self.start = start
         self.end = end
         self.rememberedStart = start ?? rememberedStart
         self.rememberedEnd = end ?? rememberedEnd
+        self.calendar = calendar
+        orderRememberedDates()
     }
 
     /// The date filter this range applies.
@@ -67,27 +78,35 @@ struct WorkoutLibraryCustomDateRange: Equatable {
     /// the start of the From day. The range always contains the picker's own
     /// date, so a stored range that already ends before it starts is shown
     /// as stored rather than moved by the picker.
-    func selectableDates(for bound: Bound, calendar: Calendar) -> ClosedRange<Date> {
+    func selectableDates(for bound: Bound) -> ClosedRange<Date> {
         let own = pickerDate(for: bound)
-        let allowed = allowedDates(for: bound, calendar: calendar)
+        let allowed = allowedDates(for: bound)
         return min(allowed.lowerBound, own)...max(allowed.upperBound, own)
     }
 
     /// Pick `date` for `bound`, which turns the bound on. The other bound is
     /// unchanged, so an open side stays open. A date beyond the other bound's
     /// day is clamped to that day.
-    mutating func pick(_ date: Date, for bound: Bound, calendar: Calendar) {
-        let allowed = allowedDates(for: bound, calendar: calendar)
+    mutating func pick(_ date: Date, for bound: Bound) {
+        let allowed = allowedDates(for: bound)
         let clamped = min(max(date, allowed.lowerBound), allowed.upperBound)
-        setDate(clamped, of: bound)
+        switch bound {
+        case .start:
+            start = clamped
+            rememberedStart = clamped
+        case .end:
+            end = clamped
+            rememberedEnd = clamped
+        }
+        orderRememberedDates()
     }
 
-    /// Turn `bound` on, at its remembered date clamped as `pick` clamps, or
-    /// off. Turning off the only bound that is on changes nothing.
-    mutating func setIncluded(_ isIncluded: Bool, for bound: Bound, calendar: Calendar) {
+    /// Turn `bound` on at its remembered date, or off. Turning off the only
+    /// bound that is on changes nothing.
+    mutating func setIncluded(_ isIncluded: Bool, for bound: Bound) {
         guard isIncluded != includes(bound) else { return }
         if isIncluded {
-            pick(rememberedDate(of: bound), for: bound, calendar: calendar)
+            pick(rememberedDate(of: bound), for: bound)
         } else if canExclude(bound) {
             switch bound {
             case .start: start = nil
@@ -112,37 +131,44 @@ struct WorkoutLibraryCustomDateRange: Equatable {
         }
     }
 
-    private mutating func setDate(_ date: Date, of bound: Bound) {
-        switch bound {
-        case .start:
-            start = date
-            rememberedStart = date
-        case .end:
-            end = date
-            rememberedEnd = date
+    /// Move an open side's remembered date onto the other date's day when it
+    /// would end the remembered dates on a day before they start. A range
+    /// stored with both bounds already in that order is left as stored.
+    private mutating func orderRememberedDates() {
+        guard calendar.startOfDay(for: rememberedStart) > calendar.startOfDay(for: rememberedEnd) else {
+            return
+        }
+        if end == nil {
+            rememberedEnd = calendar.startOfDay(for: rememberedStart)
+        } else if start == nil {
+            rememberedStart = Self.lastInstant(ofDayOf: rememberedEnd, calendar: calendar)
         }
     }
 
     /// The dates `bound` may take without ending the range on a day before
     /// the day it starts: bounded by the other bound's day while it is on.
-    private func allowedDates(for bound: Bound, calendar: Calendar) -> ClosedRange<Date> {
+    /// The range is never inverted, even for a stored date beyond
+    /// `Date.distantPast` or `Date.distantFuture`.
+    private func allowedDates(for bound: Bound) -> ClosedRange<Date> {
         switch bound {
         case .start:
             guard let end else { return Date.distantPast...Date.distantFuture }
-            return Date.distantPast...Self.lastInstant(ofDayOf: end, calendar: calendar)
+            let last = Self.lastInstant(ofDayOf: end, calendar: calendar)
+            return min(Date.distantPast, last)...last
         case .end:
             guard let start else { return Date.distantPast...Date.distantFuture }
-            return calendar.startOfDay(for: start)...Date.distantFuture
+            let first = calendar.startOfDay(for: start)
+            return first...max(first, Date.distantFuture)
         }
     }
 
     /// The last second of `date`'s calendar day: one second before the next
-    /// day starts, as the calendar counts days across a daylight-saving
-    /// change.
+    /// day starts. The calendar's own day interval keeps this right across a
+    /// daylight-saving change, including on a day that starts at 01:00
+    /// because its midnight was skipped.
     private static func lastInstant(ofDayOf date: Date, calendar: Calendar) -> Date {
-        let startOfDay = calendar.startOfDay(for: date)
-        let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
-        return max(startOfDay, nextDay.addingTimeInterval(-1))
+        guard let day = calendar.dateInterval(of: .day, for: date) else { return date }
+        return max(day.start, day.end.addingTimeInterval(-1))
     }
 }
 
