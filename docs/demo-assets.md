@@ -13,6 +13,11 @@ The data is synthetic:
 Run") and
 [`comparison_park_run.json`](../RunPlayStudio/Resources/fixtures/comparison_park_run.json)
 ("Morning Park Progression Run"), the same pair the app loads on first launch.
+The Morning Park Run is a steady 5:00/km run, and it states its timing three
+ways: timestamps, `elapsedSeconds`, and `speedMetersPerSecond`. The summary card
+follows the timestamps, while the Route Replay HUD reads its pace from the speed
+field, so an edit must keep all three in agreement. `JSONImporterTests` fails
+when they drift apart.
 
 ## What Is Generated
 
