@@ -270,6 +270,16 @@ struct TimeDomainHeartRateChartModel: Equatable {
         )
     }
 
+    /// A label for an x-axis tick. A whole minute reads "12 min"; a tick between
+    /// whole minutes reads as minutes and seconds, "1:30". Cutting it to whole
+    /// minutes would give several ticks of a short run the same label.
+    static func axisLabel(minutes: Double) -> String {
+        guard minutes.isFinite else { return "" }
+        let seconds = Int((minutes * 60).rounded())
+        if seconds % 60 == 0 { return "\(seconds / 60) min" }
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
     private static func bpm(_ value: Double) -> String {
         "\(Int(value.rounded())) bpm"
     }

@@ -41,7 +41,7 @@ struct TimeDomainHeartRateChart: View {
                 AxisMarks(values: .automatic(desiredCount: 6)) { value in
                     AxisValueLabel {
                         if let minutes = value.as(Double.self) {
-                            Text("\(Int(minutes)) min")
+                            Text(TimeDomainHeartRateChartModel.axisLabel(minutes: minutes))
                         }
                     }
                     AxisGridLine()

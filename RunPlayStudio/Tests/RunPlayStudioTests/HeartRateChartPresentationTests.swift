@@ -425,6 +425,20 @@ final class HeartRateChartPresentationTests: XCTestCase {
         XCTAssertTrue(model.spokenSummary.contains("1 reading over 0 minutes."), model.spokenSummary)
     }
 
+    /// A short run's axis ticks fall between whole minutes, and each must read
+    /// differently: a 30-second run's ticks are not all "0 min".
+    func testShortRunsAxisTicksAreToldApart() {
+        let ticks = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+        XCTAssertEqual(
+            ticks.map(TimeDomainHeartRateChartModel.axisLabel(minutes:)),
+            ["0 min", "0:06", "0:12", "0:18", "0:24", "0:30"]
+        )
+        XCTAssertEqual(
+            [1, 1.5, 2, 30].map(TimeDomainHeartRateChartModel.axisLabel(minutes:)),
+            ["1 min", "1:30", "2 min", "30 min"]
+        )
+    }
+
     func testEveryReadingIsMarkedOnlyWhileTheyCanBeToldApart() throws {
         func model(readings: Int) throws -> TimeDomainHeartRateChartModel {
             let samples = (0..<readings).map {
