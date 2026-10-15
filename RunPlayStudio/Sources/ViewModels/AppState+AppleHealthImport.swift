@@ -135,7 +135,9 @@ extension AppState {
                 await self.finishBatchSheetImport(
                     wasCancelled: report.wasCancelled,
                     commitFailed: report.commitFailed,
-                    importedCount: report.importedCount,
+                    // Every committed run, including one that fell back to no
+                    // route: each is in the library and must be reloaded.
+                    importedCount: report.addedWorkoutCount,
                     errorMessage: report.errorMessage,
                     completedName: completedName,
                     commitFailedFallback: "Could not save the imported workouts.",

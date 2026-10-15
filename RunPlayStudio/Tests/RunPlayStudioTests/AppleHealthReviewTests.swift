@@ -434,6 +434,23 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(stored.importProvenance?.provider, .appleHealthExport)
     }
 
+    /// A routed run whose route cannot be read still reaches the library, so the
+    /// library is reloaded and the run can be opened from the report.
+    func testARunImportedWithoutItsRouteIsReloadedIntoTheLibrary() async throws {
+        let appState = makeAppState()
+        present(appState, scanResult(candidates: [
+            candidate(index: 0, start: 1_000, end: 1_600, route: "apple_health_export/workout-routes/route_1.gpx"),
+        ]))
+
+        appState.confirmAppleHealthImport()
+        await waitForTerminalPhase(appState)
+
+        let report = try XCTUnwrap(appState.appleHealthSession?.report)
+        XCTAssertEqual(report.importedWithoutRouteCount, 1)
+        XCTAssertEqual(report.addedWorkoutCount, 1)
+        XCTAssertEqual(appState.workouts.map(\.id), report.importedWorkoutIDs)
+    }
+
     func testImportingTheSameReviewTwiceAddsNothingTheSecondTime() async {
         let appState = makeAppState()
         present(appState, scanResult(candidates: [
