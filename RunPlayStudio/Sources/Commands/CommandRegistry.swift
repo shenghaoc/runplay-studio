@@ -69,6 +69,8 @@ enum CommandID: String, CaseIterable, Sendable, Equatable {
 struct CommandDefinition: Equatable, Sendable, Identifiable {
     let id: CommandID
     let menuTitle: String
+    /// English name of the top-level menu. A standard menu (File, View, Help)
+    /// is joined through a `CommandGroup`, never redeclared with `CommandMenu`.
     let menu: String
     let keyEquivalent: String
     let modifiers: EventModifiers

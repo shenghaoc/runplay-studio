@@ -64,6 +64,20 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(command.displayShortcut, "Menu")
     }
 
+    /// Help → Keyboard Shortcuts groups commands by `menu`, so the registry's
+    /// menus must be the menu bar's: the standard menus the commands join, and
+    /// the menus `CommandMenu` declares. A `CommandMenu` named after a standard
+    /// menu adds a second menu of that name instead of joining it.
+    func testRegistryMenusMatchTheMenuBar() throws {
+        let declared = try Self.declaredCommandMenus()
+        XCTAssertTrue(
+            declared.isDisjoint(with: Self.standardMenus),
+            "CommandMenu duplicates a standard menu: \(declared.intersection(Self.standardMenus).sorted())"
+        )
+        let registryMenus = Set(CommandRegistry.all.map(\.menu))
+        XCTAssertEqual(registryMenus.subtracting(Self.standardMenus).sorted(), declared.sorted())
+    }
+
     func testLocalOnlyOpenSelectionIsNotMenuCommand() {
         XCTAssertTrue(CommandRegistry.definition(for: .openSelectedWorkout).localOnly)
         XCTAssertFalse(CommandRegistry.menuCommands.contains { $0.id == .openSelectedWorkout })
@@ -114,5 +128,31 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertNil(CommandRegistry.definition(for: .exportSummaryJSON).menuKeyboardShortcut)
         XCTAssertNil(CommandRegistry.definition(for: .replayPlayPause).menuKeyboardShortcut)
         XCTAssertNil(CommandRegistry.definition(for: .replayRestart).menuKeyboardShortcut)
+    }
+
+    /// The menus AppKit and SwiftUI already put in RunPlay Studio's menu bar.
+    private static let standardMenus: Set<String> = ["File", "Edit", "View", "Window", "Help"]
+
+    /// Titles of the `CommandMenu`s declared in Studio's sources. An XCTest
+    /// process runs no `App`, so SwiftUI never builds a menu bar to inspect.
+    private static func declaredCommandMenus(filePath: StaticString = #filePath) throws -> Set<String> {
+        let sources = URL(filePath: "\(filePath)")
+            .deletingLastPathComponent() // CommandRegistryTests.swift
+            .deletingLastPathComponent() // RunPlayStudioTests
+            .deletingLastPathComponent() // Tests
+            .appendingPathComponent("Sources")
+        let files = try XCTUnwrap(
+            FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)
+        )
+        // Line-anchored, so a comment that mentions a declaration is not one.
+        let declaration = /^\s*CommandMenu\(\s*"([^"]+)"/.anchorsMatchLineEndings()
+        var titles: Set<String> = []
+        for case let file as URL in files where file.pathExtension == "swift" {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            for match in source.matches(of: declaration) {
+                titles.insert(String(match.1))
+            }
+        }
+        return titles
     }
 }
