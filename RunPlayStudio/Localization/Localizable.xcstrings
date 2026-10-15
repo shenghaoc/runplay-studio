@@ -1548,6 +1548,22 @@
         }
       }
     },
+    "A custom range needs a From or To date. Choose Filters ▸ Date ▸ All Time to include every run." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义范围至少需要开始日期或结束日期。若要包含所有跑步，请选取“筛选 ▸ 日期 ▸ 全部时间”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自訂範圍至少需要開始日期或結束日期。若要包含所有跑步，請選取「篩選 ▸ 日期 ▸ 全部時間」。"
+          }
+        }
+      }
+    },
     "A folder of Terrarium PNG elevation tiles in z/x/y.png layout that you downloaded yourself, such as the free AWS Terrain Tiles. RunPlay Studio only reads it and never downloads tiles. Zoom 13 or 14 suits running." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9920,6 +9936,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "將個人紀錄的範圍限定為整個資料庫、目前「所有跑步」查詢或某個智慧型合集"
+          }
+        }
+      }
+    },
+    "Limit the range to runs on or after the From date" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅包含开始日期当天及之后的跑步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅包含開始日期當天及之後的跑步"
+          }
+        }
+      }
+    },
+    "Limit the range to runs on or before the To date" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅包含结束日期当天及之前的跑步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅包含結束日期當天及之前的跑步"
           }
         }
       }
