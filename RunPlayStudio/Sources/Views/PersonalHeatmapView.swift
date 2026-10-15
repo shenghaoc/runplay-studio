@@ -307,9 +307,9 @@ struct PersonalHeatmapView: View {
                 }
             }
         } label: {
-            // The accessibility label below differs from this title, so a
-            // plain `systemImage` would put the symbol's generated name in
-            // the Item Chooser entry (#161).
+            // The accessibility labels differ from this title, so a plain
+            // `systemImage` would put the symbol's generated name in the Item
+            // Chooser entry (#161).
             Label {
                 Text(filterTitle)
             } icon: {
@@ -317,6 +317,12 @@ struct PersonalHeatmapView: View {
                     systemName: "point.topleft.down.curvedto.point.bottomright.up"
                 )
             }
+            // Every update of the AppKit menu button, such as choosing the
+            // checked row again or an appearance switch, copies this label's
+            // accessibility to the button as its AXTitle. Named by its text
+            // alone, the label replaced "Route filter" with the route name
+            // until the button's other accessibility changed (#196).
+            .accessibilityLabel("Route filter")
         }
         .menuStyle(.borderlessButton)
         .routeMenuSizing(truncating: truncating)
