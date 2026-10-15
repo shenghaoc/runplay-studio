@@ -353,6 +353,10 @@ public actor AppleHealthImportService {
                 skippedCount: skipped,
                 failedCount: failed
             ))
+            // Asked once more before committing: the loop only asks before each
+            // candidate, so a Cancel pressed while the last one was built or
+            // staged would otherwise go unheard and the pass would commit.
+            if isCancelled() { throw CancellationError() }
 
             if staged.isEmpty {
                 await storeActor.rollbackBatchImport(batch)

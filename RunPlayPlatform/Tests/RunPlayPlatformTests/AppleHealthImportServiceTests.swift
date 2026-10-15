@@ -482,6 +482,34 @@ final class AppleHealthImportServiceTests: XCTestCase {
         XCTAssertFalse(hasActiveBatch, "a cancelled import must release the batch")
     }
 
+    /// A Cancel pressed while the last candidate is staged still stops the
+    /// commit, though no candidate follows to ask the probe again.
+    func testCancellingWhileTheLastCandidateStagesStopsTheCommit() async throws {
+        let zip = try makeMixedArchive()
+        let result = try await scan(zip)
+        let routed = try XCTUnwrap(result.candidates.first(where: \.hasRoute))
+        let (store, storeActor, _) = makeStore(named: "lib-cancel-last")
+
+        let cancelled = Atomic(false)
+        let report = try await makeService().importSelection(
+            [routed],
+            from: result,
+            archiveAt: zip,
+            storeActor: storeActor,
+            progress: { progress in
+                if progress.phase == .staging { cancelled.set(true) }
+            },
+            isCancelled: { cancelled.value }
+        )
+
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertEqual(report.addedWorkoutCount, 0)
+        XCTAssertEqual(report.discardedCount, 1)
+        XCTAssertTrue(try libraryWorkouts(store).isEmpty, "a cancelled import must add nothing")
+        let hasActiveBatch = await storeActor.hasActiveBatch
+        XCTAssertFalse(hasActiveBatch, "a cancelled import must release the batch")
+    }
+
     func testFailingMidCommitLeavesTheLibraryUnchanged() async throws {
         let zip = try makeMixedArchive()
         let result = try await scan(zip)
