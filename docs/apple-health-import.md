@@ -26,8 +26,12 @@ activity identifiers are excluded before duplicate checking; the review and
 final report state how many non-running workouts were skipped.
 
 Review rows show the date, source distance when available, route reference,
-heart-rate availability and duplicate status. A route indicator means the
-export names a route file; the importer validates that file when importing.
+heart-rate availability and duplicate status. A route check mark means the
+export names a route file the archive holds; the importer validates that file
+when importing. A workout naming a route file the archive cannot supply (see
+unmatched route references below) gets its own mark instead: its row says it
+names a route file the export doesn't contain, it does not count as having a
+route, and it imports without a map.
 Identical windows are **Duplicate**; partial overlaps are **Possible duplicate**.
 Both flags start unchecked, whether the overlap is in this export or the
 existing library. Check a flagged row only after reviewing it. Selected runs
