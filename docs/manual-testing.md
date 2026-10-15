@@ -475,6 +475,80 @@ lost the label on the base, and on the fixed bundle such a choice restored it.
 
 Not covered: VoiceOver speech, dark appearance, zh-Hant, and a release build.
 
+### Route filter label pass 2026-10-15 (#196; debug configuration, synthetic route-group library)
+
+The library, launches and AX presses were those of the Any Route pass above.
+The route button was found by its AXHelp, because its AXTitle was under test.
+"Lost" below means AXTitle read the visible title, such as "Any Route" or
+"任意路线", instead of "Route filter" or "路线筛选".
+
+On a packaged debug bundle of the base (#271):
+
+- Choosing the checked Any Route again lost the label 8 of 8 times in English,
+  in two runs, and 8 of 8 times in zh-Hans. Choosing the checked "5.0 km
+  Route" again lost it 4 of 4 times. Six choices that each changed the route
+  lost it 0 times.
+- AXValue, AXDescription `" "` and AXHelp stayed correct, and the AX element
+  was the same before and after.
+- A relaunch with "5.0 km Route" saved kept the label on first appearance and
+  after Library → Personal Heatmap. Choosing that route again lost it.
+
+To find the cause, single changes were built as throwaway bundles, never
+committed, and run through 8 choices of the checked Any Route:
+
+- Skipping the write when the filter was unchanged lost the label 0 times.
+- Removing the filter bar's `ViewThatFits` lost it 8 times, and removing the
+  map's `focusedSceneValue` lost it 8 times.
+- A trace of AppKit calls showed the mechanism. Each update of the AppKit menu
+  button runs `PlatformItemList.Item.applyAccessibilityProperties`, which sets
+  the button cell's AXTitle override from the menu label's accessibility. That
+  was the label's text alone. SwiftUI's `accessibilityLabel` won again only
+  after SwiftUI pushed the button's full accessibility, which it does when
+  that accessibility changes. Re-applying the same filter re-rendered the
+  heatmap, the button was updated, and nothing else changed, so the route
+  name stayed.
+- A throwaway hook that switched the app's own `NSApp.appearance` lost the
+  label after 6 of 6 switches, the appearance case in #196. The system
+  setting was not touched.
+- A bare SwiftUI app with the same menu kept the label when the checked row
+  was chosen again, but lost it after 3 of 4 appearance switches. With an
+  `accessibilityLabel` on the menu label it lost it 0 of 4 times.
+- An `Equatable` route-menu view that skipped the update kept the label after
+  32 re-applied choices, in English and zh-Hans. It lost it once in a traced
+  run, right after a route change, and after 6 of 6 appearance switches. That
+  approach was dropped.
+
+The menu label now carries the "Route filter" label too. Choosing the checked
+row still applies its filter again. On the fixed bundle:
+
+- Choosing the checked Any Route again lost the label 0 of 8 times in English
+  and 0 of 8 in zh-Hans. Choosing the checked route again lost it 0 of 8 times
+  in each language. Six alternating choices kept the label, with the value
+  following the route.
+- With the appearance hook, 6 of 6 switches kept the label.
+- The relaunch with a saved route kept it through first appearance, Library →
+  Personal Heatmap, and choosing the route again, in both languages.
+- In English and zh-Hans, the open menu's titles, enabled states, check marks
+  and help, and the button's title, value, description and help, match the
+  base line by line.
+- Every filter-bar control's frame matches the base at the default 1200×759
+  with Any Route, and at 720×552 with Any Route and with "5.0 km Route"
+  chosen.
+
+Other controls on the base:
+
+- All Runs → Filters has no accessibility label override. After choosing the
+  checked All Time, Any Tags and Any Route again, its AXTitle stayed
+  "Filters".
+- Route Color's accessibility label equals its visible title. After choosing
+  the checked Solid again 4 times, AXTitle stayed "Route Color" and AXValue
+  "Solid". Its "Paint palette" description is the leak fixed in #263.
+- At 720×552 the heatmap's three filter pickers are named by AXDescription.
+  Choosing each picker's selected item again 3 times left it unchanged.
+
+Not covered: VoiceOver speech, a system appearance switch, the import-report
+path from #196, a release build, and zh-Hant.
+
 ## Trends Workspace Checklist
 
 Use only synthetic or explicitly private, ignored local workout files.
