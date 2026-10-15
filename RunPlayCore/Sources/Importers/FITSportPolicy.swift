@@ -50,20 +50,22 @@ public enum FITSportPolicy {
         return displayName(sport)
     }
 
-    /// Sub-sport is surfaced only when the profile value is meaningful; the
-    /// full sub-sport enum is not modelled, so unknown values stay hidden
-    /// rather than leaking a bare number into the UI.
+    /// Sub-sport is surfaced only for profile values that are meaningful for a
+    /// run; the full sub-sport enum is not modelled, so every other value
+    /// stays hidden rather than leaking a bare number into the UI. Raw values
+    /// are the FIT profile `sub_sport` enum (`FIT_SUB_SPORT_*` in Garmin's
+    /// SDKs), named in the comment on each case.
     public static func subSportDescription(subSport rawSubSport: UInt8?) -> String? {
         guard let rawSubSport, rawSubSport != FITParser.invalidUint8, rawSubSport != 0 else {
             return nil
         }
         switch rawSubSport {
-        case 1: return coreLocalized("Treadmill")
-        case 2: return coreLocalized("Street")
-        case 3: return coreLocalized("Trail")
-        case 4: return coreLocalized("Track")
-        case 6: return coreLocalized("Indoor")
-        case 17: return coreLocalized("Virtual")
+        case 1: return coreLocalized("Treadmill")  // treadmill
+        case 2: return coreLocalized("Street")     // street
+        case 3: return coreLocalized("Trail")      // trail
+        case 4: return coreLocalized("Track")      // track
+        case 45: return coreLocalized("Indoor")    // indoor_running
+        case 58: return coreLocalized("Virtual")   // virtual_activity
         default: return nil
         }
     }
