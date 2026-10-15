@@ -2521,6 +2521,15 @@ VoiceOver were not exercised in this pass.
 - [ ] Cancel immediately after pressing Import, before the first run is staged. The sheet ends on the same report. Cancelling the review before any import starts still just closes the sheet.
 - [ ] Finish an import normally in the same library afterwards: the report is headed **Imported N runs** and carries no cancel notice.
 
+## Heart rate on the run detail (synthetic)
+
+Use a disposable library and a synthetic Health export with four runs: a routed run with heart rate, a routed run without, a route-less run with heart rate, and a route-less run without. Never use private data for this checklist.
+
+- [ ] Routed run with heart rate only in the Health series: **Charts → Heart Rate** draws a stepped line over distance, not a smoothed curve. Scrub the chart and compare its readout with the replay metrics panel at the same position; they name the same bpm.
+- [ ] Route-less run with heart rate: **Charts** opens on **Heart Rate** and draws the readings over time, with minutes on the x axis. There is no **Jump to distance** control, and the other metrics say no chart data is available.
+- [ ] Select the route-less run after a routed one while **Elevation** is chosen. The picker moves to **Heart Rate** instead of leaving an empty chart.
+- [ ] VoiceOver spot check, by hand: the over-time chart's summary reads as readings over minutes with no distance.
+
 ## Apple Health review layout and full flag reasons (synthetic)
 
 - [ ] Open a synthetic export containing duplicate/overlap reasons in the ad-hoc-signed bundle. At the sheet minimum, every column header and value fits; flagged rows show a warning icon and unflagged rows have an empty Flag cell.

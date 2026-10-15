@@ -1,0 +1,302 @@
+import Foundation
+import RunPlayCore
+
+/// One heart-rate reading on an elapsed-time axis.
+struct HeartRateTimePoint: Identifiable, Equatable {
+    let id: Int
+    /// Minutes since the workout began.
+    let minutes: Double
+    let bpm: Double
+    /// Readings in different series are not joined by a line: a recording gap
+    /// starts a new series, as it does on the distance charts.
+    let seriesID: Int
+}
+
+/// How a workout's heart rate is charted, decided from where that heart rate
+/// lives.
+///
+/// Heart rate lives in one of two places: on the route points (FIT, TCX, GPX,
+/// JSON), or in the standalone series an Apple Health export run carries,
+/// because its route GPX holds none. The plan reads it through the workout's
+/// single heart-rate accessor, so a chart cannot disagree with replay or the
+/// summary about which readings a run has.
+enum HeartRateChartPlan: Equatable {
+
+    /// No usable reading anywhere: the chart says so.
+    case none
+
+    /// Heart rate rides on the route points. Charted per point over distance,
+    /// smoothed, exactly as it always was.
+    case routePoints
+
+    /// A standalone series on a run that has a route. Each route point takes
+    /// the reading that applies at its own time, by the accessor's hold rule, so
+    /// the chart stays on the distance axis every other metric uses and its
+    /// cursor and scrub readout agree with replay.
+    ///
+    /// The readings are held, not interpolated and not smoothed: a held step is
+    /// what the source reported, and an average of two readings is a number it
+    /// never produced.
+    case alignedToRoute(valuesByRoutePoint: [Double?], readings: [Double])
+
+    /// A standalone series on a run with no route. There is no distance to plot
+    /// against, so the readings are charted over elapsed time.
+    case timeDomain(points: [HeartRateTimePoint])
+
+    // MARK: - Deciding the plan
+
+    static func plan(for workout: RunWorkout) -> HeartRateChartPlan {
+        switch workout.heartRateSampleSource {
+        case .none:
+            return .none
+        case .routePoints:
+            return .routePoints
+        case .standaloneSeries:
+            if workout.hasRoute {
+                let readings = workout.heartRateSamples.compactMap { validReading($0.heartRateBPM) }
+                guard !readings.isEmpty else { return .none }
+                let values = heldValues(at: workout.routePoints, in: workout.heartRateSeries ?? [])
+                return .alignedToRoute(valuesByRoutePoint: values, readings: readings)
+            }
+            // A series whose readings are all invalid, or whose times are not
+            // numbers, has nothing to plot: say so rather than draw an empty
+            // chart under a title that promises one.
+            let points = timePoints(from: workout.heartRateSamples)
+            return points.isEmpty ? .none : .timeDomain(points: points)
+        }
+    }
+
+    /// The reading in force at each route point, by the hold rule
+    /// `RunWorkout.heartRateBPM(atRoutePointIndex:)` applies: the last reading
+    /// at or before the point's elapsed time, and none before the first.
+    ///
+    /// One pass rather than a search per route point, which at a million points
+    /// would stall selecting the run: route time and the series are both in time
+    /// order, so the position in the series only moves forward. A point earlier
+    /// than the one before it, which a normalized route never has, starts the
+    /// pass over.
+    static func heldValues(at routePoints: [RoutePoint], in series: [HeartRateSample]) -> [Double?] {
+        var comparisons = 0
+        return heldValues(at: routePoints, in: series, comparisons: &comparisons)
+    }
+
+    /// `heldValues`, also counting the series times it compared, so a test can
+    /// show the pass is linear.
+    static func heldValues(
+        at routePoints: [RoutePoint],
+        in series: [HeartRateSample],
+        comparisons: inout Int
+    ) -> [Double?] {
+        var next = 0
+        var previousTarget = -Double.infinity
+        return routePoints.map { point in
+            let target = point.elapsedSeconds
+            guard target.isFinite else { return nil }
+            if target < previousTarget { next = 0 }
+            previousTarget = target
+            while next < series.count {
+                comparisons += 1
+                guard series[next].elapsedSeconds <= target else { break }
+                next += 1
+            }
+            return next > 0 ? validReading(series[next - 1].heartRateBPM) : nil
+        }
+    }
+
+    /// The valid readings of a series on an elapsed-time axis.
+    ///
+    /// A reading outside the accepted range is a missing reading, not a value,
+    /// so it ends the line rather than being drawn through.
+    static func timePoints(from samples: [HeartRateSample]) -> [HeartRateTimePoint] {
+        var points: [HeartRateTimePoint] = []
+        var seriesID = 0
+        var previousSegment: Int?
+        for sample in samples {
+            guard sample.elapsedSeconds.isFinite, let bpm = validReading(sample.heartRateBPM) else {
+                previousSegment = nil
+                continue
+            }
+            if sample.segmentIndex != previousSegment { seriesID += 1 }
+            previousSegment = sample.segmentIndex
+            points.append(HeartRateTimePoint(
+                id: points.count,
+                minutes: max(0, sample.elapsedSeconds) / 60,
+                bpm: bpm,
+                seriesID: seriesID
+            ))
+        }
+        return points
+    }
+
+    private static func validReading(_ bpm: Double?) -> Double? {
+        guard let bpm, bpm.isFinite, MetricValidation.isValidHeartRate(bpm) else { return nil }
+        return bpm
+    }
+
+    // MARK: - What the chart view needs from the plan
+
+    /// Whether the metric picker should open on Heart Rate.
+    ///
+    /// True only for a run with no route: elevation, pace, power and speed are
+    /// all read off route points, so heart rate is the one chart that has
+    /// anything to show. A run with a route opens where every routed run does.
+    var opensOnHeartRate: Bool {
+        if case .timeDomain = self { return true }
+        return false
+    }
+
+    /// Whether replacing one plan with another should move the picker to Heart
+    /// Rate. The chart view is reused as the selection changes, so a route-less
+    /// run selected after a routed one must not inherit that run's empty
+    /// metric; a choice the user made on the same kind of run is left alone.
+    static func movesPickerToHeartRate(from previous: HeartRateChartPlan, to current: HeartRateChartPlan) -> Bool {
+        current.opensOnHeartRate && !previous.opensOnHeartRate
+    }
+
+    /// The held reading at every route point, for a standalone series charted
+    /// against distance. Nil for every other plan.
+    var heldValuesByRoutePoint: [Double?]? {
+        if case .alignedToRoute(let values, _) = self { return values }
+        return nil
+    }
+
+    /// The chart metric picker's hint and help. While heart rate is charted
+    /// over time, the picker must not say its metric is shown over distance.
+    static func metricPickerHint(paceSelected: Bool, chartsOverTime: Bool) -> String {
+        if paceSelected { return "Active pace uses recorded time and excludes recording gaps." }
+        return chartsOverTime
+            ? "Select the metric to chart. This run has no route, so heart rate is shown over time."
+            : "Select the metric shown over distance."
+    }
+
+    /// The held reading at a distance, from the route point replay shows there,
+    /// so the chart's readout and the replay panel name the same reading. Nil
+    /// for every plan but `alignedToRoute`.
+    func heldReading(atDistance distance: Double, routePoints: [RoutePoint]) -> Double? {
+        guard let values = heldValuesByRoutePoint,
+              let index = Self.replayPointIndex(atDistance: distance, in: routePoints),
+              values.indices.contains(index) else { return nil }
+        return values[index]
+    }
+
+    /// The route point replay shows at a distance, as
+    /// `WorkoutTimeline.distanceSample(at:boundary: .rangeEnd)` chooses it:
+    /// between two points the earlier one, and among points that share the
+    /// distance the first, unless they end the route. A distance outside the
+    /// route is its nearer end.
+    static func replayPointIndex(atDistance distance: Double, in routePoints: [RoutePoint]) -> Int? {
+        guard !routePoints.isEmpty, distance.isFinite else { return nil }
+        // The first point at or beyond the distance.
+        var low = 0
+        var high = routePoints.count
+        while low < high {
+            let middle = (low + high) / 2
+            if routePoints[middle].distanceFromStartMeters < distance {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        guard low < routePoints.count else { return routePoints.count - 1 }
+        guard routePoints[low].distanceFromStartMeters == distance else { return max(0, low - 1) }
+        var last = low
+        while last + 1 < routePoints.count, routePoints[last + 1].distanceFromStartMeters == distance {
+            last += 1
+        }
+        return last == routePoints.count - 1 ? last : low
+    }
+
+    /// The readings a standalone series on a routed run actually holds, for the
+    /// chart's spoken range and average. These are the readings the summary's
+    /// average is taken over, not the route-point repetitions of them, so the
+    /// header and the spoken summary cannot disagree.
+    var reportedReadings: [Double]? {
+        if case .alignedToRoute(_, let readings) = self { return readings }
+        return nil
+    }
+
+    /// The readings the time-domain chart draws. Nil for every other plan.
+    var timeDomainPoints: [HeartRateTimePoint]? {
+        if case .timeDomain(let points) = self { return points }
+        return nil
+    }
+}
+
+/// Everything the time-domain heart-rate chart shows and says, derived once
+/// from its points.
+///
+/// The distance charts speak through `ChartAccessibilityModel`, whose summary
+/// always ends with a distance. A run charted over time has none, so this says
+/// the same things in time.
+struct TimeDomainHeartRateChartModel: Equatable {
+    let points: [HeartRateTimePoint]
+    let minimum: Double
+    let maximum: Double
+    let average: Double
+    let durationMinutes: Double
+    let sectionCount: Int
+
+    var title: String { "Heart Rate over time chart" }
+
+    /// Gaps between sections, which break the line.
+    var gapCount: Int { max(0, sectionCount - 1) }
+
+    /// Past this many readings a mark per reading only blurs into the line and
+    /// costs the chart time, so the line stands alone.
+    static let maximumMarkedReadings = 400
+
+    /// Whether each reading is drawn as a mark as well as part of the line.
+    /// With few enough readings to tell apart, marking them keeps a sparse
+    /// series reading as readings, not as a curve nobody measured.
+    var marksEachReading: Bool { points.count <= Self.maximumMarkedReadings }
+
+    var spokenSummary: String {
+        var parts = [
+            title + ".",
+            "Time in minutes.",
+            "Heart rate in bpm.",
+            "Range \(Self.bpm(minimum)) to \(Self.bpm(maximum)).",
+            "Average \(Self.bpm(average)).",
+            "\(points.count) \(points.count == 1 ? "reading" : "readings") over \(Self.minutes(durationMinutes))."
+        ]
+        if gapCount > 0 {
+            parts.append("\(gapCount) recording \(gapCount == 1 ? "gap breaks" : "gaps break") the series.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    /// Nil when there is nothing to chart.
+    static func make(points: [HeartRateTimePoint]) -> TimeDomainHeartRateChartModel? {
+        guard let first = points.first else { return nil }
+        let values = points.map(\.bpm)
+        return TimeDomainHeartRateChartModel(
+            points: points,
+            minimum: values.min() ?? first.bpm,
+            maximum: values.max() ?? first.bpm,
+            average: values.reduce(0, +) / Double(values.count),
+            durationMinutes: points.map(\.minutes).max() ?? 0,
+            sectionCount: Set(points.map(\.seriesID)).count
+        )
+    }
+
+    /// A label for an x-axis tick. A whole minute reads "12 min"; a tick between
+    /// whole minutes reads as minutes and seconds, "1:30". Cutting it to whole
+    /// minutes would give several ticks of a short run the same label.
+    static func axisLabel(minutes: Double) -> String {
+        guard minutes.isFinite else { return "" }
+        let seconds = Int((minutes * 60).rounded())
+        if seconds % 60 == 0 { return "\(seconds / 60) min" }
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    /// The header's own formatter, so a spoken reading and the header's never
+    /// round the same value two ways.
+    private static func bpm(_ value: Double) -> String {
+        DisplayFormatter.formatHeartRate(value)
+    }
+
+    private static func minutes(_ value: Double) -> String {
+        let rounded = Int(value.rounded())
+        return "\(rounded) \(rounded == 1 ? "minute" : "minutes")"
+    }
+}
