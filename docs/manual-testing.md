@@ -2525,10 +2525,15 @@ VoiceOver were not exercised in this pass.
 
 Use a disposable library and a synthetic Health export with four runs: a routed run with heart rate, a routed run without, a route-less run with heart rate, and a route-less run without. Never use private data for this checklist.
 
+- [ ] The sidebar row and the detail header show an average heart rate for both runs that have heart rate, and none for the two that do not (no `0`, no empty pill).
 - [ ] Routed run with heart rate only in the Health series: **Charts → Heart Rate** draws a stepped line over distance, not a smoothed curve. Scrub the chart and compare its readout with the replay metrics panel at the same position; they name the same bpm.
 - [ ] Route-less run with heart rate: **Charts** opens on **Heart Rate** and draws the readings over time, with minutes on the x axis. There is no **Jump to distance** control, and the other metrics say no chart data is available.
 - [ ] Select the route-less run after a routed one while **Elevation** is chosen. The picker moves to **Heart Rate** instead of leaving an empty chart.
-- [ ] VoiceOver spot check, by hand: the over-time chart's summary reads as readings over minutes with no distance.
+- [ ] A route-less run's banner offers heart rate only when the run has it, and never mentions cadence. Its **Overview** tab says there is no GPS route instead of showing a blank map, and points at the Charts tab only when the run has heart rate.
+- [ ] Route-less **Splits** says that splits need a GPS route and shows no table. A routed run's Splits are unchanged.
+- [ ] A route-less run's detail shows "Distance from Apple Health (no GPS route)" under the header. A routed run shows no such line.
+- [ ] At the 720×552 window minimum nothing is clipped on any tab of a route-less run.
+- [ ] VoiceOver spot check, by hand: the over-time chart's summary reads as readings over minutes with no distance, and the caption is read with the header.
 
 ## Apple Health review layout and full flag reasons (synthetic)
 

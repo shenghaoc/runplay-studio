@@ -65,7 +65,7 @@ struct WorkoutDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             // GPS data warning banner
-            if workout.routePoints.isEmpty {
+            if !workout.hasRoute {
                 gpsWarningBanner
             }
             if !workout.analysisWarnings.isEmpty {
@@ -229,7 +229,7 @@ struct WorkoutDetailView: View {
         HStack(spacing: AppDesign.Spacing.small) {
             Image(systemName: "location.slash")
                 .foregroundStyle(AppDesign.warmYellow)
-            Text("No GPS route data — only HR, cadence, and summary metrics are available.")
+            Text(RouteLessNoticePresentation.message(hasHeartRate: workout.hasHeartRateData))
                 .font(AppDesign.Typography.secondary)
             Spacer()
         }
@@ -304,6 +304,7 @@ struct WorkoutDetailView: View {
             SplitTableView(
                 splits: workout.splits,
                 recordedLaps: workout.recordedLaps,
+                hasRoute: workout.hasRoute,
                 currentSplitIndex: replayController.selectedMetrics.splitIndex,
                 currentRecordedLapIndex: replayController.selectedMetrics.recordedLapIndex,
                 onSeekToRecordedLap: { lap in
@@ -545,24 +546,39 @@ private struct WorkoutHeaderView: View {
     // with it (#146). When the row does not fit, the metrics scroll instead,
     // so every summary value stays reachable and wide windows are unchanged.
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
-                title(maxWidth: 260)
-                Spacer(minLength: AppDesign.Spacing.xLarge)
-                metrics
-            }
-            // `ViewThatFits` measures ideal widths, and this row's ideal —
-            // every label on one line, the full name — does not fit the
-            // default 1200 pt window, where the row has always fitted by
-            // truncating the name. Declaring its minimum instead keeps it
-            // wherever it fitted before.
-            .frame(idealWidth: wideRowMinimumWidth)
-            HStack(alignment: .center, spacing: AppDesign.Spacing.xLarge) {
-                title(maxWidth: 160)
-                ScrollView(.horizontal) {
+        VStack(alignment: .leading, spacing: AppDesign.Spacing.small) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: AppDesign.Spacing.xxxLarge) {
+                    title(maxWidth: 260)
+                    Spacer(minLength: AppDesign.Spacing.xLarge)
                     metrics
                 }
-                .fixedSize(horizontal: false, vertical: true)
+                // `ViewThatFits` measures ideal widths, and this row's ideal —
+                // every label on one line, the full name — does not fit the
+                // default 1200 pt window, where the row has always fitted by
+                // truncating the name. Declaring its minimum instead keeps it
+                // wherever it fitted before.
+                .frame(idealWidth: wideRowMinimumWidth)
+                HStack(alignment: .center, spacing: AppDesign.Spacing.xLarge) {
+                    title(maxWidth: 160)
+                    ScrollView(.horizontal) {
+                        metrics
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            // A distance the source reported, not one measured along a route,
+            // says so. A GPS-derived distance needs no caption.
+            if let provenance = DistanceProvenancePresentation.label(for: workout) {
+                HStack(spacing: AppDesign.Spacing.xSmall) {
+                    Image(systemName: "location.slash")
+                        .accessibilityHidden(true)
+                    Text(provenance)
+                }
+                .font(AppDesign.Typography.compactLabel)
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(.horizontal, AppDesign.Spacing.xxLarge)
@@ -579,7 +595,7 @@ private struct WorkoutHeaderView: View {
     }
 
     private var hasAverageHeartRate: Bool {
-        workout.summary.averageHeartRateBPM?.isFinite == true
+        AverageHeartRateDisplay.value(for: workout.summary) != nil
     }
 
     /// Title, spacer and metrics at their minimums, with the row's gaps.
@@ -611,7 +627,7 @@ private struct WorkoutHeaderView: View {
                 "Distance",
                 workout.summary.formattedDistance,
                 AppDesign.MetricColor.distance,
-                help: "Total recorded route distance."
+                help: DistanceProvenancePresentation.distanceHelp(for: workout)
             )
             headerMetric(
                 "Elapsed",
@@ -653,7 +669,7 @@ private struct WorkoutHeaderView: View {
                     ? "Corrected, threshold-confirmed elevation gain."
                     : "Elevation analysis is unavailable for this workout."
             )
-            if let heartRate = workout.summary.averageHeartRateBPM, heartRate.isFinite {
+            if let heartRate = AverageHeartRateDisplay.value(for: workout.summary) {
                 headerMetric(
                     "Avg HR",
                     DisplayFormatter.formatHeartRate(heartRate),
