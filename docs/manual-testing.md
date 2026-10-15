@@ -1850,14 +1850,16 @@ is active. On a packaged debug bundle of this change:
   1 to 31 March.
 - In zh-Hans the checkboxes read 从 and 到, the pickers 自定义范围开始日期 and
   自定义范围结束日期, and the three new help texts showed their translations.
+  In zh-Hant they read 從 and 到, 自訂範圍開始日期 and 自訂範圍結束日期, with the
+  zh-Hant help texts.
 - At the 720 × 552 minimum window size, with the sidebar showing, the row
   fitted in full: it ends at x 717 of a detail column that ends at x 876, and
   both pickers kept their 95 pt width. The Filters and Organise buttons above
   it truncate to "Filte…" and "Org…" at that width on #270's bundle too.
 
 Not covered: VoiceOver speech, typing into the date fields or using their
-steppers, light appearance, zh-Hant, a release build, and relaunching with an
-edited range.
+steppers, light appearance, a release build, and relaunching with an edited
+range.
 
 ## Window and application-session restoration checklist
 
