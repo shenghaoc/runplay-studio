@@ -355,6 +355,53 @@ detail, and for Records Scope. Filed as #204. The heatmap legend read "1 run ·
 
 Not covered: dark appearance (no drawing changed), and speech at 720 pt.
 
+### Any Route check mark pass 2026-10-15 (debug configuration, synthetic route-group library)
+
+The route menu listed Any Route as a `Button` above the routes' `Toggle` rows.
+A `Button` row in a macOS menu has no check mark, so the menu never marked Any
+Route while it was the active choice.
+
+The library was a throwaway `RUNPLAY_LIBRARY_ROOT` holding three runs in two
+route groups, seeded by a throwaway Core test from the bundled demo files:
+`realistic_5k_run.gpx` imported twice formed "4.4 km Route", and
+`sample-run.tcx` alone formed "5.0 km Route". Each launch used a fresh copy,
+and each bundle had its own bundle identifier. Library → Personal Heatmap was
+chosen from the menu bar, and the route menu was opened, read and chosen from
+by AX presses only.
+
+On a packaged debug bundle of the base (#270):
+
+- In the default state the button read "Any Route", and every
+  `AXMenuItemMarkChar` in the menu was empty. A screenshot of the open menu
+  shows no mark.
+- Choosing "5.0 km Route" marked that route "✓". Choosing Any Route then left
+  no row marked.
+
+Any Route is now a `Toggle`. On the fixed bundle:
+
+- The default state marks Any Route "✓" and nothing else, as a screenshot of
+  the open menu shows.
+- Choosing "5.0 km Route" moved the mark to that route alone, and
+  `session.json` saved its group. Choosing Any Route moved the mark back and
+  cleared the saved group.
+- Choosing the checked Any Route again kept it checked, and the button still
+  read "Any Route".
+- In zh-Hans the row kept its translated title and hint. The base marked
+  nothing, and the fixed bundle marked the row "✓".
+- In English and zh-Hans, the default menu's titles, enabled states and help,
+  and the button's title, value and help, match the base bundle's line by
+  line.
+
+Found, and present on the base bundle too: choosing the row that is already
+checked usually makes the button report its visible title as AXTitle instead
+of "Route filter" (#196). On the base it happened after every such choice in
+these runs: Any Route 8 of 8 times in English and 8 of 8 in zh-Hans, and a
+checked route 4 of 4 times. The fixed bundle did the same 8 of 8 times in
+English and 7 of 8 in zh-Hans. Six choices that each changed the route never
+lost the label on the base, and on the fixed bundle such a choice restored it.
+
+Not covered: VoiceOver speech, dark appearance, zh-Hant, and a release build.
+
 ## Trends Workspace Checklist
 
 Use only synthetic or explicitly private, ignored local workout files.
