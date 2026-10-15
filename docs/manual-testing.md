@@ -1692,7 +1692,7 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Delete a favourite; manifest favourite set no longer contains it.
 - [ ] Open comparison, heatmap, and PNG export; none inherit All Runs filters.
 - [ ] Create tags; reject a folded duplicate name; rename/recolor; assign tags; search by tag name.
-- [ ] Filter by any/all selected tags and untagged only.
+- [x] Filter by any/all selected tags and untagged only.
 - [ ] Multi-select runs and bulk-add/remove tags; verify tri-state mixed tags.
 - [ ] Delete an assigned tag; confirm workouts remain and collections drop that criterion.
 - [ ] Save current query as a smart collection; open from sidebar; confirm Modified/Revert/Update.
@@ -1701,6 +1701,47 @@ Use synthetic fixtures only. Do not claim unperformed GUI scenarios.
 - [ ] Quit/relaunch; tags, assignments, collections, favourites, and selection persist.
 - [ ] Keyboard navigate tags/collections; inspect VoiceOver labels; light/dark tag colors.
 - [ ] Keyboard: select rows, Return to open, Delete with confirmation, focus search.
+
+### Tag filter check mark pass 2026-10-15 (debug configuration, synthetic two-run library)
+
+Filters → Tags → Match Any Selected and Match All Selected listed each tag as a
+`Button` whose `HStack` label held the tag name and, for a selected tag, a
+`checkmark` image. A macOS menu keeps only the label's first `Text`, so no tag
+ever showed a mark, although the filter applied.
+
+The library was a throwaway `RUNPLAY_LIBRARY_ROOT`, seeded by a throwaway Core
+test that imported the two bundled demo files and added three tags: Hills on
+the first run, Race on the second, and Tempo on both. Each bundle ran on a
+fresh copy under its own bundle identifier and was driven by AX presses only.
+
+On a packaged debug bundle of the base (#244):
+
+- Choosing Hills under Match Any Selected set the button to "Filters (1)" and
+  the summary to "1 of 2 runs". When the submenu was reopened, every tag's
+  `AXMenuItemMarkChar` was empty, and a screenshot showed no mark.
+- With Tempo and Hills chosen under Match All Selected ("1 of 2 runs"), every
+  mark was empty in both submenus.
+
+The rows are now `Toggle`s, like the route filter's (#188). On the fixed
+bundle:
+
+- With no tag chosen, no tag is marked. Choosing Hills, then Race, under Match
+  Any Selected marked those two "✓" there. Tempo and every Match All Selected
+  row stayed empty. A screenshot of the open submenu shows the two marks.
+- Choosing the checked Hills removed it. Race alone stayed marked, and the
+  summary went from "2 runs" to "1 of 2 runs".
+- Choosing Tempo under Match All Selected restarted the selection there, as
+  before: Tempo alone was marked, and the Match Any Selected marks cleared.
+  Adding Hills marked both ("1 of 2 runs"), as a screenshot shows.
+- Choosing the checked Tempo, then the checked Hills, removed each in turn.
+  Removing the last tag returned the button to "Filters" and the summary to
+  "2 runs", with no marks.
+- Untagged Only ("0 of 2 runs"), Any Tags, and Clear Filters left no tag
+  marked. Choosing Race after Untagged Only selected Race alone.
+- Tag titles, enabled states, and the absence of help text match the base
+  bundle's.
+
+Not covered: VoiceOver speech, dark appearance, Chinese, and a release build.
 
 ## Window and application-session restoration checklist
 
