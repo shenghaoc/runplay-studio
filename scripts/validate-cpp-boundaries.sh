@@ -57,6 +57,38 @@ code_matches() {
   grep -Eq "$2" <<<"$body"
 }
 
+# Print how many times extended regex $1 matches the text on stdin, counting
+# every match on a line as `grep -o` does, so a body flattened onto one line
+# still counts each occurrence.
+#
+# No match prints 0 and succeeds. Counted inline instead, as
+# `count="$(grep -Eo RE <<<"$text" | wc -l)"`, grep's no-match status fails the
+# pipeline under pipefail and set -e ends the run on that assignment, before
+# the check can report "found 0" and before the failure summary. Only that
+# status is absorbed: any other grep failure (2, a bad pattern or unreadable
+# input) is returned, so an error never reads as a count of 0.
+count_matches() {
+  local matches status=0
+  matches="$(grep -Eo "$1")" || status=$?
+  if [[ $status -gt 1 ]]; then
+    return "$status"
+  fi
+  if [[ -z "$matches" ]]; then
+    echo 0
+  else
+    wc -l <<<"$matches" | tr -d '[:space:]'
+  fi
+}
+
+# Print how many times extended regex $2 matches the comment-stripped body of
+# file $1. As in code_matches, an unreadable file returns 2; it is not a count
+# of 0.
+count_code_matches() {
+  local body
+  body="$(strip_comments "$1")" || return 2
+  count_matches "$2" <<<"$body"
+}
+
 # --- Script hygiene ----------------------------------------------------------
 
 # Guard against piping into an early-exit reader. Under `set -o pipefail` that
@@ -142,6 +174,43 @@ else
   while IFS= read -r hit; do
     fail "pipe into an early-exit reader; use code_matches or grep -Eq RE <<<\"\$text\": $hit"
   done <<<"$self_pipeline_hits"
+fi
+
+# The match counter is exercised on fixtures before any check relies on it.
+# Each fixture is the count a check must read, a colon, then the text counted.
+# Zero must succeed and print 0, so its check reports "found 0" instead of
+# ending the run; one is the count the checks pass on; and two calls flattened
+# onto one line must count 2, not 1. A comment does not count, and an error
+# (a bad pattern, an unreadable file) must fail rather than count as 0.
+match_count_re='runplay[[:space:]]*\.[[:space:]]*plan_dem_tiles[[:space:]]*\('
+match_count_fixtures=(
+  '0:let planner = runplay.plan_dem_tiles; runplay.sample_dem_elevations(s)'
+  '1:let plan = runplay.plan_dem_tiles(samples, count, policy, &keys, capacity)'
+  '2:runplay.plan_dem_tiles(a); runplay . plan_dem_tiles (b)'
+)
+match_count_fixture_dir="$(mktemp -d)"
+printf 'let plan = runplay.plan_dem_tiles(s)\n// runplay.plan_dem_tiles(s)\n/* runplay.plan_dem_tiles(s) */\n' \
+  >"$match_count_fixture_dir/bridge.swift"
+match_counter_ok=1
+for fixture in "${match_count_fixtures[@]}"; do
+  if ! counted="$(count_matches "$match_count_re" <<<"${fixture#*:}")" \
+    || [[ "$counted" != "${fixture%%:*}" ]]; then
+    match_counter_ok=0
+  fi
+done
+if ! counted="$(count_code_matches "$match_count_fixture_dir/bridge.swift" "$match_count_re")" \
+  || [[ "$counted" != "1" ]]; then
+  match_counter_ok=0
+fi
+if count_matches '(' <<<'runplay.plan_dem_tiles(s)' >/dev/null 2>&1 \
+  || count_code_matches "$match_count_fixture_dir/missing.swift" "$match_count_re" >/dev/null 2>&1; then
+  match_counter_ok=0
+fi
+rm -rf "$match_count_fixture_dir"
+if [[ $match_counter_ok -eq 1 ]]; then
+  pass "match counter adversarial fixtures"
+else
+  fail "match counter failed its adversarial fixtures"
 fi
 
 # --- Structural presence -----------------------------------------------------
@@ -425,13 +494,13 @@ if [[ -f "$DEM_HEADER" ]]; then
   else
     fail "sample_dem_elevations must use const samples*, by-value policy, const tile keys*, const heights*, mutable output*+capacity, and noexcept"
   fi
-  dem_sample_symbol_count="$(grep -Eo 'sample_dem_elevations[[:space:]]*\(' <<<"$dem_body" | wc -l | tr -d '[:space:]')"
+  dem_sample_symbol_count="$(count_matches 'sample_dem_elevations[[:space:]]*\(' <<<"$dem_body")"
   if [[ "$dem_sample_symbol_count" == "1" ]]; then
     pass "public DEM header declares one sampling API"
   else
     fail "public DEM header must declare exactly one sampling API (found $dem_sample_symbol_count)"
   fi
-  dem_plan_symbol_count="$(grep -Eo 'plan_dem_tiles[[:space:]]*\(' <<<"$dem_body" | wc -l | tr -d '[:space:]')"
+  dem_plan_symbol_count="$(count_matches 'plan_dem_tiles[[:space:]]*\(' <<<"$dem_body")"
   if [[ "$dem_plan_symbol_count" == "1" ]]; then
     pass "public DEM header declares one tile-planning API"
   else
@@ -922,24 +991,14 @@ else
   pass "PersonalHeatmapBuilder does not materialize per-workout coverage arrays"
 fi
 
-heatmap_bridge_symbol_count="$(
-  strip_comments "$HEATMAP_BRIDGE_SOURCE" \
-    | grep -Eo "$heatmap_symbol_re" \
-    | wc -l \
-    | tr -d '[:space:]'
-)"
+heatmap_bridge_symbol_count="$(count_code_matches "$HEATMAP_BRIDGE_SOURCE" "$heatmap_symbol_re")"
 if [[ "$heatmap_bridge_symbol_count" == "1" ]]; then
   pass "heatmap Interop contains exactly one native coverage call site"
 else
   fail "heatmap Interop must contain exactly one native coverage call site (found $heatmap_bridge_symbol_count)"
 fi
 
-heatmap_header_symbol_count="$(
-  strip_comments "$HEATMAP_HEADER" \
-    | grep -Eo 'compute_personal_heatmap_workout_coverage[[:space:]]*\(' \
-    | wc -l \
-    | tr -d '[:space:]'
-)"
+heatmap_header_symbol_count="$(count_code_matches "$HEATMAP_HEADER" 'compute_personal_heatmap_workout_coverage[[:space:]]*\(')"
 if [[ "$heatmap_header_symbol_count" == "1" ]]; then
   pass "public C++ heatmap header retains one coverage API"
 else
@@ -1657,8 +1716,8 @@ fi
 
 if [[ -f "$DEM_BRIDGE_SOURCE" ]]; then
   dem_bridge_body="$(strip_comments "$DEM_BRIDGE_SOURCE")"
-  dem_plan_sites="$(grep -Eo 'runplay[[:space:]]*\.[[:space:]]*plan_dem_tiles[[:space:]]*\(' <<<"$dem_bridge_body" | wc -l | tr -d '[:space:]')"
-  dem_sample_sites="$(grep -Eo 'runplay[[:space:]]*\.[[:space:]]*sample_dem_elevations[[:space:]]*\(' <<<"$dem_bridge_body" | wc -l | tr -d '[:space:]')"
+  dem_plan_sites="$(count_matches 'runplay[[:space:]]*\.[[:space:]]*plan_dem_tiles[[:space:]]*\(' <<<"$dem_bridge_body")"
+  dem_sample_sites="$(count_matches 'runplay[[:space:]]*\.[[:space:]]*sample_dem_elevations[[:space:]]*\(' <<<"$dem_bridge_body")"
   if [[ "$dem_plan_sites" == "1" && "$dem_sample_sites" == "1" ]]; then
     pass "DEM bridge has exactly one planning and one sampling call site"
   else
@@ -1828,10 +1887,15 @@ else
   fail "production Swift elevation finalizer must not call SwiftRouteMetricScaleBucketOracle"
 fi
 
+# find prints each production Swift file that names the oracle. Under
+# -exec … \; grep's status only selects files, so find's own status still
+# reports a tree it could not walk, such as a missing Sources directory.
+# Negating a `find | xargs grep -l` pipeline instead reads any failure as
+# confinement, even beside a real leak.
 if [[ -f "$ROUTE_METRIC_ORACLE" ]] \
-  && ! find RunPlayCore/Sources RunPlayPlatform/Sources RunPlayStudio/Sources \
-    -type f -name '*.swift' -print0 \
-    | xargs -0 grep -El 'SwiftRouteMetricScaleBucketOracle' >/dev/null; then
+  && route_metric_oracle_leaks="$(find RunPlayCore/Sources RunPlayPlatform/Sources RunPlayStudio/Sources \
+    -type f -name '*.swift' -exec grep -q 'SwiftRouteMetricScaleBucketOracle' {} \; -print)" \
+  && [[ -z "$route_metric_oracle_leaks" ]]; then
   pass "Swift route metric oracle is confined to tests"
 else
   fail "Swift route metric oracle must exist only in tests"
