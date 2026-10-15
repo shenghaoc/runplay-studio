@@ -40,6 +40,17 @@ final class AppleHealthRouteWindowPolicyTests: XCTestCase {
         XCTAssertEqual(AppleHealthRouteWindowPolicy.decision(for: points([-61, -60, -60, 660, 660, 661]), window: window), .trim(1..<5))
     }
 
+    /// Each track segment is sorted on its own, so a middle segment can run two
+    /// hours past the workout while the route's first and last points sit inside
+    /// it. A route out of time order as a whole is not kept.
+    func testRouteWhoseSegmentsAreOutOfTimeOrderIsAMismatch() {
+        var route = points([0, 300, 7_200, 7_300, 400, 500])
+        for index in route.indices {
+            route[index].routeSegmentIndex = index / 2
+        }
+        XCTAssertEqual(AppleHealthRouteWindowPolicy.decision(for: route, window: window), .mismatch)
+    }
+
     func testEmptySinglePointAndReversedRoutesAreMismatches() {
         for route in [points([]), points([0]), points([600, 0])] {
             XCTAssertEqual(AppleHealthRouteWindowPolicy.decision(for: route, window: window), .mismatch)

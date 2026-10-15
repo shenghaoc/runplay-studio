@@ -2,7 +2,8 @@ import Foundation
 
 /// Time-window decisions for a chronologically normalized GPX route.
 /// Selection uses two binary searches; numeric route analysis stays in the
-/// existing bulk normalization pipeline.
+/// existing bulk normalization pipeline. Normalization sorts each track segment
+/// on its own, so a route is first checked to be in time order as a whole.
 public enum AppleHealthRouteWindowPolicy {
     public enum Decision: Equatable, Sendable {
         case keep
@@ -17,6 +18,12 @@ public enum AppleHealthRouteWindowPolicy {
         for points: [RoutePoint], window: AppleHealthWorkoutWindow
     ) -> Decision {
         guard points.count >= 2, let first = points.first, let last = points.last else { return .mismatch }
+        // Segments whose clocks overlap leave a route out of time order: a middle
+        // segment can run hours past the workout while the endpoints sit inside
+        // it, and the binary searches below assume sorted times.
+        guard zip(points, points.dropFirst()).allSatisfy({ $0.timestamp <= $1.timestamp }) else {
+            return .mismatch
+        }
         let start = Double(window.startSeconds), end = Double(window.endSeconds)
         let routeStart = first.timestamp.timeIntervalSince1970
         let routeEnd = last.timestamp.timeIntervalSince1970
