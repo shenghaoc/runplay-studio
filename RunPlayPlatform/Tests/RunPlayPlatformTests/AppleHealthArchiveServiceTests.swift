@@ -236,6 +236,40 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
     }
 
+    /// Each candidate records whether the archive holds its route file, so the
+    /// run that will import with a map and the one that will not are told apart
+    /// before the import. Both workouts name a route; only one file is there.
+    func testEachCandidateRecordsWhetherItsRouteFileExists() async throws {
+        let url = try writeZip(named: "export.zip", entries: [
+            (Self.exportPath, healthDocument(workouts:
+                runningWorkout(route: "/workout-routes/route_1.gpx")
+                + runningWorkout(
+                    "2026-09-02 08:00:00 +0000",
+                    "2026-09-02 09:00:00 +0000",
+                    route: "/workout-routes/route_absent.gpx"
+                )
+            )),
+            (Self.routePath, routeGPX()),
+        ])
+
+        let result = try await makeService().scan(archiveAt: url)
+
+        XCTAssertEqual(result.candidates.count, 2)
+        let present = try XCTUnwrap(result.candidates.first { $0.routeArchivePath == Self.routePath })
+        XCTAssertFalse(present.isRouteFileMissing)
+        XCTAssertTrue(present.hasRoute)
+        XCTAssertEqual(present.distanceProvenance, .gpsDerived)
+
+        let missing = try XCTUnwrap(result.candidates.first { $0.routeArchivePath != Self.routePath })
+        XCTAssertEqual(missing.routeArchivePath, "apple_health_export/workout-routes/route_absent.gpx")
+        XCTAssertTrue(missing.isRouteFileMissing)
+        XCTAssertTrue(missing.namesMissingRouteFile)
+        XCTAssertFalse(missing.hasRoute)
+        XCTAssertEqual(missing.distanceProvenance, .sourceReported)
+
+        XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
+    }
+
     /// The import report carries both loss counts together, which is what a
     /// review screen shows after an import finishes.
     func testReportCarriesDroppedWorkoutsAlongsideUnmatchedRoutes() async throws {

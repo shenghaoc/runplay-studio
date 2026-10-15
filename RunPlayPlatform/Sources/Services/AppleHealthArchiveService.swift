@@ -201,7 +201,8 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
     ///
     /// Counted rather than resolved silently: a workout whose route is missing is
     /// still importable as a route-less run, but the user is entitled to know
-    /// that its route was referenced and absent.
+    /// that its route was referenced and absent. Each such candidate also says
+    /// so itself, through `namesMissingRouteFile`.
     public var unmatchedRouteReferenceCount: Int
 
     /// Archive entries under the export's `workout-routes` directory.
@@ -419,11 +420,14 @@ public actor AppleHealthArchiveService {
         guard built.candidates.count <= policy.maxCandidateActivityCount else {
             throw AppleHealthArchiveError.tooManyCandidates(limit: policy.maxCandidateActivityCount)
         }
-        let candidates = built.candidates
-        let unmatched = candidates.count { candidate in
-            guard let path = candidate.routeArchivePath else { return false }
-            return !resolvesToRouteFile(path, in: listing)
+        // Each candidate says whether its named route file is here, so the
+        // review shows a run without a map before the import, not after it.
+        var candidates = built.candidates
+        for index in candidates.indices {
+            guard let path = candidates[index].routeArchivePath else { continue }
+            candidates[index].isRouteFileMissing = !resolvesToRouteFile(path, in: listing)
         }
+        let unmatched = candidates.count(where: \.namesMissingRouteFile)
 
         let report = AppleHealthArchiveReport(
             workoutCount: scan.workouts.count,
