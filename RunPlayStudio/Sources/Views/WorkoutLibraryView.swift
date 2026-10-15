@@ -513,56 +513,33 @@ struct WorkoutLibraryView: View {
             Button("Untagged Only") { viewModel.tagFilter = .untaggedOnly }
             if !appState.tags.isEmpty {
                 Divider()
+                // Toggles, not Buttons with a checkmark image: a macOS menu
+                // flattens an HStack label to its first Text and drops the
+                // image, but draws a Toggle row's check mark itself and
+                // exposes it as the item's AX mark character.
                 Menu("Match Any Selected") {
                     ForEach(appState.tags) { tag in
-                        Button {
-                            toggleSelectedTag(tag.id, match: .any)
-                        } label: {
-                            tagMenuLabel(tag, match: .any)
-                        }
+                        Toggle(tag.name, isOn: tagMenuCheck(tag, match: .any))
                     }
                 }
                 Menu("Match All Selected") {
                     ForEach(appState.tags) { tag in
-                        Button {
-                            toggleSelectedTag(tag.id, match: .all)
-                        } label: {
-                            tagMenuLabel(tag, match: .all)
-                        }
+                        Toggle(tag.name, isOn: tagMenuCheck(tag, match: .all))
                     }
                 }
             }
         }
     }
 
-    private func tagMenuLabel(_ tag: WorkoutTag, match: WorkoutLibraryTagMatchMode) -> some View {
-        let selected: Bool = {
-            if case .selected(let ids, let mode) = viewModel.tagFilter {
-                return mode == match && ids.contains(tag.id)
-            }
-            return false
-        }()
-        return HStack {
-            Text(tag.name)
-            if selected {
-                Image(systemName: "checkmark")
-            }
-        }
-    }
-
-    private func toggleSelectedTag(_ id: UUID, match: WorkoutLibraryTagMatchMode) {
-        switch viewModel.tagFilter {
-        case .selected(let ids, let mode) where mode == match:
-            var next = ids
-            if next.contains(id) {
-                next.remove(id)
-            } else {
-                next.insert(id)
-            }
-            viewModel.tagFilter = next.isEmpty ? .anyTags : .selected(tagIDs: next, match: match)
-        default:
-            viewModel.tagFilter = .selected(tagIDs: [id], match: match)
-        }
+    /// The check mark on `tag`'s row in the `match` submenu, read from and
+    /// written to the library's tag filter.
+    private func tagMenuCheck(_ tag: WorkoutTag, match: WorkoutLibraryTagMatchMode) -> Binding<Bool> {
+        WorkoutLibraryTagFilter.menuCheck(
+            for: tag.id,
+            match: match,
+            filter: { viewModel.tagFilter },
+            setFilter: { viewModel.tagFilter = $0 }
+        )
     }
 
     /// Route filter submenu: any route, runs not on a route, or one group.
