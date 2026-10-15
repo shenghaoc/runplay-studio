@@ -6,6 +6,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Script hygiene below scans this file. Resolve it before the cd, which would
+# strand a relative ${BASH_SOURCE[0]} given from another directory.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 cd "$ROOT"
 
 failures=0
@@ -46,6 +49,8 @@ strip_comments() {
 # Use this instead of `strip_comments FILE | grep -Eq RE`. Capturing the body
 # into a variable first means the reader always consumes all of perl's output,
 # so there is no early-exit pipe and no pipefail race (see strip_comments).
+# Text already in a variable gets the same here-string, `grep -Eq RE <<<"$text"`,
+# never a printf piped into grep (see Script hygiene below).
 code_matches() {
   local body
   body="$(strip_comments "$1")" || return 2
@@ -54,25 +59,89 @@ code_matches() {
 
 # --- Script hygiene ----------------------------------------------------------
 
-# Guard against reintroducing `strip_comments ... | grep -q`. That shape is a
-# latent `set -o pipefail` race: `grep -q` exits at its first match, perl fails
-# to flush, and a real match gets reported as a boundary failure. It reproduced
-# as a red macOS CI job while passing locally. `code_matches` is the safe form.
+# Guard against piping into an early-exit reader. Under `set -o pipefail` that
+# shape is a latent race: `grep -q` (likewise `-l`, `-m`, or `head`) exits at
+# its first match while the writer may still be writing, and the writer's
+# failed write fails the pipeline although the match succeeded. Where SIGPIPE
+# is ignored, as on GitHub's runners, the writer reports "write error: Broken
+# pipe"; elsewhere the signal kills it. A check that passes on a match then
+# reports a spurious boundary failure, and one that fails on a match can
+# silently miss its violation. It reproduced as red macOS CI jobs while passing
+# locally, first with strip_comments as the writer (it now absorbs its own
+# write failure) and then with `printf '%s' "$body"`. Match a file with
+# `code_matches`, and text already in a variable with `grep -Eq RE <<<"$text"`:
+# bash writes a here-string out in full before grep starts, so no writer is
+# left to fail.
+#
 # Keeping the pattern in a variable is what stops this guard matching itself:
-# the scanner below never spells out the searched-for text, and the one line
-# that does carries SELF_LINT_EXEMPT. Comment lines are dropped first, and line
-# continuations are joined so a wrapped pipeline is seen as a single statement.
-self_lint_re='strip_comments\b[^\n|]*\|\s*grep\s+-E?q'  # SELF_LINT_EXEMPT
-self_pipeline_hits="$(
-  grep -v -e '^[[:space:]]*#' -e 'SELF_LINT_EXEMPT' "${BASH_SOURCE[0]}" \
-    | SELF_LINT_RE="$self_lint_re" perl -0777 -ne \
-      's/\\\n\s*/ /g; my $re = $ENV{SELF_LINT_RE}; print "$&\n" while /$re/g' \
+# the scanner below never spells out the searched-for text, and the lines that
+# do (the pattern and the racy fixtures) carry SELF_LINT_EXEMPT. Comment lines
+# are dropped first, and a line ending in a backslash or a pipe is joined to
+# the next, so a wrapped pipeline is seen as a single statement.
+self_lint_re='(?<!\|)\|(?!\|)\s*(?:\w+=\S*\s+)*(?:grep\b[^|;&]*?\s(?:-[[:alpha:]]*[qlLm]|--(?:quiet|silent|max-count|files-with))|head\b)'  # SELF_LINT_EXEMPT
+
+# Print each statement of the shell source on stdin that pipes into an
+# early-exit reader.
+early_exit_pipelines() {
+  grep -v -e '^[[:space:]]*#' -e 'SELF_LINT_EXEMPT' \
+    | SELF_LINT_RE="$self_lint_re" perl -0777 -ne '
+        s/\\\n\s*/ /g;
+        s/\|[ \t]*\n\s*/| /g;
+        my $re = $ENV{SELF_LINT_RE};
+        print "$_\n" for grep { /$re/ } split /\n/;
+      ' \
     || true
-)"
-if [[ -z "$self_pipeline_hits" ]]; then
-  pass "validator matches source through code_matches, not an early-exit pipeline"
+}
+
+# The scanner is exercised on fixtures first so a broken pattern cannot pass
+# vacuously. The positives include the wrapped printf shape that raced on CI.
+early_exit_pipeline_positive=(
+  'printf "%s" "$body" | grep -Eq "re"'                  # SELF_LINT_EXEMPT
+  $'if printf "%s" "$body" \\\n  | grep -Eq "re"; then'   # SELF_LINT_EXEMPT
+  $'printf "%s" "$body" |\n  grep -q "re"'                # SELF_LINT_EXEMPT
+  'strip_comments "$file" | grep -Eqi "re"'              # SELF_LINT_EXEMPT
+  'strip_comments "$file" | tr "\n" " " | grep -Eq "re"' # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | grep -E -i -q "re"'             # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | grep --quiet "re"'              # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | LC_ALL=C grep -m 1 "re"'        # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | grep -l "re"'                   # SELF_LINT_EXEMPT
+  'printf "%s\n" "$body" | head -n 1'                    # SELF_LINT_EXEMPT
+)
+early_exit_pipeline_negative=(
+  'grep -Eq "re" <<<"$body"'
+  'code_matches "$file" "re"'
+  'grep -Eq "(^|[^[:alnum:]_])std::tuple" <<<"$body"'
+  '[[ -f "$file" ]] || grep -q "re" "$file"'
+  'strip_comments "$file" | grep -En "re" || true'
+  'strip_comments "$file" | grep --line-number "re" || true'
+  'strip_comments "$file" | grep -Eo "re" | wc -l'
+  'find . -print0 | xargs -0 grep -El "re"'
+  '# printf "%s" "$body" | grep -Eq "re"'                # SELF_LINT_EXEMPT
+)
+early_exit_pipeline_matcher_ok=1
+for fixture in "${early_exit_pipeline_positive[@]}"; do
+  if [[ -z "$(early_exit_pipelines <<<"$fixture")" ]]; then
+    early_exit_pipeline_matcher_ok=0
+  fi
+done
+for fixture in "${early_exit_pipeline_negative[@]}"; do
+  if [[ -n "$(early_exit_pipelines <<<"$fixture")" ]]; then
+    early_exit_pipeline_matcher_ok=0
+  fi
+done
+if [[ $early_exit_pipeline_matcher_ok -eq 1 ]]; then
+  pass "early-exit pipeline matcher adversarial fixtures"
 else
-  fail "use code_matches instead of piping stripped source into an early-exit grep: $self_pipeline_hits"
+  fail "early-exit pipeline matcher failed its adversarial fixtures"
+fi
+
+self_pipeline_hits="$(early_exit_pipelines <"$SELF")"
+if [[ -z "$self_pipeline_hits" ]]; then
+  pass "validator matches through code_matches and here-strings, never an early-exit pipeline"
+else
+  while IFS= read -r hit; do
+    fail "pipe into an early-exit reader; use code_matches or grep -Eq RE <<<\"\$text\": $hit"
+  done <<<"$self_pipeline_hits"
 fi
 
 # --- Structural presence -----------------------------------------------------
