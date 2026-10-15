@@ -701,6 +701,25 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
     }
 
+    /// Two entries at one path: the first wins, and it is a symlink. A regular
+    /// file after it must not make the reference look satisfied, because the
+    /// symlink is the entry `routeGPXData` reads, and it refuses it.
+    func testOnlyTheWinningDuplicateDecidesWhetherARouteIsAvailable() async throws {
+        let url = try writeArchive(named: "export.zip", entries: [
+            (Self.exportPath, .file, healthDocument(workouts: runningWorkout(route: "/workout-routes/route_1.gpx"))),
+            (Self.routePath, .symlink, Data("../export.xml".utf8)),
+            (Self.routePath, .file, routeGPX()),
+        ])
+
+        let result = try await makeService().scan(archiveAt: url)
+
+        XCTAssertEqual(result.report.routeEntryCount, 0)
+        XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
+        await assertThrows(.routeEntryIsSymlink(path: Self.routePath)) {
+            _ = try await makeService().routeGPXData(forArchivePath: Self.routePath, archiveAt: url)
+        }
+    }
+
     // MARK: - Archive format coverage
 
     /// The checked-in fixture carries a ZIP64 end-of-central-directory record and

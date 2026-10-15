@@ -528,13 +528,13 @@ public actor AppleHealthArchiveService {
 
             // Two entries can normalize to one path; the first wins so a later
             // duplicate cannot quietly replace an entry already listed.
-            if byPath[normalized] == nil {
-                byPath[normalized] = entry
-                paths.append(normalized)
-            }
+            guard byPath[normalized] == nil else { continue }
+            byPath[normalized] = entry
+            paths.append(normalized)
             // Only regular files count as available routes. A symlink is a
             // refusal in `routeGPXData`, so it must not make a workout's route
-            // reference look satisfied here.
+            // reference look satisfied here. Only the entry that won its path
+            // counts: a later duplicate is never the one `routeGPXData` reads.
             if Self.isRoutePath(normalized), entry.type == .file {
                 routePaths.insert(normalized.lowercased())
             }
