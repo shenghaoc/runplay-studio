@@ -1980,6 +1980,20 @@ Automated coverage: `WorkoutVideoFramePlanTests`,
 `WorkoutVideoFrameRendererTests`, `WorkoutVideoExporterTests`,
 `VideoMapAttributionTests`, and `WorkoutVideoExportViewModelTests`.
 
+Map credit record (2026-10-15), step 10, through the production exporter
+rather than the sheet: an out-of-tree harness drove `WorkoutVideoExporter` with
+real MapKit and the `.production` policy over the bundled `sample_run.json`,
+heart-rate colouring, and wrote the 960×540 posters from the 1080p map as the
+sheet does. The Light and Dark 15-second exports were each, per `ffprobe`, one
+H.264 High stream, 1920×1080, 30 fps, 450 frames, 15.000000 seconds, with no
+audio stream. In the decoded first, middle, and final frames and in both
+posters the credit was legible and clear of the panels, the bar, and the
+caption. The same frames, rendered from one saved basemap by this build and by
+its parent commit, differed only inside the credit's 199×22 box. The macOS 27
+`MKMapSnapshotter` image itself carries no Apple Maps logo or legal text, so
+this credit is the only one in the export. The sheet's poster preview was not
+opened in the app.
+
 ## Comparison replay video export (synthetic)
 
 Use **synthetic or bundled demo workouts only**. Do not commit generated MP4s.
@@ -2000,6 +2014,18 @@ Automated coverage: `ComparisonVideoFramePlanTests`, `ComparisonVideoSamplerTest
 `ComparisonVideoAlignmentResolverTests`, `ComparisonVideoPixelMapTests`,
 `ComparisonVideoExporterTests`, `VideoMapAttributionTests`,
 `ComparisonVideoExportViewModelTests`.
+
+Map credit record (2026-10-15), step 7, through the production exporter rather
+than the sheet: the harness from the Route Replay record drove
+`ComparisonVideoExporter` over the bundled `sample_run.json` and
+`fixtures/comparison_park_run.json`, with a Distance/Light and a
+Route-Aware/Dark 15-second export and a 960×540 poster for each. Both had the
+same `ffprobe` result as the Route Replay exports. In the decoded first,
+middle, and final frames and both posters the credit was legible, below the
+bar, and clear of the Deltas panel. The remaining two combinations,
+Distance/Dark and Route-Aware/Light, were checked only as renders from one saved
+basemap; at both sizes they matched the parent commit outside the credit's box.
+The sheet's poster preview was not opened in the app.
 
 Offline export record (2026-08-10): steps 2–5 were exercised through the
 production `ComparisonVideoExporter` — real `MapKitComparisonVideoMapPreparer`,
