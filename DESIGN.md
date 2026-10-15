@@ -202,6 +202,8 @@ distance, pace, HR/elevation with truthful unavailable placeholders,
 gap/movement state, progress). Light and
 Dark palettes are explicit. Source elapsed timeline is compressed into the
 selected video length; timing does not depend on machine speed or live replay.
+A **Map imagery via Apple Maps** badge sits bottom right, level with the
+progress caption, on every frame and on the poster.
 
 ### Comparison Replay Video Export
 Same media contract as single-workout video. Dual-route static basemap with

@@ -23,6 +23,7 @@ public struct WorkoutVideoFrameRenderer: Sendable {
         guard width > 0, height > 0 else {
             throw WorkoutVideoExportError.frameRenderingFailed("Pixel buffer has zero size")
         }
+        let attribution = try VideoMapAttribution.badge(for: frame.appearance)
 
         let lockResult = CVPixelBufferLockBaseAddress(pixelBuffer, [])
         guard lockResult == kCVReturnSuccess else {
@@ -79,7 +80,19 @@ public struct WorkoutVideoFrameRenderer: Sendable {
 
         drawHeader(frame: frame, in: context, bounds: bounds, palette: palette)
         drawMetricsPanel(frame: frame, in: context, bounds: bounds, palette: palette)
-        drawProgress(frame: frame, in: context, bounds: bounds, palette: palette)
+        let attributionFrame = VideoMapAttribution.frame(for: attribution, in: bounds)
+        drawProgress(
+            frame: frame,
+            in: context,
+            bounds: bounds,
+            palette: palette,
+            captionMaxWidth: VideoMapAttribution.captionMaxWidth(
+                besideBadgeFrame: attributionFrame,
+                in: bounds
+            )
+        )
+        // Last, so nothing covers the Apple Maps credit.
+        context.draw(attribution, in: attributionFrame)
     }
 
     /// Render into a newly allocated CGImage (poster / unit tests).
@@ -232,7 +245,8 @@ public struct WorkoutVideoFrameRenderer: Sendable {
         frame: WorkoutVideoFrameModel,
         in context: CGContext,
         bounds: CGRect,
-        palette: Palette
+        palette: Palette,
+        captionMaxWidth: CGFloat
     ) {
         let margin: CGFloat = 28
         let barHeight: CGFloat = 10
@@ -275,7 +289,7 @@ public struct WorkoutVideoFrameRenderer: Sendable {
             font: font,
             color: palette.primaryText,
             at: CGPoint(x: margin, y: margin),
-            maxWidth: barWidth,
+            maxWidth: captionMaxWidth,
             in: context
         )
     }

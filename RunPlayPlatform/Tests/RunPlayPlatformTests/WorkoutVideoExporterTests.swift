@@ -262,6 +262,38 @@ final class WorkoutVideoExporterTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
     }
 
+    func testPosterCarriesTheMapAttribution() async throws {
+        let workout = sampleWorkout()
+        let exporter = WorkoutVideoExporter(
+            mapPreparer: SyntheticWorkoutVideoMapPreparer()
+        )
+        // The sheet prepares the map at the video size and renders the poster
+        // from it at half size.
+        let map = try await exporter.prepareMap(
+            workout: workout,
+            configuration: WorkoutVideoExportConfiguration(),
+            policy: .production
+        )
+        for appearance in PNGSummaryExportAppearance.allCases {
+            let poster = try exporter.renderPosterResult(
+                workout: workout,
+                configuration: WorkoutVideoExportConfiguration(
+                    duration: .fifteenSeconds,
+                    appearance: appearance,
+                    routeColorMode: .solid
+                ),
+                mapPreparation: map,
+                policy: .poster
+            )
+            XCTAssertEqual(poster.image.width, WorkoutVideoExportPolicy.poster.width)
+            try VideoFramePixels.assertCredit(
+                try VideoMapAttribution.badge(for: appearance),
+                isDrawnClearIn: poster.image,
+                "\(appearance) poster"
+            )
+        }
+    }
+
     func testNoUsableRouteRejected() async {
         let exporter = WorkoutVideoExporter(
             mapPreparer: SyntheticWorkoutVideoMapPreparer()

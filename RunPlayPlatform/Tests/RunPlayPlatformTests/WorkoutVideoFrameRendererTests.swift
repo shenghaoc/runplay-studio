@@ -124,13 +124,76 @@ final class WorkoutVideoFrameRendererTests: XCTestCase {
         }
     }
 
+    /// Frames at the video and poster sizes carry the Apple Maps credit in both
+    /// appearances, unchanged as the HUD updates, with the tallest metrics
+    /// panel (a state row), the progress bar, and its caption kept clear.
+    func testMapAttributionIsDrawnOnEveryFrameClearOfTheHUD() throws {
+        let renderer = WorkoutVideoFrameRenderer()
+        for policy in [WorkoutVideoExportPolicy.production, .poster] {
+            let size = CGSize(width: policy.width, height: policy.height)
+            let map = try blankMap(width: policy.width, height: policy.height, color: (0.2, 0.4, 0.3))
+            for appearance in PNGSummaryExportAppearance.allCases {
+                let badge = try VideoMapAttribution.badge(for: appearance)
+                for progress in [0.0, 0.5, 1.0] {
+                    let model = makeModel(
+                        progress: progress,
+                        marker: CGPoint(x: size.width / 2, y: size.height / 2),
+                        heartRate: 150,
+                        elevation: 42,
+                        appearance: appearance
+                    )
+                    XCTAssertNotNil(model.stateLabel)
+                    let image = try renderer.renderImage(
+                        frame: model,
+                        staticMap: map,
+                        width: policy.width,
+                        height: policy.height,
+                        mapSize: size
+                    )
+                    try VideoFramePixels.assertCredit(
+                        badge,
+                        isDrawnClearIn: image,
+                        "\(policy.width)×\(policy.height) \(appearance) at progress \(progress)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testRenderingIsDeterministic() throws {
+        let policy = WorkoutVideoExportPolicy.poster
+        let map = try blankMap(width: policy.width, height: policy.height, color: (0.2, 0.4, 0.3))
+        let renderer = WorkoutVideoFrameRenderer()
+        for appearance in PNGSummaryExportAppearance.allCases {
+            let model = makeModel(
+                progress: 0.5,
+                marker: CGPoint(x: 300, y: 200),
+                heartRate: 150,
+                elevation: 42,
+                appearance: appearance
+            )
+            let renders = try (0..<2).map { _ in
+                try VideoFramePixels(renderer.renderImage(
+                    frame: model,
+                    staticMap: map,
+                    width: policy.width,
+                    height: policy.height,
+                    mapSize: CGSize(width: policy.width, height: policy.height)
+                ))
+            }
+            let bounds = CGRect(x: 0, y: 0, width: policy.width, height: policy.height)
+            XCTAssertEqual(renders[0].region(bounds), renders[1].region(bounds), "\(appearance)")
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeModel(
         progress: Double,
         marker: CGPoint?,
         heartRate: Double?,
-        elevation: Double?
+        elevation: Double?,
+        appearance: PNGSummaryExportAppearance = .light
     ) -> WorkoutVideoFrameModel {
         WorkoutVideoFrameModel(
             frameIndex: Int(progress * 9),
@@ -152,7 +215,7 @@ final class WorkoutVideoFrameRendererTests: XCTestCase {
             movementState: .moving,
             isInRecordingGap: false,
             stateLabel: "Running",
-            appearance: .light,
+            appearance: appearance,
             routeColorMode: .solid
         )
     }
