@@ -1887,10 +1887,15 @@ else
   fail "production Swift elevation finalizer must not call SwiftRouteMetricScaleBucketOracle"
 fi
 
+# find prints each production Swift file that names the oracle. Under
+# -exec … \; grep's status only selects files, so find's own status still
+# reports a tree it could not walk, such as a missing Sources directory.
+# Negating a `find | xargs grep -l` pipeline instead reads any failure as
+# confinement, even beside a real leak.
 if [[ -f "$ROUTE_METRIC_ORACLE" ]] \
-  && ! find RunPlayCore/Sources RunPlayPlatform/Sources RunPlayStudio/Sources \
-    -type f -name '*.swift' -print0 \
-    | xargs -0 grep -El 'SwiftRouteMetricScaleBucketOracle' >/dev/null; then
+  && route_metric_oracle_leaks="$(find RunPlayCore/Sources RunPlayPlatform/Sources RunPlayStudio/Sources \
+    -type f -name '*.swift' -exec grep -q 'SwiftRouteMetricScaleBucketOracle' {} \; -print)" \
+  && [[ -z "$route_metric_oracle_leaks" ]]; then
   pass "Swift route metric oracle is confined to tests"
 else
   fail "Swift route metric oracle must exist only in tests"
