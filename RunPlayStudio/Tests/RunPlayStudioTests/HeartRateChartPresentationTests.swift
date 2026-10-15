@@ -410,6 +410,12 @@ final class HeartRateChartPresentationTests: XCTestCase {
         let average = try XCTUnwrap(AverageHeartRateDisplay.value(for: workout.summary))
 
         XCTAssertEqual(average, model.average, accuracy: 1e-9)
+        // These readings average 132.5, which two rounding rules would split,
+        // so the text the header shows is compared with what the chart says.
+        XCTAssertTrue(
+            model.spokenSummary.contains("Average \(DisplayFormatter.formatHeartRate(average))."),
+            model.spokenSummary
+        )
     }
 
     // MARK: - The time-domain model
