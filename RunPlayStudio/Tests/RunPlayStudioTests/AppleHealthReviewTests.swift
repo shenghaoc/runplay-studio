@@ -78,7 +78,8 @@ final class AppleHealthReviewTests: XCTestCase {
     private func scanResult(
         candidates: [AppleHealthWorkoutCandidate],
         dropped: Int = 0,
-        unmatchedRoutes: Int = 0
+        unmatchedRoutes: Int = 0,
+        excluded: [String: Int] = [:]
     ) -> AppleHealthArchiveScanResult {
         AppleHealthArchiveScanResult(
             scan: AppleHealthExportScan(
@@ -103,7 +104,8 @@ final class AppleHealthReviewTests: XCTestCase {
                 unmatchedRouteReferenceCount: unmatchedRoutes,
                 routeEntryCount: 0,
                 entryCount: 1,
-                uncompressedXMLBytes: 0
+                uncompressedXMLBytes: 0,
+                excludedWorkoutsByActivityType: excluded
             )
         )
     }
@@ -300,6 +302,44 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(AppleHealthReviewPresentation.heartRateAccessibilityLabel(withNeither), "No heart rate")
     }
 
+    func testRowAccessibilityLabelIncludesTheEntireFlagReasonAndProvenance() {
+        let row = candidate(index: 0, start: 0, end: 60,
+                            heartRateBeats: [140], status: .possibleDuplicate, origin: .withinExport)
+        let reason = AppleHealthReviewPresentation.flagText(row)!
+        let label = AppleHealthReviewPresentation.rowAccessibilityLabel(row)
+        XCTAssertTrue(label.contains(reason))
+        XCTAssertTrue(label.contains("Running"))
+        XCTAssertTrue(label.contains("Duration 1m 0s"))
+        XCTAssertTrue(label.contains("Distance 5.00 km, Reported by the export itself"))
+        XCTAssertTrue(label.contains("No route; Has heart rate"))
+    }
+
+    func testFlagDetailShowsTheSelectedFlaggedRowsFullReason() {
+        let row = candidate(index: 0, start: 0, end: 60,
+                            status: .possibleDuplicate, origin: .existingLibrary)
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: row, flaggedCount: 2),
+            "Possible duplicate — Overlaps a run already in your library")
+    }
+
+    func testFlagDetailSummarizesFlagsWhenNoFlaggedRowIsSelected() {
+        let expected = "2 rows flagged as duplicates or possible duplicates."
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: nil, flaggedCount: 2), expected)
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: candidate(index: 0, start: 0, end: 60), flaggedCount: 2), expected)
+        XCTAssertEqual(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: nil, flaggedCount: 1),
+            "1 row flagged as duplicates or possible duplicates.")
+    }
+
+    func testFlagDetailIsAbsentWhenThereAreNoFlags() {
+        XCTAssertNil(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: nil, flaggedCount: 0))
+        XCTAssertNil(AppleHealthReviewPresentation.flagDetailText(
+            selectedCandidate: candidate(index: 0, start: 0, end: 60), flaggedCount: 0))
+    }
+
     func testEveryFlagStatesWhatItIsAndWhatItMatched() {
         XCTAssertEqual(
             AppleHealthReviewPresentation.flagText(candidate(
@@ -408,6 +448,19 @@ final class AppleHealthReviewTests: XCTestCase {
         )
     }
 
+    func testNonRunningExclusionsArePlainLanguageInReviewAndReport() {
+        XCTAssertNil(AppleHealthReviewPresentation.skippedNonRunningText(0))
+        let singular = "1 non-running workout was skipped. Only running workouts are offered for import."
+        let plural = "3 non-running workouts were skipped. Only running workouts are offered for import."
+        XCTAssertEqual(AppleHealthReviewPresentation.skippedNonRunningText(1), singular)
+        XCTAssertEqual(AppleHealthReviewPresentation.skippedNonRunningText(3), plural)
+        let report = AppleHealthImportReport(excludedWorkoutsByActivityType: [
+            "HKWorkoutActivityTypeCycling": 2, "HKWorkoutActivityTypeWalking": 1,
+        ])
+        XCTAssertEqual(AppleHealthImportSummary(report: report).lines, [plural])
+        XCTAssertTrue(AppleHealthImportSummary(report: AppleHealthImportReport()).lines.isEmpty)
+    }
+
     func testReportStatesDroppedWorkoutsAndUnmatchedRoutesInPlainLanguage() {
         let report = AppleHealthImportReport(
             items: [],
@@ -427,6 +480,35 @@ final class AppleHealthReviewTests: XCTestCase {
             summary.lines[1].contains("2 workouts name a route file the archive does not contain"),
             summary.lines[1]
         )
+    }
+
+    func testReportNamesTimeMismatchesWithoutCallingTheirFilesMissing() {
+        for count in [1, 8] {
+            let items = (0..<count).map { index in
+                AppleHealthImportItemResult(candidateID: "mismatch-\(index)", activityType: Self.running,
+                    startSeconds: 0, outcome: .importedWithoutRoute, routeFallbackReason: .routeWindowMismatch)
+            }
+            let summary = AppleHealthImportSummary(report: AppleHealthImportReport(items: items))
+            XCTAssertEqual(summary.lines, ["\(count) \(count == 1 ? "run" : "runs") imported without a map because their route file didn't match the run's time."])
+        }
+    }
+
+    func testReportSeparatesTrimmedRoutesFromUnavailableFilesAndIgnoresDiscardedItems() {
+        let items = [
+            AppleHealthImportItemResult(candidateID: "trimmed", activityType: Self.running,
+                startSeconds: 0, outcome: .imported, wasRouteTrimmed: true),
+            AppleHealthImportItemResult(candidateID: "missing", activityType: Self.running,
+                startSeconds: 0, outcome: .importedWithoutRoute, routeFallbackReason: .routeFileUnavailable),
+            AppleHealthImportItemResult(candidateID: "discarded", activityType: Self.running,
+                startSeconds: 0, outcome: .discarded, routeFallbackReason: .routeWindowMismatch, wasRouteTrimmed: true),
+        ]
+        let report = AppleHealthImportReport(items: items)
+        XCTAssertEqual(report.routeWindowMismatchCount, 0)
+        XCTAssertEqual(report.trimmedRouteCount, 1)
+        let summary = AppleHealthImportSummary(report: report)
+        XCTAssertTrue(summary.lines.contains("1 run had their route trimmed to match the run's recorded time."))
+        XCTAssertTrue(summary.lines.contains("1 run has no route, because its route file could not be read."))
+        XCTAssertFalse(summary.lines.contains { $0.contains("didn't match") })
     }
 
     func testReportSaysNothingBeyondTheHeadlineWhenNothingWentWrong() {
@@ -585,7 +667,8 @@ final class AppleHealthReviewTests: XCTestCase {
             candidate(index: 0, start: 0, end: 600, route: nil, heartRateBeats: [150, 152]),
             candidate(index: 1, start: 5_000, end: 6_200, route: nil, distanceMeters: 3_200),
         ]
-        present(appState, scanResult(candidates: candidates, dropped: 2, unmatchedRoutes: 1))
+        present(appState, scanResult(candidates: candidates, dropped: 2, unmatchedRoutes: 1,
+                                     excluded: ["HKWorkoutActivityTypeCycling": 3]))
 
         appState.confirmAppleHealthImport()
         await waitForTerminalPhase(appState)
@@ -599,6 +682,7 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(report.addedWorkoutCount, 2)
         XCTAssertEqual(report.droppedWorkoutCount, 2)
         XCTAssertEqual(report.unmatchedRouteReferenceCount, 1)
+        XCTAssertEqual(report.excludedWorkoutsByActivityType, ["HKWorkoutActivityTypeCycling": 3])
 
         let stored = try XCTUnwrap(appState.workouts.first { $0.id == report.items[0].importedWorkoutID })
         XCTAssertEqual(stored.source, .healthKit)

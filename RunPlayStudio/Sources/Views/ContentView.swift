@@ -31,6 +31,8 @@ private final class SecurityScopedURL: Sendable {
 extension UTType {
     static let supportedImportTypes: [UTType] = [.data]
     static let stravaArchiveTypes: [UTType] = [.zip]
+    /// An Apple Health export is delivered as the same container shape.
+    static let appleHealthExportTypes: [UTType] = [.zip]
 }
 
 /// Main content view with sidebar, 3D route view, and detail panels.
@@ -173,6 +175,20 @@ struct ContentView: View {
                 appState.showingError = true
             }
         }
+        .fileImporter(
+            isPresented: $appState.showAppleHealthImporter,
+            allowedContentTypes: UTType.appleHealthExportTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                appState.beginAppleHealthImport(from: url)
+            case .failure(let error):
+                appState.errorMessage = error.localizedDescription
+                appState.showingError = true
+            }
+        }
         .sheet(isPresented: Binding(
             get: { appState.archiveSession != nil },
             set: { isPresented in
@@ -215,6 +231,28 @@ struct ContentView: View {
                     onDone: { appState.dismissFITSessionImport() },
                     onViewImported: { appState.viewMostRecentFITImportedRun() },
                     onOpenAllRuns: { appState.showAllRunsAfterFITImport() }
+                )
+                .interactiveDismissDisabled(session.phase == .importing)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.appleHealthSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.appleHealthSession?.phase == .importing {
+                    appState.cancelAppleHealthImport()
+                } else {
+                    appState.dismissAppleHealthSession()
+                }
+            }
+        )) {
+            if let session = appState.appleHealthSession {
+                AppleHealthImportView(
+                    session: session,
+                    onImport: { appState.confirmAppleHealthImport() },
+                    onCancel: { appState.cancelAppleHealthImport() },
+                    onDone: { appState.dismissAppleHealthSession() },
+                    onViewImported: { appState.viewMostRecentAppleHealthImportedRun() }
                 )
                 .interactiveDismissDisabled(session.phase == .importing)
             }
@@ -264,7 +302,8 @@ struct ContentView: View {
             showRouteGroups: { appState.showRouteGroups() },
             showAllRuns: { appState.showWorkoutLibrary(restoreManualQuery: true) },
             importFile: { appState.showImporter = true },
-            importStravaArchive: { appState.showArchiveImporter = true }
+            importStravaArchive: { appState.showArchiveImporter = true },
+            importAppleHealthExport: { appState.showAppleHealthImporter = true }
         ))
         .focusedSceneValue(\.appPresentationActions, AppPresentationActions(
             showKeyboardShortcuts: { showKeyboardShortcuts = true }
