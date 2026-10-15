@@ -274,6 +274,14 @@ final class AppleHealthReviewTests: XCTestCase {
             AppleHealthReviewPresentation.distanceHelp(routeLess),
             "Reported by the export itself"
         )
+        // A route-less row's dash is a distance the export never gave.
+        for missing in [nil, 0] as [Double?] {
+            let withoutDistance = candidate(index: 0, start: 0, end: 60, route: nil, distanceMeters: missing)
+            XCTAssertEqual(
+                AppleHealthReviewPresentation.distanceHelp(withoutDistance),
+                "The export reports no distance for this workout"
+            )
+        }
     }
 
     func testRouteAndHeartRateIndicatorsFollowTheCandidate() {

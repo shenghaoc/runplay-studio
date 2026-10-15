@@ -87,7 +87,11 @@ enum AppleHealthReviewPresentation {
     /// until the import, and what it measures can differ.
     static func distanceHelp(_ candidate: AppleHealthWorkoutCandidate) -> String {
         guard candidate.distanceProvenance == .gpsDerived else {
-            return "Reported by the export itself"
+            // A route-less workout's only distance is the export's; a dash
+            // means the export gave none, not that it reported one.
+            return reportedMeters(candidate) == nil
+                ? "The export reports no distance for this workout"
+                : "Reported by the export itself"
         }
         return reportedMeters(candidate) == nil
             ? "Measured from this workout's route when it is imported"
