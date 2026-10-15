@@ -1816,6 +1816,60 @@ bundle:
 
 Not covered: VoiceOver speech, dark appearance, Chinese, and a release build.
 
+### Filter choice check mark pass 2026-10-15 (debug configuration, synthetic libraries)
+
+Filters → Date listed All Time, Last 30 Days, Last 90 Days, Current Calendar
+Year and Custom Date Range… as `Button`s. Tags listed Any Tags and Untagged
+Only as `Button`s, and Route listed Any Route and Not on a Route the same way.
+A `Button` row in a macOS menu has no check mark, so the menu never showed
+which of these choices made up "Filters (3)".
+
+Two throwaway `RUNPLAY_LIBRARY_ROOT`s were used, each seeded by a throwaway
+Core test from the bundled demo files. The first was the tagged two-run library
+from the pass above. The second held three runs in two route groups:
+`realistic_5k_run.gpx` imported twice formed "4.4 km Route", and
+`sample-run.tcx` alone formed "5.0 km Route". Each bundle ran on a fresh copy
+under its own bundle identifier and was driven by AX presses only.
+
+On a packaged debug bundle of the base (#266):
+
+- In the default state (All Time, Any Tags, Any Route), every
+  `AXMenuItemMarkChar` in the Date, Tags and Route submenus was empty.
+- After Last 90 Days, Untagged Only and Not on a Route ("Filters (3)", "0 of
+  2 runs"), and then Custom Date Range…, every mark was still empty.
+  Screenshots of the open submenus show no mark.
+
+The rows are now `Toggle`s. On the fixed bundle:
+
+- The default state marks All Time, Any Tags and Any Route "✓", and nothing
+  else in the three submenus.
+- Last 90 Days, Untagged Only and Not on a Route each moved the mark to the
+  chosen row alone. Choosing a checked row again kept it checked and left the
+  button and summary unchanged.
+- Custom Date Range… was marked alone, as a screenshot of the open Date
+  submenu shows. The From and To items appear below Date as before.
+- With Hills chosen under Match Any Selected, neither Any Tags nor Untagged
+  Only is marked, and Match Any Selected marks Hills, as a screenshot shows.
+  Untagged Only then took the mark and cleared Hills, and Any Tags took it
+  back.
+- Clear Filters returned the marks to All Time, Any Tags and Any Route.
+- On the route-group library, choosing "5.0 km Route" marked that route alone
+  ("1 of 3 runs"); Any Route and Not on a Route were unmarked, as a screenshot
+  shows. Not on a Route then took the mark, and Any Route took it back.
+- In zh-Hans the rows kept their translated titles, and the marks followed
+  the same choices.
+- Item titles, enabled states, submenu flags and help (none) in the three
+  submenus match the base bundle's.
+
+Unchanged and still open: the From and To date pickers under Date are drawn
+as disabled menu items, on the base and fixed bundles alike, so a custom range
+cannot be edited from this menu.
+
+Not covered: VoiceOver speech, dark appearance, zh-Hant, and a release build.
+No smart collection was opened. Re-choosing a checked row while one is open is
+covered by unit tests only; the view-model test uses Custom Date Range… with a
+one-sided range.
+
 ## Window and application-session restoration checklist
 
 Use the packaged app from `./scripts/package-demo.sh` and synthetic repository

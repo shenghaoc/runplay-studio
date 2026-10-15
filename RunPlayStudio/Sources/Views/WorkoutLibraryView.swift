@@ -420,16 +420,15 @@ struct WorkoutLibraryView: View {
             }
 
             Menu("Date") {
-                Button("All Time") { viewModel.dateFilter = .allTime }
-                Button("Last 30 Days") { viewModel.dateFilter = .last30Days }
-                Button("Last 90 Days") { viewModel.dateFilter = .last90Days }
-                Button("Current Calendar Year") { viewModel.dateFilter = .currentCalendarYear }
-                Button("Custom Date Range…") {
-                    viewModel.dateFilter = .custom(
-                        start: viewModel.customDateStart,
-                        end: viewModel.customDateEnd
-                    )
-                }
+                // Toggles, not Buttons: the menu draws a Toggle row's check
+                // mark and exposes it as the item's AX mark character, so the
+                // active range is marked. Choosing a row applies its range
+                // even when it is already checked, as the Buttons did.
+                Toggle("All Time", isOn: dateMenuCheck(.allTime))
+                Toggle("Last 30 Days", isOn: dateMenuCheck(.last30Days))
+                Toggle("Last 90 Days", isOn: dateMenuCheck(.last90Days))
+                Toggle("Current Calendar Year", isOn: dateMenuCheck(.currentCalendarYear))
+                Toggle("Custom Date Range…", isOn: dateMenuCheck(.customRange))
             }
 
             if case .custom = viewModel.dateFilter {
@@ -506,11 +505,24 @@ struct WorkoutLibraryView: View {
         .help("Filter the library")
     }
 
+    /// The check mark on `choice`'s row in the Date submenu, read from and
+    /// written to the library's date filter. Custom Date Range… takes the
+    /// From and To pickers' dates.
+    private func dateMenuCheck(_ choice: WorkoutLibraryDateMenuChoice) -> Binding<Bool> {
+        choice.menuCheck(
+            filter: { viewModel.dateFilter },
+            customRange: { (viewModel.customDateStart, viewModel.customDateEnd) },
+            setFilter: { viewModel.dateFilter = $0 }
+        )
+    }
+
     @ViewBuilder
     private var tagFilterMenu: some View {
         Menu("Tags") {
-            Button("Any Tags") { viewModel.tagFilter = .anyTags }
-            Button("Untagged Only") { viewModel.tagFilter = .untaggedOnly }
+            // While tags are selected neither row is checked: the Match
+            // submenus below mark the selection.
+            Toggle("Any Tags", isOn: tagMenuCheck(.anyTags))
+            Toggle("Untagged Only", isOn: tagMenuCheck(.untaggedOnly))
             if !appState.tags.isEmpty {
                 Divider()
                 // Toggles, not Buttons with a checkmark image: a macOS menu
@@ -542,6 +554,15 @@ struct WorkoutLibraryView: View {
         )
     }
 
+    /// The check mark on `choice`'s row in the Tags submenu, read from and
+    /// written to the library's tag filter.
+    private func tagMenuCheck(_ choice: WorkoutLibraryTagMenuChoice) -> Binding<Bool> {
+        choice.menuCheck(
+            filter: { viewModel.tagFilter },
+            setFilter: { viewModel.tagFilter = $0 }
+        )
+    }
+
     /// Route filter submenu: any route, runs not on a route, or one group.
     /// Groups are capped to keep the menu usable; the Routes workspace is
     /// the full browser.
@@ -557,9 +578,9 @@ struct WorkoutLibraryView: View {
         // library entries — the same membership the filter evaluates.
         let details = RouteGroupMenuDetail.details(for: viewModel.entries)
         Menu("Route") {
-            Button("Any Route") { viewModel.routeFilter = .anyRoute }
+            Toggle("Any Route", isOn: routeMenuCheck(.anyRoute))
                 .accessibilityHint("Do not restrict by route")
-            Button("Not on a Route") { viewModel.routeFilter = .ungroupedOnly }
+            Toggle("Not on a Route", isOn: routeMenuCheck(.ungroupedOnly))
                 .accessibilityHint("Show runs that are not currently on any route")
             let candidates = viewModel.routeGroups.prefix(15)
             if !candidates.isEmpty {
@@ -584,6 +605,15 @@ struct WorkoutLibraryView: View {
                 }
             }
         }
+    }
+
+    /// The check mark on `choice`'s row in the Route submenu, read from and
+    /// written to the library's route filter.
+    private func routeMenuCheck(_ choice: WorkoutLibraryRouteMenuChoice) -> Binding<Bool> {
+        choice.menuCheck(
+            filter: { viewModel.routeFilter },
+            setFilter: { viewModel.routeFilter = $0 }
+        )
     }
 
     /// Collision-aware derived names for every route group, computed from the
