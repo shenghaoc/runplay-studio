@@ -458,8 +458,10 @@ final class PersonalHeatmapViewModel: ObservableObject {
     }
 
     private func endOfDay(_ date: Date) -> Date {
-        let start = calendar.startOfDay(for: date)
-        return calendar.date(byAdding: DateComponents(day: 1, second: -1), to: start) ?? date
+        // The day's own interval, not its start plus one day: a day whose
+        // midnight daylight saving skips starts at 01:00, and one day later
+        // is 01:00 on a day that starts at 00:00.
+        calendar.dateInterval(of: .day, for: date)?.end.addingTimeInterval(-1) ?? date
     }
 
     /// Cache-key clock: relative presets stabilize within the hour. Absolute
