@@ -16,8 +16,6 @@ struct AppleHealthImportView: View {
     var onDone: () -> Void
     var onViewImported: () -> Void
 
-    @State private var focusedCandidateID: String?
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -130,7 +128,7 @@ struct AppleHealthImportView: View {
     }
 
     private var candidateTable: some View {
-        Table(session.filteredCandidates, selection: $focusedCandidateID) {
+        Table(session.filteredCandidates, selection: $session.tableSelection) {
             TableColumn("Import") { candidate in
                 Toggle("", isOn: selectionBinding(for: candidate))
                     .labelsHidden()
@@ -187,10 +185,22 @@ struct AppleHealthImportView: View {
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .accessibilityLabel("Apple Health workout candidates")
+        // Tab reaches the table but not the checkboxes in it, so Space toggles
+        // the import checkbox of every selected row; Return and Escape stay with
+        // Import and Cancel. The toggle runs after the key event, not inside the
+        // view update that delivers it, where publishing a change is not allowed.
+        .onKeyPress(.space) {
+            guard !session.visibleTableSelection.isEmpty else { return .ignored }
+            Task { @MainActor in session.toggleImportForTableSelection() }
+            return .handled
+        }
     }
 
     private var flagDetail: some View {
-        let focused = session.filteredCandidates.first { $0.id == focusedCandidateID }
+        // One selected row shows its own reason; several show the flagged count.
+        let focused = session.tableSelection.count == 1
+            ? session.filteredCandidates.first { session.tableSelection.contains($0.id) }
+            : nil
         return Group {
             if let text = AppleHealthReviewPresentation.flagDetailText(
                 selectedCandidate: focused, flaggedCount: session.flaggedCount
@@ -209,7 +219,7 @@ struct AppleHealthImportView: View {
         Binding(
             get: { session.selectedIDs.contains(candidate.id) },
             set: { isOn in
-                focusedCandidateID = candidate.id
+                session.tableSelection = [candidate.id]
                 if isOn {
                     session.selectedIDs.insert(candidate.id)
                 } else {
@@ -236,11 +246,11 @@ struct AppleHealthImportView: View {
             }
             Spacer()
             Button("Cancel", action: onCancel)
-            Button("Import \(session.selectedCount) \(session.selectedCount == 1 ? "Workout" : "Workouts")") {
+            Button(AppleHealthReviewPresentation.importButtonTitle(selectedCount: session.selectedCount)) {
                 onImport()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(session.selectedCount == 0)
+            .disabled(!AppleHealthReviewPresentation.canImport(selectedCount: session.selectedCount))
             .buttonStyle(.borderedProminent)
         }
         .padding()

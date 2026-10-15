@@ -21,6 +21,10 @@ final class AppleHealthImportSession: ObservableObject {
 
     @Published var phase: AppleHealthImportUIPhase = .reviewing
     @Published var selectedIDs: Set<String>
+    /// Rows selected in the review table, as distinct from `selectedIDs`, the
+    /// rows checked for import. Selecting a row shows its flag in full and is
+    /// what Space acts on; checking it decides whether the row is imported.
+    @Published var tableSelection: Set<String> = []
     @Published var searchText: String = ""
     /// Show only the candidates carrying a flag. Off by default, because the
     /// review exists to show what the export holds, not only what is wrong.
@@ -77,5 +81,25 @@ final class AppleHealthImportSession: ObservableObject {
 
     func selectNone() {
         selectedIDs.removeAll()
+    }
+
+    /// The selected rows Space acts on: those the table shows.
+    ///
+    /// A row hidden by search or by "Flagged only" is left alone even when it
+    /// stayed selected, since nobody can see what Space did to it.
+    var visibleTableSelection: Set<String> {
+        tableSelection.intersection(filteredCandidates.map(\.id))
+    }
+
+    /// Space in the table: toggle the import checkbox of every row in
+    /// `visibleTableSelection`, by the rule in `toggledImportSelection`.
+    ///
+    /// - Returns: Whether a row was toggled.
+    @discardableResult
+    func toggleImportForTableSelection() -> Bool {
+        let rows = visibleTableSelection
+        guard !rows.isEmpty else { return false }
+        selectedIDs = AppleHealthReviewPresentation.toggledImportSelection(selectedIDs, togglingRows: rows)
+        return true
     }
 }

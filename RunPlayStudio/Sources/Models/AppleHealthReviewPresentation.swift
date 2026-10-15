@@ -173,6 +173,30 @@ enum AppleHealthReviewPresentation {
         candidates.count { $0.status != .ready }
     }
 
+    /// The import checkboxes after Space on the rows selected in the table.
+    ///
+    /// One rule for one row or several: if any of the rows is unchecked, all of
+    /// them become checked; only when every one is already checked do they all
+    /// become unchecked. A flagged row toggles like any other, because its flag
+    /// decides only that it starts unchecked.
+    static func toggledImportSelection(
+        _ checked: Set<String>,
+        togglingRows rows: Set<String>
+    ) -> Set<String> {
+        guard !rows.isEmpty else { return checked }
+        return rows.isSubset(of: checked) ? checked.subtracting(rows) : checked.union(rows)
+    }
+
+    /// The footer Import button's title for a number of checked rows.
+    static func importButtonTitle(selectedCount: Int) -> String {
+        "Import \(selectedCount) \(selectedCount == 1 ? "Workout" : "Workouts")"
+    }
+
+    /// Whether the Import button can be pressed: at least one row is checked.
+    static func canImport(selectedCount: Int) -> Bool {
+        selectedCount > 0
+    }
+
     // MARK: - Filtering
 
     /// The candidates a review should show, in export order.
