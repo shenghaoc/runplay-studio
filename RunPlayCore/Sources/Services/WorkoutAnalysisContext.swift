@@ -13,7 +13,12 @@ public struct WorkoutAnalysisContext: Sendable {
         let profile = ElevationProfile(routePoints: workout.routePoints, policy: policy)
         let timeline = WorkoutTimeline(
             routePoints: workout.routePoints,
-            elevationProfile: profile
+            elevationProfile: profile,
+            // Thread the workout's heart-rate source through so split and
+            // record-window averages read the same single accessor the summary
+            // and training load do. Nil whenever heart rate rides on the route
+            // points, which is every workout except an Apple Health export run.
+            standaloneHeartRateSamples: workout.heartRateSourceSeries
         )
         let movementProfile = try? MovementProfile(
             routePoints: workout.routePoints,
@@ -29,11 +34,29 @@ public struct WorkoutAnalysisContext: Sendable {
     }
 
     public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile, movementProfile: MovementProfile?) {
+        self.init(
+            routePoints: routePoints,
+            elevationProfile: elevationProfile,
+            movementProfile: movementProfile,
+            standaloneHeartRateSamples: nil
+        )
+    }
+
+    /// Rebinds a context to the route points analysis works on, keeping the
+    /// workout's standalone heart-rate series so split, segment and
+    /// record-window averages read the same source `init(workout:)` gives them.
+    init(
+        routePoints: [RoutePoint],
+        elevationProfile: ElevationProfile,
+        movementProfile: MovementProfile?,
+        standaloneHeartRateSamples: [HeartRateSample]?
+    ) {
         self.elevationProfile = elevationProfile
         self.movementProfile = movementProfile
         self.timeline = WorkoutTimeline(
             routePoints: routePoints,
-            elevationProfile: elevationProfile
+            elevationProfile: elevationProfile,
+            standaloneHeartRateSamples: standaloneHeartRateSamples
         )
     }
 

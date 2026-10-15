@@ -8,20 +8,19 @@ final class TrainingLoadCalculatorTests: XCTestCase {
         maximumHeartRateBPM: 150
     )
 
-    private func point(
+    /// Training load reads heart rate through `HeartRateSample`, the shape
+    /// both representations reduce to, so these fixtures build samples
+    /// directly rather than route points. A sample carries no coordinates:
+    /// load is a function of time and rate alone.
+    private func sample(
         elapsed: Double,
         rate: Double?,
         segment: Int = 0
-    ) -> RoutePoint {
-        RoutePoint(
-            timestamp: Date(timeIntervalSince1970: 1_700_000_000 + elapsed),
-            latitude: 37,
-            longitude: -122,
-            altitudeMeters: 100,
-            distanceFromStartMeters: 3 * elapsed,
+    ) -> HeartRateSample {
+        HeartRateSample(
             elapsedSeconds: elapsed,
             heartRateBPM: rate,
-            routeSegmentIndex: segment
+            segmentIndex: segment
         )
     }
 
@@ -31,12 +30,12 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// 20 × 0.5 × 0.64 × e^0.96, matching the native fixture through the
     /// calculator's interval construction (mean of endpoint rates).
     func testMeasuredSteadyRun() throws {
-        var points: [RoutePoint] = []
+        var samples: [HeartRateSample] = []
         for index in 0...40 {
-            points.append(point(elapsed: Double(index) * 30, rate: 100))
+            samples.append(sample(elapsed: Double(index) * 30, rate: 100))
         }
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 1_200,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
@@ -58,14 +57,14 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// point of one segment and the first of the next carries no weight, so
     /// paused time adds nothing to covered or valid seconds.
     func testPauseSpanningSegmentsAddsNoWeight() throws {
-        let points = [
-            point(elapsed: 0, rate: 100),
-            point(elapsed: 600, rate: 100, segment: 0),
-            point(elapsed: 3_000, rate: 100, segment: 1),
-            point(elapsed: 3_600, rate: 100, segment: 1),
+        let samples = [
+            sample(elapsed: 0, rate: 100),
+            sample(elapsed: 600, rate: 100, segment: 0),
+            sample(elapsed: 3_000, rate: 100, segment: 1),
+            sample(elapsed: 3_600, rate: 100, segment: 1),
         ]
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 1_200,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
@@ -83,15 +82,15 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// fixtures. With default zones from maximum 150 the bounds are
     /// 0/90/105/120/135, so rate 100 sits in zone 2 and rate 140 in zone 5.
     func testHRGapWithinSegmentCountsAsCoveredOnly() throws {
-        let points = [
-            point(elapsed: 0, rate: 100),
-            point(elapsed: 600, rate: 100),
-            point(elapsed: 1_200, rate: nil),
-            point(elapsed: 1_800, rate: 140),
-            point(elapsed: 2_400, rate: 140),
+        let samples = [
+            sample(elapsed: 0, rate: 100),
+            sample(elapsed: 600, rate: 100),
+            sample(elapsed: 1_200, rate: nil),
+            sample(elapsed: 1_800, rate: 140),
+            sample(elapsed: 2_400, rate: 140),
         ]
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 2_400,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
@@ -112,12 +111,12 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// Below the absolute coverage floor (300 s) the load is estimated even
     /// at full relative coverage.
     func testShortRunFallsBackToEstimate() throws {
-        let points = [
-            point(elapsed: 0, rate: 100),
-            point(elapsed: 240, rate: 100),
+        let samples = [
+            sample(elapsed: 0, rate: 100),
+            sample(elapsed: 240, rate: 100),
         ]
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 240,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
@@ -137,13 +136,13 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// 10 minutes only: valid intervals need both endpoints, so the trailing
     /// strap-less half drags coverage to a third.
     func testSparseHRFallsBackToEstimate() throws {
-        var points: [RoutePoint] = []
+        var samples: [HeartRateSample] = []
         for index in 0...60 {
             let rate: Double? = index <= 20 ? 100 : nil
-            points.append(point(elapsed: Double(index) * 30, rate: rate))
+            samples.append(sample(elapsed: Double(index) * 30, rate: rate))
         }
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 1_800,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
@@ -172,12 +171,12 @@ final class TrainingLoadCalculatorTests: XCTestCase {
             (4.2, 0.75),   // 15.1 km/h — capped
         ]
         for (speed, reserve) in speedsAndReserves {
-            let points = [
-                point(elapsed: 0, rate: nil),
-                point(elapsed: 1_800, rate: nil),
+            let samples = [
+                sample(elapsed: 0, rate: nil),
+                sample(elapsed: 1_800, rate: nil),
             ]
             let snapshot = try TrainingLoadCalculator.compute(
-                routePoints: points,
+                heartRateSamples: samples,
                 activeSeconds: 1_800,
                 averageSpeedMetersPerSecond: speed,
                 profile: profile,
@@ -202,12 +201,12 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     }
 
     func testDurationOnlyEstimateWithoutUsablePace() throws {
-        let points = [
-            point(elapsed: 0, rate: nil),
-            point(elapsed: 1_800, rate: nil),
+        let samples = [
+            sample(elapsed: 0, rate: nil),
+            sample(elapsed: 1_800, rate: nil),
         ]
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 1_800,
             averageSpeedMetersPerSecond: nil,
             profile: profile,
@@ -224,9 +223,9 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     }
 
     func testFemaleCoefficientsFlowThroughEstimate() throws {
-        let points = [
-            point(elapsed: 0, rate: nil),
-            point(elapsed: 1_800, rate: nil),
+        let samples = [
+            sample(elapsed: 0, rate: nil),
+            sample(elapsed: 1_800, rate: nil),
         ]
         let female = AthleteProfile(
             restingHeartRateBPM: 50,
@@ -234,7 +233,7 @@ final class TrainingLoadCalculatorTests: XCTestCase {
             trimpCoefficientProfile: .standardFemale
         )
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 1_800,
             averageSpeedMetersPerSecond: nil,
             profile: female,
@@ -251,12 +250,12 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// A snapshot records the profile it was computed with; a later profile
     /// edit flips `isCurrent`.
     func testStalenessFollowsProfileSignature() throws {
-        let points = [
-            point(elapsed: 0, rate: 100),
-            point(elapsed: 1_800, rate: 100),
+        let samples = [
+            sample(elapsed: 0, rate: 100),
+            sample(elapsed: 1_800, rate: 100),
         ]
         let snapshot = try TrainingLoadCalculator.compute(
-            routePoints: points,
+            heartRateSamples: samples,
             activeSeconds: 1_800,
             averageSpeedMetersPerSecond: 3,
             profile: profile,
@@ -278,10 +277,10 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     /// test is gated while the rest of the suite still compiles and runs in
     /// the release test build.
     func testMeasuredPassMakesOneNativeCallEstimatedMakesNone() throws {
-        let measured = (0...40).map { point(elapsed: Double($0) * 30, rate: 100) }
+        let measured = (0...40).map { sample(elapsed: Double($0) * 30, rate: 100) }
         let (_, measuredCounts) = try NativeCallObserver.observing {
             try TrainingLoadCalculator.compute(
-                routePoints: measured,
+                heartRateSamples: measured,
                 activeSeconds: 1_200,
                 averageSpeedMetersPerSecond: 3,
                 profile: profile,
@@ -290,10 +289,10 @@ final class TrainingLoadCalculatorTests: XCTestCase {
         }
         XCTAssertEqual(measuredCounts.trainingLoad, 1)
 
-        let estimated = [point(elapsed: 0, rate: nil), point(elapsed: 1_800, rate: nil)]
+        let estimated = [sample(elapsed: 0, rate: nil), sample(elapsed: 1_800, rate: nil)]
         let (_, estimatedCounts) = try NativeCallObserver.observing {
             try TrainingLoadCalculator.compute(
-                routePoints: estimated,
+                heartRateSamples: estimated,
                 activeSeconds: 1_800,
                 averageSpeedMetersPerSecond: 3,
                 profile: profile,

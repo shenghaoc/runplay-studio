@@ -752,7 +752,9 @@ public actor WorkoutLibraryStoreActor {
             )
             let context = WorkoutAnalysisContext(
                 routePoints: workout.routePoints,
-                elevationProfile: elevationProfile
+                elevationProfile: elevationProfile,
+                movementProfile: nil,
+                standaloneHeartRateSamples: workout.heartRateSourceSeries
             )
             do {
                 let detection = try SegmentDetector.detectSegmentsAndPersonalRecords(
@@ -898,11 +900,7 @@ public actor WorkoutLibraryStoreActor {
 
             do {
                 let load = try TrainingLoadCalculator.compute(
-                    routePoints: workout.routePoints,
-                    activeSeconds: workout.summary.totalActiveSeconds,
-                    averageSpeedMetersPerSecond: workout.summary.averageSpeedMetersPerSecond > 0
-                        ? workout.summary.averageSpeedMetersPerSecond
-                        : nil,
+                    for: workout,
                     profile: profile,
                     referenceYear: referenceYear,
                     isCancelled: { Task.isCancelled }

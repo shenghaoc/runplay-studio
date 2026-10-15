@@ -136,6 +136,16 @@ public struct WorkoutTimeline: Sendable {
     private let elapsedSecondsByPoint: [Double]
     private let activeSecondsByPoint: [Double]
     private let distanceMetersByPoint: [Double]
+    /// Standalone heart rate, when that representation owns this workout's
+    /// readings instead of the route points.
+    ///
+    /// Nil for every workout whose heart rate rides on `routePoints`, which is
+    /// every FIT/TCX/GPX/JSON import — so the distance-range heart-rate
+    /// average below takes exactly its historical path for all existing data.
+    /// Apple Health export runs are the case that sets it: their route GPX
+    /// carries position, elevation, speed, course and accuracy but no heart
+    /// rate, so heart rate is joined by time.
+    private let standaloneHeartRateSamples: [HeartRateSample]?
 
     public let totalElapsedSeconds: Double
     public let totalActiveSeconds: Double
@@ -144,7 +154,10 @@ public struct WorkoutTimeline: Sendable {
     public let totalDistanceMeters: Double
 
     public init(workout: RunWorkout) {
-        self.init(routePoints: workout.routePoints)
+        self.init(
+            routePoints: workout.routePoints,
+            standaloneHeartRateSamples: workout.heartRateSourceSeries
+        )
     }
 
     public init(routePoints: [RoutePoint]) {
@@ -154,9 +167,33 @@ public struct WorkoutTimeline: Sendable {
         )
     }
 
+    public init(
+        routePoints: [RoutePoint],
+        standaloneHeartRateSamples: [HeartRateSample]?
+    ) {
+        self.init(
+            routePoints: routePoints,
+            elevationProfile: ElevationProfile(routePoints: routePoints),
+            standaloneHeartRateSamples: standaloneHeartRateSamples
+        )
+    }
+
     public init(routePoints: [RoutePoint], elevationProfile: ElevationProfile) {
+        self.init(
+            routePoints: routePoints,
+            elevationProfile: elevationProfile,
+            standaloneHeartRateSamples: nil
+        )
+    }
+
+    public init(
+        routePoints: [RoutePoint],
+        elevationProfile: ElevationProfile,
+        standaloneHeartRateSamples: [HeartRateSample]?
+    ) {
         self.routePoints = routePoints
         self.elevationProfile = elevationProfile
+        self.standaloneHeartRateSamples = standaloneHeartRateSamples
 
         guard let first = routePoints.first else {
             elapsedSecondsByPoint = []
@@ -372,9 +409,29 @@ public struct WorkoutTimeline: Sendable {
 
     /// Unweighted average of valid recorded heart-rate samples inside a range.
     /// Samples from every covered route segment are included.
+    ///
+    /// Reads heart rate through the single accessor's resolution rule. When the
+    /// route points own heart rate — every existing FIT/TCX/GPX/JSON workout —
+    /// this is the historical loop over the covered points, unchanged. When a
+    /// standalone series owns it, the range is mapped onto the elapsed clock and
+    /// the series samples inside that clock are averaged instead: this is what
+    /// lets an Apple Health export run *with* a route GPX still report split and
+    /// record-window heart rate, since its GPX carries no heart rate at all.
+    ///
+    /// A route-less workout never reaches here, because `distanceRange` returns
+    /// nil without route points; its splits are unavailable rather than
+    /// synthesized.
     public func averageHeartRate(from startDistance: Double, to endDistance: Double) -> Double? {
         guard let range = distanceRange(from: startDistance, to: endDistance) else {
             return nil
+        }
+
+        if let samples = standaloneHeartRateSamples {
+            return Self.averageHeartRate(
+                in: samples,
+                fromElapsedSeconds: range.start.elapsedSeconds,
+                toElapsedSeconds: range.end.elapsedSeconds
+            )
         }
 
         var sumHR: Double = 0
@@ -385,6 +442,53 @@ public struct WorkoutTimeline: Sendable {
                 sumHR += value
                 countHR += 1
             }
+        }
+
+        guard countHR > 0 else { return nil }
+        return sumHR / Double(countHR)
+    }
+
+    /// Mean of the valid readings whose elapsed time falls inside a closed
+    /// elapsed range of a sorted standalone series.
+    ///
+    /// Closed on both ends, unlike the half-open `[start, end)` rule used for
+    /// distance-range boundary ownership: the point-based average above
+    /// includes every sample in `sourcePointRange` inclusive, and this has to
+    /// agree with it so a Health-export split is not missing its boundary
+    /// readings. Binary search on the series' guaranteed ordering keeps this
+    /// linear in the samples it actually covers, not in the series length, so
+    /// twenty splits over a long series stay cheap.
+    private static func averageHeartRate(
+        in samples: [HeartRateSample],
+        fromElapsedSeconds start: Double,
+        toElapsedSeconds end: Double
+    ) -> Double? {
+        guard !samples.isEmpty, start.isFinite, end.isFinite, start <= end else {
+            return nil
+        }
+
+        // First index with elapsed >= start.
+        var low = 0
+        var high = samples.count
+        while low < high {
+            let middle = (low + high) / 2
+            if samples[middle].elapsedSeconds < start {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+
+        var sumHR: Double = 0
+        var countHR = 0
+        var index = low
+        while index < samples.count, samples[index].elapsedSeconds <= end {
+            if let value = samples[index].heartRateBPM,
+               MetricValidation.isValidHeartRate(value) {
+                sumHR += value
+                countHR += 1
+            }
+            index += 1
         }
 
         guard countHR > 0 else { return nil }
