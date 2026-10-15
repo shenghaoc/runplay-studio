@@ -275,10 +275,9 @@ struct StravaArchiveImportView: View {
                 }
                 .padding(.horizontal)
 
-                if let elevation = DEMImportReportText.summary(
-                    records: report.items.filter { $0.status == .ready }.map(\.elevationCorrection),
-                    correctsElevation: session.correctsElevation,
-                    commitFailed: report.commitFailed
+                if let elevation = BatchImportReportPresentation.archiveElevationSummary(
+                    for: report,
+                    correctsElevation: session.correctsElevation
                 ) {
                     Text(elevation)
                         .font(AppDesign.Typography.compactLabel)
@@ -292,8 +291,9 @@ struct StravaArchiveImportView: View {
                             Text(item.activityName ?? item.archiveRelativePath)
                                 .lineLimit(1)
                             Spacer()
-                            if item.status == .ready, let elevation = DEMImportReportText.itemDetail(
-                                item.elevationCorrection,
+                            if let elevation = BatchImportReportPresentation.archiveItemElevationDetail(
+                                item,
+                                in: report,
                                 correctsElevation: session.correctsElevation
                             ) {
                                 Text(elevation)

@@ -107,4 +107,41 @@ final class BatchImportReportPresentationTests: XCTestCase {
             FITSessionCandidateStatus.duplicate.userFacingSummary
         )
     }
+
+    // MARK: - Elevation
+
+    /// A cancelled pass saved nothing, so neither sheet states the elevation of
+    /// the runs it rolled back, while a committed pass still does.
+    func testACancelledPassStatesNoElevationForItsRolledBackRuns() {
+        let applied = DEMElevationCorrection(outcome: .applied, tileSet: nil, correctedAt: Date())
+        let run = WorkoutBatchImportItemResult(
+            candidateID: "run-0",
+            archiveRelativePath: "activities/1.gpx",
+            activityName: "Morning run",
+            status: .ready,
+            detail: nil,
+            importedWorkoutID: UUID(),
+            elevationCorrection: applied
+        )
+        let cancelled = WorkoutBatchImportReport(items: [run], wasCancelled: true)
+        let committed = WorkoutBatchImportReport(items: [run], importedWorkoutIDs: [UUID()])
+
+        XCTAssertNil(BatchImportReportPresentation.archiveElevationSummary(for: cancelled, correctsElevation: true))
+        XCTAssertNil(BatchImportReportPresentation.archiveItemElevationDetail(
+            run, in: cancelled, correctsElevation: true
+        ))
+        XCTAssertNotNil(BatchImportReportPresentation.archiveElevationSummary(for: committed, correctsElevation: true))
+        XCTAssertNotNil(BatchImportReportPresentation.archiveItemElevationDetail(
+            run, in: committed, correctsElevation: true
+        ))
+
+        var session = stagedSession()
+        session.elevationCorrection = applied
+        XCTAssertNil(BatchImportReportPresentation.fitElevationSummary(
+            for: FITSessionBatchImportReport(items: [session], wasCancelled: true), correctsElevation: true
+        ))
+        XCTAssertNotNil(BatchImportReportPresentation.fitElevationSummary(
+            for: FITSessionBatchImportReport(items: [session], importedWorkoutIDs: [UUID()]), correctsElevation: true
+        ))
+    }
 }

@@ -57,6 +57,49 @@ enum BatchImportReportPresentation {
         report.commitFailed || report.wasCancelled
     }
 
+    // MARK: - Elevation
+
+    /// The elevation line of an archive report. A cancelled pass rolled its runs
+    /// back exactly as a failed commit does, so it states no elevation for them:
+    /// a line about corrected runs would contradict "Nothing was saved".
+    static func archiveElevationSummary(
+        for report: WorkoutBatchImportReport,
+        correctsElevation: Bool
+    ) -> String? {
+        DEMImportReportText.summary(
+            records: report.items.filter { $0.status == .ready }.map(\.elevationCorrection),
+            correctsElevation: correctsElevation,
+            commitFailed: archiveStagedItemsWereRolledBack(in: report)
+        )
+    }
+
+    /// The elevation detail under one archive row, only for a run that was saved.
+    static func archiveItemElevationDetail(
+        _ item: WorkoutBatchImportItemResult,
+        in report: WorkoutBatchImportReport,
+        correctsElevation: Bool
+    ) -> String? {
+        guard item.status == .ready, !archiveStagedItemsWereRolledBack(in: report) else { return nil }
+        return DEMImportReportText.itemDetail(item.elevationCorrection, correctsElevation: correctsElevation)
+    }
+
+    /// The elevation line of a FIT report, under the same rule.
+    static func fitElevationSummary(
+        for report: FITSessionBatchImportReport,
+        correctsElevation: Bool
+    ) -> String? {
+        DEMImportReportText.summary(
+            records: report.items.filter { $0.status == .ready }.map(\.elevationCorrection),
+            correctsElevation: correctsElevation,
+            commitFailed: fitStagedSessionsWereRolledBack(in: report)
+        )
+    }
+
+    /// Whether an archive pass left its staged runs unsaved, as for a FIT pass.
+    private static func archiveStagedItemsWereRolledBack(in report: WorkoutBatchImportReport) -> Bool {
+        report.commitFailed || report.wasCancelled
+    }
+
     // MARK: - Shared
 
     /// A failed commit is the louder outcome, so it is never softened by a

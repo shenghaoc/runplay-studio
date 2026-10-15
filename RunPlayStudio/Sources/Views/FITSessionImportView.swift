@@ -349,10 +349,9 @@ struct FITSessionImportView: View {
                 }
                 .padding(.horizontal)
 
-                if let elevation = DEMImportReportText.summary(
-                    records: report.items.filter { $0.status == .ready }.map(\.elevationCorrection),
-                    correctsElevation: session.correctsElevation,
-                    commitFailed: report.commitFailed
+                if let elevation = BatchImportReportPresentation.fitElevationSummary(
+                    for: report,
+                    correctsElevation: session.correctsElevation
                 ) {
                     Text(elevation)
                         .font(AppDesign.Typography.compactLabel)
