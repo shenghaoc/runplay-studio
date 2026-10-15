@@ -21,7 +21,19 @@ public enum AppleHealthExportError: Error, Equatable, LocalizedError, Sendable {
     case dtdSuppliesValue(String)
 
     /// `XMLParser` reported a failure and no more specific cause was known.
+    ///
+    /// Raised whenever the parser reports an error, even when `parse()` itself
+    /// returned true: corelibs builds its parser in libxml2's recovery mode,
+    /// which can report success for a document it had to repair.
     case malformedDocument(String)
+
+    /// Reading the document failed partway, so what was read is not the whole
+    /// export.
+    ///
+    /// Taken from the stream's own report, not from `XMLParser`: Apple's parser
+    /// reports a generic parse error, or none, in place of a stream's error,
+    /// so its verdict alone would call a read failure a malformed document.
+    case readFailed(String)
 
     /// The export contained no `HealthData` root element, so it is not the
     /// document this parser reads.
@@ -53,6 +65,8 @@ public enum AppleHealthExportError: Error, Equatable, LocalizedError, Sendable {
             return message
         case .malformedDocument(let detail):
             return "This Apple Health export could not be read. \(detail)"
+        case .readFailed(let detail):
+            return "This Apple Health export could not be read to the end. \(detail)"
         case .notAHealthExport:
             return "This file is not an Apple Health export. "
                 + "Export your data from the Health app and try again."
@@ -151,12 +165,38 @@ public struct AppleHealthExportScan: Sendable {
     /// Heart-rate `Record` elements the scan saw, before any filtering.
     public var heartRateRecordCount: Int
 
-    /// `Record` elements skipped because they were nested inside a `Workout`.
-    ///
-    /// Counted rather than silently ignored: the measured export has 282 of
-    /// them, and a parser that tracked no nesting would index those as
-    /// heart-rate history. A nonzero count here proves the depth tracking ran.
+    /// Non-heart-rate `Record` elements ignored inside `Workout`, counted by
+    /// their type identifier. These are unsupported metrics, not lost heart rate.
+    /// Records without a type use the diagnostic key `missing-type`. The types
+    /// come from the document, so at most 64 are kept by name; any further type
+    /// is counted under `other-types`.
+    public var ignoredNonHeartRateRecords: [String: Int]
+
+    /// Distinct record types `ignoredNonHeartRateRecords` keeps by name.
+    static let maximumIgnoredRecordTypes = 64
+
+    /// The key that counts record types past `maximumIgnoredRecordTypes`.
+    static let otherIgnoredRecordTypes = "other-types"
+
+    /// All `Record` elements ignored inside `Workout`, including any nested
+    /// heart rate. Retained as a nesting diagnostic; only the non-HR subset is
+    /// reported by `ignoredNonHeartRateRecords`. Top-level records are not counted.
     public var nestedRecordCount: Int
+
+    /// `Workout` elements left out because their window could not be read.
+    ///
+    /// The reason is unreadable dates: a workout is dropped when its
+    /// `startDate` or `endDate` attribute is missing or cannot be parsed. Without
+    /// a window it can be joined to no heart rate and placed at no instant, and
+    /// inventing either would attribute data the export never claimed.
+    ///
+    /// Counted under its own reason rather than folded into `nestedRecordCount`,
+    /// because the two are different findings: nested records can contain
+    /// unsupported metrics such as effort scores, while a dropped workout is a
+    /// workout the user can see in Health that this import will not offer. A
+    /// nonzero count here is what lets the import report name the loss instead
+    /// of dropping a visible workout in silence.
+    public var droppedWorkoutCount: Int
 
     /// True when the first pass exceeded the ceiling and a second pass ran.
     public var usedFilteredSecondPass: Bool { passCount > 1 }
@@ -167,7 +207,9 @@ public struct AppleHealthExportScan: Sendable {
         workouts: [WorkoutEntry] = [],
         passCount: Int = 1,
         heartRateRecordCount: Int = 0,
-        nestedRecordCount: Int = 0
+        nestedRecordCount: Int = 0,
+        droppedWorkoutCount: Int = 0,
+        ignoredNonHeartRateRecords: [String: Int] = [:]
     ) {
         self.locale = locale
         self.exportDate = exportDate
@@ -175,6 +217,8 @@ public struct AppleHealthExportScan: Sendable {
         self.passCount = passCount
         self.heartRateRecordCount = heartRateRecordCount
         self.nestedRecordCount = nestedRecordCount
+        self.droppedWorkoutCount = droppedWorkoutCount
+        self.ignoredNonHeartRateRecords = ignoredNonHeartRateRecords
     }
 }
 
@@ -337,10 +381,12 @@ public struct AppleHealthExportParser: Sendable {
     /// factory also keeps every test here executable on Linux against a generated
     /// document, with no fixture files and no ZIP reader involved.
     ///
-    /// Each stream is wrapped in `DTDStrippingInputStream`. `policyViolation` is
-    /// checked before `XMLParser`'s own error is trusted, because after a
-    /// violation the parser sees a truncated document and would report a
-    /// misleading failure.
+    /// Each stream is wrapped in `DTDStrippingInputStream`.
+    /// `parse()` returning true is not taken as the verdict: each pass
+    /// checks, in order, the elider's policy violation, cancellation, the
+    /// ceiling refusal, a failed read, and then any error the parser reported,
+    /// because every earlier cause can leave the parser reporting a misleading
+    /// failure of its own.
     public func parse(
         openStream: () throws -> InputStream,
         isCancelled: @Sendable () -> Bool = { false }
@@ -375,6 +421,8 @@ public struct AppleHealthExportParser: Sendable {
         // that is what makes pass two cheaper in memory rather than merely
         // slower. Measured on the real export: 65,828 of 871,413 readings
         // (7.6%) land inside a window, about 1.6 MB against 48 MB.
+        // A filtered pass that exceeds the ceiling again is refused inside
+        // `runPass`, which stops parsing as soon as the refusal is certain.
         let windows = first.scan.workouts.map(\.window)
         let second = try runPass(
             openStream: openStream,
@@ -382,14 +430,6 @@ public struct AppleHealthExportParser: Sendable {
             windowFilter: windows,
             isCancelled: isCancelled
         )
-
-        guard !second.releasedByCeiling else {
-            // Even filtered retention exceeded the ceiling, so no bounded pass
-            // can succeed. This is a refusal, not another retry.
-            throw AppleHealthExportError.heartRateCeilingExceededEvenWhenFiltered(
-                ceiling: heartRateCeiling
-            )
-        }
 
         var scan = second.scan
         scan.passCount = 2
@@ -456,19 +496,46 @@ public struct AppleHealthExportParser: Sendable {
 
         let parsed = parser.parse()
 
-        guard !isCancelled() else { throw CancellationError() }
-
-        // Check the elider's verdict before the parser's. After a policy
-        // violation the elider stops feeding bytes, so the parser reports a
-        // truncated-document error that says nothing about the real cause.
+        // `parse()` alone is not the verdict. The causes are checked in this
+        // order, each before the parser's own error, because each can leave
+        // that error set and misleading.
+        //
+        // 1. The elider's verdict. After a policy violation the elider stops
+        //    feeding bytes, so the parser reports a truncated-document error
+        //    that says nothing about the real cause.
         if let violation = elider?.policyViolation {
             throw AppleHealthExportError.dtdSuppliesValue(violation.description)
         }
 
+        // 2. Cancellation.
+        guard !isCancelled() else { throw CancellationError() }
+
+        // 3. The ceiling refusal. A filtered pass that reached the ceiling
+        //    stopped itself with `abortParsing()`, which sets `parserError`.
+        if windowFilter != nil, delegate.releasedByCeiling {
+            throw AppleHealthExportError.heartRateCeilingExceededEvenWhenFiltered(
+                ceiling: heartRateCeiling
+            )
+        }
+
+        // 4. A failed read, named as itself: Apple's parser reports a generic
+        //    parse error, or none, in place of the stream's error.
+        let readFailure = elider?.readFailure
+            ?? (input.streamStatus == .error
+                ? (input.streamError ?? DTDStrippingInputStream.UpstreamReadFailed())
+                : nil)
+        if let readFailure {
+            throw AppleHealthExportError.readFailed(readFailure.localizedDescription)
+        }
+
+        // 5. Any parser error, even when `parse()` returned true: corelibs
+        //    builds its parser in libxml2's recovery mode, which can report
+        //    success for a document it had to repair.
+        if let parserError = parser.parserError {
+            throw AppleHealthExportError.malformedDocument(parserError.localizedDescription)
+        }
         guard parsed else {
-            let detail = parser.parserError.map { $0.localizedDescription }
-                ?? "The document ended unexpectedly."
-            throw AppleHealthExportError.malformedDocument(detail)
+            throw AppleHealthExportError.malformedDocument("The document ended unexpectedly.")
         }
 
         guard delegate.sawHealthData else {
@@ -477,7 +544,7 @@ public struct AppleHealthExportParser: Sendable {
 
         let lookup = delegate.finalizeIndex()
         return PassResult(
-            scan: delegate.buildScan(lookup: lookup),
+            scan: try delegate.buildScan(lookup: lookup, isCancelled: isCancelled),
             releasedByCeiling: delegate.releasedByCeiling
         )
     }
@@ -514,9 +581,10 @@ private final class Delegate: NSObject, XMLParserDelegate {
     /// Counting Workout depth alone is sufficient and is the part worth being
     /// careful about: a `Record` can never contain a `Workout`, so the 1,440,512
     /// non-self-closing top-level `Record` elements — which do have closing tags
-    /// and would otherwise have to be tracked — cannot affect the decision. The
-    /// measured export nests 282 `Record` elements inside workouts, and a
-    /// depth-blind parser would index those as heart-rate history.
+    /// and would otherwise have to be tracked — cannot affect the decision.
+    /// Nested records are scoped to their parent workout. Only top-level HR is
+    /// indexed by this parser; nested non-HR types are counted as unsupported
+    /// metrics rather than described as dropped heart-rate history.
     private var workoutDepth = 0
 
     private var pendingWorkouts: [AppleHealthExportScan.WorkoutEntry] = []
@@ -525,9 +593,18 @@ private final class Delegate: NSObject, XMLParserDelegate {
 
     private var heartRateRecordCount = 0
     private var nestedRecordCount = 0
+    private var ignoredNonHeartRateRecords: [String: Int] = [:]
+    private var droppedWorkoutCount = 0
 
-    init(windowFilter: [AppleHealthWorkoutWindow]?, heartRateCeiling: Int) {
+    /// True on the filtered second pass, where reaching the ceiling is final.
+    private let isFilteredPass: Bool
+
+    init(
+        windowFilter: [AppleHealthWorkoutWindow]?,
+        heartRateCeiling: Int
+    ) {
         index = AppleHealthHeartRateIndex(sampleCountCeiling: heartRateCeiling)
+        isFilteredPass = windowFilter != nil
         super.init()
         if let windows = windowFilter {
             // A second pass restricts retention to readings that overlap a
@@ -545,7 +622,10 @@ private final class Delegate: NSObject, XMLParserDelegate {
         index.finalize()
     }
 
-    func buildScan(lookup: AppleHealthHeartRateLookup) -> AppleHealthExportScan {
+    func buildScan(
+        lookup: AppleHealthHeartRateLookup,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> AppleHealthExportScan {
         var workouts = pendingWorkouts
         if let current = currentWorkout {
             workouts.append(current)
@@ -554,10 +634,21 @@ private final class Delegate: NSObject, XMLParserDelegate {
         // Join heart rate to each workout by time overlap. Done here rather than
         // during the parse because the index is not sortable until the pass ends,
         // and a range query over unsorted readings would silently miss some.
+        //
+        // Cancellation is checked here, not only around the native parse: this is
+        // a real translation loop, one range query per workout over the whole
+        // retained index, and on a large export it is the largest piece of work
+        // after the parse itself. Throwing unwinds before any scan is returned,
+        // so a cancelled import yields no scan at all rather than one holding a
+        // prefix of the workouts — a caller cannot mistake a partial join for a
+        // complete one.
         for position in workouts.indices {
+            guard !isCancelled() else { throw CancellationError() }
             let window = workouts[position].window
             workouts[position].heartRate = lookup.readings(in: window)
         }
+        // A cancellation that arrived during the last query is still seen.
+        guard !isCancelled() else { throw CancellationError() }
 
         return AppleHealthExportScan(
             locale: locale,
@@ -565,7 +656,9 @@ private final class Delegate: NSObject, XMLParserDelegate {
             workouts: workouts,
             passCount: 1,
             heartRateRecordCount: heartRateRecordCount,
-            nestedRecordCount: nestedRecordCount
+            nestedRecordCount: nestedRecordCount,
+            droppedWorkoutCount: droppedWorkoutCount,
+            ignoredNonHeartRateRecords: ignoredNonHeartRateRecords
         )
     }
 
@@ -608,6 +701,12 @@ private final class Delegate: NSObject, XMLParserDelegate {
                 ) {
                     currentWorkout = AppleHealthExportScan.WorkoutEntry(window: window)
                     currentRoutePath = nil
+                } else {
+                    // Unreadable window: no dates, or dates that do not parse.
+                    // The workout is dropped, and counted under that reason so
+                    // the loss surfaces instead of vanishing; see
+                    // `AppleHealthExportScan.droppedWorkoutCount`.
+                    droppedWorkoutCount += 1
                 }
             }
 
@@ -630,6 +729,16 @@ private final class Delegate: NSObject, XMLParserDelegate {
         case AppleHealthExportParser.Element.record:
             if workoutDepth >= 1 {
                 nestedRecordCount += 1
+                let type = attributeDict[AppleHealthExportParser.Attribute.type] ?? "missing-type"
+                if type != AppleHealthExportParser.heartRateType {
+                    // The type is chosen by the document, so the map is capped: a
+                    // file with endless distinct types cannot grow it without bound.
+                    let key = ignoredNonHeartRateRecords[type] != nil
+                        || ignoredNonHeartRateRecords.count < AppleHealthExportScan.maximumIgnoredRecordTypes
+                        ? type
+                        : AppleHealthExportScan.otherIgnoredRecordTypes
+                    ignoredNonHeartRateRecords[key, default: 0] += 1
+                }
                 return
             }
             guard attributeDict[AppleHealthExportParser.Attribute.type]
@@ -637,6 +746,12 @@ private final class Delegate: NSObject, XMLParserDelegate {
             heartRateRecordCount += 1
             guard let reading = Self.reading(from: attributeDict) else { return }
             index.append(reading)
+            // A filtered pass that reaches the ceiling has its answer, a
+            // refusal, so the rest of the document is not parsed. `runPass`
+            // reports the refusal ahead of the error `abortParsing()` sets.
+            if isFilteredPass, index.releasedByCeiling {
+                parser.abortParsing()
+            }
 
         default:
             break

@@ -231,8 +231,52 @@ final class AppleHealthExportParserTests: XCTestCase {
             )
         ))
         XCTAssertEqual(scan.nestedRecordCount, 1)
+        XCTAssertTrue(scan.ignoredNonHeartRateRecords.isEmpty, "nested HR must not be labelled non-HR")
         XCTAssertEqual(scan.heartRateRecordCount, 1)
         XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
+    }
+
+    func testIgnoredNonHeartRateRecordsAreCountedByTypeWithoutCountingTopLevelRecords() throws {
+        let instant = "2026-09-01 08:30:00 +0800"
+        let effortType = "HKQuantityTypeIdentifierEstimatedWorkoutEffortScore"
+        let energyType = "HKQuantityTypeIdentifierActiveEnergyBurned"
+        let effort = record(type: effortType, value: "7", start: instant, end: instant)
+        let energy = record(type: energyType, value: "8", start: instant, end: instant)
+        let scan = try parse(document(
+            records: effort + energy + heartRate("150", start: instant, end: instant),
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil,
+                nestedRecord: effort + effort + energy + "<Record/>"
+            )
+        ))
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords, [effortType: 2, energyType: 1, "missing-type": 1])
+        XCTAssertEqual(scan.nestedRecordCount, 4)
+        XCTAssertEqual(scan.heartRateRecordCount, 1)
+        XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
+    }
+
+    func testIgnoredRecordTypesAreCappedWithTheRestCountedTogether() throws {
+        // Six more distinct types than the map keeps by name.
+        let cap = AppleHealthExportScan.maximumIgnoredRecordTypes
+        let instant = "2026-09-01 08:30:00 +0800"
+        let nested = (0..<(cap + 6)).map {
+            record(type: "HKQuantityTypeIdentifierInvented\($0)", value: "1", start: instant, end: instant)
+        }.joined()
+        let scan = try parse(document(
+            records: "",
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil,
+                nestedRecord: nested
+            )
+        ))
+
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords.count, cap + 1)
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords[AppleHealthExportScan.otherIgnoredRecordTypes], 6)
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords.values.reduce(0, +), cap + 6)
     }
 
     func testOtherActivityTypesAreKeptForALaterLayerToFilter() throws {
@@ -284,6 +328,64 @@ final class AppleHealthExportParserTests: XCTestCase {
         ))
         XCTAssertEqual(scan.heartRateRecordCount, 1)
         XCTAssertEqual(scan.workouts.first?.heartRate.count, 0)
+    }
+
+    // MARK: - Workouts dropped for an unreadable window
+
+    func testWorkoutWithUnparseableStartDateIsDroppedAndCountedWithItsOwnReason() throws {
+        let first = runningWorkout(
+            start: "2026-09-01 08:00:00 +0800",
+            end: "2026-09-01 09:00:00 +0800",
+            route: nil
+        )
+        let second = runningWorkout(
+            start: "2026-09-02 08:00:00 +0800",
+            end: "2026-09-02 09:00:00 +0800",
+            route: nil
+        )
+        let malformed = "<Workout workoutActivityType=\"HKWorkoutActivityTypeRunning\" "
+            + "startDate=\"yesterday\" endDate=\"2026-09-03 09:00:00 +0800\"/>"
+
+        let scan = try parse(document(records: "", workouts: first + malformed + second))
+
+        // The two readable workouts survive, in order, and only the unreadable
+        // one is gone.
+        XCTAssertEqual(scan.workouts.map(\.window.startSeconds), [
+            seconds("2026-09-01 08:00:00 +0800"),
+            seconds("2026-09-02 08:00:00 +0800"),
+        ])
+        // One drop, under its own reason — not folded into the nested-record
+        // count, which is a different finding.
+        XCTAssertEqual(scan.droppedWorkoutCount, 1)
+        XCTAssertEqual(scan.nestedRecordCount, 0)
+    }
+
+    func testWorkoutWithUnparseableEndDateIsAlsoCountedAsADrop() throws {
+        let valid = runningWorkout(
+            start: "2026-09-01 08:00:00 +0800",
+            end: "2026-09-01 09:00:00 +0800",
+            route: nil
+        )
+        let malformed = "<Workout workoutActivityType=\"HKWorkoutActivityTypeRunning\" "
+            + "startDate=\"2026-09-03 08:00:00 +0800\" endDate=\"\"/>"
+
+        let scan = try parse(document(records: "", workouts: valid + malformed))
+
+        XCTAssertEqual(scan.workouts.count, 1)
+        XCTAssertEqual(scan.droppedWorkoutCount, 1)
+    }
+
+    func testFullyReadableDocumentReportsNoDroppedWorkouts() throws {
+        let scan = try parse(document(
+            records: "",
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil
+            )
+        ))
+        XCTAssertEqual(scan.workouts.count, 1)
+        XCTAssertEqual(scan.droppedWorkoutCount, 0)
     }
 
     // MARK: - The lossless guard and document shape
@@ -343,6 +445,72 @@ final class AppleHealthExportParserTests: XCTestCase {
         }
     }
 
+    // MARK: - Cancellation during translation
+
+    /// Cancelling after the native parse has finished but while heart rate is
+    /// still being joined to the workouts.
+    ///
+    /// The join runs entirely after the parse, in `buildScan`, so a predicate
+    /// that turns true partway through the workouts exercises the translation
+    /// check rather than the ones around the native call.
+    func testCancellationDuringTranslationThrowsAndReturnsNoPartialScan() throws {
+        let workouts = (1...6).map { day in
+            runningWorkout(
+                start: "2026-09-0\(day) 08:00:00 +0800",
+                end: "2026-09-0\(day) 09:00:00 +0800",
+                route: nil
+            )
+        }.joined()
+        let xml = document(records: "", workouts: workouts)
+
+        // A full parse consults cancellation once before the native parse, once
+        // after it, once per workout in the join loop, and once after the loop:
+        // 2 + 6 + 1 here. Pinning that count is what makes the cancel-at value
+        // below provably land inside the loop; if the parser gains or loses a
+        // check, this assertion fails instead of the next one quietly testing
+        // the wrong thing.
+        let baseline = CancellationProbe()
+        _ = try parser.parse(
+            openStream: { InputStream(data: Data(xml.utf8)) },
+            isCancelled: baseline.predicate
+        )
+        XCTAssertEqual(baseline.callCount, 2 + 6 + 1)
+
+        // Four calls in: the two around the parse, then two workouts already
+        // joined, leaving four untranslated.
+        let cancelling = CancellationProbe(cancelAtCall: 4)
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { InputStream(data: Data(xml.utf8)) },
+            isCancelled: cancelling.predicate
+        )) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        // It stopped on the fourth call rather than running the loop out, and
+        // the call threw, so no scan exists for a caller to mistake for a
+        // complete one — there is no partial result to return.
+        XCTAssertEqual(cancelling.callCount, 4)
+        XCTAssertLessThan(cancelling.callCount, baseline.callCount)
+    }
+
+    func testCancellationDuringTheLastHeartRateQueryIsReported() {
+        // Two workouts. The pass checks cancellation before the parse and after
+        // it, and the join checks before each workout's range query: four checks.
+        // Cancellation arrives after the fourth, while the last query runs.
+        let xml = document(
+            records: heartRate("150", start: "2026-09-01 08:30:00 +0800", end: "2026-09-01 08:30:00 +0800"),
+            workouts: runningWorkout(start: "2026-09-01 08:00:00 +0800", end: "2026-09-01 09:00:00 +0800", route: nil)
+                + runningWorkout(start: "2026-09-02 08:00:00 +0800", end: "2026-09-02 09:00:00 +0800", route: nil)
+        )
+        let probe = CancellationProbe(cancelAtCall: 5)
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { InputStream(data: Data(xml.utf8)) },
+            isCancelled: probe.predicate
+        )) { error in
+            XCTAssertTrue(error is CancellationError, "expected cancellation, got \(error)")
+        }
+        XCTAssertEqual(probe.callCount, 5)
+    }
+
     // MARK: - Ceiling and the second pass
 
     func testCeilingForcesAFilteredSecondPassThatKeepsOnlyInWindowReadings() throws {
@@ -358,12 +526,16 @@ final class AppleHealthExportParserTests: XCTestCase {
             workouts: runningWorkout(
                 start: "2026-09-01 08:00:00 +0800",
                 end: "2026-09-01 09:00:00 +0800",
-                route: nil
+                route: nil,
+                nestedRecord: record(type: "HKQuantityTypeIdentifierEstimatedWorkoutEffortScore",
+                                     value: "7", start: inside, end: inside)
             )
         )
         let scan = try parse(xml, ceiling: 2)
         XCTAssertEqual(scan.passCount, 2)
         XCTAssertTrue(scan.usedFilteredSecondPass)
+        XCTAssertEqual(scan.ignoredNonHeartRateRecords, ["HKQuantityTypeIdentifierEstimatedWorkoutEffortScore": 1])
+        XCTAssertEqual(scan.nestedRecordCount, 1, "the second pass must not double-count diagnostics")
         // Only the in-window reading survives the filtered pass; both
         // out-of-window readings were dropped before they could be retained.
         XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
@@ -400,6 +572,245 @@ final class AppleHealthExportParserTests: XCTestCase {
                 return XCTFail("expected filtered ceiling, got \(error)")
             }
             XCTAssertEqual(ceiling, 1)
+        }
+    }
+
+    // MARK: - parse() is not the verdict
+
+    /// A lock-guarded count a stream factory and a cancellation check can share.
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func increment() { lock.lock(); count += 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    }
+
+    private struct InjectedReadError: Error {}
+
+    /// Serves `data` until `failAt` bytes have been served, then fails every
+    /// read with -1. Records how much it served, so a test can see a pass stop
+    /// reading early.
+    private final class ServingStream: InputStream {
+        private let bytes: [UInt8]
+        private let failAt: Int
+        private let reportsError: Bool
+        private(set) var served = 0
+        private var failed = false
+
+        init(_ data: Data, failAt: Int = .max, reportsError: Bool = true) {
+            bytes = [UInt8](data)
+            self.failAt = failAt
+            self.reportsError = reportsError
+            super.init(data: Data())
+        }
+
+        override func open() {}
+        override func close() {}
+        override var streamStatus: Stream.Status { failed ? .error : .open }
+        override var streamError: Error? { failed && reportsError ? InjectedReadError() : nil }
+        override var hasBytesAvailable: Bool { !failed }
+
+        override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+            guard served < failAt else {
+                failed = true
+                return -1
+            }
+            let n = min(len, failAt - served, bytes.count - served)
+            for i in 0..<n { buffer[i] = bytes[served + i] }
+            served += n
+            return n
+        }
+    }
+
+    private func oneRunDocument() -> String {
+        document(
+            records: heartRate("150", start: "2026-09-01 08:30:00 +0800", end: "2026-09-01 08:30:00 +0800"),
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil
+            )
+        )
+    }
+
+    private func assertMalformed(
+        _ data: Data,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertThrowsError(try parser.parse(openStream: { InputStream(data: data) }), file: file, line: line) { error in
+            guard case AppleHealthExportError.malformedDocument = error else {
+                return XCTFail("expected malformedDocument, got \(error)", file: file, line: line)
+            }
+        }
+    }
+
+    func testValidDocumentParsesAsTheControl() throws {
+        let scan = try parse(oneRunDocument())
+        XCTAssertEqual(scan.workouts.count, 1)
+        XCTAssertEqual(scan.workouts.first?.heartRate.map(\.beatsPerMinute), [150])
+    }
+
+    func testMissingClosingHealthDataIsMalformed() throws {
+        let xml = oneRunDocument()
+        let close = try XCTUnwrap(xml.range(of: "</HealthData>"))
+        assertMalformed(Data(xml[..<close.lowerBound].utf8))
+    }
+
+    func testCompleteDocumentFollowedByANulByteIsMalformed() {
+        var data = Data(oneRunDocument().utf8)
+        data.append(0)
+        assertMalformed(data)
+    }
+
+    func testCancellationReportsAsCancelledWhenTheParserAlsoFailed() throws {
+        // The truncated document leaves `parserError` set; the cancellation
+        // that arrived during the parse is still what is reported.
+        let xml = oneRunDocument()
+        let close = try XCTUnwrap(xml.range(of: "</HealthData>"))
+        let truncated = Data(xml[..<close.lowerBound].utf8)
+        let opens = Counter()
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { opens.increment(); return InputStream(data: truncated) },
+            isCancelled: { opens.value >= 1 }
+        )) { error in
+            XCTAssertTrue(error is CancellationError, "expected cancellation, got \(error)")
+        }
+    }
+
+    func testCancellationReportsAsCancelledWhenTheFilteredPassAbortedItself() {
+        // Two in-window readings exceed a ceiling of 1 on both passes, so the
+        // filtered pass stops itself with `abortParsing()`, which sets
+        // `parserError`. Cancellation arrives once that pass has opened.
+        let instant = "2026-09-01 08:30:00 +0800"
+        let xml = document(
+            records: heartRate("150", start: instant, end: instant)
+                + heartRate("151", start: instant, end: instant),
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil
+            )
+        )
+        let opens = Counter()
+        let subject = AppleHealthExportParser(heartRateCeiling: 1)
+        XCTAssertThrowsError(try subject.parse(
+            openStream: { opens.increment(); return InputStream(data: Data(xml.utf8)) },
+            isCancelled: { opens.value >= 2 }
+        )) { error in
+            XCTAssertTrue(error is CancellationError, "expected cancellation, got \(error)")
+        }
+        XCTAssertEqual(opens.value, 2, "cancellation is seen after the filtered pass, not before it")
+    }
+
+    func testCeilingRefusalReportsAsTheCeilingWhenTheFilteredPassStopsEarly() throws {
+        // Two in-window readings exceed a ceiling of 1 on both passes, so the
+        // filtered pass stops itself with `abortParsing()`, which sets
+        // `parserError`. The refusal is still reported as itself, not as the
+        // error the abort leaves behind. A long tail of out-of-window readings
+        // follows, so where the parser stops reading at the abort, the
+        // filtered pass serves only a prefix of the document.
+        let instant = "2026-09-01 08:30:00 +0800"
+        let outside = "2026-09-02 08:30:00 +0800"
+        let tail = String(repeating: heartRate("120", start: outside, end: outside), count: 10_000)
+        let data = Data(document(
+            records: heartRate("150", start: instant, end: instant)
+                + heartRate("151", start: instant, end: instant)
+                + tail,
+            workouts: runningWorkout(
+                start: "2026-09-01 08:00:00 +0800",
+                end: "2026-09-01 09:00:00 +0800",
+                route: nil
+            )
+        ).utf8)
+        var streams: [ServingStream] = []
+        let subject = AppleHealthExportParser(heartRateCeiling: 1)
+        XCTAssertThrowsError(try subject.parse(openStream: {
+            let stream = ServingStream(data)
+            streams.append(stream)
+            return stream
+        })) { error in
+            guard case AppleHealthExportError.heartRateCeilingExceededEvenWhenFiltered(let ceiling) = error else {
+                return XCTFail("expected the filtered ceiling, got \(error)")
+            }
+            XCTAssertEqual(ceiling, 1)
+        }
+        XCTAssertEqual(streams.count, 2, "pass one, then the filtered pass")
+        XCTAssertEqual(streams.first?.served, data.count, "pass one reads to the end to collect the windows")
+        #if os(macOS)
+        // Apple's XMLParser keeps reading a stream to its end after
+        // `abortParsing()` and only stops calling the delegate (measured: four
+        // reads of up to 512 KB, every byte served), so the bytes served
+        // cannot show the stop here.
+        #else
+        XCTAssertLessThan(try XCTUnwrap(streams.last).served, data.count,
+                          "the filtered pass stops once its refusal is certain")
+        #endif
+    }
+
+    func testReadFailureBeforeTheDTDIsReportedAsAReadFailure() {
+        assertReadFailed(at: "encoding=")
+    }
+
+    func testReadFailureInsideTheDTDIsReportedAsAReadFailure() {
+        assertReadFailed(at: "<!ATTLIST Record", plus: 12)
+    }
+
+    func testReadFailurePartwayThroughAValidDocumentIsReportedAsAReadFailure() {
+        assertReadFailed(at: "<Workout ", plus: 5)
+    }
+
+    func testReadFailureAfterTheLastByteIsStillAReadFailure() {
+        // Every byte arrives, then the next read fails instead of reporting the
+        // end. Apple's parser calls this a success; the stream says otherwise.
+        let data = Data(oneRunDocument().utf8)
+        XCTAssertThrowsError(try parser.parse(openStream: { ServingStream(data, failAt: data.count) })) { error in
+            guard case AppleHealthExportError.readFailed = error else {
+                return XCTFail("expected readFailed, got \(error)")
+            }
+        }
+    }
+
+    func testDirectStreamFailingWithoutAnErrorIsStillAReadFailure() {
+        // Without the DTD-eliding wrapper (`elideDTD: false`, so this document
+        // has no DTD) the parser reads the stream directly. Every byte arrives,
+        // then the next read fails and the stream enters `.error` without
+        // supplying an `Error`.
+        let data = Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <HealthData locale="en_US"><ExportDate value="2026-09-02 09:00:00 +0800"/></HealthData>
+            """.utf8)
+        XCTAssertThrowsError(try parser.parse(
+            openStream: { ServingStream(data, failAt: data.count, reportsError: false) },
+            elideDTD: false
+        )) { error in
+            guard case AppleHealthExportError.readFailed = error else {
+                return XCTFail("expected readFailed, got \(error)")
+            }
+        }
+    }
+
+    /// A read failure at `marker` (plus `extra` bytes) fails the scan as a
+    /// read failure: not success, and not a malformed document.
+    private func assertReadFailed(
+        at marker: String,
+        plus extra: Int = 0,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let data = Data(oneRunDocument().utf8)
+        guard let range = data.range(of: Data(marker.utf8)) else {
+            return XCTFail("\(marker) is not in the fixture", file: file, line: line)
+        }
+        let failAt = range.lowerBound + extra
+        XCTAssertThrowsError(
+            try parser.parse(openStream: { ServingStream(data, failAt: failAt) }),
+            file: file,
+            line: line
+        ) { error in
+            guard case AppleHealthExportError.readFailed = error else {
+                return XCTFail("expected readFailed, got \(error)", file: file, line: line)
+            }
         }
     }
 
@@ -501,5 +912,38 @@ private final class ReadSizeProbe: InputStream {
             largestRead = max(largestRead, n)
         }
         return n
+    }
+}
+
+/// A cancellation predicate that counts how often it is consulted.
+///
+/// `@unchecked Sendable` over a lock because the parser takes a `@Sendable`
+/// closure. The tests run single-threaded, but the predicate has to look
+/// thread-safe to the type system to be passed at all.
+private final class CancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private let cancelAtCall: Int?
+
+    init(cancelAtCall: Int? = nil) {
+        self.cancelAtCall = cancelAtCall
+    }
+
+    /// Times the predicate has been consulted so far.
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    /// Starts reporting `true` from `cancelAtCall` onward; never when nil.
+    var predicate: @Sendable () -> Bool {
+        { [self] in
+            lock.lock()
+            defer { lock.unlock() }
+            calls += 1
+            guard let cancelAtCall else { return false }
+            return calls >= cancelAtCall
+        }
     }
 }
