@@ -315,6 +315,37 @@ final class AppleHealthImportServiceTests: XCTestCase {
         XCTAssertEqual(workout.summary.distanceProvenance, .sourceReported)
     }
 
+    /// Heart rate is placed on the route's own clock. This route's first point
+    /// comes 30 seconds after the workout starts, so a reading 90 seconds into
+    /// the workout is 60 seconds into the route, which is where the splits, the
+    /// chart and replay look for it.
+    func testRoutedHeartRateIsTimedFromTheRoutesFirstPoint() async throws {
+        let zip = try writeZip(named: "late-route.zip", entries: [
+            (Self.exportPath, healthDocument(
+                records: heartRateRecord(seconds: Self.runStart + 90, bpm: 150),
+                workouts: workoutRecord(
+                    startSeconds: Self.runStart,
+                    endSeconds: Self.runEnd,
+                    route: Self.routeReference
+                )
+            )),
+            (Self.routePath, routeGPX(startSeconds: Self.runStart + 30, points: 5)),
+        ])
+        let result = try await scan(zip)
+        let (store, storeActor, _) = makeStore(named: "lib-late-route")
+
+        _ = try await makeService().importSelection(
+            result.candidates,
+            from: result,
+            archiveAt: zip,
+            storeActor: storeActor
+        )
+
+        let workout = try XCTUnwrap(try libraryWorkouts(store).first)
+        XCTAssertEqual(workout.routePoints.first?.elapsedSeconds, 0)
+        XCTAssertEqual(workout.heartRateSeries?.map(\.elapsedSeconds), [60])
+    }
+
     // MARK: - Report counts
 
     func testImportReportCarriesExclusionsEvenWhenNothingIsSelected() async throws {

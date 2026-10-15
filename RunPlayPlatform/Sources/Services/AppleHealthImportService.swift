@@ -567,13 +567,17 @@ public actor AppleHealthImportService {
         }
         guard !routeCarriesHeartRate else { return nil }
 
-        let start = candidate.window.startSeconds
+        // On the clock the route is analysed, charted and replayed on: a routed
+        // workout's elapsed time starts at its first route point, which can come
+        // before or after the workout's own start, and a route-less workout's
+        // starts at that start. A reading that began before the origin lands at
+        // a negative offset; `RunWorkout`'s series normalization clamps those
+        // monotonically.
+        let origin = routePoints.first?.timestamp.timeIntervalSince1970
+            ?? TimeInterval(candidate.window.startSeconds)
         return candidate.heartRate.map { reading in
             HeartRateSample(
-                // Relative to the workout's own start. A reading that began
-                // before the window but overlaps it lands at a negative offset;
-                // `RunWorkout`'s series normalization clamps those monotonically.
-                elapsedSeconds: Double(reading.startSeconds - start),
+                elapsedSeconds: TimeInterval(reading.startSeconds) - origin,
                 heartRateBPM: reading.beatsPerMinute,
                 segmentIndex: 0
             )
