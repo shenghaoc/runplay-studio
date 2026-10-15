@@ -16,6 +16,82 @@ final class JSONImporterTests: XCTestCase {
         validateWorkout(workout)
     }
 
+    /// The bundled demo run states its timing three ways: timestamps,
+    /// `elapsedSeconds`, and `speedMetersPerSecond`. They must describe one
+    /// run, because analysis rebuilds elapsed time from the timestamps while
+    /// Route Replay reads its pace from the speed field.
+    func testSampleFixtureTimingFieldsDescribeOneRun() throws {
+        let data = try Data(contentsOf: resourceURL("sample_run.json"))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let metadata = try XCTUnwrap(object["metadata"] as? [String: Any])
+        let points = try XCTUnwrap(object["routePoints"] as? [[String: Any]])
+        let formatter = ISO8601DateFormatter()
+        func date(_ value: Any?) throws -> Date {
+            try XCTUnwrap((value as? String).flatMap(formatter.date(from:)))
+        }
+        func number(_ point: [String: Any], _ key: String) throws -> Double {
+            try XCTUnwrap(point[key] as? Double, key)
+        }
+
+        let start = try date(points.first?["timestamp"])
+        XCTAssertEqual(try date(metadata["startDate"]), start)
+        XCTAssertEqual(try date(metadata["endDate"]), try date(points.last?["timestamp"]))
+
+        var previousElapsed = 0.0
+        for (index, point) in points.enumerated() {
+            let elapsed = try date(point["timestamp"]).timeIntervalSince(start)
+            XCTAssertEqual(try number(point, "elapsedSeconds"), elapsed, "point \(index)")
+            if index > 0 {
+                XCTAssertGreaterThan(elapsed, previousElapsed, "point \(index)")
+                let distance = try number(point, "distanceFromStartMeters")
+                    - number(points[index - 1], "distanceFromStartMeters")
+                let segmentSpeed = distance / (elapsed - previousElapsed)
+                XCTAssertEqual(
+                    try number(point, "speedMetersPerSecond"),
+                    segmentSpeed,
+                    accuracy: segmentSpeed / 100,
+                    "point \(index)"
+                )
+            }
+            previousElapsed = elapsed
+        }
+    }
+
+    /// The README's Route Replay and summary card show the bundled run's pace
+    /// from different sources: the replay from each point's speed, the card
+    /// from the timeline. Past the first minute's pick-up they must agree.
+    func testSampleFixtureReplayPaceMatchesItsSummaryPace() throws {
+        let workout = try JSONWorkoutImporter().importWorkout(from: resourceURL("sample_run.json"))
+        XCTAssertEqual(workout.qualityDiagnostics.invalidSourceSpeedSampleCount, 0)
+
+        let summaryPace = workout.summary.averagePaceSecondsPerKilometer
+        let sampler = WorkoutVideoReplaySampler(workout: workout)
+        // The 15-second replay the README GIF is cut from: 450 frames at 30 fps.
+        let plan = try WorkoutVideoFramePlan(
+            frameCount: 450,
+            framesPerSecond: 30,
+            sourceTotalElapsedSeconds: sampler.totalElapsedSeconds
+        )
+        var checkedFrameCount = 0
+        var framesWithoutPace: [Int] = []
+        var worst = (frameIndex: -1, pace: summaryPace)
+        for frameIndex in 0..<plan.frameCount {
+            let frame = sampler.sample(frameIndex: frameIndex, plan: plan)
+            guard frame.sourceElapsedSeconds >= 60 else { continue }
+            checkedFrameCount += 1
+            guard let pace = frame.activePaceSecondsPerKilometer else {
+                framesWithoutPace.append(frameIndex)
+                continue
+            }
+            if abs(pace - summaryPace) > abs(worst.pace - summaryPace) {
+                worst = (frameIndex, pace)
+            }
+        }
+        XCTAssertGreaterThan(checkedFrameCount, plan.frameCount * 9 / 10)
+        XCTAssertEqual(framesWithoutPace, [])
+        XCTAssertEqual(worst.pace, summaryPace, accuracy: 10, "worst frame: \(worst.frameIndex)")
+    }
+
     func testComparisonFixtureLoads() throws {
         let resourcesURL = resourceURL("fixtures/comparison_park_run.json")
 

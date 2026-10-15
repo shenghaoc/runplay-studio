@@ -28,6 +28,13 @@ on:
         description: "Compile every test target in release configuration."
         type: boolean
         default: false
+      demo-assets:
+        description: >-
+          Check the committed README demo cards against the renderer
+          (docs/demo-assets.md). Pair it with full-tests, whose debug build
+          it reuses.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -75,6 +82,30 @@ jobs:
       - name: Verify full package
         if: inputs.full-tests
         run: swift test -Xswiftc -warnings-as-errors
+
+      # README drift gate: the summary cards committed in docs/assets/ must
+      # match what the current renderer draws from the bundled synthetic
+      # runs, within the pixel tolerance in DemoAssetImageComparison.swift,
+      # and docs/assets/ must fit its size budget. It reuses the debug build
+      # the suite above just made. The videos and GIFs are not compared:
+      # their basemap is Apple's live map data. Only the CI lane turns this
+      # on: it guards documentation, so a runner-image roll that changes text
+      # rasterization must not block a release. /bin/bash pins the bash 3.2
+      # every Mac ships, as in the self-test step above.
+      - name: Check README demo assets
+        if: inputs.demo-assets
+        run: /bin/bash ./scripts/generate-demo-assets.sh --check --output-dir "${RUNNER_TEMP}/demo-asset-check"
+
+      # The rendered cards and magenta diff images, for inspecting a drift
+      # failure or refreshing docs/assets/ from this runner image.
+      - name: Upload README demo asset drift evidence
+        if: failure() && inputs.demo-assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-asset-drift
+          path: ${{ runner.temp }}/demo-asset-check
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Release-mode compile check for every test target. Benchmark scripts
       # build tests in release, but no other suite compiles the test targets

@@ -916,7 +916,11 @@ library-wide invalidation tokens.
 
 `RunPlayStudioApp` owns one stable-ID SwiftUI `Window`, one `AppState`, and one
 `AppSessionController`. `ContentView` is an injected root view; it does not
-construct a second production coordinator. Closing and reopening the main
+construct a second production coordinator. `RunPlayStudioEntryPoint` is the
+process entry point and launches `RunPlayStudioApp`. In debug builds only, it
+first routes a `--demo-assets` launch to the headless README media generator
+([demo-assets.md](demo-assets.md)). That mode never constructs `AppState` or
+opens a window. Closing and reopening the main
 window in the same process reuses the app-owned state, and the scene is left on
 native macOS restoration for frame, minimise, zoom, and full-screen behavior.
 
