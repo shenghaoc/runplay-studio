@@ -74,6 +74,13 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
     /// archive reach outside itself. Even under `workout-routes/` it is refused.
     case routeEntryIsSymlink(path: String)
 
+    /// The route path matches no entry exactly and several ignoring case.
+    ///
+    /// Picking one would be a guess that could read another workout's route, so
+    /// the read is refused, as the shared archive path policy refuses an
+    /// ambiguous match.
+    case ambiguousRouteEntry(path: String, matchCount: Int)
+
     /// There is not enough free space to extract the document.
     case insufficientFreeSpace(requiredBytes: Int64, availableBytes: Int64)
 
@@ -106,6 +113,9 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
             return "The archive path \(path) is not usable as a route file (\(Self.describe(reason)))."
         case .routeEntryIsSymlink(let path):
             return "The route file \(path) is a symbolic link, which is not read."
+        case .ambiguousRouteEntry(let path, let matchCount):
+            return "\(matchCount) route files in the archive match \(path) when letter case "
+                + "is ignored, so none of them is read."
         case .insufficientFreeSpace(let requiredBytes, let availableBytes):
             return "Importing needs about \(Self.formatted(requiredBytes)) of free space, "
                 + "but only \(Self.formatted(availableBytes)) is available."
@@ -359,7 +369,7 @@ public actor AppleHealthArchiveService {
         )
         let unmatched = candidates.count { candidate in
             guard let path = candidate.routeArchivePath else { return false }
-            return !listing.routePathsLowercased.contains(path.lowercased())
+            return !resolvesToRouteFile(path, in: listing)
         }
 
         let report = AppleHealthArchiveReport(
@@ -404,7 +414,7 @@ public actor AppleHealthArchiveService {
         let listing = try listEntries(in: archive)
         guard !isCancelled() else { throw CancellationError() }
 
-        guard let entry = entry(matching: normalized, in: listing) else {
+        guard let entry = try entry(matching: normalized, in: listing) else {
             throw AppleHealthArchiveError.routeEntryNotFound(archivePath)
         }
         guard entry.type != .symlink else {
@@ -498,6 +508,8 @@ public actor AppleHealthArchiveService {
         var byPath: [String: Entry]
         /// Normalized paths in archive order.
         var paths: [String]
+        /// Normalized paths keyed by their lowercased form.
+        var pathsByLowercased: [String: [String]]
         /// Every entry the archive holds, ignored ones included.
         var entryCount: Int
         /// Lowercased normalized paths under the export's route directory.
@@ -507,6 +519,7 @@ public actor AppleHealthArchiveService {
     private func listEntries(in archive: Archive) throws -> EntryListing {
         var byPath: [String: Entry] = [:]
         var paths: [String] = []
+        var pathsByLowercased: [String: [String]] = [:]
         var routePaths: Set<String> = []
         var count = 0
 
@@ -531,6 +544,7 @@ public actor AppleHealthArchiveService {
             guard byPath[normalized] == nil else { continue }
             byPath[normalized] = entry
             paths.append(normalized)
+            pathsByLowercased[normalized.lowercased(), default: []].append(normalized)
             // Only regular files count as available routes. A symlink is a
             // refusal in `routeGPXData`, so it must not make a workout's route
             // reference look satisfied here. Only the entry that won its path
@@ -543,18 +557,37 @@ public actor AppleHealthArchiveService {
         return EntryListing(
             byPath: byPath,
             paths: paths,
+            pathsByLowercased: pathsByLowercased,
             entryCount: count,
             routePathsLowercased: routePaths
         )
     }
 
-    private func entry(matching normalizedPath: String, in listing: EntryListing) -> Entry? {
+    /// The entry a normalized path names: the exact path when it is listed,
+    /// otherwise the one path that matches it ignoring case.
+    ///
+    /// Several case-insensitive matches throw rather than resolve to whichever the
+    /// archive lists first.
+    private func entry(matching normalizedPath: String, in listing: EntryListing) throws -> Entry? {
         if let exact = listing.byPath[normalizedPath] { return exact }
-        let lowered = normalizedPath.lowercased()
-        guard let path = listing.paths.first(where: { $0.lowercased() == lowered }) else {
-            return nil
+        let matches = listing.pathsByLowercased[normalizedPath.lowercased()] ?? []
+        guard matches.count <= 1 else {
+            throw AppleHealthArchiveError.ambiguousRouteEntry(
+                path: normalizedPath,
+                matchCount: matches.count
+            )
         }
-        return listing.byPath[path]
+        return matches.first.flatMap { listing.byPath[$0] }
+    }
+
+    /// Whether `routeGPXData` would find a route file for a workout's reference:
+    /// a path under the route directory that names, exactly or unambiguously
+    /// ignoring case, a regular file.
+    private func resolvesToRouteFile(_ path: String, in listing: EntryListing) -> Bool {
+        guard Self.isRoutePath(path), let entry = try? entry(matching: path, in: listing) else {
+            return false
+        }
+        return entry.type == .file
     }
 
     /// Whether a normalized path sits under the export's route directory.

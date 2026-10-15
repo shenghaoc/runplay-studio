@@ -723,6 +723,29 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertEqual(data, gpx)
     }
 
+    /// Two route files that differ only in case, and a reference that matches
+    /// neither exactly. Reading the first would be a guess that could attach
+    /// another workout's route, so the read is refused and the reference counts
+    /// as unmatched. A path that matches one exactly still reads that one.
+    func testAmbiguousCaseInsensitiveRouteMatchIsRefused() async throws {
+        let mixed = "apple_health_export/workout-routes/Route_1.gpx"
+        let upper = "apple_health_export/workout-routes/ROUTE_1.gpx"
+        let url = try writeZip(named: "export.zip", entries: [
+            (Self.exportPath, healthDocument(workouts: runningWorkout(route: "/workout-routes/route_1.gpx"))),
+            (mixed, Data("mixed".utf8)),
+            (upper, Data("upper".utf8)),
+        ])
+
+        let result = try await makeService().scan(archiveAt: url)
+
+        XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
+        await assertThrows(.ambiguousRouteEntry(path: Self.routePath, matchCount: 2)) {
+            _ = try await makeService().routeGPXData(forArchivePath: Self.routePath, archiveAt: url)
+        }
+        let exact = try await makeService().routeGPXData(forArchivePath: upper, archiveAt: url)
+        XCTAssertEqual(exact, Data("upper".utf8))
+    }
+
     /// Two entries at one path: the first wins, and it is a symlink. A regular
     /// file after it must not make the reference look satisfied, because the
     /// symlink is the entry `routeGPXData` reads, and it refuses it.
