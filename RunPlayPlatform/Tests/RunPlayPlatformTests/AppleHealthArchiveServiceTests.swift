@@ -701,6 +701,28 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
     }
 
+    /// A root and route directory that differ only in case are still the export's:
+    /// the document is found ignoring case, so its routes are counted and read the
+    /// same way.
+    func testRoutesUnderADifferentlyCasedDirectoryAreMatched() async throws {
+        let gpx = routeGPX()
+        let url = try writeZip(named: "export.zip", entries: [
+            ("Apple_Health_Export/export.xml", healthDocument(
+                workouts: runningWorkout(route: "/workout-routes/route_1.gpx")
+            )),
+            ("Apple_Health_Export/Workout-Routes/route_1.gpx", gpx),
+        ])
+
+        let result = try await makeService().scan(archiveAt: url)
+
+        XCTAssertTrue(result.usedCaseInsensitiveXMLLookup)
+        XCTAssertEqual(result.report.routeEntryCount, 1)
+        XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 0)
+        let path = try XCTUnwrap(result.candidates.first?.routeArchivePath)
+        let data = try await makeService().routeGPXData(forArchivePath: path, archiveAt: url)
+        XCTAssertEqual(data, gpx)
+    }
+
     /// Two entries at one path: the first wins, and it is a symlink. A regular
     /// file after it must not make the reference look satisfied, because the
     /// symlink is the entry `routeGPXData` reads, and it refuses it.

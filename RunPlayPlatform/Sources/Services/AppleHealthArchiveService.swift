@@ -557,8 +557,13 @@ public actor AppleHealthArchiveService {
         return listing.byPath[path]
     }
 
+    /// Whether a normalized path sits under the export's route directory.
+    ///
+    /// Compared ignoring case, as every other lookup here is: an export whose
+    /// root or route directory differs only in case still has its document found
+    /// by the case-insensitive lookup, so its routes must be found the same way.
     private static func isRoutePath(_ normalizedPath: String) -> Bool {
-        normalizedPath.hasPrefix("\(AppleHealthExportParser.archiveRoot)/workout-routes/")
+        normalizedPath.lowercased().hasPrefix("\(AppleHealthExportParser.archiveRoot)/workout-routes/")
     }
 
     // MARK: - Locating the export document
