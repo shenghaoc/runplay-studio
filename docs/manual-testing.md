@@ -2022,6 +2022,39 @@ pop-up value, and the speed-change announcement.
 Not covered: the pill arrangement (unchanged), dark appearance (no drawing
 changed), a release bundle, and VoiceOver in Chinese.
 
+### 0.25× speed label pass 2026-10-15 (debug configuration, bundled demo run)
+
+Every speed label now comes from `ReplayState.formattedSpeed(_:)` in
+RunPlayCore: the pop-up's items and value, the pills' text and accessibility
+labels, and the speed-change announcement. The pills' help uses
+`formattedSpeedMultiplier(_:)`, the same number without the "×". One fraction
+digit stays the rule except where it would round the speed, so 0.25 no longer
+reads "0.2". `ReplayStateTests` pins both for every speed option.
+
+Packaged debug bundles of the base and the fix ran with a throwaway
+`RUNPLAY_LIBRARY_ROOT` and `CFFIXED_USER_HOME` on the bundled demo run.
+Attributes were read, and controls pressed, through `AXUIElement` calls only,
+with no keystrokes. The window was moved and resized the same way.
+
+- 1200×759, pop-up: an AX press listed 0.2×, 0.5×, 1×, 2.0×, 4.0×, and 8.0×
+  on the base, and 0.25×, 0.5×, 1×, 2.0×, 4.0×, and 8.0× on the fix. Choosing
+  the first item set AXValue to "0.2×" on the base and "0.25×" on the fix. On
+  the fix, the reopened menu put the check mark on 0.25×.
+- The pop-up sizes itself to its widest item, so it grew from 75×24 pt to
+  82×24 pt.
+- 1512×759, pills: the base's first pill had AXDescription "Replay speed 0.2×"
+  and help "Replay at 0.2 speed". The fix reads "Replay speed 0.25×" and
+  "Replay at 0.25 speed", and a window capture shows "0.25×" on the pill. The
+  pill is 41 pt wide (34 pt for "0.2×"). The other five pills kept their
+  descriptions and help, from "Replay speed 0.5×" to "Replay speed 8.0×", with
+  "Replay at normal speed" on 1×.
+- Pressing the 0.5× pill and then the 0.25× pill moved the selected state with
+  each press.
+
+Not covered: VoiceOver speech for the speed-change announcement (its label is
+the one `ReplayStateTests` pins), VoiceOver in Chinese (the catalog keys are
+unchanged), dark appearance, and a release bundle.
+
 ## Delete UI Checklist
 
 - [x] Right-click on a workout row shows "Delete Run" context menu
