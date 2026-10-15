@@ -538,10 +538,10 @@ public actor AppleHealthImportService {
 
     /// The candidate's joined heart rate, in the standalone-series shape.
     ///
-    /// Produced only when the route carries no heart rate of its own, which is
-    /// the single-source invariant `RunWorkout` enforces in its initializer.
-    /// Setting the property directly would bypass that check, so the check is
-    /// made here instead.
+    /// Produced only when the route carries no heart rate of its own. That is
+    /// the single-source invariant `RunWorkout` enforces whenever
+    /// `heartRateSeries` is set, so this check only saves building a series the
+    /// assignment would drop.
     ///
     /// `segmentIndex` stays 0: an Apple Health workout window is one continuous
     /// recording, and this layer has nothing that could identify a pause inside
