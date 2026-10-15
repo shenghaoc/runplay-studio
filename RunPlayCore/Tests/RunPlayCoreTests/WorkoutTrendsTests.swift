@@ -107,6 +107,21 @@ final class WorkoutTrendsTests: XCTestCase {
         XCTAssertEqual(year.end, utcDate(2027, 1, 1, 0))
     }
 
+    func testPeriodBoundsEndAtNextPeriodStartWhenPeriodStartsAtOne() throws {
+        // Paraguay skipped midnight into 1 October 2023 and Iran into Monday
+        // 22 March 2021, so those periods start at 01:00. The periods after
+        // them start at 00:00, not one month or one week after the start.
+        let asuncion = try XCTUnwrap(TimeZone(identifier: "America/Asuncion"))
+        let october = WorkoutTrendsAggregator.periodBounds(for: key(.month, 2023, 10), timeZone: asuncion)
+        XCTAssertEqual(october.start, utcDate(2023, 10, 1, 4)) // 01:00 -03:00
+        XCTAssertEqual(october.end, utcDate(2023, 11, 1, 3)) // 00:00 -03:00
+
+        let tehran = try XCTUnwrap(TimeZone(identifier: "Asia/Tehran"))
+        let week = WorkoutTrendsAggregator.periodBounds(for: key(.week, 2021, 12), timeZone: tehran)
+        XCTAssertEqual(week.start, utcDate(2021, 3, 21, 20, 30)) // 01:00 +04:30 on 22 March
+        XCTAssertEqual(week.end, utcDate(2021, 3, 28, 19, 30)) // 00:00 +04:30 on 29 March
+    }
+
     func testNextKeyRollsOverYearBoundaries() {
         XCTAssertEqual(
             WorkoutTrendsAggregator.nextKey(after: key(.week, 2026, 53)),

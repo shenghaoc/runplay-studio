@@ -44,6 +44,14 @@ final class TrainingLoadRollupTests: XCTestCase {
         (day(dayOffset), 0, load)
     }
 
+    /// A wall-clock time at a fixed UTC offset, for exact instants around
+    /// daylight-saving transitions.
+    private func instant(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, utcOffsetHours: Int) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: utcOffsetHours * 3_600)!
+        return cal.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
     // MARK: - Closed-form exponential rollup
 
     /// Constant daily load L for n days from a zero start converges as
@@ -244,6 +252,47 @@ final class TrainingLoadRollupTests: XCTestCase {
         XCTAssertEqual(series.loadDays.count, 1)
         XCTAssertEqual(series.loadDays[0].contribution, .hrDay)
         XCTAssertEqual(series.loadDays[0].date, day(1))
+    }
+
+    /// Chile skips midnight into 6 September 2026, so that day starts at
+    /// 01:00. Stepping back from it must reach 5 September's 00:00 start;
+    /// one day earlier at the same wall-clock time misses every earlier day.
+    func testDailySeriesStepsBackAcrossSkippedMidnight() throws {
+        let santiago = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
+        let series = TrainingLoadRollup.series(
+            contributions: [
+                (instant(2026, 9, 5, 12, utcOffsetHours: -4), nil, measuredSnapshot(trimp: 50)),
+                (instant(2026, 9, 7, 12, utcOffsetHours: -3), nil, measuredSnapshot(trimp: 50)),
+            ],
+            fallbackTimeZone: santiago
+        )
+        XCTAssertEqual(series.loadDays.map(\.date), [
+            instant(2026, 9, 5, 0, utcOffsetHours: -4),
+            instant(2026, 9, 6, 1, utcOffsetHours: -3),
+            instant(2026, 9, 7, 0, utcOffsetHours: -3),
+        ])
+        XCTAssertEqual(series.loadDays.map(\.runCount), [1, 0, 1])
+    }
+
+    /// Cuba repeats 00:00-01:00 on 1 November 2026, so that day starts at
+    /// the first 00:00 (-04:00). Stepping back from 2 November must reach
+    /// it, not the repeated 00:00 an hour later.
+    func testDailySeriesStepsBackAcrossRepeatedMidnight() throws {
+        let havana = try XCTUnwrap(TimeZone(identifier: "America/Havana"))
+        let series = TrainingLoadRollup.series(
+            contributions: [
+                (instant(2026, 10, 31, 12, utcOffsetHours: -4), nil, measuredSnapshot(trimp: 50)),
+                (instant(2026, 11, 1, 12, utcOffsetHours: -5), nil, measuredSnapshot(trimp: 50)),
+                (instant(2026, 11, 2, 12, utcOffsetHours: -5), nil, measuredSnapshot(trimp: 50)),
+            ],
+            fallbackTimeZone: havana
+        )
+        XCTAssertEqual(series.loadDays.map(\.date), [
+            instant(2026, 10, 31, 0, utcOffsetHours: -4),
+            instant(2026, 11, 1, 0, utcOffsetHours: -4),
+            instant(2026, 11, 2, 0, utcOffsetHours: -5),
+        ])
+        XCTAssertEqual(series.loadDays.map(\.runCount), [1, 1, 1])
     }
 
     func testDefaultConstantsMatchBanisterConventions() {

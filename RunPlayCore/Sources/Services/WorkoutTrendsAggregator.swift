@@ -98,7 +98,10 @@ public enum WorkoutTrendsAggregator {
         case .month: unit = .month
         case .year: unit = .year
         }
-        let end = calendar.date(byAdding: unit, value: 1, to: start) ?? start
+        // The period's own interval, not the start plus one unit: a period
+        // whose first midnight daylight saving skips starts at 01:00, and one
+        // unit later is 01:00 on a day that starts at 00:00.
+        let end = calendar.dateInterval(of: unit, for: start)?.end ?? start
         return (start, end)
     }
 

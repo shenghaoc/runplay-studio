@@ -189,7 +189,16 @@ public enum TrainingLoadRollup {
                 ))
             }
             if current <= first { break }
-            guard let previous = calendar.date(byAdding: .day, value: -1, to: current) else { break }
+            // Step to the start of the day holding the instant before this
+            // day's start. Going back one day at the same wall-clock time
+            // fails twice: from a day that starts at 01:00 (daylight saving
+            // skipped its midnight) it lands at 01:00 the day before and then
+            // misses every earlier day's key, and onto a day whose midnight
+            // repeats it lands on the second 00:00.
+            guard let previous = calendar.dateInterval(
+                of: .day,
+                for: current.addingTimeInterval(-1)
+            )?.start else { break }
             current = previous
         }
         days.reverse()
