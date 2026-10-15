@@ -318,7 +318,10 @@ public enum AppleHealthWorkoutCandidateBuilder {
     ) -> Double? {
         for statistic in statistics where statistic.type == distanceStatisticType {
             guard let sum = statistic.sum, sum.isFinite else { continue }
-            guard let meters = meters(from: sum, unit: statistic.unit) else { continue }
+            // A negative sum is no distance, and a huge finite one can overflow to
+            // infinity in the conversion, so the converted value is checked too.
+            guard let meters = meters(from: sum, unit: statistic.unit),
+                  meters.isFinite, meters >= 0 else { continue }
             return meters
         }
         return nil

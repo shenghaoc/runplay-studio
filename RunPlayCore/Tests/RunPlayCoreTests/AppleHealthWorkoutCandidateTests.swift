@@ -168,6 +168,16 @@ final class AppleHealthWorkoutCandidateTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.sourceDistanceMeters), [5_000, nil])
     }
 
+    func testANegativeOrOverflowingDistanceIsNoDistance() {
+        let candidates = AppleHealthWorkoutCandidateBuilder.candidates(from: scan([
+            entry(1_000, 2_000, statistics: [distanceStatistic(-5)]),
+            entry(3_000, 4_000, statistics: [distanceStatistic(1e306)]),
+            entry(5_000, 6_000, statistics: [distanceStatistic(-1), distanceStatistic(5)]),
+        ]))
+
+        XCTAssertEqual(candidates.map(\.sourceDistanceMeters), [nil, nil, 5_000])
+    }
+
     func testUnrecognizedDistanceUnitYieldsNoDistance() {
         let candidates = AppleHealthWorkoutCandidateBuilder.candidates(from: scan([
             entry(1_000, 2_000, statistics: [distanceStatistic(5.2, unit: "furlong")]),
