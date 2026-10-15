@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Icon for the label of a `Menu` whose accessibility label differs from its
-/// visible title.
+/// Icon for the label of a `Menu` that carries its own accessibility label,
+/// even one that repeats the visible title.
 ///
 /// A macOS `Menu` is backed by an AppKit menu button. When the view carries
 /// its own `accessibilityLabel`, AppKit fills the button's AXDescription from

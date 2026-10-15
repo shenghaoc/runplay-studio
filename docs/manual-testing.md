@@ -157,6 +157,50 @@ reported that a raw 900 m spike had been ignored. Accessibility inspection found
 the labelled Route Color control and combined numeric legend; arrow-key/Return
 operation selected a menu mode without pointer input.
 
+### Route Color Item Chooser pass 2026-10-15 (debug configuration, bundled demo run)
+
+The map's Route Color pull-down had the #161 leak. An AX dump of a packaged
+debug bundle without the fix showed AXTitle "Route Color" from
+`accessibilityLabel`, AXValue "Solid" from `accessibilityValue`, and
+AXDescription "Paint palette", the name AppKit generates for `paintpalette`.
+In zh-Hans and zh-Hant the generated name followed the app language ("调色板",
+"調色盤"). With VoiceOver on, the Item Chooser filtered to "route color" read
+"Solid Route Color Paint palette menu button". Focus read "Solid, Route Color,
+menu button".
+
+Here the label override repeats the visible title, so the #161 rule ("differs
+from its visible title") did not predict the leak. The same build without
+`accessibilityLabel` reported no AXDescription, so any label override is
+enough. The fix keeps the label and draws the icon with `DecorativeMenuSymbol`.
+
+On the fixed bundle:
+
+- AXDescription is `" "` in English, zh-Hans, and zh-Hant. The titles are
+  "Route Color", "路线着色", and "路線著色".
+- The Item Chooser, filtered to "route color", read "Solid Route Color   menu
+  button". Focus still read "Solid, Route Color, menu button".
+- The icon rendered as before in light appearance.
+- An AX press opened the menu: Solid, Pace, Heart Rate, "Power — Unavailable"
+  (disabled), and Elevation. Choosing Pace changed the value to "Pace".
+
+An AX scan of every menu and pop-up button on the workout detail, All Runs,
+Personal Heatmap, Trends, Records, and Routes found no other generated symbol
+description. The heatmap route filter reads `" "` (#161). The toolbar Import
+pull-down and the workout toolbar's Export pull-down still report AXTitle
+`chevron.pulldown` (#194). The Organise and Merge into… pull-downs did not
+appear with the demo library; neither has a label override.
+
+Found, and present before this change:
+
+- The overlay menu shows no check mark beside the selected mode. The
+  `checkmark` image in each item's `HStack` label is dropped (seen with
+  Elevation selected).
+- The replay speed picker's AXDescription is "Speed, Replay speed":
+  `labelsHidden()` plus `accessibilityLabel` names it twice, the #160 shape.
+
+Not covered: dark appearance, VoiceOver speech in Chinese (only AX attributes
+were read there), and a release build.
+
 ## Personal Heatmap Checklist
 
 Use only synthetic or explicitly private, ignored local workout files. Do not
