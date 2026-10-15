@@ -122,6 +122,26 @@ extension WorkoutRouteColorMode {
     func isSelectable(in availability: RouteMetricModeAvailability?) -> Bool {
         self == .solid || (availability?.isAvailable(self) ?? false)
     }
+
+    /// The check mark on this mode's row in a Route Color menu, as the binding
+    /// of the row's `Toggle`: on while `selectedMode()` is this mode.
+    ///
+    /// Choosing an unchecked row selects its mode. Choosing the checked row
+    /// sends `false`, which leaves the selection alone, so the row stays
+    /// checked. The closures are main-actor isolated because `Binding` takes
+    /// `@Sendable` accessors.
+    @MainActor
+    func menuCheck(
+        selectedMode: @escaping @MainActor () -> WorkoutRouteColorMode,
+        select: @escaping @MainActor (WorkoutRouteColorMode) -> Void
+    ) -> Binding<Bool> {
+        Binding(
+            get: { selectedMode() == self },
+            set: { isOn in
+                if isOn { select(self) }
+            }
+        )
+    }
 }
 
 /// App-level presentation actions (help sheets, etc.).
