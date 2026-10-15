@@ -110,7 +110,11 @@ struct ReplayControlsView: View {
                             .font(AppDesign.Typography.compactLabel)
                             .foregroundStyle(.secondary)
 
-                        Picker("Speed", selection: Binding(
+                        // The "Speed" text beside it is the visible label, so
+                        // the picker has no label view. Omitting it, rather than
+                        // hiding it with `labelsHidden()`, keeps it out of the
+                        // accessibility description ("Speed, Replay speed").
+                        Picker(selection: Binding(
                             get: { controller.state.playbackSpeed },
                             set: { controller.setSpeed($0) }
                         )) {
@@ -118,9 +122,10 @@ struct ReplayControlsView: View {
                                 Text(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))
                                     .tag(speed)
                             }
+                        } label: {
+                            EmptyView()
                         }
                         .pickerStyle(.menu)
-                        .labelsHidden()
                         .controlSize(.regular)
                         .accessibilityLabel("Replay speed")
                         .accessibilityValue(controller.state.formattedSpeed)
