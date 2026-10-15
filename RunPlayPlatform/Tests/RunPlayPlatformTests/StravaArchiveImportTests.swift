@@ -453,6 +453,46 @@ final class StravaArchiveImportTests: XCTestCase {
         }
     }
 
+    /// A Cancel that lands as the commit begins ends as a cancelled pass, not a
+    /// failed commit: the commit refuses a cancelled task before saving anything.
+    func testCancellingAtTheCommitReportsACancelledPassNotAFailure() async throws {
+        let csv = activitiesCSV(rows: [
+            (id: "1", name: "Commit", type: "Run", file: "activities/1.gpx")
+        ])
+        let zip = try writeZip(named: "commit-cancel.zip", entries: [
+            ("activities.csv", csv),
+            ("activities/1.gpx", makeGPX(name: "Commit"))
+        ])
+        let store = FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("lib-commit-cancel"))
+        let storeActor = WorkoutLibraryStoreActor(store: store)
+        let service = StravaArchiveService()
+        let scan = try await service.scanArchive(at: zip, existingWorkouts: [])
+        let selection = WorkoutBatchImportSelection(
+            selectedCandidateIDs: scan.candidates.map(\.id),
+            candidates: scan.candidates
+        )
+
+        let task = Task {
+            try await service.importCandidates(
+                selection,
+                from: zip,
+                existingWorkouts: [],
+                storeActor: storeActor
+            ) { progress in
+                if progress.phase == .committing {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+            }
+        }
+        let report = try await task.value
+
+        XCTAssertTrue(report.wasCancelled)
+        XCTAssertFalse(report.commitFailed)
+        XCTAssertNil(report.errorMessage)
+        XCTAssertEqual(report.importedCount, 0)
+        XCTAssertThrowsError(try store.loadManifest())
+    }
+
     func testContentHasherStable() {
         let data = Data("stable".utf8)
         let a = ContentHasher.sha256Hex(of: data)
