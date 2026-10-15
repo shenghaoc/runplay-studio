@@ -418,6 +418,44 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertTrue(appState.isModalPresentationActive)
     }
 
+    /// An open review resets the operation state to idle, so every other way
+    /// into the library checks for it: its duplicate flags describe the library
+    /// as it was scanned, and the import it leads to takes the batch.
+    func testOtherImportsWaitWhileAHealthReviewIsOpen() async throws {
+        let appState = AppState(
+            storeActor: WorkoutLibraryStoreActor(
+                store: FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library"))
+            ),
+            importService: WorkoutImportService(),
+            archiveService: StravaArchiveService(),
+            appleHealthArchiveService: AppleHealthArchiveService()
+        )
+        appState.attachWatchFolderCoordinator(
+            store: FileWatchFolderStore(rootURL: tempDir.appendingPathComponent("watch")),
+            digest: CryptoKitContentDigest()
+        )
+        present(appState, scanResult(candidates: [candidate(index: 0, start: 1_000, end: 1_600)]))
+        XCTAssertEqual(appState.operationState, .idle)
+
+        XCTAssertEqual(appState.watchFolderCoordinator?.canImportNow(), false)
+
+        let gpx = tempDir.appendingPathComponent("run.gpx")
+        try Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx version="1.1" creator="RunPlayTest"><trk><trkseg>
+        <trkpt lat="1.30" lon="103.80"><time>2026-09-01T08:00:00Z</time></trkpt>
+        <trkpt lat="1.31" lon="103.80"><time>2026-09-01T08:05:00Z</time></trkpt>
+        <trkpt lat="1.32" lon="103.80"><time>2026-09-01T08:10:00Z</time></trkpt>
+        </trkseg></trk></gpx>
+        """.utf8).write(to: gpx)
+        await appState.importWorkout(from: gpx)
+        XCTAssertTrue(appState.workouts.isEmpty)
+
+        appState.beginArchiveImport(from: tempDir.appendingPathComponent("strava.zip"))
+        XCTAssertNil(appState.archiveSession)
+        XCTAssertEqual(appState.operationState, .idle)
+    }
+
     func testCancellingTheReviewClosesItAndLeavesTheLibraryUntouched() {
         let appState = makeAppState()
         present(appState, scanResult(candidates: [candidate(index: 0, start: 0, end: 600)]))

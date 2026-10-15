@@ -426,6 +426,7 @@ class AppState: ObservableObject {
             return self.operationState == .idle
                 && self.archiveSession == nil
                 && self.fitSessionImportSession == nil
+                && self.appleHealthSession == nil
         }
         // Watch-folder results are non-modal, so speech is the only signal for
         // a background import completing, failing, or a folder disappearing.
@@ -852,7 +853,8 @@ class AppState: ObservableObject {
         guard let importService, let storeActor else { return }
         guard operationState == .idle,
               archiveSession == nil,
-              fitSessionImportSession == nil
+              fitSessionImportSession == nil,
+              appleHealthSession == nil
         else {
             return
         }

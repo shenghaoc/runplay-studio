@@ -15,11 +15,12 @@ extension AppState {
 
     /// Begin scanning a user-selected Strava bulk-export ZIP.
     func beginArchiveImport(from url: URL) {
-        // Mutual exclusion with multi-session FIT review / import (same as
-        // `importWorkout` guarding `archiveSession`).
+        // Mutual exclusion with multi-session FIT review / import and with the
+        // Apple Health review (same as `importWorkout` guarding `archiveSession`).
         guard operationState == .idle,
               archiveSession == nil,
-              fitSessionImportSession == nil
+              fitSessionImportSession == nil,
+              appleHealthSession == nil
         else { return }
         guard let archiveService, storeActor != nil else {
             errorMessage = "Archive import is unavailable in this session."
