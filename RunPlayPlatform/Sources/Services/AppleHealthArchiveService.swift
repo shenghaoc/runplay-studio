@@ -43,6 +43,10 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
     /// The archive holds more entries than the security policy allows.
     case tooManyEntries(limit: Int)
 
+    /// The export offers more runs than the security policy lets one import
+    /// review.
+    case tooManyCandidates(limit: Int)
+
     /// No export document was found in the archive.
     case exportXMLNotFound
 
@@ -61,6 +65,12 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
 
     /// An entry's uncompressed content exceeded the byte cap.
     case entryTooLarge(path: String, limitBytes: Int64)
+
+    /// The central-directory metadata is missing, inconsistent, or unsupported.
+    case invalidCentralDirectory
+
+    /// Decompression would write more bytes than the central directory declares.
+    case entryExceedsDeclaredSize(path: String, declaredBytes: UInt64)
 
     /// The requested entry is not a readable route file in this archive.
     case routeEntryNotFound(String)
@@ -103,6 +113,8 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
             return "This archive is larger than the \(Self.formatted(limitBytes)) limit."
         case .tooManyEntries(let limit):
             return "This archive holds more than \(limit) entries."
+        case .tooManyCandidates(let limit):
+            return "This export holds more than \(limit) runs, more than one import can review."
         case .exportXMLNotFound:
             return "This ZIP does not contain an Apple Health export. "
                 + "It should hold \(AppleHealthExportParser.archiveRoot)/export.xml."
@@ -113,6 +125,10 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
             return "The file \(path) is not an Apple Health export document."
         case .entryTooLarge(let path, let limitBytes):
             return "\(path) is larger than the \(Self.formatted(limitBytes)) limit."
+        case .invalidCentralDirectory:
+            return "This archive has an unreadable central directory."
+        case .entryExceedsDeclaredSize:
+            return "The export document expands beyond the size declared by its archive. It was not imported."
         case .routeEntryNotFound(let path):
             return "The archive has no route file at \(path)."
         case .routePathRejected(let path, let reason):
@@ -174,6 +190,10 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
     /// Candidates flagged as an exact or possible duplicate of another window.
     public var duplicateCandidateCount: Int
 
+    /// Parsed non-running workouts deliberately excluded from candidates.
+    public var excludedWorkoutsByActivityType: [String: Int]
+    public var excludedWorkoutCount: Int { excludedWorkoutsByActivityType.values.reduce(0, +) }
+
     /// Workouts the scan could not build.
     public var droppedWorkoutCount: Int
 
@@ -201,7 +221,8 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
         unmatchedRouteReferenceCount: Int,
         routeEntryCount: Int,
         entryCount: Int,
-        uncompressedXMLBytes: Int64
+        uncompressedXMLBytes: Int64,
+        excludedWorkoutsByActivityType: [String: Int] = [:]
     ) {
         self.workoutCount = workoutCount
         self.candidateCount = candidateCount
@@ -211,6 +232,7 @@ public struct AppleHealthArchiveReport: Hashable, Sendable {
         self.routeEntryCount = routeEntryCount
         self.entryCount = entryCount
         self.uncompressedXMLBytes = uncompressedXMLBytes
+        self.excludedWorkoutsByActivityType = excludedWorkoutsByActivityType
     }
 }
 
@@ -302,6 +324,9 @@ public actor AppleHealthArchiveService {
     /// How far a fallback extraction may write before it is abandoned.
     private let extractionRootOverride: URL?
 
+    /// Individual route payload limit; never applied to the streamed export document.
+    private let sourcePayloadByteLimit: Int64
+
     /// Age after which a sweep may delete an extraction file.
     private let staleExtractionAge: TimeInterval
 
@@ -310,9 +335,10 @@ public actor AppleHealthArchiveService {
 
     public init(policy: WorkoutArchiveSecurityPolicy = .default) {
         self.policy = policy
+        self.sourcePayloadByteLimit = Int64(WorkoutImportResourceLimits.maxSourceFileBytes)
         self.extractionRootOverride = nil
         self.staleExtractionAge = 3_600
-        self.availableCapacity = AppleHealthArchiveService.availableCapacityOnDisk
+        self.availableCapacity = { Self.availableCapacityOnDisk(at: $0) }
     }
 
     /// Test seam: point extraction at a scratch directory and fake free space.
@@ -320,9 +346,11 @@ public actor AppleHealthArchiveService {
         policy: WorkoutArchiveSecurityPolicy,
         extractionRoot: URL?,
         staleExtractionAge: TimeInterval,
-        availableCapacity: @escaping @Sendable (URL) -> Int64?
+        availableCapacity: @escaping @Sendable (URL) -> Int64?,
+        sourcePayloadByteLimit: Int64 = Int64(WorkoutImportResourceLimits.maxSourceFileBytes)
     ) {
         self.policy = policy
+        self.sourcePayloadByteLimit = max(0, sourcePayloadByteLimit)
         self.extractionRootOverride = extractionRoot
         self.staleExtractionAge = staleExtractionAge
         self.availableCapacity = availableCapacity
@@ -350,11 +378,16 @@ public actor AppleHealthArchiveService {
 
         let document = try locateExportXML(in: listing, archive: archive)
 
+        let declaredXMLBytes = try HealthArchiveCentralDirectory.uncompressedSize(
+            at: archiveURL,
+            entryPath: document.entry.path,
+            maximumEntries: policy.maxEntryCount
+        )
         let temporaryURL = try extractToTemporaryFile(
             document.entry,
             path: document.path,
             from: archive,
-            limitBytes: sourceByteLimit,
+            declaredBytes: declaredXMLBytes,
             isCancelled: isCancelled
         )
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
@@ -376,10 +409,17 @@ public actor AppleHealthArchiveService {
             isCancelled: isCancelled
         )
 
-        let candidates = AppleHealthWorkoutCandidateBuilder.candidates(
+        let built = AppleHealthWorkoutCandidateBuilder.build(
             from: scan,
             existingLibraryRuns: existingLibraryRuns
         )
+        // Checked on the built candidates, where the running filter lives,
+        // rather than by restating that filter here. Flagging duplicates is a
+        // lookup per candidate, so building them first costs little.
+        guard built.candidates.count <= policy.maxCandidateActivityCount else {
+            throw AppleHealthArchiveError.tooManyCandidates(limit: policy.maxCandidateActivityCount)
+        }
+        let candidates = built.candidates
         let unmatched = candidates.count { candidate in
             guard let path = candidate.routeArchivePath else { return false }
             return !resolvesToRouteFile(path, in: listing)
@@ -393,7 +433,8 @@ public actor AppleHealthArchiveService {
             unmatchedRouteReferenceCount: unmatched,
             routeEntryCount: listing.routePathsLowercased.count,
             entryCount: listing.entryCount,
-            uncompressedXMLBytes: uncompressedBytes
+            uncompressedXMLBytes: uncompressedBytes,
+            excludedWorkoutsByActivityType: built.excludedWorkoutsByActivityType
         )
 
         return AppleHealthArchiveScanResult(
@@ -500,12 +541,12 @@ public actor AppleHealthArchiveService {
 
     // MARK: - Archive opening and listing
 
-    /// The product limit on one source payload, applied to the export document.
+    /// The product limit on one route GPX payload. The streamed XML is exempt.
     ///
     /// Shared with every other importer rather than restated, so the app accepts
     /// exactly one payload size everywhere.
     private var sourceByteLimit: Int64 {
-        min(policy.maxUncompressedEntryBytes, Int64(WorkoutImportResourceLimits.maxSourceFileBytes))
+        min(policy.maxUncompressedEntryBytes, sourcePayloadByteLimit)
     }
 
     private func openArchive(_ url: URL) throws -> Archive {
@@ -738,28 +779,19 @@ public actor AppleHealthArchiveService {
         _ entry: Entry,
         path: String,
         from archive: Archive,
-        limitBytes: Int64,
+        declaredBytes: UInt64,
         isCancelled: @Sendable () -> Bool
     ) throws -> URL {
-        // The header states the uncompressed size before a byte is read, so a
-        // declared-oversize entry never costs a decompression pass. The cap is
-        // still enforced while writing, because the header is not trusted.
-        if entry.uncompressedSize > UInt64(max(0, limitBytes)) {
-            throw AppleHealthArchiveError.entryTooLarge(path: path, limitBytes: limitBytes)
+        // Entry.uncompressedSize can prefer the data descriptor; the central
+        // directory is the authority for this precheck and the write guard.
+        guard let requiredBytes = Int64(exactly: declaredBytes) else {
+            throw AppleHealthArchiveError.invalidCentralDirectory
         }
-
         let directory = try prepareExtractionDirectory()
         sweepStaleExtractions(in: directory)
-
-        // A data-descriptor entry can leave the size unknown until it is read;
-        // then there is nothing to compare against and the while-writing cap is
-        // the only guard. A known size is checked against free space so a partial
-        // file is never produced.
-        if entry.uncompressedSize > 0,
-           let available = availableCapacity(directory),
-           Int64(entry.uncompressedSize) > available {
+        if let available = availableCapacity(directory), requiredBytes > available {
             throw AppleHealthArchiveError.insufficientFreeSpace(
-                requiredBytes: Int64(entry.uncompressedSize),
+                requiredBytes: requiredBytes,
                 availableBytes: available
             )
         }
@@ -794,14 +826,21 @@ public actor AppleHealthArchiveService {
         }
         defer { try? handle.close() }
 
-        var written: Int64 = 0
-        _ = try archive.extract(entry, bufferSize: Self.extractionBufferSize) { chunk in
-            written += Int64(chunk.count)
-            guard written <= limitBytes else {
-                throw AppleHealthArchiveError.entryTooLarge(path: path, limitBytes: limitBytes)
+        var written: UInt64 = 0
+        let checksum = try archive.extract(entry, bufferSize: Self.extractionBufferSize) { chunk in
+            // Check before writing and subtract before adding, avoiding overflow
+            // while guaranteeing the on-disk file never exceeds its declaration.
+            guard UInt64(chunk.count) <= declaredBytes - written else {
+                throw AppleHealthArchiveError.entryExceedsDeclaredSize(path: path, declaredBytes: declaredBytes)
             }
             if isCancelled() { throw CancellationError() }
             try handle.write(contentsOf: chunk)
+            written += UInt64(chunk.count)
+        }
+        // As for a route: ZIPFoundation returns the checksum without comparing
+        // it, and a damaged document that still decompresses could still parse.
+        guard checksum == entry.checksum else {
+            throw AppleHealthArchiveError.entryChecksumMismatch(path: path)
         }
 
         needsCleanup = false
@@ -876,15 +915,22 @@ public actor AppleHealthArchiveService {
 
     /// Free space at a location, preferring the figure that accounts for purgeable
     /// space, or `nil` when the volume cannot report one.
-    private static func availableCapacityOnDisk(at url: URL) -> Int64? {
-        let keys: Set<URLResourceKey> = [
-            .volumeAvailableCapacityForImportantUsageKey,
-            .volumeAvailableCapacityKey,
-        ]
-        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
-        if let important = values.volumeAvailableCapacityForImportantUsage { return important }
-        if let plain = values.volumeAvailableCapacity { return Int64(plain) }
-        return nil
+    static func availableCapacityOnDisk(
+        at url: URL,
+        capacityProvider: @Sendable (URL) throws -> (important: Int64?, plain: Int64?) = { url in
+            let values = try url.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey,
+                .volumeAvailableCapacityKey,
+            ])
+            return (values.volumeAvailableCapacityForImportantUsage,
+                    values.volumeAvailableCapacity.map(Int64.init))
+        }
+    ) -> Int64? {
+        guard let values = try? capacityProvider(url) else { return nil }
+        // Sandboxed capacity queries can report a non-nil zero for important
+        // usage while the ordinary capacity still reports usable disk space.
+        if let important = values.important, important > 0 { return important }
+        return values.plain
     }
 
     private func fileSize(of url: URL) -> Int64 {
