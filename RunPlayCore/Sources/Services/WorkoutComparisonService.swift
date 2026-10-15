@@ -266,8 +266,15 @@ public struct WorkoutComparisonService: Sendable {
         comparisonContext: WorkoutAnalysisContext,
         sampleIntervalMeters: Double = 100
     ) -> [ComparisonMetricPoint] {
-        guard !primary.routePoints.isEmpty,
-              !comparison.routePoints.isEmpty,
+        // Comparison is distance-domain: metric points are sampled at fixed
+        // distance intervals common to both routes. A route-less workout has no
+        // distance domain, so it cannot be compared and yields no points.
+        //
+        // Stated through `hasRoute` on both operands so this is comparison's
+        // explicit route-less decision rather than an emergent consequence of
+        // the timeline returning nil for an empty route.
+        guard primary.hasRoute,
+              comparison.hasRoute,
               sampleIntervalMeters.isFinite,
               sampleIntervalMeters > 0
         else {

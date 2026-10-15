@@ -133,9 +133,20 @@ final class PNGSummaryExportTests: XCTestCase {
         XCTAssertEqual(size.height, 1_600)
     }
 
+    /// PNG export's explicit route-less decision: a run with summary totals and
+    /// a standalone heart-rate series but no coordinates degrades to the
+    /// metrics-only card rather than drawing an empty map.
     func testHasUsableRouteDetection() {
         XCTAssertTrue(PNGExportService.hasUsableRoute(sampleWorkout()))
         XCTAssertFalse(PNGExportService.hasUsableRoute(RunWorkout(routePoints: [])))
+
+        let routeLess = RunWorkout(
+            summary: RunSummary(totalDistanceMeters: 10_000, totalElapsedSeconds: 3_000),
+            analysisVersion: RunWorkout.currentAnalysisVersion,
+            heartRateSeries: [HeartRateSample(elapsedSeconds: 0, heartRateBPM: 150)]
+        )
+        XCTAssertFalse(PNGExportService.hasUsableRoute(routeLess))
+        XCTAssertTrue(routeLess.hasHeartRateData)
     }
 
     func testRouteColorReuseUsesCanonicalBuilders() throws {

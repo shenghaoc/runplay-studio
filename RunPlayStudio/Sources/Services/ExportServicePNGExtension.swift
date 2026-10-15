@@ -159,8 +159,18 @@ struct PNGExportService {
 
     // MARK: - Helpers
 
+    /// True when the workout has at least one coordinate the PNG card can plot.
+    ///
+    /// This is the PNG export's explicit route-less decision. A route-less
+    /// workout — including an Apple Health export run with summary and heart
+    /// rate but no GPX — degrades to the metrics-only card via
+    /// `renderMetricsOnly`, so it still exports a useful summary image rather
+    /// than failing or drawing an empty map. Stated through `hasRoute` first so
+    /// the no-route path is a named decision, not an emergent consequence of the
+    /// coordinate scan returning false.
     static func hasUsableRoute(_ workout: RunWorkout) -> Bool {
-        workout.routePoints.contains { point in
+        guard workout.hasRoute else { return false }
+        return workout.routePoints.contains { point in
             RouteMapCoordinate(point) != nil
         }
     }
