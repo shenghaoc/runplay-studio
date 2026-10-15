@@ -119,12 +119,19 @@ that declaration. An oversized expansion is refused and the partial file is
 removed. Individual GPX entries retain the **100 MiB** payload cap and each
 resulting workout retains the **1,000,000-point** limit.
 
-The current shared archive policy also limits the ZIP file to **2 GiB** and
-its listing to **100,000 entries**. The whole-ZIP limit can reject a legitimate
-large Health export; it is a known limitation, not a limit on streamed XML.
+The current shared archive policy also limits the ZIP file to **2 GiB**, its
+listing to **100,000 entries**, and one review to **50,000** running workouts;
+an export with more runs is refused before review. The whole-ZIP limit can
+reject a legitimate large Health export; it is a known limitation, not a limit
+on streamed XML.
 The HR buffer holds at most **2,000,000 samples**. Above that, parsing rereads the
 XML and retains only HR overlapping workout windows; it refuses the import if
 that filtered index still exceeds the ceiling.
+
+Every entry read is checked against the checksum the archive records. A damaged
+`export.xml` refuses the import. A damaged route GPX, or a route path that
+matches no entry exactly but several when letter case is ignored, imports that
+run without its route rather than guess.
 
 The guarded DTD elider refuses entities, notations, fixed/default attributes or
 other value-supplying declarations rather than silently discarding values.
