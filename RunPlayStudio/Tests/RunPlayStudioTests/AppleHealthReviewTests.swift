@@ -443,6 +443,19 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertTrue(summary.lines[2].contains("library was left unchanged"), summary.lines[2])
     }
 
+    /// A pass that saved nothing because every selected workout failed is a
+    /// failure, not "nothing new", which promises nothing went wrong.
+    func testAPassWhereEveryWorkoutFailedIsReportedAsAFailure() {
+        let failed = AppleHealthImportItemResult(
+            candidateID: "a", activityType: Self.running, startSeconds: 0, outcome: .failed
+        )
+        let summary = AppleHealthImportSummary(report: AppleHealthImportReport(items: [failed, failed]))
+
+        XCTAssertEqual(summary.outcome, .failed)
+        XCTAssertEqual(summary.headline, "No runs could be imported")
+        XCTAssertTrue(summary.lines.contains { $0.contains("2 workouts could not be read") }, "\(summary.lines)")
+    }
+
     func testReportRowTextNeverCallsAStagedWorkoutAFailure() {
         let discarded = AppleHealthImportItemResult(
             candidateID: "a", activityType: Self.running, startSeconds: 0, outcome: .discarded

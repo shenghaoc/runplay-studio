@@ -281,6 +281,11 @@ struct AppleHealthImportSummary: Equatable {
         } else if added > 0 {
             self.outcome = .added
             self.headline = "Imported \(added) \(added == 1 ? "run" : "runs")"
+        } else if report.failedCount > 0 {
+            // Nothing was added and something could not be read. That is not
+            // "nothing new", which promises nothing went wrong.
+            self.outcome = .failed
+            self.headline = "No runs could be imported"
         } else {
             self.outcome = .nothingNew
             self.headline = "Nothing new to add"
