@@ -161,7 +161,11 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
 /// shows one should be able to show the other without reaching into `scan`.
 public struct AppleHealthArchiveReport: Hashable, Sendable {
 
-    /// Workouts the export document described.
+    /// Workouts the scan built from the export document, of every activity type.
+    ///
+    /// A workout element the scan could not build is not among them: it is
+    /// counted in `droppedWorkoutCount`, so the two together are every workout
+    /// the document described.
     public var workoutCount: Int
 
     /// Candidates built from those workouts, before any selection.
@@ -244,7 +248,8 @@ public struct AppleHealthArchiveScanResult: Sendable {
         self.report = report
     }
 
-    /// Workouts the export document described.
+    /// Workouts the scan built from the export document. See the report's
+    /// `workoutCount` for what it leaves out.
     public var workoutCount: Int { report.workoutCount }
 
     /// Candidates built from those workouts.

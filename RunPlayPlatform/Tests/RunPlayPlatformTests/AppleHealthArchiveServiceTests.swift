@@ -248,6 +248,8 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         XCTAssertEqual(result.report.droppedWorkoutCount, 1)
         XCTAssertEqual(result.report.unmatchedRouteReferenceCount, 1)
         XCTAssertEqual(result.report.candidateCount, 1)
+        // The dropped workout is not one the scan built.
+        XCTAssertEqual(result.report.workoutCount, 1)
     }
 
     func testHeartRateInsideTheWindowReachesTheCandidate() async throws {
