@@ -6,6 +6,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Script hygiene below scans this file. Resolve it before the cd, which would
+# strand a relative ${BASH_SOURCE[0]} given from another directory.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 cd "$ROOT"
 
 failures=0
@@ -46,6 +49,8 @@ strip_comments() {
 # Use this instead of `strip_comments FILE | grep -Eq RE`. Capturing the body
 # into a variable first means the reader always consumes all of perl's output,
 # so there is no early-exit pipe and no pipefail race (see strip_comments).
+# Text already in a variable gets the same here-string, `grep -Eq RE <<<"$text"`,
+# never a printf piped into grep (see Script hygiene below).
 code_matches() {
   local body
   body="$(strip_comments "$1")" || return 2
@@ -54,25 +59,89 @@ code_matches() {
 
 # --- Script hygiene ----------------------------------------------------------
 
-# Guard against reintroducing `strip_comments ... | grep -q`. That shape is a
-# latent `set -o pipefail` race: `grep -q` exits at its first match, perl fails
-# to flush, and a real match gets reported as a boundary failure. It reproduced
-# as a red macOS CI job while passing locally. `code_matches` is the safe form.
+# Guard against piping into an early-exit reader. Under `set -o pipefail` that
+# shape is a latent race: `grep -q` (likewise `-l`, `-m`, or `head`) exits at
+# its first match while the writer may still be writing, and the writer's
+# failed write fails the pipeline although the match succeeded. Where SIGPIPE
+# is ignored, as on GitHub's runners, the writer reports "write error: Broken
+# pipe"; elsewhere the signal kills it. A check that passes on a match then
+# reports a spurious boundary failure, and one that fails on a match can
+# silently miss its violation. It reproduced as red macOS CI jobs while passing
+# locally, first with strip_comments as the writer (it now absorbs its own
+# write failure) and then with `printf '%s' "$body"`. Match a file with
+# `code_matches`, and text already in a variable with `grep -Eq RE <<<"$text"`:
+# bash writes a here-string out in full before grep starts, so no writer is
+# left to fail.
+#
 # Keeping the pattern in a variable is what stops this guard matching itself:
-# the scanner below never spells out the searched-for text, and the one line
-# that does carries SELF_LINT_EXEMPT. Comment lines are dropped first, and line
-# continuations are joined so a wrapped pipeline is seen as a single statement.
-self_lint_re='strip_comments\b[^\n|]*\|\s*grep\s+-E?q'  # SELF_LINT_EXEMPT
-self_pipeline_hits="$(
-  grep -v -e '^[[:space:]]*#' -e 'SELF_LINT_EXEMPT' "${BASH_SOURCE[0]}" \
-    | SELF_LINT_RE="$self_lint_re" perl -0777 -ne \
-      's/\\\n\s*/ /g; my $re = $ENV{SELF_LINT_RE}; print "$&\n" while /$re/g' \
+# the scanner below never spells out the searched-for text, and the lines that
+# do (the pattern and the racy fixtures) carry SELF_LINT_EXEMPT. Comment lines
+# are dropped first, and a line ending in a backslash or a pipe is joined to
+# the next, so a wrapped pipeline is seen as a single statement.
+self_lint_re='(?<!\|)\|(?!\|)\s*(?:\w+=\S*\s+)*(?:grep\b[^|;&]*?\s(?:-[[:alpha:]]*[qlLm]|--(?:quiet|silent|max-count|files-with))|head\b)'  # SELF_LINT_EXEMPT
+
+# Print each statement of the shell source on stdin that pipes into an
+# early-exit reader.
+early_exit_pipelines() {
+  grep -v -e '^[[:space:]]*#' -e 'SELF_LINT_EXEMPT' \
+    | SELF_LINT_RE="$self_lint_re" perl -0777 -ne '
+        s/\\\n\s*/ /g;
+        s/\|[ \t]*\n\s*/| /g;
+        my $re = $ENV{SELF_LINT_RE};
+        print "$_\n" for grep { /$re/ } split /\n/;
+      ' \
     || true
-)"
-if [[ -z "$self_pipeline_hits" ]]; then
-  pass "validator matches source through code_matches, not an early-exit pipeline"
+}
+
+# The scanner is exercised on fixtures first so a broken pattern cannot pass
+# vacuously. The positives include the wrapped printf shape that raced on CI.
+early_exit_pipeline_positive=(
+  'printf "%s" "$body" | grep -Eq "re"'                  # SELF_LINT_EXEMPT
+  $'if printf "%s" "$body" \\\n  | grep -Eq "re"; then'   # SELF_LINT_EXEMPT
+  $'printf "%s" "$body" |\n  grep -q "re"'                # SELF_LINT_EXEMPT
+  'strip_comments "$file" | grep -Eqi "re"'              # SELF_LINT_EXEMPT
+  'strip_comments "$file" | tr "\n" " " | grep -Eq "re"' # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | grep -E -i -q "re"'             # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | grep --quiet "re"'              # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | LC_ALL=C grep -m 1 "re"'        # SELF_LINT_EXEMPT
+  'printf "%s" "$body" | grep -l "re"'                   # SELF_LINT_EXEMPT
+  'printf "%s\n" "$body" | head -n 1'                    # SELF_LINT_EXEMPT
+)
+early_exit_pipeline_negative=(
+  'grep -Eq "re" <<<"$body"'
+  'code_matches "$file" "re"'
+  'grep -Eq "(^|[^[:alnum:]_])std::tuple" <<<"$body"'
+  '[[ -f "$file" ]] || grep -q "re" "$file"'
+  'strip_comments "$file" | grep -En "re" || true'
+  'strip_comments "$file" | grep --line-number "re" || true'
+  'strip_comments "$file" | grep -Eo "re" | wc -l'
+  'find . -print0 | xargs -0 grep -El "re"'
+  '# printf "%s" "$body" | grep -Eq "re"'                # SELF_LINT_EXEMPT
+)
+early_exit_pipeline_matcher_ok=1
+for fixture in "${early_exit_pipeline_positive[@]}"; do
+  if [[ -z "$(early_exit_pipelines <<<"$fixture")" ]]; then
+    early_exit_pipeline_matcher_ok=0
+  fi
+done
+for fixture in "${early_exit_pipeline_negative[@]}"; do
+  if [[ -n "$(early_exit_pipelines <<<"$fixture")" ]]; then
+    early_exit_pipeline_matcher_ok=0
+  fi
+done
+if [[ $early_exit_pipeline_matcher_ok -eq 1 ]]; then
+  pass "early-exit pipeline matcher adversarial fixtures"
 else
-  fail "use code_matches instead of piping stripped source into an early-exit grep: $self_pipeline_hits"
+  fail "early-exit pipeline matcher failed its adversarial fixtures"
+fi
+
+self_pipeline_hits="$(early_exit_pipelines <"$SELF")"
+if [[ -z "$self_pipeline_hits" ]]; then
+  pass "validator matches through code_matches and here-strings, never an early-exit pipeline"
+else
+  while IFS= read -r hit; do
+    fail "pipe into an early-exit reader; use code_matches or grep -Eq RE <<<\"\$text\": $hit"
+  done <<<"$self_pipeline_hits"
 fi
 
 # --- Structural presence -----------------------------------------------------
@@ -221,29 +290,29 @@ for header in "${PUBLIC_HEADERS[@]}"; do
   body="$(strip_comments "$header")"
 
   # std::tuple / std::variant as type uses (not words in strings alone).
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::tuple([^[:alnum:]_]|$)'; then
+  if grep -Eq '(^|[^[:alnum:]_])std::tuple([^[:alnum:]_]|$)' <<<"$body"; then
     fail "$header exposes std::tuple in public API"
   fi
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::variant([^[:alnum:]_]|$)'; then
+  if grep -Eq '(^|[^[:alnum:]_])std::variant([^[:alnum:]_]|$)' <<<"$body"; then
     fail "$header exposes std::variant in public API"
   fi
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::vector[[:space:]]*<'; then
+  if grep -Eq '(^|[^[:alnum:]_])std::vector[[:space:]]*<' <<<"$body"; then
     fail "$header exposes std::vector in public API"
   fi
 
   # throw expressions / throw specifications (not the word in a string literal heuristic).
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])throw[[:space:]]'; then
+  if grep -Eq '(^|[^[:alnum:]_])throw[[:space:]]' <<<"$body"; then
     fail "$header contains throw (exceptions must not cross the Swift boundary)"
   fi
 
   # Objective-C / Apple framework / Swift-generated headers.
-  if printf '%s' "$body" | grep -Eq '#[[:space:]]*import[[:space:]]+<'; then
+  if grep -Eq '#[[:space:]]*import[[:space:]]+<' <<<"$body"; then
     fail "$header uses #import (Objective-C style) of a system header"
   fi
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*include[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|Swift|swift)/'; then
+  if grep -Eqi '#[[:space:]]*include[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|Swift|swift)/' <<<"$body"; then
     fail "$header includes Apple or Swift framework headers"
   fi
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*include[[:space:]]*[<"][^>"]*-Swift\.h[>"]'; then
+  if grep -Eqi '#[[:space:]]*include[[:space:]]*[<"][^>"]*-Swift\.h[>"]' <<<"$body"; then
     fail "$header includes a Swift-generated -Swift.h header"
   fi
 done
@@ -503,10 +572,10 @@ done < <(find RunPlayEngineCpp -type f \( -name '*.c' -o -name '*.cc' -o -name '
 
 for src in "${ENGINE_SOURCES[@]}"; do
   body="$(strip_comments "$src")"
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|MapKit|SceneKit|SwiftUI|Combine)/'; then
+  if grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|MapKit|SceneKit|SwiftUI|Combine)/' <<<"$body"; then
     fail "$src imports an Apple framework"
   fi
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"][^>"]*-Swift\.h[>"]'; then
+  if grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"][^>"]*-Swift\.h[>"]' <<<"$body"; then
     fail "$src includes a Swift-generated header"
   fi
   # No Objective-C++ in the engine.
@@ -593,9 +662,9 @@ fi
 # C++ engine must not reference upper Swift module names as imports or includes.
 for src in "${ENGINE_SOURCES[@]}"; do
   body="$(strip_comments "$src")"
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])(RunPlayCore|RunPlayPlatform|RunPlayStudio)([^[:alnum:]_]|$)'; then
+  if grep -Eq '(^|[^[:alnum:]_])(RunPlayCore|RunPlayPlatform|RunPlayStudio)([^[:alnum:]_]|$)' <<<"$body"; then
     # Allow the path segment "RunPlayEngineCpp" only; upper modules are forbidden.
-    if printf '%s' "$body" | grep -Eq '(RunPlayCore|RunPlayPlatform|RunPlayStudio)'; then
+    if grep -Eq '(RunPlayCore|RunPlayPlatform|RunPlayStudio)' <<<"$body"; then
       fail "$src references upper-layer module name (RunPlayCore/Platform/Studio)"
     fi
   fi
@@ -706,12 +775,12 @@ geodesy_reference_negative_fixtures=(
 )
 geodesy_reference_matcher_ok=1
 for fixture in "${geodesy_reference_positive_fixtures[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$geodesy_reference_re"; then
+  if ! grep -Eq "$geodesy_reference_re" <<<"$fixture"; then
     geodesy_reference_matcher_ok=0
   fi
 done
 for fixture in "${geodesy_reference_negative_fixtures[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$geodesy_reference_re"; then
+  if grep -Eq "$geodesy_reference_re" <<<"$fixture"; then
     geodesy_reference_matcher_ok=0
   fi
 done
@@ -762,12 +831,12 @@ quality_symbol_negative=(
 )
 quality_symbol_matcher_ok=1
 for fixture in "${quality_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$quality_symbol_re"; then
+  if ! grep -Eq "$quality_symbol_re" <<<"$fixture"; then
     quality_symbol_matcher_ok=0
   fi
 done
 for fixture in "${quality_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$quality_symbol_re"; then
+  if grep -Eq "$quality_symbol_re" <<<"$fixture"; then
     quality_symbol_matcher_ok=0
   fi
 done
@@ -841,16 +910,13 @@ else
   fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
 fi
 
-heatmap_builder_body="$(strip_comments "$HEATMAP_BUILDER_SOURCE")"
-if printf '%s' "$heatmap_builder_body" \
-  | grep -Eq '\.[[:space:]]*accumulateCoverage[[:space:]]*\('; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" '\.[[:space:]]*accumulateCoverage[[:space:]]*\('; then
   pass "PersonalHeatmapBuilder accumulates directly from native coverage output"
 else
   fail "PersonalHeatmapBuilder must call accumulateCoverage"
 fi
 
-if printf '%s' "$heatmap_builder_body" \
-  | grep -Eq '\.[[:space:]]*coverage[[:space:]]*\('; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" '\.[[:space:]]*coverage[[:space:]]*\('; then
   fail "PersonalHeatmapBuilder must not call the array-returning coverage method"
 else
   pass "PersonalHeatmapBuilder does not materialize per-workout coverage arrays"
@@ -927,8 +993,7 @@ if [[ -f "$HEATMAP_PROFILE_TEST" ]]; then
   heatmap_profile_body="$(
     strip_comments "$HEATMAP_PROFILE_TEST" | tr '\n' ' ' | tr -s '[:space:]' ' '
   )"
-  if printf '%s' "$heatmap_profile_body" \
-    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_PROFILE'; then
+  if grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_PROFILE' <<<"$heatmap_profile_body"; then
     pass "heatmap pipeline profile skips unless RUNPLAY_HEATMAP_PROFILE=1"
   else
     fail "$HEATMAP_PROFILE_TEST must skip unless RUNPLAY_HEATMAP_PROFILE=1"
@@ -945,8 +1010,8 @@ else
       | tr '\n' ' ' \
       | tr -s '[:space:]' ' '
   )"
-  if printf '%s' "$heatmap_aggregation_benchmark_body" \
-    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK'; then
+  if grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK' \
+    <<<"$heatmap_aggregation_benchmark_body"; then
     pass "heatmap aggregation benchmark requires explicit opt-in"
   else
     fail "$HEATMAP_AGGREGATION_BENCHMARK_TEST must require RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1"
@@ -969,12 +1034,12 @@ heatmap_profile_api_negative=(
 )
 heatmap_profile_api_matcher_ok=1
 for fixture in "${heatmap_profile_api_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$heatmap_profile_api_re"; then
+  if ! grep -Eq "$heatmap_profile_api_re" <<<"$fixture"; then
     heatmap_profile_api_matcher_ok=0
   fi
 done
 for fixture in "${heatmap_profile_api_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$heatmap_profile_api_re"; then
+  if grep -Eq "$heatmap_profile_api_re" <<<"$fixture"; then
     heatmap_profile_api_matcher_ok=0
   fi
 done
@@ -1042,12 +1107,12 @@ profiling_instrumentation_negative=(
 )
 profiling_instrumentation_matcher_ok=1
 for fixture in "${profiling_instrumentation_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$profiling_instrumentation_re"; then
+  if ! grep -Eq "$profiling_instrumentation_re" <<<"$fixture"; then
     profiling_instrumentation_matcher_ok=0
   fi
 done
 for fixture in "${profiling_instrumentation_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$profiling_instrumentation_re"; then
+  if grep -Eq "$profiling_instrumentation_re" <<<"$fixture"; then
     profiling_instrumentation_matcher_ok=0
   fi
 done
@@ -1101,13 +1166,12 @@ if [[ -f "$CORE_HOTSPOT_PROFILE_TEST" ]]; then
   core_hotspot_body="$(
     strip_comments "$CORE_HOTSPOT_PROFILE_TEST" | tr '\n' ' ' | tr -s '[:space:]' ' '
   )"
-  if printf '%s' "$core_hotspot_body" \
-    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_CORE_HOTSPOT_PROFILE'; then
+  if grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_CORE_HOTSPOT_PROFILE' <<<"$core_hotspot_body"; then
     pass "remaining-core hotspot profile skips unless RUNPLAY_CORE_HOTSPOT_PROFILE=1"
   else
     fail "$CORE_HOTSPOT_PROFILE_TEST must skip unless RUNPLAY_CORE_HOTSPOT_PROFILE=1"
   fi
-  if printf '%s' "$core_hotspot_body" | grep -Eq 'func testAllFamilies'; then
+  if grep -Eq 'func testAllFamilies' <<<"$core_hotspot_body"; then
     fail "$CORE_HOTSPOT_PROFILE_TEST must not define testAllFamilies (double execution)"
   else
     pass "remaining-core hotspot profile has no testAllFamilies aggregator"
@@ -1225,12 +1289,12 @@ dtw_symbol_negative=(
 )
 dtw_symbol_matcher_ok=1
 for fixture in "${dtw_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$dtw_symbol_re"; then
+  if ! grep -Eq "$dtw_symbol_re" <<<"$fixture"; then
     dtw_symbol_matcher_ok=0
   fi
 done
 for fixture in "${dtw_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$dtw_symbol_re"; then
+  if grep -Eq "$dtw_symbol_re" <<<"$fixture"; then
     dtw_symbol_matcher_ok=0
   fi
 done
@@ -1312,12 +1376,12 @@ removed_dp_marker_negative=(
 )
 removed_dp_marker_matcher_ok=1
 for fixture in "${removed_dp_marker_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$removed_dp_marker_re"; then
+  if ! grep -Eq "$removed_dp_marker_re" <<<"$fixture"; then
     removed_dp_marker_matcher_ok=0
   fi
 done
 for fixture in "${removed_dp_marker_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$removed_dp_marker_re"; then
+  if grep -Eq "$removed_dp_marker_re" <<<"$fixture"; then
     removed_dp_marker_matcher_ok=0
   fi
 done
@@ -1517,12 +1581,12 @@ elevation_benchmark_api_negative=(
 )
 elevation_benchmark_api_matcher_ok=1
 for fixture in "${elevation_benchmark_api_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+  if ! grep -Eq "$elevation_benchmark_api_re" <<<"$fixture"; then
     elevation_benchmark_api_matcher_ok=0
   fi
 done
 for fixture in "${elevation_benchmark_api_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+  if grep -Eq "$elevation_benchmark_api_re" <<<"$fixture"; then
     elevation_benchmark_api_matcher_ok=0
   fi
 done
@@ -1650,12 +1714,12 @@ dem_benchmark_api_negative=(
 )
 dem_benchmark_api_matcher_ok=1
 for fixture in "${dem_benchmark_api_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$dem_benchmark_api_re"; then
+  if ! grep -Eq "$dem_benchmark_api_re" <<<"$fixture"; then
     dem_benchmark_api_matcher_ok=0
   fi
 done
 for fixture in "${dem_benchmark_api_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$dem_benchmark_api_re"; then
+  if grep -Eq "$dem_benchmark_api_re" <<<"$fixture"; then
     dem_benchmark_api_matcher_ok=0
   fi
 done
@@ -1830,12 +1894,12 @@ training_load_symbol_negative=(
 )
 training_load_symbol_matcher_ok=1
 for fixture in "${training_load_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$training_load_native_re"; then
+  if ! grep -Eq "$training_load_native_re" <<<"$fixture"; then
     training_load_symbol_matcher_ok=0
   fi
 done
 for fixture in "${training_load_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$training_load_native_re"; then
+  if grep -Eq "$training_load_native_re" <<<"$fixture"; then
     training_load_symbol_matcher_ok=0
   fi
 done
