@@ -78,6 +78,15 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         try writeArchive(named: named, entries: entries.map { ($0.path, .file, $0.data) })
     }
 
+    /// Flip one byte inside an entry stored verbatim, leaving every header and
+    /// recorded checksum as written: a damaged entry that still reads.
+    private func damageStoredBytes(_ stored: Data, in url: URL) throws {
+        var archiveBytes = try Data(contentsOf: url)
+        let range = try XCTUnwrap(archiveBytes.range(of: stored), "the entry is not stored verbatim")
+        archiveBytes[range.lowerBound + stored.count / 2] ^= 0x20
+        try archiveBytes.write(to: url)
+    }
+
     private func healthDocument(records: String = "", workouts: String = "") -> Data {
         let xml = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -744,6 +753,21 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         }
         let exact = try await makeService().routeGPXData(forArchivePath: upper, archiveAt: url)
         XCTAssertEqual(exact, Data("upper".utf8))
+    }
+
+    /// A route whose bytes no longer match the archive's checksum is refused,
+    /// rather than returned as though it were the route the export wrote.
+    func testRouteWhoseBytesDoNotMatchTheirChecksumIsRefused() async throws {
+        let gpx = routeGPX()
+        let url = try writeZip(named: "export.zip", entries: [
+            (Self.exportPath, healthDocument(workouts: runningWorkout(route: "/workout-routes/route_1.gpx"))),
+            (Self.routePath, gpx),
+        ])
+        try damageStoredBytes(gpx, in: url)
+
+        await assertThrows(.entryChecksumMismatch(path: Self.routePath)) {
+            _ = try await makeService().routeGPXData(forArchivePath: Self.routePath, archiveAt: url)
+        }
     }
 
     /// Two entries at one path: the first wins, and it is a symlink. A regular

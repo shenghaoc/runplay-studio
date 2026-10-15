@@ -81,6 +81,12 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
     /// ambiguous match.
     case ambiguousRouteEntry(path: String, matchCount: Int)
 
+    /// An entry's extracted bytes do not match the checksum the archive records.
+    ///
+    /// A damaged entry can still decompress, so the bytes are not trusted until
+    /// their checksum agrees.
+    case entryChecksumMismatch(path: String)
+
     /// There is not enough free space to extract the document.
     case insufficientFreeSpace(requiredBytes: Int64, availableBytes: Int64)
 
@@ -116,6 +122,8 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
         case .ambiguousRouteEntry(let path, let matchCount):
             return "\(matchCount) route files in the archive match \(path) when letter case "
                 + "is ignored, so none of them is read."
+        case .entryChecksumMismatch(let path):
+            return "\(path) is damaged: its contents do not match the checksum the archive records."
         case .insufficientFreeSpace(let requiredBytes, let availableBytes):
             return "Importing needs about \(Self.formatted(requiredBytes)) of free space, "
                 + "but only \(Self.formatted(availableBytes)) is available."
@@ -431,7 +439,7 @@ public actor AppleHealthArchiveService {
 
         var data = Data()
         data.reserveCapacity(Int(min(entry.uncompressedSize, UInt64(limitBytes))))
-        _ = try archive.extract(entry, bufferSize: Self.extractionBufferSize) { chunk in
+        let checksum = try archive.extract(entry, bufferSize: Self.extractionBufferSize) { chunk in
             guard Int64(data.count) + Int64(chunk.count) <= limitBytes else {
                 throw AppleHealthArchiveError.entryTooLarge(
                     path: normalized,
@@ -440,6 +448,11 @@ public actor AppleHealthArchiveService {
             }
             if isCancelled() { throw CancellationError() }
             data.append(chunk)
+        }
+        // ZIPFoundation returns the checksum of what it extracted without
+        // comparing it, so a damaged entry would otherwise pass as the route.
+        guard checksum == entry.checksum else {
+            throw AppleHealthArchiveError.entryChecksumMismatch(path: normalized)
         }
         return data
     }
