@@ -24,6 +24,14 @@ Every format shares one set of product limits, defined once in
 | Route points per workout | 1,000,000 | Total `<trkpt>` in a GPX file; trackpoints in the selected TCX activity; decoded `routePoints` in a JSON file; route points in each resulting FIT session. Archive entries inherit their format importer's limit. |
 | Source payload | 100 MB | Every activity file, read through a bounded reader that stops at one byte past the limit rather than trusting file metadata. Archive entries keep their own smaller ceilings (50 MB compressed, 100 MB uncompressed). |
 
+Apple Health's `export.xml` is the one file exempt from the source-payload
+limit, because a real export can exceed a gigabyte. The importer streams it
+rather than reading it whole, and bounds its memory and disk use instead: the
+heart-rate index retains at most 2,000,000 readings, extraction from
+`export.zip` never writes past the size the archive declares for it, and a
+free-space check against that size runs before extraction. Each route GPX in
+the archive still takes the 100 MB limit.
+
 One million route points is roughly 278 hours of continuous one-second
 recording, well beyond any single run.
 
