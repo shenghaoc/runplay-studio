@@ -1970,11 +1970,15 @@ Use **synthetic or bundled demo workouts only**. Do not commit generated MP4s.
 7. Trigger a recoverable encode/save failure; choose **Try Again…** and retry.
 8. Keyboard-navigate the sheet and inspect the poster/status accessibility summaries.
 9. Confirm exactly one completion, failure, or cancellation announcement per outcome.
+10. In Light and Dark, check the poster and the exported video's first, middle,
+    and final frames for the **Map imagery via Apple Maps** credit: bottom right,
+    level with the progress caption and below the bar, legible over the map, and
+    clear of the panels, the bar, and the caption.
 
 Automated coverage: `WorkoutVideoFramePlanTests`,
 `WorkoutVideoReplaySamplerTests`, `WorkoutVideoMapPreparerTests`,
-`WorkoutVideoFrameRendererTests`, `WorkoutVideoExporterTests`, and
-`WorkoutVideoExportViewModelTests`.
+`WorkoutVideoFrameRendererTests`, `WorkoutVideoExporterTests`,
+`VideoMapAttributionTests`, and `WorkoutVideoExportViewModelTests`.
 
 ## Comparison replay video export (synthetic)
 
@@ -1986,10 +1990,16 @@ Use **synthetic or bundled demo workouts only**. Do not commit generated MP4s.
 4. When Route-Aware is unavailable, confirm Distance remains available and no silent fallback labels Distance as Route-Aware.
 5. Cancel a longer export; confirm no destination/temp file and live comparison slider/mode unchanged.
 6. Keyboard-navigate the sheet; poster exposes one combined accessibility summary.
+7. In Light and Dark, and in both modes, check the poster and the exported
+   video's first, middle, and final frames for the **Map imagery via Apple
+   Maps** credit: bottom right, level with the progress caption and below the
+   bar, legible over the map, and clear of the Deltas panel, the bar, and the
+   caption.
 
 Automated coverage: `ComparisonVideoFramePlanTests`, `ComparisonVideoSamplerTests`,
 `ComparisonVideoAlignmentResolverTests`, `ComparisonVideoPixelMapTests`,
-`ComparisonVideoExporterTests`, `ComparisonVideoExportViewModelTests`.
+`ComparisonVideoExporterTests`, `VideoMapAttributionTests`,
+`ComparisonVideoExportViewModelTests`.
 
 Offline export record (2026-08-10): steps 2–5 were exercised through the
 production `ComparisonVideoExporter` — real `MapKitComparisonVideoMapPreparer`,

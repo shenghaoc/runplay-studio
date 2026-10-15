@@ -51,9 +51,10 @@ to the destination you choose. The exporter does not upload workouts, attach GPS
 coordinates as hidden MP4 metadata, or include library UUIDs, device serials, or
 absolute paths. One MapKit snapshot may load basemap tiles under the MapKit
 policy above; the finished video visually shows the route region just as
-map-inclusive PNG export does and should be shared deliberately. Comparison
-videos show two route regions and may reveal more location history than a
-single-run export.
+map-inclusive PNG export does and should be shared deliberately. Like the
+map-inclusive card's footer, every frame and the poster credit the map imagery
+to Apple Maps. Comparison videos show two route regions and may reveal more
+location history than a single-run export.
 
 ## Tags and smart collections
 
