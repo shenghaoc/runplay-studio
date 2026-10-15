@@ -378,6 +378,10 @@ struct WorkoutLibraryView: View {
                 }
             }
 
+            if let customDateRange = viewModel.customDateRange {
+                customDateRangeRow(customDateRange)
+            }
+
             if viewModel.activeFilterCount > 0 {
                 Text("\(viewModel.activeFilterCount) filters active")
                     .font(AppDesign.Typography.compactLabel)
@@ -429,23 +433,6 @@ struct WorkoutLibraryView: View {
                 Toggle("Last 90 Days", isOn: dateMenuCheck(.last90Days))
                 Toggle("Current Calendar Year", isOn: dateMenuCheck(.currentCalendarYear))
                 Toggle("Custom Date Range…", isOn: dateMenuCheck(.customRange))
-            }
-
-            if case .custom = viewModel.dateFilter {
-                DatePicker("From", selection: $viewModel.customDateStart, displayedComponents: .date)
-                DatePicker("To", selection: $viewModel.customDateEnd, displayedComponents: .date)
-                    .onChange(of: viewModel.customDateStart) { _, _ in
-                        viewModel.dateFilter = .custom(
-                            start: viewModel.customDateStart,
-                            end: viewModel.customDateEnd
-                        )
-                    }
-                    .onChange(of: viewModel.customDateEnd) { _, _ in
-                        viewModel.dateFilter = .custom(
-                            start: viewModel.customDateStart,
-                            end: viewModel.customDateEnd
-                        )
-                    }
             }
 
             Divider()
@@ -513,6 +500,85 @@ struct WorkoutLibraryView: View {
             filter: { viewModel.dateFilter },
             customRange: { (viewModel.customDateStart, viewModel.customDateEnd) },
             setFilter: { viewModel.dateFilter = $0 }
+        )
+    }
+
+    /// The From and To row under the controls while a custom date range is
+    /// active. A `DatePicker` inside a macOS menu is drawn as a disabled item,
+    /// so the range is edited here, in a row like the Personal Heatmap's,
+    /// rather than under Filters ▸ Date. Each bound has a checkbox: a smart
+    /// collection's one-sided range shows its open side unchecked, and the
+    /// side stays open while the other one is edited.
+    private func customDateRangeRow(_ range: WorkoutLibraryCustomDateRange) -> some View {
+        HStack(spacing: AppDesign.Spacing.large) {
+            customDateBoundControls(
+                .start,
+                in: range,
+                title: Text("From"),
+                pickerLabel: Text("Custom range start"),
+                help: Text("Limit the range to runs on or after the From date")
+            )
+            customDateBoundControls(
+                .end,
+                in: range,
+                title: Text("To"),
+                pickerLabel: Text("Custom range end"),
+                help: Text("Limit the range to runs on or before the To date")
+            )
+            Spacer()
+        }
+    }
+
+    private func customDateBoundControls(
+        _ bound: WorkoutLibraryCustomDateRange.Bound,
+        in range: WorkoutLibraryCustomDateRange,
+        title: Text,
+        pickerLabel: Text,
+        help: Text
+    ) -> some View {
+        // The only bound that is on stays on: a custom range keeps a date.
+        let isLocked = range.includes(bound) && !range.canExclude(bound)
+        return HStack(spacing: AppDesign.Spacing.small) {
+            Toggle(isOn: customDateBoundIncluded(bound)) { title }
+                .toggleStyle(.checkbox)
+                .disabled(isLocked)
+                .help(
+                    isLocked
+                        ? Text("A custom range needs a From or To date. Choose Filters ▸ Date ▸ All Time to include every run.")
+                        : help
+                )
+            // The label names the picker for VoiceOver; the checkbox beside
+            // it shows From or To.
+            DatePicker(
+                selection: customDateBoundDate(bound),
+                in: viewModel.customDateSelectableDates(for: bound),
+                displayedComponents: .date
+            ) {
+                pickerLabel
+            }
+            .labelsHidden()
+            .disabled(!range.includes(bound))
+        }
+    }
+
+    /// The checkbox of one bound of the custom range: on while the bound
+    /// limits the range.
+    private func customDateBoundIncluded(_ bound: WorkoutLibraryCustomDateRange.Bound) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.customDateRange?.includes(bound) ?? false },
+            set: { viewModel.setCustomDateBound(bound, isIncluded: $0) }
+        )
+    }
+
+    /// The picker of one bound of the custom range: the bound's date, or its
+    /// remembered date while the bound is off.
+    private func customDateBoundDate(_ bound: WorkoutLibraryCustomDateRange.Bound) -> Binding<Date> {
+        Binding(
+            get: {
+                viewModel.customDateRange?.pickerDate(for: bound)
+                    ?? (bound == .start ? viewModel.customDateStart : viewModel.customDateEnd)
+            },
+            set: { viewModel.pickCustomDate($0, for: bound) }
         )
     }
 

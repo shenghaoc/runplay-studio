@@ -1797,6 +1797,74 @@ No smart collection was opened. Re-choosing a checked row while one is open is
 covered by unit tests only; the view-model test uses Custom Date Range… with a
 one-sided range.
 
+### Custom date range row pass 2026-10-15 (debug configuration, synthetic seven-run library)
+
+Custom Date Range… applied the From and To dates, but the From and To
+`DatePicker`s sat inside the Filters menu, where macOS 27 draws them as
+disabled items, so a user could not set either date.
+
+The library was a throwaway `RUNPLAY_LIBRARY_ROOT`, seeded by a throwaway Core
+test that imported seven synthetic GPX runs and saved one smart collection,
+"Since February", whose range has a start (1 February 2026) and no end. The
+Mac's time zone was Singapore (UTC+8). Four runs sit at local day boundaries:
+28 February 23:50, 1 March 00:10, 31 March 23:30 and 1 April 00:30. The others
+are on 15 January, 15 March and 10 June. Each bundle ran on a fresh copy under
+its own bundle identifier and was driven through AX only: presses, the
+sidebar's `AXSelectedRows`, and the date pickers' `AXValue`. No keystrokes were
+sent.
+
+On a packaged debug bundle of #270 (built from `7da5791`, which matches #270's
+head apart from comments), choosing Custom Date Range… gave "Filters (1)" and
+"0 of 7 runs". The Filters menu then listed From and To with `AXEnabled`
+false, greyed in a screenshot, and no other control edited the range.
+
+The pickers now sit in a row under the All Runs controls while a custom range
+is active. On a packaged debug bundle of this change:
+
+- The Filters menu has no From or To item, and Date marks Custom Date Range….
+  The row shows a From and a To checkbox, each beside a date picker that
+  VoiceOver names "Custom range start" or "Custom range end". The default
+  range (15 September to 15 October 2026) gave "0 of 7 runs".
+- Setting From to 1 March gave "5 of 7 runs". The To picker's `AXMinValue`
+  became 1 March 00:00, and the From picker's `AXMaxValue` stayed at 15
+  October 23:59:59.
+- Setting To to 31 March gave "3 of 7 runs". The table listed the runs at
+  1 March 00:10, 15 March and 31 March 23:30, and left out 28 February 23:50
+  and 1 April 00:30. A screenshot shows the row and the summary.
+- Setting From to 15 April, after the To day, was clamped to 31 March 23:59:59.
+  That one-day range showed only the 31 March 23:30 run ("1 of 7 runs").
+- Opening "Since February" from the sidebar gave "6 of 7 runs" without
+  marking it Modified. From was checked but disabled, with help text that
+  points to Filters ▸ Date ▸ All Time; To was unchecked and its picker
+  disabled.
+- Setting From to 10 March gave "4 of 7 runs" and marked the collection
+  Modified, with Revert and Update Collection shown. To stayed unchecked, as a
+  screenshot shows. Revert restored 1 February with no end ("6 of 7 runs"),
+  unmodified.
+- Turning To on applied the remembered 31 March ("4 of 7 runs") and enabled
+  both checkboxes. Turning From off then gave "5 of 7 runs" and disabled To.
+  Update Collection saved `{"custom": {"end": "2026-03-31T11:38:49Z"}}` in
+  `manifest.json`, with no start, and cleared Modified.
+- Library → All Runs restored the manual 1 to 31 March range ("3 of 7 runs").
+  Clear removed the row ("7 runs"). Choosing Custom Date Range… again applied
+  1 to 31 March.
+- In zh-Hans the checkboxes read 从 and 到, the pickers 自定义范围开始日期 and
+  自定义范围结束日期, and the three new help texts showed their translations.
+  In zh-Hant they read 從 and 到, 自訂範圍開始日期 and 自訂範圍結束日期, with the
+  zh-Hant help texts.
+- At the 720 × 552 minimum window size, with the sidebar showing, the row
+  fitted in full: it ends at x 717 of a detail column that ends at x 876, and
+  both pickers kept their 95 pt width. The Filters and Organise buttons above
+  it truncate to "Filte…" and "Org…" at that width on #270's bundle too.
+
+Not covered: VoiceOver speech, typing into the date fields or using their
+steppers, light appearance, a release build, and relaunching with an edited
+range. The pass ran on a bundle of the first version of the row. A review then
+kept an open side's remembered date from passing the other date and fixed the
+day's end on days that start at 01:00, without changing the view. A re-check
+of that version on a new bundle was cut short because the Mac's screen locked,
+which hides every window from AX. Unit tests cover those changes.
+
 ## Window and application-session restoration checklist
 
 Use the packaged app from `./scripts/package-demo.sh` and synthetic repository
