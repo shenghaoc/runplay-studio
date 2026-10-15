@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import RunPlayCore
 
@@ -14,7 +15,17 @@ struct FITSessionImportView: View {
     var onViewImported: () -> Void
     var onOpenAllRuns: () -> Void
 
+    // An explicit style lets a hosted layout exercise both AppKit modes
+    // without changing the shared system preference.
+    var scrollerStyle: NSScroller.Style?
+    var visibleFrameWidth: CGFloat?
+    @State private var preferredScrollerStyle = NSScroller.preferredScrollerStyle
+    @State private var presentingScreenWidth: CGFloat?
+
     var body: some View {
+        let keyWindow = NSApp.keyWindow
+        let initialScreen = (keyWindow?.sheetParent ?? keyWindow)?.screen ?? NSScreen.main
+        let visibleWidth = visibleFrameWidth ?? presentingScreenWidth ?? initialScreen?.visibleFrame.width
         VStack(spacing: 0) {
             header
             Divider()
@@ -27,9 +38,80 @@ struct FITSessionImportView: View {
                 reportBody
             }
         }
-        .frame(minWidth: 940, minHeight: 480)
+        .frame(
+            minWidth: Column.minimumSheetWidth(
+                scrollerStyle: scrollerStyle ?? preferredScrollerStyle,
+                visibleFrameWidth: visibleWidth
+            ),
+            maxWidth: Column.maximumSheetWidth(visibleFrameWidth: visibleWidth),
+            minHeight: 480
+        )
+        .background {
+            SheetScreenProbe { presentingScreenWidth = $0 }
+        }
         .background(AppDesign.workspaceBackground)
+        .onReceive(NotificationCenter.default.publisher(for: NSScroller.preferredScrollerStyleDidChangeNotification)) { _ in
+            preferredScrollerStyle = NSScroller.preferredScrollerStyle
+        }
     }
+
+    /// Follow the actual presenting window, not whichever display is primary.
+    private struct SheetScreenProbe: NSViewRepresentable {
+        var reportWidth: (CGFloat) -> Void
+
+        func makeNSView(context: Context) -> ScreenView {
+            let view = ScreenView()
+            view.reportWidth = reportWidth
+            return view
+        }
+
+        func updateNSView(_ view: ScreenView, context: Context) {
+            view.reportWidth = reportWidth
+            view.publishWidth()
+        }
+
+        final class ScreenView: NSView {
+            var reportWidth: ((CGFloat) -> Void)?
+            private var lastWidth: CGFloat?
+
+            override func viewDidMoveToWindow() {
+                super.viewDidMoveToWindow()
+                NotificationCenter.default.removeObserver(self)
+                guard window != nil else { return }
+                let center = NotificationCenter.default
+                center.addObserver(
+                    self, selector: #selector(screenChanged),
+                    name: NSWindow.didChangeScreenNotification, object: nil
+                )
+                center.addObserver(
+                    self, selector: #selector(screenChanged),
+                    name: NSApplication.didChangeScreenParametersNotification, object: nil
+                )
+                publishWidth()
+            }
+
+            @objc private func screenChanged(_ notification: Notification) {
+                if let changedWindow = notification.object as? NSWindow,
+                   changedWindow !== window && changedWindow !== window?.sheetParent {
+                    return
+                }
+                publishWidth()
+            }
+
+            func publishWidth() {
+                guard let width = (window?.sheetParent ?? window)?.screen?.visibleFrame.width,
+                      width != lastWidth else { return }
+                lastWidth = width
+                // SwiftUI may be attaching or updating this representable.
+                Task { @MainActor [weak self] in
+                    guard let self, self.window != nil, self.lastWidth == width else { return }
+                    self.reportWidth?(width)
+                }
+            }
+        }
+    }
+
+    private typealias Column = FITSessionTableColumn
 
     private var header: some View {
         HStack {
@@ -136,7 +218,7 @@ struct FITSessionImportView: View {
                         : candidate.statusDetail ?? candidate.status.userFacingSummary
                 )
             }
-            .width(58)
+            .width(Column.include.idealWidth)
 
             TableColumn("Session") { candidate in
                 VStack(alignment: .leading, spacing: 1) {
@@ -151,55 +233,60 @@ struct FITSessionImportView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(session.accessibilityLabel(for: candidate))
             }
-            .width(min: 150, ideal: 172)
+            .width(min: Column.session.minimumWidth, ideal: Column.session.idealWidth)
 
+            // Date, Sport and Status wrap onto a second line rather than
+            // truncate when a locale or label is wider than the column.
             TableColumn("Date") { candidate in
                 Text(dateText(candidate.startDate))
                     .font(AppDesign.Typography.compactLabel)
                     .monospacedDigit()
+                    .lineLimit(2)
             }
-            .width(min: 105, ideal: 116)
+            .width(min: Column.date.minimumWidth, ideal: Column.date.idealWidth)
 
             TableColumn("Sport") { candidate in
                 Text(candidate.sportDescription)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            .width(min: 70, ideal: 78)
+            .width(min: Column.sport.minimumWidth, ideal: Column.sport.idealWidth)
 
             TableColumn("Elapsed") { candidate in
                 Text(DisplayFormatter.formatDuration(candidate.elapsedSeconds))
                     .monospacedDigit()
             }
-            .width(min: 62, ideal: 68)
+            .width(min: Column.elapsed.minimumWidth, ideal: Column.elapsed.idealWidth)
 
             TableColumn("Distance") { candidate in
                 Text(DisplayFormatter.formatDistance(candidate.reportedDistanceMeters))
                     .monospacedDigit()
             }
-            .width(min: 66, ideal: 72)
+            .width(min: Column.distance.minimumWidth, ideal: Column.distance.idealWidth)
 
             TableColumn("GPS Points") { candidate in
                 Text("\(candidate.gpsRecordCount)")
                     .monospacedDigit()
             }
-            .width(min: 74, ideal: 80)
+            .width(min: Column.gpsPoints.minimumWidth, ideal: Column.gpsPoints.idealWidth)
 
             TableColumn("Laps") { candidate in
                 Text("\(candidate.recordedLapCount)")
                     .monospacedDigit()
             }
-            .width(46)
+            .width(Column.laps.idealWidth)
 
             TableColumn("Status") { candidate in
                 // Status is conveyed by text; colour is only reinforcement.
                 Text(candidate.status.userFacingSummary)
+                    .lineLimit(2)
                     .foregroundStyle(statusColor(candidate.status))
                     .help(candidate.statusDetail ?? candidate.status.userFacingSummary)
                     .accessibilityLabel(
                         "\(candidate.status.userFacingSummary). \(candidate.statusDetail ?? "")"
                     )
             }
-            .width(min: 120, ideal: 138)
+            .width(min: Column.status.minimumWidth, ideal: Column.status.idealWidth)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .accessibilityLabel("FIT sessions in \(session.fileName)")
