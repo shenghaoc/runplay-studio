@@ -169,6 +169,21 @@ final class AppleHealthReviewTests: XCTestCase {
         }
     }
 
+    /// A row's date is the clock time where the workout was recorded, not where
+    /// this Mac is: one instant recorded at two offsets shows two clock times.
+    func testDateIsShownInTheOffsetTheWorkoutWasRecordedAt() throws {
+        let instant: Int64 = 1_756_659_600
+        let east = AppleHealthReviewPresentation.dateText(startSeconds: instant, utcOffsetSeconds: 28_800)
+        let west = AppleHealthReviewPresentation.dateText(startSeconds: instant, utcOffsetSeconds: -18_000)
+
+        let eastZone = try XCTUnwrap(TimeZone(secondsFromGMT: 28_800))
+        let eastClock = Date(timeIntervalSince1970: TimeInterval(instant))
+            .formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, timeZone: eastZone))
+        XCTAssertEqual(east, eastClock + " (UTC+08:00)")
+        XCTAssertTrue(west.hasSuffix(" (UTC−05:00)"))
+        XCTAssertNotEqual(east.dropLast(12), west.dropLast(12))
+    }
+
     func testDistanceIsKilometresAndADashMeansNoNumber() {
         XCTAssertEqual(AppleHealthReviewPresentation.distanceText(
             candidate(index: 0, start: 0, end: 60, distanceMeters: 5_000)), "5.00 km")

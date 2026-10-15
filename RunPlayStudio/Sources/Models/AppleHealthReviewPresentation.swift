@@ -166,6 +166,9 @@ enum AppleHealthReviewPresentation {
     }
 
     /// The date a row shows, as text, so search can match what is displayed.
+    ///
+    /// In the offset the workout was recorded at, so the clock time is the one
+    /// the runner saw wherever this Mac is, with that offset beside it.
     static func dateText(_ window: AppleHealthWorkoutWindow) -> String {
         dateText(
             startSeconds: window.startSeconds,
@@ -173,10 +176,16 @@ enum AppleHealthReviewPresentation {
         )
     }
 
-    static func dateText(startSeconds: Int64, utcOffsetSeconds: Int = 0) -> String {
+    /// Without a recorded offset the time is shown in this Mac's time zone,
+    /// unmarked.
+    static func dateText(startSeconds: Int64, utcOffsetSeconds: Int? = nil) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(startSeconds))
-        return date.formatted(date: .abbreviated, time: .shortened)
-            + offsetText(utcOffsetSeconds)
+        var style = Date.FormatStyle(date: .abbreviated, time: .shortened)
+        guard let utcOffsetSeconds, let recorded = TimeZone(secondsFromGMT: utcOffsetSeconds) else {
+            return date.formatted(style)
+        }
+        style.timeZone = recorded
+        return date.formatted(style) + offsetText(utcOffsetSeconds)
     }
 
     /// The recorded UTC offset, when the export stated one.
