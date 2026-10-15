@@ -455,6 +455,20 @@ final class HeartRateChartPresentationTests: XCTestCase {
         )
     }
 
+    /// The spoken average is written as the header writes it, even for an
+    /// average halfway between two whole numbers, which two rounding rules
+    /// would split.
+    func testSpokenAverageIsTheHeadersText() throws {
+        let points = HeartRateChartPlan.timePoints(from: Fixtures.series([(0, 118), (60, 126), (120, 137), (180, 149)]))
+        let model = try XCTUnwrap(TimeDomainHeartRateChartModel.make(points: points))
+
+        XCTAssertEqual(model.average, 132.5)
+        XCTAssertTrue(
+            model.spokenSummary.contains("Average \(DisplayFormatter.formatHeartRate(model.average))."),
+            model.spokenSummary
+        )
+    }
+
     func testEveryReadingIsMarkedOnlyWhileTheyCanBeToldApart() throws {
         func model(readings: Int) throws -> TimeDomainHeartRateChartModel {
             let samples = (0..<readings).map {

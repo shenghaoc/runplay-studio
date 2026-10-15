@@ -289,8 +289,10 @@ struct TimeDomainHeartRateChartModel: Equatable {
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
+    /// The header's own formatter, so a spoken reading and the header's never
+    /// round the same value two ways.
     private static func bpm(_ value: Double) -> String {
-        "\(Int(value.rounded())) bpm"
+        DisplayFormatter.formatHeartRate(value)
     }
 
     private static func minutes(_ value: Double) -> String {
