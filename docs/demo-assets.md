@@ -177,7 +177,7 @@ fails in CI (or the other way round), the runner's rendering wins.
 
 Only the curated set is committed to `docs/assets/`:
 `demo-summary-{light,dark}.png` (about 120 KB each),
-`demo-route-replay-{light,dark}.gif` (about 2.1–2.4 MB each), and
+`demo-route-replay-{light,dark}.gif` (about 2.1 MB each), and
 `demo-assets-provenance.txt`.
 
 - At most **3 MB per file** and **7 MB in total**. `--check` enforces both.
