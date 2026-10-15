@@ -12,12 +12,15 @@ enum DistanceProvenancePresentation {
     /// distance, which needs none.
     static func label(for workout: RunWorkout) -> String? {
         guard workout.summary.distanceProvenance == .sourceReported else { return nil }
-        switch workout.source {
-        case .healthKit:
-            return "Distance from Apple Health (no GPS route)"
-        default:
-            return "Distance reported by the source (no GPS route)"
+        let fromHealth = workout.source == .healthKit
+        guard reportsDistance(workout) else {
+            return fromHealth
+                ? "No distance from Apple Health (no GPS route)"
+                : "No distance reported by the source (no GPS route)"
         }
+        return fromHealth
+            ? "Distance from Apple Health (no GPS route)"
+            : "Distance reported by the source (no GPS route)"
     }
 
     /// Help for the Distance metric. "Total recorded route distance" is only
@@ -26,8 +29,20 @@ enum DistanceProvenancePresentation {
         guard workout.summary.distanceProvenance == .sourceReported else {
             return "Total recorded route distance."
         }
+        guard reportsDistance(workout) else {
+            let source = workout.source == .healthKit ? "Apple Health" : "The source"
+            return "\(source) reported no distance for this run, and it has no GPS route to measure one."
+        }
         let origin = workout.source == .healthKit ? "Apple Health" : "the source"
         return "Distance reported by \(origin). This run has no GPS route, so RunPlay Studio did not measure it."
+    }
+
+    /// A run imported with only a duration keeps a zero distance and is still
+    /// source-reported, because its time is. That zero is no distance, not one
+    /// the source reported.
+    private static func reportsDistance(_ workout: RunWorkout) -> Bool {
+        let meters = workout.summary.totalDistanceMeters
+        return meters.isFinite && meters > 0
     }
 }
 

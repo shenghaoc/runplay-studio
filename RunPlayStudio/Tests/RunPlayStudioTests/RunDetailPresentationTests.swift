@@ -62,6 +62,33 @@ final class RunDetailPresentationTests: XCTestCase {
         XCTAssertFalse(help.contains("route distance"), help)
     }
 
+    /// A run imported with a duration and no distance is source-reported for
+    /// its time alone. Its zero is not a distance Apple Health reported, so
+    /// neither the label nor the help says one was.
+    func testADurationOnlyRunIsNotSaidToHaveAReportedDistance() throws {
+        var workout = RunWorkout(
+            metadata: WorkoutMetadata(name: "Treadmill", startDate: Fixtures.start),
+            source: .healthKit,
+            summary: RunSummary(totalDistanceMeters: 0, totalElapsedSeconds: 1_800),
+            analysisVersion: RunWorkout.currentAnalysisVersion
+        )
+        WorkoutAnalyzer().analyze(&workout)
+        XCTAssertEqual(workout.summary.distanceProvenance, .sourceReported)
+
+        XCTAssertEqual(
+            DistanceProvenancePresentation.label(for: workout),
+            "No distance from Apple Health (no GPS route)"
+        )
+        let help = DistanceProvenancePresentation.distanceHelp(for: workout)
+        XCTAssertEqual(help, "Apple Health reported no distance for this run, and it has no GPS route to measure one.")
+
+        workout.source = .strava
+        XCTAssertEqual(
+            DistanceProvenancePresentation.label(for: workout),
+            "No distance reported by the source (no GPS route)"
+        )
+    }
+
     // MARK: - Splits
 
     func testSplitsSaySoPlainlyWhenThereIsNoRoute() {
