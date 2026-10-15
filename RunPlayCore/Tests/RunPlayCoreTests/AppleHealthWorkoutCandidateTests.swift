@@ -327,6 +327,172 @@ final class AppleHealthWorkoutCandidateTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.duplicateOrigin), [.existingLibrary, .existingLibrary])
     }
 
+    // MARK: - Cost of flagging
+
+    /// Flagging compares only windows that can match, and must flag exactly
+    /// what comparing every pair flags. Windows are crowded into a short span,
+    /// with zero-length, reversed, touching, nested and shared-start windows,
+    /// so the shortcuts are exercised far more often than a real export would.
+    func testFlaggingMatchesComparingEveryPair() {
+        var generator = SeededGenerator(seed: 0x5EED)
+        for _ in 0..<40 {
+            let candidateCount = generator.next(below: 60)
+            let libraryCount = generator.next(below: 30)
+            var windows: [(Int64, Int64)] = []
+            for _ in 0..<(candidateCount + libraryCount) {
+                // Now and then repeat an earlier window exactly.
+                if !windows.isEmpty, generator.next(below: 4) == 0 {
+                    windows.append(windows[generator.next(below: windows.count)])
+                    continue
+                }
+                let start = Int64(generator.next(below: 120))
+                windows.append((start, start + Int64(generator.next(below: 50)) - 10))
+            }
+            let candidates = windows.prefix(candidateCount).enumerated().map { index, pair in
+                AppleHealthWorkoutCandidate(
+                    id: "\(index)",
+                    sourceIndex: index,
+                    window: window(pair.0, pair.1)
+                )
+            }
+            let library = windows.dropFirst(candidateCount).map {
+                AppleHealthLibraryRunWindow(startSeconds: $0.0, endSeconds: $0.1)
+            }
+
+            var flagged = candidates
+            AppleHealthWorkoutCandidateBuilder.flagDuplicates(in: &flagged, existingLibraryRuns: library)
+            let expected = flaggedByComparingEveryPair(candidates, library: library)
+
+            XCTAssertEqual(flagged.map(\.status), expected.map(\.status), "\(windows)")
+            XCTAssertEqual(flagged.map(\.duplicateOrigin), expected.map(\.duplicateOrigin), "\(windows)")
+        }
+    }
+
+    /// Chronologically separate workouts are not compared pair by pair. Every
+    /// pair would be about 6.8 million comparisons here.
+    func testSeparateWorkoutsAreNotComparedPairwise() {
+        var candidates: [AppleHealthWorkoutCandidate] = []
+        var library: [AppleHealthLibraryRunWindow] = []
+        for run in 0..<2_000 {
+            let start = Int64(run) * 100
+            // Every tenth run appears twice in the export.
+            for _ in 0..<(run % 10 == 0 ? 2 : 1) {
+                candidates.append(candidate(start, start + 60, index: candidates.count))
+            }
+            // A stored run that overlaps this one's last ten seconds.
+            library.append(AppleHealthLibraryRunWindow(startSeconds: start + 50, endSeconds: start + 90))
+        }
+
+        let reads = AppleHealthWorkoutCandidateBuilder.flagDuplicates(
+            in: &candidates,
+            existingLibraryRuns: library
+        )
+
+        XCTAssertLessThanOrEqual(reads, readBound(candidates: candidates.count, library: library.count))
+        XCTAssertEqual(tally(candidates), [
+            "duplicate withinExport": 400,
+            "possibleDuplicate existingLibrary": 1_800,
+        ])
+    }
+
+    /// Workouts that all overlap one another are not compared pair by pair
+    /// either. An untrusted export can be built this way, and walking the pairs
+    /// that overlap would still be millions of comparisons here.
+    func testWorkoutsThatAllOverlapAreNotComparedPairwise() {
+        var candidates: [AppleHealthWorkoutCandidate] = []
+        var library: [AppleHealthLibraryRunWindow] = []
+        for run in 0..<2_000 {
+            let start = Int64(run)
+            for _ in 0..<(run % 10 == 0 ? 2 : 1) {
+                candidates.append(candidate(start, start + 1_000_000, index: candidates.count))
+            }
+            library.append(AppleHealthLibraryRunWindow(
+                startSeconds: 500_000 + start,
+                endSeconds: 600_000 + start
+            ))
+        }
+
+        let reads = AppleHealthWorkoutCandidateBuilder.flagDuplicates(
+            in: &candidates,
+            existingLibraryRuns: library
+        )
+
+        XCTAssertLessThanOrEqual(reads, readBound(candidates: candidates.count, library: library.count))
+        XCTAssertEqual(tally(candidates), [
+            "duplicate withinExport": 400,
+            "possibleDuplicate withinExport": 1_800,
+        ])
+    }
+
+    private func candidate(_ start: Int64, _ end: Int64, index: Int) -> AppleHealthWorkoutCandidate {
+        AppleHealthWorkoutCandidate(id: "\(index)", sourceIndex: index, window: window(start, end))
+    }
+
+    /// Two binary searches per candidate, each reading about log2 of the windows
+    /// it searches and then one end.
+    private func readBound(candidates: Int, library: Int) -> Int {
+        let searchLength = Int.bitWidth - (candidates + library).leadingZeroBitCount + 1
+        return 2 * candidates * searchLength
+    }
+
+    /// Candidates counted by status and origin.
+    private func tally(_ candidates: [AppleHealthWorkoutCandidate]) -> [String: Int] {
+        Dictionary(grouping: candidates) { candidate in
+            "\(candidate.status) \(candidate.duplicateOrigin.map { "\($0)" } ?? "none")"
+        }.mapValues(\.count)
+    }
+
+    /// The definition flagging must reproduce: every pair of candidates, then
+    /// every candidate against every stored run.
+    private func flaggedByComparingEveryPair(
+        _ candidates: [AppleHealthWorkoutCandidate],
+        library: [AppleHealthLibraryRunWindow]
+    ) -> [AppleHealthWorkoutCandidate] {
+        func match(
+            _ start: Int64, _ end: Int64, _ otherStart: Int64, _ otherEnd: Int64
+        ) -> AppleHealthCandidateStatus? {
+            if start == otherStart, end == otherEnd { return .duplicate }
+            if start < otherEnd, otherStart < end { return .possibleDuplicate }
+            return nil
+        }
+        var candidates = candidates
+        for first in candidates.indices {
+            for second in candidates.indices where second > first {
+                let lhs = candidates[first].window
+                let rhs = candidates[second].window
+                guard let status = match(
+                    lhs.startSeconds, lhs.endSeconds, rhs.startSeconds, rhs.endSeconds
+                ) else { continue }
+                candidates[first].apply(status, origin: .withinExport)
+                candidates[second].apply(status, origin: .withinExport)
+            }
+        }
+        for index in candidates.indices {
+            for run in library {
+                let window = candidates[index].window
+                guard let status = match(
+                    window.startSeconds, window.endSeconds, run.startSeconds, run.endSeconds
+                ) else { continue }
+                candidates[index].apply(status, origin: .existingLibrary)
+            }
+        }
+        return candidates
+    }
+
+    /// A fixed-seed generator, so a failing case reproduces exactly.
+    private struct SeededGenerator {
+        private var state: UInt64
+
+        init(seed: UInt64) {
+            self.state = seed
+        }
+
+        mutating func next(below bound: Int) -> Int {
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((state >> 33) % UInt64(max(bound, 1)))
+        }
+    }
+
     // MARK: - Shape
 
     func testEmptyScanYieldsNoCandidates() {

@@ -232,40 +232,129 @@ public enum AppleHealthWorkoutCandidateBuilder {
             candidates.append(makeCandidate(workout, index: index))
         }
 
-        // Within the export. Each pair is visited once and both sides flagged:
-        // with two identical windows neither is knowably the original, so
-        // choosing one to keep would be a guess, and the user is the one who can
-        // tell them apart.
-        for first in candidates.indices {
-            for second in candidates.indices where second > first {
-                guard let match = classify(
-                    start: candidates[first].window.startSeconds,
-                    end: candidates[first].window.endSeconds,
-                    otherStart: candidates[second].window.startSeconds,
-                    otherEnd: candidates[second].window.endSeconds
-                ) else { continue }
-                candidates[first].apply(match, origin: .withinExport)
-                candidates[second].apply(match, origin: .withinExport)
-            }
-        }
-
-        // Against runs already stored.
-        for index in candidates.indices {
-            for run in existingLibraryRuns {
-                guard let match = classify(
-                    start: candidates[index].window.startSeconds,
-                    end: candidates[index].window.endSeconds,
-                    otherStart: run.startSeconds,
-                    otherEnd: run.endSeconds
-                ) else { continue }
-                candidates[index].apply(match, origin: .existingLibrary)
-            }
-        }
+        flagDuplicates(in: &candidates, existingLibraryRuns: existingLibraryRuns)
 
         return AppleHealthCandidateBuildResult(
             candidates: candidates,
             excludedWorkoutsByActivityType: excluded
         )
+    }
+
+    /// Flag each candidate whose window matches another candidate's or a stored
+    /// run's, and return how many stored windows the lookups read.
+    ///
+    /// Comparing every pair would cost billions of comparisons for tens of
+    /// thousands of workouts, and an export is untrusted: nothing caps how many
+    /// workouts it holds or how many of them overlap. So the windows are indexed
+    /// instead. An identical window is a dictionary lookup, and an overlapping
+    /// one is a binary search in an `OverlapIndex`, so the work grows with the
+    /// number of windows, not with the number of pairs or overlaps. The count is
+    /// returned so a test can show that.
+    @discardableResult
+    static func flagDuplicates(
+        in candidates: inout [AppleHealthWorkoutCandidate],
+        existingLibraryRuns: [AppleHealthLibraryRunWindow]
+    ) -> Int {
+        var reads = 0
+        let windows = candidates.map { Span(start: $0.window.startSeconds, end: $0.window.endSeconds) }
+        let stored = existingLibraryRuns.map { Span(start: $0.startSeconds, end: $0.endSeconds) }
+        var copies: [Span: Int] = [:]
+        for window in windows {
+            copies[window, default: 0] += 1
+        }
+        let storedWindows = Set(stored)
+        let exportIndex = OverlapIndex(windows)
+        let storedIndex = OverlapIndex(stored)
+
+        // Matches are applied export first, then library, which is the order
+        // `apply` ranks them in; a candidate's flags depend on nothing else.
+        for index in candidates.indices {
+            let window = windows[index]
+            // Within the export. Both sides of a match are flagged: with two
+            // identical windows neither is knowably the original, so choosing one
+            // to keep would be a guess, and the user is the one who can tell them
+            // apart.
+            if copies[window, default: 0] > 1 {
+                candidates[index].apply(.duplicate, origin: .withinExport)
+            }
+            if exportIndex.overlaps(window, excluding: index, reads: &reads) {
+                candidates[index].apply(.possibleDuplicate, origin: .withinExport)
+            }
+            // Against runs already stored.
+            if storedWindows.contains(window) {
+                candidates[index].apply(.duplicate, origin: .existingLibrary)
+            }
+            if storedIndex.overlaps(window, excluding: nil, reads: &reads) {
+                candidates[index].apply(.possibleDuplicate, origin: .existingLibrary)
+            }
+        }
+        return reads
+    }
+
+    /// A window's two instants, in whole seconds.
+    private struct Span: Hashable {
+        var start: Int64
+        var end: Int64
+    }
+
+    /// Windows sorted by start, with the latest end among each prefix of them.
+    ///
+    /// Two windows overlap when each starts before the other ends. Overlap is
+    /// strict: a window that merely touches another's edge is adjacent, not
+    /// overlapping. The export records back-to-back workouts that share a
+    /// boundary second, and counting that as a duplicate would flag ordinary
+    /// consecutive runs. An identical window overlaps too when it has any
+    /// length, but it is a duplicate, which outranks an overlap.
+    private struct OverlapIndex {
+        /// Starts, ascending.
+        private let starts: [Int64]
+        /// For the first `k` windows in start order: the latest end, the window
+        /// that has it, and the latest end among the rest, so a window can ask
+        /// about every window but itself.
+        private let latest: [(end: Int64, owner: Int, runnerUp: Int64)]
+
+        init(_ spans: [Span]) {
+            let order = spans.indices.sorted { (spans[$0].start, $0) < (spans[$1].start, $1) }
+            starts = order.map { spans[$0].start }
+            var latest = [(end: Int64.min, owner: -1, runnerUp: Int64.min)]
+            latest.reserveCapacity(spans.count + 1)
+            for index in order {
+                let previous = latest[latest.count - 1]
+                let end = spans[index].end
+                if end > previous.end {
+                    latest.append((end: end, owner: index, runnerUp: previous.end))
+                } else {
+                    latest.append((
+                        end: previous.end,
+                        owner: previous.owner,
+                        runnerUp: max(previous.runnerUp, end)
+                    ))
+                }
+            }
+            self.latest = latest
+        }
+
+        /// Whether a window other than the one at `excluded` overlaps `span`.
+        func overlaps(_ span: Span, excluding excluded: Int?, reads: inout Int) -> Bool {
+            // The windows that start before `span` ends are a prefix of start
+            // order, and one of them overlaps `span` exactly when the latest end
+            // among them comes after `span` starts.
+            var low = 0
+            var high = starts.count
+            while low < high {
+                let mid = low + (high - low) / 2
+                reads += 1
+                if starts[mid] < span.end {
+                    low = mid + 1
+                } else {
+                    high = mid
+                }
+            }
+            reads += 1
+            let prefix = latest[low]
+            let latestEnd = prefix.owner == excluded ? prefix.runnerUp : prefix.end
+            return latestEnd > span.start
+        }
     }
 
     private static func makeCandidate(
@@ -285,27 +374,6 @@ public enum AppleHealthWorkoutCandidateBuilder {
 
     private static func identity(window: AppleHealthWorkoutWindow, index: Int) -> String {
         "\(window.startSeconds)-\(window.endSeconds)-\(window.activityType)-\(index)"
-    }
-
-    /// Classify two windows, or nil when they do not overlap at all.
-    ///
-    /// Overlap is strict: a window that merely touches another's edge is
-    /// adjacent, not overlapping. The export records back-to-back workouts that
-    /// share a boundary second, and counting that as a duplicate would flag
-    /// ordinary consecutive runs.
-    private static func classify(
-        start: Int64,
-        end: Int64,
-        otherStart: Int64,
-        otherEnd: Int64
-    ) -> AppleHealthCandidateStatus? {
-        if start == otherStart, end == otherEnd {
-            return .duplicate
-        }
-        if start < otherEnd, otherStart < end {
-            return .possibleDuplicate
-        }
-        return nil
     }
 
     /// The first distance statistic the export reports for the workout.
