@@ -133,6 +133,13 @@ public struct AppleHealthWorkoutCandidate: Identifiable, Hashable, Sendable {
     /// Archive-relative path of this workout's route file, when it names one.
     public var routeArchivePath: String?
 
+    /// True when the workout names a route file the archive cannot supply: no
+    /// regular file at that path, exactly or unambiguously ignoring case.
+    ///
+    /// Set by the archive scan, the only reader that sees the archive's entries.
+    /// A candidate built from the export document alone leaves it false.
+    public var isRouteFileMissing: Bool
+
     /// Heart rate the scan joined to this window, and nothing else.
     public var heartRate: [AppleHealthHeartRateReading]
 
@@ -153,6 +160,7 @@ public struct AppleHealthWorkoutCandidate: Identifiable, Hashable, Sendable {
         window: AppleHealthWorkoutWindow,
         statistics: [AppleHealthWorkoutStatistic] = [],
         routeArchivePath: String? = nil,
+        isRouteFileMissing: Bool = false,
         heartRate: [AppleHealthHeartRateReading] = [],
         sourceDistanceMeters: Double? = nil,
         status: AppleHealthCandidateStatus = .ready,
@@ -163,19 +171,25 @@ public struct AppleHealthWorkoutCandidate: Identifiable, Hashable, Sendable {
         self.window = window
         self.statistics = statistics
         self.routeArchivePath = routeArchivePath
+        self.isRouteFileMissing = isRouteFileMissing
         self.heartRate = heartRate
         self.sourceDistanceMeters = sourceDistanceMeters
         self.status = status
         self.duplicateOrigin = duplicateOrigin
     }
 
-    /// Whether this candidate names a route file.
+    /// Whether this candidate names a route file the archive can supply.
     ///
     /// This is the route-presence decision for a candidate, named for the same
     /// predicate the rest of the app uses. A candidate knows the archive path of
     /// its route, if it has one, and that reference is what decides whether its
     /// distance is derived from a route or taken from the export's own totals.
-    public var hasRoute: Bool { routeArchivePath != nil }
+    /// A named file the archive cannot supply is no route: the run imports
+    /// without one.
+    public var hasRoute: Bool { routeArchivePath != nil && !isRouteFileMissing }
+
+    /// Whether this candidate names a route file the archive cannot supply.
+    public var namesMissingRouteFile: Bool { routeArchivePath != nil && isRouteFileMissing }
 
     /// Where this candidate's distance and duration come from.
     ///
