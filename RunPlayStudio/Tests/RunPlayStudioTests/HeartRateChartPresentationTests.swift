@@ -342,6 +342,22 @@ final class HeartRateChartPresentationTests: XCTestCase {
         )
     }
 
+    /// The picker never tells a VoiceOver or keyboard user that a chart over
+    /// time is over distance.
+    func testPickerHintNamesTheAxisTheChartUses() {
+        let overTime = HeartRateChartPlan.metricPickerHint(paceSelected: false, chartsOverTime: true)
+        XCTAssertFalse(overTime.contains("distance"), overTime)
+        XCTAssertTrue(overTime.contains("over time"), overTime)
+        XCTAssertEqual(
+            HeartRateChartPlan.metricPickerHint(paceSelected: false, chartsOverTime: false),
+            "Select the metric shown over distance."
+        )
+        XCTAssertEqual(
+            HeartRateChartPlan.metricPickerHint(paceSelected: true, chartsOverTime: false),
+            "Active pace uses recorded time and excludes recording gaps."
+        )
+    }
+
     func testSelectingARouteLessRunAfterARoutedOneMovesThePickerToHeartRate() {
         let timeDomain = HeartRateChartPlan.timeDomain(points: [
             HeartRateTimePoint(id: 0, minutes: 0, bpm: 120, seriesID: 1)

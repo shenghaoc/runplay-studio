@@ -212,16 +212,8 @@ struct MetricsChartView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 360)
                 .accessibilityLabel("Chart metric")
-                .accessibilityHint(
-                    selectedMetric == .pace
-                        ? "Active pace uses recorded time and excludes recording gaps."
-                        : "Select the metric shown over distance."
-                )
-                .help(
-                    selectedMetric == .pace
-                        ? "Active pace uses recorded time and excludes recording gaps."
-                        : "Select the metric shown over distance."
-                )
+                .accessibilityHint(metricPickerHint)
+                .help(metricPickerHint)
 
                 Spacer()
 
@@ -630,6 +622,13 @@ struct MetricsChartView: View {
 
     /// The over-time heart-rate chart, when that is what this run shows: Heart
     /// Rate selected on a run whose readings have no route to be charted along.
+    private var metricPickerHint: String {
+        HeartRateChartPlan.metricPickerHint(
+            paceSelected: selectedMetric == .pace,
+            chartsOverTime: timeDomainModel != nil
+        )
+    }
+
     private var timeDomainModel: TimeDomainHeartRateChartModel? {
         guard selectedMetric == .heartRate, let points = heartRate.timeDomainPoints else { return nil }
         return TimeDomainHeartRateChartModel.make(points: points)

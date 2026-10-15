@@ -160,6 +160,15 @@ enum HeartRateChartPlan: Equatable {
         return nil
     }
 
+    /// The chart metric picker's hint and help. While heart rate is charted
+    /// over time, the picker must not say its metric is shown over distance.
+    static func metricPickerHint(paceSelected: Bool, chartsOverTime: Bool) -> String {
+        if paceSelected { return "Active pace uses recorded time and excludes recording gaps." }
+        return chartsOverTime
+            ? "Select the metric to chart. This run has no route, so heart rate is shown over time."
+            : "Select the metric shown over distance."
+    }
+
     /// The held reading at a distance, from the route point replay shows there,
     /// so the chart's readout and the replay panel name the same reading. Nil
     /// for every plan but `alignedToRoute`.
