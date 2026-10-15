@@ -162,7 +162,7 @@ struct AppleHealthImportView: View {
             .width(min: 80, ideal: 90, max: 110)
 
             TableColumn("Route") { candidate in
-                indicator(AppleHealthReviewPresentation.hasRoute(candidate))
+                routeIndicator(for: candidate)
                     .accessibilityLabel(AppleHealthReviewPresentation.routeAccessibilityLabel(candidate))
             }
             .width(52)
@@ -232,6 +232,22 @@ struct AppleHealthImportView: View {
     private func indicator(_ isPresent: Bool) -> some View {
         Image(systemName: isPresent ? "checkmark" : "minus")
             .foregroundStyle(isPresent ? Color.primary : Color.secondary)
+    }
+
+    /// A route file the export lacks gets its own mark, and says what it is on
+    /// hover, so it is not mistaken for a run that never named a route.
+    @ViewBuilder
+    private func routeIndicator(for candidate: AppleHealthWorkoutCandidate) -> some View {
+        switch AppleHealthReviewPresentation.routeIndicator(candidate) {
+        case .present:
+            indicator(true)
+        case .absent:
+            indicator(false)
+        case .missingFile:
+            Image(systemName: "exclamationmark.circle")
+                .foregroundStyle(.secondary)
+                .help(AppleHealthReviewPresentation.routeAccessibilityLabel(candidate))
+        }
     }
 
     private var reviewFooter: some View {
