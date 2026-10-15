@@ -119,6 +119,36 @@ final class FITMultiSessionTests: XCTestCase {
         )
     }
 
+    func testWheelchairPushRunIsReadyWithoutAWarning() async throws {
+        let result = try await scan(FITMultiSessionFixtureBuilder.runningPlus(sport: .wheelchairPushRun))
+        XCTAssertEqual(result.candidates.count, 2)
+        XCTAssertEqual(result.candidates[1].sport, .running)
+        XCTAssertEqual(result.candidates[1].status, .ready)
+        XCTAssertTrue(result.candidates[1].isSelectedByDefault)
+        XCTAssertNil(
+            result.candidates[1].statusDetail,
+            "A push run is a recognised sport, so it carries no unknown-sport warning"
+        )
+        XCTAssertEqual(result.candidates[1].sportDescription, "Wheelchair push run")
+    }
+
+    func testWheelchairPushWalkIsUnsupportedLikeWalking() async throws {
+        let result = try await scan(FITMultiSessionFixtureBuilder.runningPlus(sport: .wheelchairPushWalk))
+        XCTAssertEqual(result.candidates[1].status, .unsupportedSport)
+        XCTAssertFalse(result.candidates[1].isSelectedByDefault)
+        XCTAssertEqual(result.candidates[1].sportDescription, "Wheelchair push walk")
+    }
+
+    /// Cricket stands for every profile sport that is not a run: its GPS
+    /// session is unsupported, not an unrecognised sport selected as a run.
+    func testNonRunningProfileSportIsUnsupportedNotUnrecognised() async throws {
+        let result = try await scan(FITMultiSessionFixtureBuilder.runningPlus(sport: .cricket))
+        XCTAssertEqual(result.candidates[1].status, .unsupportedSport)
+        XCTAssertFalse(result.candidates[1].isSelectedByDefault)
+        XCTAssertEqual(result.candidates[1].sportDescription, "Cricket")
+        XCTAssertEqual(result.candidates[1].statusDetail, "Cricket sessions are not supported.")
+    }
+
     func testSeveralUnsupportedSessionsAreAllVisible() async throws {
         let data = FITMultiSessionFixtureBuilder.build(
             records: (0..<10).map {

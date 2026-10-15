@@ -81,11 +81,15 @@ transparency, with a text explanation rather than colour alone.
 ### Sport policy
 
 `FITSportPolicy` is the single classifier used by both scan and import.
-`FITSport.running` is supported. A missing or unrecognised sport value is
-treated as running and carries an explicit warning. Every other known profile
-sport — **including walking and hiking** — is unsupported. This intentionally
-differs from `StravaActivityTypePolicy`, whose walk/hike acceptance applies to
-Strava bulk-export metadata rows rather than to FIT session messages.
+`FITSport` models all 82 values of the profile's `sport` enum (Garmin FIT SDK
+Profile 21.218.0). Two of them import as runs: `running` and
+`wheelchair_push_run`. A push run is Ready with no warning, its sport reads
+"Wheelchair push run", and it is stored as a run. A missing sport, or a value
+outside the profile, is treated as running and carries an explicit warning.
+Every other profile sport — **including walking, hiking, and
+`wheelchair_push_walk`** — is unsupported. This intentionally differs from
+`StravaActivityTypePolicy`, whose walk/hike acceptance applies to Strava
+bulk-export metadata rows rather than to FIT session messages.
 
 ### Boundary and overlap policy
 
