@@ -19,6 +19,15 @@ extension AppState {
         appleHealthArchiveService.map(AppleHealthImportService.init(archiveService:))
     }
 
+    /// The runs the library actually holds.
+    ///
+    /// While the app shows bundled demos in place of an empty library, those
+    /// demos are in `workouts` but not in the library, so they must neither flag
+    /// a Health run as already imported nor make its import skip it.
+    private var storedWorkouts: [RunWorkout] {
+        workouts.filter { libraryWorkoutIDs.contains($0.id) }
+    }
+
     /// Begin scanning a user-selected Apple Health `export.zip`.
     ///
     /// The whole document is read before anything is offered, so a corrupt or
@@ -52,7 +61,7 @@ extension AppState {
             do {
                 let result = try await scanService.scan(
                     archiveAt: url,
-                    existingLibraryRuns: AppleHealthLibraryRunWindow.windows(for: self.workouts),
+                    existingLibraryRuns: AppleHealthLibraryRunWindow.windows(for: self.storedWorkouts),
                     // Cancel cancels this task, and the scan asks between phases
                     // and while extracting, so a large export stops being read.
                     isCancelled: { Task.isCancelled }
@@ -109,7 +118,7 @@ extension AppState {
         let archiveURL = session.archiveURL
         let scan = session.scanResult
         let completedName = session.archiveName
-        let existing = workouts
+        let existing = storedWorkouts
 
         operationState = .importingArchive
         session.phase = .importing

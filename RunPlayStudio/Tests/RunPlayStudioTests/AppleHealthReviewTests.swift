@@ -173,6 +173,23 @@ final class AppleHealthReviewTests: XCTestCase {
         )
     }
 
+    /// One running workout over the given window, as an export document.
+    private func healthDocument(runningFrom start: Int64, to end: Int64) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        func stamp(_ seconds: Int64) -> String {
+            formatter.string(from: Date(timeIntervalSince1970: TimeInterval(seconds)))
+        }
+        return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <HealthData locale="en_US">
+        <Workout workoutActivityType="HKWorkoutActivityTypeRunning" startDate="\(stamp(start))" endDate="\(stamp(end))"/>
+        </HealthData>
+        """
+    }
+
     /// Wait for the sheet to reach a terminal phase, or to be dismissed.
     private func waitForTerminalPhase(_ appState: AppState) async {
         for _ in 0..<400 {
@@ -508,6 +525,26 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertFalse(appState.showingError, appState.errorMessage ?? "")
         XCTAssertNil(appState.appleHealthSession)
         XCTAssertEqual(appState.operationState, .idle)
+    }
+
+    /// Bundled demos stand in for an empty library without being in it, so a
+    /// Health run at a demo's exact time is neither flagged as already imported
+    /// nor skipped by the import.
+    func testBundledDemosAreNotTreatedAsLibraryRuns() async throws {
+        let appState = makeAppState(cancellingAtExtraction: false)
+        appState.loadSampleWorkouts()
+        XCTAssertTrue(appState.libraryWorkoutIDs.isEmpty)
+        let demo = try XCTUnwrap(appState.workouts.first)
+        let window = try XCTUnwrap(AppleHealthLibraryRunWindow(workout: demo))
+        let archive = try exportArchive(healthDocument(runningFrom: window.startSeconds, to: window.endSeconds))
+
+        appState.beginAppleHealthImport(from: archive)
+        await appState.appleHealthTask?.value
+        XCTAssertEqual(appState.appleHealthSession?.candidates.map(\.status), [.ready])
+
+        appState.confirmAppleHealthImport()
+        await waitForTerminalPhase(appState)
+        XCTAssertEqual(appState.appleHealthSession?.report?.addedWorkoutCount, 1)
     }
 
     func testCancellingTheReviewClosesItAndLeavesTheLibraryUntouched() {
