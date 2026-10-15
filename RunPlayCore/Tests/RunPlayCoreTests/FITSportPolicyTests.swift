@@ -8,12 +8,15 @@ final class FITSportPolicyTests: XCTestCase {
 
     func testRunningSubSportsUseTheirProfileNames() {
         let expected: [(rawValue: UInt8, name: String)] = [
-            (1, "Treadmill"),  // treadmill
-            (2, "Street"),     // street
-            (3, "Trail"),      // trail
-            (4, "Track"),      // track
-            (45, "Indoor"),    // indoor_running
-            (58, "Virtual"),   // virtual_activity
+            (1, "Treadmill"),        // treadmill
+            (2, "Street"),           // street
+            (3, "Trail"),            // trail
+            (4, "Track"),            // track
+            (45, "Indoor"),          // indoor_running
+            (58, "Virtual"),         // virtual_activity
+            (59, "Obstacle race"),   // obstacle
+            (67, "Ultra"),           // ultra
+            (82, "Adventure race"),  // adventure_race
         ]
         for (rawValue, name) in expected {
             XCTAssertEqual(
@@ -24,10 +27,14 @@ final class FITSportPolicyTests: XCTestCase {
         }
     }
 
-    /// Values the profile assigns to other sports are not runs.
+    /// Values the profile assigns to sports other than `running` stay hidden.
+    /// 87 has no sport comment, but its name pairs it with
+    /// `wheelchair_push_run` (66), which the profile keeps separate from
+    /// `running` (1).
     func testSubSportsOfOtherSportsStayHidden() {
         XCTAssertNil(FITSportPolicy.subSportDescription(subSport: 6))   // indoor_cycling
         XCTAssertNil(FITSportPolicy.subSportDescription(subSport: 17))  // lap_swimming
+        XCTAssertNil(FITSportPolicy.subSportDescription(subSport: 87))  // indoor_wheelchair_run
     }
 
     func testMissingGenericInvalidAndUnknownSubSportsStayHidden() {

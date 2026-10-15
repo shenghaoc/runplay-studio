@@ -60,12 +60,15 @@ public enum FITSportPolicy {
             return nil
         }
         switch rawSubSport {
-        case 1: return coreLocalized("Treadmill")  // treadmill
-        case 2: return coreLocalized("Street")     // street
-        case 3: return coreLocalized("Trail")      // trail
-        case 4: return coreLocalized("Track")      // track
-        case 45: return coreLocalized("Indoor")    // indoor_running
-        case 58: return coreLocalized("Virtual")   // virtual_activity
+        case 1: return coreLocalized("Treadmill")        // treadmill
+        case 2: return coreLocalized("Street")           // street
+        case 3: return coreLocalized("Trail")            // trail
+        case 4: return coreLocalized("Track")            // track
+        case 45: return coreLocalized("Indoor")          // indoor_running
+        case 58: return coreLocalized("Virtual")         // virtual_activity
+        case 59: return coreLocalized("Obstacle race")   // obstacle
+        case 67: return coreLocalized("Ultra")           // ultra
+        case 82: return coreLocalized("Adventure race")  // adventure_race
         default: return nil
         }
     }
