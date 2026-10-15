@@ -221,29 +221,29 @@ for header in "${PUBLIC_HEADERS[@]}"; do
   body="$(strip_comments "$header")"
 
   # std::tuple / std::variant as type uses (not words in strings alone).
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::tuple([^[:alnum:]_]|$)'; then
+  if grep -Eq '(^|[^[:alnum:]_])std::tuple([^[:alnum:]_]|$)' <<<"$body"; then
     fail "$header exposes std::tuple in public API"
   fi
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::variant([^[:alnum:]_]|$)'; then
+  if grep -Eq '(^|[^[:alnum:]_])std::variant([^[:alnum:]_]|$)' <<<"$body"; then
     fail "$header exposes std::variant in public API"
   fi
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])std::vector[[:space:]]*<'; then
+  if grep -Eq '(^|[^[:alnum:]_])std::vector[[:space:]]*<' <<<"$body"; then
     fail "$header exposes std::vector in public API"
   fi
 
   # throw expressions / throw specifications (not the word in a string literal heuristic).
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])throw[[:space:]]'; then
+  if grep -Eq '(^|[^[:alnum:]_])throw[[:space:]]' <<<"$body"; then
     fail "$header contains throw (exceptions must not cross the Swift boundary)"
   fi
 
   # Objective-C / Apple framework / Swift-generated headers.
-  if printf '%s' "$body" | grep -Eq '#[[:space:]]*import[[:space:]]+<'; then
+  if grep -Eq '#[[:space:]]*import[[:space:]]+<' <<<"$body"; then
     fail "$header uses #import (Objective-C style) of a system header"
   fi
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*include[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|Swift|swift)/'; then
+  if grep -Eqi '#[[:space:]]*include[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|Swift|swift)/' <<<"$body"; then
     fail "$header includes Apple or Swift framework headers"
   fi
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*include[[:space:]]*[<"][^>"]*-Swift\.h[>"]'; then
+  if grep -Eqi '#[[:space:]]*include[[:space:]]*[<"][^>"]*-Swift\.h[>"]' <<<"$body"; then
     fail "$header includes a Swift-generated -Swift.h header"
   fi
 done
@@ -503,10 +503,10 @@ done < <(find RunPlayEngineCpp -type f \( -name '*.c' -o -name '*.cc' -o -name '
 
 for src in "${ENGINE_SOURCES[@]}"; do
   body="$(strip_comments "$src")"
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|MapKit|SceneKit|SwiftUI|Combine)/'; then
+  if grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"](Foundation|AppKit|UIKit|CoreFoundation|CoreLocation|MapKit|SceneKit|SwiftUI|Combine)/' <<<"$body"; then
     fail "$src imports an Apple framework"
   fi
-  if printf '%s' "$body" | grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"][^>"]*-Swift\.h[>"]'; then
+  if grep -Eqi '#[[:space:]]*(include|import)[[:space:]]*[<"][^>"]*-Swift\.h[>"]' <<<"$body"; then
     fail "$src includes a Swift-generated header"
   fi
   # No Objective-C++ in the engine.
@@ -593,9 +593,9 @@ fi
 # C++ engine must not reference upper Swift module names as imports or includes.
 for src in "${ENGINE_SOURCES[@]}"; do
   body="$(strip_comments "$src")"
-  if printf '%s' "$body" | grep -Eq '(^|[^[:alnum:]_])(RunPlayCore|RunPlayPlatform|RunPlayStudio)([^[:alnum:]_]|$)'; then
+  if grep -Eq '(^|[^[:alnum:]_])(RunPlayCore|RunPlayPlatform|RunPlayStudio)([^[:alnum:]_]|$)' <<<"$body"; then
     # Allow the path segment "RunPlayEngineCpp" only; upper modules are forbidden.
-    if printf '%s' "$body" | grep -Eq '(RunPlayCore|RunPlayPlatform|RunPlayStudio)'; then
+    if grep -Eq '(RunPlayCore|RunPlayPlatform|RunPlayStudio)' <<<"$body"; then
       fail "$src references upper-layer module name (RunPlayCore/Platform/Studio)"
     fi
   fi
@@ -706,12 +706,12 @@ geodesy_reference_negative_fixtures=(
 )
 geodesy_reference_matcher_ok=1
 for fixture in "${geodesy_reference_positive_fixtures[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$geodesy_reference_re"; then
+  if ! grep -Eq "$geodesy_reference_re" <<<"$fixture"; then
     geodesy_reference_matcher_ok=0
   fi
 done
 for fixture in "${geodesy_reference_negative_fixtures[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$geodesy_reference_re"; then
+  if grep -Eq "$geodesy_reference_re" <<<"$fixture"; then
     geodesy_reference_matcher_ok=0
   fi
 done
@@ -762,12 +762,12 @@ quality_symbol_negative=(
 )
 quality_symbol_matcher_ok=1
 for fixture in "${quality_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$quality_symbol_re"; then
+  if ! grep -Eq "$quality_symbol_re" <<<"$fixture"; then
     quality_symbol_matcher_ok=0
   fi
 done
 for fixture in "${quality_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$quality_symbol_re"; then
+  if grep -Eq "$quality_symbol_re" <<<"$fixture"; then
     quality_symbol_matcher_ok=0
   fi
 done
@@ -841,16 +841,13 @@ else
   fail "PersonalHeatmapBuilder must call RunPlayPersonalHeatmapCoverageBridge"
 fi
 
-heatmap_builder_body="$(strip_comments "$HEATMAP_BUILDER_SOURCE")"
-if printf '%s' "$heatmap_builder_body" \
-  | grep -Eq '\.[[:space:]]*accumulateCoverage[[:space:]]*\('; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" '\.[[:space:]]*accumulateCoverage[[:space:]]*\('; then
   pass "PersonalHeatmapBuilder accumulates directly from native coverage output"
 else
   fail "PersonalHeatmapBuilder must call accumulateCoverage"
 fi
 
-if printf '%s' "$heatmap_builder_body" \
-  | grep -Eq '\.[[:space:]]*coverage[[:space:]]*\('; then
+if code_matches "$HEATMAP_BUILDER_SOURCE" '\.[[:space:]]*coverage[[:space:]]*\('; then
   fail "PersonalHeatmapBuilder must not call the array-returning coverage method"
 else
   pass "PersonalHeatmapBuilder does not materialize per-workout coverage arrays"
@@ -927,8 +924,7 @@ if [[ -f "$HEATMAP_PROFILE_TEST" ]]; then
   heatmap_profile_body="$(
     strip_comments "$HEATMAP_PROFILE_TEST" | tr '\n' ' ' | tr -s '[:space:]' ' '
   )"
-  if printf '%s' "$heatmap_profile_body" \
-    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_PROFILE'; then
+  if grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_PROFILE' <<<"$heatmap_profile_body"; then
     pass "heatmap pipeline profile skips unless RUNPLAY_HEATMAP_PROFILE=1"
   else
     fail "$HEATMAP_PROFILE_TEST must skip unless RUNPLAY_HEATMAP_PROFILE=1"
@@ -945,8 +941,8 @@ else
       | tr '\n' ' ' \
       | tr -s '[:space:]' ' '
   )"
-  if printf '%s' "$heatmap_aggregation_benchmark_body" \
-    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK'; then
+  if grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK' \
+    <<<"$heatmap_aggregation_benchmark_body"; then
     pass "heatmap aggregation benchmark requires explicit opt-in"
   else
     fail "$HEATMAP_AGGREGATION_BENCHMARK_TEST must require RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1"
@@ -969,12 +965,12 @@ heatmap_profile_api_negative=(
 )
 heatmap_profile_api_matcher_ok=1
 for fixture in "${heatmap_profile_api_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$heatmap_profile_api_re"; then
+  if ! grep -Eq "$heatmap_profile_api_re" <<<"$fixture"; then
     heatmap_profile_api_matcher_ok=0
   fi
 done
 for fixture in "${heatmap_profile_api_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$heatmap_profile_api_re"; then
+  if grep -Eq "$heatmap_profile_api_re" <<<"$fixture"; then
     heatmap_profile_api_matcher_ok=0
   fi
 done
@@ -1042,12 +1038,12 @@ profiling_instrumentation_negative=(
 )
 profiling_instrumentation_matcher_ok=1
 for fixture in "${profiling_instrumentation_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$profiling_instrumentation_re"; then
+  if ! grep -Eq "$profiling_instrumentation_re" <<<"$fixture"; then
     profiling_instrumentation_matcher_ok=0
   fi
 done
 for fixture in "${profiling_instrumentation_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$profiling_instrumentation_re"; then
+  if grep -Eq "$profiling_instrumentation_re" <<<"$fixture"; then
     profiling_instrumentation_matcher_ok=0
   fi
 done
@@ -1101,13 +1097,12 @@ if [[ -f "$CORE_HOTSPOT_PROFILE_TEST" ]]; then
   core_hotspot_body="$(
     strip_comments "$CORE_HOTSPOT_PROFILE_TEST" | tr '\n' ' ' | tr -s '[:space:]' ' '
   )"
-  if printf '%s' "$core_hotspot_body" \
-    | grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_CORE_HOTSPOT_PROFILE'; then
+  if grep -Eq 'XCTSkipUnless\([^)]*RUNPLAY_CORE_HOTSPOT_PROFILE' <<<"$core_hotspot_body"; then
     pass "remaining-core hotspot profile skips unless RUNPLAY_CORE_HOTSPOT_PROFILE=1"
   else
     fail "$CORE_HOTSPOT_PROFILE_TEST must skip unless RUNPLAY_CORE_HOTSPOT_PROFILE=1"
   fi
-  if printf '%s' "$core_hotspot_body" | grep -Eq 'func testAllFamilies'; then
+  if grep -Eq 'func testAllFamilies' <<<"$core_hotspot_body"; then
     fail "$CORE_HOTSPOT_PROFILE_TEST must not define testAllFamilies (double execution)"
   else
     pass "remaining-core hotspot profile has no testAllFamilies aggregator"
@@ -1225,12 +1220,12 @@ dtw_symbol_negative=(
 )
 dtw_symbol_matcher_ok=1
 for fixture in "${dtw_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$dtw_symbol_re"; then
+  if ! grep -Eq "$dtw_symbol_re" <<<"$fixture"; then
     dtw_symbol_matcher_ok=0
   fi
 done
 for fixture in "${dtw_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$dtw_symbol_re"; then
+  if grep -Eq "$dtw_symbol_re" <<<"$fixture"; then
     dtw_symbol_matcher_ok=0
   fi
 done
@@ -1312,12 +1307,12 @@ removed_dp_marker_negative=(
 )
 removed_dp_marker_matcher_ok=1
 for fixture in "${removed_dp_marker_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$removed_dp_marker_re"; then
+  if ! grep -Eq "$removed_dp_marker_re" <<<"$fixture"; then
     removed_dp_marker_matcher_ok=0
   fi
 done
 for fixture in "${removed_dp_marker_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$removed_dp_marker_re"; then
+  if grep -Eq "$removed_dp_marker_re" <<<"$fixture"; then
     removed_dp_marker_matcher_ok=0
   fi
 done
@@ -1517,12 +1512,12 @@ elevation_benchmark_api_negative=(
 )
 elevation_benchmark_api_matcher_ok=1
 for fixture in "${elevation_benchmark_api_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+  if ! grep -Eq "$elevation_benchmark_api_re" <<<"$fixture"; then
     elevation_benchmark_api_matcher_ok=0
   fi
 done
 for fixture in "${elevation_benchmark_api_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$elevation_benchmark_api_re"; then
+  if grep -Eq "$elevation_benchmark_api_re" <<<"$fixture"; then
     elevation_benchmark_api_matcher_ok=0
   fi
 done
@@ -1650,12 +1645,12 @@ dem_benchmark_api_negative=(
 )
 dem_benchmark_api_matcher_ok=1
 for fixture in "${dem_benchmark_api_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$dem_benchmark_api_re"; then
+  if ! grep -Eq "$dem_benchmark_api_re" <<<"$fixture"; then
     dem_benchmark_api_matcher_ok=0
   fi
 done
 for fixture in "${dem_benchmark_api_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$dem_benchmark_api_re"; then
+  if grep -Eq "$dem_benchmark_api_re" <<<"$fixture"; then
     dem_benchmark_api_matcher_ok=0
   fi
 done
@@ -1830,12 +1825,12 @@ training_load_symbol_negative=(
 )
 training_load_symbol_matcher_ok=1
 for fixture in "${training_load_symbol_positive[@]}"; do
-  if ! printf '%s' "$fixture" | grep -Eq "$training_load_native_re"; then
+  if ! grep -Eq "$training_load_native_re" <<<"$fixture"; then
     training_load_symbol_matcher_ok=0
   fi
 done
 for fixture in "${training_load_symbol_negative[@]}"; do
-  if printf '%s' "$fixture" | grep -Eq "$training_load_native_re"; then
+  if grep -Eq "$training_load_native_re" <<<"$fixture"; then
     training_load_symbol_matcher_ok=0
   fi
 done
