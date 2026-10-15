@@ -11,8 +11,8 @@ import RunPlayCore
 /// while its six columns needed 843 pt, so the table was laid out wider than
 /// the sheet. The last 123 pt (Status and part of Format) were clipped at the
 /// sheet's edge, behind an overlay scroller that is hidden at rest. The
-/// Format column also cut "Unsupported", and the Status column cut "Conflicts
-/// with existing workout".
+/// Format column also cut "Unsupported", and the Type column cut long
+/// activity types such as "Mountain Bike Ride".
 @MainActor
 final class StravaArchiveImportLayoutTests: XCTestCase {
 
@@ -85,6 +85,8 @@ final class StravaArchiveImportLayoutTests: XCTestCase {
     func testLongTypeAndStatusWrapOntoASecondLine() throws {
         let session = makeSession([
             candidate(index: 0),
+            // "Conflicts with existing workout" is the one status wider than
+            // its column. An import assigns it, not a scan.
             candidate(index: 1, type: "Mountain Bike Ride", status: .providerConflict),
         ])
         session.showRunningOnly = false
