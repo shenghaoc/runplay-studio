@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import RunPlayCore
 
@@ -10,7 +11,16 @@ struct StravaArchiveImportView: View {
     var onViewImported: () -> Void
     var onOpenHeatmap: () -> Void
 
+    // An explicit style lets a hosted layout exercise both AppKit modes
+    // without changing the shared system preference.
+    var scrollerStyle: NSScroller.Style?
+    @State private var preferredScrollerStyle = NSScroller.preferredScrollerStyle
+    @State private var presentingScreenWidth: CGFloat?
+
     var body: some View {
+        let keyWindow = NSApp.keyWindow
+        let initialScreen = (keyWindow?.sheetParent ?? keyWindow)?.screen ?? NSScreen.main
+        let visibleWidth = presentingScreenWidth ?? initialScreen?.visibleFrame.width
         VStack(spacing: 0) {
             header
             Divider()
@@ -23,9 +33,80 @@ struct StravaArchiveImportView: View {
                 reportBody
             }
         }
-        .frame(minWidth: 720, minHeight: 480)
+        .frame(
+            minWidth: Column.minimumSheetWidth(
+                scrollerStyle: scrollerStyle ?? preferredScrollerStyle,
+                visibleFrameWidth: visibleWidth
+            ),
+            maxWidth: Column.maximumSheetWidth(visibleFrameWidth: visibleWidth),
+            minHeight: 480
+        )
+        .background {
+            SheetScreenProbe { presentingScreenWidth = $0 }
+        }
         .background(AppDesign.workspaceBackground)
+        .onReceive(NotificationCenter.default.publisher(for: NSScroller.preferredScrollerStyleDidChangeNotification)) { _ in
+            preferredScrollerStyle = NSScroller.preferredScrollerStyle
+        }
     }
+
+    /// Follow the actual presenting window, not whichever display is primary.
+    private struct SheetScreenProbe: NSViewRepresentable {
+        var reportWidth: (CGFloat) -> Void
+
+        func makeNSView(context: Context) -> ScreenView {
+            let view = ScreenView()
+            view.reportWidth = reportWidth
+            return view
+        }
+
+        func updateNSView(_ view: ScreenView, context: Context) {
+            view.reportWidth = reportWidth
+            view.publishWidth()
+        }
+
+        final class ScreenView: NSView {
+            var reportWidth: ((CGFloat) -> Void)?
+            private var lastWidth: CGFloat?
+
+            override func viewDidMoveToWindow() {
+                super.viewDidMoveToWindow()
+                NotificationCenter.default.removeObserver(self)
+                guard window != nil else { return }
+                let center = NotificationCenter.default
+                center.addObserver(
+                    self, selector: #selector(screenChanged),
+                    name: NSWindow.didChangeScreenNotification, object: nil
+                )
+                center.addObserver(
+                    self, selector: #selector(screenChanged),
+                    name: NSApplication.didChangeScreenParametersNotification, object: nil
+                )
+                publishWidth()
+            }
+
+            @objc private func screenChanged(_ notification: Notification) {
+                if let changedWindow = notification.object as? NSWindow,
+                   changedWindow !== window && changedWindow !== window?.sheetParent {
+                    return
+                }
+                publishWidth()
+            }
+
+            func publishWidth() {
+                guard let width = (window?.sheetParent ?? window)?.screen?.visibleFrame.width,
+                      width != lastWidth else { return }
+                lastWidth = width
+                // SwiftUI may be attaching or updating this representable.
+                Task { @MainActor [weak self] in
+                    guard let self, self.window != nil, self.lastWidth == width else { return }
+                    self.reportWidth?(width)
+                }
+            }
+        }
+    }
+
+    private typealias Column = StravaArchiveTableColumn
 
     private var header: some View {
         HStack {
@@ -136,38 +217,43 @@ struct StravaArchiveImportView: View {
                 .disabled(!candidate.status.isImportableByDefault && candidate.status != .possibleDuplicate)
                 .accessibilityLabel("Select \(candidate.displayName)")
             }
-            .width(56)
+            .width(Column.selection.idealWidth)
 
+            // Date, Type and Status wrap onto a second line rather than
+            // truncate when a locale or label is wider than the column.
             TableColumn("Date") { candidate in
                 Text(dateText(candidate.activityDate))
                     .font(AppDesign.Typography.compactLabel)
+                    .lineLimit(2)
             }
-            .width(min: 100, ideal: 120)
+            .width(min: Column.date.minimumWidth, ideal: Column.date.idealWidth)
 
             TableColumn("Name") { candidate in
                 Text(candidate.displayName)
                     .lineLimit(1)
             }
-            .width(min: 140, ideal: 220)
+            .width(min: Column.name.minimumWidth, ideal: Column.name.idealWidth)
 
             TableColumn("Type") { candidate in
                 Text(candidate.activityType ?? "—")
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            .width(min: 80, ideal: 100)
+            .width(min: Column.type.minimumWidth, ideal: Column.type.idealWidth)
 
             TableColumn("Format") { candidate in
                 Text(candidate.format.displayName)
                     .foregroundStyle(.secondary)
             }
-            .width(70)
+            .width(Column.format.idealWidth)
 
             TableColumn("Status") { candidate in
                 Text(candidate.status.userFacingSummary)
+                    .lineLimit(2)
                     .foregroundStyle(statusColor(candidate.status))
                     .help(candidate.statusDetail ?? candidate.status.userFacingSummary)
             }
-            .width(min: 120, ideal: 160)
+            .width(min: Column.status.minimumWidth, ideal: Column.status.idealWidth)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .accessibilityLabel("Archive activity candidates")
