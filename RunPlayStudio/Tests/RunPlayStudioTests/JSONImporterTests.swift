@@ -42,6 +42,7 @@ final class JSONImporterTests: XCTestCase {
             let elapsed = try date(point["timestamp"]).timeIntervalSince(start)
             XCTAssertEqual(try number(point, "elapsedSeconds"), elapsed, "point \(index)")
             if index > 0 {
+                XCTAssertGreaterThan(elapsed, previousElapsed, "point \(index)")
                 let distance = try number(point, "distanceFromStartMeters")
                     - number(points[index - 1], "distanceFromStartMeters")
                 let segmentSpeed = distance / (elapsed - previousElapsed)
