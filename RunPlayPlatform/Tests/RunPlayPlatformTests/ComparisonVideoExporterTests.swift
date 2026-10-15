@@ -167,6 +167,81 @@ final class ComparisonVideoExporterTests: XCTestCase {
         XCTAssertEqual(image.height, 180)
     }
 
+    /// Frames at the video and poster sizes carry the Apple Maps credit in both
+    /// appearances and alignment modes, with the tallest Deltas panel (every
+    /// Route-Aware row plus the far-apart note), the stacked P and C panels,
+    /// the progress bar, and its caption kept clear.
+    func testFrameRendererDrawsMapAttributionClearOfTheHUD() throws {
+        let renderer = ComparisonVideoFrameRenderer()
+        for policy in [WorkoutVideoExportPolicy.production, .poster] {
+            let size = CGSize(width: policy.width, height: policy.height)
+            let map = try makeSolidMap(width: policy.width, height: policy.height)
+            for appearance in PNGSummaryExportAppearance.allCases {
+                let badge = try VideoMapAttribution.badge(for: appearance)
+                for mode in [ComparisonAlignmentMode.distance, .routeAware] {
+                    let model = ComparisonVideoFrameModel(
+                        sample: makeFrameSample(alignmentMode: mode, progress: 0.5),
+                        primaryTitle: "Primary Run",
+                        comparisonTitle: "Comparison Run",
+                        primaryMarkerPixel: CGPoint(x: size.width / 2, y: size.height / 2),
+                        comparisonMarkerPixel: CGPoint(x: size.width / 2 + 40, y: size.height / 2),
+                        appearance: appearance,
+                        routesAreWidelySeparated: true
+                    )
+                    let image = try renderer.renderImage(
+                        frame: model,
+                        staticMap: map,
+                        width: policy.width,
+                        height: policy.height,
+                        mapSize: size
+                    )
+                    try VideoFramePixels.assertCredit(
+                        badge,
+                        isDrawnClearIn: image,
+                        "\(policy.width)×\(policy.height) \(appearance) \(mode)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testPosterCarriesTheMapAttribution() async throws {
+        let primary = makeWorkout(distanceMeters: 600, pace: 300)
+        let comparison = makeWorkout(distanceMeters: 600, pace: 300, latOffset: 0.0001)
+        let pair = ComparisonPair(primary: primary, comparison: comparison)
+        let exporter = ComparisonVideoExporter(
+            mapPreparer: SyntheticComparisonVideoMapPreparer()
+        )
+        // The sheet prepares the map at the video size and renders the poster
+        // from it at half size.
+        let map = try await exporter.prepareMap(
+            pair: pair,
+            configuration: ComparisonVideoExportConfiguration(),
+            policy: .production
+        )
+        for appearance in PNGSummaryExportAppearance.allCases {
+            let poster = try exporter.renderPosterResult(
+                pair: pair,
+                configuration: ComparisonVideoExportConfiguration(
+                    duration: .fifteenSeconds,
+                    appearance: appearance,
+                    alignmentMode: .distance
+                ),
+                mapPreparation: map,
+                primaryContext: WorkoutAnalysisContext(workout: primary),
+                comparisonContext: WorkoutAnalysisContext(workout: comparison),
+                snapshot: nil,
+                policy: .poster
+            )
+            XCTAssertEqual(poster.image.width, WorkoutVideoExportPolicy.poster.width)
+            try VideoFramePixels.assertCredit(
+                try VideoMapAttribution.badge(for: appearance),
+                isDrawnClearIn: poster.image,
+                "\(appearance) poster"
+            )
+        }
+    }
+
     /// Delta text states one identity only. `formatSignedDurationDelta` appends
     /// "slower"/"faster" unless suppressed, which previously produced the
     /// self-contradictory "C faster by 0:19 /km slower" in exported frames.
@@ -197,6 +272,40 @@ final class ComparisonVideoExporterTests: XCTestCase {
     }
 
     // MARK: - Fixtures
+
+    /// A mid-replay sample with every optional Route-Aware field set, so a
+    /// Route-Aware frame draws the tallest Deltas panel.
+    private func makeFrameSample(
+        alignmentMode: ComparisonAlignmentMode,
+        progress: Double
+    ) -> ComparisonVideoFrameSample {
+        ComparisonVideoFrameSample(
+            frameIndex: Int(progress * 9),
+            frameCount: 10,
+            progress: progress,
+            alignmentMode: alignmentMode,
+            domainPositionMeters: progress * 1_000,
+            domainLengthMeters: 1_000,
+            alignmentBlockIndex: 1,
+            alignmentBlockCount: 3,
+            primaryDistanceMeters: progress * 1_000,
+            comparisonDistanceMeters: progress * 1_010,
+            primaryElapsedSeconds: progress * 300,
+            comparisonElapsedSeconds: progress * 310,
+            elapsedDeltaSeconds: progress * -10,
+            primaryActiveSeconds: progress * 290,
+            comparisonActiveSeconds: progress * 305,
+            activeDeltaSeconds: progress * -15,
+            primaryActivePaceSecondsPerKm: 300,
+            comparisonActivePaceSecondsPerKm: 310,
+            activePaceDeltaSecondsPerKm: -10,
+            spatialSeparationMeters: 4,
+            primaryRoutePosition: nil,
+            comparisonRoutePosition: nil,
+            alignmentQuality: .excellent,
+            alignmentStatusLabel: nil
+        )
+    }
 
     private func makeWorkout(
         distanceMeters: Double,
