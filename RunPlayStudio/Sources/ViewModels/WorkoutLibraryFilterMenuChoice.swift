@@ -4,7 +4,8 @@ import SwiftUI
 
 // The All Runs Filters menu's one-of-many rows that set a filter outright:
 // Date's presets and Custom Date Range…, Tags' Any Tags and Untagged Only,
-// and Route's Any Route and Not on a Route. Each row is a `Toggle`, because a
+// and Route's Any Route and Not on a Route. The Personal Heatmap's route menu
+// uses Route's Any Route row too. Each row is a `Toggle`, because a
 // macOS menu draws a Toggle row's check mark and reports it as the item's AX
 // mark character, while a `Button` row has no mark.
 //
@@ -114,7 +115,8 @@ enum WorkoutLibraryTagMenuChoice: CaseIterable {
 }
 
 /// A row of the All Runs Filters → Route submenu that sets the route filter
-/// outright: Any Route or Not on a Route.
+/// outright: Any Route or Not on a Route. The Personal Heatmap's route menu
+/// filters by the same `WorkoutLibraryRouteFilter` and lists Any Route only.
 enum WorkoutLibraryRouteMenuChoice: CaseIterable {
     case anyRoute
     case ungroupedOnly

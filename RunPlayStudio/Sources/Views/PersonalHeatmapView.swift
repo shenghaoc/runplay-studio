@@ -279,7 +279,10 @@ struct PersonalHeatmapView: View {
         // (the same membership the All Runs route filter shows).
         let details = RouteGroupMenuDetail.details(for: appState.workoutLibrary.entries)
         return Menu {
-            Button("Any Route") { viewModel.routeFilter = .anyRoute }
+            // A Toggle, not a Button: the menu draws a Toggle row's check
+            // mark and exposes it as the item's AX mark character, so Any
+            // Route is marked while no route restricts the heatmap.
+            Toggle("Any Route", isOn: Self.anyRouteMenuCheck(for: viewModel))
                 .accessibilityHint("Do not restrict the heatmap by route")
             let candidates = viewModel.routeGroups.prefix(15)
             if !candidates.isEmpty {
@@ -320,6 +323,17 @@ struct PersonalHeatmapView: View {
         .help("Restrict the heatmap to one route")
         .accessibilityLabel("Route filter")
         .accessibilityValue(filterTitle)
+    }
+
+    /// The check mark on the route menu's Any Route row, read from and
+    /// written to the heatmap's route filter. Every write applies Any Route,
+    /// as the row's Button did: choosing the checked row writes `false`, and
+    /// Any Route stays checked.
+    static func anyRouteMenuCheck(for viewModel: PersonalHeatmapViewModel) -> Binding<Bool> {
+        WorkoutLibraryRouteMenuChoice.anyRoute.menuCheck(
+            filter: { viewModel.routeFilter },
+            setFilter: { viewModel.routeFilter = $0 }
+        )
     }
 
     /// Collision-aware derived names for every route group, computed from the
