@@ -201,6 +201,35 @@ Found, and present before this change:
 Not covered: dark appearance, VoiceOver speech in Chinese (only AX attributes
 were read there), and a release build.
 
+### Route Color check mark pass 2026-10-15 (debug configuration, bundled demo run)
+
+The overlay menu's items were `Button`s whose `HStack` label held the mode name
+and, for the selected mode, a `checkmark` image. A macOS menu keeps only the
+label's first `Text`, so no item showed a mark. On a packaged debug bundle of
+the base (the Item Chooser fix above), every item's `AXMenuItemMarkChar` was
+empty with Solid selected and again with Elevation selected. A screenshot of
+the open menu with Elevation selected showed no mark.
+
+The items are now `Toggle` rows, like the View → Route Color mirror and the
+route menus (#188). Each keeps its "— Unavailable" title, disabled state, help,
+and hint, and selects through `selectRouteColor`. On the fixed bundle, driven
+by AX presses only:
+
+- With Solid, the default, Solid's `AXMenuItemMarkChar` is "✓" and the other
+  four items' are empty.
+- Choosing Elevation set the button's AXValue to "Elevation" and moved the "✓"
+  to Elevation alone. A screenshot of the open menu shows the check mark beside
+  Elevation.
+- Choosing the checked Elevation again kept the mark and the value. Pressing
+  the disabled "Power — Unavailable" changed nothing. Choosing Solid moved the
+  mark back.
+- Item titles, enabled states, and AXHelp text match the base bundle's.
+- In zh-Hans the items read 纯色, 配速, 心率, "功率 — 不可用" (disabled), and
+  海拔, with Chinese help. Choosing 海拔 set the value to "海拔" and moved the
+  mark there.
+
+Not covered: VoiceOver speech, dark appearance, and a release build.
+
 ## Personal Heatmap Checklist
 
 Use only synthetic or explicitly private, ignored local workout files. Do not

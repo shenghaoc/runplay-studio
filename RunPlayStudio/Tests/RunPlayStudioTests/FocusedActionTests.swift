@@ -162,6 +162,53 @@ final class FocusedActionTests: XCTestCase {
         XCTAssertTrue(WorkoutRouteColorMode.solid.isSelectable(in: none))
     }
 
+    func testRouteColorMenuChecksOnlyTheSelectedMode() {
+        for selected in WorkoutRouteColorMode.allCases {
+            let checked = WorkoutRouteColorMode.allCases.filter { mode in
+                mode.menuCheck(selectedMode: { selected }, select: { _ in }).wrappedValue
+            }
+            XCTAssertEqual(checked, [selected])
+        }
+    }
+
+    func testChoosingAnUncheckedRouteColorRowSelectsItsMode() {
+        var selected = WorkoutRouteColorMode.solid
+        let elevation = WorkoutRouteColorMode.correctedElevation.menuCheck(
+            selectedMode: { selected },
+            select: { selected = $0 }
+        )
+        let solid = WorkoutRouteColorMode.solid.menuCheck(
+            selectedMode: { selected },
+            select: { selected = $0 }
+        )
+        XCTAssertFalse(elevation.wrappedValue)
+
+        elevation.wrappedValue = true
+
+        XCTAssertEqual(selected, .correctedElevation)
+        XCTAssertTrue(elevation.wrappedValue)
+        XCTAssertFalse(solid.wrappedValue, "the check mark moves off the old mode")
+    }
+
+    func testChoosingTheCheckedRouteColorRowKeepsTheSelection() {
+        // A menu sends `false` when its checked Toggle row is chosen again.
+        var selected = WorkoutRouteColorMode.pace
+        var selections: [WorkoutRouteColorMode] = []
+        let pace = WorkoutRouteColorMode.pace.menuCheck(
+            selectedMode: { selected },
+            select: {
+                selections.append($0)
+                selected = $0
+            }
+        )
+
+        pace.wrappedValue = false
+
+        XCTAssertEqual(selections, [])
+        XCTAssertEqual(selected, .pace)
+        XCTAssertTrue(pace.wrappedValue)
+    }
+
     func testExportCommandRelayDeliversEachRequestOnce() {
         let relay = ExportCommandRelay()
         let actions = relay.actions(for: makeWorkout())

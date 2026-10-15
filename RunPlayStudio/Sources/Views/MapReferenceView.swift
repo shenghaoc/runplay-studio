@@ -200,18 +200,18 @@ struct MapReferenceView: View {
                 ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
                     let available = mode.isSelectable(in: mapViewModel?.availability)
                     let modeHelp = routeColorModeHelp(mode, available: available)
-                    Button {
-                        selectRouteColor(mode)
-                    } label: {
-                        HStack {
-                            if !available {
-                                Text("\(mode.displayName) — Unavailable")
-                            } else {
-                                Text(mode.displayName)
-                            }
-                            if preferredMode == mode {
-                                Image(systemName: "checkmark")
-                            }
+                    // A Toggle, not a Button with a checkmark image: a macOS
+                    // menu flattens an HStack label to its first Text and
+                    // drops the image, but draws a Toggle row's check mark
+                    // itself and exposes it as the item's AX mark character.
+                    Toggle(isOn: mode.menuCheck(
+                        selectedMode: { preferredMode },
+                        select: { selectRouteColor($0) }
+                    )) {
+                        if !available {
+                            Text("\(mode.displayName) — Unavailable")
+                        } else {
+                            Text(mode.displayName)
                         }
                     }
                     .disabled(!available)
