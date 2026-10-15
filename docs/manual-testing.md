@@ -1992,6 +1992,36 @@ Checklist:
 - [ ] **Speed change**: set speed to 4x, press Play, verify playback is visibly faster.
 - [ ] **Pause stops animation**: press Play then Pause; marker stops advancing immediately.
 
+### Speed picker Item Chooser pass 2026-10-15 (debug configuration, bundled demo run)
+
+At the default 1200×763 window the speed pills do not fit, so the replay
+controls show the menu-style speed `Picker` beside a visible "Speed" text. The
+picker used `labelsHidden()` plus an explicit `accessibilityLabel`, the #160
+shape. It now omits its label view instead. Packaged debug bundles of the base
+and the fix ran with a throwaway `RUNPLAY_LIBRARY_ROOT` and `CFFIXED_USER_HOME`
+on the bundled demo run. AX attributes were read with an `AXUIElement` walker.
+VoiceOver was driven with guarded System Events keystrokes, and its speech was
+read from the caption panel by OCR.
+
+- Before: AXDescription "Speed, Replay speed", AXValue "1×". The Item Chooser,
+  filtered to "replay speed", read "1× Speed, Replay speed pop up button".
+  Focus (Return in the chooser) read "1× Speed, Replay speed, pop up button".
+- After: AXDescription "Replay speed", AXValue "1×", and no title element. The
+  Item Chooser read "1× Replay speed pop up button", and focus read "1× Replay
+  speed, pop up button".
+- An AX press opened the menu on both builds: 0.2×, 0.5×, 1×, 2.0×, 4.0×, and
+  8.0×, with a check mark on the current speed. Choosing 4.0× on the fixed
+  build changed AXValue to "4.0×".
+- The pop-up kept its 75×24 pt frame. In window captures of the two builds the
+  "Speed" text and the pop-up were pixel-identical.
+
+Found, and present before this change: the 0.25× option is labelled "0.2×",
+because `%.1f` rounds 0.25 half to even. The same format names its pill, the
+pop-up value, and the speed-change announcement.
+
+Not covered: the pill arrangement (unchanged), dark appearance (no drawing
+changed), a release bundle, and VoiceOver in Chinese.
+
 ## Delete UI Checklist
 
 - [x] Right-click on a workout row shows "Delete Run" context menu
