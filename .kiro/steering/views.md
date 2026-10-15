@@ -5,6 +5,7 @@ fileMatchPattern:
   - "RunPlayStudio/Sources/ViewModels/**/*"
   - "RunPlayStudio/Sources/Services/**/*"
   - "RunPlayStudio/Sources/RunPlayStudioApp.swift"
+  - "RunPlayStudio/Sources/RunPlayStudioEntryPoint.swift"
 ---
 
 # RunPlay Studio — UI layer conventions

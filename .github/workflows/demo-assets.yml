@@ -1,0 +1,79 @@
+name: Demo Assets
+
+# Manually triggered. Renders the README demo media from the bundled
+# synthetic sample runs with scripts/generate-demo-assets.sh, on the same
+# runner image as CI's README drift check, and uploads everything as one
+# artifact. It never commits: refreshing docs/assets/ is a reviewed pull
+# request that copies the curated subset out of this artifact
+# (docs/demo-assets.md).
+
+on:
+  workflow_dispatch:
+  # TEMPORARY: remove before this PR leaves draft. workflow_dispatch can only
+  # start a workflow once its file is on the default branch, so this trigger
+  # lets the PR that adds the workflow run it once on the runner image.
+  pull_request:
+    paths:
+      - .github/workflows/demo-assets.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  # Dispatch-only workflow: a repeated dispatch on the same ref supersedes
+  # the previous run instead of stacking another macOS job behind it.
+  group: demo-assets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: Generate README demo assets
+    runs-on: xcode-27
+    timeout-minutes: 45
+
+    steps:
+    # A local action resolves from the workspace, so checkout must precede
+    # the setup composite.
+    - uses: actions/checkout@v7
+    - uses: ./.github/actions/setup-macos-build
+
+    # The xcode-27 image ships no ffmpeg, which only the GIF step needs.
+    # Homebrew's current bottle is CI tooling, never a package dependency;
+    # the version used is printed here and in the job summary.
+    - name: Install ffmpeg
+      env:
+        HOMEBREW_NO_ANALYTICS: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      run: |
+        if ! command -v ffmpeg >/dev/null 2>&1; then
+          brew install ffmpeg
+        fi
+        ffmpeg -version | head -n 1
+
+    # /bin/bash pins the bash 3.2 every Mac ships.
+    - name: Generate demo assets
+      run: /bin/bash ./scripts/generate-demo-assets.sh --output-dir "${RUNNER_TEMP}/demo-assets"
+
+    - name: Summarize
+      run: |
+        set -euo pipefail
+        {
+          echo "### README demo assets"
+          echo
+          echo "Rendered from the bundled synthetic sample runs with $(ffmpeg -version | head -n 1)."
+          echo "Commit only the curated subset (summary PNGs and route GIFs) — see docs/demo-assets.md."
+          echo
+          echo "| File | Bytes |"
+          echo "| --- | ---: |"
+          for file in "${RUNNER_TEMP}"/demo-assets/demo-*; do
+            echo "| $(basename "${file}") | $(stat -f %z "${file}") |"
+          done
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+    - name: Upload demo assets
+      uses: actions/upload-artifact@v7
+      with:
+        name: runplay-demo-assets
+        path: ${{ runner.temp }}/demo-assets
+        retention-days: 30
+        if-no-files-found: error

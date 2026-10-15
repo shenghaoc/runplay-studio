@@ -46,7 +46,9 @@ Do not use `git add -A` when private workout files are present.
 Committed fixtures and demo exports must be synthetic or anonymized:
 
 - Synthetic test fixtures belong under `RunPlayStudio/Resources/fixtures/`.
-- Public demo screenshots and exports belong under `docs/assets/`.
+- Public demo screenshots and exports belong under `docs/assets/`. The README
+  media there are generated from the bundled synthetic sample runs
+  ([demo-assets.md](demo-assets.md)).
 - Demo assets must not be generated from private real-world activity files.
 - If a fixture is derived from real activity data, strip or alter locations,
   timestamps, titles, identifiers, and health metrics before committing it.
