@@ -1,6 +1,6 @@
 import XCTest
 import RunPlayCore
-import RunPlayPlatform
+@testable import RunPlayPlatform
 @testable import RunPlayStudio
 
 /// The Apple Health review sheet: its derivations, its selection rules, and the
@@ -131,6 +131,45 @@ final class AppleHealthReviewTests: XCTestCase {
             result,
             archiveURL: tempDir.appendingPathComponent("export.zip"),
             securityScoped: false
+        )
+    }
+
+    /// A zipped `apple_health_export` folder whose export.xml is `document`.
+    ///
+    /// Foundation's upload coordination does the zipping, so the test needs no
+    /// archive library of its own.
+    private func exportArchive(_ document: String) throws -> URL {
+        let folder = tempDir.appendingPathComponent("apple_health_export", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(document.utf8).write(to: folder.appendingPathComponent("export.xml"))
+        let destination = tempDir.appendingPathComponent("export.zip")
+        var copyError: Error?
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: folder, options: .forUploading, error: &coordinationError) {
+            do { try FileManager.default.copyItem(at: $0, to: destination) } catch { copyError = error }
+        }
+        if let error = coordinationError ?? copyError { throw error }
+        return destination
+    }
+
+    /// An app whose Health reader extracts into this test's directory. When
+    /// asked, its free-space probe, which runs just before the document is
+    /// extracted, cancels the scan's task as a Cancel pressed then would.
+    private func makeAppState(cancellingAtExtraction: Bool) -> AppState {
+        AppState(
+            storeActor: WorkoutLibraryStoreActor(
+                store: FileWorkoutLibraryStore(rootURL: tempDir.appendingPathComponent("library"))
+            ),
+            importService: WorkoutImportService(),
+            appleHealthArchiveService: AppleHealthArchiveService(
+                policy: .default,
+                extractionRoot: tempDir.appendingPathComponent("extractions"),
+                staleExtractionAge: 3_600,
+                availableCapacity: { _ in
+                    if cancellingAtExtraction { withUnsafeCurrentTask { $0?.cancel() } }
+                    return nil
+                }
+            )
         )
     }
 
@@ -453,6 +492,21 @@ final class AppleHealthReviewTests: XCTestCase {
 
         appState.beginArchiveImport(from: tempDir.appendingPathComponent("strava.zip"))
         XCTAssertNil(appState.archiveSession)
+        XCTAssertEqual(appState.operationState, .idle)
+    }
+
+    /// Cancelling while the export is read stops the read. This document is not
+    /// a Health export, so a read that ran on would end in an error for a scan
+    /// the user had already cancelled.
+    func testCancellingTheScanStopsReadingTheExport() async throws {
+        let archive = try exportArchive("<NotHealthData/>")
+        let appState = makeAppState(cancellingAtExtraction: true)
+
+        appState.beginAppleHealthImport(from: archive)
+        await appState.appleHealthTask?.value
+
+        XCTAssertFalse(appState.showingError, appState.errorMessage ?? "")
+        XCTAssertNil(appState.appleHealthSession)
         XCTAssertEqual(appState.operationState, .idle)
     }
 

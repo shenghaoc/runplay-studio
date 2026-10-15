@@ -52,7 +52,10 @@ extension AppState {
             do {
                 let result = try await scanService.scan(
                     archiveAt: url,
-                    existingLibraryRuns: AppleHealthLibraryRunWindow.windows(for: self.workouts)
+                    existingLibraryRuns: AppleHealthLibraryRunWindow.windows(for: self.workouts),
+                    // Cancel cancels this task, and the scan asks between phases
+                    // and while extracting, so a large export stops being read.
+                    isCancelled: { Task.isCancelled }
                 )
                 guard !Task.isCancelled else {
                     if accessing { url.stopAccessingSecurityScopedResource() }
