@@ -267,6 +267,7 @@ struct AppleHealthImportView: View {
             .accessibilityValue(progressCaption)
 
             Button("Cancel", action: onCancel)
+                .keyboardShortcut(.cancelAction)
                 .help("Cancel the import and leave your library unchanged")
                 .disabled(session.progress.phase == .committing)
 
