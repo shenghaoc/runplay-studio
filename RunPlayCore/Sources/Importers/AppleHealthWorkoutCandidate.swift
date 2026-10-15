@@ -197,12 +197,10 @@ public struct AppleHealthCandidateBuildResult: Sendable {
 /// heart rate.
 public enum AppleHealthWorkoutCandidateBuilder {
 
-    /// Statistic types that carry a workout's own distance.
-    private static let distanceStatisticTypes: Set<String> = [
-        "HKQuantityTypeIdentifierDistanceWalkingRunning",
-        "HKQuantityTypeIdentifierDistanceCycling",
-        "HKQuantityTypeIdentifierDistanceSwimming",
-    ]
+    /// The statistic type that carries a run's own distance. Only running
+    /// workouts become candidates, so a cycling or swimming distance row a run
+    /// happens to carry is not its distance.
+    private static let distanceStatisticType = "HKQuantityTypeIdentifierDistanceWalkingRunning"
 
     /// Build running candidates, flagging duplicates after activity filtering.
     ///
@@ -318,7 +316,7 @@ public enum AppleHealthWorkoutCandidateBuilder {
     private static func distance(
         from statistics: [AppleHealthWorkoutStatistic]
     ) -> Double? {
-        for statistic in statistics where distanceStatisticTypes.contains(statistic.type) {
+        for statistic in statistics where statistic.type == distanceStatisticType {
             guard let sum = statistic.sum, sum.isFinite else { continue }
             guard let meters = meters(from: sum, unit: statistic.unit) else { continue }
             return meters

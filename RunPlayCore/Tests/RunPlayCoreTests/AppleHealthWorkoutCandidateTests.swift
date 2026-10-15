@@ -154,6 +154,20 @@ final class AppleHealthWorkoutCandidateTests: XCTestCase {
         XCTAssertEqual(candidates[0].sourceDistanceMeters, 5_200)
     }
 
+    func testOnlyAWalkingRunningDistanceIsARunsDistance() {
+        let cycling = AppleHealthWorkoutStatistic(
+            type: "HKQuantityTypeIdentifierDistanceCycling",
+            unit: "km",
+            sum: 10
+        )
+        let candidates = AppleHealthWorkoutCandidateBuilder.candidates(from: scan([
+            entry(1_000, 2_000, statistics: [cycling, distanceStatistic(5)]),
+            entry(3_000, 4_000, statistics: [cycling]),
+        ]))
+
+        XCTAssertEqual(candidates.map(\.sourceDistanceMeters), [5_000, nil])
+    }
+
     func testUnrecognizedDistanceUnitYieldsNoDistance() {
         let candidates = AppleHealthWorkoutCandidateBuilder.candidates(from: scan([
             entry(1_000, 2_000, statistics: [distanceStatistic(5.2, unit: "furlong")]),
