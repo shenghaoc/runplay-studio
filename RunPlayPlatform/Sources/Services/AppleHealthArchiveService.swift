@@ -43,6 +43,10 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
     /// The archive holds more entries than the security policy allows.
     case tooManyEntries(limit: Int)
 
+    /// The export offers more runs than the security policy lets one import
+    /// review.
+    case tooManyCandidates(limit: Int)
+
     /// No export document was found in the archive.
     case exportXMLNotFound
 
@@ -109,6 +113,8 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
             return "This archive is larger than the \(Self.formatted(limitBytes)) limit."
         case .tooManyEntries(let limit):
             return "This archive holds more than \(limit) entries."
+        case .tooManyCandidates(let limit):
+            return "This export holds more than \(limit) runs, more than one import can review."
         case .exportXMLNotFound:
             return "This ZIP does not contain an Apple Health export. "
                 + "It should hold \(AppleHealthExportParser.archiveRoot)/export.xml."
@@ -407,6 +413,12 @@ public actor AppleHealthArchiveService {
             from: scan,
             existingLibraryRuns: existingLibraryRuns
         )
+        // Checked on the built candidates, where the running filter lives,
+        // rather than by restating that filter here. Flagging duplicates is a
+        // lookup per candidate, so building them first costs little.
+        guard built.candidates.count <= policy.maxCandidateActivityCount else {
+            throw AppleHealthArchiveError.tooManyCandidates(limit: policy.maxCandidateActivityCount)
+        }
         let candidates = built.candidates
         let unmatched = candidates.count { candidate in
             guard let path = candidate.routeArchivePath else { return false }

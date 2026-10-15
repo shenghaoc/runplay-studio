@@ -486,6 +486,31 @@ final class AppleHealthArchiveServiceTests: XCTestCase {
         }
     }
 
+    /// The policy's candidate limit applies to runs only: an export over it is
+    /// refused, while workouts that are not runs never count toward it.
+    func testRunsAboveTheCandidateLimitAreRefused() async throws {
+        let policy = WorkoutArchiveSecurityPolicy(maxCandidateActivityCount: 2)
+        let walk = "<Workout workoutActivityType=\"HKWorkoutActivityTypeWalking\" "
+            + "startDate=\"2026-09-02 08:00:00 +0000\" endDate=\"2026-09-02 09:00:00 +0000\"/>"
+        let twoRuns = runningWorkout()
+            + runningWorkout("2026-09-03 08:00:00 +0000", "2026-09-03 09:00:00 +0000")
+        let atLimit = try writeZip(named: "at-limit.zip", entries: [
+            (Self.exportPath, healthDocument(workouts: twoRuns + walk + walk + walk)),
+        ])
+        let overLimit = try writeZip(named: "over-limit.zip", entries: [
+            (Self.exportPath, healthDocument(
+                workouts: twoRuns + runningWorkout("2026-09-04 08:00:00 +0000", "2026-09-04 09:00:00 +0000")
+            )),
+        ])
+
+        let result = try await makeService(policy: policy).scan(archiveAt: atLimit)
+        XCTAssertEqual(result.candidates.count, 2)
+        await assertThrows(.tooManyCandidates(limit: 2)) {
+            _ = try await makeService(policy: policy).scan(archiveAt: overLimit)
+        }
+        XCTAssertEqual(extractionFileNames(), [])
+    }
+
     // MARK: - Extraction hardening
 
     /// Extraction lands in a private directory this app owns, not the shared
