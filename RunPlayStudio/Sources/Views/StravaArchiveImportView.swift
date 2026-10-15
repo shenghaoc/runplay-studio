@@ -23,9 +23,11 @@ struct StravaArchiveImportView: View {
                 reportBody
             }
         }
-        .frame(minWidth: 720, minHeight: 480)
+        .frame(minWidth: Column.idealTableWidth, minHeight: 480)
         .background(AppDesign.workspaceBackground)
     }
+
+    private typealias Column = StravaArchiveTableColumn
 
     private var header: some View {
         HStack {
@@ -136,38 +138,43 @@ struct StravaArchiveImportView: View {
                 .disabled(!candidate.status.isImportableByDefault && candidate.status != .possibleDuplicate)
                 .accessibilityLabel("Select \(candidate.displayName)")
             }
-            .width(56)
+            .width(Column.selection.idealWidth)
 
+            // Date, Type and Status wrap onto a second line rather than
+            // truncate when a locale or label is wider than the column.
             TableColumn("Date") { candidate in
                 Text(dateText(candidate.activityDate))
                     .font(AppDesign.Typography.compactLabel)
+                    .lineLimit(2)
             }
-            .width(min: 100, ideal: 120)
+            .width(min: Column.date.minimumWidth, ideal: Column.date.idealWidth)
 
             TableColumn("Name") { candidate in
                 Text(candidate.displayName)
                     .lineLimit(1)
             }
-            .width(min: 140, ideal: 220)
+            .width(min: Column.name.minimumWidth, ideal: Column.name.idealWidth)
 
             TableColumn("Type") { candidate in
                 Text(candidate.activityType ?? "—")
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            .width(min: 80, ideal: 100)
+            .width(min: Column.type.minimumWidth, ideal: Column.type.idealWidth)
 
             TableColumn("Format") { candidate in
                 Text(candidate.format.displayName)
                     .foregroundStyle(.secondary)
             }
-            .width(70)
+            .width(Column.format.idealWidth)
 
             TableColumn("Status") { candidate in
                 Text(candidate.status.userFacingSummary)
+                    .lineLimit(2)
                     .foregroundStyle(statusColor(candidate.status))
                     .help(candidate.statusDetail ?? candidate.status.userFacingSummary)
             }
-            .width(min: 120, ideal: 160)
+            .width(min: Column.status.minimumWidth, ideal: Column.status.idealWidth)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .accessibilityLabel("Archive activity candidates")
