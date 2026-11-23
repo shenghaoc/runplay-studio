@@ -2,7 +2,8 @@ import SwiftUI
 import RunPlayCore
 import AppKit
 
-@main
+/// The SwiftUI app. `RunPlayStudioEntryPoint` is the process entry point and
+/// launches it.
 @MainActor
 struct RunPlayStudioApp: App {
     @NSApplicationDelegateAdaptor(AppTerminationCoordinator.self)
