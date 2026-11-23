@@ -143,19 +143,20 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
 
     private let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func makeWorkout(name: String, hasRoute: Bool = true) -> RunWorkout {
+    private func makeWorkout(name: String, hasRoute: Bool = true, startDate: Date? = nil) -> RunWorkout {
+        let startDate = startDate ?? fixedNow
         let points: [RoutePoint]
         if hasRoute {
             points = [
                 RoutePoint(
-                    timestamp: fixedNow,
+                    timestamp: startDate,
                     latitude: 1.3,
                     longitude: 103.8,
                     distanceFromStartMeters: 0,
                     elapsedSeconds: 0
                 ),
                 RoutePoint(
-                    timestamp: fixedNow.addingTimeInterval(60),
+                    timestamp: startDate.addingTimeInterval(60),
                     latitude: 1.301,
                     longitude: 103.801,
                     distanceFromStartMeters: 100,
@@ -166,10 +167,25 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
             points = []
         }
         return RunWorkout(
-            metadata: WorkoutMetadata(name: name, startDate: fixedNow),
+            metadata: WorkoutMetadata(name: name, startDate: startDate),
             routePoints: points,
             summary: RunSummary(totalDistanceMeters: hasRoute ? 100 : 0, totalElapsedSeconds: 60)
         )
+    }
+
+    /// A wall-clock time at a fixed UTC offset, for exact instants around
+    /// daylight-saving transitions.
+    private func instant(
+        _ year: Int, _ month: Int, _ day: Int,
+        _ hour: Int, _ minute: Int = 0, _ second: Int = 0,
+        utcOffsetHours: Int
+    ) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: utcOffsetHours * 3_600)!
+        return calendar.date(from: DateComponents(
+            year: year, month: month, day: day,
+            hour: hour, minute: minute, second: second
+        ))!
     }
 
     private func waitUntil(
@@ -519,6 +535,76 @@ final class PersonalHeatmapViewModelTests: XCTestCase {
         vm.customEndDate = fixedNow
         vm.refresh(workouts: workouts)
         XCTAssertEqual(builder.buildCount, 1)
+    }
+
+    // MARK: - Custom range across daylight saving
+
+    func testCustomRangeEndsAtLastSecondOfDayWhoseMidnightIsSkipped() async throws {
+        // Chile skips midnight into Sunday 6 September 2026: that day starts
+        // at 01:00 -03:00 and 7 September at 00:00 -03:00. The day's start
+        // plus one day, less a second, would end the range at 00:59:59 on
+        // 7 September and take in a run at 00:30 that morning.
+        var santiago = Calendar(identifier: .gregorian)
+        santiago.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
+        let lateOnEndDay = makeWorkout(name: "Late", startDate: instant(2026, 9, 6, 23, 30, utcOffsetHours: -3))
+        let earlyNextDay = makeWorkout(name: "Early", startDate: instant(2026, 9, 7, 0, 30, utcOffsetHours: -3))
+
+        let snapshot = try await buildOneDayCustomRange(
+            on: instant(2026, 9, 6, 12, utcOffsetHours: -3),
+            calendar: santiago,
+            workouts: [lateOnEndDay, earlyNextDay]
+        )
+
+        XCTAssertEqual(
+            snapshot.configuration.dateFilter,
+            .range(
+                start: instant(2026, 9, 6, 1, utcOffsetHours: -3),
+                end: instant(2026, 9, 6, 23, 59, 59, utcOffsetHours: -3)
+            )
+        )
+        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, 1)
+    }
+
+    func testCustomRangeEndsAtLastSecondOfTwentyFiveHourDay() async throws {
+        // Control: New York repeats 01:00-02:00 on 1 November 2026, so that
+        // day runs 25 hours, from 00:00 -04:00 to 00:00 -05:00.
+        var newYork = Calendar(identifier: .gregorian)
+        newYork.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let lateOnEndDay = makeWorkout(name: "Late", startDate: instant(2026, 11, 1, 23, 30, utcOffsetHours: -5))
+        let earlyNextDay = makeWorkout(name: "Early", startDate: instant(2026, 11, 2, 0, 30, utcOffsetHours: -5))
+
+        let snapshot = try await buildOneDayCustomRange(
+            on: instant(2026, 11, 1, 12, utcOffsetHours: -5),
+            calendar: newYork,
+            workouts: [lateOnEndDay, earlyNextDay]
+        )
+
+        XCTAssertEqual(
+            snapshot.configuration.dateFilter,
+            .range(
+                start: instant(2026, 11, 1, 0, utcOffsetHours: -4),
+                end: instant(2026, 11, 1, 23, 59, 59, utcOffsetHours: -5)
+            )
+        )
+        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, 1)
+    }
+
+    /// Picks `day` for both ends of a custom range and builds it with the
+    /// production builder, whose snapshot carries the configured date filter
+    /// and counts only the runs that filter admits.
+    private func buildOneDayCustomRange(
+        on day: Date,
+        calendar: Calendar,
+        workouts: [RunWorkout]
+    ) async throws -> PersonalHeatmapSnapshot {
+        let vm = PersonalHeatmapViewModel(calendar: calendar, now: fixedNow)
+        vm.nowProvider = { self.fixedNow }
+        vm.datePreset = .custom
+        vm.customStartDate = day
+        vm.customEndDate = day
+        vm.refresh(workouts: workouts)
+        await waitUntil { !vm.isComputing && vm.snapshot != nil }
+        return try XCTUnwrap(vm.snapshot)
     }
 
     // MARK: - Workout revision
