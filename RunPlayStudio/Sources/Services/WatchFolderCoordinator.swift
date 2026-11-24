@@ -127,6 +127,8 @@ final class WatchFolderCoordinator: ObservableObject {
     private struct FolderScanOutput: Sendable {
         let input: FolderScanInput
         let settledFiles: [WatchFolderScanner.DiscoveredFile]
+        /// Every eligible file in the folder this pass, settled or not.
+        let allFiles: [WatchFolderScanner.DiscoveredFile]
         /// False when the directory could not be listed at all this pass
         /// (volume ejected, folder deleted or moved, permission revoked).
         /// Distinguishes "gone" from "empty", which zero files alone cannot.
@@ -346,13 +348,15 @@ final class WatchFolderCoordinator: ObservableObject {
             lastKnownPath: url.resolvingSymlinksInPath().path
         )
         folders.append(configuration)
-        folderStates[configuration.id] = WatchFolderState(folderID: configuration.id)
+        // Files already in the folder are baselined by its first scan, not
+        // imported (#179). Import Existing Files Now imports them.
+        folderStates[configuration.id] = WatchFolderState(folderID: configuration.id, baselinePending: true)
         persist()
         activate(configuration)
         if pollTask == nil {
             beginPolling()
         }
-        // Pick up files already sitting in the newly watched folder.
+        // Scan once now so the baseline is recorded before new files arrive.
         requestEarlyScan(bypassSettle: true)
         return true
     }
@@ -467,10 +471,11 @@ final class WatchFolderCoordinator: ObservableObject {
 
     /// "Import existing files now": scan immediately, bypassing the settle
     /// tracker's two-probe requirement — pre-existing files are
-    /// definitionally not mid-write.
+    /// definitionally not mid-write. This is the one action that imports the
+    /// files a folder already held when it was added (#179).
     func importExistingNow() {
         guard canScanFolders else { return }
-        requestEarlyScan(bypassSettle: true)
+        requestEarlyScan(bypassSettle: true, includeBaseline: true)
     }
 
     /// User-initiated review of the banner's queued FIT file.
@@ -489,7 +494,10 @@ final class WatchFolderCoordinator: ObservableObject {
 
     /// Event-driven wake: run one scan pass soon, coalesced so a burst of
     /// filesystem events collapses into one pass.
-    private func requestEarlyScan(bypassSettle: Bool = false) {
+    private func requestEarlyScan(bypassSettle: Bool = false, includeBaseline: Bool = false) {
+        if includeBaseline {
+            pendingIncludeBaseline = true
+        }
         guard !earlyScanPending else {
             if bypassSettle {
                 // A user-initiated scan must not be swallowed by a pending
@@ -507,17 +515,20 @@ final class WatchFolderCoordinator: ObservableObject {
             guard let self else { return }
             self.earlyScanPending = false
             let bypass = self.pendingBypassSettle
+            let includeBaseline = self.pendingIncludeBaseline
             self.pendingBypassSettle = false
-            await self.scanPass(bypassSettle: bypass)
+            self.pendingIncludeBaseline = false
+            await self.scanPass(bypassSettle: bypass, includeBaseline: includeBaseline)
         }
     }
 
     private var pendingBypassSettle = false
+    private var pendingIncludeBaseline = false
 
     // MARK: - Scan pass
 
     /// One authoritative scan across all active folders.
-    private func scanPass(bypassSettle: Bool = false) async {
+    private func scanPass(bypassSettle: Bool = false, includeBaseline: Bool = false) async {
         guard !isPaused else { return }
         // A folder whose volume was offline at launch never activated; retrying
         // each pass lets it come back without restarting the app.
@@ -574,6 +585,7 @@ final class WatchFolderCoordinator: ObservableObject {
                 results.append(FolderScanOutput(
                     input: input,
                     settledFiles: settled,
+                    allFiles: files,
                     isListable: isListable
                 ))
             }
@@ -600,7 +612,13 @@ final class WatchFolderCoordinator: ObservableObject {
                 newlyUnavailable.append(active.configuration.displayName)
             }
             guard output.isListable else { continue }
-            let tally = await processSettledFiles(output.settledFiles, in: active)
+            let id = output.input.folderID
+            if folderStates[id]?.baselinePending == true, !includeBaseline {
+                recordBaseline(output.allFiles, folderID: id)
+                continue
+            }
+            let files = settledFilesOutsideBaseline(output, includeBaseline: includeBaseline)
+            let tally = await processSettledFiles(files, in: active)
             passTally.imported += tally.imported
             passTally.failed += tally.failed
             passTally.awaitingReview += tally.awaitingReview
@@ -611,6 +629,57 @@ final class WatchFolderCoordinator: ObservableObject {
             newlyUnavailable: newlyUnavailable,
             reviewName: pendingReviewBanner?.fileName
         )
+    }
+
+    /// Key of a file for the baseline. The folder path is left out so moving
+    /// the folder does not turn its baselined files into new ones.
+    private static func baselineKey(_ file: WatchFolderScanner.DiscoveredFile) -> String {
+        "\(file.byteSize)|\(Int(file.contentModificationDate.timeIntervalSince1970 * 1000))|\(file.url.lastPathComponent)"
+    }
+
+    /// First scan of a newly added folder: remember what is already there.
+    private func recordBaseline(_ files: [WatchFolderScanner.DiscoveredFile], folderID: UUID) {
+        var state = folderStates[folderID] ?? WatchFolderState(folderID: folderID)
+        let keys = files.map(Self.baselineKey)
+        state.baseline = Array(keys.prefix(policy.maxLedgerEntriesPerFolder))
+        state.baselinePending = false
+        folderStates[folderID] = state
+        persist()
+    }
+
+    /// Settled files that are not part of the baseline. An explicit import of
+    /// existing files drops the baseline so its files are imported once; a
+    /// pass that did not ask for them also forgets baselined files that are gone.
+    private func settledFilesOutsideBaseline(
+        _ output: FolderScanOutput,
+        includeBaseline: Bool
+    ) -> [WatchFolderScanner.DiscoveredFile] {
+        let id = output.input.folderID
+        guard var state = folderStates[id] else { return output.settledFiles }
+        if state.baselinePending {
+            state.baselinePending = false
+        }
+        if includeBaseline {
+            guard !state.baseline.isEmpty else {
+                folderStates[id] = state
+                persist()
+                return output.settledFiles
+            }
+            state.baseline = []
+            folderStates[id] = state
+            persist()
+            return output.settledFiles
+        }
+        guard !state.baseline.isEmpty else { return output.settledFiles }
+        let present = Set(output.allFiles.map(Self.baselineKey))
+        let kept = state.baseline.filter { present.contains($0) }
+        if kept.count != state.baseline.count {
+            state.baseline = kept
+            folderStates[id] = state
+            persist()
+        }
+        let baseline = Set(kept)
+        return output.settledFiles.filter { !baseline.contains(Self.baselineKey($0)) }
     }
 
     /// Speak at most a few concise messages per pass.
