@@ -490,7 +490,7 @@ extension AppState {
         onLoadFailure: (String) -> Void
     ) async {
         switch await storeActor.loadLibrary() {
-        case .workouts(let loaded, let selectedID, let favoriteIDs, let organization, _):
+        case .workouts(let loaded, let selectedID, let favoriteIDs, let organization, let warning):
             analysisContextCache.removeAll()
             workouts = loaded
             favoriteWorkoutIDs = favoriteIDs
@@ -529,14 +529,18 @@ extension AppState {
             // the newly committed runs are matched.
             startRouteGroupAssignment(for: Array(libraryWorkoutIDs))
             requestSessionSave()
+            if !organization.unloadableWorkoutIDs.isEmpty,
+               let message = workoutStorageWarning(warning, organization: organization) {
+                onLoadFailure(message)
+            }
         case .demos(let message, let organization, let manifestPresent):
             // Unexpected after a successful commit; fall back without wiping
             // user organisation.
             tags = organization.tags
             smartCollections = organization.smartCollections
             hasPersistedLibrary = manifestPresent
-            if let message {
-                onLoadFailure(message)
+            if let warning = workoutStorageWarning(message, organization: organization) {
+                onLoadFailure(warning)
             }
         }
     }

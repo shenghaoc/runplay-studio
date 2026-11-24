@@ -8,6 +8,9 @@ public struct WorkoutLibraryOrganizationSnapshot: Sendable, Equatable {
     public var routeGroups: [WorkoutRouteGroup]
     public var routeGroupAssignments: [WorkoutRouteGroupAssignment]
 
+    /// Persisted IDs excluded from the available workouts in this load.
+    package var unloadableWorkoutIDs: [UUID] = []
+
     public init(
         tags: [WorkoutTag] = [],
         tagAssignments: [WorkoutTagAssignment] = [],
