@@ -481,6 +481,52 @@ final class WorkoutLibraryViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Custom date range row
+
+    /// The custom range that the From and To row under the All Runs controls
+    /// edits, or nil while the date filter is a preset.
+    var customDateRange: WorkoutLibraryCustomDateRange? {
+        WorkoutLibraryCustomDateRange(
+            filter: dateFilter,
+            rememberedStart: customDateStart,
+            rememberedEnd: customDateEnd,
+            calendar: calendar
+        )
+    }
+
+    /// The dates the row's picker for `bound` offers.
+    func customDateSelectableDates(
+        for bound: WorkoutLibraryCustomDateRange.Bound
+    ) -> ClosedRange<Date> {
+        customDateRange?.selectableDates(for: bound) ?? Date.distantPast...Date.distantFuture
+    }
+
+    /// Pick the date of one bound of the custom range. The other bound is
+    /// unchanged, so a smart collection's open side stays open.
+    func pickCustomDate(_ date: Date, for bound: WorkoutLibraryCustomDateRange.Bound) {
+        editCustomDateRange { $0.pick(date, for: bound) }
+    }
+
+    /// Turn one bound of the custom range on or off.
+    func setCustomDateBound(_ bound: WorkoutLibraryCustomDateRange.Bound, isIncluded: Bool) {
+        editCustomDateRange { $0.setIncluded(isIncluded, for: bound) }
+    }
+
+    /// Apply one edit of the custom range as a single query mutation, which
+    /// marks an unmodified smart collection Modified. An edit that changes
+    /// nothing, such as picking the date already shown, writes nothing.
+    private func editCustomDateRange(_ edit: (inout WorkoutLibraryCustomDateRange) -> Void) {
+        guard var range = customDateRange else { return }
+        let unedited = range
+        edit(&range)
+        guard range != unedited else { return }
+        updateQueryState {
+            dateFilter = range.filter
+            customDateStart = range.rememberedStart
+            customDateEnd = range.rememberedEnd
+        }
+    }
+
     /// Capture the ordinary All Runs query even while a smart collection is
     /// active. Result IDs, counts, selection, and query caches are excluded.
     func sessionManualQuery() -> WorkoutLibrarySavedQuery {
@@ -620,27 +666,37 @@ final class WorkoutLibraryViewModel: ObservableObject {
     }
 
     private func makeManualSnapshot(from query: WorkoutLibrarySavedQuery) -> ManualQuerySnapshot {
-        let customBounds: (Date, Date) = {
-            if case .custom(let start, let end) = query.filter.date {
-                return (
-                    start ?? customDateStart,
-                    end ?? customDateEnd
-                )
-            }
-            return (customDateStart, customDateEnd)
-        }()
+        let customBounds = rememberedCustomDates(for: query.filter.date)
         return ManualQuerySnapshot(
             searchText: query.searchText,
             sort: query.sort,
             favoriteFilter: query.filter.favorite,
             sourceFilter: query.filter.source,
             dateFilter: query.filter.date,
-            customDateStart: customBounds.0,
-            customDateEnd: customBounds.1,
+            customDateStart: customBounds.start,
+            customDateEnd: customBounds.end,
             dataFilters: query.filter.data,
             tagFilter: query.filter.tags,
             routeFilter: query.filter.route
         )
+    }
+
+    /// The custom dates to remember for `filter`: a custom range's own
+    /// bounds, with the remembered date for an open side, in an order that
+    /// never ends on a day before it starts. For a preset, the current
+    /// remembered dates.
+    private func rememberedCustomDates(
+        for filter: WorkoutLibraryDateFilter
+    ) -> (start: Date, end: Date) {
+        guard let range = WorkoutLibraryCustomDateRange(
+            filter: filter,
+            rememberedStart: customDateStart,
+            rememberedEnd: customDateEnd,
+            calendar: calendar
+        ) else {
+            return (customDateStart, customDateEnd)
+        }
+        return (range.rememberedStart, range.rememberedEnd)
     }
 
     private func applySavedQuery(
@@ -657,14 +713,12 @@ final class WorkoutLibraryViewModel: ObservableObject {
         dataFilters = query.filter.data
         tagFilter = query.filter.tags
         routeFilter = query.filter.route
-        switch query.filter.date {
-        case .custom(let start, let end):
-            dateFilter = .custom(start: start, end: end)
-            if let start { customDateStart = start }
-            if let end { customDateEnd = end }
-        default:
-            dateFilter = query.filter.date
+        if case .custom = query.filter.date {
+            let remembered = rememberedCustomDates(for: query.filter.date)
+            customDateStart = remembered.start
+            customDateEnd = remembered.end
         }
+        dateFilter = query.filter.date
         queryContext = .smartCollection(id: id, isModified: isModified)
         isBatchingQueryChanges = false
         isApplyingSavedQuery = false

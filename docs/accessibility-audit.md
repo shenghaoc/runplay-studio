@@ -124,6 +124,11 @@ Timer ticks never announce.
 - All Runs table columns expose concise values; missing device uses
   “unavailable” wording rather than a silent zero.
 - Result count is near the heading (`resultSummary`).
+- A custom date range is edited in a row under the controls, not in the
+  Filters menu, where a `DatePicker` is drawn as a disabled item. Each bound
+  is a "From" or "To" checkbox beside a date picker named "Custom range
+  start" or "Custom range end". The only bound that is on has a disabled
+  checkbox whose help text says why.
 - Tag chips combine into tag names; overflow uses the full tag list in the
   combined accessibility label.
 - Mixed bulk-tag state speaks “Mixed”, not colour alone.
