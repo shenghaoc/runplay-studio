@@ -683,7 +683,7 @@ struct WorkoutLibraryView: View {
                 .accessibilityHidden(true)
             Text("No runs yet")
                 .font(.title3.weight(.semibold))
-            Text("Import a GPX, TCX, FIT, or JSON file, or a Strava archive.")
+            Text("Import a GPX, TCX, FIT, or JSON file, a Strava archive, or an Apple Health export.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -695,6 +695,9 @@ struct WorkoutLibraryView: View {
                 Button("Import Strava Archive…") { appState.showArchiveImporter = true }
                     .help("Import workouts from a Strava bulk-export archive")
                     .accessibilityLabel("Import Strava Archive")
+                Button("Import Apple Health Export…") { appState.showAppleHealthImporter = true }
+                    .help("Review and import workouts from an Apple Health export.zip")
+                    .accessibilityLabel("Import Apple Health Export")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
