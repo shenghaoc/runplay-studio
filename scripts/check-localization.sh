@@ -54,7 +54,10 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
   rm -rf "$STRINGSDATA_DIR"
   mkdir -p "$STRINGSDATA_DIR"
   # Product targets only: tests carry no user-facing strings.
+  # swift-build compiles String Catalogs; Swift 6.3.x defaults to the native
+  # build system, which does not (the default from Swift 6.4 is swift-build).
   swift build \
+    --build-system swiftbuild \
     --package-path "$REPO_ROOT" \
     --scratch-path "$SCRATCH_PATH" \
     -Xswiftc -emit-localized-strings \

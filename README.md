@@ -310,8 +310,8 @@ testing guidance.
 ## Build Requirements
 
 - macOS 26.0+
-- Xcode 27+ (for the Swift 6.4 toolchain)
-- Swift 6.4+
+- Xcode 26.6+ (for the Swift 6.3.3 toolchain)
+- Swift 6.3.3+
 
 ---
 

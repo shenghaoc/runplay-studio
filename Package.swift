@@ -1,4 +1,4 @@
-// swift-tools-version:6.4
+// swift-tools-version:6.3
 import PackageDescription
 
 // Remote dependencies, exact-pinned; bumps are manual, reviewable edits.

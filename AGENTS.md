@@ -454,6 +454,18 @@ swift test                                                            # macOS fu
 git diff --check
 ```
 
+**Swift 6.3.x on macOS needs `--build-system swiftbuild`.** SwiftPM 6.3's
+default (native) build system copies a String Catalog uncompiled: the resource
+bundles get no `.lproj` folders and no plural forms, and the localization tests
+fail. The swift-build system compiles the catalogs and is the default from
+Swift 6.4. CI (`macos-verify.yml`) and the scripts that build the app
+(`assemble-app-bundle.sh`, `test-release-packaging.sh`,
+`generate-demo-assets.sh`, `check-localization.sh`, `script/build_and_run.sh`)
+pass the flag, and a `swift test --skip-build` must use the build system that
+built. On Linux the native system stays: it builds Core without catalogs (the
+Core catalog is declared on macOS only), and swift-build's libdispatch crash on
+Linux is what `retry-swiftpm-libdispatch-crash.sh` handles.
+
 A filtered or soaked run must assert the expected `Executed N tests` count
 for the named suite, never just the exit code. `swift test --filter` exits 0
 when the filter matches nothing, so a loop that branches on the exit status
@@ -564,21 +576,21 @@ line, so they turn the retry off. Each retry leaves a warning annotation
 on the run. Do not widen the wrapper to other failures; delete it once
 the pinned image ships the libdispatch fix.
 
-Isolated verification runs: Swift 6.4 SwiftPM has no
-`--manifest-cache-path` (rejected at every command level) and keeps
-the manifest cache under `--cache-path`, so redirecting `--cache-path`
-covers both. `swift build` and `swift test` accept `--scratch-path` as
-a direct option, but `show-dependencies` and `resolve` accept it (and
-`--cache-path`) only before the subcommand:
-`swift package --scratch-path X --cache-path Y <subcommand>`.
+Isolated verification runs: SwiftPM has no `--manifest-cache-path`
+(observed on 6.3.3: `swift build`, `swift test` and `swift package`, with
+or without a subcommand, reject it as an unknown option) and keeps the
+manifest cache under `--cache-path`, so redirecting `--cache-path` covers
+both. On 6.3.3 `--scratch-path` and `--cache-path` are accepted both
+before and after the `package` subcommand (`show-dependencies`,
+`resolve`) and as direct options of `swift build` and `swift test`.
+Use `swift package --scratch-path X --cache-path Y <subcommand>`.
 
 RunPlayCore changes must verify the Linux build in a container before
 pushing. Linux CI is Docker-only by policy: the CI job runs inside the
 official Swift image pinned by the single `container:` line in
 [.github/workflows/ci.yml](.github/workflows/ci.yml), and local
 verification must use that exact image, read from the same pin so the
-two cannot drift (currently `swift:6.4.0-resolute@sha256:bb6e5d…a91dc`,
-an Ubuntu 26.04 userspace). The invocation is single-sourced in
+two cannot drift (currently `swift:6.3.3@sha256:4f4230…29b1e9`). The invocation is single-sourced in
 [scripts/linux-container-verify.sh](scripts/linux-container-verify.sh),
 which reads the pin by its `container:` key (the shape-documenting
 comment above the line matches a plain `swift:` grep — the same reason
@@ -623,7 +635,7 @@ access to /src/.build-linux/repositories`); `--userns=keep-id` is
 podman-specific and rejected by docker, which is why the runtimes
 differ. The package has a remote dependency (ZIPFoundation, exact-pinned
 in `Package.swift`), so the first build or `swift package resolve`
-inside the container needs network access and `git` (the resolute image
+inside the container needs network access and `git` (the pinned image
 ships it); it fetches into the scratch tree and commits nothing beyond
 the checked-in `Package.resolved`. That checkout is also why the script
 passes `safe.directory` as container-scoped `GIT_CONFIG_*` environment

@@ -20,7 +20,7 @@ configured, no official binary is produced.
 ## Prerequisites
 
 - macOS 26.0+ host for local packaging
-- Xcode 27+ / Swift 6.4
+- Xcode 26.6 / Swift 6.3.3
 - Apple Silicon (`arm64`) only for this release train
 - For production: Apple Developer Program membership, Developer ID Application
   certificate, App Store Connect API key with Notary access

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   package:
     name: Build demo .app artifact
-    runs-on: xcode-27
+    runs-on: macos-26
 
     steps:
     # A local action resolves from the workspace, so checkout must precede

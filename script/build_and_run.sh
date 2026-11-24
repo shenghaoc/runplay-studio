@@ -13,8 +13,10 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cd "$ROOT_DIR"
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-swift build
-BUILD_BIN_DIR="$(swift build --show-bin-path)"
+# swift-build compiles the String Catalogs; Swift 6.3.x defaults to the native
+# build system, which does not.
+swift build --build-system swiftbuild
+BUILD_BIN_DIR="$(swift build --build-system swiftbuild --show-bin-path)"
 "$ROOT_DIR/scripts/assemble-app-bundle.sh" \
   --repo-root "$ROOT_DIR" \
   --output "$APP_BUNDLE" \
