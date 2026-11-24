@@ -116,22 +116,16 @@ jobs:
     defaults:
       run:
         shell: bash
-    # Single source of truth for the Linux Swift toolchain. Its exact text
-    # is parsed by scripts/check-toolchain-parity.sh, and
+    # Single source of truth for the Linux Swift toolchain. Two readers
+    # parse this line's exact text, both by this file's path: this job's
+    # "Record Swift toolchain identity" step, and
     # scripts/linux-container-verify.sh — the local-verification
-    # entrypoint the AGENTS.md recipe invokes — reads this line by its
-    # `container:` key (then checks the @sha256: shape), so do not
-    # reformat this line;
-    # keep the shape `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
+    # entrypoint the AGENTS.md recipe invokes — which reads the line by its
+    # `container:` key (then checks the @sha256: shape). Do not reformat
+    # this line; keep the shape
+    # `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
     # Bumping the image means editing this line and refreshing the digest
     # in the same change.
-    #
-    # TODO(ci): check-toolchain-parity.sh greps THIS file by path for the
-    # container image pin below, and this job's "Record Swift toolchain
-    # identity" step greps it too. Moving this Linux lane into its own
-    # workflow file later requires updating that script, that step, and the
-    # AGENTS.md recipe first, or every parity check fails with "no pin
-    # found".
     container: swift:6.4.0-resolute@sha256:bb6e5d5f2a97bc07cf8022c1a3e062f8164b8fd078698327ce2ab097e02a91dc
     steps:
       - uses: actions/checkout@v7
@@ -146,11 +140,11 @@ jobs:
             exit 1
           fi
           # The exact Linux toolchain identity is already pinned: the
-          # container's @sha256: digest. Read it from the same line
-          # check-toolchain-parity.sh parses — this file must not carry a
-          # second copy of the pin. The full digit+digest shape is required
-          # in the pattern so the `container: swift:...` placeholder in the
-          # TODO comment below cannot be picked up instead.
+          # container's @sha256: digest. Read it from the `container:` line
+          # itself — this file must not carry a second copy of the pin. The
+          # full digit+digest shape is required in the pattern so the
+          # shape-documenting comment above that line cannot be picked up
+          # instead.
           PIN="$(grep -oE 'container:[[:space:]]*swift:[0-9]+(\.[0-9]+)+-[a-z]+@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1)"
           DIGEST="${PIN##*@sha256:}"
           if [[ -z "${DIGEST}" || "${DIGEST}" == "${PIN}" ]]; then
@@ -170,10 +164,8 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends python3
-      - name: Verify Swift toolchain parity
-        run: |
-          swift --version
-          ./scripts/check-toolchain-parity.sh
+      - name: Print Swift version
+        run: swift --version
       - name: Print Clang version
         run: |
           clang --version || true

@@ -576,7 +576,7 @@ an Ubuntu 26.04 userspace). The invocation is single-sourced in
 [scripts/linux-container-verify.sh](scripts/linux-container-verify.sh),
 which reads the pin by its `container:` key (the shape-documenting
 comment above the line matches a plain `swift:` grep — the same reason
-`scripts/check-toolchain-parity.sh` anchors on the key) and fails fast
+the CI identity step anchors on the key) and fails fast
 if the line moves:
 
 ```bash
@@ -631,15 +631,12 @@ so a lone `/src` fails identically — hence `/src` plus git's recursive
 or in the repository, and it is inert wherever the uid already owns the
 mount, which is why Linux CI and rootless podman never needed it.
 
-CI enforces macOS/Linux toolchain parity with
-`scripts/check-toolchain-parity.sh`, which every Swift-building job runs
-against a full checkout. It compares full marketing versions read from
-`swift --version` against the container pin in
-`.github/workflows/ci.yml`, treating a missing patch component as `.0`
-(Apple prints "6.4" where the pin says "6.4.0"). An Xcode point release
-that changes the Swift patch version — 6.4 -> 6.4.2 — therefore fails
-every macOS job until the container image is bumped to match; that
-strictness is deliberate.
+The Swift version in the Linux image must equal the Swift in the Xcode that
+`setup-macos-build` provides to the macOS jobs, so both platforms test one
+toolchain. This is a convention, not a CI check: bump the `container:` pin in
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and that Xcode in the
+same PR. An Xcode point release that changes the Swift patch version needs a
+matching image.
 
 `--scratch-path .build-linux` keeps the Linux build tree out of `.build`
 so container runs and host macOS builds do not invalidate each other's

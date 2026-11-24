@@ -223,7 +223,7 @@ WORKFLOW=".github/workflows/ci.yml"
 
 # Resolve the CI container pin by its key and fail fast: the
 # shape-documenting comment above the line matches a plain `swift:` grep,
-# so anchor on `container:` — the same anchor check-toolchain-parity.sh
+# so anchor on `container:` — the same anchor the CI identity step
 # uses — and reject anything that is not a digest-pinned tag.
 IMAGE="$(awk '$1 == "container:" { print $2; exit }' "${WORKFLOW}")"
 case "${IMAGE}" in
