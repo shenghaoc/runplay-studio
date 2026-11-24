@@ -101,7 +101,7 @@ public actor WorkoutLibraryStoreActor {
 
     // MARK: - Load Library
 
-    /// Load the persisted workout library with recovery for missing/corrupt files.
+    /// Load readable workouts without removing unreadable snapshots or their entries.
     ///
     /// This replaces the synchronous `WorkoutLibraryLoader` with actor-isolated logic.
     public func loadLibrary() -> WorkoutLibraryLoadResult {
@@ -155,14 +155,15 @@ public actor WorkoutLibraryStoreActor {
             }
 
             var loaded: [RunWorkout] = []
-            var validIDs: [UUID] = []
+            var loadedIDs: [UUID] = []
+            var unloadableIDs: [UUID] = []
             var warnings: [String] = []
 
             for id in manifest.workoutIDs {
                 let shortID = String(id.uuidString.prefix(8))
                 do {
                     var workout = try store.loadWorkout(id: id)
-                    validIDs.append(id)
+                    loadedIDs.append(id)
 
                     var upgraded = false
                     if workout.normalizationVersion < RunWorkout.currentNormalizationVersion {
@@ -224,31 +225,26 @@ public actor WorkoutLibraryStoreActor {
                             )
                         }
                     }
-                } catch let error as WorkoutLibraryError {
-                    switch error {
-                    case .workoutFileMissing:
-                        warnings.append(coreLocalized("Workout \(shortID)… file missing — skipped"))
-                    case .workoutCorrupted:
-                        warnings.append(coreLocalized("Workout \(shortID)… corrupted — skipped"))
-                    default:
-                        warnings.append(coreLocalized("Workout \(shortID)… error: \(error.localizedDescription)"))
-                    }
                 } catch {
-                    warnings.append(coreLocalized("Workout \(shortID)… unexpected error: \(error.localizedDescription)"))
+                    unloadableIDs.append(id)
+                    warnings.append(error.localizedDescription)
                 }
             }
 
+            // Use a readable in-memory selection, but preserve the saved one
+            // so restoring compatibility can restore that selection too.
             let selectedWorkoutID = manifest.selectedWorkoutID.flatMap { selectedID in
-                validIDs.contains(selectedID) ? selectedID : nil
-            } ?? validIDs.first
+                loadedIDs.contains(selectedID) ? selectedID : nil
+            } ?? loadedIDs.first
 
-            let validIDSet = Set(validIDs)
-            var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(validIDSet)
+            let referencedIDs = Set(manifest.workoutIDs)
+            var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(referencedIDs)
             let favoritesNeedRepair = favoriteIDs != manifest.favoriteWorkoutIDs
 
             var workingManifest = manifest
-            workingManifest.workoutIDs = validIDs
-            workingManifest.selectedWorkoutID = selectedWorkoutID
+            if manifest.selectedWorkoutID.map(referencedIDs.contains) != true {
+                workingManifest.selectedWorkoutID = selectedWorkoutID
+            }
             workingManifest.favoriteWorkoutIDs = favoriteIDs
             let organizationReport = workingManifest.repairOrganization()
             workingManifest.upgradeSchemaVersionIfNeeded()
@@ -262,8 +258,7 @@ public actor WorkoutLibraryStoreActor {
                 || workingManifest.smartCollections != manifest.smartCollections
                 || workingManifest.routeGroups != manifest.routeGroups
                 || workingManifest.routeGroupAssignments != manifest.routeGroupAssignments
-            let manifestNeedsRepair = validIDs != manifest.workoutIDs
-                || selectedWorkoutID != manifest.selectedWorkoutID
+            let manifestNeedsRepair = workingManifest.selectedWorkoutID != manifest.selectedWorkoutID
                 || favoritesNeedRepair
                 || organizationChanged
                 || manifest.version != WorkoutLibraryManifest.currentVersion
@@ -281,30 +276,23 @@ public actor WorkoutLibraryStoreActor {
                 }
             }
 
-            guard !loaded.isEmpty else {
-                let warning = warnings.isEmpty
-                    ? nil
-                    : coreLocalized("Library recovery:\n\(warnings.joined(separator: "\n"))")
-                // All workout files missing/corrupt — keep organisation for an
-                // empty persisted library rather than wiping tags/collections.
-                return .demos(
-                    errorMessage: warning,
-                    organization: WorkoutLibraryOrganizationSnapshot(
-                        tags: workingManifest.tags,
-                        tagAssignments: workingManifest.tagAssignments,
-                        smartCollections: workingManifest.smartCollections
-                    ),
-                    manifestPresent: true
-                )
-            }
-
-            let organization = WorkoutLibraryOrganizationSnapshot(
+            var organization = WorkoutLibraryOrganizationSnapshot(
                 tags: workingManifest.tags,
                 tagAssignments: workingManifest.tagAssignments,
                 smartCollections: workingManifest.smartCollections,
                 routeGroups: workingManifest.routeGroups,
                 routeGroupAssignments: workingManifest.routeGroupAssignments
             )
+            organization.unloadableWorkoutIDs = unloadableIDs
+            guard !loaded.isEmpty else {
+                return .demos(
+                    errorMessage: warnings.isEmpty
+                        ? nil
+                        : coreLocalized("Library recovery:\n\(warnings.joined(separator: "\n"))"),
+                    organization: organization,
+                    manifestPresent: true
+                )
+            }
             let warning = warnings.isEmpty
                 ? nil
                 : coreLocalized("Library warnings:\n\(warnings.joined(separator: "\n"))")
@@ -353,6 +341,9 @@ public actor WorkoutLibraryStoreActor {
             return
         }
 
+        guard !store.workoutExists(id: workout.id) else {
+            throw WorkoutLibraryStoreError.duplicateWorkoutID(workout.id)
+        }
         try store.saveWorkout(workout)
 
         manifest.workoutIDs.append(workout.id)
@@ -496,18 +487,8 @@ public actor WorkoutLibraryStoreActor {
 
     /// Remove stale staging left by crashed imports. Safe to call at startup.
     public func recoverStaleState() {
-        do {
-            try store.cleanupStaleStaging()
-        } catch {
-            // Best-effort startup recovery.
-        }
-        // Orphan final files not in manifest.
-        do {
-            let manifest = try store.loadManifest()
-            try store.cleanupUnreferencedWorkoutFiles(referencedIDs: Set(manifest.workoutIDs))
-        } catch {
-            // Missing manifest is fine.
-        }
+        guard activeBatch == nil else { return }
+        try? store.cleanupStaleStaging()
     }
 
     /// Begin a staged batch import transaction.

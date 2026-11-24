@@ -118,15 +118,11 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
             throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Only local file URLs are supported"))
         }
 
-        guard fileManager.fileExists(atPath: url.path) else {
-            throw WorkoutLibraryError.workoutFileMissing(id)
-        }
-
         let data: Data
         do {
             data = try Data(contentsOf: url)
-        } catch {
-            throw WorkoutLibraryError.workoutCorrupted(id, coreLocalized("Cannot read file: \(error.localizedDescription)"))
+        } catch let error as NSError where Self.isMissingFile(error) {
+            throw WorkoutLibraryError.workoutFileMissing(id)
         }
 
         do {
@@ -139,6 +135,9 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
     public func saveWorkout(_ workout: RunWorkout) throws {
         try ensureDirectoriesExist()
 
+        let url = workoutURL(for: workout.id)
+        try validateSnapshotReplacement(at: url, id: workout.id)
+
         let data: Data
         do {
             data = try encoder.encode(workout)
@@ -146,7 +145,6 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
             throw WorkoutLibraryError.writeFailed(coreLocalized("Cannot encode workout \(workout.id.uuidString): \(error.localizedDescription)"))
         }
 
-        let url = workoutURL(for: workout.id)
         try atomicWrite(data, to: url)
     }
 
@@ -168,6 +166,60 @@ public final class FileWorkoutLibraryStore: WorkoutLibraryStoring, @unchecked Se
 
     private func workoutURL(for id: UUID) -> URL {
         workoutsDirectory.appendingPathComponent("\(id.uuidString).json")
+    }
+
+    private static func isMissingFile(_ error: NSError) -> Bool {
+        error.domain == NSCocoaErrorDomain
+            && (error.code == NSFileNoSuchFileError || error.code == NSFileReadNoSuchFileError)
+    }
+
+    private struct IncompatibleSnapshot: Error {}
+
+    /// Only overwrite an existing snapshot if decoding and encoding retain
+    /// all of its original JSON. Added defaults are fine; lost fields, array
+    /// entries, and values that decode lossily are not.
+    private func validateSnapshotReplacement(at url: URL, id: UUID) throws {
+        let previous: Data
+        do {
+            previous = try Data(contentsOf: url)
+        } catch let error as NSError where Self.isMissingFile(error) {
+            // A dangling link is still an existing directory entry.
+            if (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) != nil {
+                throw error
+            }
+            return
+        }
+
+        let decoded = try decoder.decode(RunWorkout.self, from: previous)
+        let original = try JSONSerialization.jsonObject(with: previous)
+        let reencoded = try JSONSerialization.jsonObject(with: encoder.encode(decoded))
+        guard decoded.id == id, Self.retainsJSON(original, in: reencoded) else {
+            throw IncompatibleSnapshot()
+        }
+    }
+
+    private static func retainsJSON(_ original: Any, in encoded: Any) -> Bool {
+        if let original = original as? [String: Any] {
+            guard let encoded = encoded as? [String: Any] else { return false }
+            return original.allSatisfy { key, value in
+                guard let counterpart = encoded[key] else { return false }
+                return retainsJSON(value, in: counterpart)
+            }
+        }
+        if let original = original as? [Any] {
+            guard let encoded = encoded as? [Any], encoded.count == original.count else { return false }
+            return zip(original, encoded).allSatisfy { retainsJSON($0, in: $1) }
+        }
+        // Compare the JSON representation of scalars so true/false cannot
+        // compare equal to NSNumber representations of 1/0.
+        if let numeric = original as? NSNumber, let counterpart = encoded as? NSNumber {
+            if numeric.intValue == 0 || numeric.intValue == 1 {
+                let opts: JSONSerialization.WritingOptions = [.fragmentsAllowed]
+                return (try? JSONSerialization.data(withJSONObject: numeric, options: opts))
+                    == (try? JSONSerialization.data(withJSONObject: counterpart, options: opts))
+            }
+        }
+        return (original as? NSObject)?.isEqual(encoded) == true
     }
 
     /// Write data atomically using Foundation's built-in `.atomic` option.
@@ -243,9 +295,6 @@ extension FileWorkoutLibraryStore {
                 guard fileManager.fileExists(atPath: source.path) else {
                     throw WorkoutLibraryError.workoutFileMissing(id)
                 }
-                if fileManager.fileExists(atPath: dest.path) {
-                    try fileManager.removeItem(at: dest)
-                }
                 try fileManager.moveItem(at: source, to: dest)
                 moved.append(id)
             }
@@ -283,12 +332,13 @@ extension FileWorkoutLibraryStore {
     }
 
     public func cleanupStaleStaging() throws {
-        guard fileManager.fileExists(atPath: stagingRoot.path) else { return }
+        let stagingKind = try? stagingRoot.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard stagingKind?.isDirectory == true, stagingKind?.isSymbolicLink != true else { return }
         let contents: [URL]
         do {
             contents = try fileManager.contentsOfDirectory(
                 at: stagingRoot,
-                includingPropertiesForKeys: [.isDirectoryKey],
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
                 options: [.skipsHiddenFiles]
             )
         } catch {
@@ -296,32 +346,19 @@ extension FileWorkoutLibraryStore {
                 coreLocalized("Cannot list staging root: \(error.localizedDescription)")
             )
         }
-        for url in contents {
+        for url in contents where UUID(uuidString: url.lastPathComponent) != nil {
+            let kind = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard kind?.isDirectory == true, kind?.isSymbolicLink != true else { continue }
             try? fileManager.removeItem(at: url)
         }
-        try? fileManager.removeItem(at: stagingRoot)
+        if let remaining = try? fileManager.contentsOfDirectory(atPath: stagingRoot.path),
+           remaining.isEmpty {
+            try? fileManager.removeItem(at: stagingRoot)
+        }
     }
 
     public func cleanupUnreferencedWorkoutFiles(referencedIDs: Set<UUID>) throws {
-        guard fileManager.fileExists(atPath: workoutsDirectory.path) else { return }
-        let files: [URL]
-        do {
-            files = try fileManager.contentsOfDirectory(
-                at: workoutsDirectory,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
-        } catch {
-            throw WorkoutLibraryError.writeFailed(
-                coreLocalized("Cannot list workouts directory: \(error.localizedDescription)")
-            )
-        }
-        for file in files where file.pathExtension.lowercased() == "json" {
-            let name = file.deletingPathExtension().lastPathComponent
-            guard let id = UUID(uuidString: name) else { continue }
-            if !referencedIDs.contains(id) {
-                try? fileManager.removeItem(at: file)
-            }
-        }
+        // Absence from the manifest does not establish that the file was
+        // abandoned during an import. Leave final snapshots untouched.
     }
 }
