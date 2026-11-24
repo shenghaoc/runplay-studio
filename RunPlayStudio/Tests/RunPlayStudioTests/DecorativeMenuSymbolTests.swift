@@ -1,6 +1,12 @@
 import XCTest
 @testable import RunPlayStudio
 
+/// `@MainActor` because the test reads `MapReferenceView.routeColorSymbolName`,
+/// a static on a SwiftUI `View`, which is main-actor isolated. Swift 6.4 only
+/// warns about reading it from an assertion's autoclosure; Swift 6.3.3 rejects
+/// it. Marking the suite matches the other main-actor suites and is correct on
+/// both.
+@MainActor
 final class DecorativeMenuSymbolTests: XCTestCase {
 
     func testSymbolKeepsBlankDescriptionInsteadOfSynthesisedName() throws {
