@@ -149,7 +149,6 @@ struct TrendsView: View {
             .pickerStyle(.menu)
             .fixedSize()
             .help("Group workouts by ISO week, calendar month, or calendar year")
-            .accessibilityLabel("Trends period")
 
             Picker("Range", selection: $viewModel.range) {
                 ForEach(WorkoutTrendsRange.allCases, id: \.self) { range in
@@ -159,7 +158,6 @@ struct TrendsView: View {
             .pickerStyle(.menu)
             .fixedSize()
             .help("Show whole periods covering the selected time range")
-            .accessibilityLabel("Trends range")
 
             scopePicker
         }
@@ -178,7 +176,6 @@ struct TrendsView: View {
         .pickerStyle(.menu)
         .frame(maxWidth: 240)
         .help("Limit trends to the whole library, the current All Runs query, or one smart collection")
-        .accessibilityLabel("Trends scope")
     }
 
     /// Picks scope; a smart-collection tag needs the collection to still exist.
@@ -376,7 +373,6 @@ struct TrendsView: View {
             }
             .pickerStyle(.menu)
             .frame(maxWidth: 180)
-            .accessibilityLabel("Inspect trends period")
 
             if let inspected = inspectedDetail {
                 Text(inspected)
