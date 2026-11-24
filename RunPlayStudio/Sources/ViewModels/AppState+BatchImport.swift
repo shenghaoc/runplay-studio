@@ -3,9 +3,11 @@ import RunPlayCore
 import RunPlayPlatform
 import SwiftUI
 
-// Batch import (Strava archive + multi-session FIT) lives here so AppState.swift
-// stays focused on library/workspace state. Members used by these flows are
-// module-internal so this extension can own the lifecycle helpers.
+// Batch import (Strava archive + multi-session FIT + Apple Health export) lives
+// here so AppState.swift stays focused on library/workspace state. Members used
+// by these flows are module-internal so the per-source extensions can share one
+// lifecycle: the Apple Health sheet installs its state in
+// `AppState+AppleHealthImport.swift` and reuses the helpers below.
 
 extension AppState {
 
@@ -13,11 +15,12 @@ extension AppState {
 
     /// Begin scanning a user-selected Strava bulk-export ZIP.
     func beginArchiveImport(from url: URL) {
-        // Mutual exclusion with multi-session FIT review / import (same as
-        // `importWorkout` guarding `archiveSession`).
+        // Mutual exclusion with multi-session FIT review / import and with the
+        // Apple Health review (same as `importWorkout` guarding `archiveSession`).
         guard operationState == .idle,
               archiveSession == nil,
-              fitSessionImportSession == nil
+              fitSessionImportSession == nil,
+              appleHealthSession == nil
         else { return }
         guard let archiveService, storeActor != nil else {
             errorMessage = "Archive import is unavailable in this session."
@@ -382,20 +385,21 @@ extension AppState {
 
     // MARK: - Shared batch-sheet lifecycle
 
-    /// UI phases shared by Strava archive and multi-session FIT sheets.
-    private enum BatchSheetPhase {
+    /// UI phases shared by the Strava archive, multi-session FIT, and Apple
+    /// Health review sheets.
+    enum BatchSheetPhase {
         case reviewing
         case importing
         case report
     }
 
-    /// Shared cancel semantics for archive and FIT review sheets.
+    /// Shared cancel semantics for the batch review sheets.
     ///
     /// During `.importing`, only requests cooperative cancellation and keeps
     /// the sheet until the task returns a structured report. Announcement for
     /// that path happens on task completion (when `announceQuietCancel` is set
     /// on the finish helper). Review-phase cancel dismisses immediately.
-    private func cancelBatchSheet(
+    func cancelBatchSheet(
         task: inout Task<Void, Never>?,
         phase: BatchSheetPhase?,
         dismissSession: () -> Void
@@ -414,8 +418,8 @@ extension AppState {
         }
     }
 
-    /// Shared post-import sheet finish path for archive and FIT batch reports.
-    private func finishBatchSheetImport(
+    /// Shared post-import sheet finish path for the batch sheets.
+    func finishBatchSheetImport(
         wasCancelled: Bool,
         commitFailed: Bool,
         importedCount: Int,
@@ -460,7 +464,7 @@ extension AppState {
         }
     }
 
-    private func finishBatchSheetTaskCancellation(
+    func finishBatchSheetTaskCancellation(
         announce: Bool,
         dismissSession: () -> Void
     ) {
@@ -471,7 +475,7 @@ extension AppState {
         }
     }
 
-    private func finishBatchSheetTaskError(
+    func finishBatchSheetTaskError(
         message: String,
         applyReport: () -> Void
     ) {
