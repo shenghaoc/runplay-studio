@@ -78,7 +78,32 @@ final class WorkoutDetailWidthBudgetTests: XCTestCase {
         )
     }
 
+
+    /// #193: the chart stack must scroll inside its own area. A tab that
+    /// cannot shrink below the window pushes the replay dock past the bottom
+    /// edge, so every tab's minimum height must fit the minimum window, with
+    /// a run that also shows the power and dynamics panel.
+    func testEveryTabFitsTheMinimumWindowHeightWithTheReplayDock() {
+        let workout = makeWorkout()
+        XCTAssertTrue(workout.hasPowerData)
+        let available = AppDesign.WindowLayout.minimumContentHeight
+        for tab in WorkoutDetailView.ViewTab.allCases {
+            let minimum = minimumHeight(of: detailView(tab: tab, workout: workout))
+            XCTAssertLessThanOrEqual(
+                minimum,
+                available,
+                "\(tab.rawValue) tab needs \(minimum)pt of height; the minimum window offers \(available)pt"
+            )
+        }
+    }
+
     // MARK: - Helpers
+
+    private func minimumHeight<V: View>(of view: V) -> CGFloat {
+        NSHostingController(rootView: view)
+            .sizeThatFits(in: CGSize(width: budget, height: 1))
+            .height
+    }
 
     private func minimumWidth<V: View>(of view: V) -> CGFloat {
         NSHostingController(rootView: view)
