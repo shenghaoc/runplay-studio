@@ -96,4 +96,88 @@ final class ImportErrorMessagesTests: XCTestCase {
             )
         }
     }
+
+    func testMalformedJSONMetadataIsAnImportFailureInBothPaths() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("malformed.json")
+        try Data(#"{"metadata":{"name":42},"routePoints":[]}"#.utf8).write(to: file)
+
+        XCTAssertThrowsError(try JSONWorkoutImporter().importWorkout(from: file)) { error in
+            guard case WorkoutImportError.parsingError = error else {
+                return XCTFail("Expected the JSON importer to translate its decoding error, got \(error)")
+            }
+        }
+
+        let app = makeAppState(at: root.appendingPathComponent("library"))
+        await expectFailures(in: app, importing: file, prefix: "'malformed.json' couldn't be parsed.")
+    }
+
+    func testActualWorkoutSaveFailureIsReportedAsPersistenceInBothPaths() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("valid.json")
+        try Data(
+            #"{"routePoints":[{"timestamp":"2026-01-01T00:00:00Z","latitude":1.3,"longitude":103.8},{"timestamp":"2026-01-01T00:00:10Z","latitude":1.3003,"longitude":103.8}]}"#.utf8
+        ).write(to: file)
+        _ = try JSONWorkoutImporter().importWorkout(from: file)
+
+        let library = root.appendingPathComponent("library", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        // A regular file prevents the store from creating the workouts directory.
+        try Data().write(to: library.appendingPathComponent("workouts"))
+        let app = makeAppState(at: library)
+        await expectFailures(in: app, importing: file, prefix: "Imported but could not save to your library.")
+    }
+
+    func testUnexpectedImporterFailureDoesNotClaimThatASaveFailed() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("unreadable.json")
+        let app = makeAppState(at: root.appendingPathComponent("library"), importer: ReadFailingImporter())
+        await expectFailures(in: app, importing: file, prefix: "'unreadable.json' couldn't be parsed.")
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RunPlayImportErrors-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func makeAppState(
+        at library: URL,
+        importer: any WorkoutImportServicing = WorkoutImportService()
+    ) -> AppState {
+        AppState(
+            storeActor: WorkoutLibraryStoreActor(store: FileWorkoutLibraryStore(rootURL: library)),
+            importService: importer
+        )
+    }
+
+    private func expectFailures(in app: AppState, importing file: URL, prefix: String) async {
+        let result = await app.performWatchFolderImport(
+            from: file,
+            configuration: WatchFolderConfiguration(displayName: "Inbox", bookmarkData: Data())
+        )
+        XCTAssertEqual(result.outcome, .failed)
+        XCTAssertTrue(result.failureDetail.hasPrefix(prefix), result.failureDetail)
+        XCTAssertFalse(app.showingError, "watch-folder failures are non-modal")
+
+        await app.importWorkout(from: file)
+        XCTAssertTrue(app.showingError)
+        XCTAssertTrue(app.errorMessage?.hasPrefix(prefix) == true, app.errorMessage ?? "no manual failure")
+        XCTAssertEqual(app.operationState, .idle)
+        XCTAssertTrue(app.workouts.isEmpty)
+    }
+}
+
+private struct ReadFailingImporter: WorkoutImportServicing {
+    func importWorkout(from url: URL) async throws -> RunWorkout {
+        throw CocoaError(.fileReadUnknown)
+    }
+
+    func importWorkout(from input: WorkoutImportInput) async throws -> RunWorkout {
+        throw CocoaError(.fileReadUnknown)
+    }
 }
