@@ -34,6 +34,7 @@ jobs:
   freshness:
     name: Detect new commits
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:

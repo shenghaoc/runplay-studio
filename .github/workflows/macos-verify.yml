@@ -45,6 +45,7 @@ jobs:
   verify:
     name: Verify (macOS)
     runs-on: xcode-27
+    timeout-minutes: 60
     steps:
       # A local action resolves from the workspace, so checkout must precede
       # the setup composite.
