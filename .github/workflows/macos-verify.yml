@@ -2,7 +2,8 @@ name: macOS verification
 
 # Reusable macOS verification body, called by every lane so they can never
 # drift apart:
-#   - ci.yml      calls it once per PR (engine + full-stack tests)
+#   - ci.yml      calls it once per PR when a changed path can reach macOS,
+#                 with the selector's test filter (engine + full-stack tests)
 #   - nightly.yml calls it with only the release compile (the rest of its
 #                 macOS work comes through ci.yml)
 #   - release.yml calls it with every suite enabled before packaging
@@ -37,6 +38,12 @@ on:
         description: "Check the String Catalogs against the source (scripts/check-localization.sh)."
         type: boolean
         default: false
+      test-filter:
+        description: >-
+          A `swift test --filter` regex that narrows the full-tests run; empty
+          runs every test target. The whole package is built either way.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -84,17 +91,31 @@ jobs:
           -Xcxx -Wsign-conversion
           -Xcxx -Wshadow
 
-      # `swift test` in "Verify full package" already runs this target, so
-      # the separate run is needed only when the full suite is off.
+      # The "Run tests" step already runs this target, so the separate run is
+      # needed only when the full suite is off.
       - name: Run native C++ engine tests
         if: inputs.engine && !inputs.full-tests
         run: swift test --build-system swiftbuild --filter RunPlayEngineCppTests
 
-      - name: Verify full package
+      # Build and test are separate steps so the logs show where the time
+      # goes. Studio depends on every module upstream, so the whole package
+      # builds on every run; only the tests that run are narrowed.
+      - name: Build all targets and tests
+        if: inputs.full-tests
+        run: swift build --build-system swiftbuild --build-tests
+
+      - name: Run tests
         if: inputs.full-tests
         env:
+          TEST_FILTER: ${{ inputs.test-filter }}
           RUNPLAY_SNAPSHOT_FAILURES_DIR: ${{ runner.temp }}/snapshot-failures
-        run: swift test --build-system swiftbuild
+        run: |
+          set -euo pipefail
+          if [[ -n "${TEST_FILTER}" ]]; then
+            swift test --build-system swiftbuild --skip-build --filter "${TEST_FILTER}"
+          else
+            swift test --build-system swiftbuild --skip-build
+          fi
 
       # A failing image snapshot (SnapshotAssertion) writes its actual render
       # and a diff image there; without them a difference that appears only

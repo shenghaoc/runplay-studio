@@ -427,6 +427,38 @@ Do not use these files for task status, speculative advice, or copied policy.
 Jules must use the lowercase `.jules/` directory only; never create or write
 to a case-variant such as `.Jules/`.
 
+### Lane selection
+
+A pull request runs only the lanes and test targets its changed paths can
+reach. `scripts/ci-select-lanes.sh` holds the table; the `changes` job in
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs it, and `lint`
+self-tests it on every PR. The module graph is
+`RunPlayEngineCpp` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, and
+each change reaches its own module and the modules downstream.
+
+| Changed path | Runs |
+|---|---|
+| `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `.kiro/**`, `prompts/**`, `LICENSE` | lint only |
+| `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests |
+| `RunPlayPlatform/**` | macOS, Platform and Studio tests |
+| `RunPlayCore/**`, `RunPlayEngineCpp/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
+
+- Every path is classified and the widest result wins; a renamed file counts
+  under both its old and new path.
+- The selector fails open: an unlisted path, an empty or unreadable diff, or
+  any event other than `pull_request` selects everything. The nightly reaches
+  `ci.yml` through `workflow_call`, so it always runs everything on `main`;
+  a wrong mapping therefore shows up on the next nightly.
+- On a stacked PR the diff is against the parent PR's branch, so a child PR's
+  selection covers only its own changes. Each PR below it is verified by its
+  own CI.
+- The `CI` gate accepts a skipped lane only when the selector turned that
+  lane off; a lane the selector turned on must succeed.
+- Adding a module, or a test that reads a file outside its own module (for
+  example by `#filePath`), means updating `scripts/ci-select-lanes.sh` in the
+  same PR. Tests that read the repository (`scripts/**` from Studio tests,
+  `RunPlayStudio/Resources/**` fixtures) are covered by the table above.
+
 ## Validation
 
 Use the same warning-clean SwiftPM commands enforced by CI. Warnings are

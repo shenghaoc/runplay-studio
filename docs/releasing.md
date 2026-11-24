@@ -304,8 +304,11 @@ Never commit `.p12` / `.p8` files. Never print decoded keys or passwords.
 ### Packaging verification
 
 Packaging is verified by the Release workflow, not by pull-request CI or the
-nightly: macOS runners are scarce, and few changes can break packaging. All of
-it is credential-free except the production path:
+nightly: macOS runners are scarce, and few changes can break packaging. The
+pull-request lane itself runs only the lanes and test targets a change can
+reach (AGENTS.md, "Lane selection"); the nightly runs everything on `main`, so
+a wrong selection shows up there. All of it is credential-free except the
+production path:
 
 - The `Lint` job in [.github/workflows/ci.yml](../.github/workflows/ci.yml)
   runs `bash -n` over every packaging script on every pull request.
