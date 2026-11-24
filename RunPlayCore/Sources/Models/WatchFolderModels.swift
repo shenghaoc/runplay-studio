@@ -40,6 +40,13 @@ public struct WatchFolderConfiguration: Codable, Equatable, Identifiable, Sendab
         self.isPaused = isPaused
     }
 
+    /// A tag name as stored: control characters (a stray Tab, a newline) are
+    /// dropped and surrounding whitespace is trimmed. Blank input means no tag.
+    public static func normalizedTagName(_ input: String) -> String {
+        let withoutControls = String(input.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+        return withoutControls.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, displayName, bookmarkData, defaultTagName, isPaused
     }
