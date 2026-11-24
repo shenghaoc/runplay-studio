@@ -9,7 +9,7 @@ final class DefaultTagDraftTests: XCTestCase {
         var draft = DefaultTagDraft(committed: "watch")
         draft.text = "wat"
         XCTAssertEqual(draft.committed, "watch")
-        XCTAssertNil(draft.pendingCommit, "no write happens until the edit is committed")
+        XCTAssertEqual(draft.pendingCommit, "wat", "the edit waits for a commit; nothing is stored yet")
     }
 
     func testCommitNormalisesAndReturnsTheValueToPersist() {

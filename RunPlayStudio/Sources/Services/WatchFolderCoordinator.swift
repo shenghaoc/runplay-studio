@@ -465,7 +465,7 @@ final class WatchFolderCoordinator: ObservableObject {
     }
 
     func setDefaultTag(_ tagName: String, folderID: UUID) {
-        updateFolder(id: folderID) { $0.defaultTagName = tagName }
+        updateFolder(id: folderID) { $0.defaultTagName = WatchFolderConfiguration.normalizedTagName(tagName) }
         persist()
     }
 

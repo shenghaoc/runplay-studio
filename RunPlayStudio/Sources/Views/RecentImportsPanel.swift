@@ -7,6 +7,7 @@ import AppKit
 struct RecentImportsToolbarButton: View {
     @ObservedObject var coordinator: WatchFolderCoordinator
     @State private var isPresented = false
+    @FocusState private var panelFocused: Bool
 
     private var failureCount: Int {
         coordinator.recentImports.filter { $0.status == .failed }.count
@@ -29,7 +30,13 @@ struct RecentImportsToolbarButton: View {
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             RecentImportsPanel(coordinator: coordinator)
                 // Keyboard parity: Escape closes the panel the same way a
-                // pointer click outside does.
+                // pointer click outside does. `onExitCommand` only fires with
+                // focus inside the popover, so take focus when it opens, or
+                // Escape did nothing after a pointer open (#183).
+                .focusable()
+                .focusEffectDisabled()
+                .focused($panelFocused)
+                .onAppear { panelFocused = true }
                 .onExitCommand { isPresented = false }
         }
         .help("Watch-folder import results")
