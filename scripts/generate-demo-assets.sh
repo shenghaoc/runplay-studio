@@ -6,7 +6,6 @@
 #
 # Usage:
 #   ./scripts/generate-demo-assets.sh [--output-dir <dir>] [--skip-build]
-#   ./scripts/generate-demo-assets.sh --check [--output-dir <dir>] [--skip-build]
 #
 # The default mode writes into <dir> (default .build/demo-assets):
 #   demo-summary-{light,dark}.png            PNG summary card, exactly 1200×1600
@@ -17,11 +16,10 @@
 #   demo-assets-provenance.txt               macOS and Xcode versions used
 #   SHA256SUMS
 #
-# --check renders only the summary cards, compares each with its committed
-# copy in docs/assets/ within the pixel tolerance in
-# RunPlayStudio/Sources/DemoAssets/DemoAssetImageComparison.swift, and
-# enforces the docs/assets/ size budget below. It is a local check you run
-# with --check; CI does not run it.
+# The curated set a docs/assets refresh would commit (the summary cards, the
+# GIFs and posters, and the provenance file) must fit the size budget below;
+# generation fails when it does not. The script is a local tool and a manual
+# workflow, never part of CI.
 #
 # A relative --output-dir is resolved from the current directory. Inside the
 # repository only descendants of .build/ (which git ignores) are accepted, so the script never
@@ -31,7 +29,7 @@
 # Requirements: macOS with Xcode's Swift toolchain; network access for the
 # MapKit basemaps (videos only); Python 3 for safe path canonicalization.
 #
-# Exit status: 0 success; 1 drift or budget failure (--check only); 2 any
+# Exit status: 0 success; 1 the curated set is over the size budget; 2 any
 # other failure; 64 usage error.
 
 set -euo pipefail
@@ -39,18 +37,17 @@ shopt -s nullglob
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ASSETS_DIR="$REPO_ROOT/docs/assets"
 
-# docs/assets/ size budget in bytes, enforced by --check. Every committed byte
+# docs/assets/ size budget in bytes, enforced on the generated curated set.
+# Every committed byte
 # stays in clone history across refreshes, so the budget fits the curated set
 # (two summary cards near 120 KB and two GIFs near 2.7 MB) with modest
 # headroom. The MP4s (about 12 MB each) are workflow artifacts, never committed.
 MAX_FILE_BYTES=3000000
 MAX_TOTAL_BYTES=7000000
 
-# Records what rendered the media. Text rasterization can change between
-# macOS builds, so --check reports the build behind the committed cards next
-# to its own.
+# Records what rendered the media: text rasterization can change between
+# macOS builds, so a refresh commits this file with the cards.
 PROVENANCE_FILE="demo-assets-provenance.txt"
 
 # Marks an output directory as this script's, so a rerun may clear it.
@@ -59,28 +56,15 @@ OUTPUT_MARKER=".runplay-demo-assets"
 log() { echo "generate-demo-assets: $*" >&2; }
 die() { log "error: $*"; exit 2; }
 
-# A GitHub Actions annotation (workflow commands are read from stdout), so a
-# CI run names the cause on its summary page; a no-op elsewhere.
-annotate() {
-  [[ "${GITHUB_ACTIONS:-}" == "true" ]] || return 0
-  echo "::$1 title=$2::$3"
-}
-
 usage() {
   cat <<'EOF'
 Usage:
   generate-demo-assets.sh [--output-dir <dir>] [--skip-build]
-  generate-demo-assets.sh --check [--output-dir <dir>] [--skip-build]
 
 Render the README demo media from the bundled synthetic sample runs.
 
 Options:
-  --check             Render the summary cards only and compare them with
-                      docs/assets/ (a local check; CI does not
-                      run it); also enforce the
-                      docs/assets/ size budget
-  --output-dir <dir>  Where to write (default .build/demo-assets, or
-                      .build/demo-assets-check with --check); it must
+  --output-dir <dir>  Where to write (default .build/demo-assets); it must
                       resolve to a strict descendant of .build/
   --skip-build        Reuse the existing debug build
   -h, --help          Show this help
@@ -105,15 +89,10 @@ print(target)
 PYTHON
 }
 
-MODE="generate"
 OUTPUT_DIR=""
 SKIP_BUILD=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --check)
-      MODE="check"
-      shift
-      ;;
     --output-dir)
       [[ $# -ge 2 && -n "$2" ]] || { usage >&2; exit 64; }
       OUTPUT_DIR="$2"
@@ -139,11 +118,7 @@ done
   || die "the demo media render through AppKit, SwiftUI, and MapKit; run this on macOS"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-  if [[ "$MODE" == "check" ]]; then
-    OUTPUT_DIR="$REPO_ROOT/.build/demo-assets-check"
-  else
-    OUTPUT_DIR="$REPO_ROOT/.build/demo-assets"
-  fi
+  OUTPUT_DIR="$REPO_ROOT/.build/demo-assets"
 fi
 # Resolve before the cd below, so a relative path means what the caller meant.
 OUTPUT_DIR="$(resolve_output_dir "$OUTPUT_DIR")" || die "unsafe --output-dir"
@@ -178,12 +153,6 @@ write_provenance() {
     echo "macos: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
     echo "xcode: $(xcodebuild -version 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
   } > "$OUTPUT_DIR/$PROVENANCE_FILE" || die "could not write $PROVENANCE_FILE"
-}
-
-# The value of one "key: value" line of a provenance file; empty if absent.
-provenance_value() {
-  [[ -f "$2" ]] || return 0
-  sed -n "s/^$1: //p" "$2" | sed -n 1p
 }
 
 cd "$REPO_ROOT"
@@ -255,76 +224,9 @@ generate() {
     "$OUTPUT_DIR/$PROVENANCE_FILE"
   )
   if ! check_budget "curated set (summary PNGs, route GIFs and posters, provenance)" ${curated[@]+"${curated[@]}"}; then
-    log "warning: this output does not fit the docs/assets budget; do not commit it as is"
-    annotate warning "Demo assets over budget" \
-      "The curated set does not fit the docs/assets budget; see docs/demo-assets.md."
-  fi
-}
-
-check() {
-  render summary || die "rendering failed"
-  local committed_macos current_macos
-  committed_macos="$(provenance_value macos "$ASSETS_DIR/$PROVENANCE_FILE")"
-  current_macos="$(provenance_value macos "$OUTPUT_DIR/$PROVENANCE_FILE")"
-  log "committed cards were rendered on macOS ${committed_macos:-unknown}; this run is on macOS $current_macos"
-
-  local failed=0 reference candidate name status
-  local references=("$ASSETS_DIR"/demo-summary-*.png)
-  if [[ ${#references[@]} -eq 0 ]]; then
-    log "docs/assets has no demo-summary-*.png reference to compare with"
-    failed=1
-  fi
-  for candidate in "$OUTPUT_DIR"/demo-summary-*.png; do
-    name="$(basename "$candidate")"
-    if [[ ! -f "$ASSETS_DIR/$name" ]]; then
-      log "the renderer produced $name, but docs/assets/$name is not committed"
-      failed=1
-    fi
-  done
-  for reference in ${references[@]+"${references[@]}"}; do
-    name="$(basename "$reference")"
-    candidate="$OUTPUT_DIR/$name"
-    if [[ ! -f "$candidate" ]]; then
-      log "docs/assets/$name is committed, but the renderer no longer produces it"
-      failed=1
-      continue
-    fi
-    status=0
-    "$APP" --demo-assets compare \
-      --reference "$reference" \
-      --candidate "$candidate" \
-      --diff-output "$OUTPUT_DIR/${name%.png}.diff.png" || status=$?
-    case "$status" in
-      0) ;;
-      1) failed=1 ;;
-      *) die "comparing $name failed (exit $status)" ;;
-    esac
-  done
-
-  local committed=()
-  local file
-  for file in "$ASSETS_DIR"/*; do
-    [[ -f "$file" ]] && committed+=("$file")
-  done
-  check_budget "docs/assets" ${committed[@]+"${committed[@]}"} || failed=1
-
-  if [[ "$failed" -ne 0 ]]; then
-    log "README demo assets are out of date with the renderer or over budget."
-    if [[ "$committed_macos" != "$current_macos" ]]; then
-      log "The macOS builds differ, and text rasterization can change between builds:"
-      log "if the diff images show no real change, refresh docs/assets from this run's cards."
-    fi
-    log "Rendered cards and magenta diff images are in $OUTPUT_DIR."
-    log "If the change is intended, refresh docs/assets as docs/demo-assets.md describes."
-    annotate error "README demo assets out of date" \
-      "docs/assets no longer matches the renderer or exceeds its budget; the rendered cards and diff images are in the output directory. See docs/demo-assets.md."
+    log "error: this output does not fit the docs/assets budget; it cannot be committed as is (docs/demo-assets.md)"
     exit 1
   fi
-  log "README demo summary cards match the renderer"
 }
 
-if [[ "$MODE" == "check" ]]; then
-  check
-else
-  generate
-fi
+generate

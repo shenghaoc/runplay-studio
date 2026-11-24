@@ -21,8 +21,9 @@ A native macOS post-run 2D/3D route replay and analysis app for runners.
 *Generated from the bundled synthetic sample runs — no private workout data,
 no screen recording. [`scripts/generate-demo-assets.sh`](scripts/generate-demo-assets.sh)
 renders the summary card and the Route Replay video through the app's own
-exporters, then makes the looping GIF and still poster with ImageIO. `--check`
-compares the committed summary cards with the current renderer locally. See
+exporters, then makes the looping GIF and still poster with ImageIO. Regenerate
+it by running the script or the manual Demo Assets workflow; CI does not
+touch it. See
 [docs/demo-assets.md](docs/demo-assets.md). Map imagery: Apple Maps.*
 
 ## What It Is
@@ -375,8 +376,7 @@ A nightly workflow (`.github/workflows/nightly.yml`) runs the whole
 pull-request lane, with every lane selected, on `main` when `main` has moved,
 plus the release-mode test compile. Release packaging is verified by the
 Release workflow: run a dry run (`dry_run=true`) on the tag commit before
-tagging. The README demo cards are not
-compared in CI.
+tagging. The README demo media tool is not part of CI.
 
 ### README Demo Assets Artifact
 

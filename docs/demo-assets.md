@@ -32,12 +32,13 @@ when they drift apart.
 | `SHA256SUMS` | Checksums of the files above | — |
 
 The summary card uses the metrics-only layout because the map-inclusive one
-embeds live Apple Maps imagery, which no pixel check could hold still. The
+embeds live Apple Maps imagery, which cannot be rendered the same twice. The
 replays need a basemap and always fetch one. That basemap is Apple Maps
 imagery, so the README credits Apple Maps next to the GIF. The generator does
-not fall back silently: it fails if heart-rate colouring or Route-Aware
-alignment is unavailable, and `DemoAssetGeneratorTests` checks both conditions
-for the bundled runs.
+not fall back silently. It fails when heart-rate colouring or Route-Aware
+alignment is unavailable, when a summary card is not 1200×1600, when the light
+and dark cards are byte-identical, or when the bundled runs are not the two
+documented workouts with routes.
 
 The settings live in `DemoAssetCatalog`
 (`RunPlayStudio/Sources/DemoAssets/DemoAssetGenerator.swift`).
@@ -63,14 +64,16 @@ Requirements:
   cards do not.
 - Python 3 for realpath resolution before writing anything.
 
-The exit status is 0 on success, 1 when `--check` finds drift or a budget
-breach, 2 for any other failure, and 64 for a usage error.
+The exit status is 0 on success, 1 when the curated set is over the size
+budget (see below), 2 for any other failure, and 64 for a usage error.
 
 The manually triggered **Demo Assets** workflow
 ([`.github/workflows/demo-assets.yml`](../.github/workflows/demo-assets.yml))
 runs the script on a hosted macOS runner. It uploads everything as the
 `runplay-demo-assets` artifact, kept for 30 days. To start it, go to
 **Actions → Demo Assets → Run workflow** and pick a branch. It never commits.
+Neither the script nor the workflow is part of CI, and nothing in CI compares
+the committed media with the renderer.
 
 ## Reproducibility
 
@@ -100,8 +103,9 @@ active. A direct launch therefore cannot quietly produce different pixels.
 
 How far the results reproduce:
 
-- **Summary PNGs:** byte-identical across runs on one macOS build. They are
-  not compared in CI; `--check` compares them locally (see below).
+- **Summary PNGs:** byte-identical across runs on one macOS build. Text
+  rasterization can change between macOS builds, so cards rendered on
+  different builds can differ without any UI change.
 - **MP4s:** the frame content is fixed except for the basemap. The basemap is
   Apple Maps imagery fetched at render time, so it changes as Apple updates its
   map data. The bytes also vary from run to run: the hardware H.264 encoder
@@ -116,52 +120,6 @@ encodes an infinite loop with ImageIO at 10 frames/s, and writes the first
 frame as a static PNG. The README uses the corresponding Light or Dark poster
 when reduced motion is requested.
 
-## The Local Drift Check
-
-```bash
-./scripts/generate-demo-assets.sh --check
-```
-
-`--check` is a local tool. CI does not run it and does not compare the
-committed cards: the check fails whenever the runner image's text
-rasterization changes, without guarding any product behavior. Run it
-yourself when a change might alter the summary card, and refresh
-`docs/assets/` when the card should change.
-
-The check renders the summary cards and compares each one with its copy in
-`docs/assets/`:
-
-- Both images are drawn into the same 8-bit sRGB RGBA layout. A pixel
-  differs when any channel differs by more than 16/255. The check fails when
-  more than 8 pixels differ, when the sizes differ, or when the rendered
-  cards and the committed cards are not the same set.
-- Independently for each card, at most **0.1%** of pixels may have any nonzero
-  channel difference, and the mean of the maximum channel difference per
-  pixel must be at most **0.02** on the 0–255 scale. A global failure marks
-  all contributing pixels, including sub-tolerance pixels, in magenta.
-- Calibration: two renders differ by 0 pixels. One changed digit in a 14-pt
-  split time, the card's smallest data text, moves 36 to 60 pixels past the
-  channel bound, depending on the digits; one in an 18-pt metric value about
-  110. `DemoAssetGeneratorTests` checks both cases.
-- The check also enforces the size budget below.
-- It prints the macOS build recorded in `docs/assets/demo-assets-provenance.txt`
-  next to its own. When they differ and the check fails, it says so, because a
-  macOS update can change text rasterization without any UI change.
-- On failure it writes the rendered cards and a `*.diff.png` for each changed
-  card (the reference faded, the changed pixels in magenta) to the output
-  directory.
-
-The videos and GIFs are not compared, because their basemap is Apple's live
-map data.
-
-The tolerance lives in `DemoAssetPixelTolerance.summaryCard`
-(`RunPlayStudio/Sources/DemoAssets/DemoAssetImageComparison.swift`).
-
-The committed cards should come from the manual **Demo Assets** workflow, so
-they match a hosted runner image. A Mac on a different macOS build can
-rasterize text differently, so `--check` on your Mac can fail against cards
-the workflow rendered.
-
 ## Size Budget
 
 Only the curated set is committed to `docs/assets/`:
@@ -169,7 +127,8 @@ Only the curated set is committed to `docs/assets/`:
 `demo-route-replay-{light,dark}.gif`,
 `demo-route-replay-{light,dark}-poster.png`, and `demo-assets-provenance.txt`.
 
-- At most **3 MB per file** and **7 MB in total**. `--check` enforces both.
+- At most **3 MB per file** and **7 MB in total**. Generation checks the
+  curated set it produced and fails when it is over either limit.
 - The MP4s are about 12 MB each and are never committed. They exist only in
   the workflow artifact.
 - Every committed byte stays in clone history, so refresh only when the README
@@ -181,7 +140,9 @@ The script never writes to `docs/assets/`, and no workflow commits. A refresh
 is an ordinary reviewed change, normally in the same PR as the UI change that
 caused it:
 
-1. Run **Demo Assets** on the PR branch and download `runplay-demo-assets`.
+1. Run `./scripts/generate-demo-assets.sh`, or run **Demo Assets** on the PR
+   branch and download `runplay-demo-assets`. The workflow's runner image
+   decides the text rasterization, so prefer it when the cards matter.
 2. Copy only the curated files into `docs/assets/`:
    `demo-summary-light.png`, `demo-summary-dark.png`,
    `demo-route-replay-light.gif`, `demo-route-replay-dark.gif`, their matching
@@ -190,25 +151,22 @@ caused it:
    provenance file's `macos:` line in step with them.
 3. Open each file and look at it.
 4. Stage the files by name (`git add docs/assets/<file>`), commit, and push.
-   Run `./scripts/generate-demo-assets.sh --check` to confirm the budget.
 
 The cards are binary and cannot be merged. Two open PRs that both change the
 summary card conflict on them, so land one and regenerate the other.
-Adding or renaming a summary-card appearance changes the set the check
-expects, so commit the new reference in the same change.
+Adding or renaming a summary-card appearance changes the committed set, so
+commit the new files in the same change.
 
 ## Implementation
 
 - `scripts/generate-demo-assets.sh`: build, safe output directory, pinned launch,
-  provenance, checksums, `--check`, and the budget.
+  provenance, checksums, and the size budget.
 - `RunPlayStudio/Sources/RunPlayStudioEntryPoint.swift`: the process entry
   point. In debug builds, it sends a `--demo-assets` launch to the headless
   mode.
 - `RunPlayStudio/Sources/DemoAssets/`: the specification, environment pins,
-  bundled-data loading and rendering (`DemoAssetGenerator.swift`), the pixel
-  comparison (`DemoAssetImageComparison.swift`), and argument parsing and exit
-  codes (`DemoAssetCommand.swift`).
-- `RunPlayStudio/Tests/RunPlayStudioTests/DemoAsset*Tests.swift`: tests for
-  the specification, pins, comparison, parser, and tolerance.
-- `.github/workflows/demo-assets.yml` and the **Check README demo assets**
-  step in `.github/workflows/macos-verify.yml`.
+  bundled-data loading and rendering (`DemoAssetGenerator.swift`), and
+  argument parsing and exit codes (`DemoAssetCommand.swift`). The tool has no
+  tests: its guarantees are runtime checks that fail the render with a
+  message.
+- `.github/workflows/demo-assets.yml`: the manual workflow.

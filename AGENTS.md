@@ -456,8 +456,9 @@ each change reaches its own module and the modules downstream.
   lane off; a lane the selector turned on must succeed.
 - Adding a module, or a test that reads a file outside its own module (for
   example by `#filePath`), means updating `scripts/ci-select-lanes.sh` in the
-  same PR. Tests that read the repository (`scripts/**` from Studio tests,
-  `RunPlayStudio/Resources/**` fixtures) are covered by the table above.
+  same PR. Tests that read the repository (the Engine test running
+  `scripts/run-cpp-engine-tests.sh`, `RunPlayStudio/Resources/**` fixtures)
+  are covered by the table above.
 
 ## Validation
 
@@ -481,7 +482,6 @@ swift test --filter RunPlayCoreTests
 swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests                               # macOS
 swift test                                                            # macOS full stack
-./scripts/generate-demo-assets.sh --check                             # macOS, local only: README card drift
 ./scripts/check-localization.sh   # macOS: catalogs match source; zh-Hans/zh-Hant complete
 git diff --check
 ```
@@ -702,9 +702,10 @@ GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
 
 A change that alters the PNG summary card should refresh the committed README
-cards in the same PR, as [docs/demo-assets.md](docs/demo-assets.md) describes.
-CI does not enforce this; run `./scripts/generate-demo-assets.sh --check`
-yourself. The cards are binary, so serialize PRs that change the card.
+cards in the same PR, as [docs/demo-assets.md](docs/demo-assets.md) describes:
+run `./scripts/generate-demo-assets.sh` or the manual Demo Assets workflow and
+commit the curated files. CI does not compare or enforce them. The cards are
+binary, so serialize PRs that change the card.
 
 ## Detailed References
 
@@ -715,7 +716,7 @@ yourself. The cards are binary, so serialize PRs that change the card.
 - [docs/dem-tiles.md](docs/dem-tiles.md) — DEM tile folders, elevation precedence, and limits
 - [docs/localization.md](docs/localization.md) — String Catalogs, localised formats and exports, catalog check
 - [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
-- [docs/demo-assets.md](docs/demo-assets.md) — README demo media generation, local drift check, and size budget
+- [docs/demo-assets.md](docs/demo-assets.md) — README demo media generation and size budget
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene
 - [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior
