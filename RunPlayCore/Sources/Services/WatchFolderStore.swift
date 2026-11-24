@@ -32,6 +32,7 @@ public struct FileWatchFolderStore: @unchecked Sendable {
         public var version: Int
         public var folders: [WatchFolderConfiguration]
         public var states: [WatchFolderState]
+        package var masterPaused = false
 
         public init(
             version: Int = FileWatchFolderStore.currentVersion,
@@ -41,6 +42,18 @@ public struct FileWatchFolderStore: @unchecked Sendable {
             self.version = version
             self.folders = folders
             self.states = states
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case version, folders, states, masterPaused
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            version = try container.decode(Int.self, forKey: .version)
+            folders = try container.decode([WatchFolderConfiguration].self, forKey: .folders)
+            states = try container.decode([WatchFolderState].self, forKey: .states)
+            masterPaused = try container.decodeIfPresent(Bool.self, forKey: .masterPaused) ?? false
         }
     }
 

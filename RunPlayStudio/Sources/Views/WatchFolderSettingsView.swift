@@ -75,9 +75,10 @@ struct WatchFolderSettingsView: View {
             Button {
                 coordinator.setPaused(!folder.isPaused, folderID: folder.id)
             } label: {
-                Text(folder.isPaused ? "Resume" : "Pause")
+                Text(coordinator.isEffectivelyPaused(folder) ? "Resume" : "Pause")
             }
-            .accessibilityLabel(folder.isPaused
+            .disabled(coordinator.isPaused)
+            .accessibilityLabel(coordinator.isEffectivelyPaused(folder)
                 ? "Resume watching \(folder.displayName)"
                 : "Pause watching \(folder.displayName)")
         }
@@ -102,23 +103,23 @@ struct WatchFolderSettingsView: View {
     /// as unavailable: pausing stops access on purpose, so an unreadable
     /// directory there is expected rather than a fault.
     private func isUnavailable(_ folder: WatchFolderConfiguration) -> Bool {
-        !folder.isPaused && coordinator.unavailableFolderIDs.contains(folder.id)
+        !coordinator.isEffectivelyPaused(folder) && coordinator.unavailableFolderIDs.contains(folder.id)
     }
 
     private func statusText(for folder: WatchFolderConfiguration) -> String {
-        if folder.isPaused { return studioLocalized("Paused") }
+        if coordinator.isEffectivelyPaused(folder) { return studioLocalized("Paused") }
         if isUnavailable(folder) { return studioLocalized("Unavailable — watching resumes if it returns") }
         return studioLocalized("Watching")
     }
 
     private func statusIcon(for folder: WatchFolderConfiguration) -> String {
-        if folder.isPaused { return "pause.circle" }
+        if coordinator.isEffectivelyPaused(folder) { return "pause.circle" }
         if isUnavailable(folder) { return "exclamationmark.triangle" }
         return "arrow.down.circle"
     }
 
     private func statusColor(for folder: WatchFolderConfiguration) -> Color {
-        if folder.isPaused { return Color.secondary }
+        if coordinator.isEffectivelyPaused(folder) { return Color.secondary }
         if isUnavailable(folder) { return Color.orange }
         return Color.green
     }
@@ -140,7 +141,7 @@ struct WatchFolderSettingsView: View {
                 Button("Import Existing Files Now") {
                     coordinator.importExistingNow()
                 }
-                .disabled(coordinator.folders.allSatisfy(\.isPaused) && !coordinator.folders.isEmpty)
+                .disabled(!coordinator.canScanFolders)
                 Spacer()
                 Toggle("Pause Watching", isOn: Binding(
                     get: { coordinator.isPaused },
