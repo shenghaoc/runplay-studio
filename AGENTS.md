@@ -429,20 +429,26 @@ to a case-variant such as `.Jules/`.
 
 ## Validation
 
-Use the same warning-clean SwiftPM commands enforced by CI:
+Use the same warning-clean SwiftPM commands enforced by CI. Warnings are
+errors in every Swift target we own: `Package.swift` sets `.treatAllWarnings(as:
+.error)` on them (and on `Tests/PackageConsumerSmoke`'s target), beside the C++
+`-Werror` in `engineCppSettings`, so a plain `swift build` or `swift test` is
+the gate on macOS and Linux. Do not pass `-Xswiftc -warnings-as-errors`: it also
+reaches dependency targets, which SwiftPM compiles with `-suppress-warnings`,
+and swift-build on Swift 6.3 rejects that combination.
 
 ```bash
 ./scripts/validate-cpp-boundaries.sh
 swift build --target RunPlayEngineCpp \
   -Xcxx -Wall -Xcxx -Wextra -Xcxx -Wpedantic \
   -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
-swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+swift test --filter RunPlayEngineCppTests
 ./scripts/run-cpp-engine-tests.sh
 ./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan on native C++ tests
-swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
+swift test --filter RunPlayCoreTests
 swift build --package-path Tests/PackageConsumerSmoke
-swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
-swift test -Xswiftc -warnings-as-errors                               # macOS full stack
+swift test --filter RunPlayPlatformTests                               # macOS
+swift test                                                            # macOS full stack
 ./scripts/generate-demo-assets.sh --check                             # macOS, local only: README card drift
 ./scripts/check-localization.sh   # macOS: catalogs match source; zh-Hans/zh-Hant complete
 git diff --check
@@ -540,8 +546,8 @@ ZIPFoundation's own `Package@swift-5.9.swift` manifest it emits a
 watchOS `.v4` deprecation warning (`'v4' is deprecated: watchOS 9.0 is
 the oldest supported version`). It appears on macOS and Linux alike,
 only in cold workspaces — every fresh CI runner, not local warm
-builds — and `-Xswiftc -warnings-as-errors` cannot catch it because it
-is a dependency-manifest diagnostic, not target compilation. It is
+builds — and the manifest's `treatAllWarnings(as: .error)` cannot catch it
+because it is a dependency-manifest diagnostic, not target compilation. It is
 upstream's to fix; do not re-investigate.
 
 One crash is known and retried: on Linux, SwiftPM 6.4 itself can die

@@ -196,7 +196,7 @@ jobs:
         if: matrix.suite == 'tests'
         run: >-
           ./scripts/retry-swiftpm-libdispatch-crash.sh
-          swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+          swift test --filter RunPlayEngineCppTests
       - name: Native C++ tests under ASan + UBSan
         if: matrix.suite == 'sanitizers'
         run: ./scripts/run-cpp-engine-tests.sh --sanitize

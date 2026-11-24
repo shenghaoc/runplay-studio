@@ -35,6 +35,17 @@ let engineCppSettings: [CXXSetting] = [
     .treatAllWarnings(as: .error),
 ]
 
+/// Warnings are errors in the Swift targets we own, as `engineCppSettings` does
+/// for C++. This lives in the manifest, not in a command-line
+/// `-Xswiftc -warnings-as-errors`: that flag reaches every target, dependencies
+/// included, and SwiftPM compiles dependencies with `-suppress-warnings`, which
+/// swift-build on Swift 6.3 rejects as a conflicting option. A manifest setting
+/// applies to our targets only, and gates every `swift build` and `swift test`
+/// on macOS and Linux alike.
+let strictWarnings: [SwiftSetting] = [
+    .treatAllWarnings(as: .error),
+]
+
 /// SwiftPM propagates C++ target module maps to every transitive dependent.
 /// Any Swift target that links `RunPlayCore` (and therefore `RunPlayEngineCpp`)
 /// must enable C++ interoperability so the clang importer can parse C++
@@ -69,7 +80,8 @@ var targets: [Target] = [
     // RunPlayEngineCppTests` on both Linux and macOS.
     .testTarget(
         name: "RunPlayEngineCppTests",
-        path: "RunPlayEngineCpp/SwiftPMTests"
+        path: "RunPlayEngineCpp/SwiftPMTests",
+        swiftSettings: strictWarnings
     ),
     // Cross-platform core: Foundation (and conditional FoundationXML) only.
     // This target and its tests are the complete Swift-facing package graph on Linux.
@@ -80,7 +92,7 @@ var targets: [Target] = [
         dependencies: ["RunPlayEngineCpp"],
         path: "RunPlayCore/Sources",
         resources: coreResources,
-        swiftSettings: cxxInteropSettings
+        swiftSettings: cxxInteropSettings + strictWarnings
     ),
     // Core-only tests (platform-neutral — builds on Linux).
     // Interop is required because SPM attaches the engine module map transitively;
@@ -92,7 +104,7 @@ var targets: [Target] = [
         resources: [
             .process("Fixtures")
         ],
-        swiftSettings: cxxInteropSettings
+        swiftSettings: cxxInteropSettings + strictWarnings
     ),
 ]
 
@@ -118,7 +130,7 @@ targets.append(contentsOf: [
         resources: [
             .process("../Localization/Localizable.xcstrings")
         ],
-        swiftSettings: cxxInteropSettings
+        swiftSettings: cxxInteropSettings + strictWarnings
     ),
     .testTarget(
         name: "RunPlayPlatformTests",
@@ -130,7 +142,7 @@ targets.append(contentsOf: [
         resources: [
             .copy("Fixtures")
         ],
-        swiftSettings: cxxInteropSettings
+        swiftSettings: cxxInteropSettings + strictWarnings
     ),
     // macOS UI layer: owns the app lifecycle and all SwiftUI/Charts code.
     // C++ interop is enabled only for SPM transitive module-map reasons;
@@ -143,13 +155,13 @@ targets.append(contentsOf: [
             .process("../Resources"),
             .process("../Localization/Localizable.xcstrings")
         ],
-        swiftSettings: cxxInteropSettings
+        swiftSettings: cxxInteropSettings + strictWarnings
     ),
     .testTarget(
         name: "RunPlayStudioTests",
         dependencies: ["RunPlayCore", "RunPlayPlatform", "RunPlayStudio"],
         path: "RunPlayStudio/Tests/RunPlayStudioTests",
-        swiftSettings: cxxInteropSettings
+        swiftSettings: cxxInteropSettings + strictWarnings
     ),
 ])
 products.append(.library(name: "RunPlayPlatform", targets: ["RunPlayPlatform"]))

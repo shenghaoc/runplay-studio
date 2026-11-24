@@ -385,7 +385,7 @@ printf '%s\n' "${SELF_TEST_OUTPUT}" | tail -n1
 # -q/--quiet or --skip-build hide that line, and turn the retry off.
 set +e
 ./scripts/retry-swiftpm-libdispatch-crash.sh \
-  "${VIRTUALIZE[@]}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path "${SCRATCH_PATH}" 2>&1 | tee "${LOG}"
+  "${VIRTUALIZE[@]}" swift test "$@" --scratch-path "${SCRATCH_PATH}" 2>&1 | tee "${LOG}"
 STATUS="${PIPESTATUS[0]}"
 set -e
 

@@ -302,7 +302,7 @@ if [[ -n "${RUNPLAY_TEST_BIN_DIR:-}" && -d "${RUNPLAY_TEST_BIN_DIR}" ]]; then
   TEST_BIN="$RUNPLAY_TEST_BIN_DIR"
 else
   release_log "Building release binary for integration tests..."
-  swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors
+  swift build -c release --package-path "$REPO_ROOT"
   TEST_BIN="$(swift build -c release --package-path "$REPO_ROOT" --show-bin-path)"
 fi
 TEST_BIN="$(cd "$TEST_BIN" && pwd)"

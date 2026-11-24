@@ -133,8 +133,8 @@ fi
 if [[ "$SKIP_BUILD" -eq 1 ]]; then
   [[ -n "$BIN_DIR" ]] || release_die "--skip-build requires --bin-dir"
 else
-  release_log "Building release binary (warnings-as-errors)..."
-  swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors
+  release_log "Building release binary (warnings are errors, per Package.swift)..."
+  swift build -c release --package-path "$REPO_ROOT"
   if [[ -z "$BIN_DIR" ]]; then
     BIN_DIR="$(swift build -c release --package-path "$REPO_ROOT" --show-bin-path)"
   fi

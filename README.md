@@ -280,7 +280,7 @@ swift build --target RunPlayEngineCpp \
   -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
 
 # Run native C++ engine tests through the portable SwiftPM harness
-swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+swift test --filter RunPlayEngineCppTests
 
 # Run the same native C++ executable directly
 ./scripts/run-cpp-engine-tests.sh

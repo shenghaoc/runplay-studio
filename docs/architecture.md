@@ -315,8 +315,8 @@ Approved pointer boundaries:
 | Forbidden at Swift boundary | uncaught exceptions, temporary borrowed views, ownership ambiguity, `std::pair`, `std::tuple`, `std::variant`, template-heavy public APIs, callbacks into Swift, per-element cross-language calls |
 
 Boundary checks: `./scripts/validate-cpp-boundaries.sh`.
-Native C++ tests: `swift test --filter RunPlayEngineCppTests
--Xswiftc -warnings-as-errors` through the portable SwiftPM harness, or
+Native C++ tests: `swift test --filter RunPlayEngineCppTests`
+through the portable SwiftPM harness, or
 `./scripts/run-cpp-engine-tests.sh` directly (add `--sanitize` for ASan+UBSan).
 External package consumption:
 `swift build --package-path Tests/PackageConsumerSmoke`.

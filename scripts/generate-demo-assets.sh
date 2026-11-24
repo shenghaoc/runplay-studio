@@ -188,12 +188,10 @@ provenance_value() {
 
 cd "$REPO_ROOT"
 
-# Debug build with CI's flags: the app's --demo-assets mode exists only in
-# debug builds, and matching `swift test -Xswiftc -warnings-as-errors` lets
-# the CI check reuse that job's build instead of compiling again.
+# Debug build: the app's --demo-assets mode exists only in debug builds.
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   log "building RunPlayStudio (debug)..."
-  swift build --product RunPlayStudio -Xswiftc -warnings-as-errors \
+  swift build --product RunPlayStudio \
     || die "swift build failed"
 fi
 BIN_DIR="$(swift build --show-bin-path)" || die "could not locate the debug build"
