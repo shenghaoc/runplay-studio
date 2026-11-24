@@ -892,7 +892,20 @@ class AppState: ObservableObject {
                 for: workout,
                 profile: athleteProfile
             )
-            try await storeActor.addWorkout(workout, select: true)
+            do {
+                try await storeActor.addWorkout(workout, select: true)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                errorMessage = studioLocalized(
+                    "Imported but could not save to your library. Check available storage and app permissions. Details: \(error.localizedDescription)"
+                )
+                showingError = true
+                announcementPolicy.handle(
+                    .importFailed(message: errorMessage ?? error.localizedDescription)
+                )
+                return
+            }
             try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
 
@@ -933,16 +946,9 @@ class AppState: ObservableObject {
         } catch is CancellationError {
             // Cancelled — do not add to UI.
             announcementPolicy.handle(.importCancelled)
-        } catch let error as WorkoutImportError {
-            errorMessage = importErrorMessage(for: error, filename: filename)
-            showingError = true
-            announcementPolicy.handle(
-                .importFailed(message: errorMessage ?? error.localizedDescription)
-            )
         } catch {
-            errorMessage = studioLocalized(
-                "Imported but could not save to your library. Check available storage and app permissions. Details: \(error.localizedDescription)"
-            )
+            let importError = error as? WorkoutImportError ?? .parsingError(error.localizedDescription)
+            errorMessage = importErrorMessage(for: importError, filename: filename)
             showingError = true
             announcementPolicy.handle(
                 .importFailed(message: errorMessage ?? error.localizedDescription)
