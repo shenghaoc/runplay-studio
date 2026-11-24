@@ -775,8 +775,8 @@ class AppState: ObservableObject {
             // Empty persisted libraries still own organisation (and future imports).
             hasPersistedLibrary = manifestPresent
             loadSampleWorkouts(resetOrganization: false)
-            if let loadErrorMessage {
-                errorMessage = loadErrorMessage
+            if let message = workoutStorageWarning(loadErrorMessage, organization: organization) {
+                errorMessage = message
                 showingError = true
             }
         case .workouts(let loaded, let selectedWorkoutID, let favoriteIDs, let organization, let warning):
@@ -800,11 +800,18 @@ class AppState: ObservableObject {
                 loaded.first(where: { $0.id == id })
             } ?? loaded.first
             selectWorkout(selected, persistSelection: false)
-            if let warning {
-                errorMessage = warning
+            if let message = workoutStorageWarning(warning, organization: organization) {
+                errorMessage = message
                 showingError = true
             }
         }
+    }
+
+    func workoutStorageWarning(_ diagnostic: String?, organization: WorkoutLibraryOrganizationSnapshot) -> String? {
+        guard !organization.unloadableWorkoutIDs.isEmpty else { return diagnostic }
+        let notice = studioLocalized("This build cannot load some workouts. Their files and library entries were preserved.")
+        let ids = organization.unloadableWorkoutIDs.map(\.uuidString).joined(separator: "\n")
+        return [notice, ids, diagnostic].compactMap { $0 }.joined(separator: "\n\n")
     }
 
     /// Load bundled demo workouts.

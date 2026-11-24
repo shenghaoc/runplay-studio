@@ -43,7 +43,7 @@ public protocol WorkoutLibraryStoring: Sendable {
     /// Remove all stale staging directories (startup recovery).
     func cleanupStaleStaging() throws
 
-    /// Remove final workout files that are not referenced by the manifest (orphan cleanup).
+    /// Legacy recovery hook. A missing manifest reference alone does not justify deletion.
     func cleanupUnreferencedWorkoutFiles(referencedIDs: Set<UUID>) throws
 }
 

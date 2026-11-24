@@ -19344,6 +19344,23 @@
         }
       }
     },
+    "This build cannot load some workouts. Their files and library entries were preserved." : {
+      "comment" : "Shown when a snapshot could not be read without losing any workout data.",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本无法载入部分训练记录。训练文件和资料库中的条目均已保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本無法載入部分訓練紀錄。訓練檔案和資料庫中的項目均已保留。"
+          }
+        }
+      }
+    },
     "This file exceeds a RunPlay Studio import limit." : {
       "localizations" : {
         "zh-Hans" : {
