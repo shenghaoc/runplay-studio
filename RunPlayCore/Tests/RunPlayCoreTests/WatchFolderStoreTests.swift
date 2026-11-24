@@ -94,8 +94,10 @@ final class WatchFolderStoreTests: XCTestCase {
         XCTAssertEqual(loaded.folders.first?.id, folderID)
         XCTAssertEqual(loaded.folders.first?.isPaused, true)
         XCTAssertEqual(loaded.folders.first?.defaultTagName, "watch")
+        XCTAssertNil(loaded.folders.first?.lastKnownPath, "a folder saved before locations were recorded has none")
 
         loaded.masterPaused = true
+        loaded.folders[0].lastKnownPath = "/Volumes/Watch/Activities"
         try store.save(loaded)
         XCTAssertEqual(store.load(), .loaded(loaded))
     }

@@ -19,6 +19,11 @@ public struct WatchFolderConfiguration: Codable, Equatable, Identifiable, Sendab
     /// resolves it.
     public var bookmarkData: Data
 
+    /// Path the bookmark last resolved to. Shown as the folder's location and
+    /// compared on activation to notice a moved folder. Nil until the folder
+    /// has been resolved by a build that records it.
+    public var lastKnownPath: String?
+
     /// Tag applied to workouts imported from this folder. Empty means no
     /// default tag.
     public var defaultTagName: String
@@ -31,8 +36,10 @@ public struct WatchFolderConfiguration: Codable, Equatable, Identifiable, Sendab
         displayName: String,
         bookmarkData: Data,
         defaultTagName: String = "",
-        isPaused: Bool = false
+        isPaused: Bool = false,
+        lastKnownPath: String? = nil
     ) {
+        self.lastKnownPath = lastKnownPath
         self.id = id
         self.displayName = displayName
         self.bookmarkData = bookmarkData
@@ -41,7 +48,7 @@ public struct WatchFolderConfiguration: Codable, Equatable, Identifiable, Sendab
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, displayName, bookmarkData, defaultTagName, isPaused
+        case id, displayName, bookmarkData, defaultTagName, isPaused, lastKnownPath
     }
 
     public init(from decoder: Decoder) throws {
@@ -53,6 +60,7 @@ public struct WatchFolderConfiguration: Codable, Equatable, Identifiable, Sendab
         // the whole store load.
         self.defaultTagName = try container.decodeIfPresent(String.self, forKey: .defaultTagName) ?? ""
         self.isPaused = try container.decodeIfPresent(Bool.self, forKey: .isPaused) ?? false
+        self.lastKnownPath = try container.decodeIfPresent(String.self, forKey: .lastKnownPath)
     }
 }
 
