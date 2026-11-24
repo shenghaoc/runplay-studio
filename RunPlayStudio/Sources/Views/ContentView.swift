@@ -373,34 +373,32 @@ struct ContentView: View {
                 WorkoutDetailView(workout: workout, appState: appState)
                     .focusedSceneValue(\.exportActions, exportCommandRelay.actions(for: workout))
                     .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            HStack {
-                                if appState.isComparing {
-                                    Button(action: { appState.clearComparison() }) {
-                                        Label("End Comparison", systemImage: "arrow.left.arrow.right")
-                                    }
-                                    .help("Exit comparison mode")
-                                } else if !appState.availableForComparison.isEmpty {
-                                    Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
-                                        Label("Compare", systemImage: "arrow.left.arrow.right")
-                                    }
-                                    .help("Compare with another run")
-                                    .accessibilityLabel("Compare runs")
-                                } else if appState.workouts.count < 2 {
-                                    Button(action: { appState.enterEmptyComparisonMode() }) {
-                                        Label("Compare", systemImage: "arrow.left.arrow.right")
-                                    }
-                                    .help("Import another run to compare")
-                                    .accessibilityLabel("Compare runs")
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            if appState.isComparing {
+                                Button(action: { appState.clearComparison() }) {
+                                    Label("End Comparison", systemImage: "arrow.left.arrow.right")
                                 }
-
-                                ExportView(
-                                    workout: workout,
-                                    segments: appState.detectedSegments,
-                                    analysisContext: appState.cachedAnalysisContext(for: workout),
-                                    commandRelay: exportCommandRelay
-                                )
+                                .help("Exit comparison mode")
+                            } else if !appState.availableForComparison.isEmpty {
+                                Button(action: { appState.setComparison(appState.availableForComparison.first) }) {
+                                    Label("Compare", systemImage: "arrow.left.arrow.right")
+                                }
+                                .help("Compare with another run")
+                                .accessibilityLabel("Compare runs")
+                            } else if appState.workouts.count < 2 {
+                                Button(action: { appState.enterEmptyComparisonMode() }) {
+                                    Label("Compare", systemImage: "arrow.left.arrow.right")
+                                }
+                                .help("Import another run to compare")
+                                .accessibilityLabel("Compare runs")
                             }
+
+                            ExportView(
+                                workout: workout,
+                                segments: appState.detectedSegments,
+                                analysisContext: appState.cachedAnalysisContext(for: workout),
+                                commandRelay: exportCommandRelay
+                            )
                         }
                     }
             } else {

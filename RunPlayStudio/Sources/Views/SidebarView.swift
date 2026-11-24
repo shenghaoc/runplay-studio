@@ -210,27 +210,34 @@ struct SidebarView: View {
         }
         .navigationTitle("RunPlay Studio")
         .toolbar {
+            // Separate items: inside one HStack the Recent Imports button drew
+            // no icon (#178), and the Import menu exposed its raw symbol name
+            // as its title (#194).
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Menu {
-                        Button(action: onImport) {
-                            Label("Import File…", systemImage: "doc.badge.plus")
-                        }
-                        .keyboardShortcut("i", modifiers: .command)
-                        if let onArchiveImport {
-                            Button(action: onArchiveImport) {
-                                Label("Import Strava Archive…", systemImage: "archivebox")
-                            }
-                            .keyboardShortcut("i", modifiers: [.command, .shift])
-                        }
-                    } label: {
-                        Label("Import", systemImage: "plus")
+                Menu {
+                    Button(action: onImport) {
+                        Label("Import File…", systemImage: "doc.badge.plus")
                     }
-                    .help("Import a workout file or Strava archive")
-
-                    if let watchFolderCoordinator {
-                        RecentImportsToolbarButton(coordinator: watchFolderCoordinator)
+                    .keyboardShortcut("i", modifiers: .command)
+                    if let onArchiveImport {
+                        Button(action: onArchiveImport) {
+                            Label("Import Strava Archive…", systemImage: "archivebox")
+                        }
+                        .keyboardShortcut("i", modifiers: [.command, .shift])
                     }
+                } label: {
+                    Label {
+                        Text("Import")
+                    } icon: {
+                        DecorativeMenuSymbol.image(systemName: "plus")
+                    }
+                }
+                .help("Import a workout file or Strava archive")
+                .accessibilityLabel("Import")
+            }
+            if let watchFolderCoordinator {
+                ToolbarItem(placement: .primaryAction) {
+                    RecentImportsToolbarButton(coordinator: watchFolderCoordinator)
                 }
             }
         }

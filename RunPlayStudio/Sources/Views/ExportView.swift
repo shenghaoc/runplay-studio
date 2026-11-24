@@ -79,8 +79,15 @@ struct ExportView: View {
             }
             .accessibilityLabel("Export distance splits, recorded laps, and segments as combined CSV")
         } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
+            Label {
+                Text("Export")
+            } icon: {
+                DecorativeMenuSymbol.image(systemName: "square.and.arrow.up")
+            }
         }
+        // Without an explicit label AppKit titles the button with its symbol
+        // name ("chevron.pulldown"), as the Import menu did (#194).
+        .accessibilityLabel("Export")
         .alert("Export Failed", isPresented: $showingError) {
             Button("OK") { exportError = nil }
         } message: {
