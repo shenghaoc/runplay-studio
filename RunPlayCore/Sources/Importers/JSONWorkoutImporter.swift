@@ -42,7 +42,12 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        let raw = try decoder.decode(RawWorkout.self, from: input.data)
+        let raw: RawWorkout
+        do {
+            raw = try decoder.decode(RawWorkout.self, from: input.data)
+        } catch let error as DecodingError {
+            throw WorkoutImportError.parsingError(error.localizedDescription)
+        }
         // JSONDecoder is not streaming, so the byte limit above is what bounds
         // decoding; this rejects the decoded route before it is converted.
         if raw.routePoints.count > maxRoutePointCount {

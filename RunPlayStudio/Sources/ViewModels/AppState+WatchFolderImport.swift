@@ -50,7 +50,13 @@ extension AppState {
                 for: workout,
                 profile: athleteProfile
             )
-            try await storeActor.addWorkout(workout, select: false)
+            do {
+                try await storeActor.addWorkout(workout, select: false)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                return .failed(studioLocalized("Imported but could not save to your library. \(error.localizedDescription)"))
+            }
             try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
 
@@ -86,10 +92,9 @@ extension AppState {
             ))
         } catch is CancellationError {
             return .failed(studioLocalized("Import was cancelled."))
-        } catch let error as WorkoutImportError {
-            return .failed(Self.watchFolderFailureMessage(for: error, filename: filename))
         } catch {
-            return .failed(studioLocalized("Imported but could not save to your library. \(error.localizedDescription)"))
+            let importError = error as? WorkoutImportError ?? .parsingError(error.localizedDescription)
+            return .failed(Self.watchFolderFailureMessage(for: importError, filename: filename))
         }
     }
 
