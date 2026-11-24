@@ -315,7 +315,9 @@ struct WorkoutViewCommands: Commands {
             )
         }
 
-        CommandMenu("View") {
+        // A `CommandMenu("View")` would add a second View menu beside the
+        // standard one; the map commands go at the top of the standard menu.
+        CommandGroup(before: .toolbar) {
             Button(CommandRegistry.definition(for: .mapFit).menuTitle) {
                 mapActions?.fit()
             }
@@ -353,6 +355,8 @@ struct WorkoutViewCommands: Commands {
                 }
             }
             .disabled(!routeColorAvailable)
+
+            Divider()
         }
 
         CommandGroup(after: .help) {

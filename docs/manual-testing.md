@@ -51,6 +51,17 @@ Accessibility Inspector alone.
 - [ ] Increased Contrast / Reduce Transparency: panels and controls remain legible.
 - [ ] VoiceOver: no announcement spam during replay, archive, or FIT session progress.
 
+Menu-bar record (2026-10-15, #250): a debug bundle assembled with
+`scripts/assemble-app-bundle.sh` was launched with a throwaway
+`CFFIXED_USER_HOME` and `RUNPLAY_LIBRARY_ROOT`, and its menus were read through
+the Accessibility API in English, zh-Hans, and zh-Hant. Each language shows one
+View menu (View, 显示, 顯示方式): Fit Map (⌘0), Toggle 2D/3D, and Route Color
+(⌥⌘0–⌥⌘4) sit above Enter Full Screen. In English, all 37 menu commands appear
+in their registry menu with the registry's shortcut, which Help → Keyboard
+Shortcuts lists. With a bundled demo run open, key presses of ⌥⌘1, ⌥⌘2, ⌥⌘4,
+and ⌥⌘0 switched the route color, Power stayed disabled for the power-less run,
+and View → Toggle 2D/3D switched the map to 3D and back. VoiceOver was not run.
+
 ## Chinese Localisation Checklist (zh-Hans / zh-Hant)
 
 Run the **packaged** app: `swift run` has no `CFBundleLocalizations` and always
