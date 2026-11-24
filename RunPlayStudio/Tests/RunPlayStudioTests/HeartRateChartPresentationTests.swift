@@ -12,13 +12,14 @@ enum HeartRateDisplayFixtures {
     /// Route points 30 s and 100 m apart. `heartRate` supplies each point's own
     /// reading, as a FIT or TCX route does; none by default.
     static func routePoints(count: Int, heartRate: ((Int) -> Double?)? = nil) -> [RoutePoint] {
-        (0..<count).map { index in
-            RoutePoint(
-                timestamp: start.addingTimeInterval(Double(index) * 30),
-                latitude: 1.3 + Double(index) * 0.001,
-                longitude: 103.8 + Double(index) * 0.001,
-                distanceFromStartMeters: Double(index) * 100,
-                elapsedSeconds: Double(index) * 30,
+        (0..<count).map { (index: Int) -> RoutePoint in
+            let step = Double(index)
+            return RoutePoint(
+                timestamp: start.addingTimeInterval(step * 30),
+                latitude: 1.3 + step * 0.001,
+                longitude: 103.8 + step * 0.001,
+                distanceFromStartMeters: step * 100,
+                elapsedSeconds: step * 30,
                 heartRateBPM: heartRate?(index)
             )
         }
