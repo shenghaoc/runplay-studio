@@ -91,7 +91,8 @@ final class WatchFolderCoordinatorTests: XCTestCase {
 
     private func makeCoordinator(
         importResults: [WatchFolderExecutionResult] = [],
-        maxFileBytes: Int? = nil
+        maxFileBytes: Int? = nil,
+        watcherFactory: @escaping () -> any DirectoryWatching = { NoopDirectoryWatcher() }
     ) -> (coordinator: WatchFolderCoordinator, recorder: ImportRecorder, announcements: AnnouncementCollector) {
         let recorder = ImportRecorder(results: importResults)
         let collector = AnnouncementCollector()
@@ -104,7 +105,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         }
         let coordinator = WatchFolderCoordinator(
             store: FileWatchFolderStore(rootURL: libraryRoot),
-            watcherFactory: { NoopDirectoryWatcher() },
+            watcherFactory: watcherFactory,
             digest: CountingDigest(),
             policy: policy
         )
@@ -126,8 +127,11 @@ final class WatchFolderCoordinatorTests: XCTestCase {
     }
 
     private struct NoopDirectoryWatcher: DirectoryWatching {
+        var didStart: (@Sendable (URL) -> Void)?
+
         func start(directoryURL: URL, onEvent: @escaping @Sendable () -> Void) -> DirectoryWatchHandle? {
-            nil
+            didStart?(directoryURL)
+            return nil
         }
     }
 
@@ -261,6 +265,81 @@ final class WatchFolderCoordinatorTests: XCTestCase {
 
     // MARK: - Pause
 
+    func testMasterPauseAndResumePreserveIndependentFolderChoices() throws {
+        let (coordinator, _, _) = makeCoordinator()
+        defer { coordinator.shutdown() }
+        let secondFolder = tempDir.appendingPathComponent("second")
+        try FileManager.default.createDirectory(at: secondFolder, withIntermediateDirectories: true)
+        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(coordinator.addFolder(url: secondFolder))
+        let pausedFolder = try XCTUnwrap(coordinator.folders.first)
+        coordinator.setPaused(true, folderID: pausedFolder.id)
+
+        coordinator.setAllPaused(true)
+        XCTAssertTrue(coordinator.isPaused)
+        XCTAssertEqual(coordinator.folders.map(\.isPaused), [true, false])
+        coordinator.setAllPaused(false)
+        XCTAssertFalse(coordinator.isPaused)
+        XCTAssertEqual(coordinator.folders.map(\.isPaused), [true, false])
+    }
+
+    func testFolderAddedDuringMasterPauseResumesWithoutChangingItsOwnChoice() async throws {
+        let startedWatches = ImportRecorder(results: [])
+        let (coordinator, recorder, _) = makeCoordinator(watcherFactory: {
+            NoopDirectoryWatcher { _ = startedWatches.record(url: $0) }
+        })
+        defer { coordinator.shutdown() }
+        coordinator.setAllPaused(true)
+        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(startedWatches.recordedURLs.isEmpty)
+        XCTAssertEqual(coordinator.folders.map(\.isPaused), [false])
+        let file = try writeJSON("new-during-pause.json")
+
+        // A historical scan cannot bypass master pause, even for a new folder.
+        coordinator.importExistingNow()
+        await waitForCondition(timeout: 0.45) { !recorder.recordedURLs.isEmpty }
+        XCTAssertTrue(recorder.recordedURLs.isEmpty)
+
+        coordinator.setAllPaused(false)
+        await waitForCondition(timeout: 2) { recorder.recordedURLs.contains(file) }
+        XCTAssertEqual(recorder.recordedURLs, [file])
+        XCTAssertEqual(startedWatches.recordedURLs.count, 1)
+    }
+
+    func testMasterPausePersistsWithoutAnExistingFolder() {
+        let (first, _, _) = makeCoordinator()
+        first.setAllPaused(true)
+        first.shutdown()
+
+        let (fresh, _, _) = makeCoordinator()
+        defer { fresh.shutdown() }
+        fresh.start()
+        XCTAssertTrue(fresh.isPaused)
+        XCTAssertTrue(fresh.folders.isEmpty)
+    }
+
+    func testActiveFolderUsesDefaultTagAtNextImportWithoutRestart() async throws {
+        let (coordinator, _, _) = makeCoordinator()
+        defer { coordinator.shutdown() }
+        var observedTags: [String] = []
+        coordinator.importExecutor = { _, configuration in
+            observedTags.append(configuration.defaultTagName)
+            return .imported
+        }
+        XCTAssertTrue(coordinator.addFolder(url: watchedDir, defaultTagName: "before"))
+        let id = try XCTUnwrap(coordinator.folders.first?.id)
+        _ = try writeJSON("first.json")
+        coordinator.importExistingNow()
+        await waitForCondition(timeout: 2) { observedTags.count == 1 }
+        XCTAssertEqual(observedTags, ["before"])
+
+        coordinator.setDefaultTag("after", folderID: id)
+        _ = try writeJSON("second-and-different.json")
+        coordinator.importExistingNow()
+        await waitForCondition(timeout: 2) { observedTags.count == 2 }
+        XCTAssertEqual(observedTags, ["before", "after"])
+    }
+
     func testPauseBlocksScansAndImports() async throws {
         _ = try writeJSON()
         let (coordinator, recorder, _) = makeCoordinator()
@@ -271,7 +350,8 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         // Pause: a new file must not import.
         let folderID = coordinator.folders.first!.id
         coordinator.setPaused(true, folderID: folderID)
-        XCTAssertTrue(coordinator.isPaused)
+        XCTAssertFalse(coordinator.isPaused)
+        XCTAssertFalse(coordinator.canScanFolders)
         _ = try writeJSON("second.json")
         coordinator.importExistingNow()
         try await Task.sleep(for: .milliseconds(500))
