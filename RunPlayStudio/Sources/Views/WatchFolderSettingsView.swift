@@ -55,6 +55,13 @@ struct WatchFolderSettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(folder.displayName)
                     .fontWeight(.medium)
+                if let path = folder.lastKnownPath {
+                    Text(verbatim: (path as NSString).abbreviatingWithTildeInPath)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 Text(statusText(for: folder))
                     .font(.caption)
                     .foregroundStyle(isUnavailable(folder) ? Color.orange : Color.secondary)

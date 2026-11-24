@@ -449,6 +449,56 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         XCTAssertTrue(secondRecorder.recordedURLs.isEmpty)
     }
 
+    // MARK: - Moved folders (#181)
+
+    func testMovedFolderIsFollowedAndItsLocationAndNameAreUpdated() async throws {
+        let (first, _, _) = makeCoordinator()
+        XCTAssertTrue(first.addFolder(url: watchedDir))
+        let id = try XCTUnwrap(first.folders.first?.id)
+        XCTAssertEqual(first.folders.first?.lastKnownPath, watchedDir.resolvingSymlinksInPath().path)
+        let oldBookmark = try XCTUnwrap(first.folders.first?.bookmarkData)
+        first.shutdown()
+
+        let movedDir = tempDir.appendingPathComponent("watched-moved")
+        try FileManager.default.moveItem(at: watchedDir, to: movedDir)
+        let (second, recorder, _) = makeCoordinator()
+        defer { second.shutdown() }
+        second.start()
+
+        let folder = try XCTUnwrap(second.folders.first { $0.id == id })
+        XCTAssertEqual(
+            folder.lastKnownPath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path },
+            movedDir.resolvingSymlinksInPath().path
+        )
+        XCTAssertEqual(folder.displayName, "watched-moved")
+        XCTAssertNotEqual(folder.bookmarkData, oldBookmark, "the bookmark follows the folder to its new path")
+        XCTAssertFalse(second.unavailableFolderIDs.contains(id))
+
+        // The update is persisted, so a later launch starts from the new location.
+        let (third, _, _) = makeCoordinator()
+        defer { third.shutdown() }
+        third.start()
+        XCTAssertEqual(third.folders.first?.displayName, "watched-moved")
+        _ = recorder
+    }
+
+    func testRenamedDisplayNameSurvivesAMove() async throws {
+        let (first, _, _) = makeCoordinator()
+        XCTAssertTrue(first.addFolder(url: watchedDir))
+        first.shutdown()
+        let store = FileWatchFolderStore(rootURL: libraryRoot)
+        var snapshot = store.loadOrEmpty()
+        snapshot.folders[0].displayName = "Garmin"
+        try store.save(snapshot)
+        try FileManager.default.moveItem(at: watchedDir, to: tempDir.appendingPathComponent("elsewhere"))
+
+        let (second, _, _) = makeCoordinator()
+        defer { second.shutdown() }
+        second.start()
+        XCTAssertEqual(second.folders.first?.displayName, "Garmin")
+        XCTAssertEqual(second.folders.first?.lastKnownPath.map { URL(fileURLWithPath: $0).lastPathComponent }, "elsewhere")
+    }
+
     // MARK: - Folder availability
 
     func testFolderRemovedWhileWatchingIsReportedOnceAndRecovers() async throws {

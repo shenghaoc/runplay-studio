@@ -261,9 +261,7 @@ final class WatchFolderCoordinator: ObservableObject {
                 scopedAccess: access,
                 watchHandle: watch
             )
-            if resolved.wasStale {
-                persistStaleBookmarkRefresh(for: configuration, resolved: resolved)
-            }
+            recordResolvedLocation(for: configuration, resolved: resolved)
             // Recovery is a folder-state change, not a file result, so it is
             // reported by the settings pane clearing its Unavailable badge
             // rather than by a Recent Imports row (which would falsely imply a
@@ -299,6 +297,28 @@ final class WatchFolderCoordinator: ObservableObject {
         }
     }
 
+    /// A folder the user moved is followed to its new location, as documented.
+    /// Record the new path, rename the row when it still carried the old
+    /// folder name, and refresh the bookmark when it went stale or the path
+    /// changed, so Settings shows where the folder is now.
+    private func recordResolvedLocation(
+        for configuration: WatchFolderConfiguration,
+        resolved: SecurityScopedBookmarkStore.ResolvedFolder
+    ) {
+        let newPath = resolved.url.resolvingSymlinksInPath().path
+        let moved = configuration.lastKnownPath.map { $0 != newPath } ?? false
+        if resolved.wasStale || moved {
+            persistStaleBookmarkRefresh(for: configuration, resolved: resolved)
+        }
+        guard configuration.lastKnownPath != newPath else { return }
+        let oldName = configuration.lastKnownPath.map { URL(fileURLWithPath: $0).lastPathComponent }
+        updateFolder(id: configuration.id) {
+            if oldName == $0.displayName { $0.displayName = URL(fileURLWithPath: newPath).lastPathComponent }
+            $0.lastKnownPath = newPath
+        }
+        persist()
+    }
+
     private func persistStaleBookmarkRefresh(
         for configuration: WatchFolderConfiguration,
         resolved: SecurityScopedBookmarkStore.ResolvedFolder
@@ -322,7 +342,8 @@ final class WatchFolderCoordinator: ObservableObject {
         let configuration = WatchFolderConfiguration(
             displayName: url.lastPathComponent,
             bookmarkData: bookmarkData,
-            defaultTagName: defaultTagName
+            defaultTagName: defaultTagName,
+            lastKnownPath: url.resolvingSymlinksInPath().path
         )
         folders.append(configuration)
         folderStates[configuration.id] = WatchFolderState(folderID: configuration.id)
