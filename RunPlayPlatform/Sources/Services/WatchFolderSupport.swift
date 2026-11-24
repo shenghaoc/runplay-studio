@@ -11,7 +11,8 @@ import RunPlayCore
 /// Bookmark resolution is *stale-tolerant*: a bookmark whose target moved
 /// (volume renamed, folder relocated) is re-resolved against the live
 /// filesystem, and `ResolvedFolder` reports the current path so callers can
-/// update their display without re-prompting.
+/// update their display without re-prompting. Following a moved folder is
+/// intended. Resolution never shows UI and never mounts a volume.
 public struct SecurityScopedBookmarkStore: Sendable {
 
     public struct ResolvedFolder: Equatable, Sendable {
@@ -61,7 +62,9 @@ public struct SecurityScopedBookmarkStore: Sendable {
         do {
             url = try URL(
                 resolvingBookmarkData: bookmarkData,
-                options: .withSecurityScope,
+                // Never prompt and never mount: a volume the user ejected
+                // stays ejected and the folder reports as unavailable (#181).
+                options: [.withSecurityScope, .withoutUI, .withoutMounting],
                 relativeTo: nil,
                 bookmarkDataIsStale: &stale
             )
