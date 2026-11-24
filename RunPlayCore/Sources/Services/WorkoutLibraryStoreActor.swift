@@ -1310,8 +1310,10 @@ public actor WorkoutLibraryStoreActor {
         // stored derived name, and the pin (with the pin's summary, a
         // consistent pair) come from it —
         // while the pass's own derived summary is deliberately kept for
-        // unpinned groups: it was computed over the same membership, and
-        // the reconcile step below repairs it if it points at a non-member.
+        // unpinned groups whose summary nobody changed in the window: it was
+        // computed over the same membership, and the reconcile step below
+        // repairs it if it points at a non-member. When a writer did change
+        // it, the higher-ranked of the two is kept.
         // A record already re-decided at the current version — a deliberate
         // removal's evaluated-nil marker, a merge's moved members, another
         // pass's write — is not overwritten by the pass's staler
@@ -1323,6 +1325,10 @@ public actor WorkoutLibraryStoreActor {
             result.groups.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let preAwaitGroupsByID = Dictionary(
+            manifest.routeGroups.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         current.routeGroups = current.routeGroups.map { fresh in
             guard var passGroup = passGroupsByID[fresh.id] else { return fresh }
             passGroup.name = fresh.name
@@ -1330,6 +1336,22 @@ public actor WorkoutLibraryStoreActor {
             passGroup.pinnedRepresentativeWorkoutID = fresh.pinnedRepresentativeWorkoutID
             if fresh.pinnedRepresentativeWorkoutID != nil {
                 passGroup.representativeSummary = fresh.representativeSummary
+            } else if let freshSummary = fresh.representativeSummary,
+                      let preAwait = preAwaitGroupsByID[fresh.id],
+                      preAwait.representativeSummary != freshSummary {
+                // A writer changed this group's summary inside the window (a
+                // merge into it re-ranked it against the source's). Keep the
+                // higher-ranked of the two rather than overwriting the
+                // re-read summary with the pass's pre-merge one (#200). A
+                // summary that now points at a non-member is repaired by
+                // `reconcileTransplantedRouteGroups` below.
+                if let passSummary = passGroup.representativeSummary {
+                    if !passSummary.ranksAbove(freshSummary) {
+                        passGroup.representativeSummary = freshSummary
+                    }
+                } else {
+                    passGroup.representativeSummary = freshSummary
+                }
             }
             return passGroup
         }
