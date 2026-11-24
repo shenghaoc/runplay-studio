@@ -577,26 +577,30 @@ struct PersonalHeatmapView: View {
 
     private var legend: some View {
         let maxCount = max(viewModel.snapshot?.statistics.maximumOverlap ?? 1, 1)
-        let mid = max(1, maxCount / 2)
+        let counts = HeatmapLegendText.swatchCounts(maximumOverlap: maxCount)
         return HStack(spacing: AppDesign.Spacing.large) {
             Text("Frequency")
                 .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(.secondary)
 
-            legendSwatch(intensity: 0.15)
-            Text("1 run")
-                .font(AppDesign.Typography.compactLabel)
-                .monospacedDigit()
-
-            legendSwatch(intensity: 0.55)
-            Text("\(mid) runs")
-                .font(AppDesign.Typography.compactLabel)
-                .monospacedDigit()
-
-            legendSwatch(intensity: 1.0)
-            Text(maxCount >= 20 ? "\(maxCount)+ runs" : "\(maxCount) runs")
-                .font(AppDesign.Typography.compactLabel)
-                .monospacedDigit()
+            // One swatch per distinct count: a maximum of 1 or 2 runs must not
+            // repeat the low value (#205).
+            ForEach(Array(counts.enumerated()), id: \.offset) { index, count in
+                legendSwatch(intensity: legendIntensity(index: index, of: counts.count))
+                if index == 0 {
+                    Text("1 run")
+                        .font(AppDesign.Typography.compactLabel)
+                        .monospacedDigit()
+                } else if index == counts.count - 1, count >= 20 {
+                    Text("\(count)+ runs")
+                        .font(AppDesign.Typography.compactLabel)
+                        .monospacedDigit()
+                } else {
+                    Text("\(count) runs")
+                        .font(AppDesign.Typography.compactLabel)
+                        .monospacedDigit()
+                }
+            }
 
             Spacer()
 
@@ -607,9 +611,13 @@ struct PersonalHeatmapView: View {
         .padding(.horizontal, AppDesign.Spacing.xLarge)
         .padding(.vertical, AppDesign.Spacing.medium)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "Heatmap legend. Low frequency: 1 run. Medium: \(mid) runs. High: up to \(maxCount) runs. Color shows how many distinct workouts crossed each cell."
-        )
+        .accessibilityLabel(HeatmapLegendText.legendAccessibilityLabel(maximumOverlap: maxCount))
+    }
+
+    private func legendIntensity(index: Int, of count: Int) -> Double {
+        if index == 0 { return 0.15 }
+        if index == count - 1 { return 1.0 }
+        return 0.55
     }
 
     private func legendSwatch(intensity: Double) -> some View {
@@ -649,7 +657,12 @@ struct PersonalHeatmapView: View {
 
     private func statisticsAccessibilityLabel(_ stats: PersonalHeatmapStatistics?) -> String {
         guard let stats else { return studioLocalized("Heatmap statistics unavailable") }
-        return studioLocalized("Included \(stats.includedWorkoutCount) runs, total distance \(formatDistance(stats.totalDistanceMeters)), maximum overlap \(stats.maximumOverlap) runs, cell size \(Int(stats.effectiveCellSizeMeters.rounded())) meters")
+        return HeatmapLegendText.statisticsAccessibilityLabel(
+            included: stats.includedWorkoutCount,
+            distance: formatDistance(stats.totalDistanceMeters),
+            maximumOverlap: stats.maximumOverlap,
+            cellSizeMeters: Int(stats.effectiveCellSizeMeters.rounded())
+        )
     }
 }
 

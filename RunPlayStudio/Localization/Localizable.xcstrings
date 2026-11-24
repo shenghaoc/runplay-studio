@@ -9186,12 +9186,114 @@
         }
       }
     },
+    "Heatmap legend. Low frequency: 1 run. Color shows how many distinct workouts crossed each cell." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "热力图图例。低频率：1 次跑步。颜色表示经过每个网格的不同运动数量。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "熱力圖圖例。低頻率：1 次跑步。顏色表示經過每個網格的不同運動數量。"
+          }
+        }
+      }
+    },
+    "Heatmap legend. Low frequency: 1 run. High: up to %lld runs. Color shows how many distinct workouts crossed each cell." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heatmap legend. Low frequency: 1 run. High: up to %#@high@. Color shows how many distinct workouts crossed each cell."
+          },
+          "substitutions" : {
+            "high" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "热力图图例。低频率：1 次跑步。高频率：最多 %lld 次跑步。颜色表示经过每个网格的不同运动数量。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "熱力圖圖例。低頻率：1 次跑步。高頻率：最多 %lld 次跑步。顏色表示經過每個網格的不同運動數量。"
+          }
+        }
+      }
+    },
     "Heatmap legend. Low frequency: 1 run. Medium: %lld runs. High: up to %lld runs. Color shows how many distinct workouts crossed each cell." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heatmap legend. Low frequency: 1 run. Medium: %1$lld runs. High: up to %2$lld runs. Color shows how many distinct workouts crossed each cell."
+            "value" : "Heatmap legend. Low frequency: 1 run. Medium: %#@medium@. High: up to %#@high@. Color shows how many distinct workouts crossed each cell."
+          },
+          "substitutions" : {
+            "medium" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            },
+            "high" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "zh-Hans" : {
@@ -10475,7 +10577,49 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Included %1$lld runs, total distance %2$@, maximum overlap %3$lld runs, cell size %4$lld meters"
+            "value" : "Included %#@included@, total distance %2$@, maximum overlap %#@overlap@, cell size %4$lld meters"
+          },
+          "substitutions" : {
+            "included" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            },
+            "overlap" : {
+              "argNum" : 3,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg run"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg runs"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "zh-Hans" : {
