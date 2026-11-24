@@ -29,6 +29,26 @@ final class WorkoutDetailWidthBudgetTests: XCTestCase {
         }
     }
 
+    /// A run with no route adds a notice, a distance caption, a heart-rate
+    /// chart over time and a Splits message. None may widen the detail view
+    /// past the column the way the metric row once did.
+    func testEveryTabFitsTheWorkspaceWidthBudgetForARouteLessRun() {
+        let workout = HeartRateDisplayFixtures.workout(
+            series: HeartRateDisplayFixtures.series([(0, 120), (60, 130), (120, 140)])
+        )
+        XCTAssertFalse(workout.hasRoute)
+        XCTAssertNotNil(DistanceProvenancePresentation.label(for: workout))
+
+        for tab in WorkoutDetailView.ViewTab.allCases {
+            let minimum = minimumWidth(of: detailView(tab: tab, workout: workout))
+            XCTAssertLessThanOrEqual(
+                minimum,
+                budget,
+                "\(tab.rawValue) tab of a route-less run needs \(minimum)pt; the detail column at the minimum window is \(budget)pt"
+            )
+        }
+    }
+
     /// The symptom users saw: at the budget width the splits table must lie
     /// inside the detail column, with its full column width scrollable.
     func testSplitsTableStaysInsideTheColumnAtTheBudgetWidth() throws {
@@ -71,10 +91,10 @@ final class WorkoutDetailWidthBudgetTests: XCTestCase {
         return own + view.subviews.flatMap(scrollViews(in:))
     }
 
-    private func detailView(tab: WorkoutDetailView.ViewTab) -> some View {
+    private func detailView(tab: WorkoutDetailView.ViewTab, workout: RunWorkout? = nil) -> some View {
         let appState = AppState(storeActor: nil, importService: nil)
         appState.workoutDetailTabRaw = tab.rawValue
-        return WorkoutDetailView(workout: makeWorkout(), appState: appState)
+        return WorkoutDetailView(workout: workout ?? makeWorkout(), appState: appState)
     }
 
     /// Carries heart rate, cadence and power so the header and the replay
