@@ -1639,7 +1639,9 @@ reversed.
     `watch-folders.json` beside the library manifest and athlete profile, with
     atomic writes and tolerant load: a missing, undecodable, or newer-version
     file loads empty rather than throwing or wedging the library. Bookmark
-    bytes are stored but never interpreted in Core.
+    bytes are stored but never interpreted in Core. The envelope also stores
+    master pause independently of each folder's paused flag. Older envelopes
+    without it start with master pause off and retain each folder's choice.
   * `WatchFolderScanner` is the pure, clock-injectable decision layer: it
     lists non-recursive eligible files (skipping hidden files, directories, and
     unsupported extensions), classifies them against a folder state and a
