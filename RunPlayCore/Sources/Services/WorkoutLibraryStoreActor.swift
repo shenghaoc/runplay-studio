@@ -1160,11 +1160,18 @@ public actor WorkoutLibraryStoreActor {
     /// Final totals for one incremental route-group assignment pass.
     ///
     /// `groups` and `assignments` mirror the manifest state the pass
-    /// persisted, after merging into the re-read snapshot. The counts
-    /// describe the pass itself, not the write: a workout the pass matched
-    /// or could not load may have left the library — or had its record
-    /// re-decided — while the pass was suspended, in which case no record
-    /// is written for it but it is still counted.
+    /// persisted, after merging into the re-read snapshot. The counts are
+    /// computed totals: they describe what the pass decided, not what the
+    /// final write persisted. When writes interleave, `joinedCount` and
+    /// `createdCount` can therefore exceed the records actually written. A
+    /// workout the pass matched may have left the library, had its record
+    /// re-decided (a removal, a merge, an overlapping pass), or lost its
+    /// group while the pass was suspended; no record is written for it, but
+    /// it is still counted. Persisted state is always right; the counts feed
+    /// progress reporting only. There is deliberately no committed-count API.
+    /// `testNewcomerFallsBackToBacklogWhenMergeTargetIsGoneByFinalWrite` in
+    /// `RouteGroupingStoreActorTests` pins this: it reports one join while
+    /// no record survives.
     public struct RouteGroupAssignmentPassResult: Sendable, Equatable {
         /// Complete group list after the pass.
         public let groups: [WorkoutRouteGroup]
