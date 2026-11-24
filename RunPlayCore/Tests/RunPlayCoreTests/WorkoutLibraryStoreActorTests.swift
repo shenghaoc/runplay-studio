@@ -135,6 +135,130 @@ final class WorkoutLibraryStoreActorTests: XCTestCase {
         XCTAssertEqual(selectedID, workout.id)
     }
 
+    func testFreshLoadsKeepUnknownWorkoutAndItsOrganizationUntilCompatibilityReturns() async throws {
+        let linked = makeWorkout(name: "Future snapshot")
+        let neighbor = makeWorkout(name: "Readable snapshot")
+        try store.saveWorkout(linked)
+        try store.saveWorkout(neighbor)
+        let tag = WorkoutTag(name: "Synthetic")
+        let group = WorkoutRouteGroup(name: "Synthetic route", pinnedRepresentativeWorkoutID: linked.id)
+        let tagAssignment = WorkoutTagAssignment(workoutID: linked.id, tagIDs: [tag.id])
+        let routeAssignment = WorkoutRouteGroupAssignment(
+            workoutID: linked.id, groupID: group.id, algorithmVersion: 1
+        )
+        try store.saveManifest(WorkoutLibraryManifest(
+            workoutIDs: [linked.id, neighbor.id],
+            selectedWorkoutID: linked.id,
+            favoriteWorkoutIDs: [linked.id],
+            tags: [tag],
+            tagAssignments: [tagAssignment],
+            routeGroups: [group],
+            routeGroupAssignments: [routeAssignment]
+        ))
+        let url = tempDir.appendingPathComponent("workouts/\(linked.id.uuidString).json")
+        let compatible = try Data(contentsOf: url)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: compatible) as? [String: Any])
+        json["source"] = "future-workout-source"
+        let incompatible = try JSONSerialization.data(withJSONObject: json)
+        try incompatible.write(to: url, options: .atomic)
+
+        for _ in 0..<2 {
+            let freshStore = FileWorkoutLibraryStore(rootURL: tempDir)
+            let result = await WorkoutLibraryStoreActor(store: freshStore).loadLibrary()
+            guard case .workouts(let loaded, _, let favorites, let organization, let warning) = result else {
+                return XCTFail("A readable neighboring workout must remain available")
+            }
+            XCTAssertEqual(loaded.map(\.id), [neighbor.id])
+            XCTAssertNotNil(warning)
+            XCTAssertEqual(organization.unloadableWorkoutIDs, [linked.id])
+            XCTAssertEqual(favorites, [linked.id])
+            XCTAssertEqual(organization.tagAssignments, [tagAssignment])
+            XCTAssertEqual(organization.routeGroupAssignments, [routeAssignment])
+            XCTAssertEqual(try? Data(contentsOf: url), incompatible)
+            let manifest = try freshStore.loadManifest()
+            XCTAssertEqual(manifest.workoutIDs, [linked.id, neighbor.id])
+            XCTAssertEqual(manifest.favoriteWorkoutIDs, [linked.id])
+            XCTAssertEqual(manifest.tagAssignments, [tagAssignment])
+            XCTAssertEqual(manifest.routeGroupAssignments, [routeAssignment])
+            XCTAssertEqual(manifest.routeGroups.map(\.id), [group.id])
+        }
+
+        try compatible.write(to: url, options: .atomic)
+        let recovered = await WorkoutLibraryStoreActor(store: FileWorkoutLibraryStore(rootURL: tempDir)).loadLibrary()
+        guard case .workouts(let loaded, _, let favorites, let organization, let warning) = recovered else {
+            return XCTFail("The restored workout must load")
+        }
+        XCTAssertEqual(loaded.map(\.id), [linked.id, neighbor.id])
+        XCTAssertEqual(favorites, [linked.id])
+        XCTAssertEqual(organization.tagAssignments, [tagAssignment])
+        XCTAssertEqual(organization.routeGroupAssignments, [routeAssignment])
+        XCTAssertNil(warning)
+    }
+
+    func testSnapshotRewriteRefusesUnknownNestedFields() async throws {
+        var workout = makeWorkout(name: "Forward-readable")
+        workout.analysisVersion = RunWorkout.legacyAnalysisVersion
+        try store.saveWorkout(workout)
+        try store.saveManifest(WorkoutLibraryManifest(workoutIDs: [workout.id]))
+        let url = tempDir.appendingPathComponent("workouts/\(workout.id.uuidString).json")
+        let contents = try Data(contentsOf: url)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: contents) as? [String: Any])
+        var metadata = try XCTUnwrap(json["metadata"] as? [String: Any])
+        metadata["futureData"] = ["note": "preserve", "unknownNull": NSNull()]
+        json["metadata"] = metadata
+        let original = try JSONSerialization.data(withJSONObject: json)
+        try original.write(to: url, options: .atomic)
+
+        let result = await WorkoutLibraryStoreActor(store: store).loadLibrary()
+        guard case .workouts(let loaded, _, _, _, let warning) = result else {
+            return XCTFail("The recognized fields remain readable")
+        }
+        XCTAssertEqual(loaded.map(\.id), [workout.id])
+        XCTAssertNotNil(warning, "The in-memory analysis upgrade could not be safely saved")
+        XCTAssertEqual(try Data(contentsOf: url), original)
+        XCTAssertThrowsError(try store.saveWorkout(workout))
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
+    func testReadFailureKeepsReferenceAndOnlyStagedDebrisIsCleaned() async throws {
+        let workout = makeWorkout()
+        let orphan = makeWorkout()
+        try store.saveWorkout(workout)
+        try store.saveWorkout(orphan)
+        let manifest = WorkoutLibraryManifest(workoutIDs: [workout.id], favoriteWorkoutIDs: [workout.id])
+        try store.saveManifest(manifest)
+        let debrisBatch = UUID()
+        try store.stageWorkout(makeWorkout(), batchID: debrisBatch)
+        let staging = tempDir.appendingPathComponent(".staging/\(debrisBatch.uuidString)")
+        let protected = tempDir.appendingPathComponent("workouts/\(workout.id.uuidString).json")
+        let original = try Data(contentsOf: protected)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: protected.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: protected.path)
+        }
+        XCTAssertThrowsError(try store.loadWorkout(id: workout.id)) { error in
+            XCTAssertNil(error as? WorkoutLibraryError, "Read failures must not masquerade as corrupt data")
+            XCTAssertEqual((error as NSError).domain, NSCocoaErrorDomain)
+            XCTAssertEqual((error as NSError).code, NSFileReadNoPermissionError)
+        }
+
+        for _ in 0..<2 {
+            let freshStore = FileWorkoutLibraryStore(rootURL: tempDir)
+            let result = await WorkoutLibraryStoreActor(store: freshStore).loadLibrary()
+            guard case .demos(let warning, let organization, let manifestPresent) = result else {
+                return XCTFail("No readable persisted workouts")
+            }
+            XCTAssertNotNil(warning)
+            XCTAssertTrue(manifestPresent)
+            XCTAssertEqual(organization.unloadableWorkoutIDs, [workout.id])
+            XCTAssertEqual(try freshStore.loadManifest(), manifest)
+            XCTAssertTrue(freshStore.workoutExists(id: orphan.id))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: protected.path)
+        XCTAssertEqual(try Data(contentsOf: protected), original)
+    }
+
     func testLegacyFixtureDecodesWithVersionZeroAndSafeFieldFallbacks() throws {
         let workout = try decodeLegacyPausedFixture()
 
