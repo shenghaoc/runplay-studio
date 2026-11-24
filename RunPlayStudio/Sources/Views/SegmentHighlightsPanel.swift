@@ -53,9 +53,9 @@ struct SegmentHighlightsPanel: View {
                                 )
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(segment.title)
+                            .accessibilityLabel(segment.displayTitle())
                             .accessibilityValue(
-                                "\(segment.subtitle), \(segment.formattedDistance), active time \(segment.formattedDuration)"
+                                "\(segment.displaySubtitle()), \(segment.formattedDistance), active time \(segment.formattedDuration)"
                             )
                             .help("Segment duration and pace use active time and exclude recording gaps.")
                             .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -81,13 +81,13 @@ struct SegmentCard: View {
                 Image(systemName: segment.type.icon)
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(segmentColor)
-                Text(segment.title)
+                Text(segment.displayTitle())
                     .font(AppDesign.Typography.compactMetric)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
 
-            Text(segment.subtitle)
+            Text(segment.displaySubtitle())
                 .font(AppDesign.Typography.compactLabel)
                 .foregroundStyle(.secondary)
 

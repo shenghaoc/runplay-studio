@@ -23,7 +23,7 @@ extension AppState {
               appleHealthSession == nil
         else { return }
         guard let archiveService, storeActor != nil else {
-            errorMessage = "Archive import is unavailable in this session."
+            errorMessage = studioLocalized("Archive import is unavailable in this session.")
             showingError = true
             return
         }
@@ -50,10 +50,10 @@ extension AppState {
                     if accessing { url.stopAccessingSecurityScopedResource() }
                     self.operationState = .idle
                     self.errorMessage = result.rejectionMessage
-                        ?? "This ZIP does not appear to be a supported Strava bulk export."
+                        ?? studioLocalized("This ZIP does not appear to be a supported Strava bulk export.")
                     self.showingError = true
                     self.announcementPolicy.handle(
-                        .importFailed(message: self.errorMessage ?? "Unsupported archive.")
+                        .importFailed(message: self.errorMessage ?? studioLocalized("Unsupported archive."))
                     )
                     return
                 }
@@ -125,7 +125,7 @@ extension AppState {
                     importedCount: report.importedCount,
                     errorMessage: report.errorMessage,
                     completedName: completedName,
-                    commitFailedFallback: "Could not save imported workouts.",
+                    commitFailedFallback: studioLocalized("Could not save imported workouts."),
                     storeActor: storeActor,
                     applyReport: { message in
                         session.report = report
@@ -301,7 +301,7 @@ extension AppState {
                     importedCount: report.importedCount,
                     errorMessage: report.errorMessage,
                     completedName: completedName,
-                    commitFailedFallback: "Could not save the imported sessions.",
+                    commitFailedFallback: studioLocalized("Could not save the imported sessions."),
                     storeActor: storeActor,
                     applyReport: { message in
                         session.report = report

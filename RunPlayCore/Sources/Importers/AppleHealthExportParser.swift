@@ -64,20 +64,21 @@ public enum AppleHealthExportError: Error, Equatable, LocalizedError, Sendable {
         case .dtdSuppliesValue(let message):
             return message
         case .malformedDocument(let detail):
-            return "This Apple Health export could not be read. \(detail)"
+            return coreLocalized("This Apple Health export could not be read. \(detail)")
         case .readFailed(let detail):
-            return "This Apple Health export could not be read to the end. \(detail)"
+            return coreLocalized("This Apple Health export could not be read to the end. \(detail)")
         case .notAHealthExport:
-            return "This file is not an Apple Health export. "
-                + "Export your data from the Health app and try again."
+            return coreLocalized(
+                "This file is not an Apple Health export. Export your data from the Health app and try again."
+            )
         case .heartRateIndexNeedsSecondPass:
-            return "This Apple Health export has more heart-rate history than "
-                + "RunPlay Studio indexes in one pass, and this source cannot be "
-                + "read twice. It was not imported."
+            return coreLocalized(
+                "This Apple Health export has more heart-rate history than RunPlay Studio indexes in one pass, and this source cannot be read twice. It was not imported."
+            )
         case .heartRateCeilingExceededEvenWhenFiltered(let ceiling):
-            return "This Apple Health export has too much heart-rate history "
-                + "inside its workout windows to import (more than \(ceiling) "
-                + "samples). It was not imported."
+            return coreLocalized(
+                "This Apple Health export has too much heart-rate history inside its workout windows to import (more than \(ceiling) samples). It was not imported."
+            )
         }
     }
 }

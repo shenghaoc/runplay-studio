@@ -202,7 +202,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
                     effectiveSampleIntervalMeters: samplePair.effectiveSampleIntervalMeters,
                     detectedDirection: .opposite,
                     algorithmVersion: policy.algorithmVersion,
-                    warnings: ["Opposite direction detected; cumulative-time alignment is unavailable."]
+                    warnings: [coreLocalized("Opposite direction detected; cumulative-time alignment is unavailable.")]
                 ),
                 policyVersion: policy.algorithmVersion
             )
@@ -229,7 +229,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
                     effectiveSampleIntervalMeters: samplePair.effectiveSampleIntervalMeters,
                     detectedDirection: direction,
                     algorithmVersion: policy.algorithmVersion,
-                    warnings: ["Alignment algorithm failed."]
+                    warnings: [coreLocalized("Alignment algorithm failed.")]
                 ),
                 policyVersion: policy.algorithmVersion
             )
@@ -462,7 +462,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             if direction == .ambiguous {
                 diagnostics = self.withWarning(
                     diagnostics,
-                    "Route geometry is somewhat ambiguous; treat local deltas cautiously."
+                    coreLocalized("Route geometry is somewhat ambiguous; treat local deltas cautiously.")
                 )
             }
             return (diagnostics, availability)

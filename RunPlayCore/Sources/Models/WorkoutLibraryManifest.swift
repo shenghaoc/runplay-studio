@@ -218,13 +218,13 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
                 uniqueTags.append(tag)
             } else {
                 report.warnings.append(
-                    "Removed duplicate tag definition \(tag.id.uuidString.prefix(8))…"
+                    coreLocalized("Removed duplicate tag definition \(String(tag.id.uuidString.prefix(8)))…")
                 )
             }
         }
         if uniqueTags.count > ResourceLimits.maxTags {
             uniqueTags = Array(uniqueTags.prefix(ResourceLimits.maxTags))
-            report.warnings.append("Truncated tags to \(ResourceLimits.maxTags) definitions.")
+            report.warnings.append(coreLocalized("Truncated tags to \(ResourceLimits.maxTags) definitions."))
         }
         tags = uniqueTags
         let validTagIDs = Set(tags.map(\.id))
@@ -238,14 +238,14 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
                 uniqueCollections.append(collection)
             } else {
                 report.warnings.append(
-                    "Removed duplicate smart collection \(collection.id.uuidString.prefix(8))…"
+                    coreLocalized("Removed duplicate smart collection \(String(collection.id.uuidString.prefix(8)))…")
                 )
             }
         }
         if uniqueCollections.count > ResourceLimits.maxSmartCollections {
             uniqueCollections = Array(uniqueCollections.prefix(ResourceLimits.maxSmartCollections))
             report.warnings.append(
-                "Truncated smart collections to \(ResourceLimits.maxSmartCollections)."
+                coreLocalized("Truncated smart collections to \(ResourceLimits.maxSmartCollections).")
             )
         }
 
@@ -265,7 +265,7 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
                 let truncated = String(collection.query.searchText.unicodeScalars.prefix(ResourceLimits.maxSearchTextScalars))
                 collection.query.searchText = truncated
                 report.warnings.append(
-                    "Truncated search text in smart collection “\(collection.name)”."
+                    coreLocalized("Truncated search text in smart collection “\(collection.name)”.")
                 )
             }
             uniqueCollections[index] = collection
@@ -279,7 +279,7 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         for assignment in tagAssignments {
             if repairedAssignments.count >= ResourceLimits.maxAssignments {
                 report.warnings.append(
-                    "Truncated tag assignments to \(ResourceLimits.maxAssignments)."
+                    coreLocalized("Truncated tag assignments to \(ResourceLimits.maxAssignments).")
                 )
                 break
             }
@@ -316,13 +316,13 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
                 uniqueRouteGroups.append(group)
             } else {
                 report.warnings.append(
-                    "Removed duplicate route group \(group.id.uuidString.prefix(8))…"
+                    coreLocalized("Removed duplicate route group \(String(group.id.uuidString.prefix(8)))…")
                 )
             }
         }
         if uniqueRouteGroups.count > ResourceLimits.maxRouteGroups {
             uniqueRouteGroups = Array(uniqueRouteGroups.prefix(ResourceLimits.maxRouteGroups))
-            report.warnings.append("Truncated route groups to \(ResourceLimits.maxRouteGroups).")
+            report.warnings.append(coreLocalized("Truncated route groups to \(ResourceLimits.maxRouteGroups)."))
         }
 
         // A pin or cached summary survives only while the referenced workout
@@ -345,7 +345,7 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         let memberGroupIDs = Set(groupIDByAssignedWorkout.values)
         let keptGroups = uniqueRouteGroups.filter { memberGroupIDs.contains($0.id) }
         if keptGroups.count != uniqueRouteGroups.count {
-            report.warnings.append("Removed empty route groups.")
+            report.warnings.append(coreLocalized("Removed empty route groups."))
         }
         let keptGroupIDs = Set(keptGroups.map(\.id))
         routeGroups = keptGroups
@@ -368,7 +368,7 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         for assignment in routeGroupAssignments {
             if repairedRouteGroupAssignments.count >= ResourceLimits.maxRouteGroupAssignments {
                 report.warnings.append(
-                    "Truncated route group assignments to \(ResourceLimits.maxRouteGroupAssignments)."
+                    coreLocalized("Truncated route group assignments to \(ResourceLimits.maxRouteGroupAssignments).")
                 )
                 break
             }
@@ -398,13 +398,13 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
             let kept = tagIDs.intersection(validTagIDs)
             if kept.count != tagIDs.count {
                 report.warnings.append(
-                    "Removed missing tag references from smart collection “\(collectionName)”."
+                    coreLocalized("Removed missing tag references from smart collection “\(collectionName)”.")
                 )
             }
             if kept.isEmpty {
                 if !tagIDs.isEmpty {
                     report.warnings.append(
-                        "Smart collection “\(collectionName)” no longer restricts by tags (all referenced tags were removed)."
+                        coreLocalized("Smart collection “\(collectionName)” no longer restricts by tags (all referenced tags were removed).")
                     )
                 }
                 return .anyTags

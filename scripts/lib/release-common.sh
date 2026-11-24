@@ -20,6 +20,18 @@ RUNPLAY_SUPPORTED_ARCHITECTURE="arm64"
 RUNPLAY_EXECUTABLE_NAME="RunPlayStudio"
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
 RUNPLAY_RESOURCE_BUNDLE_NAME="RunPlayStudio_RunPlayStudio.bundle"
+# Every SwiftPM resource bundle the app reads at runtime, space-separated (bash
+# 3.2 has no portable way to export arrays through `source`). The Studio bundle
+# carries the demo resources and Studio's strings; the Core and Platform
+# bundles carry those modules' String Catalogs. SwiftPM's generated
+# `Bundle.module` traps on first use when its bundle is missing, so assembly
+# and verification both require the whole set.
+# shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
+RUNPLAY_RESOURCE_BUNDLE_NAMES="RunPlayStudio_RunPlayStudio.bundle RunPlayStudio_RunPlayCore.bundle RunPlayStudio_RunPlayPlatform.bundle"
+# Languages the app ships, in CFBundleLocalizations order; English is the
+# development language. Must match Packaging/RunPlayStudio-Info.plist.in.
+# shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
+RUNPLAY_LOCALIZATIONS="en zh-Hans zh-Hant"
 # shellcheck disable=SC2034 # sourced by the release-manifest writer
 RUNPLAY_CPP_STANDARD="C++23"
 

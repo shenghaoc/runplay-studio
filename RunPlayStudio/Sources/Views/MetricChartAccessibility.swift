@@ -54,30 +54,27 @@ struct MetricChartDescriptor: AXChartDescriptorRepresentable {
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let xScale = AXNumericDataAxisDescriptor(
-            title: "\(model.xAxisTitle) (\(model.xAxisUnit))",
+            title: "\(model.xAxisTitle) (\(DisplayFormatter.unitSymbol(forToken: model.xAxisUnit)))",
             range: 0...max(model.totalDistanceMeters / 1000, 0.001),
             gridlinePositions: []
         ) { value in
-            String(format: "%.2f km", value)
+            DisplayFormatter.formatKilometers(value * 1_000, fractionDigits: 2)
         }
 
         let yValues = samples.map(\.value)
         let yMin = yValues.min() ?? 0
         let yMax = yValues.max() ?? 1
         let yScale = AXNumericDataAxisDescriptor(
-            title: "\(model.yAxisTitle) (\(model.yAxisUnit))",
+            title: "\(model.yAxisTitle) (\(DisplayFormatter.unitSymbol(forToken: model.yAxisUnit)))",
             range: min(yMin, yMax)...max(yMin, yMax, yMin + 0.001),
             gridlinePositions: []
         ) { [metric] value in
             switch metric {
-            case .elevation: return "\(Int(value)) m"
-            case .pace:
-                let mins = Int(value) / 60
-                let secs = Int(value) % 60
-                return String(format: "%d:%02d /km", mins, secs)
-            case .heartRate: return "\(Int(value)) bpm"
-            case .power: return "\(Int(value)) W"
-            case .speed: return String(format: "%.1f m/s", value)
+            case .elevation: return DisplayFormatter.formatMeters(Double(Int(value)))
+            case .pace: return DisplayFormatter.formatPace(value)
+            case .heartRate: return DisplayFormatter.formatHeartRate(Double(Int(value)))
+            case .power: return DisplayFormatter.formatPower(Double(Int(value)))
+            case .speed: return DisplayFormatter.formatSpeed(value)
             }
         }
 
@@ -93,7 +90,7 @@ struct MetricChartDescriptor: AXChartDescriptorRepresentable {
             AXDataSeriesDescriptor(
                 name: groupedSamples.count == 1
                     ? model.series.name
-                    : "\(model.series.name), section \(index + 1)",
+                    : studioLocalized("\(model.series.name), section \(index + 1)"),
                 isContinuous: true,
                 dataPoints: group.map {
                     AXDataPoint(x: $0.distanceKm, y: $0.value)
@@ -103,7 +100,9 @@ struct MetricChartDescriptor: AXChartDescriptorRepresentable {
 
         return AXChartDescriptor(
             title: model.title,
-            summary: elevationSourceLabel.map { "\(model.spokenSummary) Source: \($0)." } ?? model.spokenSummary,
+            summary: elevationSourceLabel.map {
+                [model.spokenSummary, studioLocalized("Source: \($0).")].joined(separator: " ")
+            } ?? model.spokenSummary,
             xAxis: xScale,
             yAxis: yScale,
             additionalAxes: [],

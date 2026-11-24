@@ -117,94 +117,86 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     var message: String {
         switch self {
         case .libraryLoaded(let count):
-            return count == 1 ? "Library loaded. 1 run." : "Library loaded. \(count) runs."
+            return studioLocalized("Library loaded. \(count) runs.")
         case .importCompleted(let name):
-            return "Imported \(name)."
+            return studioLocalized("Imported \(name).")
         case .importCompletedWithDetail(let name, let detail):
-            return "Imported \(name). \(detail)"
+            return studioLocalized("Imported \(name). \(detail)")
         case .importCancelled:
-            return "Import cancelled."
+            return studioLocalized("Import cancelled.")
         case .importFailed(let message):
-            return "Import failed. \(message)"
+            return studioLocalized("Import failed. \(message)")
         case .exportPreviewReady:
-            return "Export preview ready."
+            return studioLocalized("Export preview ready.")
         case .exportCompleted(let name):
-            return "Exported \(name)."
+            return studioLocalized("Exported \(name).")
         case .exportFailed(let message):
-            return "Export failed. \(message)"
+            return studioLocalized("Export failed. \(message)")
         case .videoPreviewReady:
-            return "Video preview ready."
+            return studioLocalized("Video preview ready.")
         case .videoPreviewFailed(let message):
-            return "Video preview failed. \(message)"
+            return studioLocalized("Video preview failed. \(message)")
         case .videoExportCompleted(let name):
-            return "Video exported \(name)."
+            return studioLocalized("Video exported \(name).")
         case .videoExportFailed(let message):
-            return "Video export failed. \(message)"
+            return studioLocalized("Video export failed. \(message)")
         case .videoExportCancelled:
-            return "Video export cancelled."
+            return studioLocalized("Video export cancelled.")
         case .comparisonVideoPreviewReady:
-            return "Comparison video preview ready."
+            return studioLocalized("Comparison video preview ready.")
         case .comparisonVideoExportCompleted(let name):
-            return "Comparison video exported \(name)."
+            return studioLocalized("Comparison video exported \(name).")
         case .comparisonVideoExportFailed(let message):
-            return "Comparison video export failed. \(message)"
+            return studioLocalized("Comparison video export failed. \(message)")
         case .comparisonVideoExportCancelled:
-            return "Comparison video export cancelled."
+            return studioLocalized("Comparison video export cancelled.")
         case .comparisonVideoRouteAwareUnavailable:
-            return "Route-Aware comparison video unavailable."
+            return studioLocalized("Route-Aware comparison video unavailable.")
         case .heatmapReady(let runCount):
-            return "Heatmap ready. \(runCount) runs included."
+            return studioLocalized("Heatmap ready. \(runCount) runs included.")
         case .trendsReady(let runCount):
-            return runCount == 1
-                ? "Trends ready. 1 run included."
-                : "Trends ready. \(runCount) runs included."
+            return studioLocalized("Trends ready. \(runCount) runs included.")
         case .recordsReady(let runCount):
-            return runCount == 1
-                ? "Personal records ready. 1 run included."
-                : "Personal records ready. \(runCount) runs included."
+            return studioLocalized("Personal records ready. \(runCount) runs included.")
         case .queryResultPublished(let count):
-            if count == 0 { return "No runs match the current search or filters." }
-            return count == 1 ? "1 run." : "\(count) runs."
+            if count == 0 { return studioLocalized("No runs match the current search or filters.") }
+            return studioLocalized("\(count) runs.")
         case .comparisonEntered:
-            return "Entered comparison."
+            return studioLocalized("Entered comparison.")
         case .comparisonExited:
-            return "Ended comparison."
+            return studioLocalized("Ended comparison.")
         case .usingDistanceAlignment:
-            return "Using Distance alignment."
+            return studioLocalized("Using Distance alignment.")
         case .usingRouteAwareAlignment:
-            return "Using Route-Aware alignment."
+            return studioLocalized("Using Route-Aware alignment.")
         case .routeAlignmentReady:
-            return "Route alignment ready."
+            return studioLocalized("Route alignment ready.")
         case .routeAlignmentUnavailable:
-            return "Route alignment unavailable."
+            return studioLocalized("Route alignment unavailable.")
         case .replayPlayed:
-            return "Replay playing."
+            return studioLocalized("Replay playing.")
         case .replayPaused:
-            return "Replay paused."
+            return studioLocalized("Replay paused.")
         case .replayRestarted:
-            return "Replay restarted."
+            return studioLocalized("Replay restarted.")
         case .replayReachedEnd:
-            return "Replay finished."
+            return studioLocalized("Replay finished.")
         case .speedChanged(let label):
-            return "Replay speed \(label)."
+            return studioLocalized("Replay speed \(label).")
         case .tagUpdateCompleted:
-            return "Tags updated."
+            return studioLocalized("Tags updated.")
         case .smartCollectionUpdated:
-            return "Smart collection updated."
+            return studioLocalized("Smart collection updated.")
         case .watchFolderImportCompleted(let count):
-            return count == 1
-                ? "Watch folder imported 1 run."
-                : "Watch folder imported \(count) runs."
+            return studioLocalized("Watch folder imported \(count) runs.")
         case .watchFolderImportFailed(let count):
-            return count == 1
-                ? "Watch folder import failed for 1 file. See Recent Imports."
-                : "Watch folder import failed for \(count) files. See Recent Imports."
+            return studioLocalized("Watch folder import failed for \(count) files. See Recent Imports.")
         case .watchFolderUnavailable(let name):
-            return "Watched folder \(name) is unavailable. Watching resumes if it returns."
+            return studioLocalized("Watched folder \(name) is unavailable. Watching resumes if it returns.")
         case .watchFolderReviewReady(let name):
-            return "\(name) has several sessions and is waiting for review."
+            return studioLocalized("\(name) has several sessions and is waiting for review.")
         case .elevationCorrectionFinished(let summary):
-            return "Elevation correction finished. \(summary)"
+            return studioLocalized("Elevation correction finished. \(summary)")
         case .elevationSourceChanged(let message):
             return message
         }

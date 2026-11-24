@@ -110,17 +110,22 @@ struct ReplayControlsView: View {
                             .font(AppDesign.Typography.compactLabel)
                             .foregroundStyle(.secondary)
 
-                        Picker("Speed", selection: Binding(
+                        // The "Speed" text beside it is the visible label, so
+                        // the picker has no label view. Omitting it, rather than
+                        // hiding it with `labelsHidden()`, keeps it out of the
+                        // accessibility description ("Speed, Replay speed").
+                        Picker(selection: Binding(
                             get: { controller.state.playbackSpeed },
                             set: { controller.setSpeed($0) }
                         )) {
                             ForEach(ReplayController.speedOptions, id: \.self) { speed in
-                                Text(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))
+                                Text(ReplayState.formattedSpeed(speed))
                                     .tag(speed)
                             }
+                        } label: {
+                            EmptyView()
                         }
                         .pickerStyle(.menu)
-                        .labelsHidden()
                         .controlSize(.regular)
                         .accessibilityLabel("Replay speed")
                         .accessibilityValue(controller.state.formattedSpeed)
@@ -156,8 +161,9 @@ struct ReplayControlsView: View {
 
     private func speedPill(_ speed: Double) -> some View {
         let isSelected = controller.state.playbackSpeed == speed
+        let label = ReplayState.formattedSpeed(speed)
         return Button(action: { controller.setSpeed(speed) }) {
-            Text(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))
+            Text(label)
                 .font(AppDesign.Typography.compactMetric)
                 .padding(.horizontal, AppDesign.Spacing.small)
                 .padding(.vertical, AppDesign.Spacing.medium)
@@ -177,8 +183,8 @@ struct ReplayControlsView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? AppDesign.primaryBlue : .secondary)
-        .help("Replay at \(speed == 1.0 ? "normal" : String(format: "%.1f", speed)) speed")
-        .accessibilityLabel("Replay speed \(speed == 1.0 ? "1×" : String(format: "%.1f×", speed))")
+        .help(speed == 1.0 ? "Replay at normal speed" : "Replay at \(ReplayState.formattedSpeedMultiplier(speed)) speed")
+        .accessibilityLabel("Replay speed \(label)")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }

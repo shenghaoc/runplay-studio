@@ -147,12 +147,12 @@ struct FITSessionImportView: View {
     private var summaryBar: some View {
         let result = session.scanResult
         return HStack(spacing: AppDesign.Spacing.large) {
-            summaryChip("Sessions", value: "\(result.candidates.count)")
-            summaryChip("Importable", value: "\(result.readyCount)")
-            summaryChip("Selected", value: "\(session.selectedCount)")
-            summaryChip("Already imported", value: "\(result.duplicateCount)")
-            summaryChip("Unsupported", value: "\(result.unsupportedCount)")
-            summaryChip("Ambiguous", value: "\(result.ambiguousCount)")
+            summaryChip(studioLocalized("Sessions"), value: "\(result.candidates.count)")
+            summaryChip(studioLocalized("Importable"), value: "\(result.readyCount)")
+            summaryChip(studioLocalized("Selected"), value: "\(session.selectedCount)")
+            summaryChip(studioLocalized("Already imported"), value: "\(result.duplicateCount)")
+            summaryChip(studioLocalized("Unsupported"), value: "\(result.unsupportedCount)")
+            summaryChip(studioLocalized("Ambiguous"), value: "\(result.ambiguousCount)")
             Spacer()
         }
         .padding(.horizontal)
@@ -214,7 +214,7 @@ struct FITSessionImportView: View {
                 .accessibilityValue(session.isSelected(candidate) ? "Selected" : "Not selected")
                 .accessibilityHint(
                     session.isSelectable(candidate)
-                        ? "Include this session in the import"
+                        ? studioLocalized("Include this session in the import")
                         : candidate.statusDetail ?? candidate.status.userFacingSummary
                 )
             }
@@ -318,7 +318,7 @@ struct FITSessionImportView: View {
     }
 
     private var importButtonTitle: String {
-        session.selectedCount == 1 ? "Import 1 Run" : "Import \(session.selectedCount) Runs"
+        studioLocalized("Import \(session.selectedCount) Runs")
     }
 
     // MARK: - Progress
@@ -380,24 +380,23 @@ struct FITSessionImportView: View {
         if progress.totalCount == 0 {
             return phaseLabel
         }
-        return "Session \(progress.completedCount) of \(progress.totalCount)"
-            + " · staged \(progress.stagedCount)"
-            + " · skipped \(progress.skippedCount)"
-            + " · failed \(progress.failedCount)"
+        return studioLocalized(
+            "Session \(progress.completedCount) of \(progress.totalCount) · staged \(progress.stagedCount) · skipped \(progress.skippedCount) · failed \(progress.failedCount)"
+        )
     }
 
     private var phaseLabel: String {
         switch session.progress.phase {
-        case .openingArchive: return "Reading FIT file…"
-        case .readingMetadata: return "Reading FIT file…"
-        case .scanningEntries: return "Scanning sessions…"
-        case .awaitingSelection: return "Ready"
-        case .importing: return "Importing sessions…"
-        case .staging: return "Staging workouts…"
-        case .committing: return "Saving library…"
-        case .completed: return "Complete"
-        case .cancelled: return "Cancelled"
-        case .failed: return "Failed"
+        case .openingArchive: return studioLocalized("Reading FIT file…")
+        case .readingMetadata: return studioLocalized("Reading FIT file…")
+        case .scanningEntries: return studioLocalized("Scanning sessions…")
+        case .awaitingSelection: return studioLocalized("Ready")
+        case .importing: return studioLocalized("Importing sessions…")
+        case .staging: return studioLocalized("Staging workouts…")
+        case .committing: return studioLocalized("Saving library…")
+        case .completed: return studioLocalized("Complete")
+        case .cancelled: return studioLocalized("Cancelled")
+        case .failed: return studioLocalized("Failed")
         }
     }
 
@@ -425,14 +424,14 @@ struct FITSessionImportView: View {
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-                    reportStat("Imported", report.importedCount)
-                    reportStat("Already imported", report.count(for: .duplicate))
-                    reportStat("Unsupported", report.count(for: .unsupportedSport))
-                    reportStat("No GPS", report.count(for: .noGPSRoute))
-                    reportStat("Ambiguous", report.count(for: .ambiguousAttribution))
-                    reportStat("Missing boundaries", report.count(for: .invalidBoundaries))
-                    reportStat("Over limit", report.count(for: .exceedsResourceLimit))
-                    reportStat("Failed", report.count(for: .parseFailed))
+                    reportStat(studioLocalized("Imported"), report.importedCount)
+                    reportStat(studioLocalized("Already imported"), report.count(for: .duplicate))
+                    reportStat(studioLocalized("Unsupported"), report.count(for: .unsupportedSport))
+                    reportStat(studioLocalized("No GPS"), report.count(for: .noGPSRoute))
+                    reportStat(studioLocalized("Ambiguous"), report.count(for: .ambiguousAttribution))
+                    reportStat(studioLocalized("Missing boundaries"), report.count(for: .invalidBoundaries))
+                    reportStat(studioLocalized("Over limit"), report.count(for: .exceedsResourceLimit))
+                    reportStat(studioLocalized("Failed"), report.count(for: .parseFailed))
                 }
                 .padding(.horizontal)
 

@@ -12,8 +12,17 @@ import SwiftUI
 /// instead of `AppDesign.Typography` tokens because the export card renders at a
 /// fixed 1200×1600 canvas — the standard typography scale is too small at this
 /// resolution. If the export dimensions change, revisit these sizes.
+///
+/// **Localization:** every label resolves through `studioLocalized` in the
+/// presentation's locale (never SwiftUI's main-bundle lookup), so a pinned
+/// locale renders the same card in the app and in tests. Columns size to their
+/// content rather than to widths tuned for Latin glyphs, and the whole card is
+/// typeset in its language so Han characters take the Simplified or
+/// Traditional font.
 struct ExportSummaryCardView: View {
     let presentation: ExportSummaryCardPresentation
+    /// The card's fixed labels, resolved once in the presentation's language.
+    let labels: ExportSummaryCardLabels
 
     private var model: ExportSummaryCardModel { presentation.model }
     private var palette: PNGSummaryExportPalette { presentation.palette }
@@ -30,10 +39,12 @@ struct ExportSummaryCardView: View {
             appearance: .light,
             layout: model.layout
         )
+        self.labels = ExportSummaryCardLabels(locale: nil)
     }
 
     init(presentation: ExportSummaryCardPresentation) {
         self.presentation = presentation
+        self.labels = ExportSummaryCardLabels(locale: presentation.locale)
     }
 
     var body: some View {
@@ -85,6 +96,7 @@ struct ExportSummaryCardView: View {
         .background(palette.pageBackground)
         .foregroundStyle(palette.primaryText)
         .colorScheme(presentation.appearance == .dark ? .dark : .light)
+        .typesettingLanguage(presentation.typesettingLanguage)
     }
 
     // MARK: - Header
@@ -136,7 +148,7 @@ struct ExportSummaryCardView: View {
 
     private func exportLegendSection(_ legend: RouteMetricLegendModel) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("\(legend.mode.displayName) — Relative to this workout")
+            Text(labels.legendTitle(modeName: legend.mode.localizedName(locale: presentation.locale)))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(palette.secondaryText)
 
@@ -153,7 +165,7 @@ struct ExportSummaryCardView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(legend.scale.lowerLabel)
                         .font(.system(size: 12, design: .monospaced))
-                    Text(legend.lowerEndLabel)
+                    Text(legend.lowerEndLabel(locale: presentation.locale))
                         .font(.system(size: 11))
                         .foregroundStyle(palette.tertiaryText)
                 }
@@ -161,7 +173,7 @@ struct ExportSummaryCardView: View {
                 VStack(alignment: .center, spacing: 1) {
                     Text(legend.scale.medianLabel)
                         .font(.system(size: 12, design: .monospaced))
-                    Text("Median")
+                    Text(labels.median)
                         .font(.system(size: 11))
                         .foregroundStyle(palette.tertiaryText)
                 }
@@ -169,7 +181,7 @@ struct ExportSummaryCardView: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(legend.scale.upperLabel)
                         .font(.system(size: 12, design: .monospaced))
-                    Text(legend.upperEndLabel)
+                    Text(legend.upperEndLabel(locale: presentation.locale))
                         .font(.system(size: 11))
                         .foregroundStyle(palette.tertiaryText)
                 }
@@ -181,13 +193,13 @@ struct ExportSummaryCardView: View {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(palette.noData)
                         .frame(width: 14, height: 8)
-                    Text("No data")
+                    Text(labels.noData)
                         .font(.system(size: 11))
                         .foregroundStyle(palette.tertiaryText)
                 }
             }
 
-            Text(legend.directionSummary)
+            Text(legend.directionSummary(locale: presentation.locale))
                 .font(.system(size: 11))
                 .foregroundStyle(palette.tertiaryText)
         }
@@ -200,7 +212,7 @@ struct ExportSummaryCardView: View {
 
     private var metricsSection: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
-            Text("Summary")
+            Text(labels.summary)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(palette.tertiaryText)
 
@@ -210,26 +222,26 @@ struct ExportSummaryCardView: View {
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: presentation.includesMap ? 10 : AppDesign.Spacing.large) {
-                ExportMetricTile(label: "Distance", value: model.distanceText, icon: "figure.run", color: palette.distance, palette: palette)
-                ExportMetricTile(label: "Elapsed", value: model.elapsedTimeText, icon: "clock", color: palette.duration, palette: palette)
-                ExportMetricTile(label: "Active", value: model.activeTimeText, icon: "timer", color: palette.duration, palette: palette)
-                ExportMetricTile(label: "Moving (est.)", value: model.movingTimeText, icon: "figure.run", color: palette.duration, palette: palette)
-                ExportMetricTile(label: "Paused", value: model.pausedTimeText, icon: "pause.circle", color: palette.secondaryText, palette: palette)
-                ExportMetricTile(label: "Active Pace", value: model.activePaceText, icon: "speedometer", color: palette.pace, palette: palette)
-                ExportMetricTile(label: "Moving Pace (est.)", value: model.movingPaceText, icon: "figure.run", color: palette.pace, palette: palette)
-                ExportMetricTile(label: "Elapsed Pace", value: model.elapsedPaceText, icon: "clock.arrow.circlepath", color: palette.pace, palette: palette)
-                ExportMetricTile(label: "Corrected Gain", value: model.elevationGainText, icon: "arrow.up.circle", color: palette.elevation, palette: palette)
-                ExportMetricTile(label: "Corrected Loss", value: model.elevationLossText, icon: "arrow.down.circle", color: palette.elevationLoss, palette: palette)
+                ExportMetricTile(label: labels.distance, value: model.distanceText, icon: "figure.run", color: palette.distance, palette: palette)
+                ExportMetricTile(label: labels.elapsed, value: model.elapsedTimeText, icon: "clock", color: palette.duration, palette: palette)
+                ExportMetricTile(label: labels.active, value: model.activeTimeText, icon: "timer", color: palette.duration, palette: palette)
+                ExportMetricTile(label: labels.movingEstimated, value: model.movingTimeText, icon: "figure.run", color: palette.duration, palette: palette)
+                ExportMetricTile(label: labels.paused, value: model.pausedTimeText, icon: "pause.circle", color: palette.secondaryText, palette: palette)
+                ExportMetricTile(label: labels.activePace, value: model.activePaceText, icon: "speedometer", color: palette.pace, palette: palette)
+                ExportMetricTile(label: labels.movingPaceEstimated, value: model.movingPaceText, icon: "figure.run", color: palette.pace, palette: palette)
+                ExportMetricTile(label: labels.elapsedPace, value: model.elapsedPaceText, icon: "clock.arrow.circlepath", color: palette.pace, palette: palette)
+                ExportMetricTile(label: labels.correctedGain, value: model.elevationGainText, icon: "arrow.up.circle", color: palette.elevation, palette: palette)
+                ExportMetricTile(label: labels.correctedLoss, value: model.elevationLossText, icon: "arrow.down.circle", color: palette.elevationLoss, palette: palette)
 
                 if let hr = model.heartRateText {
-                    ExportMetricTile(label: "Avg HR", value: hr, icon: "heart.fill", color: palette.heartRate, palette: palette)
+                    ExportMetricTile(label: labels.averageHeartRate, value: hr, icon: "heart.fill", color: palette.heartRate, palette: palette)
                 }
                 if let maxHR = model.maxHeartRateText {
-                    ExportMetricTile(label: "Max HR", value: maxHR, icon: "heart.circle.fill", color: palette.heartRate, palette: palette)
+                    ExportMetricTile(label: labels.maximumHeartRate, value: maxHR, icon: "heart.circle.fill", color: palette.heartRate, palette: palette)
                 }
 
                 if !presentation.includesMap {
-                    ExportMetricTile(label: "Data Points", value: model.pointCountText, icon: "point.3.connected.trianglepath.dotted", color: palette.primaryText, palette: palette)
+                    ExportMetricTile(label: labels.dataPoints, value: model.pointCountText, icon: "point.3.connected.trianglepath.dotted", color: palette.primaryText, palette: palette)
                 }
             }
         }
@@ -240,7 +252,7 @@ struct ExportSummaryCardView: View {
     private var segmentsSection: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             HStack {
-                Text("Key Segments")
+                Text(labels.keySegments)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(palette.tertiaryText)
                 if let truncation = model.segmentsTruncationText {
@@ -278,7 +290,7 @@ struct ExportSummaryCardView: View {
     private var splitsSection: some View {
         VStack(alignment: .leading, spacing: AppDesign.Spacing.medium) {
             HStack {
-                Text("Splits")
+                Text(labels.splits)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(palette.tertiaryText)
                 if let truncation = model.splitsTruncationText {
@@ -289,29 +301,34 @@ struct ExportSummaryCardView: View {
                 }
             }
 
-            HStack {
-                Text("Split").frame(width: 50, alignment: .leading)
-                Text("Distance").frame(width: 80, alignment: .leading)
-                Text("Elapsed").frame(width: 70, alignment: .leading)
-                Text("Active").frame(width: 70, alignment: .leading)
-                Text("Active Pace").frame(width: 90, alignment: .leading)
-                Text("Elapsed Pace").frame(width: 90, alignment: .leading)
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(palette.tertiaryText)
-
-            ForEach(model.splits) { split in
-                HStack {
-                    Text("\(split.index)").frame(width: 50, alignment: .leading)
-                    Text(split.distance).frame(width: 80, alignment: .leading)
-                    Text(split.elapsed).frame(width: 70, alignment: .leading)
-                    Text(split.active).frame(width: 70, alignment: .leading)
-                    Text(split.activePace).frame(width: 90, alignment: .leading)
-                    Text(split.elapsedPace).frame(width: 90, alignment: .leading)
+            // Columns size to the widest cell, so translated headers never
+            // truncate inside widths sized for Latin text.
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: AppDesign.Spacing.medium) {
+                GridRow {
+                    Text(labels.split)
+                    Text(labels.distance)
+                    Text(labels.elapsed)
+                    Text(labels.active)
+                    Text(labels.activePace)
+                    Text(labels.elapsedPace)
                 }
-                .font(.system(size: presentation.includesMap ? 12 : 14, design: .rounded).monospacedDigit())
-                .foregroundStyle(palette.primaryText)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(palette.tertiaryText)
+
+                ForEach(model.splits) { split in
+                    GridRow {
+                        Text(verbatim: String(split.index))
+                        Text(split.distance)
+                        Text(split.elapsed)
+                        Text(split.active)
+                        Text(split.activePace)
+                        Text(split.elapsedPace)
+                    }
+                    .font(.system(size: presentation.includesMap ? 12 : 14, design: .rounded).monospacedDigit())
+                    .foregroundStyle(palette.primaryText)
+                }
             }
+            .lineLimit(1)
         }
     }
 
@@ -358,6 +375,7 @@ struct ExportMetricTile: View {
                     .font(.system(size: 12))
                     .foregroundStyle(palette.tertiaryText)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
 
             Text(value)
@@ -375,3 +393,76 @@ struct ExportMetricTile: View {
 
 /// Back-compat alias used by older tests/code that referenced MetricTile.
 typealias MetricTile = ExportMetricTile
+
+/// Every fixed label on the summary card, resolved once in the card's
+/// language. `nil` follows the app; a pinned locale renders the same card in
+/// the app and in tests.
+struct ExportSummaryCardLabels {
+    let summary: String
+    let keySegments: String
+    let splits: String
+    let split: String
+    let distance: String
+    let elapsed: String
+    let active: String
+    let movingEstimated: String
+    let paused: String
+    let activePace: String
+    let movingPaceEstimated: String
+    let elapsedPace: String
+    let correctedGain: String
+    let correctedLoss: String
+    let averageHeartRate: String
+    let maximumHeartRate: String
+    let dataPoints: String
+    let median: String
+    let noData: String
+    private let locale: Locale?
+
+    init(locale: Locale?) {
+        self.locale = locale
+        func localized(_ keyAndValue: String.LocalizationValue) -> String {
+            studioLocalized(keyAndValue, locale: locale)
+        }
+        summary = localized("Summary")
+        keySegments = localized("Key Segments")
+        splits = localized("Splits")
+        split = localized("Split")
+        distance = localized("Distance")
+        elapsed = localized("Elapsed")
+        active = localized("Active")
+        movingEstimated = localized("Moving (est.)")
+        // "Paused" is also a state elsewhere in the app; here it is a duration.
+        paused = String(localized: LocalizedStringResource(
+            "summary_card.paused_time",
+            defaultValue: "Paused",
+            locale: locale ?? .current,
+            bundle: .atURL(StudioLocalization.bundle.bundleURL),
+            comment: "Card tile: the run's total paused time"
+        ))
+        activePace = localized("Active Pace")
+        movingPaceEstimated = localized("Moving Pace (est.)")
+        elapsedPace = localized("Elapsed Pace")
+        correctedGain = localized("Corrected Gain")
+        correctedLoss = localized("Corrected Loss")
+        averageHeartRate = localized("Avg HR")
+        maximumHeartRate = localized("Max HR")
+        dataPoints = localized("Data Points")
+        median = localized("Median")
+        noData = localized("No data")
+    }
+
+    /// The route legend's heading for a colour mode.
+    func legendTitle(modeName: String) -> String {
+        studioLocalized("\(modeName) — Relative to this workout", locale: locale)
+    }
+
+    /// Every label, for checks that the card is fully translated.
+    var all: [String] {
+        [
+            summary, keySegments, splits, split, distance, elapsed, active, movingEstimated, paused,
+            activePace, movingPaceEstimated, elapsedPace, correctedGain, correctedLoss,
+            averageHeartRate, maximumHeartRate, dataPoints, median, noData,
+        ]
+    }
+}

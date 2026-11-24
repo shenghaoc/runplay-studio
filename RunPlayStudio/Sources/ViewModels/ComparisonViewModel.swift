@@ -245,7 +245,7 @@ final class ComparisonViewModel: ObservableObject {
                 await MainActor.run {
                     guard let self, self.requestGeneration == generation else { return }
                     if Task.isCancelled { return }
-                    self.routeAlignmentLoadState = .failed("Route alignment could not be completed.")
+                    self.routeAlignmentLoadState = .failed(studioLocalized("Route alignment could not be completed."))
                     self.announcementPolicy.handle(.routeAlignmentUnavailable)
                     self.lastAnnouncement = AccessibilityAnnouncementEvent.routeAlignmentUnavailable.message
                 }

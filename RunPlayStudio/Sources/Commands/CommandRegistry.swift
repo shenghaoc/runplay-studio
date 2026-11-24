@@ -13,12 +13,12 @@ enum CommandWorkspace: String, CaseIterable, Sendable, Equatable {
 
     var displayName: String {
         switch self {
-        case .any: return "Any"
-        case .workout: return "Workout"
-        case .library: return "All Runs"
-        case .heatmap: return "Personal Heatmap"
-        case .comparison: return "Comparison"
-        case .sheet: return "Sheet"
+        case .any: return studioLocalized("Any")
+        case .workout: return studioLocalized("Workout")
+        case .library: return studioLocalized("All Runs")
+        case .heatmap: return studioLocalized("Personal Heatmap")
+        case .comparison: return studioLocalized("Comparison")
+        case .sheet: return studioLocalized("Sheet")
         }
     }
 }
@@ -80,14 +80,42 @@ struct CommandDefinition: Equatable, Sendable, Identifiable {
     /// owns focus (documented in purpose); it is not a global menu shortcut.
     let localOnly: Bool
 
+    /// Titles and descriptions are catalog keys, not display text: a literal
+    /// passed here is extracted by the catalog check, and a plain `String`
+    /// cannot be passed at all, so a command can no longer ship in English only.
+    init(
+        id: CommandID,
+        menuTitle: String.LocalizationValue,
+        menu: String,
+        keyEquivalent: String,
+        modifiers: EventModifiers,
+        workspace: CommandWorkspace,
+        purpose: String.LocalizationValue,
+        accessibilityDescription: String.LocalizationValue,
+        localOnly: Bool
+    ) {
+        self.id = id
+        self.menuTitle = studioLocalized(menuTitle)
+        self.menu = menu
+        self.keyEquivalent = keyEquivalent
+        self.modifiers = modifiers
+        self.workspace = workspace
+        self.purpose = studioLocalized(purpose)
+        self.accessibilityDescription = studioLocalized(accessibilityDescription)
+        self.localOnly = localOnly
+    }
+
     var displayShortcut: String {
         if keyEquivalent.isEmpty {
-            return "Menu"
+            return studioLocalized("Menu")
         }
+        // `keyEquivalent` stays the stable key name; only its display is localized.
+        let key = keyEquivalent == "Space" ? studioLocalized("Space") : keyEquivalent
+        let shortcut = "\(modifierSymbols)\(key)"
         if localOnly {
-            return "\(modifierSymbols)\(keyEquivalent) (when focused)"
+            return studioLocalized("\(shortcut) (when focused)")
         }
-        return "\(modifierSymbols)\(keyEquivalent)"
+        return shortcut
     }
 
     /// Menu-bar shortcut for a single ASCII letter or digit key equivalent.

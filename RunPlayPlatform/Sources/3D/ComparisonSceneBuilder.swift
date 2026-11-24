@@ -351,7 +351,7 @@ public class ComparisonSceneBuilder {
         let legendZ = CGFloat(comparisonScene.center.z)
 
         // Primary route label
-        let primaryLabel = createTextSprite("Primary", color: primaryRouteColor, fontSize: 2.5)
+        let primaryLabel = createTextSprite(platformLocalized("Primary"), color: primaryRouteColor, fontSize: 2.5)
         primaryLabel.position = SCNVector3(legendX, legendY, legendZ)
         parent.addChildNode(primaryLabel)
 
@@ -364,7 +364,7 @@ public class ComparisonSceneBuilder {
         parent.addChildNode(primarySwatchNode)
 
         // Comparison route label
-        let compLabel = createTextSprite("Comparison", color: comparisonRouteColor, fontSize: 2.5)
+        let compLabel = createTextSprite(platformLocalized("Comparison"), color: comparisonRouteColor, fontSize: 2.5)
         compLabel.position = SCNVector3(legendX, legendY - 8, legendZ)
         parent.addChildNode(compLabel)
 

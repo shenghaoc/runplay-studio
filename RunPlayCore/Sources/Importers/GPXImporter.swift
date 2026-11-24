@@ -27,7 +27,7 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         return try importWorkout(
             data: input.data,
             suggestedName: input.suggestedName.isEmpty
-                ? "Imported Run"
+                ? coreLocalized("Imported Run")
                 : (input.suggestedName as NSString).deletingPathExtension
         )
     }
@@ -49,7 +49,7 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         let rawSegments = parsed.segments
         let allRawPoints = rawSegments.flatMap(\.points)
         guard !allRawPoints.isEmpty else {
-            throw WorkoutImportError.missingData("No GPS route data found in this GPX file")
+            throw WorkoutImportError.missingData(coreLocalized("No GPS route data found in this GPX file"))
         }
         var invalidCoordinatePointCount = 0
         for point in allRawPoints {
@@ -96,13 +96,13 @@ public struct GPXImporter: WorkoutImporting, @unchecked Sendable {
         }
 
         guard !routePoints.isEmpty else {
-            throw WorkoutImportError.missingData("No valid coordinates found in GPX file")
+            throw WorkoutImportError.missingData(coreLocalized("No valid coordinates found in GPX file"))
         }
 
         // Resolve timestamps globally (segments may share a continuous timeline).
         guard let resolvedTimestamps = RouteTimestampResolver.resolve(rawTimestamps),
               let startDate = resolvedTimestamps.first else {
-            throw WorkoutImportError.missingData("GPX file has no timestamps; cannot compute pace or duration")
+            throw WorkoutImportError.missingData(coreLocalized("GPX file has no timestamps; cannot compute pace or duration"))
         }
 
         // Apply resolved timestamps and compute elapsed.
@@ -211,7 +211,7 @@ private class GPXXMLParser: NSObject, XMLParserDelegate {
             throw limitError
         }
         guard parsed else {
-            throw WorkoutImportError.parsingError("This GPX file could not be read. Try re-exporting it.")
+            throw WorkoutImportError.parsingError(coreLocalized("This GPX file could not be read. Try re-exporting it."))
         }
 
         return segments

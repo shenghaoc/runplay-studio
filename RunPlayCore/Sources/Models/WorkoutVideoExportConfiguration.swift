@@ -7,7 +7,7 @@ public enum WorkoutVideoDuration: Int, CaseIterable, Codable, Hashable, Sendable
     case sixtySeconds = 60
 
     public var displayName: String {
-        "\(rawValue) seconds"
+        coreLocalized("\(rawValue) seconds")
     }
 
     public var seconds: Int { rawValue }
@@ -92,24 +92,24 @@ public struct WorkoutVideoExportPolicy: Hashable, Sendable {
     /// Validates dimensions, frame rate, bitrate, and even-dimension H.264 rules.
     public func validate() throws {
         guard width > 0, height > 0 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Video dimensions must be positive")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Video dimensions must be positive"))
         }
         guard width % 2 == 0, height % 2 == 0 else {
             throw WorkoutVideoExportError.invalidConfiguration(
-                "H.264 dimensions must be even (\(width)×\(height))"
+                coreLocalized("H.264 dimensions must be even (\(width)×\(height))")
             )
         }
         guard framesPerSecond > 0, framesPerSecond <= 60 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Frame rate must be in 1...60")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Frame rate must be in 1...60"))
         }
         guard averageBitRate > 0 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Average bit rate must be positive")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Average bit rate must be positive"))
         }
         guard maximumFrameCount >= 2 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Maximum frame count must be at least 2")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Maximum frame count must be at least 2"))
         }
         guard progressUpdateStride >= 1 else {
-            throw WorkoutVideoExportError.invalidConfiguration("Progress update stride must be at least 1")
+            throw WorkoutVideoExportError.invalidConfiguration(coreLocalized("Progress update stride must be at least 1"))
         }
     }
 
@@ -139,17 +139,17 @@ public enum WorkoutVideoExportPhase: String, Hashable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .idle: return "Idle"
-        case .preparingRoute: return "Preparing route"
-        case .loadingMap: return "Loading map"
-        case .renderingPoster: return "Rendering preview"
-        case .awaitingDestination: return "Choose destination"
-        case .encoding: return "Encoding video"
-        case .cancelling: return "Cancelling"
-        case .finalizing: return "Finalizing"
-        case .completed: return "Completed"
-        case .cancelled: return "Cancelled"
-        case .failed: return "Failed"
+        case .idle: return coreLocalized("Idle")
+        case .preparingRoute: return coreLocalized("Preparing route")
+        case .loadingMap: return coreLocalized("Loading map")
+        case .renderingPoster: return coreLocalized("Rendering preview")
+        case .awaitingDestination: return coreLocalized("Choose destination")
+        case .encoding: return coreLocalized("Encoding video")
+        case .cancelling: return coreLocalized("Cancelling")
+        case .finalizing: return coreLocalized("Finalizing")
+        case .completed: return coreLocalized("Completed")
+        case .cancelled: return coreLocalized("Cancelled")
+        case .failed: return coreLocalized("Failed")
         }
     }
 }
@@ -202,35 +202,35 @@ public enum WorkoutVideoExportError: Error, LocalizedError, Sendable, Equatable 
     public var errorDescription: String? {
         switch self {
         case .noPlayableTimeline:
-            return "This workout has no playable elapsed timeline for video export."
+            return coreLocalized("This workout has no playable elapsed timeline for video export.")
         case .noUsableRoute:
-            return "This workout has no usable GPS route for video export."
+            return coreLocalized("This workout has no usable GPS route for video export.")
         case .invalidConfiguration(let detail):
-            return "Invalid video configuration: \(detail)"
+            return coreLocalized("Invalid video configuration: \(detail)")
         case .mapPreparationFailed(let detail):
-            return "Map preparation failed: \(detail)"
+            return coreLocalized("Map preparation failed: \(detail)")
         case .writerCreationFailed:
-            return "Could not create the video writer."
+            return coreLocalized("Could not create the video writer.")
         case .cannotAddVideoInput:
-            return "Could not add a video track to the export."
+            return coreLocalized("Could not add a video track to the export.")
         case .cannotStartWriting:
-            return "Could not start writing the video."
+            return coreLocalized("Could not start writing the video.")
         case .pixelBufferAllocationFailed:
-            return "Could not allocate a video frame buffer."
+            return coreLocalized("Could not allocate a video frame buffer.")
         case .frameRenderingFailed:
-            return "Could not render a video frame."
+            return coreLocalized("Could not render a video frame.")
         case .frameAppendFailed(let index, _):
             return index >= 0
-                ? "Could not write frame \(index + 1)."
-                : "Could not write a video frame."
+                ? coreLocalized("Could not write frame \(index + 1).")
+                : coreLocalized("Could not write a video frame.")
         case .finalizationFailed:
-            return "Could not finalize the video."
+            return coreLocalized("Could not finalize the video.")
         case .validationFailed(let detail):
-            return "Exported video failed validation: \(detail)"
+            return coreLocalized("Exported video failed validation: \(detail)")
         case .destinationWriteFailed:
-            return "Could not save the video. Check that the destination is writable and has enough free space."
+            return coreLocalized("Could not save the video. Check that the destination is writable and has enough free space.")
         case .cancelled:
-            return "Video export cancelled."
+            return coreLocalized("Video export cancelled.")
         }
     }
 

@@ -246,7 +246,7 @@ public struct FITBinaryReader {
     ) throws -> [FITFieldValue] {
         let elementSize = baseType == .string ? fieldSize : baseType.byteSize
         guard elementSize > 0 else {
-            throw FITError.corruptedData("Zero element size for base type")
+            throw FITError.corruptedData(coreLocalized("Zero element size for base type"))
         }
 
         if baseType == .string || baseType == .byte {

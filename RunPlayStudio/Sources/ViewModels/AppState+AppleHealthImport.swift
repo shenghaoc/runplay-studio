@@ -50,7 +50,7 @@ extension AppState {
               fitSessionImportSession == nil
         else { return }
         guard let scanService = appleHealthArchiveService, storeActor != nil else {
-            errorMessage = "Apple Health import is unavailable in this session."
+            errorMessage = studioLocalized("Apple Health import is unavailable in this session.")
             showingError = true
             return
         }
@@ -163,7 +163,7 @@ extension AppState {
                     importedCount: report.addedWorkoutCount,
                     errorMessage: report.errorMessage,
                     completedName: completedName,
-                    commitFailedFallback: "Could not save the imported workouts.",
+                    commitFailedFallback: studioLocalized("Could not save the imported workouts."),
                     storeActor: storeActor,
                     applyReport: { message in
                         session.report = report

@@ -115,7 +115,9 @@ final class AccessibilitySummaryTests: XCTestCase {
         XCTAssertFalse(model.series.missingData)
         XCTAssertEqual(model.series.minimum, 290)
         XCTAssertEqual(model.series.maximum, 310)
-        XCTAssertTrue(model.spokenSummary.contains("recording gaps"))
+        // One gap: the catalog says "1 recording gap breaks the series." on
+        // Darwin; Linux has no catalog and keeps the plural English key.
+        XCTAssertTrue(model.spokenSummary.contains("recording gap"))
         XCTAssertTrue(model.spokenSummary.contains("Average"))
     }
 

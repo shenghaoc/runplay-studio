@@ -412,7 +412,7 @@ class AppState: ObservableObject {
             policy: policy
         )
         coordinator.importExecutor = { [weak self] url, configuration in
-            guard let self else { return .failed("AppState unavailable.") }
+            guard let self else { return .failed(studioLocalized("AppState unavailable.")) }
             return await self.performWatchFolderImport(
                 from: url,
                 configuration: configuration
@@ -839,7 +839,7 @@ class AppState: ObservableObject {
         if workouts.count > initialCount {
             selectWorkout(workouts[initialCount], persistSelection: false)
         } else if errorMessage == nil {
-            errorMessage = "Bundled demo workouts are unavailable. You can still import a GPX, TCX, FIT, or JSON file."
+            errorMessage = studioLocalized("Bundled demo workouts are unavailable. You can still import a GPX, TCX, FIT, or JSON file.")
             showingError = true
         }
     }
@@ -933,8 +933,9 @@ class AppState: ObservableObject {
                 .importFailed(message: errorMessage ?? error.localizedDescription)
             )
         } catch {
-            errorMessage = "Imported but could not save to your library. "
-                + "Check available storage and app permissions. Details: \(error.localizedDescription)"
+            errorMessage = studioLocalized(
+                "Imported but could not save to your library. Check available storage and app permissions. Details: \(error.localizedDescription)"
+            )
             showingError = true
             announcementPolicy.handle(
                 .importFailed(message: errorMessage ?? error.localizedDescription)
@@ -948,12 +949,12 @@ class AppState: ObservableObject {
         }
         switch error {
         case .unsupportedFormat(let ext):
-            return "'\(filename)' uses the .\(ext) format, which isn't supported. Import a GPX, TCX, FIT, or JSON file instead."
+            return studioLocalized("'\(filename)' uses the .\(ext) format, which isn't supported. Import a GPX, TCX, FIT, or JSON file instead.")
         case .fileNotFound:
-            return "Couldn't find the selected file. Try importing again."
+            return studioLocalized("Couldn't find the selected file. Try importing again.")
         case .parsingError, .missingData, .invalidFormat:
             // Unreachable: handled by the shared helper above.
-            return "'\(filename)' could not be imported."
+            return studioLocalized("'\(filename)' could not be imported.")
         }
     }
 
@@ -971,11 +972,11 @@ class AppState: ObservableObject {
     ) -> String? {
         switch error {
         case .parsingError(let detail):
-            return "'\(filename)' couldn't be parsed. \(detail)"
+            return studioLocalized("'\(filename)' couldn't be parsed. \(detail)")
         case .missingData(let detail):
-            return "'\(filename)' is missing required data. \(detail)"
+            return studioLocalized("'\(filename)' is missing required data. \(detail)")
         case .invalidFormat(let detail):
-            return "'\(filename)' has an invalid format. \(detail)"
+            return studioLocalized("'\(filename)' has an invalid format. \(detail)")
         case .unsupportedFormat, .fileNotFound:
             return nil
         }
@@ -1051,7 +1052,7 @@ class AppState: ObservableObject {
                 } catch is CancellationError {
                     // A newer selection superseded this one.
                 } catch {
-                    self?.errorMessage = "Selection changed, but could not be saved: \(error.localizedDescription)"
+                    self?.errorMessage = studioLocalized("Selection changed, but could not be saved: \(error.localizedDescription)")
                     self?.showingError = true
                 }
             }
@@ -1118,7 +1119,7 @@ class AppState: ObservableObject {
                 showingError = true
             } catch let deleteError {
                 // Manifest transaction failed. No changes were made.
-                errorMessage = "Could not delete workout; no changes were made: \(deleteError.localizedDescription)"
+                errorMessage = studioLocalized("Could not delete workout; no changes were made: \(deleteError.localizedDescription)")
                 showingError = true
             }
         } else {
@@ -1487,7 +1488,11 @@ class AppState: ObservableObject {
                     assignments: result.assignments
                 )
                 self?.routeGroupsViewModel.reclusterFinished(summary: String(
-                    format: String(localized: "route_group.recluster.summary", defaultValue: "%d runs on %d routes"),
+                    format: String(
+                        localized: "route_group.recluster.summary",
+                        defaultValue: "%d runs on %d routes",
+                        bundle: .module
+                    ),
                     result.workoutCount,
                     result.groups.count
                 ))
@@ -1497,7 +1502,7 @@ class AppState: ObservableObject {
                 self?.routeGroupsViewModel.reclusterFinished(summary: nil)
             } catch {
                 self?.routeGroupsViewModel.reclusterFinished(summary: nil)
-                self?.errorMessage = "Could not re-cluster routes; the previous routes are unchanged: \(error.localizedDescription)"
+                self?.errorMessage = studioLocalized("Could not re-cluster routes; the previous routes are unchanged: \(error.localizedDescription)")
                 self?.showingError = true
             }
             self?.routeGroupReclusterTask = nil
@@ -1738,23 +1743,21 @@ class AppState: ObservableObject {
     static func personalRecordsBackfillFailureMessage(
         _ result: WorkoutLibraryStoreActor.PersonalRecordsBackfillResult
     ) -> String? {
+        // Each sentence is localized whole, terminal punctuation included, so
+        // a translation controls its own full stop.
         var clauses: [String] = []
         if result.failedCount > 0 {
             clauses.append(
-                result.failedCount == 1
-                    ? "1 run could not be analyzed; it will be retried the next time you open Records"
-                    : "\(result.failedCount) runs could not be analyzed; they will be retried the next time you open Records"
+                studioLocalized("\(result.failedCount) runs could not be analyzed; they will be retried the next time you open Records.")
             )
         }
         if result.saveFailureCount > 0 {
             clauses.append(
-                result.saveFailureCount == 1
-                    ? "1 run was analyzed but could not be saved; it will be recomputed on the next launch"
-                    : "\(result.saveFailureCount) runs were analyzed but could not be saved; they will be recomputed on the next launch"
+                studioLocalized("\(result.saveFailureCount) runs were analyzed but could not be saved; they will be recomputed on the next launch.")
             )
         }
         guard !clauses.isEmpty else { return nil }
-        return clauses.joined(separator: ". ") + "."
+        return clauses.joined(separator: " ")
     }
 
     /// Cancel the active records backfill (Records-view Cancel button).
@@ -1782,7 +1785,11 @@ class AppState: ObservableObject {
             favoriteIDs: favoriteWorkoutIDs,
             organization: currentOrganizationSnapshot()
         )
-        let bounds = WorkoutTrendsAggregator.periodBounds(for: key, timeZone: .current)
+        let bounds = WorkoutTrendsAggregator.periodBounds(
+            for: key,
+            timeZone: .current,
+            weekConvention: trends.weekConvention
+        )
         workoutLibrary.applyTrendsPeriodFilter(start: bounds.start, end: bounds.end)
         requestSessionSave()
     }
@@ -1882,13 +1889,13 @@ class AppState: ObservableObject {
         _ result: WorkoutLibraryStoreActor.TrainingLoadBackfillResult
     ) -> String? {
         if result.failedCount > 0 && result.saveFailureCount > 0 {
-            return "Training load could not be computed for \(result.failedCount) run(s) and could not be saved for \(result.saveFailureCount) run(s). They will be retried next time Trends opens."
+            return studioLocalized("Training load could not be computed for \(result.failedCount) runs and could not be saved for \(result.saveFailureCount) runs. They will be retried next time Trends opens.")
         }
         if result.failedCount > 0 {
-            return "Training load could not be computed for \(result.failedCount) run(s). They will be retried next time Trends opens."
+            return studioLocalized("Training load could not be computed for \(result.failedCount) runs. They will be retried next time Trends opens.")
         }
         if result.saveFailureCount > 0 {
-            return "Training load could not be saved for \(result.saveFailureCount) run(s). They will be retried next time Trends opens."
+            return studioLocalized("Training load could not be saved for \(result.saveFailureCount) runs. They will be retried next time Trends opens.")
         }
         return nil
     }
@@ -1971,7 +1978,7 @@ class AppState: ObservableObject {
             do {
                 try profileStore.save(profile)
             } catch {
-                errorMessage = "Athlete profile could not be saved: \(error.localizedDescription)"
+                errorMessage = studioLocalized("Athlete profile could not be saved: \(error.localizedDescription)")
                 showingError = true
             }
         }
@@ -2008,7 +2015,7 @@ class AppState: ObservableObject {
     @discardableResult
     func setFavorite(_ isFavorite: Bool, workoutID: UUID) async -> Bool {
         guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
-            errorMessage = "Favourites apply to imported library workouts, not bundled demos."
+            errorMessage = studioLocalized("Favourites apply to imported library workouts, not bundled demos.")
             showingError = true
             return false
         }
@@ -2016,7 +2023,7 @@ class AppState: ObservableObject {
             return false
         }
         guard canFavorite(workout) else {
-            errorMessage = "Favourites apply to imported library workouts, not bundled demos."
+            errorMessage = studioLocalized("Favourites apply to imported library workouts, not bundled demos.")
             showingError = true
             return false
         }
@@ -2031,7 +2038,7 @@ class AppState: ObservableObject {
             requestSessionSave()
             return true
         } catch {
-            errorMessage = "Could not update favourite: \(error.localizedDescription)"
+            errorMessage = studioLocalized("Could not update favourite: \(error.localizedDescription)")
             showingError = true
             return false
         }
@@ -2053,7 +2060,7 @@ class AppState: ObservableObject {
     func createTag(name: String, color: WorkoutTagColor) async -> WorkoutTag? {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Tags require a saved local library."
+            organizationEditError = studioLocalized("Tags require a saved local library.")
             return nil
         }
         do {
@@ -2073,7 +2080,7 @@ class AppState: ObservableObject {
     func updateTag(id: UUID, name: String, color: WorkoutTagColor) async -> WorkoutTag? {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Tags require a saved local library."
+            organizationEditError = studioLocalized("Tags require a saved local library.")
             return nil
         }
         do {
@@ -2095,7 +2102,7 @@ class AppState: ObservableObject {
     func deleteTag(id: UUID) async -> Bool {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Tags require a saved local library."
+            organizationEditError = studioLocalized("Tags require a saved local library.")
             return false
         }
         do {
@@ -2156,7 +2163,7 @@ class AppState: ObservableObject {
     func setTags(_ tagIDs: Set<UUID>, forWorkoutID workoutID: UUID) async -> Bool {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
-            organizationEditError = "Tags apply to imported library workouts, not bundled demos."
+            organizationEditError = studioLocalized("Tags apply to imported library workouts, not bundled demos.")
             return false
         }
         do {
@@ -2179,12 +2186,12 @@ class AppState: ObservableObject {
     ) async -> Bool {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Tags require a saved local library."
+            organizationEditError = studioLocalized("Tags require a saved local library.")
             return false
         }
         let valid = workoutIDs.intersection(libraryWorkoutIDs)
         guard !valid.isEmpty else {
-            organizationEditError = "Select imported library workouts to edit tags."
+            organizationEditError = studioLocalized("Select imported library workouts to edit tags.")
             return false
         }
         do {
@@ -2214,7 +2221,7 @@ class AppState: ObservableObject {
     func createSmartCollection(name: String, query: WorkoutLibrarySavedQuery) async -> WorkoutSmartCollection? {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Smart collections require a saved local library."
+            organizationEditError = studioLocalized("Smart collections require a saved local library.")
             return nil
         }
         do {
@@ -2238,7 +2245,7 @@ class AppState: ObservableObject {
     ) async -> WorkoutSmartCollection? {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Smart collections require a saved local library."
+            organizationEditError = studioLocalized("Smart collections require a saved local library.")
             return nil
         }
         do {
@@ -2267,7 +2274,7 @@ class AppState: ObservableObject {
     func deleteSmartCollection(id: UUID) async -> Bool {
         organizationEditError = nil
         guard let storeActor, hasPersistedLibrary else {
-            organizationEditError = "Smart collections require a saved local library."
+            organizationEditError = studioLocalized("Smart collections require a saved local library.")
             return false
         }
         do {
@@ -2341,11 +2348,11 @@ class AppState: ObservableObject {
     ) async -> Bool {
         metadataEditError = nil
         guard let storeActor, hasPersistedLibrary, libraryWorkoutIDs.contains(workoutID) else {
-            metadataEditError = "Details can only be edited for imported library workouts."
+            metadataEditError = studioLocalized("Details can only be edited for imported library workouts.")
             return false
         }
         guard workouts.contains(where: { $0.id == workoutID }) else {
-            metadataEditError = "Workout is not in the library."
+            metadataEditError = studioLocalized("Workout is not in the library.")
             return false
         }
         do {
@@ -2386,13 +2393,13 @@ class AppState: ObservableObject {
         guard selectedWorkout != nil else {
             comparisonWorkout = nil
             workspaceMode = .workout
-            comparisonSelectionMessage = "Select a primary run first."
+            comparisonSelectionMessage = studioLocalized("Select a primary run first.")
             return
         }
         guard canCompare(workout) else {
             comparisonWorkout = nil
             workspaceMode = .workout
-            comparisonSelectionMessage = "Choose a different run to compare."
+            comparisonSelectionMessage = studioLocalized("Choose a different run to compare.")
             return
         }
         // SwiftUI pickers may write their already-selected value while

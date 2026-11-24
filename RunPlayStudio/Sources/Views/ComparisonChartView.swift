@@ -8,6 +8,31 @@ import Charts
 /// Uses semantic colors from the design system for primary/comparison routes.
 /// Route-Aware series are split per alignment block so gaps are not bridged.
 struct ComparisonChartView: View {
+    /// Column heading for the selected (primary) run's values — not the
+    /// "Selected" count shown in the import sheets.
+    static var selectedRunColumnTitle: String { selectedRunColumnTitle(locale: nil) }
+
+    /// The heading in `locale`'s language (tests and layout measurement).
+    static func selectedRunColumnTitle(locale: Locale?) -> String {
+        guard let locale else {
+            return String(
+                localized: "comparison.column.selected_run",
+                defaultValue: "Selected",
+                bundle: .module,
+                comment: "Column heading: values of the selected (primary) run in a comparison"
+            )
+        }
+        return String(
+            localized: LocalizedStringResource(
+                "comparison.column.selected_run",
+                defaultValue: "Selected",
+                locale: locale,
+                bundle: .atURL(StudioLocalization.bundle.bundleURL),
+                comment: "Column heading: values of the selected (primary) run in a comparison"
+            )
+        )
+    }
+
     let metrics: [ComparisonMetricPoint]
     let alignedMetrics: [AlignedComparisonMetricPoint]
     let alignmentMode: ComparisonAlignmentMode
@@ -124,7 +149,7 @@ struct ComparisonChartView: View {
             AxisMarks(values: .automatic(desiredCount: 6)) { value in
                 AxisValueLabel {
                     if let km = value.as(Double.self) {
-                        Text(String(format: "%.1f km", km))
+                        Text(DisplayFormatter.formatKilometers(km * 1_000, fractionDigits: 1))
                     }
                 }
                 AxisGridLine()
@@ -185,15 +210,15 @@ struct ComparisonChartView: View {
                 seriesIDs.append(metric.blockIndex)
             }
             return ChartAccessibilityModel.make(
-                metricName: "Active Pace Over Matched Route",
+                metricName: studioLocalized("Active Pace Over Matched Route"),
                 unit: "s/km",
                 values: paces,
                 seriesIDs: seriesIDs,
                 currentValue: nil,
                 totalDistanceMeters: alignedMetrics.last?.alignedProgressMeters ?? 0
             ).updatingTitles(
-                title: "Active Pace Over Matched Route",
-                xAxisTitle: "Matched route",
+                title: studioLocalized("Active Pace Over Matched Route"),
+                xAxisTitle: studioLocalized("Matched route"),
                 xAxisUnit: "km"
             )
         }
@@ -205,7 +230,7 @@ struct ComparisonChartView: View {
             if let c = metric.comparisonPace { paces.append(c) }
         }
         return ChartAccessibilityModel.make(
-            metricName: "Active Pace",
+            metricName: studioLocalized("Active Pace"),
             unit: "s/km",
             values: paces,
             seriesIDs: [0],
@@ -279,14 +304,17 @@ struct SplitComparisonTableView: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 60)
             } else {
+                // Sized to the headers and values in the active language: widths
+                // picked for English cut the last column in the pane beside the map.
+                let widths = Self.columnWidths(for: splits)
                 Table(splits) {
                     TableColumn("km") { split in
                         Text("\(split.splitIndex)")
                             .monospacedDigit()
                     }
-                    .width(35)
+                    .width(min: widths.index, ideal: widths.index)
 
-                    TableColumn("Selected") { split in
+                    TableColumn(ComparisonChartView.selectedRunColumnTitle) { split in
                         if let s = split.primarySplit {
                             Text(s.formattedPace)
                                 .monospacedDigit()
@@ -296,7 +324,7 @@ struct SplitComparisonTableView: View {
                                 .foregroundStyle(.quaternary)
                         }
                     }
-                    .width(90)
+                    .width(min: widths.selected, ideal: widths.selected)
 
                     TableColumn("Comparison") { split in
                         if let s = split.comparisonSplit {
@@ -308,7 +336,7 @@ struct SplitComparisonTableView: View {
                                 .foregroundStyle(.quaternary)
                         }
                     }
-                    .width(110)
+                    .width(min: widths.comparison, ideal: widths.comparison)
 
                     TableColumn("Δ") { split in
                         HStack(spacing: AppDesign.Spacing.xxSmall) {
@@ -324,10 +352,57 @@ struct SplitComparisonTableView: View {
                             "Active pace difference \(split.formattedPaceDelta); \(split.winner.label)"
                         )
                     }
-                    .width(110)
+                    .width(min: widths.delta, ideal: widths.delta)
                 }
             }
         }
+    }
+
+    /// The four columns' widths for these splits. The delta column also holds
+    /// the winner icon and its spacing.
+    struct ColumnWidths: Equatable {
+        let index: CGFloat
+        let selected: CGFloat
+        let comparison: CGFloat
+        let delta: CGFloat
+
+        /// Width an inset-style table needs at these widths (17 pt between
+        /// columns, 16 pt at each edge).
+        var tableWidth: CGFloat { index + selected + comparison + delta + 17 * 3 + 32 }
+    }
+
+    static func columnWidths(for splits: [SplitComparison], locale: Locale? = nil) -> ColumnWidths {
+        columnWidths(
+            indexCells: splits.map { "\($0.splitIndex)" },
+            selectedCells: splits.compactMap { $0.primarySplit?.formattedPace },
+            comparisonCells: splits.compactMap { $0.comparisonSplit?.formattedPace },
+            deltaCells: splits.map {
+                DisplayFormatter.formatSignedDurationDelta(
+                    $0.paceDeltaSecondsPerKm,
+                    suffix: DisplayFormatter.perKilometerSuffix(locale: locale),
+                    locale: locale
+                )
+            },
+            locale: locale
+        )
+    }
+
+    /// The same measurement from the cell texts, so a test can supply a
+    /// language's strings.
+    static func columnWidths(
+        indexCells: [String], selectedCells: [String], comparisonCells: [String], deltaCells: [String],
+        locale: Locale? = nil
+    ) -> ColumnWidths {
+        ColumnWidths(
+            index: TextMeasure.columnWidth(header: studioLocalized("km", locale: locale), cells: indexCells),
+            selected: TextMeasure.columnWidth(
+                header: ComparisonChartView.selectedRunColumnTitle(locale: locale), cells: selectedCells
+            ),
+            comparison: TextMeasure.columnWidth(
+                header: studioLocalized("Comparison", locale: locale), cells: comparisonCells
+            ),
+            delta: TextMeasure.columnWidth(header: "Δ", cells: deltaCells, accessory: 20)
+        )
     }
 
     private func deltaColor(_ delta: Double?) -> Color {
@@ -368,14 +443,15 @@ struct RecordedLapComparisonTableView: View {
                     .font(AppDesign.Typography.secondary)
                     .foregroundStyle(.tertiary)
             } else {
+                let widths = Self.columnWidths(for: comparisons)
                 Table(comparisons) {
                     TableColumn("Lap") { row in
                         Text("\(row.lapIndex)")
                             .monospacedDigit()
                     }
-                    .width(40)
+                    .width(min: widths.lap, ideal: widths.lap)
 
-                    TableColumn("Selected") { row in
+                    TableColumn(ComparisonChartView.selectedRunColumnTitle) { row in
                         if let lap = row.primaryLap {
                             Text(lap.formattedActivePace)
                                 .monospacedDigit()
@@ -385,7 +461,7 @@ struct RecordedLapComparisonTableView: View {
                                 .foregroundStyle(.quaternary)
                         }
                     }
-                    .width(90)
+                    .width(min: widths.selected, ideal: widths.selected)
 
                     TableColumn("Comparison") { row in
                         if let lap = row.comparisonLap {
@@ -397,18 +473,47 @@ struct RecordedLapComparisonTableView: View {
                                 .foregroundStyle(.quaternary)
                         }
                     }
-                    .width(110)
+                    .width(min: widths.comparison, ideal: widths.comparison)
 
                     TableColumn("Δ Active") { row in
                         Text(row.formattedActivePaceDelta)
                             .monospacedDigit()
                             .foregroundStyle(AppDesign.deltaColor(row.activePaceDeltaSecondsPerKm, threshold: 5))
                     }
-                    .width(100)
+                    .width(min: widths.delta, ideal: widths.delta)
                 }
                 .frame(minHeight: 120)
             }
         }
+    }
+
+    struct ColumnWidths: Equatable {
+        let lap: CGFloat
+        let selected: CGFloat
+        let comparison: CGFloat
+        let delta: CGFloat
+
+        var tableWidth: CGFloat { lap + selected + comparison + delta + 17 * 3 + 32 }
+    }
+
+    static func columnWidths(for comparisons: [RecordedLapComparison], locale: Locale? = nil) -> ColumnWidths {
+        ColumnWidths(
+            lap: TextMeasure.columnWidth(
+                header: studioLocalized("Lap", locale: locale), cells: comparisons.map { "\($0.lapIndex)" }
+            ),
+            selected: TextMeasure.columnWidth(
+                header: ComparisonChartView.selectedRunColumnTitle(locale: locale),
+                cells: comparisons.compactMap { $0.primaryLap?.formattedActivePace }
+            ),
+            comparison: TextMeasure.columnWidth(
+                header: studioLocalized("Comparison", locale: locale),
+                cells: comparisons.compactMap { $0.comparisonLap?.formattedActivePace }
+            ),
+            delta: TextMeasure.columnWidth(
+                header: studioLocalized("Δ Active", locale: locale),
+                cells: comparisons.map(\.formattedActivePaceDelta)
+            )
+        )
     }
 
     private var caveatText: String? {

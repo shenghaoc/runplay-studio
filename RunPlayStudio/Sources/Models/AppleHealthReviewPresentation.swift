@@ -25,7 +25,11 @@ enum AppleHealthReviewPresentation {
         let prefix = "HKWorkoutActivityType"
         var remainder = rawActivityType
         if remainder.hasPrefix(prefix) { remainder.removeFirst(prefix.count) }
-        return remainder.isEmpty ? "Workout" : spaced(remainder)
+        guard !remainder.isEmpty else { return studioLocalized("Workout") }
+        // Only running workouts are offered for import, so running is the one type
+        // with a translation; any other type is the export's own constant, spaced.
+        if remainder == "Running" { return studioLocalized("Running") }
+        return spaced(remainder)
     }
 
     /// Split lowerCamelCase into words, keeping acronym runs together.
@@ -57,12 +61,14 @@ enum AppleHealthReviewPresentation {
     /// The window is the only duration a candidate has: a route-less one has no
     /// timestamps to measure, and deriving one from a statistic would state a
     /// number the export never gave for this row.
-    static func durationText(_ window: AppleHealthWorkoutWindow) -> String {
+    static func durationText(_ window: AppleHealthWorkoutWindow, locale: Locale = .autoupdatingCurrent) -> String {
         let seconds = max(0, window.endSeconds - window.startSeconds)
-        let hours = seconds / 3_600
-        let minutes = (seconds % 3_600) / 60
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        return "\(minutes)m \(seconds % 60)s"
+        // Hours and minutes from an hour up, minutes and seconds below it, each
+        // unit in the locale's narrow form ("20m 0s", "20分钟0秒").
+        let units: Set<Duration.UnitsFormatStyle.Unit> = seconds >= 3_600 ? [.hours, .minutes] : [.minutes, .seconds]
+        return Duration.seconds(seconds).formatted(
+            .units(allowed: units, width: .narrow, zeroValueUnits: .show(length: 1)).locale(locale)
+        )
     }
 
     /// The distance the export reports for this candidate, or a dash.
@@ -71,11 +77,9 @@ enum AppleHealthReviewPresentation {
     /// statistic because its route is where the distance comes from, and a
     /// route-less one with none has no distance to state. `distanceHelp` says
     /// which of those the dash means.
-    static func distanceText(_ candidate: AppleHealthWorkoutCandidate) -> String {
+    static func distanceText(_ candidate: AppleHealthWorkoutCandidate, locale: Locale? = nil) -> String {
         guard let meters = reportedMeters(candidate) else { return "—" }
-        let kilometers = meters / 1_000
-        let format = kilometers >= 100 ? "%.0f km" : kilometers >= 10 ? "%.1f km" : "%.2f km"
-        return String(format: format, kilometers)
+        return DisplayFormatter.formatDistanceKm(meters, locale: locale)
     }
 
     /// Where the distance column's number comes from.
@@ -90,12 +94,12 @@ enum AppleHealthReviewPresentation {
             // A route-less workout's only distance is the export's; a dash
             // means the export gave none, not that it reported one.
             return reportedMeters(candidate) == nil
-                ? "The export reports no distance for this workout"
-                : "Reported by the export itself"
+                ? studioLocalized("The export reports no distance for this workout")
+                : studioLocalized("Reported by the export itself")
         }
         return reportedMeters(candidate) == nil
-            ? "Measured from this workout's route when it is imported"
-            : "Reported by the export. The imported run's distance is measured from its route."
+            ? studioLocalized("Measured from this workout's route when it is imported")
+            : studioLocalized("Reported by the export. The imported run's distance is measured from its route.")
     }
 
     /// The export's distance for a candidate, when it gives a usable one.
@@ -133,14 +137,14 @@ enum AppleHealthReviewPresentation {
 
     static func routeAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
         switch routeIndicator(candidate) {
-        case .present: return "Has a route"
-        case .absent: return "No route"
-        case .missingFile: return "Names a route file the export doesn't contain"
+        case .present: return studioLocalized("Has a route")
+        case .absent: return studioLocalized("No route")
+        case .missingFile: return studioLocalized("Names a route file the export doesn't contain")
         }
     }
 
     static func heartRateAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
-        candidate.heartRate.isEmpty ? "No heart rate" : "Has heart rate"
+        candidate.heartRate.isEmpty ? studioLocalized("No heart rate") : studioLocalized("Has heart rate")
     }
 
     // MARK: - Flags and selection
@@ -154,19 +158,19 @@ enum AppleHealthReviewPresentation {
         guard let detail = candidate.statusDetail else {
             return candidate.status.userFacingSummary
         }
-        return "\(candidate.status.userFacingSummary) — \(detail)"
+        return studioLocalized("\(candidate.status.userFacingSummary) — \(detail)")
     }
 
     /// Includes the full reason represented visually by the warning icon.
     static func rowAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
         [
-            "Import \(activityName(candidate.window.activityType))",
+            studioLocalized("Import \(activityName(candidate.window.activityType))"),
             dateText(candidate.window),
-            "Duration \(durationText(candidate.window))",
-            "Distance \(distanceText(candidate)), \(distanceHelp(candidate))",
+            studioLocalized("Duration \(durationText(candidate.window))"),
+            studioLocalized("Distance \(distanceText(candidate)), \(distanceHelp(candidate))"),
             routeAccessibilityLabel(candidate),
             heartRateAccessibilityLabel(candidate),
-            flagText(candidate) ?? "Ready, no duplicates found",
+            flagText(candidate) ?? studioLocalized("Ready, no duplicates found"),
         ].joined(separator: "; ")
     }
 
@@ -176,7 +180,7 @@ enum AppleHealthReviewPresentation {
     ) -> String? {
         if let selectedCandidate, let reason = flagText(selectedCandidate) { return reason }
         guard flaggedCount > 0 else { return nil }
-        return "\(flaggedCount) \(flaggedCount == 1 ? "row" : "rows") flagged as duplicates or possible duplicates."
+        return studioLocalized("\(flaggedCount) rows flagged as duplicates or possible duplicates.")
     }
 
     /// The candidates that start checked: only the unflagged ones.
@@ -208,7 +212,7 @@ enum AppleHealthReviewPresentation {
 
     /// The footer Import button's title for a number of checked rows.
     static func importButtonTitle(selectedCount: Int) -> String {
-        "Import \(selectedCount) \(selectedCount == 1 ? "Workout" : "Workouts")"
+        studioLocalized("Import \(selectedCount) Workouts")
     }
 
     /// Whether the Import button can be pressed: at least one row is checked.
@@ -288,8 +292,9 @@ enum AppleHealthReviewPresentation {
     /// Shared by review and final report, including exports with no runs.
     static func skippedNonRunningText(_ count: Int) -> String? {
         guard count > 0 else { return nil }
-        return "\(count) non-running \(count == 1 ? "workout was" : "workouts were") skipped. "
-            + "Only running workouts are offered for import."
+        return studioLocalized(
+            "\(count) non-running workouts were skipped. Only running workouts are offered for import."
+        )
     }
 
     // MARK: - Report rows
@@ -306,11 +311,11 @@ enum AppleHealthReviewPresentation {
     /// blame the file; calling it imported would claim something untrue.
     static func itemOutcomeText(_ item: AppleHealthImportItemResult) -> String {
         switch item.outcome {
-        case .imported: return "Imported"
-        case .importedWithoutRoute: return "Imported without its route"
-        case .alreadyInLibrary: return "Already in your library"
-        case .discarded: return "Ready but not saved"
-        case .failed: return "Could not be read"
+        case .imported: return studioLocalized("Imported")
+        case .importedWithoutRoute: return studioLocalized("Imported without its route")
+        case .alreadyInLibrary: return studioLocalized("Already in your library")
+        case .discarded: return studioLocalized("Ready but not saved")
+        case .failed: return studioLocalized("Could not be read")
         }
     }
 }
@@ -350,21 +355,21 @@ struct AppleHealthImportSummary: Equatable {
         let added = report.addedWorkoutCount
         if report.commitFailed {
             self.outcome = .failed
-            self.headline = "The import could not be saved"
+            self.headline = studioLocalized("The import could not be saved")
         } else if report.wasCancelled {
             self.outcome = .cancelled
-            self.headline = "Import cancelled"
+            self.headline = studioLocalized("Import cancelled")
         } else if added > 0 {
             self.outcome = .added
-            self.headline = "Imported \(added) \(added == 1 ? "run" : "runs")"
+            self.headline = studioLocalized("Imported \(added) runs")
         } else if report.failedCount > 0 {
             // Nothing was added and something could not be read. That is not
             // "nothing new", which promises nothing went wrong.
             self.outcome = .failed
-            self.headline = "No runs could be imported"
+            self.headline = studioLocalized("No runs could be imported")
         } else {
             self.outcome = .nothingNew
-            self.headline = "Nothing new to add"
+            self.headline = studioLocalized("Nothing new to add")
         }
 
         var lines: [String] = []
@@ -376,56 +381,47 @@ struct AppleHealthImportSummary: Equatable {
         if let skipped = AppleHealthReviewPresentation.skippedNonRunningText(report.excludedWorkoutCount) {
             lines.append(skipped)
         }
-        lines += Self.sentence(
-            report.routeWindowMismatchCount, "run imported", "runs imported",
-            "without a map because their route file didn't match the run's time."
-        )
-        lines += Self.sentence(
-            report.trimmedRouteCount, "run had", "runs had",
-            "their route trimmed to match the run's recorded time."
-        )
-        lines += Self.sentence(
-            report.importedWithoutRouteCount - report.routeWindowMismatchCount, "run has", "runs have",
-            "no route, because its route file could not be read."
-        )
-        lines += Self.sentence(
-            report.alreadyInLibraryCount, "run was", "runs were",
-            "already in your library."
-        )
-        lines += Self.sentence(
-            report.failedCount, "workout could", "workouts could",
-            "not be read from the export."
-        )
-        lines += Self.sentence(
-            report.discardedCount, "workout was", "workouts were",
-            "ready to import but not saved, because the pass did not finish. "
-                + "Your library was left unchanged."
-        )
-        lines += Self.sentence(
-            report.droppedWorkoutCount, "workout", "workouts",
-            "this import cannot read, because their recorded dates are missing or "
-                + "unreadable. They are not offered here.",
-            prefix: "The export describes "
-        )
-        lines += Self.sentence(
-            report.unmatchedRouteReferenceCount, "workout names", "workouts name",
-            "a route file the archive does not contain."
-        )
+        // One sentence per nonzero count, each a whole catalog string so a
+        // translator can reorder it; the English singular is a plural variant.
+        // A count of zero is not a sentence: "0 workouts could not be read"
+        // reads as a finding, and there is none.
+        if report.routeWindowMismatchCount > 0 {
+            lines.append(studioLocalized(
+                "\(report.routeWindowMismatchCount) runs imported without a map because their route file didn't match the run's time."
+            ))
+        }
+        if report.trimmedRouteCount > 0 {
+            lines.append(studioLocalized(
+                "\(report.trimmedRouteCount) runs had their route trimmed to match the run's recorded time."
+            ))
+        }
+        let unreadableRouteCount = report.importedWithoutRouteCount - report.routeWindowMismatchCount
+        if unreadableRouteCount > 0 {
+            lines.append(studioLocalized(
+                "\(unreadableRouteCount) runs have no route, because their route files could not be read."
+            ))
+        }
+        if report.alreadyInLibraryCount > 0 {
+            lines.append(studioLocalized("\(report.alreadyInLibraryCount) runs were already in your library."))
+        }
+        if report.failedCount > 0 {
+            lines.append(studioLocalized("\(report.failedCount) workouts could not be read from the export."))
+        }
+        if report.discardedCount > 0 {
+            lines.append(studioLocalized(
+                "\(report.discardedCount) workouts were ready to import but not saved, because the pass did not finish. Your library was left unchanged."
+            ))
+        }
+        if report.droppedWorkoutCount > 0 {
+            lines.append(studioLocalized(
+                "The export describes \(report.droppedWorkoutCount) workouts this import cannot read, because their recorded dates are missing or unreadable. They are not offered here."
+            ))
+        }
+        if report.unmatchedRouteReferenceCount > 0 {
+            lines.append(studioLocalized(
+                "\(report.unmatchedRouteReferenceCount) workouts name a route file the archive does not contain."
+            ))
+        }
         self.lines = lines
-    }
-
-    /// One sentence for a nonzero count, or nothing at all for a zero.
-    ///
-    /// A count of zero is not a sentence: "0 workouts could not be read" reads
-    /// as a finding, and there is none.
-    private static func sentence(
-        _ value: Int,
-        _ singular: String,
-        _ plural: String,
-        _ tail: String,
-        prefix: String = ""
-    ) -> [String] {
-        guard value > 0 else { return [] }
-        return ["\(prefix)\(value) \(value == 1 ? singular : plural) \(tail)"]
     }
 }

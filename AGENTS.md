@@ -444,6 +444,7 @@ swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
 swift test -Xswiftc -warnings-as-errors                               # macOS full stack
 ./scripts/generate-demo-assets.sh --check                             # macOS README drift gate
+./scripts/check-localization.sh   # macOS: catalogs match source; zh-Hans/zh-Hant complete
 git diff --check
 ```
 
@@ -665,6 +666,7 @@ binary, so serialize PRs that change the card.
 - [docs/import-formats.md](docs/import-formats.md) — supported formats and limits
 - [docs/training-load.md](docs/training-load.md) — training-load model, defaults, estimator, and limits
 - [docs/dem-tiles.md](docs/dem-tiles.md) — DEM tile folders, elevation precedence, and limits
+- [docs/localization.md](docs/localization.md) — String Catalogs, localised formats and exports, catalog check
 - [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
 - [docs/demo-assets.md](docs/demo-assets.md) — README demo media generation, drift gate, and size budget
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene

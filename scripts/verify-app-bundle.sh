@@ -106,6 +106,28 @@ RESOURCE_BUNDLE="$RESOURCES/$RUNPLAY_RESOURCE_BUNDLE_NAME"
 [[ -f "$EXEC" ]] && pass "executable exists" || fail "executable missing"
 [[ -x "$EXEC" ]] && pass "executable bit set" || fail "executable bit not set"
 [[ -d "$RESOURCE_BUNDLE" ]] && pass "SwiftPM resource bundle present" || fail "SwiftPM resource bundle missing"
+for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
+  [[ -d "$RESOURCES/$bundle_name" ]] && pass "resource bundle $bundle_name present" || fail "resource bundle $bundle_name missing"
+done
+
+# --- localization ---
+# Each non-development language needs compiled tables in the main bundle
+# (SwiftUI literals) and in every module bundle (Swift-built strings).
+for language in $RUNPLAY_LOCALIZATIONS; do
+  [[ "$language" == "en" ]] && continue
+  if [[ -f "$RESOURCES/$language.lproj/Localizable.strings" ]]; then
+    pass "$language strings in main bundle"
+  else
+    fail "$language strings missing from main bundle"
+  fi
+  for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
+    if [[ -f "$RESOURCES/$bundle_name/Contents/Resources/$language.lproj/Localizable.strings" ]]; then
+      pass "$language strings in $bundle_name"
+    else
+      fail "$language strings missing from $bundle_name"
+    fi
+  done
+done
 
 # --- plist ---
 if [[ -f "$PLIST" ]]; then
@@ -130,6 +152,7 @@ if [[ -f "$PLIST" ]]; then
   BCATEGORY="$(read_plist LSApplicationCategoryType)"
   BHIGH_RES="$(read_plist NSHighResolutionCapable)"
   BPRINCIPAL="$(read_plist NSPrincipalClass)"
+  BLOCALIZATIONS="$(read_plist CFBundleLocalizations | awk 'NR > 1 && $1 != "}" { printf "%s%s", sep, $1; sep = " " }')"
 
   [[ "$BID" == "$RUNPLAY_BUNDLE_IDENTIFIER" ]] && pass "bundle identifier $BID" || fail "bundle identifier expected $RUNPLAY_BUNDLE_IDENTIFIER got '$BID'"
   [[ "$BEXEC" == "$RUNPLAY_EXECUTABLE_NAME" ]] && pass "CFBundleExecutable $BEXEC" || fail "CFBundleExecutable expected $RUNPLAY_EXECUTABLE_NAME got '$BEXEC'"
@@ -140,6 +163,7 @@ if [[ -f "$PLIST" ]]; then
   [[ "$BCATEGORY" == "public.app-category.healthcare-fitness" ]] && pass "application category healthcare-fitness" || fail "unexpected LSApplicationCategoryType '$BCATEGORY'"
   [[ "$BHIGH_RES" == "true" ]] && pass "high-resolution rendering enabled" || fail "NSHighResolutionCapable expected true got '$BHIGH_RES'"
   [[ "$BPRINCIPAL" == "NSApplication" ]] && pass "NSPrincipalClass NSApplication" || fail "NSPrincipalClass expected NSApplication got '$BPRINCIPAL'"
+  [[ "$BLOCALIZATIONS" == "$RUNPLAY_LOCALIZATIONS" ]] && pass "CFBundleLocalizations $BLOCALIZATIONS" || fail "CFBundleLocalizations expected '$RUNPLAY_LOCALIZATIONS' got '$BLOCALIZATIONS'"
 
   if [[ -n "$EXPECTED_VERSION" ]]; then
     [[ "$BVER" == "$EXPECTED_VERSION" ]] && pass "marketing version $BVER" || fail "marketing version expected $EXPECTED_VERSION got '$BVER'"

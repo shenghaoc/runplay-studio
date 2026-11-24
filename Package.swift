@@ -17,6 +17,20 @@ let remoteDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/weichsel/ZIPFoundation", exact: "0.9.20"),
 ]
 
+// User-facing strings live in one String Catalog per Swift module
+// (`<Module>/Localization/Localizable.xcstrings`), compiled into that module's
+// resource bundle. Each catalog is named as a file, never through a directory
+// rule: a directory resource is copied verbatim, and an uncompiled catalog
+// resolves nothing. Catalogs compile with Xcode's xcstringstool, which the
+// Linux toolchain does not ship, so Core declares its catalog on macOS only:
+// on Linux the catalog sits outside the target path, Core's strings resolve to
+// their English source text, and no resource bundle is built.
+#if os(macOS)
+let coreResources: [Resource] = [.process("../Localization/Localizable.xcstrings")]
+#else
+let coreResources: [Resource] = []
+#endif
+
 let engineCppSettings: [CXXSetting] = [
     .treatAllWarnings(as: .error),
 ]
@@ -65,6 +79,7 @@ var targets: [Target] = [
         name: "RunPlayCore",
         dependencies: ["RunPlayEngineCpp"],
         path: "RunPlayCore/Sources",
+        resources: coreResources,
         swiftSettings: cxxInteropSettings
     ),
     // Core-only tests (platform-neutral — builds on Linux).
@@ -100,6 +115,9 @@ targets.append(contentsOf: [
             .product(name: "ZIPFoundation", package: "ZIPFoundation"),
         ],
         path: "RunPlayPlatform/Sources",
+        resources: [
+            .process("../Localization/Localizable.xcstrings")
+        ],
         swiftSettings: cxxInteropSettings
     ),
     .testTarget(
@@ -122,7 +140,8 @@ targets.append(contentsOf: [
         dependencies: ["RunPlayCore", "RunPlayPlatform"],
         path: "RunPlayStudio/Sources",
         resources: [
-            .process("../Resources")
+            .process("../Resources"),
+            .process("../Localization/Localizable.xcstrings")
         ],
         swiftSettings: cxxInteropSettings
     ),
@@ -139,6 +158,7 @@ products.append(.executable(name: "RunPlayStudio", targets: ["RunPlayStudio"]))
 
 let package = Package(
     name: "RunPlayStudio",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v26),
     ],

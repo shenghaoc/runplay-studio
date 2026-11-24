@@ -163,10 +163,10 @@ enum HeartRateChartPlan: Equatable {
     /// The chart metric picker's hint and help. While heart rate is charted
     /// over time, the picker must not say its metric is shown over distance.
     static func metricPickerHint(paceSelected: Bool, chartsOverTime: Bool) -> String {
-        if paceSelected { return "Active pace uses recorded time and excludes recording gaps." }
+        if paceSelected { return studioLocalized("Active pace uses recorded time and excludes recording gaps.") }
         return chartsOverTime
-            ? "Select the metric to chart. This run has no route, so heart rate is shown over time."
-            : "Select the metric shown over distance."
+            ? studioLocalized("Select the metric to chart. This run has no route, so heart rate is shown over time.")
+            : studioLocalized("Select the metric shown over distance.")
     }
 
     /// Hold the latest reading at or before the route point's time. Seek to
@@ -209,7 +209,7 @@ struct TimeDomainHeartRateChartModel: Equatable {
     let durationMinutes: Double
     let sectionCount: Int
 
-    var title: String { "Heart Rate over time chart" }
+    var title: String { studioLocalized("Heart Rate over time chart") }
 
     /// Gaps between sections, which break the line.
     var gapCount: Int { max(0, sectionCount - 1) }
@@ -225,15 +225,15 @@ struct TimeDomainHeartRateChartModel: Equatable {
 
     var spokenSummary: String {
         var parts = [
-            title + ".",
-            "Time in minutes.",
-            "Heart rate in bpm.",
-            "Range \(Self.bpm(minimum)) to \(Self.bpm(maximum)).",
-            "Average \(Self.bpm(average)).",
-            "\(points.count) \(points.count == 1 ? "reading" : "readings") over \(Self.minutes(durationMinutes))."
+            studioLocalized("Heart Rate over time chart."),
+            studioLocalized("Time in minutes."),
+            studioLocalized("Heart rate in bpm."),
+            studioLocalized("Range \(Self.bpm(minimum)) to \(Self.bpm(maximum))."),
+            studioLocalized("Average \(Self.bpm(average))."),
+            studioLocalized("\(points.count) readings over \(Self.minutes(durationMinutes)).")
         ]
         if gapCount > 0 {
-            parts.append("\(gapCount) recording \(gapCount == 1 ? "gap breaks" : "gaps break") the series.")
+            parts.append(studioLocalized("\(gapCount) recording gaps break the series."))
         }
         return parts.joined(separator: " ")
     }
@@ -258,7 +258,7 @@ struct TimeDomainHeartRateChartModel: Equatable {
     static func axisLabel(minutes: Double) -> String {
         guard minutes.isFinite else { return "" }
         let seconds = Int((minutes * 60).rounded())
-        if seconds % 60 == 0 { return "\(seconds / 60) min" }
+        if seconds % 60 == 0 { return studioLocalized("\(seconds / 60) min") }
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
@@ -270,6 +270,6 @@ struct TimeDomainHeartRateChartModel: Equatable {
 
     private static func minutes(_ value: Double) -> String {
         let rounded = Int(value.rounded())
-        return "\(rounded) \(rounded == 1 ? "minute" : "minutes")"
+        return studioLocalized("\(rounded) minutes")
     }
 }

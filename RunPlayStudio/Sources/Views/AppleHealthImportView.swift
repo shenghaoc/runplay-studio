@@ -80,12 +80,12 @@ struct AppleHealthImportView: View {
 
     private var summaryBar: some View {
         HStack(spacing: AppDesign.Spacing.large) {
-            summaryChip("Workouts", "\(session.candidates.count)")
-            summaryChip("Ready", "\(session.readyCount)")
-            summaryChip("Selected", "\(session.selectedCount)")
-            summaryChip("Flagged", "\(session.flaggedCount)")
-            summaryChip("With a route", "\(session.candidates.count { $0.hasRoute })")
-            summaryChip("With heart rate", "\(session.candidates.count { !$0.heartRate.isEmpty })")
+            summaryChip(studioLocalized("Workouts"), "\(session.candidates.count)")
+            summaryChip(studioLocalized("Ready"), "\(session.readyCount)")
+            summaryChip(studioLocalized("Selected"), "\(session.selectedCount)")
+            summaryChip(studioLocalized("Flagged"), "\(session.flaggedCount)")
+            summaryChip(studioLocalized("With a route"), "\(session.candidates.count { $0.hasRoute })")
+            summaryChip(studioLocalized("With heart rate"), "\(session.candidates.count { !$0.heartRate.isEmpty })")
             Spacer()
         }
         .padding(.horizontal)
@@ -307,17 +307,18 @@ struct AppleHealthImportView: View {
 
     private var progressCaption: String {
         let progress = session.progress
-        return "\(progress.completedCount) of \(progress.totalCount) · staged \(progress.stagedCount)"
-            + " · already in your library \(progress.skippedCount) · failed \(progress.failedCount)"
+        return studioLocalized(
+            "\(progress.completedCount) of \(progress.totalCount) · staged \(progress.stagedCount) · already in your library \(progress.skippedCount) · failed \(progress.failedCount)"
+        )
     }
 
     private func phaseLabel(_ phase: AppleHealthImportProgress.Phase) -> String {
         switch phase {
-        case .importing: return "Reading workouts…"
-        case .staging: return "Staging workouts…"
-        case .committing: return "Saving your library…"
-        case .completed: return "Complete"
-        case .cancelled: return "Cancelled"
+        case .importing: return studioLocalized("Reading workouts…")
+        case .staging: return studioLocalized("Staging workouts…")
+        case .committing: return studioLocalized("Saving your library…")
+        case .completed: return studioLocalized("Complete")
+        case .cancelled: return studioLocalized("Cancelled")
         }
     }
 
@@ -339,11 +340,11 @@ struct AppleHealthImportView: View {
                     }
 
                     HStack(spacing: AppDesign.Spacing.large) {
-                        reportStat("Imported", report.importedCount)
-                        reportStat("Without a route", report.importedWithoutRouteCount)
-                        reportStat("Already in your library", report.alreadyInLibraryCount)
-                        reportStat("Could not be read", report.failedCount)
-                        reportStat("Not saved", report.discardedCount)
+                        reportStat(studioLocalized("Imported"), report.importedCount)
+                        reportStat(studioLocalized("Without a route"), report.importedWithoutRouteCount)
+                        reportStat(studioLocalized("Already in your library"), report.alreadyInLibraryCount)
+                        reportStat(studioLocalized("Could not be read"), report.failedCount)
+                        reportStat(studioLocalized("Not saved"), report.discardedCount)
                     }
 
                     // The two counts that come from the export rather than from

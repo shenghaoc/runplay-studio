@@ -272,7 +272,7 @@ final class WatchFolderCoordinator: ObservableObject {
                     fileName: configuration.displayName,
                     status: .failed,
                     processedAt: Date(),
-                    failureDetail: "This watched folder could not be opened. It may have been moved, renamed, or unmounted. RunPlay Studio will retry automatically; if it stays unavailable, remove it in Watch Folder settings and add it again."
+                    failureDetail: studioLocalized("This watched folder could not be opened. It may have been moved, renamed, or unmounted. RunPlay Studio will retry automatically; if it stays unavailable, remove it in Watch Folder settings and add it again.")
                 ))
             }
         }
@@ -614,7 +614,7 @@ final class WatchFolderCoordinator: ObservableObject {
                 fileName: folder.configuration.displayName,
                 status: .failed,
                 processedAt: Date(),
-                failureDetail: "This watched folder is not available. It may have been ejected, moved, renamed, or deleted. RunPlay Studio will resume watching automatically if it returns."
+                failureDetail: studioLocalized("This watched folder is not available. It may have been ejected, moved, renamed, or deleted. RunPlay Studio will resume watching automatically if it returns.")
             ))
             return true
         } else if unavailableFolderIDs.contains(id) {
@@ -668,7 +668,7 @@ final class WatchFolderCoordinator: ObservableObject {
                         // copy of the limit.
                         tooLarge.append((
                             file.url,
-                            error.errorDescription ?? "This file exceeds a RunPlay Studio import limit."
+                            error.errorDescription ?? studioLocalized("This file exceeds a RunPlay Studio import limit.")
                         ))
                     } catch {
                         continue

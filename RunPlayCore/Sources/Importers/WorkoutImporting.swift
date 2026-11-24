@@ -26,7 +26,7 @@ extension WorkoutImporting {
     /// Call at the top of `importWorkout(from:)` to enforce SSRF prevention.
     public func validateLocalFile(_ url: URL) throws {
         guard url.isFileURL else {
-            throw WorkoutImportError.invalidFormat("Only local file URLs are supported")
+            throw WorkoutImportError.invalidFormat(coreLocalized("Only local file URLs are supported"))
         }
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw WorkoutImportError.fileNotFound(url)
@@ -63,7 +63,7 @@ extension WorkoutImporting {
                 chunk = try handle.read(upToCount: min(remaining, chunkSize))
             } catch {
                 throw WorkoutImportError.parsingError(
-                    "This file could not be read: \(error.localizedDescription)"
+                    coreLocalized("This file could not be read: \(error.localizedDescription)")
                 )
             }
             guard let chunk, !chunk.isEmpty else { break }
@@ -90,15 +90,15 @@ public enum WorkoutImportError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .fileNotFound(let url):
-            return "File not found: \(url.lastPathComponent)"
+            return coreLocalized("File not found: \(url.lastPathComponent)")
         case .invalidFormat(let detail):
-            return "Invalid file format: \(detail)"
+            return coreLocalized("Invalid file format: \(detail)")
         case .parsingError(let detail):
-            return "Import error: \(detail)"
+            return coreLocalized("Import error: \(detail)")
         case .missingData(let detail):
-            return "Missing data: \(detail)"
+            return coreLocalized("Missing data: \(detail)")
         case .unsupportedFormat(let ext):
-            return "Unsupported format: .\(ext)"
+            return coreLocalized("Unsupported format: .\(ext)")
         }
     }
 }

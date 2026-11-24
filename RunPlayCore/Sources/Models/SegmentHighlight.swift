@@ -79,6 +79,35 @@ public struct SegmentHighlight: Identifiable, Codable, Hashable, Sendable {
     public var formattedElevation: String {
         DisplayFormatter.formatElevationDelta(elevationDeltaMeters)
     }
+
+    /// Title in the app's language, or in `locale`'s when given.
+    ///
+    /// `title` is stored English (library files and the segments CSV keep it
+    /// invariant); a detected highlight is named by its type here instead.
+    public func displayTitle(locale: Locale? = nil) -> String {
+        switch type {
+        case .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent:
+            return type.localizedName(locale: locale)
+        case .slowdown, .custom:
+            return title
+        }
+    }
+
+    /// Subtitle in the app's language and number format, rebuilt from the
+    /// stored pace or elevation change; falls back to the stored English text.
+    public func displaySubtitle(locale: Locale? = nil) -> String {
+        switch type {
+        case .fastest400m, .fastest1km, .slowest1km:
+            guard let pace = paceSecondsPerKilometer else { return subtitle }
+            return DisplayFormatter.formatPace(pace, locale: locale)
+        case .biggestClimb, .biggestDescent:
+            guard let delta = elevationDeltaMeters, delta.isFinite else { return subtitle }
+            let climb = DisplayFormatter.formatElevation(abs(delta), locale: locale)
+            return "\(climb) \(delta >= 0 ? "↑" : "↓")"
+        case .slowdown, .custom:
+            return subtitle
+        }
+    }
 }
 
 /// Types of notable route segments.
@@ -91,7 +120,27 @@ public enum SegmentType: String, Codable, Hashable, CaseIterable, Sendable {
     case slowdown
     case custom
 
+    /// Name in the app's language.
     public var displayName: String {
+        localizedName(locale: nil)
+    }
+
+    /// Name in the app's language, or in `locale`'s when given.
+    public func localizedName(locale: Locale?) -> String {
+        switch self {
+        case .fastest400m: return coreLocalized("Fastest 400m", locale: locale)
+        case .fastest1km: return coreLocalized("Fastest Kilometer", locale: locale)
+        case .slowest1km: return coreLocalized("Slowest Kilometer", locale: locale)
+        case .biggestClimb: return coreLocalized("Biggest Climb", locale: locale)
+        case .biggestDescent: return coreLocalized("Biggest Descent", locale: locale)
+        case .slowdown: return coreLocalized("Slowdown", locale: locale)
+        case .custom: return coreLocalized("Custom", locale: locale)
+        }
+    }
+
+    /// The English name stored in a highlight's `title`, independent of the
+    /// app's language, so library files and CSV exports stay invariant.
+    public var canonicalTitle: String {
         switch self {
         case .fastest400m: return "Fastest 400m"
         case .fastest1km: return "Fastest Kilometer"

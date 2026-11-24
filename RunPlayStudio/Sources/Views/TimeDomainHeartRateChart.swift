@@ -83,18 +83,18 @@ struct TimeDomainHeartRateChartDescriptor: AXChartDescriptorRepresentable {
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let xScale = AXNumericDataAxisDescriptor(
-            title: "Time (minutes)",
+            title: studioLocalized("Time (minutes)"),
             range: 0...max(model.durationMinutes, 0.001),
             gridlinePositions: []
         ) { value in
-            String(format: "%.1f min", value)
+            studioLocalized("\(DisplayFormatter.formatDecimal(value, fractionDigits: 1)) min")
         }
         let yScale = AXNumericDataAxisDescriptor(
-            title: "Heart Rate (bpm)",
+            title: studioLocalized("Heart Rate (bpm)"),
             range: model.minimum...max(model.maximum, model.minimum + 0.001),
             gridlinePositions: []
         ) { value in
-            "\(Int(value)) bpm"
+            DisplayFormatter.formatHeartRate(value.rounded(.towardZero))
         }
 
         var sections: [[HeartRateTimePoint]] = []
@@ -107,7 +107,9 @@ struct TimeDomainHeartRateChartDescriptor: AXChartDescriptorRepresentable {
         }
         let series = sections.enumerated().map { index, section in
             AXDataSeriesDescriptor(
-                name: sections.count == 1 ? "Heart Rate" : "Heart Rate, section \(index + 1)",
+                name: sections.count == 1
+                    ? studioLocalized("Heart Rate")
+                    : studioLocalized("Heart Rate, section \(index + 1)"),
                 isContinuous: true,
                 dataPoints: section.map { AXDataPoint(x: $0.minutes, y: $0.bpm) }
             )

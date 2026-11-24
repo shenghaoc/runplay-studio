@@ -35,17 +35,17 @@ public enum WorkoutMapSnapshotError: Error, LocalizedError, Sendable, Equatable 
     public var errorDescription: String? {
         switch self {
         case .emptyRoute:
-            return "No usable route coordinates for a map snapshot."
+            return platformLocalized("No usable route coordinates for a map snapshot.")
         case .invalidRegion:
-            return "Could not plan a valid map region for this route."
+            return platformLocalized("Could not plan a valid map region for this route.")
         case .snapshotFailed(let detail):
-            return "Map imagery unavailable: \(detail)"
+            return platformLocalized("Map imagery unavailable: \(detail)")
         case .cancelled:
-            return "Map snapshot cancelled."
+            return platformLocalized("Map snapshot cancelled.")
         case .compositionFailed(let detail):
-            return "Could not draw route on map: \(detail)"
+            return platformLocalized("Could not draw route on map: \(detail)")
         case .unsupportedEnvironment(let detail):
-            return "Map snapshot is unavailable: \(detail)"
+            return platformLocalized("Map snapshot is unavailable: \(detail)")
         }
     }
 }

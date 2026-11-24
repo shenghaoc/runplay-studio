@@ -22,11 +22,20 @@ public struct WorkoutMetadataEditingPolicy: Hashable, Sendable {
         public var errorDescription: String? {
             switch self {
             case .nameTooLong(let limit):
-                return "Name must be at most \(limit) characters."
+                return coreLocalized("Name must be at most \(limit) characters.")
             case .notesTooLong(let limit):
-                return "Notes must be at most \(limit) characters."
+                return coreLocalized("Notes must be at most \(limit) characters.")
             case .containsNUL(let field):
-                return "\(field) contains an invalid character."
+                // `field` is the English field identifier passed by `normalize`;
+                // each known field gets a complete sentence to translate.
+                switch field {
+                case "Name":
+                    return coreLocalized("Name contains an invalid character.")
+                case "Notes":
+                    return coreLocalized("Notes contains an invalid character.")
+                default:
+                    return coreLocalized("\(field) contains an invalid character.")
+                }
             }
         }
     }

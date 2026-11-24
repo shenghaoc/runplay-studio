@@ -65,12 +65,28 @@ final class ElevationSourceSummaryTests: XCTestCase {
         coverage.loadedTileCount = 3
         coverage.unreadableTileCount = 1
 
-        XCTAssertEqual(summary(.demAndRecorded, .barometric, outcome: .applied, coverage: coverage).notes, [
+        // The singular forms are the String Catalog's English plural variants.
+        // Linux has no catalog, so each count-bearing key reads in its plural
+        // English source form there (see docs/localization.md).
+        #if canImport(Darwin)
+        let expected = [
             "The recorded barometric altitude is kept wherever it exists.",
             "DEM tiles filled 1 point that had no recorded altitude.",
             "DEM tiles covered 99% of the route; 1 tile is missing from the folder.",
             "1 tile could not be read.",
-        ])
+        ]
+        #else
+        let expected = [
+            "The recorded barometric altitude is kept wherever it exists.",
+            "DEM tiles filled 1 points that had no recorded altitude.",
+            "DEM tiles covered 99% of the route; 1 tiles are missing from the folder.",
+            "1 tiles could not be read.",
+        ]
+        #endif
+        XCTAssertEqual(
+            summary(.demAndRecorded, .barometric, outcome: .applied, coverage: coverage).notes,
+            expected
+        )
     }
 
     func testOutcomesWithoutDEMExplainThemselves() {

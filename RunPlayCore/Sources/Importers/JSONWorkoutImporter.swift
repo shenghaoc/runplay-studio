@@ -25,7 +25,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         try importWorkout(from: WorkoutImportInput(
             data: data,
             fileExtension: "json",
-            suggestedName: "Imported Run"
+            suggestedName: coreLocalized("Imported Run")
         ))
     }
 
@@ -131,7 +131,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
 
     private func convertToWorkout(_ raw: RawWorkout) throws -> RunWorkout {
         guard !raw.routePoints.isEmpty else {
-            throw WorkoutImportError.missingData("No route points found")
+            throw WorkoutImportError.missingData(coreLocalized("No route points found"))
         }
 
         var metadata = raw.metadata ?? WorkoutMetadata()
@@ -199,7 +199,7 @@ public struct JSONWorkoutImporter: WorkoutImporting {
         }
 
         guard !routePoints.isEmpty else {
-            throw WorkoutImportError.missingData("No valid route points found")
+            throw WorkoutImportError.missingData(coreLocalized("No valid route points found"))
         }
 
         // Optional recorded laps from native JSON. Structurally malformed

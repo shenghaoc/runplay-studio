@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import RunPlayCore
 
@@ -217,7 +218,7 @@ struct WorkoutLibraryView: View {
                     let succeeded = await appState.deleteSmartCollection(id: collection.id)
                     if !succeeded {
                         collectionDeleteError = appState.organizationEditError
-                            ?? "The smart collection could not be deleted."
+                            ?? studioLocalized("The smart collection could not be deleted.")
                     }
                 }
             }
@@ -232,7 +233,7 @@ struct WorkoutLibraryView: View {
         )) {
             Button("OK") { collectionDeleteError = nil }
         } message: {
-            Text(collectionDeleteError ?? "The smart collection could not be deleted.")
+            Text(collectionDeleteError ?? studioLocalized("The smart collection could not be deleted."))
         }
     }
 
@@ -240,7 +241,7 @@ struct WorkoutLibraryView: View {
         if let collection = viewModel.activeSmartCollection {
             return collection.name
         }
-        return "All Runs"
+        return studioLocalized("All Runs")
     }
 
     private var assignmentCounts: [UUID: Int] {
@@ -314,12 +315,12 @@ struct WorkoutLibraryView: View {
 
     private var resultSummary: String {
         if viewModel.totalCount == 0 {
-            return "No runs in your library"
+            return studioLocalized("No runs in your library")
         }
         if viewModel.filteredCount == viewModel.totalCount {
-            return "\(viewModel.totalCount) run\(viewModel.totalCount == 1 ? "" : "s")"
+            return studioLocalized("\(viewModel.totalCount) runs")
         }
-        return "\(viewModel.filteredCount) of \(viewModel.totalCount) runs"
+        return studioLocalized("\(viewModel.filteredCount) of \(viewModel.totalCount) runs")
     }
 
     // MARK: - Controls
@@ -379,7 +380,7 @@ struct WorkoutLibraryView: View {
             }
 
             if viewModel.activeFilterCount > 0 {
-                Text("\(viewModel.activeFilterCount) filter\(viewModel.activeFilterCount == 1 ? "" : "s") active")
+                Text("\(viewModel.activeFilterCount) filters active")
                     .font(AppDesign.Typography.compactLabel)
                     .foregroundStyle(.secondary)
             }
@@ -402,7 +403,7 @@ struct WorkoutLibraryView: View {
     private var bulkTagActionLabel: String? {
         let ids = viewModel.persistedSelectedWorkoutIDs(libraryIDs: appState.libraryWorkoutIDs)
         guard ids.count > 1 else { return nil }
-        return "Edit Tags for \(ids.count) Runs…"
+        return studioLocalized("Edit Tags for \(ids.count) Runs…")
     }
 
     private var filterMenu: some View {
@@ -420,16 +421,15 @@ struct WorkoutLibraryView: View {
             }
 
             Menu("Date") {
-                Button("All Time") { viewModel.dateFilter = .allTime }
-                Button("Last 30 Days") { viewModel.dateFilter = .last30Days }
-                Button("Last 90 Days") { viewModel.dateFilter = .last90Days }
-                Button("Current Calendar Year") { viewModel.dateFilter = .currentCalendarYear }
-                Button("Custom Date Range…") {
-                    viewModel.dateFilter = .custom(
-                        start: viewModel.customDateStart,
-                        end: viewModel.customDateEnd
-                    )
-                }
+                // Toggles, not Buttons: the menu draws a Toggle row's check
+                // mark and exposes it as the item's AX mark character, so the
+                // active range is marked. Choosing a row applies its range
+                // even when it is already checked, as the Buttons did.
+                Toggle("All Time", isOn: dateMenuCheck(.allTime))
+                Toggle("Last 30 Days", isOn: dateMenuCheck(.last30Days))
+                Toggle("Last 90 Days", isOn: dateMenuCheck(.last90Days))
+                Toggle("Current Calendar Year", isOn: dateMenuCheck(.currentCalendarYear))
+                Toggle("Custom Date Range…", isOn: dateMenuCheck(.customRange))
             }
 
             if case .custom = viewModel.dateFilter {
@@ -506,63 +506,62 @@ struct WorkoutLibraryView: View {
         .help("Filter the library")
     }
 
+    /// The check mark on `choice`'s row in the Date submenu, read from and
+    /// written to the library's date filter. Custom Date Range… takes the
+    /// From and To pickers' dates.
+    private func dateMenuCheck(_ choice: WorkoutLibraryDateMenuChoice) -> Binding<Bool> {
+        choice.menuCheck(
+            filter: { viewModel.dateFilter },
+            customRange: { (viewModel.customDateStart, viewModel.customDateEnd) },
+            setFilter: { viewModel.dateFilter = $0 }
+        )
+    }
+
     @ViewBuilder
     private var tagFilterMenu: some View {
         Menu("Tags") {
-            Button("Any Tags") { viewModel.tagFilter = .anyTags }
-            Button("Untagged Only") { viewModel.tagFilter = .untaggedOnly }
+            // While tags are selected neither row is checked: the Match
+            // submenus below mark the selection.
+            Toggle("Any Tags", isOn: tagMenuCheck(.anyTags))
+            Toggle("Untagged Only", isOn: tagMenuCheck(.untaggedOnly))
             if !appState.tags.isEmpty {
                 Divider()
+                // Toggles, not Buttons with a checkmark image: a macOS menu
+                // flattens an HStack label to its first Text and drops the
+                // image, but draws a Toggle row's check mark itself and
+                // exposes it as the item's AX mark character.
                 Menu("Match Any Selected") {
                     ForEach(appState.tags) { tag in
-                        Button {
-                            toggleSelectedTag(tag.id, match: .any)
-                        } label: {
-                            tagMenuLabel(tag, match: .any)
-                        }
+                        Toggle(tag.name, isOn: tagMenuCheck(tag, match: .any))
                     }
                 }
                 Menu("Match All Selected") {
                     ForEach(appState.tags) { tag in
-                        Button {
-                            toggleSelectedTag(tag.id, match: .all)
-                        } label: {
-                            tagMenuLabel(tag, match: .all)
-                        }
+                        Toggle(tag.name, isOn: tagMenuCheck(tag, match: .all))
                     }
                 }
             }
         }
     }
 
-    private func tagMenuLabel(_ tag: WorkoutTag, match: WorkoutLibraryTagMatchMode) -> some View {
-        let selected: Bool = {
-            if case .selected(let ids, let mode) = viewModel.tagFilter {
-                return mode == match && ids.contains(tag.id)
-            }
-            return false
-        }()
-        return HStack {
-            Text(tag.name)
-            if selected {
-                Image(systemName: "checkmark")
-            }
-        }
+    /// The check mark on `tag`'s row in the `match` submenu, read from and
+    /// written to the library's tag filter.
+    private func tagMenuCheck(_ tag: WorkoutTag, match: WorkoutLibraryTagMatchMode) -> Binding<Bool> {
+        WorkoutLibraryTagFilter.menuCheck(
+            for: tag.id,
+            match: match,
+            filter: { viewModel.tagFilter },
+            setFilter: { viewModel.tagFilter = $0 }
+        )
     }
 
-    private func toggleSelectedTag(_ id: UUID, match: WorkoutLibraryTagMatchMode) {
-        switch viewModel.tagFilter {
-        case .selected(let ids, let mode) where mode == match:
-            var next = ids
-            if next.contains(id) {
-                next.remove(id)
-            } else {
-                next.insert(id)
-            }
-            viewModel.tagFilter = next.isEmpty ? .anyTags : .selected(tagIDs: next, match: match)
-        default:
-            viewModel.tagFilter = .selected(tagIDs: [id], match: match)
-        }
+    /// The check mark on `choice`'s row in the Tags submenu, read from and
+    /// written to the library's tag filter.
+    private func tagMenuCheck(_ choice: WorkoutLibraryTagMenuChoice) -> Binding<Bool> {
+        choice.menuCheck(
+            filter: { viewModel.tagFilter },
+            setFilter: { viewModel.tagFilter = $0 }
+        )
     }
 
     /// Route filter submenu: any route, runs not on a route, or one group.
@@ -580,9 +579,9 @@ struct WorkoutLibraryView: View {
         // library entries — the same membership the filter evaluates.
         let details = RouteGroupMenuDetail.details(for: viewModel.entries)
         Menu("Route") {
-            Button("Any Route") { viewModel.routeFilter = .anyRoute }
+            Toggle("Any Route", isOn: routeMenuCheck(.anyRoute))
                 .accessibilityHint("Do not restrict by route")
-            Button("Not on a Route") { viewModel.routeFilter = .ungroupedOnly }
+            Toggle("Not on a Route", isOn: routeMenuCheck(.ungroupedOnly))
                 .accessibilityHint("Show runs that are not currently on any route")
             let candidates = viewModel.routeGroups.prefix(15)
             if !candidates.isEmpty {
@@ -609,6 +608,15 @@ struct WorkoutLibraryView: View {
         }
     }
 
+    /// The check mark on `choice`'s row in the Route submenu, read from and
+    /// written to the library's route filter.
+    private func routeMenuCheck(_ choice: WorkoutLibraryRouteMenuChoice) -> Binding<Bool> {
+        choice.menuCheck(
+            filter: { viewModel.routeFilter },
+            setFilter: { viewModel.routeFilter = $0 }
+        )
+    }
+
     /// Collision-aware derived names for every route group, computed from the
     /// persisted representative summaries (no snapshot loads on the filter
     /// path).
@@ -629,7 +637,7 @@ struct WorkoutLibraryView: View {
             return name
         }
         return derivedNames[group.id]
-            ?? String(localized: "route_group.unnamed", defaultValue: "Route")
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
     }
 
     // MARK: - Content
@@ -742,7 +750,7 @@ struct WorkoutLibraryView: View {
                     .font(.body.monospacedDigit())
                     .accessibilityLabel(Self.formatDate(entry.startDate))
             }
-            .width(min: 100, ideal: 130)
+            .width(min: 100, ideal: Self.dateColumnWidth())
 
             TableColumn("Name") { entry in
                 Text(entry.displayName)
@@ -784,10 +792,10 @@ struct WorkoutLibraryView: View {
             .width(min: 50, ideal: 60)
 
             TableColumn("Device") { entry in
-                Text(entry.deviceName ?? "Unavailable")
+                Text(entry.deviceName ?? studioLocalized("Unavailable"))
                     .lineLimit(1)
                     .foregroundStyle(entry.deviceName == nil ? .secondary : .primary)
-                    .accessibilityLabel(entry.deviceName ?? "Device unavailable")
+                    .accessibilityLabel(entry.deviceName ?? studioLocalized("Device unavailable"))
             }
             .width(min: 80, ideal: 120)
         }
@@ -888,7 +896,7 @@ struct WorkoutLibraryView: View {
                 WorkoutTagEditorSheet(
                     availableTags: appState.tags,
                     initialSelected: viewModel.entry(for: id)?.tagIDs ?? [],
-                    title: "Edit Tags",
+                    title: studioLocalized("Edit Tags"),
                     onCancel: { tagEditorWorkoutIDs = nil },
                     onSave: { selected in
                         Task {
@@ -1009,6 +1017,22 @@ struct WorkoutLibraryView: View {
     private static func formatDate(_ date: Date?) -> String {
         guard let date else { return missing }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    /// Wide enough for the longest date `locale` writes. The widest month and
+    /// day numerals, with a morning and an evening time, are formatted the way
+    /// the cells format a date and measured, so "2026年6月25日 下午3:49" is not
+    /// cut to "2026年6月25日 1…". Cells always use the app's language; `locale`
+    /// is a parameter so a test can size the column for each language.
+    static func dateColumnWidth(locale: Locale = .autoupdatingCurrent) -> CGFloat {
+        let calendar = Calendar.current
+        let samples = [10, 22].compactMap { hour in
+            calendar.date(from: DateComponents(year: 2026, month: 12, day: 28, hour: hour, minute: 28))
+        }
+        let style = Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)
+        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        let text = TextMeasure.widest(of: samples.map { $0.formatted(style) }, font: font)
+        return max(130, text + 12)
     }
 
     private static func formatDistance(_ meters: Double) -> String {

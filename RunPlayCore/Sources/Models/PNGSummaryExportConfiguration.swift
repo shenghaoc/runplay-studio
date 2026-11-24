@@ -10,8 +10,8 @@ public enum PNGSummaryExportAppearance: String, CaseIterable, Codable, Hashable,
 
     public var displayName: String {
         switch self {
-        case .light: return "Light"
-        case .dark: return "Dark"
+        case .light: return coreLocalized("Light")
+        case .dark: return coreLocalized("Dark")
         }
     }
 }
@@ -75,14 +75,14 @@ public enum PNGSummaryExportPhase: String, Hashable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .idle: return "Idle"
-        case .preparingRoute: return "Preparing route"
-        case .loadingMap: return "Loading map"
-        case .drawingRoute: return "Drawing route"
-        case .renderingCard: return "Rendering card"
-        case .ready: return "Ready"
-        case .saving: return "Saving"
-        case .failed: return "Failed"
+        case .idle: return coreLocalized("Idle")
+        case .preparingRoute: return coreLocalized("Preparing route")
+        case .loadingMap: return coreLocalized("Loading map")
+        case .drawingRoute: return coreLocalized("Drawing route")
+        case .renderingCard: return coreLocalized("Rendering card")
+        case .ready: return coreLocalized("Ready")
+        case .saving: return coreLocalized("Saving")
+        case .failed: return coreLocalized("Failed")
         }
     }
 }

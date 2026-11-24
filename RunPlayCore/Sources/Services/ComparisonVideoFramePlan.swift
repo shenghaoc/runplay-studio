@@ -20,15 +20,15 @@ public struct ComparisonVideoFramePlan: Hashable, Sendable {
     ) throws {
         guard frameCount >= 2 else {
             throw ComparisonVideoExportError.invalidConfiguration(
-                "Video requires at least two frames"
+                coreLocalized("Video requires at least two frames")
             )
         }
         guard framesPerSecond > 0 else {
-            throw ComparisonVideoExportError.invalidConfiguration("Frame rate must be positive")
+            throw ComparisonVideoExportError.invalidConfiguration(coreLocalized("Frame rate must be positive"))
         }
         guard domainLength.isFinite, domainLength > 0 else {
             throw ComparisonVideoExportError.invalidConfiguration(
-                "Comparison domain length must be positive and finite"
+                coreLocalized("Comparison domain length must be positive and finite")
             )
         }
         self.frameCount = frameCount

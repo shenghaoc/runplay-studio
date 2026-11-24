@@ -21,22 +21,22 @@ public enum FITError: Error, LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .emptyFile: return "FIT file is empty"
-        case .invalidHeader: return "Invalid FIT file header"
-        case .unsupportedProtocol(let v): return "Unsupported FIT protocol version: \(v)"
-        case .invalidDataType: return "Invalid FIT data type (expected '.FIT')"
-        case .unexpectedEndOfFile: return "Unexpected end of FIT file"
-        case .missingDefinition(let t): return "Missing definition for message type \(t)"
-        case .noRecordMessages: return "No record messages found in FIT file"
-        case .noGPSCoordinates: return "No GPS coordinates found in FIT file"
-        case .invalidCoordinates: return "Invalid coordinates in FIT file"
-        case .corruptedData(let d): return "Corrupted FIT data: \(d)"
-        case .headerCRCMismatch: return "FIT file appears to be corrupted. Try re-exporting it from your device."
-        case .fileCRCMismatch: return "FIT file appears to be corrupted. Try re-exporting it from your device."
-        case .invalidArchitecture(let v): return "Invalid FIT architecture byte: \(v)"
-        case .compressedTimestampWithoutBaseline: return "Compressed timestamp received before any baseline timestamp"
-        case .invalidCompressedDefinition: return "Compressed timestamp header references invalid definition"
-        case .unsupportedCompressedTimestamp: return "Compressed timestamp headers are not supported for this definition"
+        case .emptyFile: return coreLocalized("FIT file is empty")
+        case .invalidHeader: return coreLocalized("Invalid FIT file header")
+        case .unsupportedProtocol(let v): return coreLocalized("Unsupported FIT protocol version: \(v)")
+        case .invalidDataType: return coreLocalized("Invalid FIT data type (expected '.FIT')")
+        case .unexpectedEndOfFile: return coreLocalized("Unexpected end of FIT file")
+        case .missingDefinition(let t): return coreLocalized("Missing definition for message type \(t)")
+        case .noRecordMessages: return coreLocalized("No record messages found in FIT file")
+        case .noGPSCoordinates: return coreLocalized("No GPS coordinates found in FIT file")
+        case .invalidCoordinates: return coreLocalized("Invalid coordinates in FIT file")
+        case .corruptedData(let d): return coreLocalized("Corrupted FIT data: \(d)")
+        case .headerCRCMismatch: return coreLocalized("FIT file appears to be corrupted. Try re-exporting it from your device.")
+        case .fileCRCMismatch: return coreLocalized("FIT file appears to be corrupted. Try re-exporting it from your device.")
+        case .invalidArchitecture(let v): return coreLocalized("Invalid FIT architecture byte: \(v)")
+        case .compressedTimestampWithoutBaseline: return coreLocalized("Compressed timestamp received before any baseline timestamp")
+        case .invalidCompressedDefinition: return coreLocalized("Compressed timestamp header references invalid definition")
+        case .unsupportedCompressedTimestamp: return coreLocalized("Compressed timestamp headers are not supported for this definition")
         }
     }
 }
@@ -180,7 +180,7 @@ public struct FITParser {
         }
 
         guard data.count <= maxFileSize else {
-            throw FITError.corruptedData("FIT file exceeds maximum size of \(maxFileSize / (1024 * 1024)) MB")
+            throw FITError.corruptedData(coreLocalized("FIT file exceeds maximum size of \(maxFileSize / (1024 * 1024)) MB"))
         }
 
         var offset = 0
@@ -204,7 +204,7 @@ public struct FITParser {
             }
             guard messageIndex < maximumDecodedMessageCount else {
                 throw FITError.corruptedData(
-                    "Decoded message count exceeds maximum of \(maximumDecodedMessageCount)"
+                    coreLocalized("Decoded message count exceeds maximum of \(maximumDecodedMessageCount)")
                 )
             }
 
@@ -300,14 +300,14 @@ public struct FITParser {
                 guard recordHeader & 0x10 == 0,
                       isDefinition || recordHeader & 0x20 == 0
                 else {
-                    throw FITError.corruptedData("FIT record header has reserved bits set")
+                    throw FITError.corruptedData(coreLocalized("FIT record header has reserved bits set"))
                 }
 
                 if isDefinition {
                     definitionCount += 1
                     guard definitionCount <= maxDefinitions else {
                         throw FITError.corruptedData(
-                            "Definition count exceeds maximum of \(maxDefinitions)"
+                            coreLocalized("Definition count exceeds maximum of \(maxDefinitions)")
                         )
                     }
                     let def = try parseDefinition(
@@ -392,7 +392,7 @@ public struct FITParser {
             throw FITError.unexpectedEndOfFile
         }
         guard data.count == dataEnd + 2 else {
-            throw FITError.corruptedData("FIT file contains trailing bytes after its CRC")
+            throw FITError.corruptedData(coreLocalized("FIT file contains trailing bytes after its CRC"))
         }
 
         // Validate entire-file CRC (covers header + all data records).
@@ -421,7 +421,7 @@ public struct FITParser {
         }
 
         guard data[offset] == 0 else {
-            throw FITError.corruptedData("FIT definition reserved byte must be zero")
+            throw FITError.corruptedData(coreLocalized("FIT definition reserved byte must be zero"))
         }
         offset += 1
 
@@ -445,7 +445,7 @@ public struct FITParser {
         let fieldCount = Int(data[offset])
         guard fieldCount > 0, fieldCount <= maxFieldCount else {
             throw FITError.corruptedData(
-                "Field count must be between 1 and \(maxFieldCount); received \(fieldCount)"
+                coreLocalized("Field count must be between 1 and \(maxFieldCount); received \(fieldCount)")
             )
         }
         offset += 1
@@ -460,10 +460,10 @@ public struct FITParser {
             let fieldNum = data[offset]
             let fieldSize = data[offset + 1]
             guard fieldSize > 0 else {
-                throw FITError.corruptedData("Field \(fieldNum) has zero size")
+                throw FITError.corruptedData(coreLocalized("Field \(fieldNum) has zero size"))
             }
             guard Int(fieldSize) <= maxFieldSize else {
-                throw FITError.corruptedData("Field size \(fieldSize) exceeds maximum \(maxFieldSize)")
+                throw FITError.corruptedData(coreLocalized("Field size \(fieldSize) exceeds maximum \(maxFieldSize)"))
             }
             let fieldType = data[offset + 2]
             offset += 3
@@ -495,7 +495,7 @@ public struct FITParser {
             let developerFieldCount = Int(data[offset])
             guard developerFieldCount > 0, developerFieldCount <= maxDeveloperFieldCount else {
                 throw FITError.corruptedData(
-                    "Developer field count must be between 1 and \(maxDeveloperFieldCount); received \(developerFieldCount)"
+                    coreLocalized("Developer field count must be between 1 and \(maxDeveloperFieldCount); received \(developerFieldCount)")
                 )
             }
             offset += 1
@@ -510,7 +510,7 @@ public struct FITParser {
                 let fieldNumber = data[offset]
                 let fieldSize = data[offset + 1]
                 guard fieldSize > 0 else {
-                    throw FITError.corruptedData("Developer field \(fieldNumber) has zero size")
+                    throw FITError.corruptedData(coreLocalized("Developer field \(fieldNumber) has zero size"))
                 }
                 parsedDeveloperFields.append(FITDeveloperFieldDefinition(
                     fieldNumber: fieldNumber,
@@ -636,7 +636,7 @@ public struct FITParser {
         messageIndex += 1
         guard messageIndex <= maximumDecodedMessageCount else {
             throw FITError.corruptedData(
-                "Decoded message count exceeds maximum of \(maximumDecodedMessageCount)"
+                coreLocalized("Decoded message count exceeds maximum of \(maximumDecodedMessageCount)")
             )
         }
 

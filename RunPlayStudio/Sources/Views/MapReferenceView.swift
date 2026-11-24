@@ -191,24 +191,27 @@ struct MapReferenceView: View {
             .clipShape(Capsule())
     }
 
+    /// Icon of the Route Color pull-down, drawn through `DecorativeMenuSymbol`.
+    static let routeColorSymbolName = "paintpalette"
+
     private var routeColorControl: some View {
         HStack(spacing: AppDesign.Spacing.small) {
             Menu {
                 ForEach(WorkoutRouteColorMode.allCases, id: \.self) { mode in
                     let available = mode.isSelectable(in: mapViewModel?.availability)
                     let modeHelp = routeColorModeHelp(mode, available: available)
-                    Button {
-                        selectRouteColor(mode)
-                    } label: {
-                        HStack {
-                            if !available {
-                                Text("\(mode.displayName) — \(String(localized: "Unavailable"))")
-                            } else {
-                                Text(mode.displayName)
-                            }
-                            if preferredMode == mode {
-                                Image(systemName: "checkmark")
-                            }
+                    // A Toggle, not a Button with a checkmark image: a macOS
+                    // menu flattens an HStack label to its first Text and
+                    // drops the image, but draws a Toggle row's check mark
+                    // itself and exposes it as the item's AX mark character.
+                    Toggle(isOn: mode.menuCheck(
+                        selectedMode: { preferredMode },
+                        select: { selectRouteColor($0) }
+                    )) {
+                        if !available {
+                            Text("\(mode.displayName) — Unavailable")
+                        } else {
+                            Text(mode.displayName)
                         }
                     }
                     .disabled(!available)
@@ -216,23 +219,30 @@ struct MapReferenceView: View {
                     .accessibilityHint(modeHelp)
                 }
             } label: {
-                Label(String(localized: "Route Color"), systemImage: "paintpalette")
-                    .font(AppDesign.Typography.compactMetric)
+                // The accessibility label below repeats this title, but any
+                // label override puts the symbol's generated name ("Paint
+                // palette") in the Item Chooser entry (#161).
+                Label {
+                    Text(studioLocalized("Route Color"))
+                } icon: {
+                    DecorativeMenuSymbol.image(systemName: Self.routeColorSymbolName)
+                }
+                .font(AppDesign.Typography.compactMetric)
             }
             .menuStyle(.borderlessButton)
             .padding(.horizontal, AppDesign.Spacing.medium)
             .padding(.vertical, AppDesign.Spacing.small)
             .background(.regularMaterial)
             .clipShape(Capsule())
-            .help(String(localized: "Color the route by solid, relative pace, heart rate, power, or corrected elevation"))
-            .accessibilityLabel(String(localized: "Route Color"))
+            .help(studioLocalized("Color the route by solid, relative pace, heart rate, power, or corrected elevation"))
+            .accessibilityLabel(studioLocalized("Route Color"))
             .accessibilityValue(preferredMode.displayName)
-            .accessibilityHint(String(localized: "Choose how the workout route is colored on the map"))
+            .accessibilityHint(studioLocalized("Choose how the workout route is colored on the map"))
 
             if mapViewModel?.isBuilding == true {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Updating route colors"))
+                    .accessibilityLabel(studioLocalized("Updating route colors"))
             }
         }
     }
@@ -284,15 +294,15 @@ struct MapReferenceView: View {
         }
         switch mode {
         case .solid:
-            return String(localized: "Show the route in the primary color.")
+            return studioLocalized("Show the route in the primary color.")
         case .pace:
-            return String(localized: "Color the route by relative pace within this workout.")
+            return studioLocalized("Color the route by relative pace within this workout.")
         case .heartRate:
-            return String(localized: "Color the route by relative heart rate within this workout.")
+            return studioLocalized("Color the route by relative heart rate within this workout.")
         case .power:
-            return String(localized: "Color the route by relative running power within this workout.")
+            return studioLocalized("Color the route by relative running power within this workout.")
         case .correctedElevation:
-            return String(localized: "Color the route by corrected elevation within this workout.")
+            return studioLocalized("Color the route by corrected elevation within this workout.")
         }
     }
 }

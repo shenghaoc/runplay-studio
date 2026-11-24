@@ -91,7 +91,7 @@ struct PNGSummaryExportSheet: View {
 
                 ForEach(WorkoutRouteColorMode.allCases.filter { $0 != .solid }, id: \.self) { mode in
                     if !viewModel.isModeAvailable(mode) {
-                        Text("\(mode.displayName): \(mode.unavailableReason ?? "Unavailable")")
+                        Text("\(mode.displayName): \(mode.unavailableReason ?? studioLocalized("Unavailable"))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -221,7 +221,7 @@ struct PNGSummaryExportSheet: View {
                     onSaved(url.lastPathComponent)
                     onDismiss()
                 } catch {
-                    viewModel.reportSaveFailure("Failed to save: \(error.localizedDescription)")
+                    viewModel.reportSaveFailure(studioLocalized("Failed to save: \(error.localizedDescription)"))
                 }
             }
         }

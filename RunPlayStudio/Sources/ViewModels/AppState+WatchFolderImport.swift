@@ -30,7 +30,7 @@ extension AppState {
         configuration: WatchFolderConfiguration
     ) async -> WatchFolderExecutionResult {
         guard let importService, let storeActor else {
-            return .failed("Watch-folder import is unavailable in this session.")
+            return .failed(studioLocalized("Watch-folder import is unavailable in this session."))
         }
 
         // Multi-session FIT containers need the review sheet; queue them
@@ -85,11 +85,11 @@ extension AppState {
                 recordedAltitudeSensor: workout.recordedAltitudeSensor
             ))
         } catch is CancellationError {
-            return .failed("Import was cancelled.")
+            return .failed(studioLocalized("Import was cancelled."))
         } catch let error as WorkoutImportError {
             return .failed(Self.watchFolderFailureMessage(for: error, filename: filename))
         } catch {
-            return .failed("Imported but could not save to your library. \(error.localizedDescription)")
+            return .failed(studioLocalized("Imported but could not save to your library. \(error.localizedDescription)"))
         }
     }
 
@@ -149,12 +149,12 @@ extension AppState {
         }
         switch error {
         case .unsupportedFormat(let ext):
-            return "'\(filename)' uses the .\(ext) format, which isn't supported. Watch folders import GPX, TCX, FIT, and JSON files."
+            return studioLocalized("'\(filename)' uses the .\(ext) format, which isn't supported. Watch folders import GPX, TCX, FIT, and JSON files.")
         case .fileNotFound:
-            return "'\(filename)' disappeared before it could be imported."
+            return studioLocalized("'\(filename)' disappeared before it could be imported.")
         case .parsingError, .missingData, .invalidFormat:
             // Unreachable: handled by the shared helper above.
-            return "'\(filename)' could not be imported."
+            return studioLocalized("'\(filename)' could not be imported.")
         }
     }
 

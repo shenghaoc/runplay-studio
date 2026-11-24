@@ -235,7 +235,7 @@ struct PersonalHeatmapView: View {
     private func minimumRepeatsPicker(labelled: Bool) -> some View {
         Picker(selection: $viewModel.minimumWorkoutCount) {
             ForEach(PersonalHeatmapViewModel.minimumRepeatOptions, id: \.self) { count in
-                Text(count == 1 ? "At least 1 run" : "At least \(count) runs").tag(count)
+                Text("At least \(count) runs").tag(count)
             }
         } label: {
             if labelled { Text("Minimum repeats") }
@@ -279,7 +279,10 @@ struct PersonalHeatmapView: View {
         // (the same membership the All Runs route filter shows).
         let details = RouteGroupMenuDetail.details(for: appState.workoutLibrary.entries)
         return Menu {
-            Button("Any Route") { viewModel.routeFilter = .anyRoute }
+            // A Toggle, not a Button: the menu draws a Toggle row's check
+            // mark and exposes it as the item's AX mark character, so Any
+            // Route is marked while no route restricts the heatmap.
+            Toggle("Any Route", isOn: Self.anyRouteMenuCheck(for: viewModel))
                 .accessibilityHint("Do not restrict the heatmap by route")
             let candidates = viewModel.routeGroups.prefix(15)
             if !candidates.isEmpty {
@@ -304,9 +307,9 @@ struct PersonalHeatmapView: View {
                 }
             }
         } label: {
-            // The accessibility label below differs from this title, so a
-            // plain `systemImage` would put the symbol's generated name in
-            // the Item Chooser entry (#161).
+            // The accessibility labels differ from this title, so a plain
+            // `systemImage` would put the symbol's generated name in the Item
+            // Chooser entry (#161).
             Label {
                 Text(filterTitle)
             } icon: {
@@ -314,12 +317,29 @@ struct PersonalHeatmapView: View {
                     systemName: "point.topleft.down.curvedto.point.bottomright.up"
                 )
             }
+            // Every update of the AppKit menu button, such as choosing the
+            // checked row again or an appearance switch, copies this label's
+            // accessibility to the button as its AXTitle. Named by its text
+            // alone, the label replaced "Route filter" with the route name
+            // until the button's other accessibility changed (#196).
+            .accessibilityLabel("Route filter")
         }
         .menuStyle(.borderlessButton)
         .routeMenuSizing(truncating: truncating)
         .help("Restrict the heatmap to one route")
         .accessibilityLabel("Route filter")
         .accessibilityValue(filterTitle)
+    }
+
+    /// The check mark on the route menu's Any Route row, read from and
+    /// written to the heatmap's route filter. Every write applies Any Route,
+    /// as the row's Button did: choosing the checked row writes `false`, and
+    /// Any Route stays checked.
+    static func anyRouteMenuCheck(for viewModel: PersonalHeatmapViewModel) -> Binding<Bool> {
+        WorkoutLibraryRouteMenuChoice.anyRoute.menuCheck(
+            filter: { viewModel.routeFilter },
+            setFilter: { viewModel.routeFilter = $0 }
+        )
     }
 
     /// Collision-aware derived names for every route group, computed from the
@@ -335,14 +355,14 @@ struct PersonalHeatmapView: View {
     private func heatmapRouteFilterTitle(derivedNames: [UUID: String]) -> String {
         switch viewModel.routeFilter {
         case .anyRoute:
-            return String(localized: "heatmap.route.any", defaultValue: "Any Route")
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .module)
         case .ungroupedOnly:
-            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route")
+            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route", bundle: .module)
         case .group(let groupID):
             if let group = viewModel.routeGroups.first(where: { $0.id == groupID }) {
                 return Self.heatmapRouteMenuName(for: group, derivedNames: derivedNames)
             }
-            return String(localized: "heatmap.route.any", defaultValue: "Any Route")
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .module)
         }
     }
 
@@ -356,7 +376,7 @@ struct PersonalHeatmapView: View {
             return name
         }
         return derivedNames[group.id]
-            ?? String(localized: "route_group.unnamed", defaultValue: "Route")
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
     }
 
     // Each picker is bounded by the other, so an inverted range cannot be
@@ -401,10 +421,10 @@ struct PersonalHeatmapView: View {
     private var statisticsRow: some View {
         let stats = viewModel.snapshot?.statistics
         return HStack(spacing: AppDesign.Spacing.xxLarge) {
-            stat("Included", value: "\(stats?.includedWorkoutCount ?? 0) runs")
-            stat("Distance", value: formatDistance(stats?.totalDistanceMeters ?? 0))
-            stat("Max overlap", value: maxOverlapLabel(stats?.maximumOverlap ?? 0))
-            stat("Cell size", value: cellSizeLabel(stats))
+            stat(studioLocalized("Included"), value: studioLocalized("\(stats?.includedWorkoutCount ?? 0) runs"))
+            stat(studioLocalized("Distance"), value: formatDistance(stats?.totalDistanceMeters ?? 0))
+            stat(studioLocalized("Max overlap"), value: maxOverlapLabel(stats?.maximumOverlap ?? 0))
+            stat(studioLocalized("Cell size"), value: cellSizeLabel(stats))
 
             if stats?.resolutionWasAdjusted == true {
                 Text("Resolution adjusted for this library.")
@@ -608,27 +628,28 @@ struct PersonalHeatmapView: View {
     private func formatDistance(_ meters: Double) -> String {
         guard meters.isFinite, meters >= 0 else { return "—" }
         if meters >= 1_000 {
-            return String(format: "%.1f km", meters / 1_000)
+            return DisplayFormatter.formatKilometers(meters, fractionDigits: 1)
         }
-        return String(format: "%.0f m", meters)
+        return DisplayFormatter.formatMeters(meters)
     }
 
     private func maxOverlapLabel(_ count: Int) -> String {
-        count <= 0 ? "—" : "Up to \(count) runs"
+        count <= 0 ? "—" : studioLocalized("Up to \(count) runs")
     }
 
     private func cellSizeLabel(_ stats: PersonalHeatmapStatistics?) -> String {
         guard let stats else { return "—" }
         let effective = Int(stats.effectiveCellSizeMeters.rounded())
+        let size = DisplayFormatter.formatMeters(Double(effective))
         if stats.resolutionWasAdjusted {
-            return "\(effective) m (adjusted)"
+            return studioLocalized("\(size) (adjusted)")
         }
-        return "\(effective) m"
+        return size
     }
 
     private func statisticsAccessibilityLabel(_ stats: PersonalHeatmapStatistics?) -> String {
-        guard let stats else { return "Heatmap statistics unavailable" }
-        return "Included \(stats.includedWorkoutCount) runs, total distance \(formatDistance(stats.totalDistanceMeters)), maximum overlap \(stats.maximumOverlap) runs, cell size \(Int(stats.effectiveCellSizeMeters.rounded())) meters"
+        guard let stats else { return studioLocalized("Heatmap statistics unavailable") }
+        return studioLocalized("Included \(stats.includedWorkoutCount) runs, total distance \(formatDistance(stats.totalDistanceMeters)), maximum overlap \(stats.maximumOverlap) runs, cell size \(Int(stats.effectiveCellSizeMeters.rounded())) meters")
     }
 }
 
