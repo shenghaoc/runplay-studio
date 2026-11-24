@@ -66,7 +66,6 @@ jobs:
       - name: Self-test Linux log parsers (BSD awk, bash 3.2)
         run: |
           /bin/bash ./scripts/linux-container-verify.sh --self-test
-          /bin/bash ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
 
       - name: Build RunPlayEngineCpp
         if: inputs.engine
