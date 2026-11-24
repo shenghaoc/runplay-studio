@@ -1,6 +1,5 @@
 import RunPlayCore
 import SwiftUI
-import AppKit
 
 extension Notification.Name {
     static let runPlayWorkspaceCommand = Notification.Name("runplay.workspace-command")
@@ -47,6 +46,8 @@ extension FocusedValues {
 /// NotificationCenter fallback remains for workspace navigation when macOS
 /// clears scene focus (for example after reopening the singleton window).
 struct WorkoutViewCommands: Commands {
+    @Binding var settingsTab: StudioSettingsTab
+    @Environment(\.openSettings) private var openSettings
     @FocusedBinding(\.workoutTabSelection) private var selectedTab
     @FocusedValue(\.appWorkspaceActions) private var workspaceActions
     @FocusedValue(\.replayActions) private var replayActions
@@ -79,6 +80,12 @@ struct WorkoutViewCommands: Commands {
         mapAvailable && (mapActions?.supportsRouteColor() ?? false)
     }
 
+    /// Select the destination before SwiftUI opens or raises the settings scene.
+    static func openWatchFolderSettings(selection: Binding<StudioSettingsTab>, open: () -> Void) {
+        selection.wrappedValue = .watchFolders
+        open()
+    }
+
     var body: some Commands {
         // `importExport` is absent from a non-document SwiftUI app's File menu,
         // so place these actions after the always-present New item instead.
@@ -106,7 +113,7 @@ struct WorkoutViewCommands: Commands {
             // without a second shortcut (reserved, see
             // CommandRegistry.reservedSystemShortcuts).
             Button(CommandRegistry.definition(for: .watchFoldersSettings).menuTitle) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                Self.openWatchFolderSettings(selection: $settingsTab) { openSettings() }
             }
             .help(CommandRegistry.definition(for: .watchFoldersSettings).purpose)
             .disabled(isSheetBlocking)

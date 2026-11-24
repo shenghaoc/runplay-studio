@@ -11,7 +11,6 @@ import AppKit
 struct WatchFolderSettingsView: View {
     @ObservedObject var coordinator: WatchFolderCoordinator
 
-    @State private var selectedFolderID: UUID?
     @State private var newTagNameDraft: String = ""
 
     var body: some View {
@@ -37,12 +36,14 @@ struct WatchFolderSettingsView: View {
                 ForEach(coordinator.folders) { folder in
                     folderRow(folder)
                 }
-                .onDelete(perform: deleteSelectedFolders)
             }
         } header: {
             Text("Watched Folders")
         } footer: {
-            Text("Folders persist as security-scoped bookmarks and keep working across launches.")
+            VStack(alignment: .leading) {
+                Text("Folders persist as security-scoped bookmarks and keep working across launches.")
+                Text("Removing a folder does not remove imported workouts.")
+            }
         }
     }
 
@@ -80,19 +81,14 @@ struct WatchFolderSettingsView: View {
             .accessibilityLabel(folder.isPaused
                 ? "Resume watching \(folder.displayName)"
                 : "Pause watching \(folder.displayName)")
+            Button(role: .destructive) {
+                coordinator.removeFolder(id: folder.id)
+            } label: {
+                Text("Remove Folder")
+            }
+            .help(Text("Removing a folder does not remove imported workouts."))
         }
         .padding(.vertical, 2)
-    }
-
-    private func deleteSelectedFolders(at offsets: IndexSet) {
-        for index in offsets {
-            let folder = coordinator.folders[index]
-            coordinator.removeFolder(id: folder.id)
-        }
-        if let selected = selectedFolderID,
-           !coordinator.folders.contains(where: { $0.id == selected }) {
-            selectedFolderID = nil
-        }
     }
 
     // MARK: - Folder status

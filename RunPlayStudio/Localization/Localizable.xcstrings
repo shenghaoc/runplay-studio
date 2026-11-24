@@ -15196,6 +15196,22 @@
         }
       }
     },
+    "Remove Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除資料夾"
+          }
+        }
+      }
+    },
     "Remove from Route" : {
       "localizations" : {
         "zh-Hans" : {
@@ -15252,6 +15268,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要從 %2$lld 次跑步中移除「%1$@」嗎？"
+          }
+        }
+      }
+    },
+    "Removing a folder does not remove imported workouts." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除文件夹不会删除已导入的训练记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除資料夾不會刪除已匯入的訓練紀錄。"
           }
         }
       }
