@@ -366,8 +366,8 @@ Both approaches use the same source code. There is no separate Xcode project fil
 Every pull request runs lint and the lane selector, then only the lanes its
 changed paths can reach (the table is in AGENTS.md under "Lane selection"):
 
-- **macOS** — C++ engine build + boundary validation + `swift test`, narrowed to the Studio or Platform and Studio test targets when only those modules changed
-- **Linux** — C++ engine build + native C++ tests + boundary validation + `swift test --filter RunPlayCoreTests`
+- **macOS** — C++ engine build + `swift test`, narrowed to the Studio or Platform and Studio test targets when only those modules changed
+- **Linux** — C++ boundary validator (whenever a change can reach Linux or macOS) + C++ engine build + native C++ tests + `swift test --filter RunPlayCoreTests` (these when a change can reach Core)
 - **Linux sanitizers** — native C++ tests under AddressSanitizer and UndefinedBehaviorSanitizer
 
 Test counts are reported in the GitHub Actions step summary.

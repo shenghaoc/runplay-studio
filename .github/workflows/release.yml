@@ -129,6 +129,7 @@ jobs:
       full-tests: true
       release-compile: true
       localization: true
+      boundaries: true
 
   validate-and-package:
     name: Validate and package

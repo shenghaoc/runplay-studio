@@ -439,8 +439,8 @@ each change reaches its own module and the modules downstream.
 | Changed path | Runs |
 |---|---|
 | `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `.kiro/**`, `prompts/**`, `LICENSE` | lint only |
-| `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests |
-| `RunPlayPlatform/**` | macOS, Platform and Studio tests |
+| `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests, boundary validator |
+| `RunPlayPlatform/**` | macOS, Platform and Studio tests, boundary validator |
 | `RunPlayCore/**`, `RunPlayEngineCpp/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
 
 - Every path is classified and the widest result wins; a renamed file counts
@@ -452,8 +452,21 @@ each change reaches its own module and the modules downstream.
 - On a stacked PR the diff is against the parent PR's branch, so a child PR's
   selection covers only its own changes. Each PR below it is verified by its
   own CI.
+- The C++ boundary validator (`scripts/validate-cpp-boundaries.sh`, a static
+  source check) runs once per CI run, in the tests leg of `core-linux`, which
+  therefore runs when the selector turns on `linux` OR `macos`: the validator
+  scans Core, Platform and Studio, so a Studio-only PR needs it. When only
+  `macos` is on, that leg runs just the checkout and the validator, and the
+  sanitizers leg skips all its steps; the Core gate, consumer smoke, C++
+  tests and sanitizers need `linux`. The release path runs the validator
+  through `macos-verify.yml`'s `boundaries` input. Every macOS job still
+  runs the SwiftPM package-graph check (`validate-cpp-package-graph.py`),
+  because the Linux package graph omits the macOS-only Platform and Studio
+  targets. The Swift image pin stays on the one `container:` line in
+  `core-linux`.
 - The `CI` gate accepts a skipped lane only when the selector turned that
-  lane off; a lane the selector turned on must succeed.
+  lane off (`core-linux`: both `linux` and `macos` off); a lane the selector
+  turned on must succeed.
 - Adding a module, or a test that reads a file outside its own module (for
   example by `#filePath`), means updating `scripts/ci-select-lanes.sh` in the
   same PR. Tests that read the repository (the Engine test running

@@ -148,7 +148,7 @@ jobs:
   core-linux:
     name: RunPlayCore (Linux, ${{ matrix.suite }})
     needs: changes
-    if: needs.changes.outputs.linux == 'true'
+    if: needs.changes.outputs.linux == 'true' || needs.changes.outputs.macos == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -186,8 +186,13 @@ jobs:
     # the same change.
     container: swift:6.3.3@sha256:4f42306306fe7e5a773a8d47d7e2a24dc3a975d1feb77996297ecfd7c329b1e9
     steps:
+      # The tests leg always runs the boundary validator, which needs the
+      # checkout; every other step, and the whole sanitizers leg, runs only
+      # when a change can reach RunPlayCore on Linux (linux is on).
       - uses: actions/checkout@v7
+        if: matrix.suite == 'tests' || needs.changes.outputs.linux == 'true'
       - name: Record Swift toolchain identity
+        if: needs.changes.outputs.linux == 'true'
         id: toolchain
         run: |
           set -euo pipefail
@@ -212,24 +217,34 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "id=${DIGEST:0:12}" >> "$GITHUB_OUTPUT"
       - name: Restore SwiftPM dependency cache
+        if: needs.changes.outputs.linux == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-${{ hashFiles('Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-
+      # The image is minimal and nothing from the runner exists inside it;
+      # validate-cpp-boundaries.sh drives its AST checks with python3 and
+      # clang++ (in the image). The validator is a static source check over
+      # Core, Platform and Studio, so it runs in the tests leg whenever the
+      # job runs, including for a Studio-only PR that skips the Linux steps.
       - name: Install container dependencies
+        if: matrix.suite == 'tests'
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends python3
+      - name: Validate C++ architecture boundaries
+        if: matrix.suite == 'tests'
+        run: ./scripts/validate-cpp-boundaries.sh
       - name: Print Swift version
+        if: needs.changes.outputs.linux == 'true'
         run: swift --version
       - name: Print Clang version
+        if: needs.changes.outputs.linux == 'true'
         run: |
           clang --version || true
           clang++ --version || true
-      - name: Validate C++ architecture boundaries
-        run: ./scripts/validate-cpp-boundaries.sh
       # SwiftPM itself can segfault in libdispatch while it plans a build
       # (#199), so every SwiftPM build below — the Core gate's `swift test`
       # too, inside linux-container-verify.sh — runs through
@@ -239,8 +254,10 @@ jobs:
       # is final. Its classifier is shell + awk: self-test it on the image's
       # mawk first.
       - name: Self-test SwiftPM crash retry
+        if: needs.changes.outputs.linux == 'true'
         run: ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
       - name: Build RunPlayEngineCpp
+        if: needs.changes.outputs.linux == 'true'
         run: >-
           ./scripts/retry-swiftpm-libdispatch-crash.sh
           swift build --target RunPlayEngineCpp
@@ -251,12 +268,12 @@ jobs:
           -Xcxx -Wsign-conversion
           -Xcxx -Wshadow
       - name: Run native C++ engine tests
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: >-
           ./scripts/retry-swiftpm-libdispatch-crash.sh
           swift test --filter RunPlayEngineCppTests
       - name: Native C++ tests under ASan + UBSan
-        if: matrix.suite == 'sanitizers'
+        if: (matrix.suite == 'sanitizers') && needs.changes.outputs.linux == 'true'
         run: ./scripts/run-cpp-engine-tests.sh --sanitize
       # The Core gate is the script, not a bare `swift test`: a bare run exits
       # 0 however many tests skipped, so only the script's skip-reason
@@ -270,7 +287,7 @@ jobs:
       # below keep running as root on a root-owned tree. 1001 is only an
       # unused uid; it needs no passwd entry because the script sets HOME.
       - name: Verify RunPlayCore (non-root, skip allowlist and floor)
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: |
           set -euo pipefail
           chown -R 1001:1001 .
@@ -282,7 +299,7 @@ jobs:
       # Building alone would not exercise the smoke test's runtime
       # `precondition`s, so run the binary as well.
       - name: Verify external RunPlayCore consumer
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: |
           ./scripts/retry-swiftpm-libdispatch-crash.sh swift build --package-path Tests/PackageConsumerSmoke
           ./scripts/retry-swiftpm-libdispatch-crash.sh swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
@@ -294,7 +311,7 @@ jobs:
       # ephemeral runner. Gated to the tests suite, the leg whose steps
       # mutate the workspace beyond the engine build tree.
       - name: Fail on workspace dirtiness
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
             echo "job left the workspace dirty:" >&2
@@ -308,9 +325,11 @@ jobs:
   # accidentally dropped from needs: must leave the gate red, not silently
   # green.
   #
-  # `changes` and `lint` must report `success`. The two selected lanes
-  # (macos, core-linux) may report `skipped` ONLY when `changes` said that
-  # lane is off: a skip is accepted when it was planned. When `changes` said
+  # `changes` and `lint` must report `success`. The selected lanes (macos and
+  # core-linux) may report `skipped` ONLY when `changes` said that lane is
+  # off. core-linux runs when linux OR macos is on (it carries the C++
+  # boundary validator, which Studio-only PRs need), so it may be skipped
+  # only when both are off: a skip is accepted when it was planned. When `changes` said
   # a lane is on, only `success` passes, so a skip from a changed condition,
   # an unset needs: output or a mis-wired job leaves the gate red. `failure`,
   # `cancelled` and a missing result always fail.
@@ -348,12 +367,25 @@ jobs:
                 ;;
             esac
           done
-          # lane:selector-output pairs
-          for pair in macos:macos core-linux:linux; do
+          # lane:selector-output pairs; core-linux runs when linux OR macos
+          # is on, so its "selected" value is "true" if either is.
+          for pair in macos:macos core-linux:either; do
             lane="${pair%%:*}"
             key="${pair##*:}"
             result="$(result_of "${lane}")"
-            selected="$(printf '%s' "${NEEDS}" | jq -r --arg key "${key}" '.changes.outputs[$key] // ""')"
+            if [[ "${key}" == "either" ]]; then
+              linux="$(printf '%s' "${NEEDS}" | jq -r '.changes.outputs.linux // ""')"
+              macos="$(printf '%s' "${NEEDS}" | jq -r '.changes.outputs.macos // ""')"
+              if [[ "${linux}" == "false" && "${macos}" == "false" ]]; then
+                selected="false"
+              elif [[ "${linux}" == "true" || "${macos}" == "true" ]]; then
+                selected="true"
+              else
+                selected=""
+              fi
+            else
+              selected="$(printf '%s' "${NEEDS}" | jq -r --arg key "${key}" '.changes.outputs[$key] // ""')"
+            fi
             case "${result}" in
               success) echo "lane ${lane}: ${result}" ;;
               skipped)
