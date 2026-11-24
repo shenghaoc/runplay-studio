@@ -464,6 +464,13 @@ each change reaches its own module and the modules downstream.
   because the Linux package graph omits the macOS-only Platform and Studio
   targets. The Swift image pin stays on the one `container:` line in
   `core-linux`.
+- Every macOS run also checks the String Catalogs
+  (`scripts/check-localization.sh`) without a second build: the one
+  `swift build --build-tests` passes `-emit-localized-strings`, which only adds
+  `.stringsdata` outputs, and the check reads that extraction with
+  `--skip-build --scratch-path .build --stringsdata-dir <dir>`. The release path
+  runs it too, and a macOS-only change to a module's strings or catalog selects
+  the macOS lane through `RunPlay*/**`.
 - The `CI` gate accepts a skipped lane only when the selector turned that
   lane off (`core-linux`: both `linux` and `macos` off); a lane the selector
   turned on must succeed.

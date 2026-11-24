@@ -121,9 +121,25 @@ jobs:
       # Build and test are separate steps so the logs show where the time
       # goes. Studio depends on every module upstream, so the whole package
       # builds on every run; only the tests that run are narrowed.
+      #
+      # With `localization` on, this same build also extracts the localizable
+      # strings (-emit-localized-strings into ${RUNNER_TEMP}/stringsdata), so
+      # the String Catalogs check below reads this build's extraction instead
+      # of compiling the package a second time. The flag only adds
+      # .stringsdata outputs: the same targets build with the same warnings
+      # and the same tests (compared locally against a build without it).
       - name: Build all targets and tests
         if: inputs.full-tests
-        run: swift build --build-system swiftbuild --build-tests
+        env:
+          LOCALIZATION: ${{ inputs.localization }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "${LOCALIZATION}" == "true" ]]; then
+            flags+=(-Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "${RUNNER_TEMP}/stringsdata")
+            mkdir -p "${RUNNER_TEMP}/stringsdata"
+          fi
+          swift build --build-system swiftbuild --build-tests "${flags[@]+"${flags[@]}"}"
 
       - name: Run tests
         if: inputs.full-tests
@@ -173,9 +189,19 @@ jobs:
 
       # Every String Catalog must list exactly the strings its module's
       # source uses (no missing, no stale keys), each translated into zh-Hans
-      # and zh-Hant with matching placeholders. The check compiles with
-      # -emit-localized-strings in its own scratch path (.build-localization),
-      # so it never invalidates the .build the steps above share.
+      # and zh-Hant with matching placeholders. When the full suite ran, the
+      # check reads the extraction of the "Build all targets and tests" step,
+      # so there is no second build. A caller without the full suite (it has
+      # no shared build) gets the script's own build, in its own scratch path
+      # (.build-localization), which never invalidates the shared .build.
       - name: Check String Catalogs
         if: inputs.localization
-        run: ./scripts/check-localization.sh
+        env:
+          FULL_TESTS: ${{ inputs.full-tests }}
+        run: |
+          set -euo pipefail
+          if [[ "${FULL_TESTS}" == "true" ]]; then
+            ./scripts/check-localization.sh --skip-build --scratch-path .build --stringsdata-dir "${RUNNER_TEMP}/stringsdata"
+          else
+            ./scripts/check-localization.sh
+          fi

@@ -9,6 +9,16 @@
 #                                               # untranslated keys
 #   ./scripts/check-localization.sh --skip-build [--update]
 #                                               # reuse the last extraction
+#   ./scripts/check-localization.sh --skip-build --scratch-path <dir> \
+#       --stringsdata-dir <dir>                 # read a build you made yourself
+#
+# The last form is how CI avoids a second build: its one
+# `swift build --build-tests` passes -Xswiftc -emit-localized-strings
+# -Xswiftc -emit-localized-strings-path -Xswiftc <stringsdata-dir>, and this
+# script then reads that build's extraction (<stringsdata-dir> and
+# <scratch-path>/out) instead of building again. The checker only looks at
+# sources under each module's Sources directory, so the test targets that the
+# shared build also compiles do not matter.
 #
 # The Swift compiler extracts every localizable literal — SwiftUI
 # LocalizedStringKey arguments, String(localized:), and the module helpers
@@ -26,7 +36,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCRATCH_PATH="$REPO_ROOT/.build-localization"
-STRINGSDATA_DIR="$SCRATCH_PATH/stringsdata"
+STRINGSDATA_DIR=""
 SKIP_BUILD=0
 UPDATE_ARGS=()
 
@@ -34,8 +44,18 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --update) UPDATE_ARGS=(--update); shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --scratch-path)
+      [[ $# -ge 2 ]] || { printf '%s needs a value\n' "$1" >&2; exit 2; }
+      SCRATCH_PATH="$(cd "$2" && pwd)" || { printf 'no such directory: %s\n' "$2" >&2; exit 2; }
+      shift 2
+      ;;
+    --stringsdata-dir)
+      [[ $# -ge 2 ]] || { printf '%s needs a value\n' "$1" >&2; exit 2; }
+      STRINGSDATA_DIR="$(cd "$2" && pwd)" || { printf 'no such directory: %s\n' "$2" >&2; exit 2; }
+      shift 2
+      ;;
     -h|--help)
-      sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -50,6 +70,10 @@ if ! xcrun --find xcstringstool >/dev/null 2>&1; then
   exit 2
 fi
 
+if [[ -z "$STRINGSDATA_DIR" ]]; then
+  STRINGSDATA_DIR="$SCRATCH_PATH/stringsdata"
+fi
+
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   rm -rf "$STRINGSDATA_DIR"
   mkdir -p "$STRINGSDATA_DIR"
@@ -62,6 +86,13 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
     --scratch-path "$SCRATCH_PATH" \
     -Xswiftc -emit-localized-strings \
     -Xswiftc -emit-localized-strings-path -Xswiftc "$STRINGSDATA_DIR"
+fi
+
+if [[ "$SKIP_BUILD" -eq 1 ]] \
+  && [[ -z "$(find "$STRINGSDATA_DIR" "$SCRATCH_PATH/out" -name '*.stringsdata' -print -quit 2>/dev/null)" ]]; then
+  printf 'no .stringsdata under %s or %s/out; build with -emit-localized-strings first\n' \
+    "$STRINGSDATA_DIR" "$SCRATCH_PATH" >&2
+  exit 2
 fi
 
 # SwiftPM's build system may write .stringsdata beside each target's objects

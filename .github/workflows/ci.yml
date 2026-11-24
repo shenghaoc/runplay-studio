@@ -128,6 +128,7 @@ jobs:
       engine: true
       full-tests: true
       release-compile: false
+      localization: true
       test-filter: ${{ needs.changes.outputs.macos_test_filter }}
 
   # RunPlayCore + portable C++ engine — test on Linux for cross-platform
