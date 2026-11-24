@@ -67,6 +67,39 @@ final class WatchFolderStoreTests: XCTestCase {
         XCTAssertEqual(loaded.states, snapshot.states)
     }
 
+    func testVersionOneWithoutMasterPausePreservesFolderChoices() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let folderID = UUID()
+        let legacy = """
+        {
+          "version": 1,
+          "folders": [{
+            "id": "\(folderID)",
+            "displayName": "Archive",
+            "bookmarkData": "AA==",
+            "defaultTagName": "watch",
+            "isPaused": true
+          }],
+          "states": []
+        }
+        """
+        try Data(legacy.utf8).write(to: directory.appendingPathComponent("watch-folders.json"))
+        let store = FileWatchFolderStore(rootURL: directory)
+
+        guard case .loaded(var loaded) = store.load() else {
+            return XCTFail("Expected the original format to load")
+        }
+        XCTAssertFalse(loaded.masterPaused)
+        XCTAssertEqual(loaded.folders.first?.id, folderID)
+        XCTAssertEqual(loaded.folders.first?.isPaused, true)
+        XCTAssertEqual(loaded.folders.first?.defaultTagName, "watch")
+
+        loaded.masterPaused = true
+        try store.save(loaded)
+        XCTAssertEqual(store.load(), .loaded(loaded))
+    }
+
     func testCorruptFileFallsBackToEmpty() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
