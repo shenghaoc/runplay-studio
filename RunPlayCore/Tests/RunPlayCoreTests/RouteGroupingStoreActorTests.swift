@@ -557,6 +557,64 @@ final class RouteGroupingStoreActorTests: XCTestCase {
         XCTAssertFalse(manifest.routeGroupAssignments.contains { $0.groupID == sourceID })
     }
 
+    /// #200: a merge committed inside the assignment window re-ranks the
+    /// merge target's representative against the source's. The pass's
+    /// pre-merge summary must not overwrite a merged-in representative that
+    /// ranks higher.
+    func testMergedInRepresentativeInsideAssignmentWindowSurvivesFinalWrite() async throws {
+        let familyA = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        // A finer step gives more route points, so this family's representative ranks above A's.
+        let familyB = loopRuns(sideMeters: 1_250, count: 2, latitude: 38.5, stepMeters: 10)
+        try await addAll(familyA + familyB)
+        _ = try await actor.assignRouteGroups(for: (familyA + familyB).map(\.id))
+
+        let before = try store.loadManifest()
+        let targetID = try XCTUnwrap(before.routeGroupID(forWorkoutID: familyA[0].id))
+        let sourceID = try XCTUnwrap(before.routeGroupID(forWorkoutID: familyB[0].id))
+        let sourceSummary = try XCTUnwrap(before.routeGroups.first { $0.id == sourceID }?.representativeSummary)
+        let targetSummary = try XCTUnwrap(before.routeGroups.first { $0.id == targetID }?.representativeSummary)
+        XCTAssertTrue(sourceSummary.ranksAbove(targetSummary), "fixture: the merged-in representative must rank higher")
+
+        let newcomer = loopRuns(sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5)[0]
+        try await actor.addWorkout(newcomer, select: false)
+        _ = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.mergeRouteGroups(sourceID: sourceID, into: targetID)
+        }
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.routeGroups.count, 1)
+        XCTAssertEqual(
+            manifest.routeGroups[0].representativeSummary?.workoutID,
+            sourceSummary.workoutID,
+            "the pass overwrote the merged-in, higher-ranked representative with its pre-merge summary"
+        )
+    }
+
+    /// A pin on the merge target outranks any summary: the pin and its
+    /// summary survive both the merge and the pass's final write.
+    func testPinnedRepresentativeWinsOverMergedInRepresentativeInsideAssignmentWindow() async throws {
+        let familyA = loopRuns(sideMeters: 1_250, count: 2, latitude: 37.0)
+        let familyB = loopRuns(sideMeters: 1_250, count: 2, latitude: 38.5, stepMeters: 10)
+        try await addAll(familyA + familyB)
+        _ = try await actor.assignRouteGroups(for: (familyA + familyB).map(\.id))
+
+        let before = try store.loadManifest()
+        let targetID = try XCTUnwrap(before.routeGroupID(forWorkoutID: familyA[0].id))
+        let sourceID = try XCTUnwrap(before.routeGroupID(forWorkoutID: familyB[0].id))
+        try await actor.pinRouteGroupRepresentative(groupID: targetID, workoutID: familyA[1].id)
+
+        let newcomer = loopRuns(sideMeters: 1_250, count: 1, latitude: 37.0, firstDayOffset: 5)[0]
+        try await actor.addWorkout(newcomer, select: false)
+        _ = try await runAssignmentPass(for: newcomer.id) {
+            try await actor.mergeRouteGroups(sourceID: sourceID, into: targetID)
+        }
+
+        let manifest = try store.loadManifest()
+        XCTAssertEqual(manifest.routeGroups.count, 1)
+        XCTAssertEqual(manifest.routeGroups[0].pinnedRepresentativeWorkoutID, familyA[1].id)
+        XCTAssertEqual(manifest.routeGroups[0].representativeSummary?.workoutID, familyA[1].id)
+    }
+
     /// A deliberate removal committed inside the assignment window is not
     /// auto re-added: the user's evaluated-nil marker ("removed by the
     /// user — never auto re-added", docs/architecture.md) survives the
