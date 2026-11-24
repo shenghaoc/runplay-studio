@@ -386,6 +386,69 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         XCTAssertEqual(recorder.recordedURLs.count, 0)
     }
 
+    // MARK: - Observed outcomes survive relaunch (#182)
+
+    func testOversizedNoticeIsNotRepeatedAfterRelaunch() async throws {
+        let bigURL = watchedDir.appendingPathComponent("huge.json")
+        try Data(repeating: 0x61, count: 200).write(to: bigURL)
+        let (first, _, _) = makeCoordinator(maxFileBytes: 10)
+        XCTAssertTrue(first.addFolder(url: watchedDir))
+        await waitForCondition(timeout: 3.0) { !first.recentImports.isEmpty }
+        XCTAssertEqual(first.recentImports.count, 1)
+        first.shutdown()
+
+        let (second, recorder, announcements) = makeCoordinator(maxFileBytes: 10)
+        defer { second.shutdown() }
+        second.start()
+        second.importExistingNow()
+        await waitForCondition(timeout: 0.8) { !second.recentImports.isEmpty }
+        XCTAssertTrue(second.recentImports.isEmpty, "an unchanged oversized file must stay quiet after relaunch")
+        XCTAssertTrue(recorder.recordedURLs.isEmpty)
+        XCTAssertTrue(announcements.collected.isEmpty)
+    }
+
+    func testChangedOversizedFileIsEvaluatedAgainAfterRelaunch() async throws {
+        let bigURL = watchedDir.appendingPathComponent("huge.json")
+        try Data(repeating: 0x61, count: 200).write(to: bigURL)
+        let (first, _, _) = makeCoordinator(maxFileBytes: 10)
+        XCTAssertTrue(first.addFolder(url: watchedDir))
+        await waitForCondition(timeout: 3.0) { !first.recentImports.isEmpty }
+        first.shutdown()
+
+        // A new size is a new fingerprint, so the file is judged again.
+        try Data(repeating: 0x62, count: 300).write(to: bigURL)
+        let (second, _, _) = makeCoordinator(maxFileBytes: 10)
+        defer { second.shutdown() }
+        second.start()
+        second.importExistingNow()
+        await waitForCondition(timeout: 3.0) { !second.recentImports.isEmpty }
+        XCTAssertEqual(second.recentImports.count, 1)
+        XCTAssertEqual(second.recentImports.first?.status, .failed)
+    }
+
+    func testDuplicateNoticeIsNotRepeatedAfterRelaunch() async throws {
+        _ = try writeJSON("run.json")
+        let (first, recorder, _) = makeCoordinator()
+        XCTAssertTrue(first.addFolder(url: watchedDir))
+        await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
+        let original = watchedDir.appendingPathComponent("run.json")
+        try Data(contentsOf: original).write(to: watchedDir.appendingPathComponent("copy-of-run.json"))
+        first.importExistingNow()
+        await waitForCondition(timeout: 3.0) {
+            first.recentImports.contains { $0.status == .skippedDuplicate }
+        }
+        XCTAssertEqual(first.recentImports.filter { $0.status == .skippedDuplicate }.count, 1)
+        first.shutdown()
+
+        let (second, secondRecorder, _) = makeCoordinator()
+        defer { second.shutdown() }
+        second.start()
+        second.importExistingNow()
+        await waitForCondition(timeout: 0.8) { !second.recentImports.isEmpty }
+        XCTAssertTrue(second.recentImports.isEmpty, "a duplicate already reported must stay quiet after relaunch")
+        XCTAssertTrue(secondRecorder.recordedURLs.isEmpty)
+    }
+
     // MARK: - Folder availability
 
     func testFolderRemovedWhileWatchingIsReportedOnceAndRecovers() async throws {

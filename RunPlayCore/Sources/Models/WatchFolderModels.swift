@@ -214,14 +214,66 @@ public struct WatchFolderState: Codable, Equatable, Sendable {
     /// content hash so renames dedupe naturally.
     public var pendingReview: [String: WatchFolderPendingReviewEntry]
 
+    /// Outcomes already reported for files that never reach the ledger:
+    /// duplicate copies under a new name and files over the size limit. They
+    /// keep a relaunch from reporting the same file again (#182).
+    public var observedOutcomes: [WatchFolderObservedOutcome]
+
     public init(
         folderID: UUID,
         ledger: [WatchFolderLedgerEntry] = [],
-        pendingReview: [String: WatchFolderPendingReviewEntry] = [:]
+        pendingReview: [String: WatchFolderPendingReviewEntry] = [:],
+        observedOutcomes: [WatchFolderObservedOutcome] = []
     ) {
         self.folderID = folderID
         self.ledger = ledger
         self.pendingReview = pendingReview
+        self.observedOutcomes = observedOutcomes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case folderID, ledger, pendingReview, observedOutcomes
+    }
+
+    /// `observedOutcomes` is additive: stores written before it exists decode
+    /// with none.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        folderID = try container.decode(UUID.self, forKey: .folderID)
+        ledger = try container.decode([WatchFolderLedgerEntry].self, forKey: .ledger)
+        pendingReview = try container.decode(
+            [String: WatchFolderPendingReviewEntry].self,
+            forKey: .pendingReview
+        )
+        observedOutcomes = try container.decodeIfPresent(
+            [WatchFolderObservedOutcome].self,
+            forKey: .observedOutcomes
+        ) ?? []
+    }
+}
+
+/// One reported outcome that is not a ledger entry.
+public struct WatchFolderObservedOutcome: Codable, Equatable, Sendable {
+
+    public enum Kind: String, Codable, Equatable, Sendable {
+        /// A copy of already-ledgered content under another file name. `key`
+        /// is the content hash; `fileName` tells copies of one content apart.
+        case duplicate
+        /// A file over the import size limit. It is never hashed, so `key` is
+        /// its fingerprint (size, modification date and path).
+        case oversized
+    }
+
+    public var kind: Kind
+    public var key: String
+    public var fileName: String
+    public var observedAt: Date
+
+    public init(kind: Kind, key: String, fileName: String, observedAt: Date = Date()) {
+        self.kind = kind
+        self.key = key
+        self.fileName = fileName
+        self.observedAt = observedAt
     }
 }
 
