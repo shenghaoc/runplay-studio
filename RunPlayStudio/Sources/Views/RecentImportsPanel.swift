@@ -16,10 +16,15 @@ struct RecentImportsToolbarButton: View {
         Button {
             isPresented.toggle()
         } label: {
+            // The label carries the spoken name: a toolbar item takes its name
+            // from its label and ignores an accessibility modifier on the button.
             Label(
-                "Recent Imports",
+                failureCount > 0
+                    ? studioLocalized("Recent imports, \(failureCount) with errors")
+                    : studioLocalized("Recent imports"),
                 systemImage: failureCount > 0 ? "tray.2.badge.exclamationmark" : "tray.full"
             )
+            .labelStyle(.iconOnly)
         }
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             RecentImportsPanel(coordinator: coordinator)
@@ -28,11 +33,6 @@ struct RecentImportsToolbarButton: View {
                 .onExitCommand { isPresented = false }
         }
         .help("Watch-folder import results")
-        .accessibilityLabel(
-            failureCount > 0
-                ? "Recent imports, \(failureCount) with errors"
-                : "Recent imports"
-        )
         .accessibilityHint("Shows watch-folder import results with per-file status")
     }
 }
