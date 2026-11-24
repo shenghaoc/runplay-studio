@@ -227,12 +227,26 @@ public struct WatchFolderState: Codable, Equatable, Sendable {
     /// keep a relaunch from reporting the same file again (#182).
     public var observedOutcomes: [WatchFolderObservedOutcome]
 
+    /// True from the moment a folder is added until its first scan has
+    /// recorded the files already inside it as the baseline (#179).
+    public var baselinePending: Bool
+
+    /// Keys of the files that were already in the folder when it was added
+    /// ("size|modification milliseconds|file name"). They are not imported
+    /// until the user chooses Import Existing Files Now; a later change to
+    /// one of them gives it a new key, so it counts as new.
+    public var baseline: [String]
+
     public init(
         folderID: UUID,
         ledger: [WatchFolderLedgerEntry] = [],
         pendingReview: [String: WatchFolderPendingReviewEntry] = [:],
-        observedOutcomes: [WatchFolderObservedOutcome] = []
+        observedOutcomes: [WatchFolderObservedOutcome] = [],
+        baselinePending: Bool = false,
+        baseline: [String] = []
     ) {
+        self.baselinePending = baselinePending
+        self.baseline = baseline
         self.folderID = folderID
         self.ledger = ledger
         self.pendingReview = pendingReview
@@ -240,7 +254,7 @@ public struct WatchFolderState: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case folderID, ledger, pendingReview, observedOutcomes
+        case folderID, ledger, pendingReview, observedOutcomes, baselinePending, baseline
     }
 
     /// `observedOutcomes` is additive: stores written before it exists decode
@@ -257,6 +271,8 @@ public struct WatchFolderState: Codable, Equatable, Sendable {
             [WatchFolderObservedOutcome].self,
             forKey: .observedOutcomes
         ) ?? []
+        baselinePending = try container.decodeIfPresent(Bool.self, forKey: .baselinePending) ?? false
+        baseline = try container.decodeIfPresent([String].self, forKey: .baseline) ?? []
     }
 }
 

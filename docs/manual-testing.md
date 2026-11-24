@@ -1569,9 +1569,11 @@ PY
 ### Settings pane and folder lifecycle
 
 1. **File → Watch Folders…** opens Settings on the Watch Folders pane.
-2. **Add Folder…** on `live` → it appears in the list, unpaused, watching.
-3. **Import Existing Files Now** on a folder pre-populated with `existing`
-   files → they import without waiting for the settle interval.
+2. **Add Folder…** on a folder pre-populated with `existing` files → it appears
+   in the list, unpaused, watching, and none of those files import.
+3. **Import Existing Files Now** → the `existing` files import without waiting
+   for the settle interval. A file edited after the folder was added imports on
+   its own, as does a new file.
 4. Set a default tag on one folder, drop a new file in, confirm the imported
    workout carries that tag and that the tag is created once, not duplicated.
 5. **Pause** → dropping a file in does nothing. **Resume** → the next poll

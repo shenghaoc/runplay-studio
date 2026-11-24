@@ -120,6 +120,8 @@ final class WatchFolderStoreTests: XCTestCase {
             return XCTFail("A state written before observed outcomes must still load")
         }
         XCTAssertEqual(loaded.states.first?.observedOutcomes, [])
+        XCTAssertEqual(loaded.states.first?.baseline, [])
+        XCTAssertEqual(loaded.states.first?.baselinePending, false, "an existing folder is never re-baselined")
 
         let outcome = WatchFolderObservedOutcome(
             kind: .oversized,
@@ -128,6 +130,8 @@ final class WatchFolderStoreTests: XCTestCase {
             observedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
         loaded.states[0].observedOutcomes = [outcome]
+        loaded.states[0].baseline = ["12|1700000000000|existing.gpx"]
+        loaded.states[0].baselinePending = true
         try store.save(loaded)
         XCTAssertEqual(store.load(), .loaded(loaded))
     }
