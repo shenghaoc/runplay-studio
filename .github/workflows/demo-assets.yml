@@ -1,9 +1,9 @@
 name: Demo Assets
 
 # Manually triggered. Renders the README demo media from the bundled
-# synthetic sample runs with scripts/generate-demo-assets.sh, on the same
-# runner image as CI's README drift check, and uploads everything as one
-# artifact. It never commits: refreshing docs/assets/ is a reviewed pull
+# synthetic sample runs with scripts/generate-demo-assets.sh, on a hosted
+# macOS runner, and uploads everything as one artifact. It never commits:
+# refreshing docs/assets/ is a reviewed pull
 # request that copies the curated subset out of this artifact
 # (docs/demo-assets.md).
 

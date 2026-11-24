@@ -443,7 +443,7 @@ swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors
 swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests -Xswiftc -warnings-as-errors  # macOS
 swift test -Xswiftc -warnings-as-errors                               # macOS full stack
-./scripts/generate-demo-assets.sh --check                             # macOS README drift gate
+./scripts/generate-demo-assets.sh --check                             # macOS, local only: README card drift
 ./scripts/check-localization.sh   # macOS: catalogs match source; zh-Hans/zh-Hant complete
 git diff --check
 ```
@@ -649,15 +649,15 @@ Platform-API assumptions that look correct on macOS
 corelibs-foundation; the container catches them before they burn a CI
 cycle.
 
-Benchmark scripts need release-mode test builds; the CI "macOS (release-compile)" matrix leg (via the reusable macos-verify.yml workflow) guards them.
+Benchmark scripts need release-mode test builds; the nightly workflow (nightly.yml, via the reusable macos-verify.yml workflow) guards them with a release-mode test compile, not the PR lane. Release packaging is not in CI or the nightly: `release.yml` verifies it, and a dry run of it (`dry_run=true`) on the tag commit is the pre-tag check ([docs/releasing.md](docs/releasing.md)).
 
 GUI changes additionally require the relevant honest manual check in
 [docs/manual-testing.md](docs/manual-testing.md).
 
-A change that alters the PNG summary card also changes the committed README
-cards, and the drift gate fails until `docs/assets/` is refreshed in the same
-PR, as [docs/demo-assets.md](docs/demo-assets.md) describes. The cards are
-binary, so serialize PRs that change the card.
+A change that alters the PNG summary card should refresh the committed README
+cards in the same PR, as [docs/demo-assets.md](docs/demo-assets.md) describes.
+CI does not enforce this; run `./scripts/generate-demo-assets.sh --check`
+yourself. The cards are binary, so serialize PRs that change the card.
 
 ## Detailed References
 
@@ -668,7 +668,7 @@ binary, so serialize PRs that change the card.
 - [docs/dem-tiles.md](docs/dem-tiles.md) — DEM tile folders, elevation precedence, and limits
 - [docs/localization.md](docs/localization.md) — String Catalogs, localised formats and exports, catalog check
 - [docs/manual-testing.md](docs/manual-testing.md) — GUI and release checks
-- [docs/demo-assets.md](docs/demo-assets.md) — README demo media generation, drift gate, and size budget
+- [docs/demo-assets.md](docs/demo-assets.md) — README demo media generation, local drift check, and size budget
 - [docs/private-data.md](docs/private-data.md) — private-data hygiene
 - [docs/phase-plan.md](docs/phase-plan.md) — planning context, not executable truth
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — enforced CI behavior

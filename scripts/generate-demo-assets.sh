@@ -20,7 +20,8 @@
 # --check renders only the summary cards, compares each with its committed
 # copy in docs/assets/ within the pixel tolerance in
 # RunPlayStudio/Sources/DemoAssets/DemoAssetImageComparison.swift, and
-# enforces the docs/assets/ size budget below. It is the CI drift gate.
+# enforces the docs/assets/ size budget below. It is a local check you run
+# with --check; CI does not run it.
 #
 # A relative --output-dir is resolved from the current directory. Inside the
 # repository only descendants of .build/ (which git ignores) are accepted, so the script never
@@ -75,7 +76,8 @@ Render the README demo media from the bundled synthetic sample runs.
 
 Options:
   --check             Render the summary cards only and compare them with
-                      docs/assets/ (the CI drift gate); also enforce the
+                      docs/assets/ (a local check; CI does not
+                      run it); also enforce the
                       docs/assets/ size budget
   --output-dir <dir>  Where to write (default .build/demo-assets, or
                       .build/demo-assets-check with --check); it must
@@ -315,7 +317,7 @@ check() {
     log "Rendered cards and magenta diff images are in $OUTPUT_DIR."
     log "If the change is intended, refresh docs/assets as docs/demo-assets.md describes."
     annotate error "README demo assets out of date" \
-      "docs/assets no longer matches the renderer or exceeds its budget; the rendered cards and diff images are in the demo-asset-drift artifact. See docs/demo-assets.md."
+      "docs/assets no longer matches the renderer or exceeds its budget; the rendered cards and diff images are in the output directory. See docs/demo-assets.md."
     exit 1
   fi
   log "README demo summary cards match the renderer"
