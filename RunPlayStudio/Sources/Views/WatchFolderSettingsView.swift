@@ -69,17 +69,7 @@ struct WatchFolderSettingsView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(spokenFolderStatus(for: folder))
             Spacer()
-            TextField(
-                "Default tag",
-                text: Binding(
-                    get: { folder.defaultTagName },
-                    set: { coordinator.setDefaultTag($0, folderID: folder.id) }
-                )
-            )
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 130)
-            .help("Tag applied to workouts imported from this folder. Leave empty for none.")
-            .accessibilityLabel("Default tag for \(folder.displayName)")
+            DefaultTagField(folder: folder, coordinator: coordinator)
             Button {
                 coordinator.setPaused(!folder.isPaused, folderID: folder.id)
             } label: {
@@ -292,5 +282,47 @@ struct RecentImportRow: View {
 
     private func reveal() {
         NSWorkspace.shared.activateFileViewerSelecting([record.fileURL])
+    }
+}
+
+
+/// The default-tag field of one folder row. Edits are staged and committed on
+/// Return or when the field loses focus; Escape discards them (#183).
+private struct DefaultTagField: View {
+    let folder: WatchFolderConfiguration
+    @ObservedObject var coordinator: WatchFolderCoordinator
+    @State private var draft: DefaultTagDraft
+    @FocusState private var focused: Bool
+
+    init(folder: WatchFolderConfiguration, coordinator: WatchFolderCoordinator) {
+        self.folder = folder
+        self.coordinator = coordinator
+        _draft = State(initialValue: DefaultTagDraft(committed: folder.defaultTagName))
+    }
+
+    var body: some View {
+        TextField("Default tag", text: $draft.text)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 130)
+            .focused($focused)
+            .onSubmit { commit() }
+            .onChange(of: focused) { _, isFocused in
+                if !isFocused { commit() }
+            }
+            .onChange(of: folder.defaultTagName) { _, stored in
+                draft.committedExternally(stored)
+            }
+            .onExitCommand {
+                draft.discard()
+                focused = false
+            }
+            .help("Tag applied to workouts imported from this folder. Leave empty for none.")
+            .accessibilityLabel("Default tag for \(folder.displayName)")
+    }
+
+    private func commit() {
+        if let value = draft.commit() {
+            coordinator.setDefaultTag(value, folderID: folder.id)
+        }
     }
 }
