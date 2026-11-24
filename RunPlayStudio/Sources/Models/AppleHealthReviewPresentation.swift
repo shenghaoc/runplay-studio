@@ -112,12 +112,31 @@ enum AppleHealthReviewPresentation {
         candidate.hasRoute
     }
 
+    /// What the Route column shows for a candidate.
+    ///
+    /// A named file the export lacks is its own state, not "no route": the row
+    /// tells the reader this run will import without the map its workout names.
+    enum RouteIndicator: Equatable {
+        case present
+        case absent
+        case missingFile
+    }
+
+    static func routeIndicator(_ candidate: AppleHealthWorkoutCandidate) -> RouteIndicator {
+        if candidate.namesMissingRouteFile { return .missingFile }
+        return candidate.hasRoute ? .present : .absent
+    }
+
     static func hasHeartRate(_ candidate: AppleHealthWorkoutCandidate) -> Bool {
         !candidate.heartRate.isEmpty
     }
 
     static func routeAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {
-        candidate.hasRoute ? "Has a route" : "No route"
+        switch routeIndicator(candidate) {
+        case .present: return "Has a route"
+        case .absent: return "No route"
+        case .missingFile: return "Names a route file the export doesn't contain"
+        }
     }
 
     static func heartRateAccessibilityLabel(_ candidate: AppleHealthWorkoutCandidate) -> String {

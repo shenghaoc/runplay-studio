@@ -146,6 +146,26 @@ final class AppleHealthWorkoutCandidateTests: XCTestCase {
         XCTAssertEqual(candidates[0].distanceProvenance, .gpsDerived)
     }
 
+    /// A route file the archive cannot supply leaves the run route-less. The
+    /// candidate keeps the path, so the review can say what was named, but it
+    /// neither has a route nor promises a distance measured from one.
+    func testACandidateWhoseRouteFileIsMissingReportsNoRoute() {
+        var candidate = AppleHealthWorkoutCandidateBuilder.candidates(from: scan([
+            entry(1_000, 2_000, route: "apple_health_export/workout-routes/route_1.gpx"),
+        ]))[0]
+        // Only the archive scan can tell; a candidate built from the document
+        // alone takes the named file to be there.
+        XCTAssertFalse(candidate.isRouteFileMissing)
+        XCTAssertFalse(candidate.namesMissingRouteFile)
+
+        candidate.isRouteFileMissing = true
+
+        XCTAssertEqual(candidate.routeArchivePath, "apple_health_export/workout-routes/route_1.gpx")
+        XCTAssertTrue(candidate.namesMissingRouteFile)
+        XCTAssertFalse(candidate.hasRoute)
+        XCTAssertEqual(candidate.distanceProvenance, .sourceReported)
+    }
+
     func testSourceDistanceIsConvertedToMeters() {
         let candidates = AppleHealthWorkoutCandidateBuilder.candidates(from: scan([
             entry(1_000, 2_000, statistics: [distanceStatistic(5.2)]),

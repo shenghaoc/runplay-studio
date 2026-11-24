@@ -306,6 +306,33 @@ final class AppleHealthReviewTests: XCTestCase {
         XCTAssertEqual(AppleHealthReviewPresentation.heartRateAccessibilityLabel(withNeither), "No heart rate")
     }
 
+    /// A row whose named route file the export lacks says so, in its Route
+    /// column and its label, rather than claiming a route or a plain "No route".
+    func testARowNamingAMissingRouteFileSaysTheExportDoesNotContainIt() {
+        var missing = candidate(index: 0, start: 0, end: 60,
+                                route: "apple_health_export/workout-routes/absent.gpx")
+        missing.isRouteFileMissing = true
+        XCTAssertFalse(AppleHealthReviewPresentation.hasRoute(missing))
+        XCTAssertEqual(AppleHealthReviewPresentation.routeIndicator(missing), .missingFile)
+        XCTAssertEqual(
+            AppleHealthReviewPresentation.routeAccessibilityLabel(missing),
+            "Names a route file the export doesn't contain"
+        )
+        XCTAssertTrue(AppleHealthReviewPresentation.rowAccessibilityLabel(missing)
+            .contains("; Names a route file the export doesn't contain; No heart rate;"))
+        // It imports without a route, so its distance is the export's.
+        XCTAssertEqual(AppleHealthReviewPresentation.distanceHelp(missing), "Reported by the export itself")
+
+        let present = candidate(index: 1, start: 100, end: 160,
+                                route: "apple_health_export/workout-routes/present.gpx")
+        XCTAssertEqual(AppleHealthReviewPresentation.routeIndicator(present), .present)
+        XCTAssertEqual(AppleHealthReviewPresentation.routeAccessibilityLabel(present), "Has a route")
+
+        let none = candidate(index: 2, start: 200, end: 260, route: nil)
+        XCTAssertEqual(AppleHealthReviewPresentation.routeIndicator(none), .absent)
+        XCTAssertEqual(AppleHealthReviewPresentation.routeAccessibilityLabel(none), "No route")
+    }
+
     func testRowAccessibilityLabelIncludesTheEntireFlagReasonAndProvenance() {
         let row = candidate(index: 0, start: 0, end: 60,
                             heartRateBeats: [140], status: .possibleDuplicate, origin: .withinExport)
