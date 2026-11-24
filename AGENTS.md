@@ -342,7 +342,14 @@ tiles; C++ never reads a file, decodes an image, or calls back for a tile.
 Supported workout size is bounded in Swift, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route
 points per resulting workout and a 100 MB source payload — and every importer
-plus the `RouteQualityProcessor` preflight reads them from there. The engine's
+plus the `RouteQualityProcessor` preflight reads them from there. Apple Health's
+`export.xml` is the one exception to the 100 MB source payload: a real export
+can exceed a gigabyte. It is streamed, never read whole, and its memory and
+disk use are bounded instead by the heart-rate retention ceiling
+(`AppleHealthHeartRateIndex.maximumSampleCount`, 2,000,000 readings), by its
+declared uncompressed size, which extraction from `export.zip` never writes
+past, and by a free-space check against that size before extraction. Each
+route GPX in the archive still takes the 100 MB limit. The engine's
 `max_route_input_samples` is an internal safety ceiling 25% above the product
 limit, so a route the app accepts can never be rejected by the engine. Raising
 the product limit requires raising that ceiling to preserve the margin; a
