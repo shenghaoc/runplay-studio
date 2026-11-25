@@ -16,8 +16,8 @@
 # RunPlayStudio. A change can reach only its own module and the modules
 # downstream of it. Every path is classified and the widest result wins:
 #
-#   *.md outside RunPlay*/** and Tests/**, docs/**, .kiro/**, prompts/**,
-#   LICENSE                              nothing (lint still runs)
+#   *.md outside RunPlay*/** and Tests/**, docs/**, prompts/**, LICENSE
+#                                            nothing (lint still runs)
 #   RunPlayStudio/**  (any file, *.md too)   macOS, Studio tests
 #   RunPlayPlatform/**                       macOS, Platform + Studio tests
 #   RunPlayCore/**, RunPlayEngine/**, any other
@@ -46,7 +46,7 @@ classify() {
     RunPlayCore/* | RunPlayEngine/*) echo 3 ;;
     RunPlay*/*) echo 3 ;; # a module this script does not know yet
     Tests/*) echo 3 ;;
-    *.md | docs/* | .kiro/* | prompts/* | LICENSE) echo 0 ;;
+    *.md | docs/* | prompts/* | LICENSE) echo 0 ;;
     *) echo 3 ;;
   esac
 }
@@ -91,7 +91,7 @@ self_test() {
   # name | event | expected level (0-3) | paths separated by ';'
   local cases=(
     "docs only|pull_request|0|README.md;docs/architecture.md;docs/assets/demo-summary-light.png;AGENTS.md"
-    "docs, kiro, prompts, license|pull_request|0|.kiro/specs/x/tasks.md;prompts/a.txt;LICENSE;docs/a/b.png"
+    "docs, prompts, license|pull_request|0|prompts/a.txt;LICENSE;docs/a/b.png"
     "md under .github|pull_request|0|.github/pull_request_template.md"
     "Studio only|pull_request|1|RunPlayStudio/Sources/Views/A.swift;RunPlayStudio/Tests/RunPlayStudioTests/ATests.swift"
     "Studio resource md follows its module|pull_request|1|RunPlayStudio/Resources/help.md"
