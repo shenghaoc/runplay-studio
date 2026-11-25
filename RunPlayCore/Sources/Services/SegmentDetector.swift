@@ -132,109 +132,124 @@ public struct SegmentDetector {
 
         for candidate in result.candidates {
             if isCancelled() { throw CancellationError() }
-
-            switch candidate.kind {
-            case .fastest400m:
-                if let highlight = finalizePaceCandidate(
-                    candidate,
-                    type: .fastest400m,
-                    timeline: timeline,
-                    displayPriority: 1
-                ) {
-                    segments.append(highlight)
-                    if let window = recordWindow(
-                        for: .fastest400m,
-                        highlight: highlight
-                    ) {
-                        records.append(window)
-                    }
-                }
-            case .fastest1km:
-                if let highlight = finalizePaceCandidate(
-                    candidate,
-                    type: .fastest1km,
-                    timeline: timeline,
-                    displayPriority: 2
-                ) {
-                    segments.append(highlight)
-                    if let window = recordWindow(
-                        for: .fastest1km,
-                        highlight: highlight
-                    ) {
-                        records.append(window)
-                    }
-                }
-            case .slowest1km:
-                if let highlight = finalizePaceCandidate(
-                    candidate,
-                    type: .slowest1km,
-                    timeline: timeline,
-                    displayPriority: 3
-                ) {
-                    segments.append(highlight)
-                }
-            case .biggestClimb:
-                if let highlight = finalizeElevationCandidate(
-                    candidate,
-                    ascending: true,
-                    context: context,
-                    timeline: timeline,
-                    displayPriority: 4
-                ) {
-                    segments.append(highlight)
-                }
-            case .biggestDescent:
-                if let highlight = finalizeElevationCandidate(
-                    candidate,
-                    ascending: false,
-                    context: context,
-                    timeline: timeline,
-                    displayPriority: 5
-                ) {
-                    segments.append(highlight)
-                }
-            case .fastestOneMile:
-                appendRecordWindow(
-                    for: .fastest1mile,
-                    candidate: candidate,
-                    timeline: timeline,
-                    into: &records
-                )
-            case .fastest5km:
-                appendRecordWindow(
-                    for: .fastest5km,
-                    candidate: candidate,
-                    timeline: timeline,
-                    into: &records
-                )
-            case .fastest10km:
-                appendRecordWindow(
-                    for: .fastest10km,
-                    candidate: candidate,
-                    timeline: timeline,
-                    into: &records
-                )
-            case .fastestHalfMarathon:
-                appendRecordWindow(
-                    for: .fastestHalfMarathon,
-                    candidate: candidate,
-                    timeline: timeline,
-                    into: &records
-                )
-            case .fastestMarathon:
-                appendRecordWindow(
-                    for: .fastestMarathon,
-                    candidate: candidate,
-                    timeline: timeline,
-                    into: &records
-                )
-            }
+            finalize(
+                candidate, context: context, timeline: timeline, segments: &segments, records: &records
+            )
         }
 
         return DetectionResult(
             segments: segments.sorted { $0.displayPriority < $1.displayPriority },
             records: records
         )
+    }
+
+    /// Finalizes one engine candidate into its segment highlight, its
+    /// personal-record window, or both.
+    private static func finalize(
+        _ candidate: RunPlaySegmentWindowCandidate,
+        context: WorkoutAnalysisContext,
+        timeline: WorkoutTimeline,
+        segments: inout [SegmentHighlight],
+        records: inout [PersonalRecordWindow]
+    ) {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each engine candidate kind to the highlight and record it finalizes.
+        switch candidate.kind {
+        case .fastest400m:
+            if let highlight = finalizePaceCandidate(
+                candidate,
+                type: .fastest400m,
+                timeline: timeline,
+                displayPriority: 1
+            ) {
+                segments.append(highlight)
+                if let window = recordWindow(
+                    for: .fastest400m,
+                    highlight: highlight
+                ) {
+                    records.append(window)
+                }
+            }
+        case .fastest1km:
+            if let highlight = finalizePaceCandidate(
+                candidate,
+                type: .fastest1km,
+                timeline: timeline,
+                displayPriority: 2
+            ) {
+                segments.append(highlight)
+                if let window = recordWindow(
+                    for: .fastest1km,
+                    highlight: highlight
+                ) {
+                    records.append(window)
+                }
+            }
+        case .slowest1km:
+            if let highlight = finalizePaceCandidate(
+                candidate,
+                type: .slowest1km,
+                timeline: timeline,
+                displayPriority: 3
+            ) {
+                segments.append(highlight)
+            }
+        case .biggestClimb:
+            if let highlight = finalizeElevationCandidate(
+                candidate,
+                ascending: true,
+                context: context,
+                timeline: timeline,
+                displayPriority: 4
+            ) {
+                segments.append(highlight)
+            }
+        case .biggestDescent:
+            if let highlight = finalizeElevationCandidate(
+                candidate,
+                ascending: false,
+                context: context,
+                timeline: timeline,
+                displayPriority: 5
+            ) {
+                segments.append(highlight)
+            }
+        case .fastestOneMile:
+            appendRecordWindow(
+                for: .fastest1mile,
+                candidate: candidate,
+                timeline: timeline,
+                into: &records
+            )
+        case .fastest5km:
+            appendRecordWindow(
+                for: .fastest5km,
+                candidate: candidate,
+                timeline: timeline,
+                into: &records
+            )
+        case .fastest10km:
+            appendRecordWindow(
+                for: .fastest10km,
+                candidate: candidate,
+                timeline: timeline,
+                into: &records
+            )
+        case .fastestHalfMarathon:
+            appendRecordWindow(
+                for: .fastestHalfMarathon,
+                candidate: candidate,
+                timeline: timeline,
+                into: &records
+            )
+        case .fastestMarathon:
+            appendRecordWindow(
+                for: .fastestMarathon,
+                candidate: candidate,
+                timeline: timeline,
+                into: &records
+            )
+        }
     }
 
     /// Revalidates one record candidate through the timeline and

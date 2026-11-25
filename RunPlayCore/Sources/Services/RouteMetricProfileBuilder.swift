@@ -780,13 +780,7 @@ public struct RouteMetricProfileBuilder: Sendable {
         while runStart < intervals.count {
             if runStart % 256 == 0, isCancelled() { throw CancellationError() }
 
-            var runEnd = runStart + 1
-            let segment = intervals[runStart].routeSegmentIndex
-            while runEnd < intervals.count,
-                  intervals[runEnd].routeSegmentIndex == segment,
-                  intervals[runEnd].startPointIndex == intervals[runEnd - 1].endPointIndex {
-                runEnd += 1
-            }
+            let runEnd = continuousRunEnd(from: runStart, intervals: intervals)
 
             // Within the run, only smooth across contiguous valid samples;
             // break at nil so missing data remains missing.
@@ -803,77 +797,10 @@ public struct RouteMetricProfileBuilder: Sendable {
                     validEnd += 1
                 }
 
-                // Prefix sums make each triangular-window evaluation O(1)
-                // after the two pointers advance. This remains linear even
-                // when thousands of samples share nearly the same distance.
-                let count = validEnd - validStart
-                let distanceOrigin = midpoint(of: intervals[validStart])
-                var distances = Array(repeating: 0.0, count: count)
-                var values = Array(repeating: 0.0, count: count)
-                var prefixDistance = Array(repeating: 0.0, count: count + 1)
-                var prefixValue = Array(repeating: 0.0, count: count + 1)
-                var prefixValueDistance = Array(repeating: 0.0, count: count + 1)
-
-                for offset in 0..<count {
-                    let sourceIndex = validStart + offset
-                    let distance = midpoint(of: intervals[sourceIndex]) - distanceOrigin
-                    let value = rawValues[sourceIndex] ?? 0
-                    distances[offset] = distance
-                    values[offset] = value
-                    prefixDistance[offset + 1] = prefixDistance[offset] + distance
-                    prefixValue[offset + 1] = prefixValue[offset] + value
-                    prefixValueDistance[offset + 1] = prefixValueDistance[offset] + value * distance
-                }
-
-                var left = 0
-                var right = 0
-                for offset in 0..<count {
-                    let outputIndex = validStart + offset
-                    if outputIndex % 1024 == 0, isCancelled() { throw CancellationError() }
-
-                    let centerValue = values[offset]
-                    let centerDistance = distances[offset]
-                    let windowLow = centerDistance - halfWindowMeters
-                    let windowHigh = centerDistance + halfWindowMeters
-
-                    while left < offset, distances[left] < windowLow {
-                        left += 1
-                    }
-                    if right < offset { right = offset }
-                    while right + 1 < count, distances[right + 1] <= windowHigh {
-                        right += 1
-                    }
-
-                    let inverseWindow = 1.0 / max(halfWindowMeters, Double.leastNonzeroMagnitude)
-                    let leftEnd = offset + 1
-                    let leftCount = Double(leftEnd - left)
-                    let leftDistance = prefixDistance[leftEnd] - prefixDistance[left]
-                    let leftValue = prefixValue[leftEnd] - prefixValue[left]
-                    let leftValueDistance = prefixValueDistance[leftEnd] - prefixValueDistance[left]
-                    var sum = (1 - centerDistance * inverseWindow) * leftValue
-                        + inverseWindow * leftValueDistance
-                    var weight = (1 - centerDistance * inverseWindow) * leftCount
-                        + inverseWindow * leftDistance
-
-                    if right > offset {
-                        let rightStart = offset + 1
-                        let rightEnd = right + 1
-                        let rightCount = Double(rightEnd - rightStart)
-                        let rightDistance = prefixDistance[rightEnd] - prefixDistance[rightStart]
-                        let rightValue = prefixValue[rightEnd] - prefixValue[rightStart]
-                        let rightValueDistance = prefixValueDistance[rightEnd] - prefixValueDistance[rightStart]
-                        sum += (1 + centerDistance * inverseWindow) * rightValue
-                            - inverseWindow * rightValueDistance
-                        weight += (1 + centerDistance * inverseWindow) * rightCount
-                            - inverseWindow * rightDistance
-                    }
-
-                    if weight > 1e-12, sum.isFinite {
-                        output[outputIndex] = sum / weight
-                    } else {
-                        output[outputIndex] = centerValue
-                    }
-                }
+                try smoothValidStretch(
+                    validStart..<validEnd, rawValues: rawValues, intervals: intervals,
+                    halfWindowMeters: halfWindowMeters, isCancelled: isCancelled, output: &output
+                )
 
                 validStart = validEnd
             }
@@ -882,6 +809,105 @@ public struct RouteMetricProfileBuilder: Sendable {
         }
 
         return output
+    }
+
+    /// The end of the continuous same-segment run that starts at `runStart`:
+    /// each next interval stays in the segment and starts where the previous
+    /// one ended.
+    private func continuousRunEnd(from runStart: Int, intervals: [RawInterval]) -> Int {
+        var runEnd = runStart + 1
+        let segment = intervals[runStart].routeSegmentIndex
+        while runEnd < intervals.count,
+              intervals[runEnd].routeSegmentIndex == segment,
+              intervals[runEnd].startPointIndex == intervals[runEnd - 1].endPointIndex {
+            runEnd += 1
+        }
+        return runEnd
+    }
+
+    /// Triangular-window smoothing of one stretch of contiguous valid samples
+    /// in the distance domain, written into `output`.
+    private func smoothValidStretch(
+        _ stretch: Range<Int>,
+        rawValues: [Double?],
+        intervals: [RawInterval],
+        halfWindowMeters: Double,
+        isCancelled: @Sendable () -> Bool,
+        output: inout [Double?]
+    ) throws {
+        let validStart = stretch.lowerBound
+        let validEnd = stretch.upperBound
+        // Prefix sums make each triangular-window evaluation O(1)
+        // after the two pointers advance. This remains linear even
+        // when thousands of samples share nearly the same distance.
+        let count = validEnd - validStart
+        let distanceOrigin = midpoint(of: intervals[validStart])
+        var distances = Array(repeating: 0.0, count: count)
+        var values = Array(repeating: 0.0, count: count)
+        var prefixDistance = Array(repeating: 0.0, count: count + 1)
+        var prefixValue = Array(repeating: 0.0, count: count + 1)
+        var prefixValueDistance = Array(repeating: 0.0, count: count + 1)
+
+        for offset in 0..<count {
+            let sourceIndex = validStart + offset
+            let distance = midpoint(of: intervals[sourceIndex]) - distanceOrigin
+            let value = rawValues[sourceIndex] ?? 0
+            distances[offset] = distance
+            values[offset] = value
+            prefixDistance[offset + 1] = prefixDistance[offset] + distance
+            prefixValue[offset + 1] = prefixValue[offset] + value
+            prefixValueDistance[offset + 1] = prefixValueDistance[offset] + value * distance
+        }
+
+        var left = 0
+        var right = 0
+        for offset in 0..<count {
+            let outputIndex = validStart + offset
+            if outputIndex % 1024 == 0, isCancelled() { throw CancellationError() }
+
+            let centerValue = values[offset]
+            let centerDistance = distances[offset]
+            let windowLow = centerDistance - halfWindowMeters
+            let windowHigh = centerDistance + halfWindowMeters
+
+            while left < offset, distances[left] < windowLow {
+                left += 1
+            }
+            if right < offset { right = offset }
+            while right + 1 < count, distances[right + 1] <= windowHigh {
+                right += 1
+            }
+
+            let inverseWindow = 1.0 / max(halfWindowMeters, Double.leastNonzeroMagnitude)
+            let leftEnd = offset + 1
+            let leftCount = Double(leftEnd - left)
+            let leftDistance = prefixDistance[leftEnd] - prefixDistance[left]
+            let leftValue = prefixValue[leftEnd] - prefixValue[left]
+            let leftValueDistance = prefixValueDistance[leftEnd] - prefixValueDistance[left]
+            var sum = (1 - centerDistance * inverseWindow) * leftValue
+                + inverseWindow * leftValueDistance
+            var weight = (1 - centerDistance * inverseWindow) * leftCount
+                + inverseWindow * leftDistance
+
+            if right > offset {
+                let rightStart = offset + 1
+                let rightEnd = right + 1
+                let rightCount = Double(rightEnd - rightStart)
+                let rightDistance = prefixDistance[rightEnd] - prefixDistance[rightStart]
+                let rightValue = prefixValue[rightEnd] - prefixValue[rightStart]
+                let rightValueDistance = prefixValueDistance[rightEnd] - prefixValueDistance[rightStart]
+                sum += (1 + centerDistance * inverseWindow) * rightValue
+                    - inverseWindow * rightValueDistance
+                weight += (1 + centerDistance * inverseWindow) * rightCount
+                    - inverseWindow * rightDistance
+            }
+
+            if weight > 1e-12, sum.isFinite {
+                output[outputIndex] = sum / weight
+            } else {
+                output[outputIndex] = centerValue
+            }
+        }
     }
 
     private func midpoint(of interval: RawInterval) -> Double {

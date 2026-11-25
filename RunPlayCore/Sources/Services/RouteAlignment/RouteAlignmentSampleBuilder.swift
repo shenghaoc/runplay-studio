@@ -153,34 +153,15 @@ public struct RouteAlignmentSampleBuilder: Sendable {
     ) throws -> RouteAlignmentSamplePair {
         if isCancelled() { throw RouteAlignmentSampleError.cancelled }
 
-        let primaryValid: [RoutePoint]
-        let comparisonValid: [RoutePoint]
-        if profile != nil {
-            let start = ContinuousClock.now
-            primaryValid = Self.validPoints(primary.routePoints)
-            comparisonValid = Self.validPoints(comparison.routePoints)
-            profile?.validPointFilterNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            primaryValid = Self.validPoints(primary.routePoints)
-            comparisonValid = Self.validPoints(comparison.routePoints)
+        let (primaryValid, comparisonValid) = HotspotProfileClock.profiled(&profile, \.validPointFilterNanoseconds) {
+            (Self.validPoints(primary.routePoints), Self.validPoints(comparison.routePoints))
         }
         guard primaryValid.count >= 2, comparisonValid.count >= 2 else {
             throw RouteAlignmentSampleError.insufficientRouteData
         }
 
-        let origin: (lat: Double, lon: Double)
-        if profile != nil {
-            let start = ContinuousClock.now
-            origin = try Self.sharedOrigin(primaryValid: primaryValid, policy: policy)
-            profile?.sharedOriginNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            origin = try Self.sharedOrigin(primaryValid: primaryValid, policy: policy)
+        let origin = try HotspotProfileClock.profiled(&profile, \.sharedOriginNanoseconds) {
+            try Self.sharedOrigin(primaryValid: primaryValid, policy: policy)
         }
         if isCancelled() { throw RouteAlignmentSampleError.cancelled }
 
@@ -191,21 +172,8 @@ public struct RouteAlignmentSampleBuilder: Sendable {
             throw RouteAlignmentSampleError.insufficientRouteData
         }
 
-        let effectiveInterval: Double
-        if profile != nil {
-            let start = ContinuousClock.now
-            effectiveInterval = Self.adaptiveInterval(
-                preferred: policy.preferredSampleIntervalMeters,
-                primaryDistance: primaryDistance,
-                comparisonDistance: comparisonDistance,
-                maximumSamples: policy.maximumSamplesPerRoute
-            )
-            profile?.adaptiveIntervalNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            effectiveInterval = Self.adaptiveInterval(
+        let effectiveInterval = HotspotProfileClock.profiled(&profile, \.adaptiveIntervalNanoseconds) {
+            Self.adaptiveInterval(
                 preferred: policy.preferredSampleIntervalMeters,
                 primaryDistance: primaryDistance,
                 comparisonDistance: comparisonDistance,
@@ -222,24 +190,8 @@ public struct RouteAlignmentSampleBuilder: Sendable {
             throw RouteAlignmentSampleError.resourceLimit
         }
 
-        let primarySamples: [RouteAlignmentSample]
-        if profile != nil {
-            let start = ContinuousClock.now
-            primarySamples = try Self.resample(
-                points: primaryValid,
-                interval: effectiveInterval,
-                centerLat: origin.lat,
-                centerLon: origin.lon,
-                totalDistance: primaryDistance,
-                policy: policy,
-                isCancelled: isCancelled
-            )
-            profile?.primaryResampleNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            primarySamples = try Self.resample(
+        let primarySamples = try HotspotProfileClock.profiled(&profile, \.primaryResampleNanoseconds) {
+            try Self.resample(
                 points: primaryValid,
                 interval: effectiveInterval,
                 centerLat: origin.lat,
@@ -250,24 +202,8 @@ public struct RouteAlignmentSampleBuilder: Sendable {
             )
         }
 
-        let comparisonSamples: [RouteAlignmentSample]
-        if profile != nil {
-            let start = ContinuousClock.now
-            comparisonSamples = try Self.resample(
-                points: comparisonValid,
-                interval: effectiveInterval,
-                centerLat: origin.lat,
-                centerLon: origin.lon,
-                totalDistance: comparisonDistance,
-                policy: policy,
-                isCancelled: isCancelled
-            )
-            profile?.comparisonResampleNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            comparisonSamples = try Self.resample(
+        let comparisonSamples = try HotspotProfileClock.profiled(&profile, \.comparisonResampleNanoseconds) {
+            try Self.resample(
                 points: comparisonValid,
                 interval: effectiveInterval,
                 centerLat: origin.lat,
@@ -288,25 +224,8 @@ public struct RouteAlignmentSampleBuilder: Sendable {
         }
 
         // Fail conservatively on unsupported projected extent.
-        if profile != nil {
-            let start = ContinuousClock.now
-            for sample in primarySamples + comparisonSamples {
-                if abs(sample.xMeters) > policy.maximumProjectedExtentMeters
-                    || abs(sample.zMeters) > policy.maximumProjectedExtentMeters {
-                    throw RouteAlignmentSampleError.unsupportedGeographicExtent
-                }
-            }
-            profile?.extentValidationNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            for sample in primarySamples + comparisonSamples {
-                if abs(sample.xMeters) > policy.maximumProjectedExtentMeters
-                    || abs(sample.zMeters) > policy.maximumProjectedExtentMeters {
-                    throw RouteAlignmentSampleError.unsupportedGeographicExtent
-                }
-            }
+        try HotspotProfileClock.profiled(&profile, \.extentValidationNanoseconds) {
+            try Self.validateProjectedExtent(primarySamples + comparisonSamples, policy: policy)
         }
 
         return RouteAlignmentSamplePair(
@@ -318,6 +237,19 @@ public struct RouteAlignmentSampleBuilder: Sendable {
             centerLatitude: origin.lat,
             centerLongitude: origin.lon
         )
+    }
+
+    /// Throws `unsupportedGeographicExtent` when a sample lies beyond the
+    /// policy's projected extent on either axis.
+    private static func validateProjectedExtent(
+        _ samples: [RouteAlignmentSample], policy: RouteAlignmentPolicy
+    ) throws {
+        for sample in samples {
+            if abs(sample.xMeters) > policy.maximumProjectedExtentMeters
+                || abs(sample.zMeters) > policy.maximumProjectedExtentMeters {
+                throw RouteAlignmentSampleError.unsupportedGeographicExtent
+            }
+        }
     }
 
     // MARK: - Internals
@@ -380,19 +312,11 @@ public struct RouteAlignmentSampleBuilder: Sendable {
         return max(safePreferred, covering)
     }
 
-    static func resample(
-        points: [RoutePoint],
-        interval: Double,
-        centerLat: Double,
-        centerLon: Double,
-        totalDistance: Double,
-        policy: RouteAlignmentPolicy,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> [RouteAlignmentSample] {
-        guard !points.isEmpty else { return [] }
-
-        // Split into continuous source segments (by routeSegmentIndex and
-        // non-decreasing finite distance).
+    /// Split into continuous source segments (by routeSegmentIndex and
+    /// non-decreasing finite distance).
+    private static func continuousSegments(
+        of points: [RoutePoint], isCancelled: @Sendable () -> Bool
+    ) throws -> [[RoutePoint]] {
         var segments: [[RoutePoint]] = []
         var current: [RoutePoint] = []
         var lastSegment = points[0].routeSegmentIndex
@@ -416,6 +340,21 @@ public struct RouteAlignmentSampleBuilder: Sendable {
         if !current.isEmpty {
             segments.append(current)
         }
+        return segments
+    }
+
+    static func resample(
+        points: [RoutePoint],
+        interval: Double,
+        centerLat: Double,
+        centerLon: Double,
+        totalDistance: Double,
+        policy: RouteAlignmentPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [RouteAlignmentSample] {
+        guard !points.isEmpty else { return [] }
+
+        let segments = try continuousSegments(of: points, isCancelled: isCancelled)
 
         var samples: [RouteAlignmentSample] = []
         samples.reserveCapacity(min(policy.maximumSamplesPerRoute, Int(totalDistance / max(interval, 1)) + segments.count * 2))

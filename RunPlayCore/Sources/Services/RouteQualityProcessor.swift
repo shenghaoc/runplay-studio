@@ -209,32 +209,53 @@ public struct RouteQualityProcessor: Sendable {
                 diagnostics.invalidCoordinatePointCount += 1
                 continue
             }
-            var point = source
-            if let altitude = point.altitudeMeters, !altitude.isFinite {
-                point.altitudeMeters = nil
-                diagnostics.discardedAltitudeSampleCount += 1
-            }
-
-            let sourceSpeedIsValid = point.speedMetersPerSecond.map {
-                $0.isFinite && $0 >= 0 && $0 <= policy.maximumSourceSpeedMetersPerSecond
-            } ?? true
-            if !sourceSpeedIsValid {
-                point.speedMetersPerSecond = nil
-                point.paceSecondsPerKilometer = nil
-                diagnostics.invalidSourceSpeedSampleCount += 1
-            } else if let pace = point.paceSecondsPerKilometer {
-                let impliedSpeed = pace > 0 ? 1_000 / pace : .infinity
-                if !pace.isFinite || pace <= 0
-                    || impliedSpeed > policy.maximumSourceSpeedMetersPerSecond {
-                    point.paceSecondsPerKilometer = nil
-                }
-            }
-            if let accuracy = point.horizontalAccuracy, !accuracy.isFinite || accuracy < 0 {
-                point.horizontalAccuracy = nil
-            }
+            let point = sanitizedFields(of: source, diagnostics: &diagnostics)
             valid.append((index, point))
         }
 
+        var ordered = Self.orderedBySegment(valid, sortByTimestamp: sortByTimestamp)
+        Self.compactSegmentIndices(&ordered)
+        Self.rebuildElapsedSeconds(&ordered)
+        return ordered
+    }
+
+    /// Drops a non-finite altitude, an invalid or implausible source speed
+    /// with its pace, an implausible pace, and an invalid horizontal accuracy,
+    /// counting the discarded altitudes and speeds.
+    @inline(__always)
+    private func sanitizedFields(of source: RoutePoint, diagnostics: inout RouteQualityDiagnostics) -> RoutePoint {
+        var point = source
+        if let altitude = point.altitudeMeters, !altitude.isFinite {
+            point.altitudeMeters = nil
+            diagnostics.discardedAltitudeSampleCount += 1
+        }
+
+        let sourceSpeedIsValid = point.speedMetersPerSecond.map {
+            $0.isFinite && $0 >= 0 && $0 <= policy.maximumSourceSpeedMetersPerSecond
+        } ?? true
+        if !sourceSpeedIsValid {
+            point.speedMetersPerSecond = nil
+            point.paceSecondsPerKilometer = nil
+            diagnostics.invalidSourceSpeedSampleCount += 1
+        } else if let pace = point.paceSecondsPerKilometer {
+            let impliedSpeed = pace > 0 ? 1_000 / pace : .infinity
+            if !pace.isFinite || pace <= 0
+                || impliedSpeed > policy.maximumSourceSpeedMetersPerSecond {
+                point.paceSecondsPerKilometer = nil
+            }
+        }
+        if let accuracy = point.horizontalAccuracy, !accuracy.isFinite || accuracy < 0 {
+            point.horizontalAccuracy = nil
+        }
+        return point
+    }
+
+    /// The points in ascending source-segment order: each segment by
+    /// timestamp, then elapsed time, then source order when `sortByTimestamp`
+    /// is set, otherwise in source order.
+    private static func orderedBySegment(
+        _ valid: [(offset: Int, point: RoutePoint)], sortByTimestamp: Bool
+    ) -> [RoutePoint] {
         let grouped = Dictionary(grouping: valid, by: { $0.point.routeSegmentIndex })
         var ordered: [RoutePoint] = []
         ordered.reserveCapacity(valid.count)
@@ -255,7 +276,11 @@ public struct RouteQualityProcessor: Sendable {
             }
             ordered.append(contentsOf: entries.map(\.point))
         }
+        return ordered
+    }
 
+    /// Renumbers the source segments 0, 1, 2… in their order.
+    private static func compactSegmentIndices(_ ordered: inout [RoutePoint]) {
         var compactIndex = -1
         var previousSourceSegment: Int?
         for index in ordered.indices {
@@ -265,7 +290,11 @@ public struct RouteQualityProcessor: Sendable {
             }
             ordered[index].routeSegmentIndex = compactIndex
         }
+    }
 
+    /// Rebuilds a non-decreasing elapsed time from the timestamps when they
+    /// span time, else from valid supplied elapsed times, else from the index.
+    private static func rebuildElapsedSeconds(_ ordered: inout [RoutePoint]) {
         if let first = ordered.first {
             let timestampSpan = ordered.last?.timestamp.timeIntervalSince(first.timestamp) ?? 0
             let useTimestampElapsed = timestampSpan.isFinite && timestampSpan > 0
@@ -286,7 +315,6 @@ public struct RouteQualityProcessor: Sendable {
                 ordered[index].elapsedSeconds = previousElapsed
             }
         }
-        return ordered
     }
 
     // MARK: - Legacy helpers retained in Swift

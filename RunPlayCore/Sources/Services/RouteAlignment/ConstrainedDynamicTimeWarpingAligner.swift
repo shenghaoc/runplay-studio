@@ -84,104 +84,21 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         _ = comparisonContext
 
         let samplePair: RouteAlignmentSamplePair
-        if profile != nil {
-            let built = sampleBuilder.buildCollectingProfileResult(
-                primary: primary,
-                comparison: comparison,
-                policy: policy,
-                isCancelled: isCancelled
-            )
-            profile?.sampleBuilderDetail = built.profile
-            profile?.sampleBuilderNanoseconds = built.profile.wallNanoseconds
-            switch built.pair {
-            case .success(let pair):
-                samplePair = pair
-            case .failure(let error):
-                switch error as? RouteAlignmentSampleError {
-                case .cancelled:
-                    return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
-                case .insufficientRouteData:
-                    return .unavailable(
-                        reason: .insufficientRouteData,
-                        diagnostics: baseDiagnostics(policy: policy),
-                        policyVersion: policy.algorithmVersion
-                    )
-                case .unsupportedGeographicExtent:
-                    return .unavailable(
-                        reason: .unsupportedGeographicExtent,
-                        diagnostics: baseDiagnostics(policy: policy),
-                        policyVersion: policy.algorithmVersion
-                    )
-                case .resourceLimit:
-                    return .unavailable(
-                        reason: .resourceLimit,
-                        diagnostics: baseDiagnostics(policy: policy),
-                        policyVersion: policy.algorithmVersion
-                    )
-                case .none:
-                    return .unavailable(
-                        reason: .algorithmFailure,
-                        diagnostics: baseDiagnostics(policy: policy),
-                        policyVersion: policy.algorithmVersion
-                    )
-                }
-            }
-        } else {
-            do {
-                samplePair = try sampleBuilder.build(
-                    primary: primary,
-                    comparison: comparison,
-                    policy: policy,
-                    isCancelled: isCancelled
-                )
-            } catch RouteAlignmentSampleError.cancelled {
-                return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
-            } catch RouteAlignmentSampleError.insufficientRouteData {
-                return .unavailable(
-                    reason: .insufficientRouteData,
-                    diagnostics: baseDiagnostics(policy: policy),
-                    policyVersion: policy.algorithmVersion
-                )
-            } catch RouteAlignmentSampleError.unsupportedGeographicExtent {
-                return .unavailable(
-                    reason: .unsupportedGeographicExtent,
-                    diagnostics: baseDiagnostics(policy: policy),
-                    policyVersion: policy.algorithmVersion
-                )
-            } catch RouteAlignmentSampleError.resourceLimit {
-                return .unavailable(
-                    reason: .resourceLimit,
-                    diagnostics: baseDiagnostics(policy: policy),
-                    policyVersion: policy.algorithmVersion
-                )
-            } catch {
-                return .unavailable(
-                    reason: .algorithmFailure,
-                    diagnostics: baseDiagnostics(policy: policy),
-                    policyVersion: policy.algorithmVersion
-                )
-            }
+        switch buildSamplePair(
+            primary: primary, comparison: comparison, policy: policy, isCancelled: isCancelled, profile: &profile
+        ) {
+        case .success(let pair):
+            samplePair = pair
+        case .failure(let error):
+            return unavailableSnapshot(for: error as? RouteAlignmentSampleError, policy: policy)
         }
 
         if isCancelled() {
             return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
         }
 
-        let direction: RouteAlignmentDirection
-        if profile != nil {
-            let start = ContinuousClock.now
-            direction = detectDirection(
-                primary: samplePair.primary,
-                comparison: samplePair.comparison,
-                policy: policy,
-                isCancelled: isCancelled
-            )
-            profile?.directionDetectionNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            direction = detectDirection(
+        let direction = HotspotProfileClock.profiled(&profile, \.directionDetectionNanoseconds) {
+            detectDirection(
                 primary: samplePair.primary,
                 comparison: samplePair.comparison,
                 policy: policy,
@@ -231,6 +148,73 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
                     algorithmVersion: policy.algorithmVersion,
                     warnings: [coreLocalized("Alignment algorithm failed.")]
                 ),
+                policyVersion: policy.algorithmVersion
+            )
+        }
+    }
+
+    /// Builds the alignment samples, recording the builder's phase profile
+    /// when `profile` is present.
+    private func buildSamplePair(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        policy: RouteAlignmentPolicy,
+        isCancelled: @Sendable () -> Bool,
+        profile: inout RouteAlignmentPhaseProfile?
+    ) -> Result<RouteAlignmentSamplePair, Error> {
+        if profile != nil {
+            let built = sampleBuilder.buildCollectingProfileResult(
+                primary: primary,
+                comparison: comparison,
+                policy: policy,
+                isCancelled: isCancelled
+            )
+            profile?.sampleBuilderDetail = built.profile
+            profile?.sampleBuilderNanoseconds = built.profile.wallNanoseconds
+            return built.pair
+        }
+        do {
+            return .success(try sampleBuilder.build(
+                primary: primary,
+                comparison: comparison,
+                policy: policy,
+                isCancelled: isCancelled
+            ))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// The unavailable snapshot for a sample-building failure: each sample
+    /// error has its reason, and any other error is an algorithm failure.
+    private func unavailableSnapshot(
+        for error: RouteAlignmentSampleError?, policy: RouteAlignmentPolicy
+    ) -> RouteAlignmentSnapshot {
+        switch error {
+        case .cancelled:
+            return .unavailable(reason: .cancelled, policyVersion: policy.algorithmVersion)
+        case .insufficientRouteData:
+            return .unavailable(
+                reason: .insufficientRouteData,
+                diagnostics: baseDiagnostics(policy: policy),
+                policyVersion: policy.algorithmVersion
+            )
+        case .unsupportedGeographicExtent:
+            return .unavailable(
+                reason: .unsupportedGeographicExtent,
+                diagnostics: baseDiagnostics(policy: policy),
+                policyVersion: policy.algorithmVersion
+            )
+        case .resourceLimit:
+            return .unavailable(
+                reason: .resourceLimit,
+                diagnostics: baseDiagnostics(policy: policy),
+                policyVersion: policy.algorithmVersion
+            )
+        case .none:
+            return .unavailable(
+                reason: .algorithmFailure,
+                diagnostics: baseDiagnostics(policy: policy),
                 policyVersion: policy.algorithmVersion
             )
         }
@@ -358,23 +342,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         // engine call per row, cell, or sample.
         let solved: RunPlayRouteAlignmentDtwResult
         do {
-            if profile != nil {
-                let start = ContinuousClock.now
-                solved = try RunPlayRouteAlignmentDtwAdapter.solve(
-                    primary: primary,
-                    comparison: comparison,
-                    primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
-                    comparisonRouteDistanceMeters: samples.comparisonRouteDistanceMeters,
-                    effectiveSampleIntervalMeters: samples.effectiveSampleIntervalMeters,
-                    policy: policy,
-                    isCancelled: isCancelled
-                )
-                profile?.nativeDTWNanoseconds = HotspotProfileClock.nanoseconds(
-                    from: start,
-                    to: ContinuousClock.now
-                )
-            } else {
-                solved = try RunPlayRouteAlignmentDtwAdapter.solve(
+            solved = try HotspotProfileClock.profiled(&profile, \.nativeDTWNanoseconds) {
+                try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: primary,
                     comparison: comparison,
                     primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
@@ -412,21 +381,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
 
         // Drop free prefix/suffix warp-only edges that do not contribute geometry.
         // Build anchors and blocks; split when either sample crosses a segment gap.
-        let built: BuiltBlocks
-        if profile != nil {
-            let start = ContinuousClock.now
-            built = buildBlocks(
-                path: path,
-                primary: primary,
-                comparison: comparison,
-                policy: policy
-            )
-            profile?.blockConstructionNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            built = buildBlocks(
+        let built = HotspotProfileClock.profiled(&profile, \.blockConstructionNanoseconds) {
+            buildBlocks(
                 path: path,
                 primary: primary,
                 comparison: comparison,
@@ -468,21 +424,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             return (diagnostics, availability)
         }
 
-        let diagnostics: RouteAlignmentDiagnostics
-        let availability: RouteAlignmentAvailability
-        if profile != nil {
-            let start = ContinuousClock.now
-            let finished = finishDiagnostics()
-            diagnostics = finished.diagnostics
-            availability = finished.availability
-            profile?.diagnosticsNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            let finished = finishDiagnostics()
-            diagnostics = finished.diagnostics
-            availability = finished.availability
+        let (diagnostics, availability) = HotspotProfileClock.profiled(&profile, \.diagnosticsNanoseconds) {
+            finishDiagnostics()
         }
 
         if case .unavailable(let reason) = availability {
@@ -557,15 +500,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             let comparisonDelta = max(0, cSample.distanceFromStartMeters - lastComparisonDistance)
             // Aligned progress advances by the larger matched travel when both move,
             // or by the moving side alone on warp steps.
-            let advance: Double
-            switch cell.step {
-            case .diagonal:
-                advance = max(primaryDelta, comparisonDelta)
-            case .primaryOnly:
-                advance = primaryDelta
-            case .comparisonOnly:
-                advance = comparisonDelta
-            }
+            let advance = alignedAdvance(cell.step, primaryDelta: primaryDelta, comparisonDelta: comparisonDelta)
             if index > 0, advance > 0 {
                 alignedProgress += advance
             }
@@ -582,39 +517,10 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
                 continue
             }
 
-            // If aligned progress did not move and we already have an anchor, skip.
-            if let last = currentAnchors.last, abs(last.alignedProgressMeters - alignedProgress) < 1e-9 {
-                // Prefer updating to the later pair only when progress truly stalled.
-                if pSample.distanceFromStartMeters >= last.primaryDistanceMeters
-                    && cSample.distanceFromStartMeters >= last.comparisonDistanceMeters {
-                    // Replace last for monotonic endpoint capture.
-                    currentAnchors[currentAnchors.count - 1] = RouteAlignmentAnchor(
-                        alignedProgressMeters: alignedProgress,
-                        primaryDistanceMeters: pSample.distanceFromStartMeters,
-                        comparisonDistanceMeters: cSample.distanceFromStartMeters,
-                        spatialSeparationMeters: separation,
-                        primarySegmentIndex: pSample.routeSegmentIndex,
-                        comparisonSegmentIndex: cSample.routeSegmentIndex
-                    )
-                }
-            } else {
-                if currentAnchors.isEmpty && blocks.isEmpty {
-                    alignedProgress = 0
-                } else if currentAnchors.isEmpty && !blocks.isEmpty {
-                    // Continue after gap without inserting gap distance.
-                    alignedProgress = blocks[blocks.count - 1].alignedEndMeters
-                }
-                currentAnchors.append(
-                    RouteAlignmentAnchor(
-                        alignedProgressMeters: alignedProgress,
-                        primaryDistanceMeters: pSample.distanceFromStartMeters,
-                        comparisonDistanceMeters: cSample.distanceFromStartMeters,
-                        spatialSeparationMeters: separation,
-                        primarySegmentIndex: pSample.routeSegmentIndex,
-                        comparisonSegmentIndex: cSample.routeSegmentIndex
-                    )
-                )
-            }
+            placeAnchor(
+                primary: pSample, comparison: cSample, separation: separation,
+                alignedProgress: &alignedProgress, currentAnchors: &currentAnchors, blocks: blocks
+            )
 
             if primaryDelta > 0 { primaryMatched += primaryDelta }
             if comparisonDelta > 0 { comparisonMatched += comparisonDelta }
@@ -626,6 +532,79 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         flushBlock()
 
         // Re-normalize aligned progress to be continuous 0...total across blocks.
+        let normalized = normalizedBlocks(blocks)
+
+        return BuiltBlocks(
+            blocks: normalized,
+            primaryMatchedDistance: primaryMatched,
+            comparisonMatchedDistance: comparisonMatched
+        )
+    }
+
+    /// Aligned progress advances by the larger matched travel when both move,
+    /// or by the moving side alone on warp steps.
+    private func alignedAdvance(
+        _ step: RunPlayRouteAlignmentDtwStepKind, primaryDelta: Double, comparisonDelta: Double
+    ) -> Double {
+        switch step {
+        case .diagonal:
+            return max(primaryDelta, comparisonDelta)
+        case .primaryOnly:
+            return primaryDelta
+        case .comparisonOnly:
+            return comparisonDelta
+        }
+    }
+
+    /// Adds one path cell's anchor to the open block. If aligned progress did
+    /// not move and the block already has an anchor, the later pair replaces
+    /// the last anchor only when neither distance went back. A block's first
+    /// anchor starts at zero, or at the previous block's end after a gap.
+    private func placeAnchor(
+        primary pSample: RouteAlignmentSample,
+        comparison cSample: RouteAlignmentSample,
+        separation: Double,
+        alignedProgress: inout Double,
+        currentAnchors: inout [RouteAlignmentAnchor],
+        blocks: [RouteAlignmentBlock]
+    ) {
+        if let last = currentAnchors.last, abs(last.alignedProgressMeters - alignedProgress) < 1e-9 {
+            // Prefer updating to the later pair only when progress truly stalled.
+            if pSample.distanceFromStartMeters >= last.primaryDistanceMeters
+                && cSample.distanceFromStartMeters >= last.comparisonDistanceMeters {
+                // Replace last for monotonic endpoint capture.
+                currentAnchors[currentAnchors.count - 1] = RouteAlignmentAnchor(
+                    alignedProgressMeters: alignedProgress,
+                    primaryDistanceMeters: pSample.distanceFromStartMeters,
+                    comparisonDistanceMeters: cSample.distanceFromStartMeters,
+                    spatialSeparationMeters: separation,
+                    primarySegmentIndex: pSample.routeSegmentIndex,
+                    comparisonSegmentIndex: cSample.routeSegmentIndex
+                )
+            }
+        } else {
+            if currentAnchors.isEmpty && blocks.isEmpty {
+                alignedProgress = 0
+            } else if currentAnchors.isEmpty && !blocks.isEmpty {
+                // Continue after gap without inserting gap distance.
+                alignedProgress = blocks[blocks.count - 1].alignedEndMeters
+            }
+            currentAnchors.append(
+                RouteAlignmentAnchor(
+                    alignedProgressMeters: alignedProgress,
+                    primaryDistanceMeters: pSample.distanceFromStartMeters,
+                    comparisonDistanceMeters: cSample.distanceFromStartMeters,
+                    spatialSeparationMeters: separation,
+                    primarySegmentIndex: pSample.routeSegmentIndex,
+                    comparisonSegmentIndex: cSample.routeSegmentIndex
+                )
+            )
+        }
+    }
+
+    /// Re-normalize aligned progress to be continuous 0...total across
+    /// blocks, keeping only blocks with at least two monotonic anchors.
+    private func normalizedBlocks(_ blocks: [RouteAlignmentBlock]) -> [RouteAlignmentBlock] {
         var normalized: [RouteAlignmentBlock] = []
         var cursor = 0.0
         for block in blocks {
@@ -652,12 +631,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             normalized.append(RouteAlignmentBlock(id: normalized.count, anchors: newAnchors))
             cursor += span
         }
-
-        return BuiltBlocks(
-            blocks: normalized,
-            primaryMatchedDistance: primaryMatched,
-            comparisonMatchedDistance: comparisonMatched
-        )
+        return normalized
     }
 
     private func enforceMonotonic(_ anchors: [RouteAlignmentAnchor]) -> [RouteAlignmentAnchor] {
@@ -721,14 +695,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             return .unavailable(.excessiveWarping)
         }
 
-        let maxUnmatchedPrimary = policy.maximumUnmatchedDistance(forRouteDistance: diagnostics.primaryRouteDistanceMeters)
-        let maxUnmatchedComparison = policy.maximumUnmatchedDistance(forRouteDistance: diagnostics.comparisonRouteDistanceMeters)
-        // Allow one sample interval of quantisation slack on unmatched ends.
-        let slack = max(diagnostics.effectiveSampleIntervalMeters, 1)
-        if diagnostics.primaryUnmatchedPrefixMeters > maxUnmatchedPrimary + slack
-            || diagnostics.primaryUnmatchedSuffixMeters > maxUnmatchedPrimary + slack
-            || diagnostics.comparisonUnmatchedPrefixMeters > maxUnmatchedComparison + slack
-            || diagnostics.comparisonUnmatchedSuffixMeters > maxUnmatchedComparison + slack {
+        if hasUnmatchedEndBeyondLimit(diagnostics: diagnostics, policy: policy) {
             // Large start rotation on loops often lands here.
             if direction == .ambiguous {
                 return .unavailable(.ambiguousGeometry)
@@ -736,20 +703,45 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
             return .unavailable(.insufficientCoverage)
         }
 
+        return .available(quality(diagnostics: diagnostics, warpFraction: warpFraction, policy: policy))
+    }
+
+    /// Whether an unmatched prefix or suffix of either route exceeds the
+    /// policy's unmatched distance for that route, with one sample interval
+    /// of quantisation slack.
+    private func hasUnmatchedEndBeyondLimit(
+        diagnostics: RouteAlignmentDiagnostics, policy: RouteAlignmentPolicy
+    ) -> Bool {
+        let maxUnmatchedPrimary = policy.maximumUnmatchedDistance(forRouteDistance: diagnostics.primaryRouteDistanceMeters)
+        let maxUnmatchedComparison = policy.maximumUnmatchedDistance(forRouteDistance: diagnostics.comparisonRouteDistanceMeters)
+        // Allow one sample interval of quantisation slack on unmatched ends.
+        let slack = max(diagnostics.effectiveSampleIntervalMeters, 1)
+        return diagnostics.primaryUnmatchedPrefixMeters > maxUnmatchedPrimary + slack
+            || diagnostics.primaryUnmatchedSuffixMeters > maxUnmatchedPrimary + slack
+            || diagnostics.comparisonUnmatchedPrefixMeters > maxUnmatchedComparison + slack
+            || diagnostics.comparisonUnmatchedSuffixMeters > maxUnmatchedComparison + slack
+    }
+
+    /// The quality tier of an alignment that passed every availability
+    /// check: excellent or good when coverage, separation and warping all meet
+    /// that tier, limited otherwise.
+    private func quality(
+        diagnostics: RouteAlignmentDiagnostics, warpFraction: Double, policy: RouteAlignmentPolicy
+    ) -> RouteAlignmentQuality {
         let minCoverage = min(diagnostics.primaryCoverageFraction, diagnostics.comparisonCoverageFraction)
         if minCoverage >= policy.excellentCoverageFraction
             && diagnostics.medianSpatialSeparationMeters <= policy.excellentMedianSeparationMeters
             && diagnostics.p90SpatialSeparationMeters <= policy.excellentP90SeparationMeters
             && warpFraction <= policy.excellentMaximumWarpFraction {
-            return .available(.excellent)
+            return .excellent
         }
         if minCoverage >= policy.goodCoverageFraction
             && diagnostics.medianSpatialSeparationMeters <= policy.goodMedianSeparationMeters
             && diagnostics.p90SpatialSeparationMeters <= policy.goodP90SeparationMeters
             && warpFraction <= policy.goodMaximumWarpFraction {
-            return .available(.good)
+            return .good
         }
-        return .available(.limited)
+        return .limited
     }
 
     // MARK: - Diagnostics helpers

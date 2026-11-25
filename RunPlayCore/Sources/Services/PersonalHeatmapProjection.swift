@@ -180,6 +180,9 @@ public enum PersonalHeatmapGridTraversal {
         maximumCells: Int = defaultMaximumCellsPerInterval,
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> [PersonalHeatmapCellID] {
+        // #lizard forgives(cyclomatic_complexity): one ordered operation, the
+        // Amanatides–Woo supercover walk, whose cell cursor, boundary
+        // distances and result advance together.
         guard cellSizeMeters.isFinite, cellSizeMeters > 0,
               start.x.isFinite, start.y.isFinite,
               end.x.isFinite, end.y.isFinite,

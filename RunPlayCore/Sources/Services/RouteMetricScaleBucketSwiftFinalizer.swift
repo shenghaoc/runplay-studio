@@ -35,23 +35,11 @@ enum RouteMetricScaleBucketSwiftFinalizer {
         let weight: Double
     }
 
-    static func assign(
-        metricValues: [Double?],
-        weightsMeters: [Double],
-        lowerQuantile: Double,
-        upperQuantile: Double,
-        minimumScaleSpan: Double,
-        minimumValidIntervalCount: Int,
-        bucketCount: Int,
-        cancellationCheckStride: Int,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> Result {
-        guard metricValues.count == weightsMeters.count else {
-            throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
-        }
-        let stride = max(1, cancellationCheckStride)
-        if isCancelled() { throw CancellationError() }
-
+    /// The intervals with a finite metric value and a positive weight, their
+    /// total weight, and their count. A NaN or negative weight is refused.
+    private static func validSamples(
+        metricValues: [Double?], weightsMeters: [Double], stride: Int, isCancelled: @Sendable () -> Bool
+    ) throws -> (samples: [WeightedSample], coverage: Double, count: Int) {
         var samples: [WeightedSample] = []
         samples.reserveCapacity(metricValues.count)
         var validCoverage = 0.0
@@ -72,18 +60,32 @@ enum RouteMetricScaleBucketSwiftFinalizer {
             validCoverage += weight
             validCount += 1
         }
+        return (samples, validCoverage, validCount)
+    }
 
-        let scale: NumericScale?
+    /// The weighted lower, median and upper scale, when there are enough
+    /// valid intervals and the scale spans at least the minimum.
+    private static func numericScale(
+        _ samples: [WeightedSample], validCount: Int, minimumValidIntervalCount: Int,
+        lowerQuantile: Double, upperQuantile: Double, minimumScaleSpan: Double
+    ) -> NumericScale? {
         if validCount >= minimumValidIntervalCount,
            let lower = weightedQuantile(samples, quantile: lowerQuantile),
            let median = weightedQuantile(samples, quantile: 0.5),
            let upper = weightedQuantile(samples, quantile: upperQuantile),
            abs(upper - lower) + 1e-12 >= max(0, minimumScaleSpan) {
-            scale = NumericScale(lowerBound: lower, median: median, upperBound: upper)
+            return NumericScale(lowerBound: lower, median: median, upperBound: upper)
         } else {
-            scale = nil
+            return nil
         }
+    }
 
+    /// Each interval's normalized value and bucket under the scale; an
+    /// interval without a value, or without a scale, has no data.
+    private static func assignBuckets(
+        metricValues: [Double?], scale: NumericScale?, bucketCount: Int, stride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> (assignments: [Assignment], noDataCount: Int) {
         var assignments: [Assignment] = []
         assignments.reserveCapacity(metricValues.count)
         var noDataCount = 0
@@ -100,6 +102,41 @@ enum RouteMetricScaleBucketSwiftFinalizer {
                 noDataCount += 1
             }
         }
+        return (assignments, noDataCount)
+    }
+
+    static func assign(
+        metricValues: [Double?],
+        weightsMeters: [Double],
+        lowerQuantile: Double,
+        upperQuantile: Double,
+        minimumScaleSpan: Double,
+        minimumValidIntervalCount: Int,
+        bucketCount: Int,
+        cancellationCheckStride: Int,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> Result {
+        guard metricValues.count == weightsMeters.count else {
+            throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
+        }
+        let stride = max(1, cancellationCheckStride)
+        if isCancelled() { throw CancellationError() }
+
+        let valid = try validSamples(
+            metricValues: metricValues, weightsMeters: weightsMeters, stride: stride, isCancelled: isCancelled
+        )
+        let validCoverage = valid.coverage
+        let validCount = valid.count
+
+        let scale = numericScale(
+            valid.samples, validCount: validCount, minimumValidIntervalCount: minimumValidIntervalCount,
+            lowerQuantile: lowerQuantile, upperQuantile: upperQuantile, minimumScaleSpan: minimumScaleSpan
+        )
+
+        let (assignments, noDataCount) = try assignBuckets(
+            metricValues: metricValues, scale: scale, bucketCount: bucketCount, stride: stride,
+            isCancelled: isCancelled
+        )
 
         return Result(
             scale: scale,

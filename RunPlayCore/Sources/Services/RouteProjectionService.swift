@@ -41,49 +41,19 @@ public struct RouteProjectionService: Sendable {
         guard !points.isEmpty else { return [] }
 
         // Filter out points with invalid coordinates, preserving original indices
-        // ⚡ Bolt: Inline loop avoids closure overhead from .enumerated().compactMap { ... }.
-        var validIndexedPoints: [(index: Int, point: RoutePoint)] = []
-        validIndexedPoints.reserveCapacity(points.count)
-        for i in points.indices {
-            let point = points[i]
-            if GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude) {
-                validIndexedPoints.append((index: i, point: point))
-            }
-        }
+        let validIndexedPoints = Self.validIndexedPoints(points)
 
         guard !validIndexedPoints.isEmpty else { return [] }
 
         // Find route center (midpoint of bounding box)
-        // ⚡ Bolt: Inline min/max tracking avoids intermediate O(N) array allocations
-        var minLat = Double.infinity, maxLat = -Double.infinity
-        var minLon = Double.infinity, maxLon = -Double.infinity
-        for item in validIndexedPoints {
-            let lat = item.point.latitude
-            let lon = item.point.longitude
-            if lat < minLat { minLat = lat }
-            if lat > maxLat { maxLat = lat }
-            if lon < minLon { minLon = lon }
-            if lon > maxLon { maxLon = lon }
-        }
-        guard minLat.isFinite, maxLat.isFinite, minLon.isFinite, maxLon.isFinite else { return [] }
-        let centerLat = (minLat + maxLat) / 2
-        let centerLon = (minLon + maxLon) / 2
+        guard let center = Self.boundingBoxCenter(of: validIndexedPoints) else { return [] }
+        let centerLat = center.lat
+        let centerLon = center.lon
 
         // Find the corrected elevation baseline from renderable points only.
         // A non-meaningful or misaligned profile yields no values and keeps the
         // route flat rather than inventing an elevation range from raw data.
-        // ⚡ Bolt: Inline min tracking avoids an intermediate O(N) altitude array.
-        var minAltOpt: Double?
-        for item in validIndexedPoints {
-            if let altitude = correctedAltitude(
-                for: item.point,
-                atSourceIndex: item.index,
-                elevationProfile: elevationProfile
-            ) {
-                minAltOpt = min(minAltOpt ?? .infinity, altitude)
-            }
-        }
-        let minAlt = minAltOpt ?? 0
+        let minAlt = minimumCorrectedAltitude(of: validIndexedPoints, elevationProfile: elevationProfile) ?? 0
 
         // ⚡ Bolt: Inline loop avoids .map closure overhead while building the projected array.
         var projected: [RouteScenePoint] = []
@@ -130,6 +100,61 @@ public struct RouteProjectionService: Sendable {
         }
 
         return projected
+    }
+
+    /// The points with valid coordinates, each with its original index.
+    private static func validIndexedPoints(_ points: [RoutePoint]) -> [(index: Int, point: RoutePoint)] {
+        // ⚡ Bolt: Inline loop avoids closure overhead from .enumerated().compactMap { ... }.
+        var validIndexedPoints: [(index: Int, point: RoutePoint)] = []
+        validIndexedPoints.reserveCapacity(points.count)
+        for i in points.indices {
+            let point = points[i]
+            if GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude) {
+                validIndexedPoints.append((index: i, point: point))
+            }
+        }
+        return validIndexedPoints
+    }
+
+    /// The midpoint of the points' bounding box, or nil when a bound is not
+    /// finite. `ComparisonRouteProjectionService` centres both routes on the
+    /// primary route's box with it.
+    static func boundingBoxCenter(
+        of validIndexedPoints: [(index: Int, point: RoutePoint)]
+    ) -> (lat: Double, lon: Double)? {
+        // ⚡ Bolt: Inline min/max tracking avoids intermediate O(N) array allocations
+        var minLat = Double.infinity, maxLat = -Double.infinity
+        var minLon = Double.infinity, maxLon = -Double.infinity
+        for item in validIndexedPoints {
+            let lat = item.point.latitude
+            let lon = item.point.longitude
+            if lat < minLat { minLat = lat }
+            if lat > maxLat { maxLat = lat }
+            if lon < minLon { minLon = lon }
+            if lon > maxLon { maxLon = lon }
+        }
+        guard minLat.isFinite, maxLat.isFinite, minLon.isFinite, maxLon.isFinite else { return nil }
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        return (centerLat, centerLon)
+    }
+
+    /// The lowest corrected altitude among the points, or nil when none has one.
+    private func minimumCorrectedAltitude(
+        of validIndexedPoints: [(index: Int, point: RoutePoint)], elevationProfile: ElevationProfile
+    ) -> Double? {
+        // ⚡ Bolt: Inline min tracking avoids an intermediate O(N) altitude array.
+        var minAltOpt: Double?
+        for item in validIndexedPoints {
+            if let altitude = correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: elevationProfile
+            ) {
+                minAltOpt = min(minAltOpt ?? .infinity, altitude)
+            }
+        }
+        return minAltOpt
     }
 
     private func correctedAltitude(

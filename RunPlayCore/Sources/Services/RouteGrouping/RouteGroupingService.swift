@@ -433,29 +433,56 @@ public struct RouteGroupingService: Sendable {
             }
         }
 
-        struct Claim {
-            let previous: WorkoutRouteGroup
-            let contributedCount: Int
-            let earliestContributedDate: Date?
+        let winningClaims = Self.winningClaims(
+            previousGroups: previousGroups,
+            previousMembersByGroup: previousMembersByGroup,
+            groupIDByWorkout: groupIDByWorkout,
+            workoutsByID: workoutsByID
+        )
 
-            func outranks(_ other: Claim) -> Bool {
-                if contributedCount != other.contributedCount {
-                    return contributedCount > other.contributedCount
-                }
-                switch (earliestContributedDate, other.earliestContributedDate) {
-                case let (lhs?, rhs?) where lhs != rhs:
-                    return lhs < rhs
-                case (.some, nil):
-                    return true
-                case (nil, .some):
-                    return false
-                default:
-                    return previous.id.uuidString < other.previous.id.uuidString
-                }
+        for newIndex in groups.indices {
+            let newGroupID = groups[newIndex].id
+            guard let previous = winningClaims[newGroupID]?.previous else { continue }
+            Self.adoptManualState(
+                of: previous, into: &groups[newIndex],
+                groupIDByWorkout: groupIDByWorkout, workoutsByID: workoutsByID
+            )
+        }
+    }
+
+    /// A previous group's claim on the new group that holds its reference
+    /// workout: how many of its members the new group holds, and the
+    /// earliest of their start dates.
+    private struct ManualStateClaim {
+        let previous: WorkoutRouteGroup
+        let contributedCount: Int
+        let earliestContributedDate: Date?
+
+        func outranks(_ other: ManualStateClaim) -> Bool {
+            if contributedCount != other.contributedCount {
+                return contributedCount > other.contributedCount
+            }
+            switch (earliestContributedDate, other.earliestContributedDate) {
+            case let (lhs?, rhs?) where lhs != rhs:
+                return lhs < rhs
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            default:
+                return previous.id.uuidString < other.previous.id.uuidString
             }
         }
+    }
 
-        var winningClaims: [UUID: Claim] = [:]
+    /// The outranking previous-group claim on each new group.
+    private static func winningClaims(
+        previousGroups: [WorkoutRouteGroup],
+        previousMembersByGroup: [UUID: Set<UUID>],
+        groupIDByWorkout: [UUID: UUID],
+        workoutsByID: [UUID: RunWorkout]
+    ) -> [UUID: ManualStateClaim] {
+        var winningClaims: [UUID: ManualStateClaim] = [:]
         for previous in previousGroups {
             let referenceID = previous.pinnedRepresentativeWorkoutID
                 ?? previous.representativeSummary?.workoutID
@@ -467,7 +494,7 @@ public struct RouteGroupingService: Sendable {
             let contributed = (previousMembersByGroup[previous.id] ?? [])
                 .union([referenceID])
                 .filter { groupIDByWorkout[$0] == newGroupID }
-            let claim = Claim(
+            let claim = ManualStateClaim(
                 previous: previous,
                 contributedCount: contributed.count,
                 earliestContributedDate: contributed
@@ -479,26 +506,33 @@ public struct RouteGroupingService: Sendable {
             }
             winningClaims[newGroupID] = claim
         }
+        return winningClaims
+    }
 
-        for newIndex in groups.indices {
-            let newGroupID = groups[newIndex].id
-            guard let previous = winningClaims[newGroupID]?.previous else { continue }
-            if let name = previous.name {
-                groups[newIndex].name = name
-            }
-            if let derivedName = previous.derivedName {
-                groups[newIndex].derivedName = derivedName
-            }
-            if let pinned = previous.pinnedRepresentativeWorkoutID,
-               let pinnedWorkout = workoutsByID[pinned],
-               groupIDByWorkout[pinned] == newGroupID {
-                groups[newIndex].pinnedRepresentativeWorkoutID = pinned
-                groups[newIndex].representativeSummary = WorkoutRouteGroupSummary(
-                    workoutID: pinned,
-                    startDate: WorkoutLibraryEntry.canonicalStartDate(for: pinnedWorkout),
-                    facts: RouteGroupingRouteFacts(workout: pinnedWorkout)
-                )
-            }
+    /// Carries the winning previous group's name, derived name, and pinned
+    /// representative (when the pinned workout is still in the new group).
+    private static func adoptManualState(
+        of previous: WorkoutRouteGroup,
+        into group: inout WorkoutRouteGroup,
+        groupIDByWorkout: [UUID: UUID],
+        workoutsByID: [UUID: RunWorkout]
+    ) {
+        let newGroupID = group.id
+        if let name = previous.name {
+            group.name = name
+        }
+        if let derivedName = previous.derivedName {
+            group.derivedName = derivedName
+        }
+        if let pinned = previous.pinnedRepresentativeWorkoutID,
+           let pinnedWorkout = workoutsByID[pinned],
+           groupIDByWorkout[pinned] == newGroupID {
+            group.pinnedRepresentativeWorkoutID = pinned
+            group.representativeSummary = WorkoutRouteGroupSummary(
+                workoutID: pinned,
+                startDate: WorkoutLibraryEntry.canonicalStartDate(for: pinnedWorkout),
+                facts: RouteGroupingRouteFacts(workout: pinnedWorkout)
+            )
         }
     }
 }

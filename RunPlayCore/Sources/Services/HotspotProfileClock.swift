@@ -30,4 +30,20 @@ enum HotspotProfileClock {
         let value = try body()
         return (value, nanoseconds(from: start, to: ContinuousClock.now))
     }
+
+    /// Runs `body` and, when `profile` is present, records its wall time in
+    /// the phase that `phase` names. Without a profile, `body` runs unmeasured;
+    /// a throwing `body` records nothing.
+    @inline(__always)
+    static func profiled<Profile, Value>(
+        _ profile: inout Profile?,
+        _ phase: WritableKeyPath<Profile, UInt64>,
+        _ body: () throws -> Value
+    ) rethrows -> Value {
+        guard profile != nil else { return try body() }
+        let start = ContinuousClock.now
+        let value = try body()
+        profile?[keyPath: phase] = nanoseconds(from: start, to: ContinuousClock.now)
+        return value
+    }
 }
