@@ -395,6 +395,36 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         )
     }
 
+    func testRemovingFolderStopsScanningWhileOtherFoldersKeepImporting() async throws {
+        let (coordinator, recorder, _) = makeCoordinator()
+        defer { coordinator.shutdown() }
+        let retainedFolder = tempDir.appendingPathComponent("still-watched")
+        try FileManager.default.createDirectory(at: retainedFolder, withIntermediateDirectories: true)
+        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(coordinator.addFolder(url: retainedFolder))
+        let removedID = try XCTUnwrap(coordinator.folders.first?.id)
+
+        let previousFile = try writeJSON("already-imported.json")
+        coordinator.importExistingNow()
+        await waitForCondition(timeout: 2) { recorder.recordedURLs.contains(previousFile) }
+        XCTAssertEqual(recorder.recordedURLs.map { $0.resolvingSymlinksInPath() }, [previousFile.resolvingSymlinksInPath()])
+
+        coordinator.removeFolder(id: removedID)
+        let ignoredFile = try writeJSON("after-removal.json")
+        let retainedFile = retainedFolder.appendingPathComponent("continue.json")
+        try Data("different fixture".utf8).write(to: retainedFile)
+        coordinator.importExistingNow()
+        await waitForCondition(timeout: 2) { recorder.recordedURLs.contains(retainedFile) }
+
+        XCTAssertEqual(
+            recorder.recordedURLs.map { $0.resolvingSymlinksInPath() },
+            [previousFile, retainedFile].map { $0.resolvingSymlinksInPath() }
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ignoredFile.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previousFile.path))
+        XCTAssertEqual(coordinator.folders.map(\.displayName), ["still-watched"])
+    }
+
     func testRemovingOneFolderResurfacesAnotherFoldersQueuedReview() async throws {
         let secondDir = tempDir.appendingPathComponent("watched-2")
         try FileManager.default.createDirectory(at: secondDir, withIntermediateDirectories: true)
