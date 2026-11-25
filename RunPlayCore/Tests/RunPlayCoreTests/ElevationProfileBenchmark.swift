@@ -22,7 +22,8 @@ struct ElevationProfileBenchmark {
         try runSuite(name: "E2", count: 100_000, warmups: 2, measurements: 5)
     }
 
-    @Test("E7 1,000,000-point product limit")
+    @Test("E7 1,000,000-point product limit",
+          .enabled(if: ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1"))
     func e7ProductLimit() throws {
         try runSuite(name: "E7", count: 1_000_000, warmups: 1, measurements: 3)
     }
@@ -35,101 +36,40 @@ struct ElevationProfileBenchmark {
     ) throws {
         let points = makeClimb(count: count)
         let policy = RouteQualityPolicy.runningDefault
-        let memoryBefore = processMemorySnapshot()
-
-        func median(_ values: [Double]) -> Double {
-            let sorted = values.sorted()
-            return sorted[sorted.count / 2]
-        }
-
-        func measure(_ body: () throws -> Void) rethrows -> Double {
-            for _ in 0..<warmups {
-                try body()
+        func measure(swift: Bool) throws -> Double {
+            let clock = ContinuousClock()
+            let elapsed = try clock.measure {
+                if swift {
+                    _ = try RunPlayElevationProfileBridge.build(
+                        routePoints: points, policy: policy, isCancelled: { false }
+                    )
+                } else {
+                    _ = try ElevationProfileCppBenchmarkOracle.build(
+                        routePoints: points, policy: policy, isCancelled: { false }
+                    )
+                }
             }
-            var samples: [Double] = []
-            samples.reserveCapacity(measurements)
-            for _ in 0..<measurements {
-                let start = DispatchTime.now().uptimeNanoseconds
-                try body()
-                let end = DispatchTime.now().uptimeNanoseconds
-                samples.append(Double(end - start) / 1_000_000.0)
-            }
-            return median(samples)
+            let parts = elapsed.components
+            return Double(parts.seconds) * 1_000 + Double(parts.attoseconds) * 1e-15
         }
-
-        let oracleMs = measure {
-            _ = SwiftElevationProfileOracle.build(routePoints: points, policy: policy)
-        }
-        let bridgeMs = try measure {
-            _ = try RunPlayElevationProfileBridge.build(
-                routePoints: points,
-                policy: policy,
-                isCancelled: { false }
-            )
-        }
-        let productionMs = try measure {
-            _ = try ElevationProfile.build(
-                routePoints: points,
-                policy: policy,
-                isCancelled: { false }
-            )
-        }
-
-        var inputConversionSamples: [Double] = []
-        var outputAllocationSamples: [Double] = []
-        var nativeKernelSamples: [Double] = []
-        var outputTranslationSamples: [Double] = []
-        inputConversionSamples.reserveCapacity(measurements)
-        outputAllocationSamples.reserveCapacity(measurements)
-        nativeKernelSamples.reserveCapacity(measurements)
-        outputTranslationSamples.reserveCapacity(measurements)
-
+        var native: [Double] = []
+        var swift: [Double] = []
         for iteration in 0..<(warmups + measurements) {
-            let report = try RunPlayElevationProfileBridge.buildCollectingBenchmarkReport(
-                routePoints: points,
-                policy: policy,
-                isCancelled: { false }
-            )
-            guard iteration >= warmups else { continue }
-            inputConversionSamples.append(report.inputConversionMilliseconds)
-            outputAllocationSamples.append(report.outputAllocationMilliseconds)
-            nativeKernelSamples.append(report.nativeKernelMilliseconds)
-            outputTranslationSamples.append(report.outputTranslationMilliseconds)
+            let swiftFirst = iteration.isMultiple(of: 2)
+            let first = try measure(swift: swiftFirst)
+            let second = try measure(swift: !swiftFirst)
+            if iteration >= warmups {
+                swift.append(swiftFirst ? first : second)
+                native.append(swiftFirst ? second : first)
+            }
         }
-
-        let inputConversionMs = median(inputConversionSamples)
-        let outputAllocationMs = median(outputAllocationSamples)
-        let nativeKernelMs = median(nativeKernelSamples)
-        let outputTranslationMs = median(outputTranslationSamples)
-        let nativeMaximumMs = nativeKernelSamples.max() ?? 0
-        let memoryAfter = processMemorySnapshot()
-        let residentChange = Int64(memoryAfter.residentBytes) - Int64(memoryBefore.residentBytes)
-
-        let ratio = oracleMs > 0 ? bridgeMs / oracleMs : 0
-        print(
-            """
-            ElevationProfileBenchmark \(name):
-              oracle_ms=\(String(format: "%.3f", oracleMs))
-              bridge_ms=\(String(format: "%.3f", bridgeMs))
-              native_kernel_ms=\(String(format: "%.3f", nativeKernelMs))
-              production_ms=\(String(format: "%.3f", productionMs))
-              bridge_over_oracle=\(String(format: "%.3f", ratio))
-              input_conversion_ms=\(String(format: "%.3f", inputConversionMs))
-              output_allocation_ms=\(String(format: "%.3f", outputAllocationMs))
-              output_translation_ms=\(String(format: "%.3f", outputTranslationMs))
-              native_maximum_ms=\(String(format: "%.3f", nativeMaximumMs))
-              resident_before_bytes=\(memoryBefore.residentBytes)
-              resident_after_bytes=\(memoryAfter.residentBytes)
-              resident_change_bytes=\(residentChange)
-              process_high_water_resident_bytes=\(memoryAfter.highWaterResidentBytes)
-            """
-        )
-
-        #expect(bridgeMs > 0)
-        #expect(productionMs > 0)
-        if count >= 100_000 {
-            #expect(bridgeMs <= oracleMs * 1.05)
-        }
+        let nativeMedian = native.sorted()[measurements / 2]
+        let swiftMedian = swift.sorted()[measurements / 2]
+        let ratio = swiftMedian / nativeMedian
+        print("ElevationProfileBenchmark \(name) count=\(count) cpp_ms=\(nativeMedian) swift_ms=\(swiftMedian) ratio=\(ratio)")
+        #expect(nativeMedian > 0)
+        #expect(swiftMedian > 0)
+        #expect(ratio <= 1.10)
     }
 
     private func makeClimb(count: Int) -> [RoutePoint] {

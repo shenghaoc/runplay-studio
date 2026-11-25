@@ -1556,123 +1556,52 @@ for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Service
 done
 pass "C++ SegmentDetection types stay in Interop"
 
-# --- ElevationProfile bridge -------------------------------------------------
+# --- ElevationProfile adapter -------------------------------------------------
 
-ELEVATION_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayElevationProfileBridge.swift"
+ELEVATION_ADAPTER_SOURCE="RunPlayCore/Sources/Engine/RunPlayElevationProfileAdapter.swift"
 ELEVATION_PROFILE_SOURCE="RunPlayCore/Sources/Services/ElevationProfile.swift"
+ELEVATION_DIFFERENTIAL_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/ElevationProfileDifferentialTests.swift"
+ELEVATION_BENCHMARK_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/ElevationProfileCppBenchmarkDifferentialTests.swift"
 
-if [[ ! -f "$ELEVATION_BRIDGE_SOURCE" ]]; then
-  fail "missing ElevationProfile bridge $ELEVATION_BRIDGE_SOURCE"
+if [[ -f "$ELEVATION_ADAPTER_SOURCE" ]] &&
+   code_matches "$ELEVATION_ADAPTER_SOURCE" 'EngineElevationProfile[[:space:]]*\.[[:space:]]*build[[:space:]]*\('; then
+  pass "elevation adapter calls the Swift kernel"
 else
-  pass "ElevationProfile bridge exists"
+  fail "elevation adapter must call the Swift kernel"
 fi
 
-elevation_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*build_elevation_profile([^[:alnum:]_]|$)'
-elevation_native_leaks=()
+elevation_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(build_elevation_profile|ElevationProfileInputSample|ElevationProfilePolicy|ElevationProfileOutputSample|ElevationProfileStatus|ElevationProfileSummary)([^[:alnum:]_]|$)'
+elevation_native_count=0
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$ELEVATION_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+    "$ELEVATION_DIFFERENTIAL_SOURCE"|"$ELEVATION_BENCHMARK_SOURCE") ;;
+    *)
+      if code_matches "$swift_file" "$elevation_native_re"; then
+        fail "C++ elevation API outside the test oracles: $relative_swift_file"
+      fi
+      ;;
   esac
-  while IFS= read -r leak; do
-    [[ -n "$leak" ]] && elevation_native_leaks+=("$relative_swift_file:$leak")
-  done < <(strip_comments "$swift_file" | grep -En "$elevation_native_re" || true)
 done
-
-if [[ ${#elevation_native_leaks[@]} -eq 0 ]]; then
-  pass "build_elevation_profile is invoked only from the ElevationProfile bridge"
-else
-  for leak in "${elevation_native_leaks[@]}"; do
-    fail "build_elevation_profile used outside the ElevationProfile bridge: $leak"
-  done
+for oracle_file in "$ELEVATION_DIFFERENTIAL_SOURCE" "$ELEVATION_BENCHMARK_SOURCE"; do
+  if code_matches "$oracle_file" 'runplay[[:space:]]*\.[[:space:]]*build_elevation_profile[[:space:]]*\('; then
+    elevation_native_count=$((elevation_native_count + 1))
+  fi
+done
+if [[ "$elevation_native_count" -ne 2 ]]; then
+  fail "both elevation verification oracles must exercise the actual C++ symbol"
 fi
 
 if code_matches "$ELEVATION_PROFILE_SOURCE" '(^|[^[:alnum:]_])RunPlayElevationProfileBridge([^[:alnum:]_]|$)'; then
-  pass "ElevationProfile consumes the pure Swift elevation-profile bridge"
+  pass "ElevationProfile consumes the pure Swift elevation-profile adapter"
 else
   fail "ElevationProfile must call RunPlayElevationProfileBridge"
 fi
-
-# Old multi-pass production algorithm must not remain in production ElevationProfile.
 if code_matches "$ELEVATION_PROFILE_SOURCE" 'altitudeSpikeMinimumDeviationMeters|altitudeShortExcursionMinimumDeviationMeters|elevationGainLossDeadbandMeters'; then
   fail "production ElevationProfile still contains the old multi-pass algorithm policy fields"
-else
-  pass "production ElevationProfile no longer embeds the multi-pass algorithm body"
 fi
-
-# Oracle confined to tests
-if [[ -f "RunPlayCore/Tests/RunPlayCoreTests/SwiftElevationProfileOracle.swift" ]]; then
-  pass "Swift elevation oracle confined to tests"
-else
+if [[ ! -f "RunPlayCore/Tests/RunPlayCoreTests/SwiftElevationProfileOracle.swift" ]]; then
   fail "missing SwiftElevationProfileOracle in tests"
-fi
-
-elevation_cpp_type_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*(ElevationProfileInputSample|ElevationProfilePolicy|ElevationProfileOutputSample|ElevationProfileStatus|ElevationProfileSummary)([^[:alnum:]_]|$)'
-for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Services/*.swift; do
-  relative="${swift_file#./}"
-  case "$relative" in
-    RunPlayCore/Sources/Interop/*) continue ;;
-    "$ELEVATION_BRIDGE_SOURCE") continue ;;
-  esac
-  if code_matches "$swift_file" "$elevation_cpp_type_re"; then
-    fail "C++ ElevationProfile types exposed in public Swift: $relative"
-  fi
-done
-pass "C++ ElevationProfile types stay in Interop"
-
-# Diagnostic benchmark entry points must remain internal and may be referenced
-# only by their defining bridge and test targets.
-elevation_benchmark_api_re='(^|[^[:alnum:]_])(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)([^[:alnum:]_]|$)'
-elevation_benchmark_api_positive=(
-  'let report = try RunPlayElevationProfileBridge.buildCollectingBenchmarkReport('
-  'struct RunPlayElevationProfileBenchmarkReport: Sendable {'
-)
-elevation_benchmark_api_negative=(
-  'let buildCollectingBenchmarkReporter = true'
-  'struct RunPlayElevationProfileBenchmarkReporter {}'
-)
-elevation_benchmark_api_matcher_ok=1
-for fixture in "${elevation_benchmark_api_positive[@]}"; do
-  if ! grep -Eq "$elevation_benchmark_api_re" <<<"$fixture"; then
-    elevation_benchmark_api_matcher_ok=0
-  fi
-done
-for fixture in "${elevation_benchmark_api_negative[@]}"; do
-  if grep -Eq "$elevation_benchmark_api_re" <<<"$fixture"; then
-    elevation_benchmark_api_matcher_ok=0
-  fi
-done
-if [[ $elevation_benchmark_api_matcher_ok -eq 1 ]]; then
-  pass "elevation benchmark API matcher adversarial fixtures"
-else
-  fail "elevation benchmark API matcher failed its adversarial fixtures"
-fi
-
-elevation_benchmark_api_leaks=()
-for swift_file in "${SWIFT_FILES[@]}"; do
-  relative_swift_file="${swift_file#./}"
-  case "$relative_swift_file" in
-    "$ELEVATION_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
-  esac
-  while IFS= read -r leak; do
-    [[ -n "$leak" ]] && elevation_benchmark_api_leaks+=("$relative_swift_file:$leak")
-  done < <(strip_comments "$swift_file" | grep -En "$elevation_benchmark_api_re" || true)
-done
-
-if [[ ${#elevation_benchmark_api_leaks[@]} -eq 0 ]]; then
-  pass "elevation benchmark API is referenced only by its bridge and tests"
-else
-  for leak in "${elevation_benchmark_api_leaks[@]}"; do
-    fail "production Swift references the test-only elevation benchmark API: $leak"
-  done
-fi
-
-if code_matches "$ELEVATION_BRIDGE_SOURCE" '^[[:space:]]*(public|open|package)[^/]*(buildCollectingBenchmarkReport|RunPlayElevationProfileBenchmarkReport)'; then
-  fail "elevation benchmark diagnostic must stay internal, not public/package"
-else
-  pass "elevation benchmark diagnostic stays internal to RunPlayCore"
 fi
 
 # --- DEM elevation bridge ---------------------------------------------------

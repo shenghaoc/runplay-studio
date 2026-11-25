@@ -7,6 +7,6 @@ cd "$ROOT"
 
 export RUNPLAY_BENCHMARK=1
 
-swift test \
+./scripts/retry-swiftpm-libdispatch-crash.sh swift test \
   --configuration release \
   --filter ElevationProfileBenchmark

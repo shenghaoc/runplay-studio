@@ -209,7 +209,7 @@ public struct ElevationProfile: Sendable {
             return (empty(alignedWith: []), 0)
         }
 
-        // Complete multi-pass elevation construction runs in one C++23 bulk
+        // Complete multi-pass elevation construction runs in one Swift engine
         // call. Swift retains UUIDs, public samples, distance queries, and
         // segment-detection snapshots.
         let native = try RunPlayElevationProfileBridge.build(
