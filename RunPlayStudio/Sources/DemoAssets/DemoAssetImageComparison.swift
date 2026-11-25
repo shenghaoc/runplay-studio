@@ -105,7 +105,7 @@ enum DemoAssetImageComparisonError: Error, LocalizedError, Equatable {
     }
 }
 
-/// Pixel comparison for the README demo drift check.
+/// Pixel comparison for the README demo drift check (a local `--check` run, not CI).
 ///
 /// Both images are drawn into the same 8-bit sRGB RGBA layout, top row first,
 /// so a PNG's encoding details never count as a difference.

@@ -301,37 +301,26 @@ RELEASE_KEYCHAIN_PASSWORD          # optional; random if unset
 
 Never commit `.p12` / `.p8` files. Never print decoded keys or passwords.
 
-### PR CI packaging coverage
+### Packaging verification
 
-Packaging coverage is split between two always-on lanes and one
-path-filtered job, all credential-free:
+Packaging is verified by the Release workflow, not by pull-request CI or the
+nightly: macOS runners are scarce, and few changes can break packaging. All of
+it is credential-free except the production path:
 
 - The `Lint` job in [.github/workflows/ci.yml](../.github/workflows/ci.yml)
-  runs `bash -n` over every packaging script on every pull request and
-  every push to `main`.
-- The `Release Packaging (macOS)` job runs unconditionally on every push
-  to `main`, so each merged commit is packaging-verified before any tag
-  exists. On pull requests it is path-filtered: it runs only when the diff
-  touches `scripts/**`, `script/**`, `Package.swift`, `Package.resolved`,
-  `VERSION`, `Packaging/**` (the bundle template), the release or CI
-  workflow, or anything under `.github/actions/`. Keep this list in sync
-  with the two comments in [.github/workflows/ci.yml](../.github/workflows/ci.yml)
-  — one above the `changes` job's `detect` step, one above the
-  `packaging-macos` job — that describe the same filter (three sites; edit
-  them together). Typical Swift/C++ PRs skip it; PRs that can actually
-  break packaging still run:
-  1. `scripts/test-release-packaging.sh` — the packaging contract suite.
-  2. `scripts/package-demo.sh` — builds a real unsigned `.app` plus its zip.
-  3. `scripts/package-release.sh --signing-mode adhoc --skip-notarization
-     --dry-run` — the same invocation the Release workflow runs on its
-     non-production path.
-  4. Artifact presence, `shasum -a 256 -c SHA256SUMS`, and a check that
-     packaging left the checkout clean.
+  runs `bash -n` over every packaging script on every pull request.
+- [.github/workflows/release.yml](../.github/workflows/release.yml) dispatched
+  with `dry_run=true` (the default) builds a real ad-hoc `.app` and its zip with
+  `scripts/package-release.sh --signing-mode adhoc --skip-notarization
+  --dry-run` and runs `scripts/verify-app-bundle.sh` over it. A tag push runs
+  the same path, then signs, notarizes and publishes.
+- `scripts/test-release-packaging.sh` (the packaging contract suite) and the
+  manual `Package Demo` workflow (`scripts/package-demo.sh`) are run by hand;
+  no scheduled job runs them.
 
-Steps 2 and 3 share one `swift build -c release`, so the second is
-cache-warm and near-free. The job runs concurrently with the macOS test
-matrix rather than extending it. When the job is skipped, the `CI` gate
-treats `skipped` as success, so path-filtered PRs cannot wedge merging.
+**Before tagging**, run a Release dry run (`dry_run=true` dispatch of
+`release.yml`) on the tag commit and wait for it to pass. A change that breaks
+packaging is caught at that pre-tag dry run, not at merge.
 
 It never signs with a Developer ID, never notarizes, never uploads app
 artifacts, and never creates a GitHub Release. The Developer ID → notarize →

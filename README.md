@@ -21,8 +21,8 @@ A native macOS post-run 2D/3D route replay and analysis app for runners.
 *Generated from the bundled synthetic sample runs — no private workout data,
 no screen recording. [`scripts/generate-demo-assets.sh`](scripts/generate-demo-assets.sh)
 renders the summary card and the Route Replay video through the app's own
-exporters, then makes the looping GIF and still poster with ImageIO. CI fails when the
-committed summary cards drift from the current renderer. See
+exporters, then makes the looping GIF and still poster with ImageIO. `--check`
+compares the committed summary cards with the current renderer locally. See
 [docs/demo-assets.md](docs/demo-assets.md). Map imagery: Apple Maps.*
 
 ## What It Is
@@ -362,13 +362,19 @@ Both approaches use the same source code. There is no separate Xcode project fil
 
 ### GitHub Actions CI
 
-Every push to `main` and every pull request runs:
+Every pull request runs:
 
-- **macOS** — C++ engine build + native C++ tests + boundary validation + full `swift test` + README demo-asset drift check (`./scripts/generate-demo-assets.sh --check`)
+- **macOS** — C++ engine build + boundary validation + full `swift test` (which includes the native C++ tests)
 - **Linux** — C++ engine build + native C++ tests + boundary validation + `swift test --filter RunPlayCoreTests`
 - **Linux sanitizers** — native C++ tests under AddressSanitizer and UndefinedBehaviorSanitizer
 
 Test counts are reported in the GitHub Actions step summary.
+
+A nightly workflow (`.github/workflows/nightly.yml`) runs the same pull-request
+lane on `main` when `main` has moved, plus the release-mode test compile.
+Release packaging is verified by the Release workflow: run a dry run
+(`dry_run=true`) on the tag commit before tagging. The README demo cards are not
+compared in CI.
 
 ### README Demo Assets Artifact
 

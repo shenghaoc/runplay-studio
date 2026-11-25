@@ -155,7 +155,7 @@ scratch path (`.build-localization`), syncs a copy of each catalog with
 `xcrun xcstringstool sync` (the same merge Xcode performs), and fails on keys
 missing from a catalog, stale keys no longer in source, and live keys without a
 translated `zh-Hans` and `zh-Hant` value whose format specifiers match the
-English. CI runs it on the macOS release-compile leg and in the release lane.
+English. CI runs it in the nightly (its release-compile job) and in the release lane.
 
 To change a string: edit the code, run `--update`, translate the new keys in
 Xcode's String Catalog editor (or the JSON), and rerun the check.

@@ -117,7 +117,8 @@ final class DemoAssetGeneratorTests: XCTestCase {
         XCTAssertNotEqual(try Data(contentsOf: written[0]), try Data(contentsOf: written[1]))
     }
 
-    /// On the real card, the drift gate must pass an unchanged render and fail
+    /// On the real card, the local `--check` comparison must pass an unchanged render and
+    /// fail
     /// one changed digit of one metric (max heart rate 166 → 167).
     func testSummaryCardToleranceSeparatesRepeatRendersFromOneChangedDigit() async throws {
         let original = try DemoAssetSampleRuns.loadBundled().primary

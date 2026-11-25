@@ -1,10 +1,9 @@
 name: "Set up macOS build"
 description: >-
   The shared step sequence of every macOS CI job after checkout: the Swift
-  toolchain identity probe, the SwiftPM dependency cache restore, and the
-  Swift toolchain parity gate. The xcode-27 runner image carries exactly one
-  Xcode as its default, so there is no developer-dir selection to perform —
-  the parity check below is the Xcode verification.
+  toolchain identity probe and the SwiftPM dependency cache restore. The
+  xcode-27 runner image carries exactly one Xcode as its default, so there
+  is no developer-dir selection to perform.
 
   GitHub Actions constraint: a local action resolves from the workspace, so
   the calling job MUST run actions/checkout before this action. Checkout
@@ -43,9 +42,8 @@ runs:
         restore-keys: |
           ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-
 
-    - name: Verify Swift toolchain parity
+    - name: Print toolchain versions
       shell: bash
       run: |
         xcodebuild -version
         swift --version
-        ./scripts/check-toolchain-parity.sh

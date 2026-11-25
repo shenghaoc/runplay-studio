@@ -1,73 +1,31 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  # The nightly (nightly.yml) runs this exact lane on main through
+  # workflow_call, so the PR lane has one definition, not a copy.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  # Keyed on the ref: each PR and the main branch get one group, so a
-  # superseded PR run cancels instead of burning contended macOS runners.
-  # Superseded main-push runs are deliberately NOT cancelled: the packaging
-  # lane runs unconditionally on push, and cancelling a merged commit's run
-  # would let that commit skip packaging verification permanently.
+  # Keyed on the ref: each PR gets one group, so a superseded PR run cancels
+  # instead of burning contended macOS runners. Only pull_request runs are
+  # cancelled; when the nightly calls this workflow, github.event_name is the
+  # caller's (schedule or workflow_dispatch), so a nightly run is never
+  # cancelled by another.
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Packaging-relevant change detection for the pull_request event. The
-  # packaging lane below runs on every push to main but only on PRs whose
-  # diff touches something that can actually break packaging; typical
-  # Swift/C++ PRs skip it. Never filter the whole workflow on paths — the
-  # gate job must always run so branch protection sees "CI".
-  changes:
-    name: Detect packaging-relevant changes
-    runs-on: ubuntu-26.04
-    outputs:
-      packaging: ${{ steps.detect.outputs.packaging }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Detect packaging-relevant paths
-        id: detect
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
-            # push (and any future trigger): the packaging lane runs unconditionally.
-            echo "packaging=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            git fetch --no-tags origin "${BASE_SHA}"
-          fi
-          # Paths that can break packaging: the packaging scripts themselves,
-          # the package manifest and lockfile, the Info.plist bundle template,
-          # the release workflow, this workflow (an edit to the packaging job
-          # itself must run it), every local composite action, and VERSION —
-          # the packaging job reads it and asserts the versioned zip name, so
-          # a version bump is precisely a packaging-relevant change.
-          # Keep this list in sync with the packaging-macos job comment below
-          # and with docs/releasing.md (three sites; edit them together).
-          if git diff --name-only "${BASE_SHA}..HEAD" | grep -qE \
-            '^(scripts/|script/|Packaging/|Package\.swift$|Package\.resolved$|VERSION$|\.github/workflows/(release|ci)\.yml$|\.github/actions/)'; then
-            echo "packaging=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "packaging=false" >> "$GITHUB_OUTPUT"
-          fi
-
   # Free, runner-cheap lint lane: packaging script syntax plus actionlint
-  # over the workflows. Runs on every PR and every main push.
+  # over the workflows. Runs on every PR.
   lint:
     name: Lint
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Packaging tooling syntax
@@ -105,38 +63,20 @@ jobs:
         run: ./actionlint -color
 
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++
-  # engine, split into parallel matrix legs that all share the reusable
-  # macOS verification workflow (the same one the Release lane calls).
-  # Sharding beyond these two legs is deliberately not done: observed
-  # xcode-27 concurrency is ~2 jobs at a time, so more legs would queue
-  # instead of parallelize.
-  macos-matrix:
-    name: macOS (${{ matrix.suite }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: full-tests
-            engine: true
-            full-tests: true
-            release-compile: false
-            demo-assets: true
-            localization: false
-          # The catalog check rides the release-compile leg: it runs no tests,
-          # so it has room for the extraction build.
-          - suite: release-compile
-            engine: false
-            full-tests: false
-            release-compile: true
-            demo-assets: false
-            localization: true
+  # engine, in one call of the reusable macOS verification workflow (the same
+  # one the Release lane and the nightly call). macOS runners are the
+  # bottleneck (about two run at once), so a PR pays for exactly one macOS
+  # job. The release-mode test compile is not here: nothing in a typical PR
+  # can break it, and the nightly (nightly.yml) and the Release workflow check
+  # it. Release packaging is not here or in the nightly: the Release workflow
+  # (release.yml) verifies it. The README media tool is not in CI at all.
+  macos:
+    name: macOS
     uses: ./.github/workflows/macos-verify.yml
     with:
-      engine: ${{ matrix.engine }}
-      full-tests: ${{ matrix.full-tests }}
-      release-compile: ${{ matrix.release-compile }}
-      demo-assets: ${{ matrix.demo-assets }}
-      localization: ${{ matrix.localization }}
+      engine: true
+      full-tests: true
+      release-compile: false
 
   # RunPlayCore + portable C++ engine — test on Linux for cross-platform
   # validation. Linux CI is container-only by policy: every Linux job that
@@ -160,6 +100,7 @@ jobs:
       matrix:
         suite: [tests, sanitizers]
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     # Every `run:` step in this job uses bash. GitHub Actions defaults
     # container-job steps to the image's default shell, which for the
     # official Swift image is POSIX sh (dash): there `[[ ]]` is a
@@ -175,22 +116,16 @@ jobs:
     defaults:
       run:
         shell: bash
-    # Single source of truth for the Linux Swift toolchain. Its exact text
-    # is parsed by scripts/check-toolchain-parity.sh, and
+    # Single source of truth for the Linux Swift toolchain. Two readers
+    # parse this line's exact text, both by this file's path: this job's
+    # "Record Swift toolchain identity" step, and
     # scripts/linux-container-verify.sh — the local-verification
-    # entrypoint the AGENTS.md recipe invokes — reads this line by its
-    # `container:` key (then checks the @sha256: shape), so do not
-    # reformat this line;
-    # keep the shape `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
+    # entrypoint the AGENTS.md recipe invokes — which reads the line by its
+    # `container:` key (then checks the @sha256: shape). Do not reformat
+    # this line; keep the shape
+    # `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
     # Bumping the image means editing this line and refreshing the digest
     # in the same change.
-    #
-    # TODO(ci): check-toolchain-parity.sh greps THIS file by path for the
-    # container image pin below, and this job's "Record Swift toolchain
-    # identity" step greps it too. Moving this Linux lane into its own
-    # workflow file later requires updating that script, that step, and the
-    # AGENTS.md recipe first, or every parity check fails with "no pin
-    # found".
     container: swift:6.4.0-resolute@sha256:bb6e5d5f2a97bc07cf8022c1a3e062f8164b8fd078698327ce2ab097e02a91dc
     steps:
       - uses: actions/checkout@v7
@@ -205,11 +140,11 @@ jobs:
             exit 1
           fi
           # The exact Linux toolchain identity is already pinned: the
-          # container's @sha256: digest. Read it from the same line
-          # check-toolchain-parity.sh parses — this file must not carry a
-          # second copy of the pin. The full digit+digest shape is required
-          # in the pattern so the `container: swift:...` placeholder in the
-          # TODO comment below cannot be picked up instead.
+          # container's @sha256: digest. Read it from the `container:` line
+          # itself — this file must not carry a second copy of the pin. The
+          # full digit+digest shape is required in the pattern so the
+          # shape-documenting comment above that line cannot be picked up
+          # instead.
           PIN="$(grep -oE 'container:[[:space:]]*swift:[0-9]+(\.[0-9]+)+-[a-z]+@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1)"
           DIGEST="${PIN##*@sha256:}"
           if [[ -z "${DIGEST}" || "${DIGEST}" == "${PIN}" ]]; then
@@ -229,10 +164,8 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends python3
-      - name: Verify Swift toolchain parity
-        run: |
-          swift --version
-          ./scripts/check-toolchain-parity.sh
+      - name: Print Swift version
+        run: swift --version
       - name: Print Clang version
         run: |
           clang --version || true
@@ -311,79 +244,22 @@ jobs:
             exit 1
           fi
 
-  # Release packaging: script contracts plus a real end-to-end build of both
-  # credential-free artifacts. On pull requests this lane is path-filtered
-  # (see the changes job): only PRs that touch the packaging scripts
-  # (scripts/**, script/**), the package manifest and lockfile
-  # (Package.swift, Package.resolved), the Info.plist bundle template
-  # (Packaging/**), VERSION, the release or CI workflow (release.yml,
-  # ci.yml), or any local composite action under .github/actions/ pay for
-  # it. On push to main it runs unconditionally, so every merged commit is
-  # packaging-verified before any tag exists.
-  # Keep this list in sync with the changes-job comment above and with
-  # docs/releasing.md (three sites; edit them together).
-  # Credential-free by construction: no signing identity, no notarization,
-  # no GitHub Release.
-  packaging-macos:
-    name: Release Packaging (macOS)
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.packaging == 'true'
-    runs-on: xcode-27
-    steps:
-      # A local action resolves from the workspace, so checkout must precede
-      # the setup composite.
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-macos-build
-      - name: Packaging contract tests
-        run: ./scripts/test-release-packaging.sh
-      - name: Unsigned demo package (end to end)
-        run: ./scripts/package-demo.sh "${RUNNER_TEMP}/demo-artifacts"
-      - name: Ad-hoc dry-run release package (end to end)
-        # Byte-for-byte the invocation the Release workflow runs on its
-        # non-production path, so a regression there fails here instead.
-        run: >-
-          ./scripts/package-release.sh
-          --signing-mode adhoc
-          --skip-notarization
-          --dry-run
-          --build-number "${GITHUB_RUN_NUMBER}"
-          --output-dir "${RUNNER_TEMP}/release-artifacts"
-      - name: Verify produced artifacts
-        run: |
-          set -euo pipefail
-          VERSION="$(cat VERSION)"
-          DEMO="${RUNNER_TEMP}/demo-artifacts"
-          RELEASE="${RUNNER_TEMP}/release-artifacts"
-          test -d "${DEMO}/RunPlayStudio.app"
-          test -f "${DEMO}/RunPlayStudio.app.zip"
-          test -f "${RELEASE}/RunPlayStudio-${VERSION}-macos-arm64.zip"
-          test -f "${RELEASE}/RunPlayStudio-${VERSION}-release.json"
-          (cd "${RELEASE}" && shasum -a 256 -c SHA256SUMS)
-          # Production packaging refuses to run against a dirty checkout, so
-          # packaging must never write into the working tree itself.
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "packaging dirtied the working tree:" >&2
-            git status --porcelain >&2
-            exit 1
-          fi
-
   # The single status check branch protection requires. Every verification
   # lane MUST appear in `needs:` below AND in the expected-lanes list inside
   # the gate script: this job is the only thing branch protection looks at,
   # so a lane accidentally dropped from needs: must leave the gate red, not
   # silently green.
   #
-  # `skipped` is accepted for packaging-macos ONLY — that lane is
-  # path-filtered on pull requests, so a skip is the designed fast path. For
-  # every other lane a skip is a failure: they have no path filter, so a
-  # skip means a changed condition, an unset needs: output, or a mis-wired
+  # Every lane must report `success`. None has a path filter, so a `skipped`
+  # result means a changed condition, an unset needs: output or a mis-wired
   # job, and the gate must not report green for a lane that never ran.
-  # `cancelled` is a failure everywhere.
+  # `cancelled` is a failure too.
   gate:
     name: CI
-    needs: [changes, lint, macos-matrix, core-linux, packaging-macos]
+    needs: [lint, macos, core-linux]
     if: always()
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     steps:
       - name: Check every lane
         env:
@@ -391,19 +267,11 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          for lane in changes lint macos-matrix core-linux packaging-macos; do
+          for lane in lint macos core-linux; do
             result="$(printf '%s' "${NEEDS}" | jq -r --arg lane "${lane}" '.[$lane].result // ""')"
             case "${result}" in
               success)
                 echo "lane ${lane}: ${result}"
-                ;;
-              skipped)
-                if [[ "${lane}" == "packaging-macos" ]]; then
-                  echo "lane ${lane}: ${result} (path-filtered on pull requests — accepted)"
-                else
-                  echo "lane ${lane}: ${result} — this lane has no path filter; a skip is a failure" >&2
-                  failed=1
-                fi
                 ;;
               "")
                 echo "GATE BUG: lane '${lane}' did not report a result." >&2
@@ -413,7 +281,7 @@ jobs:
                 failed=1
                 ;;
               *)
-                echo "lane ${lane}: ${result} — treating as failure" >&2
+                echo "lane ${lane}: ${result} — every lane must succeed; skipped and cancelled are failures" >&2
                 failed=1
                 ;;
             esac

@@ -68,7 +68,7 @@ breach, 2 for any other failure, and 64 for a usage error.
 
 The manually triggered **Demo Assets** workflow
 ([`.github/workflows/demo-assets.yml`](../.github/workflows/demo-assets.yml))
-runs the script on the same `xcode-27` runner image as CI. It uploads everything as the
+runs the script on a hosted macOS runner. It uploads everything as the
 `runplay-demo-assets` artifact, kept for 30 days. To start it, go to
 **Actions → Demo Assets → Run workflow** and pick a branch. It never commits.
 
@@ -100,8 +100,8 @@ active. A direct launch therefore cannot quietly produce different pixels.
 
 How far the results reproduce:
 
-- **Summary PNGs:** byte-identical across runs on one macOS build. CI checks
-  them (see below).
+- **Summary PNGs:** byte-identical across runs on one macOS build. They are
+  not compared in CI; `--check` compares them locally (see below).
 - **MP4s:** the frame content is fixed except for the basemap. The basemap is
   Apple Maps imagery fetched at render time, so it changes as Apple updates its
   map data. The bytes also vary from run to run: the hardware H.264 encoder
@@ -116,17 +116,17 @@ encodes an infinite loop with ImageIO at 10 frames/s, and writes the first
 frame as a static PNG. The README uses the corresponding Light or Dark poster
 when reduced motion is requested.
 
-## The CI Drift Check
+## The Local Drift Check
 
 ```bash
 ./scripts/generate-demo-assets.sh --check
 ```
 
-CI's macOS full-tests leg runs this check right after `swift test`, reusing
-that build; it is the `demo-assets` input of
-`.github/workflows/macos-verify.yml`. The release lane does not run it: the
-gate guards documentation, so a runner-image roll that changes text
-rasterization must not block a release.
+`--check` is a local tool. CI does not run it and does not compare the
+committed cards: the check fails whenever the runner image's text
+rasterization changes, without guarding any product behavior. Run it
+yourself when a change might alter the summary card, and refresh
+`docs/assets/` when the card should change.
 
 The check renders the summary cards and compares each one with its copy in
 `docs/assets/`:
@@ -147,10 +147,9 @@ The check renders the summary cards and compares each one with its copy in
 - It prints the macOS build recorded in `docs/assets/demo-assets-provenance.txt`
   next to its own. When they differ and the check fails, it says so, because a
   macOS update can change text rasterization without any UI change.
-- On failure, CI uploads the `demo-asset-drift` artifact. It holds the
-  rendered cards, a `*.diff.png` for each changed card (the reference faded,
-  the changed pixels in magenta), and the runner's provenance file. The run
-  page also shows an error annotation.
+- On failure it writes the rendered cards and a `*.diff.png` for each changed
+  card (the reference faded, the changed pixels in magenta) to the output
+  directory.
 
 The videos and GIFs are not compared, because their basemap is Apple's live
 map data.
@@ -158,9 +157,10 @@ map data.
 The tolerance lives in `DemoAssetPixelTolerance.summaryCard`
 (`RunPlayStudio/Sources/DemoAssets/DemoAssetImageComparison.swift`).
 
-The committed cards should come from the CI runner image. A Mac on a different
-macOS build can rasterize text differently. If `--check` passes on your Mac but
-fails in CI (or the other way round), the runner's rendering wins.
+The committed cards should come from the manual **Demo Assets** workflow, so
+they match a hosted runner image. A Mac on a different macOS build can
+rasterize text differently, so `--check` on your Mac can fail against cards
+the workflow rendered.
 
 ## Size Budget
 
@@ -182,8 +182,6 @@ is an ordinary reviewed change, normally in the same PR as the UI change that
 caused it:
 
 1. Run **Demo Assets** on the PR branch and download `runplay-demo-assets`.
-   If only the summary cards changed, the `demo-asset-drift` artifact from the
-   failing CI run already holds runner-rendered cards and provenance.
 2. Copy only the curated files into `docs/assets/`:
    `demo-summary-light.png`, `demo-summary-dark.png`,
    `demo-route-replay-light.gif`, `demo-route-replay-dark.gif`, their matching
@@ -192,8 +190,7 @@ caused it:
    provenance file's `macos:` line in step with them.
 3. Open each file and look at it.
 4. Stage the files by name (`git add docs/assets/<file>`), commit, and push.
-   CI's drift check confirms both the cards and the budget on the runner
-   image.
+   Run `./scripts/generate-demo-assets.sh --check` to confirm the budget.
 
 The cards are binary and cannot be merged. Two open PRs that both change the
 summary card conflict on them, so land one and regenerate the other.
