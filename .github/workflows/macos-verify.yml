@@ -2,7 +2,8 @@ name: macOS verification
 
 # Reusable macOS verification body, called by every lane so they can never
 # drift apart:
-#   - ci.yml      calls it once per PR (engine + full-stack tests)
+#   - ci.yml      calls it once per PR when a changed path can reach macOS,
+#                 with the selector's test filter (engine + full-stack tests)
 #   - nightly.yml calls it with only the release compile (the rest of its
 #                 macOS work comes through ci.yml)
 #   - release.yml calls it with every suite enabled before packaging
@@ -37,6 +38,20 @@ on:
         description: "Check the String Catalogs against the source (scripts/check-localization.sh)."
         type: boolean
         default: false
+      boundaries:
+        description: >-
+          Run the C++ architecture boundary validator on this runner. The PR
+          lane and the nightly run it once, on Linux (ci.yml); only the
+          release path sets this, so a release still validates the
+          boundaries.
+        type: boolean
+        default: false
+      test-filter:
+        description: >-
+          A `swift test --filter` regex that narrows the full-tests run; empty
+          runs every test target. The whole package is built either way.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -52,8 +67,21 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-macos-build
 
+      # A static source check; ci.yml runs it on Linux. Only the release path
+      # asks for it here.
       - name: Validate C++ architecture boundaries
+        if: inputs.boundaries
         run: ./scripts/validate-cpp-boundaries.sh
+
+      # The one boundary check only macOS can make: the SwiftPM graph on
+      # Linux omits RunPlayPlatform and RunPlayStudio (they exist only under
+      # `#if os(macOS)`), so a forbidden RunPlayEngineCpp dependency added to
+      # either would be invisible there, and a source scan misses a manifest
+      # edge without an import. It parses the manifest only and takes seconds.
+      - name: Validate the package dependency graph (macOS targets)
+        run: |
+          set -euo pipefail
+          swift package dump-package | python3 scripts/validate-cpp-package-graph.py
 
       # The Linux Core gate's log parser and the SwiftPM crash-retry
       # classifier it runs `swift test` through are shell + awk. The Linux
@@ -84,17 +112,47 @@ jobs:
           -Xcxx -Wsign-conversion
           -Xcxx -Wshadow
 
-      # `swift test` in "Verify full package" already runs this target, so
-      # the separate run is needed only when the full suite is off.
+      # The "Run tests" step already runs this target, so the separate run is
+      # needed only when the full suite is off.
       - name: Run native C++ engine tests
         if: inputs.engine && !inputs.full-tests
         run: swift test --build-system swiftbuild --filter RunPlayEngineCppTests
 
-      - name: Verify full package
+      # Build and test are separate steps so the logs show where the time
+      # goes. Studio depends on every module upstream, so the whole package
+      # builds on every run; only the tests that run are narrowed.
+      #
+      # With `localization` on, this same build also extracts the localizable
+      # strings (-emit-localized-strings into ${RUNNER_TEMP}/stringsdata), so
+      # the String Catalogs check below reads this build's extraction instead
+      # of compiling the package a second time. The flag only adds
+      # .stringsdata outputs: the same targets build with the same warnings
+      # and the same tests (compared locally against a build without it).
+      - name: Build all targets and tests
         if: inputs.full-tests
         env:
+          LOCALIZATION: ${{ inputs.localization }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "${LOCALIZATION}" == "true" ]]; then
+            flags+=(-Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "${RUNNER_TEMP}/stringsdata")
+            mkdir -p "${RUNNER_TEMP}/stringsdata"
+          fi
+          swift build --build-system swiftbuild --build-tests "${flags[@]+"${flags[@]}"}"
+
+      - name: Run tests
+        if: inputs.full-tests
+        env:
+          TEST_FILTER: ${{ inputs.test-filter }}
           RUNPLAY_SNAPSHOT_FAILURES_DIR: ${{ runner.temp }}/snapshot-failures
-        run: swift test --build-system swiftbuild
+        run: |
+          set -euo pipefail
+          if [[ -n "${TEST_FILTER}" ]]; then
+            swift test --build-system swiftbuild --skip-build --filter "${TEST_FILTER}"
+          else
+            swift test --build-system swiftbuild --skip-build
+          fi
 
       # A failing image snapshot (SnapshotAssertion) writes its actual render
       # and a diff image there; without them a difference that appears only
@@ -131,9 +189,19 @@ jobs:
 
       # Every String Catalog must list exactly the strings its module's
       # source uses (no missing, no stale keys), each translated into zh-Hans
-      # and zh-Hant with matching placeholders. The check compiles with
-      # -emit-localized-strings in its own scratch path (.build-localization),
-      # so it never invalidates the .build the steps above share.
+      # and zh-Hant with matching placeholders. When the full suite ran, the
+      # check reads the extraction of the "Build all targets and tests" step,
+      # so there is no second build. A caller without the full suite (it has
+      # no shared build) gets the script's own build, in its own scratch path
+      # (.build-localization), which never invalidates the shared .build.
       - name: Check String Catalogs
         if: inputs.localization
-        run: ./scripts/check-localization.sh
+        env:
+          FULL_TESTS: ${{ inputs.full-tests }}
+        run: |
+          set -euo pipefail
+          if [[ "${FULL_TESTS}" == "true" ]]; then
+            ./scripts/check-localization.sh --skip-build --scratch-path .build --stringsdata-dir "${RUNNER_TEMP}/stringsdata"
+          else
+            ./scripts/check-localization.sh
+          fi

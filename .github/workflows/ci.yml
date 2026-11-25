@@ -20,8 +20,51 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Free, runner-cheap lint lane: packaging script syntax plus actionlint
-  # over the workflows. Runs on every PR.
+  # Selects the lanes and macOS test targets this PR can affect, from the
+  # paths it changes (scripts/ci-select-lanes.sh holds the table). It
+  # diffs the PR's merge commit against the base commit, so on a stacked PR
+  # the diff is against the parent PR's branch and the selection covers only
+  # that PR's own changes; every PR below it is verified by its own CI.
+  # Fail open: any event but pull_request (the nightly's workflow_call) and
+  # any diff that cannot be read select everything.
+  changes:
+    name: Select affected lanes
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      linux: ${{ steps.select.outputs.linux }}
+      macos: ${{ steps.select.outputs.macos }}
+      macos_test_filter: ${{ steps.select.outputs.macos_test_filter }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select lanes from the changed paths
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            ./scripts/ci-select-lanes.sh --event "${EVENT_NAME}" < /dev/null | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The checkout is the PR's merge commit, shallow. The diff needs
+          # only the base commit's tree. --no-renames lists a renamed file's
+          # old and new path, so both count.
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "${BASE_SHA}" || true
+          fi
+          if paths="$(git diff --name-only --no-renames "${BASE_SHA}" HEAD)"; then
+            echo "changed paths:"
+            printf '%s\n' "${paths}"
+            printf '%s\n' "${paths}" | ./scripts/ci-select-lanes.sh --event pull_request | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "could not diff against ${BASE_SHA}; running everything" >&2
+            ./scripts/ci-select-lanes.sh --event unreadable < /dev/null | tee -a "$GITHUB_OUTPUT"
+          fi
+
+  # Free, runner-cheap lint lane: packaging script syntax, actionlint over
+  # the workflows, and the selector's self-test. Always runs.
   lint:
     name: Lint
     runs-on: ubuntu-26.04
@@ -37,6 +80,7 @@ jobs:
           bash -n scripts/linux-container-verify.sh
           bash -n scripts/retry-swiftpm-libdispatch-crash.sh
           bash -n scripts/generate-demo-assets.sh
+          bash -n scripts/ci-select-lanes.sh
           bash -n scripts/lib/release-common.sh
           bash -n scripts/assemble-app-bundle.sh
           bash -n scripts/package-demo.sh
@@ -61,22 +105,31 @@ jobs:
           tar xzf actionlint.tar.gz actionlint
       - name: Lint GitHub Actions workflows
         run: ./actionlint -color
+      # The lane selector decides what a PR skips, so its self-test runs on
+      # every PR, whatever the selector itself selected.
+      - name: Self-test the lane selector
+        run: ./scripts/ci-select-lanes.sh --self-test
 
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++
   # engine, in one call of the reusable macOS verification workflow (the same
   # one the Release lane and the nightly call). macOS runners are the
-  # bottleneck (about two run at once), so a PR pays for exactly one macOS
-  # job. The release-mode test compile is not here: nothing in a typical PR
-  # can break it, and the nightly (nightly.yml) and the Release workflow check
-  # it. Release packaging is not here or in the nightly: the Release workflow
-  # (release.yml) verifies it. The README media tool is not in CI at all.
+  # bottleneck (about two run at once), so a PR pays for at most one macOS
+  # job, and only when a changed path can reach it. The release-mode test
+  # compile is not here: nothing in a typical PR can break it, and the nightly
+  # (nightly.yml) and the Release workflow check it. Release packaging is not
+  # here or in the nightly: the Release workflow (release.yml) verifies it. The
+  # README media tool is not in CI at all.
   macos:
     name: macOS
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     uses: ./.github/workflows/macos-verify.yml
     with:
       engine: true
       full-tests: true
       release-compile: false
+      localization: true
+      test-filter: ${{ needs.changes.outputs.macos_test_filter }}
 
   # RunPlayCore + portable C++ engine — test on Linux for cross-platform
   # validation. Linux CI is container-only by policy: every Linux job that
@@ -95,6 +148,8 @@ jobs:
   # parallel checks.
   core-linux:
     name: RunPlayCore (Linux, ${{ matrix.suite }})
+    needs: changes
+    if: needs.changes.outputs.linux == 'true' || needs.changes.outputs.macos == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -132,8 +187,13 @@ jobs:
     # the same change.
     container: swift:6.3.3@sha256:4f42306306fe7e5a773a8d47d7e2a24dc3a975d1feb77996297ecfd7c329b1e9
     steps:
+      # The tests leg always runs the boundary validator, which needs the
+      # checkout; every other step, and the whole sanitizers leg, runs only
+      # when a change can reach RunPlayCore on Linux (linux is on).
       - uses: actions/checkout@v7
+        if: matrix.suite == 'tests' || needs.changes.outputs.linux == 'true'
       - name: Record Swift toolchain identity
+        if: needs.changes.outputs.linux == 'true'
         id: toolchain
         run: |
           set -euo pipefail
@@ -158,24 +218,34 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "id=${DIGEST:0:12}" >> "$GITHUB_OUTPUT"
       - name: Restore SwiftPM dependency cache
+        if: needs.changes.outputs.linux == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-${{ hashFiles('Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-
+      # The image is minimal and nothing from the runner exists inside it;
+      # validate-cpp-boundaries.sh drives its AST checks with python3 and
+      # clang++ (in the image). The validator is a static source check over
+      # Core, Platform and Studio, so it runs in the tests leg whenever the
+      # job runs, including for a Studio-only PR that skips the Linux steps.
       - name: Install container dependencies
+        if: matrix.suite == 'tests'
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends python3
+      - name: Validate C++ architecture boundaries
+        if: matrix.suite == 'tests'
+        run: ./scripts/validate-cpp-boundaries.sh
       - name: Print Swift version
+        if: needs.changes.outputs.linux == 'true'
         run: swift --version
       - name: Print Clang version
+        if: needs.changes.outputs.linux == 'true'
         run: |
           clang --version || true
           clang++ --version || true
-      - name: Validate C++ architecture boundaries
-        run: ./scripts/validate-cpp-boundaries.sh
       # SwiftPM itself can segfault in libdispatch while it plans a build
       # (#199), so every SwiftPM build below — the Core gate's `swift test`
       # too, inside linux-container-verify.sh — runs through
@@ -185,8 +255,10 @@ jobs:
       # is final. Its classifier is shell + awk: self-test it on the image's
       # mawk first.
       - name: Self-test SwiftPM crash retry
+        if: needs.changes.outputs.linux == 'true'
         run: ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
       - name: Build RunPlayEngineCpp
+        if: needs.changes.outputs.linux == 'true'
         run: >-
           ./scripts/retry-swiftpm-libdispatch-crash.sh
           swift build --target RunPlayEngineCpp
@@ -197,12 +269,12 @@ jobs:
           -Xcxx -Wsign-conversion
           -Xcxx -Wshadow
       - name: Run native C++ engine tests
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: >-
           ./scripts/retry-swiftpm-libdispatch-crash.sh
           swift test --filter RunPlayEngineCppTests
       - name: Native C++ tests under ASan + UBSan
-        if: matrix.suite == 'sanitizers'
+        if: (matrix.suite == 'sanitizers') && needs.changes.outputs.linux == 'true'
         run: ./scripts/run-cpp-engine-tests.sh --sanitize
       # The Core gate is the script, not a bare `swift test`: a bare run exits
       # 0 however many tests skipped, so only the script's skip-reason
@@ -216,7 +288,7 @@ jobs:
       # below keep running as root on a root-owned tree. 1001 is only an
       # unused uid; it needs no passwd entry because the script sets HOME.
       - name: Verify RunPlayCore (non-root, skip allowlist and floor)
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: |
           set -euo pipefail
           chown -R 1001:1001 .
@@ -228,7 +300,7 @@ jobs:
       # Building alone would not exercise the smoke test's runtime
       # `precondition`s, so run the binary as well.
       - name: Verify external RunPlayCore consumer
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: |
           ./scripts/retry-swiftpm-libdispatch-crash.sh swift build --package-path Tests/PackageConsumerSmoke
           ./scripts/retry-swiftpm-libdispatch-crash.sh swift run --package-path Tests/PackageConsumerSmoke RunPlayCoreConsumerSmoke
@@ -240,7 +312,7 @@ jobs:
       # ephemeral runner. Gated to the tests suite, the leg whose steps
       # mutate the workspace beyond the engine build tree.
       - name: Fail on workspace dirtiness
-        if: matrix.suite == 'tests'
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
             echo "job left the workspace dirty:" >&2
@@ -249,18 +321,22 @@ jobs:
           fi
 
   # The single status check branch protection requires. Every verification
-  # lane MUST appear in `needs:` below AND in the expected-lanes list inside
-  # the gate script: this job is the only thing branch protection looks at,
-  # so a lane accidentally dropped from needs: must leave the gate red, not
-  # silently green.
+  # lane MUST appear in `needs:` below AND in the checks inside the gate
+  # script: this job is the only thing branch protection looks at, so a lane
+  # accidentally dropped from needs: must leave the gate red, not silently
+  # green.
   #
-  # Every lane must report `success`. None has a path filter, so a `skipped`
-  # result means a changed condition, an unset needs: output or a mis-wired
-  # job, and the gate must not report green for a lane that never ran.
-  # `cancelled` is a failure too.
+  # `changes` and `lint` must report `success`. The selected lanes (macos and
+  # core-linux) may report `skipped` ONLY when `changes` said that lane is
+  # off. core-linux runs when linux OR macos is on (it carries the C++
+  # boundary validator, which Studio-only PRs need), so it may be skipped
+  # only when both are off: a skip is accepted when it was planned. When `changes` said
+  # a lane is on, only `success` passes, so a skip from a changed condition,
+  # an unset needs: output or a mis-wired job leaves the gate red. `failure`,
+  # `cancelled` and a missing result always fail.
   gate:
     name: CI
-    needs: [lint, macos, core-linux]
+    needs: [changes, lint, macos, core-linux]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -271,21 +347,59 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          for lane in lint macos core-linux; do
-            result="$(printf '%s' "${NEEDS}" | jq -r --arg lane "${lane}" '.[$lane].result // ""')"
+          result_of() {
+            printf '%s' "${NEEDS}" | jq -r --arg lane "$1" '.[$lane].result // ""'
+          }
+          bug() {
+            echo "GATE BUG: lane '$1' did not report a result." >&2
+            echo "It is missing from this job's needs: — branch protection would stay" >&2
+            echo "green without it. Restore the needs: entry, or, if the lane was" >&2
+            echo "deliberately removed, update this list in the same change." >&2
+            failed=1
+          }
+          for lane in changes lint; do
+            result="$(result_of "${lane}")"
             case "${result}" in
-              success)
-                echo "lane ${lane}: ${result}"
-                ;;
-              "")
-                echo "GATE BUG: lane '${lane}' did not report a result." >&2
-                echo "It is missing from this job's needs: — branch protection would stay" >&2
-                echo "green without it. Restore the needs: entry, or, if the lane was" >&2
-                echo "deliberately removed, update this list in the same change." >&2
+              success) echo "lane ${lane}: ${result}" ;;
+              "") bug "${lane}" ;;
+              *)
+                echo "lane ${lane}: ${result} — must succeed" >&2
                 failed=1
                 ;;
+            esac
+          done
+          # lane:selector-output pairs; core-linux runs when linux OR macos
+          # is on, so its "selected" value is "true" if either is.
+          for pair in macos:macos core-linux:either; do
+            lane="${pair%%:*}"
+            key="${pair##*:}"
+            result="$(result_of "${lane}")"
+            if [[ "${key}" == "either" ]]; then
+              linux="$(printf '%s' "${NEEDS}" | jq -r '.changes.outputs.linux // ""')"
+              macos="$(printf '%s' "${NEEDS}" | jq -r '.changes.outputs.macos // ""')"
+              if [[ "${linux}" == "false" && "${macos}" == "false" ]]; then
+                selected="false"
+              elif [[ "${linux}" == "true" || "${macos}" == "true" ]]; then
+                selected="true"
+              else
+                selected=""
+              fi
+            else
+              selected="$(printf '%s' "${NEEDS}" | jq -r --arg key "${key}" '.changes.outputs[$key] // ""')"
+            fi
+            case "${result}" in
+              success) echo "lane ${lane}: ${result}" ;;
+              skipped)
+                if [[ "${selected}" == "false" ]]; then
+                  echo "lane ${lane}: skipped (the selector turned it off; accepted)"
+                else
+                  echo "lane ${lane}: skipped, but the selector said '${selected}' — a planned skip is the only skip accepted" >&2
+                  failed=1
+                fi
+                ;;
+              "") bug "${lane}" ;;
               *)
-                echo "lane ${lane}: ${result} — every lane must succeed; skipped and cancelled are failures" >&2
+                echo "lane ${lane}: ${result} — treating as failure" >&2
                 failed=1
                 ;;
             esac

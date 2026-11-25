@@ -160,6 +160,7 @@ struct DemoAssetEnvironment {
 enum DemoAssetError: Error, LocalizedError, Equatable {
     case environmentNotPinned([String])
     case missingSampleRun(String)
+    case unexpectedSampleRun(String)
     case unexpectedOutput(String)
 
     var errorDescription: String? {
@@ -169,6 +170,8 @@ enum DemoAssetError: Error, LocalizedError, Equatable {
                 + problems.map { "  - \($0)" }.joined(separator: "\n")
         case .missingSampleRun(let name):
             return "bundled sample run \(name).json is missing from the resource bundle"
+        case .unexpectedSampleRun(let detail):
+            return detail
         case .unexpectedOutput(let detail):
             return detail
         }
@@ -185,7 +188,7 @@ struct DemoAssetSampleRuns: Sendable {
     /// Loads the same resources, through the same importer, as
     /// `AppState.loadSampleWorkouts`, without creating an `AppState`.
     static func loadBundled(from bundle: Bundle = .module) throws -> DemoAssetSampleRuns {
-        DemoAssetSampleRuns(
+        let runs = DemoAssetSampleRuns(
             primary: try load("sample_run", subdirectory: "Resources", bundle: bundle),
             comparison: try load(
                 "comparison_park_run",
@@ -193,6 +196,27 @@ struct DemoAssetSampleRuns: Sendable {
                 bundle: bundle
             )
         )
+        try runs.validate()
+        return runs
+    }
+
+    /// The README media are documented as these two workouts, each with a
+    /// route. Fail the render rather than publish media of other data.
+    private func validate() throws {
+        let expected = [
+            (primary, "Morning Park Run"),
+            (comparison, "Morning Park Progression Run"),
+        ]
+        for (workout, name) in expected {
+            guard workout.displayName == name else {
+                throw DemoAssetError.unexpectedSampleRun(
+                    "bundled sample run is \"\(workout.displayName)\", not the documented \"\(name)\""
+                )
+            }
+            guard !workout.routePoints.isEmpty else {
+                throw DemoAssetError.unexpectedSampleRun("bundled sample run \"\(name)\" has no route points")
+            }
+        }
     }
 
     private static func load(
@@ -231,6 +255,7 @@ struct DemoAssetGenerator {
     @discardableResult
     func renderSummaryCards() async throws -> [URL] {
         var written: [URL] = []
+        var datas: [Data] = []
         for appearance in DemoAssetCatalog.appearances {
             let result = try await PNGExportService.exportSummaryPNG(
                 workout: runs.primary,
@@ -253,6 +278,13 @@ struct DemoAssetGenerator {
             try result.data.write(to: url, options: .atomic)
             log("wrote \(name) (\(size.width)×\(size.height))")
             written.append(url)
+            datas.append(result.data)
+        }
+        // Light and dark must really differ, or the appearance was not applied.
+        if datas.count == 2, datas[0] == datas[1] {
+            throw DemoAssetError.unexpectedOutput(
+                "the light and dark summary cards are byte-identical: the appearance was not applied"
+            )
         }
         return written
     }

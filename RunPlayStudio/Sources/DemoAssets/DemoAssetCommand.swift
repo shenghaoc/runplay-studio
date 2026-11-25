@@ -4,7 +4,6 @@ import Foundation
 /// What a `--demo-assets` launch asks for.
 enum DemoAssetInvocation: Equatable {
     case render(outputDirectory: URL, selection: DemoAssetSelection)
-    case compare(reference: URL, candidate: URL, diffOutput: URL?)
 }
 
 /// Which media `render` produces.
@@ -25,7 +24,6 @@ enum DemoAssetCommandLine {
     static let usage = """
     usage (debug builds; scripts/generate-demo-assets.sh is the supported entry point):
       RunPlayStudio --demo-assets render --output-dir <dir> [--only all|summary|videos]
-      RunPlayStudio --demo-assets compare --reference <png> --candidate <png> [--diff-output <png>]
     """
 
     struct ParseError: Error, LocalizedError, Equatable {
@@ -64,13 +62,6 @@ enum DemoAssetCommandLine {
             return .render(
                 outputDirectory: try options.url("--output-dir", isDirectory: true),
                 selection: selection
-            )
-        case "compare":
-            try options.requireOnly(["--reference", "--candidate", "--diff-output"])
-            return .compare(
-                reference: try options.url("--reference"),
-                candidate: try options.url("--candidate"),
-                diffOutput: options.values["--diff-output"].map { URL(fileURLWithPath: $0) }
             )
         default:
             throw ParseError(message: "unknown subcommand \(subcommand)")
@@ -137,8 +128,6 @@ enum DemoAssetCommand {
     /// Process exit codes the script interprets.
     enum ExitStatus: Int32 {
         case success = 0
-        /// `compare` found a difference beyond the tolerance.
-        case imagesDiffer = 1
         case failure = 2
         case usage = 64
     }
@@ -169,8 +158,6 @@ enum DemoAssetCommand {
             case .render(let outputDirectory, let selection):
                 try await render(into: outputDirectory, selection: selection)
                 return .success
-            case .compare(let reference, let candidate, let diffOutput):
-                return try compare(reference: reference, candidate: candidate, diffOutput: diffOutput)
             }
         } catch {
             printError("demo-assets: \(error.localizedDescription)")
@@ -225,36 +212,6 @@ enum DemoAssetCommand {
             )
         }
         return directory
-    }
-
-    private static func compare(
-        reference referenceURL: URL,
-        candidate candidateURL: URL,
-        diffOutput: URL?
-    ) throws -> ExitStatus {
-        let tolerance = DemoAssetPixelTolerance.summaryCard
-        let reference = try DemoAssetImageComparator.loadImage(at: referenceURL)
-        let candidate = try DemoAssetImageComparator.loadImage(at: candidateURL)
-        let difference = try DemoAssetImageComparator.compare(
-            reference: reference,
-            candidate: candidate,
-            tolerance: tolerance
-        )
-        let name = candidateURL.lastPathComponent
-        printError("demo-assets: \(name): \(difference.report(tolerance: tolerance))")
-        guard difference.isWithin(tolerance) else {
-            if let diffOutput, difference.sizesMatch {
-                let image = try DemoAssetImageComparator.diffImage(
-                    reference: reference,
-                    candidate: candidate,
-                    tolerance: tolerance
-                )
-                try PNGExportRenderer.encodePNG(cgImage: image).write(to: diffOutput, options: .atomic)
-                printError("demo-assets: \(name): changed pixels drawn in magenta at \(diffOutput.path)")
-            }
-            return .imagesDiffer
-        }
-        return .success
     }
 
     private static func printError(_ message: String) {

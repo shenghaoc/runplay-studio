@@ -2321,10 +2321,10 @@ Use bundled synthetic data for committed artifacts.
 ## README Demo Assets Checklist
 
 `scripts/generate-demo-assets.sh` renders the README media from the bundled
-synthetic runs ([demo-assets.md](demo-assets.md)), and CI compares the
-committed summary cards with the renderer. The checks below cover what CI
-cannot: whether the media read correctly, and whether the launch path the
-headless mode shares with the app still behaves.
+synthetic runs ([demo-assets.md](demo-assets.md)). CI does not run it and
+does not compare the committed media with the renderer, so the checks below
+are the only review of them: whether the media read correctly, and whether
+the launch path the headless mode shares with the app still behaves.
 
 - [x] A normal launch of a debug bundle opens the main window with the bundled
   demo runs. The process entry point now routes `--demo-assets` launches in
