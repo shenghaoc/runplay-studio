@@ -61,49 +61,21 @@ public struct ComparisonRouteProjectionService: Sendable {
         }
 
         // Compute shared origin from primary route center
-        // ⚡ Bolt: Inline min/max tracking avoids intermediate O(N) array allocations
-        var minLat = Double.infinity, maxLat = -Double.infinity
-        var minLon = Double.infinity, maxLon = -Double.infinity
-        for item in validPrimary {
-            let lat = item.point.latitude
-            let lon = item.point.longitude
-            if lat < minLat { minLat = lat }
-            if lat > maxLat { maxLat = lat }
-            if lon < minLon { minLon = lon }
-            if lon > maxLon { maxLon = lon }
-        }
-        guard minLat.isFinite, maxLat.isFinite, minLon.isFinite, maxLon.isFinite else {
+        guard let center = RouteProjectionService.boundingBoxCenter(of: validPrimary) else {
             return ComparisonRouteScene(
                 primaryRoute: [], comparisonRoute: [],
                 combinedBounds: (min: SIMD3<Double>(0, 0, 0), max: SIMD3<Double>(0, 0, 0)),
                 warnings: existingWarnings + [.tooFewPoints]
             )
         }
-        let centerLat = (minLat + maxLat) / 2
-        let centerLon = (minLon + maxLon) / 2
+        let centerLat = center.lat
+        let centerLon = center.lon
 
         // Find a shared baseline from corrected, aligned elevation only.
-        // ⚡ Bolt: Inline min tracking avoids intermediate O(N) altitude arrays.
-        var minAltOpt: Double?
-        for item in validPrimary {
-            if let altitude = correctedAltitude(
-                for: item.point,
-                atSourceIndex: item.index,
-                elevationProfile: primaryElevationProfile
-            ) {
-                minAltOpt = min(minAltOpt ?? .infinity, altitude)
-            }
-        }
-        for item in validComparison {
-            if let altitude = correctedAltitude(
-                for: item.point,
-                atSourceIndex: item.index,
-                elevationProfile: comparisonElevationProfile
-            ) {
-                minAltOpt = min(minAltOpt ?? .infinity, altitude)
-            }
-        }
-        let minAlt = minAltOpt ?? 0
+        let minAlt = sharedMinimumCorrectedAltitude(
+            primary: validPrimary, primaryElevationProfile: primaryElevationProfile,
+            comparison: validComparison, comparisonElevationProfile: comparisonElevationProfile
+        ) ?? 0
 
         // Project primary route
         let projectedPrimary = projectRoute(
@@ -143,6 +115,37 @@ public struct ComparisonRouteProjectionService: Sendable {
     // MARK: - Private Helpers
 
     /// Filter out points with invalid coordinates, preserving original indices.
+    /// The lowest corrected altitude across both routes, or nil when neither
+    /// has one.
+    private func sharedMinimumCorrectedAltitude(
+        primary validPrimary: [(index: Int, point: RoutePoint)],
+        primaryElevationProfile: ElevationProfile,
+        comparison validComparison: [(index: Int, point: RoutePoint)],
+        comparisonElevationProfile: ElevationProfile
+    ) -> Double? {
+        // ⚡ Bolt: Inline min tracking avoids intermediate O(N) altitude arrays.
+        var minAltOpt: Double?
+        for item in validPrimary {
+            if let altitude = correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: primaryElevationProfile
+            ) {
+                minAltOpt = min(minAltOpt ?? .infinity, altitude)
+            }
+        }
+        for item in validComparison {
+            if let altitude = correctedAltitude(
+                for: item.point,
+                atSourceIndex: item.index,
+                elevationProfile: comparisonElevationProfile
+            ) {
+                minAltOpt = min(minAltOpt ?? .infinity, altitude)
+            }
+        }
+        return minAltOpt
+    }
+
     private func filterValidWithIndices(_ points: [RoutePoint]) -> [(index: Int, point: RoutePoint)] {
         // ⚡ Bolt: Inline loop avoids closure overhead from .enumerated().compactMap { ... }.
         var valid: [(index: Int, point: RoutePoint)] = []

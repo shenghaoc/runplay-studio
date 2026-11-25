@@ -177,25 +177,10 @@ public struct DEMElevationCorrector: Sendable {
             coverage.loadedTileCount = result.loadedTileCount
             coverage.unreadableTileCount = unreadableKeys.count
 
-            let keepsRecorded = workout.recordedAltitudeSensor == .barometric
-            let stride = max(1, policy.cancellationCheckStride)
-            for (index, point) in workout.routePoints.enumerated() {
-                if index.isMultiple(of: stride), isCancelled() {
-                    throw CancellationError()
-                }
-                guard let elevation = result.elevationsMeters[index] else { continue }
-                let hasRecorded = point.altitudeMeters?.isFinite == true
-                if hasRecorded && keepsRecorded {
-                    coverage.keptBarometricPointCount += 1
-                } else {
-                    demAltitudes[index] = elevation
-                    if hasRecorded {
-                        coverage.replacedRecordedPointCount += 1
-                    } else {
-                        coverage.filledMissingPointCount += 1
-                    }
-                }
-            }
+            try applyPrecedence(
+                elevationsMeters: result.elevationsMeters, to: workout,
+                demAltitudes: &demAltitudes, coverage: &coverage, isCancelled: isCancelled
+            )
             record = DEMElevationCorrection(
                 outcome: result.sampledCount > 0 ? .applied : .noCoverage,
                 tileSet: tileSet,
@@ -210,6 +195,37 @@ public struct DEMElevationCorrector: Sendable {
 
         try apply(demAltitudes, record: record, to: &workout, isCancelled: isCancelled)
         return record
+    }
+
+    /// Elevation precedence per point: a recorded barometric altitude is
+    /// kept; otherwise a sampled DEM elevation replaces a recorded altitude or
+    /// fills a missing one. Counts each outcome in `coverage`.
+    private func applyPrecedence(
+        elevationsMeters: [Double?],
+        to workout: RunWorkout,
+        demAltitudes: inout [Double?],
+        coverage: inout DEMElevationCoverage,
+        isCancelled: @Sendable () -> Bool
+    ) throws {
+        let keepsRecorded = workout.recordedAltitudeSensor == .barometric
+        let stride = max(1, policy.cancellationCheckStride)
+        for (index, point) in workout.routePoints.enumerated() {
+            if index.isMultiple(of: stride), isCancelled() {
+                throw CancellationError()
+            }
+            guard let elevation = elevationsMeters[index] else { continue }
+            let hasRecorded = point.altitudeMeters?.isFinite == true
+            if hasRecorded && keepsRecorded {
+                coverage.keptBarometricPointCount += 1
+            } else {
+                demAltitudes[index] = elevation
+                if hasRecorded {
+                    coverage.replacedRecordedPointCount += 1
+                } else {
+                    coverage.filledMissingPointCount += 1
+                }
+            }
+        }
     }
 
     /// Removes the workout's DEM elevation, reanalyzes with recorded altitude,

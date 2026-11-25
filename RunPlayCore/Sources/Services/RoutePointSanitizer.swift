@@ -39,6 +39,33 @@ public enum RoutePointSanitizer {
 
 enum RouteTimestampResolver {
 
+    /// Keeps each known timestamp and spaces the unknown ones evenly between
+    /// each pair of consecutive known timestamps.
+    private static func interpolateBetweenKnown(
+        _ timestamps: [Date?], knownIndices: [Int], into resolved: inout [Date]
+    ) {
+        for pairIndex in 0..<(knownIndices.count - 1) {
+            let previousIndex = knownIndices[pairIndex]
+            let nextIndex = knownIndices[pairIndex + 1]
+            guard let previousTimestamp = timestamps[previousIndex],
+                  let nextTimestamp = timestamps[nextIndex]
+            else {
+                continue
+            }
+            resolved[previousIndex] = previousTimestamp
+            let totalSteps = max(1, nextIndex - previousIndex)
+            let interval = nextTimestamp.timeIntervalSince(previousTimestamp) / Double(totalSteps)
+            if nextIndex > previousIndex + 1 {
+                for index in (previousIndex + 1)..<nextIndex {
+                    resolved[index] = previousTimestamp.addingTimeInterval(
+                        interval * Double(index - previousIndex)
+                    )
+                }
+            }
+            resolved[nextIndex] = nextTimestamp
+        }
+    }
+
     static func resolve(_ timestamps: [Date?]) -> [Date]? {
         guard !timestamps.isEmpty else {
             return nil
@@ -65,26 +92,7 @@ enum RouteTimestampResolver {
             }
         }
 
-        for pairIndex in 0..<(knownIndices.count - 1) {
-            let previousIndex = knownIndices[pairIndex]
-            let nextIndex = knownIndices[pairIndex + 1]
-            guard let previousTimestamp = timestamps[previousIndex],
-                  let nextTimestamp = timestamps[nextIndex]
-            else {
-                continue
-            }
-            resolved[previousIndex] = previousTimestamp
-            let totalSteps = max(1, nextIndex - previousIndex)
-            let interval = nextTimestamp.timeIntervalSince(previousTimestamp) / Double(totalSteps)
-            if nextIndex > previousIndex + 1 {
-                for index in (previousIndex + 1)..<nextIndex {
-                    resolved[index] = previousTimestamp.addingTimeInterval(
-                        interval * Double(index - previousIndex)
-                    )
-                }
-            }
-            resolved[nextIndex] = nextTimestamp
-        }
+        interpolateBetweenKnown(timestamps, knownIndices: knownIndices, into: &resolved)
 
         guard let lastKnownIndex = knownIndices.last,
               let lastKnownTimestamp = timestamps[lastKnownIndex]

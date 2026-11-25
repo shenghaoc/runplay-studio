@@ -273,19 +273,14 @@ public struct RouteGroupingMatcher: Sendable {
     /// never enters that side's numerator. Both sides are read from the
     /// single existing solve — no second solve, no engine change, no new
     /// bridge call.
-    static func scorePath(
-        path: [RunPlayRouteAlignmentDtwPathCell],
+    /// The distance each route travels on diagonal steps of the path, and
+    /// each diagonal step's separation weighted by its larger advance.
+    private static func matchedTravel(
+        along path: [RunPlayRouteAlignmentDtwPathCell],
         primary: [RouteAlignmentSample],
-        comparison: [RouteAlignmentSample],
-        primaryRouteDistanceMeters: Double,
-        comparisonRouteDistanceMeters: Double,
-        comparisonReversed: Bool,
-        policy: RouteGroupingPolicy
-    ) -> RouteGroupingMatchOutcome {
-        guard let first = path.first else {
-            return .unmatched(.noPath)
-        }
-
+        comparison: [RouteAlignmentSample]
+    ) -> (primaryMatched: Double, comparisonMatched: Double, weighted: [DistanceWeightedStatistics.WeightedSample]) {
+        let first = path[0]
         var lastPrimaryDistance = primary[first.primaryIndex].distanceFromStartMeters
         var lastComparisonDistance = comparison[first.comparisonIndex].distanceFromStartMeters
         var primaryMatched = 0.0
@@ -319,6 +314,25 @@ public struct RouteGroupingMatcher: Sendable {
             lastPrimaryDistance = primarySample.distanceFromStartMeters
             lastComparisonDistance = comparisonSample.distanceFromStartMeters
         }
+        return (primaryMatched, comparisonMatched, weighted)
+    }
+
+    static func scorePath(
+        path: [RunPlayRouteAlignmentDtwPathCell],
+        primary: [RouteAlignmentSample],
+        comparison: [RouteAlignmentSample],
+        primaryRouteDistanceMeters: Double,
+        comparisonRouteDistanceMeters: Double,
+        comparisonReversed: Bool,
+        policy: RouteGroupingPolicy
+    ) -> RouteGroupingMatchOutcome {
+        guard let first = path.first else {
+            return .unmatched(.noPath)
+        }
+
+        let (primaryMatched, comparisonMatched, weighted) = matchedTravel(
+            along: path, primary: primary, comparison: comparison
+        )
 
         guard primaryRouteDistanceMeters > 0, comparisonRouteDistanceMeters > 0 else {
             return .unmatched(.belowThresholds)

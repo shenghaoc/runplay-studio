@@ -198,28 +198,12 @@ public struct MovementProfile: Sendable {
         }
 
         // Interpolate within the continuous interval surrounding the sample.
-        let index = sample.pointIndex
-        let before: Int
-        let after: Int
-        if index + 1 < cumulative.count,
-           let nextActive = timeline.activeSeconds(atPointIndex: index + 1),
-           let currentActive = timeline.activeSeconds(atPointIndex: index),
-           nextActive > currentActive,
-           sample.activeSeconds >= currentActive,
-           sample.activeSeconds <= nextActive {
-            before = index
-            after = index + 1
-        } else if index > 0,
-                  let previousActive = timeline.activeSeconds(atPointIndex: index - 1),
-                  let currentActive = timeline.activeSeconds(atPointIndex: index),
-                  currentActive > previousActive,
-                  sample.activeSeconds >= previousActive,
-                  sample.activeSeconds <= currentActive {
-            before = index - 1
-            after = index
-        } else {
+        guard let interval = Self.interpolationInterval(
+            around: sample, pointCount: cumulative.count, timeline: timeline
+        ) else {
             return cumulative[sample.pointIndex]
         }
+        let (before, after) = interval
 
         guard let startActive = timeline.activeSeconds(atPointIndex: before),
               let endActive = timeline.activeSeconds(atPointIndex: after),
@@ -229,6 +213,34 @@ public struct MovementProfile: Sendable {
         }
         let fraction = min(1, max(0, (sample.activeSeconds - startActive) / (endActive - startActive)))
         return cumulative[before] + (cumulative[after] - cumulative[before]) * fraction
+    }
+
+    /// The pair of consecutive points whose active times bracket the sample:
+    /// the sample's point and the next one, else the previous point and the
+    /// sample's point. Nil when neither pair has increasing active time that
+    /// contains the sample.
+    private static func interpolationInterval(
+        around sample: WorkoutTimeline.ElapsedSample,
+        pointCount: Int,
+        timeline: WorkoutTimeline
+    ) -> (before: Int, after: Int)? {
+        let index = sample.pointIndex
+        if index + 1 < pointCount,
+           let nextActive = timeline.activeSeconds(atPointIndex: index + 1),
+           let currentActive = timeline.activeSeconds(atPointIndex: index),
+           nextActive > currentActive,
+           sample.activeSeconds >= currentActive,
+           sample.activeSeconds <= nextActive {
+            return (index, index + 1)
+        } else if index > 0,
+                  let previousActive = timeline.activeSeconds(atPointIndex: index - 1),
+                  let currentActive = timeline.activeSeconds(atPointIndex: index),
+                  currentActive > previousActive,
+                  sample.activeSeconds >= previousActive,
+                  sample.activeSeconds <= currentActive {
+            return (index - 1, index)
+        }
+        return nil
     }
 
     // MARK: - Construction
@@ -255,6 +267,81 @@ public struct MovementProfile: Sendable {
         }
 
         // Pass 1: classify each pair independently
+        let intervals = try Self.classifyIntervals(
+            routePoints: routePoints, timeline: timeline, policy: policy, isCancelled: isCancelled
+        )
+        let activeDeltas = intervals.activeDeltas
+        let reliableCount = intervals.reliableCount
+
+        // Pass 2: apply hysteresis — merge short blips
+        var merged = Self.mergeShortRuns(
+            intervals.rawStates, activeDeltas: activeDeltas, distanceDeltas: intervals.distanceDeltas,
+            policy: policy
+        )
+
+        let usedFallback = reliableCount < policy.minimumReliableSampleCount
+        if usedFallback {
+            // Sparse or irregular timing cannot support a trustworthy stop
+            // estimate, so preserve the conservative active-time clock.
+            for index in merged.indices where merged[index] == .stopped {
+                merged[index] = .uncertain
+            }
+        }
+
+        // ⚡ Bolt: Replaced .filter { ... }.count with single-pass reduce(into:).
+        let (stopCount, uncertainCount) = merged.reduce(into: (0, 0)) { counts, state in
+            switch state {
+            case .stopped:
+                counts.0 += 1
+            case .uncertain:
+                counts.1 += 1
+            default:
+                break
+            }
+        }
+
+        // Build cumulative arrays: uncertain counts as moving (conservative)
+        let (movingCum, stoppedCum) = Self.cumulativeTimes(states: merged, activeDeltas: activeDeltas, count: count)
+
+        // Enforce invariants
+        let rawMoving = movingCum.last ?? 0
+        let totalActive = timeline.totalActiveSeconds
+        let totalMoving = min(Self.nonNegativeFinite(rawMoving), totalActive)
+        let totalStopped = max(0, totalActive - totalMoving)
+
+        states = merged
+        movingSecondsByPoint = movingCum
+        stoppedSecondsByPoint = stoppedCum
+        totalMovingSeconds = totalMoving
+        totalStoppedSeconds = totalStopped
+
+        diagnostics = MovementDiagnostics(
+            policyVersion: MovementDetectionPolicy.currentVersion,
+            reliableIntervalCount: reliableCount,
+            stoppedIntervalCount: stopCount,
+            uncertainIntervalCount: uncertainCount,
+            usedConservativeFallback: usedFallback,
+            analysedPointPairCount: merged.count
+        )
+    }
+
+    /// The movement intervals between consecutive points: each pair's raw
+    /// state, active-time and distance deltas, and how many pairs had
+    /// reliable timing. A pair across a segment boundary is paused.
+    private struct RawIntervals {
+        var rawStates: [MovementState]
+        var activeDeltas: [Double]
+        var distanceDeltas: [Double]
+        var reliableCount: Int
+    }
+
+    private static func classifyIntervals(
+        routePoints: [RoutePoint],
+        timeline: WorkoutTimeline,
+        policy: MovementDetectionPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RawIntervals {
+        let count = routePoints.count
         var rawStates: [MovementState] = []
         rawStates.reserveCapacity(count - 1)
         var activeDeltas: [Double] = []
@@ -298,44 +385,69 @@ public struct MovementProfile: Sendable {
                 lon: next.longitude
             )
 
-            let isReliable = elapsed >= policy.minimumReliableIntervalDurationSeconds
-                && elapsed <= policy.maximumDirectSpeedIntervalDurationSeconds
+            let (state, isReliable) = classify(
+                elapsed: elapsed, distance: distance, displacement: displacement, policy: policy
+            )
             if isReliable { reliableCount += 1 }
-
-            let geometricSpeed: Double = (elapsed > 0 && displacement.isFinite)
-                ? displacement / elapsed : 0
-
-            let isStationary: Bool
-            if isReliable {
-                isStationary = geometricSpeed <= policy.stopSpeedMetersPerSecond
-                    && displacement <= policy.maximumStationaryRadiusMeters
-                    && distance <= policy.maximumStationaryDriftMeters
-            } else {
-                isStationary = distance <= policy.maximumStationaryDriftMeters * 0.5
-                    && displacement <= policy.maximumStationaryRadiusMeters * 0.5
-            }
-
-            let isMoving: Bool
-            if isReliable {
-                isMoving = geometricSpeed >= policy.resumeSpeedMetersPerSecond
-                    && displacement > policy.maximumStationaryRadiusMeters
-            } else {
-                isMoving = distance > policy.maximumStationaryDriftMeters
-                    || displacement > policy.maximumStationaryRadiusMeters * 2
-            }
-
-            if isStationary {
-                rawStates.append(.stopped)
-            } else if isMoving {
-                rawStates.append(.moving)
-            } else {
-                rawStates.append(.uncertain)
-            }
+            rawStates.append(state)
             activeDeltas.append(activeDelta)
             distanceDeltas.append(distance)
         }
 
-        // Pass 2: apply hysteresis — merge short blips
+        return RawIntervals(
+            rawStates: rawStates, activeDeltas: activeDeltas, distanceDeltas: distanceDeltas,
+            reliableCount: reliableCount
+        )
+    }
+
+    /// One pair's state from its elapsed time, distance and displacement,
+    /// and whether its timing is reliable. Reliable timing judges by
+    /// geometric speed; unreliable timing judges by distance alone, with
+    /// stricter thresholds.
+    private static func classify(
+        elapsed: Double, distance: Double, displacement: Double, policy: MovementDetectionPolicy
+    ) -> (state: MovementState, isReliable: Bool) {
+        let isReliable = elapsed >= policy.minimumReliableIntervalDurationSeconds
+            && elapsed <= policy.maximumDirectSpeedIntervalDurationSeconds
+
+        let geometricSpeed: Double = (elapsed > 0 && displacement.isFinite)
+            ? displacement / elapsed : 0
+
+        let isStationary: Bool
+        if isReliable {
+            isStationary = geometricSpeed <= policy.stopSpeedMetersPerSecond
+                && displacement <= policy.maximumStationaryRadiusMeters
+                && distance <= policy.maximumStationaryDriftMeters
+        } else {
+            isStationary = distance <= policy.maximumStationaryDriftMeters * 0.5
+                && displacement <= policy.maximumStationaryRadiusMeters * 0.5
+        }
+
+        let isMoving: Bool
+        if isReliable {
+            isMoving = geometricSpeed >= policy.resumeSpeedMetersPerSecond
+                && displacement > policy.maximumStationaryRadiusMeters
+        } else {
+            isMoving = distance > policy.maximumStationaryDriftMeters
+                || displacement > policy.maximumStationaryRadiusMeters * 2
+        }
+
+        if isStationary {
+            return (.stopped, isReliable)
+        } else if isMoving {
+            return (.moving, isReliable)
+        } else {
+            return (.uncertain, isReliable)
+        }
+    }
+
+    /// Hysteresis: a stopped run shorter than the minimum stop, or a moving
+    /// run shorter than the minimum resume in both time and distance, becomes
+    /// uncertain.
+    private static func mergeShortRuns(
+        _ rawStates: [MovementState], activeDeltas: [Double], distanceDeltas: [Double],
+        policy: MovementDetectionPolicy
+    ) -> [MovementState] {
         var merged = rawStates
         var i = 0
 
@@ -367,29 +479,14 @@ public struct MovementProfile: Sendable {
 
             i = runEnd + 1
         }
+        return merged
+    }
 
-        let usedFallback = reliableCount < policy.minimumReliableSampleCount
-        if usedFallback {
-            // Sparse or irregular timing cannot support a trustworthy stop
-            // estimate, so preserve the conservative active-time clock.
-            for index in merged.indices where merged[index] == .stopped {
-                merged[index] = .uncertain
-            }
-        }
-
-        // ⚡ Bolt: Replaced .filter { ... }.count with single-pass reduce(into:).
-        let (stopCount, uncertainCount) = merged.reduce(into: (0, 0)) { counts, state in
-            switch state {
-            case .stopped:
-                counts.0 += 1
-            case .uncertain:
-                counts.1 += 1
-            default:
-                break
-            }
-        }
-
-        // Build cumulative arrays: uncertain counts as moving (conservative)
+    /// Cumulative moving and stopped active time at each point; uncertain
+    /// counts as moving.
+    private static func cumulativeTimes(
+        states merged: [MovementState], activeDeltas: [Double], count: Int
+    ) -> (moving: [Double], stopped: [Double]) {
         var movingCum: [Double] = []
         movingCum.reserveCapacity(count)
         var stoppedCum: [Double] = []
@@ -411,27 +508,7 @@ public struct MovementProfile: Sendable {
                 stoppedCum.append(stoppedCum.last ?? 0)
             }
         }
-
-        // Enforce invariants
-        let rawMoving = movingCum.last ?? 0
-        let totalActive = timeline.totalActiveSeconds
-        let totalMoving = min(Self.nonNegativeFinite(rawMoving), totalActive)
-        let totalStopped = max(0, totalActive - totalMoving)
-
-        states = merged
-        movingSecondsByPoint = movingCum
-        stoppedSecondsByPoint = stoppedCum
-        totalMovingSeconds = totalMoving
-        totalStoppedSeconds = totalStopped
-
-        diagnostics = MovementDiagnostics(
-            policyVersion: MovementDetectionPolicy.currentVersion,
-            reliableIntervalCount: reliableCount,
-            stoppedIntervalCount: stopCount,
-            uncertainIntervalCount: uncertainCount,
-            usedConservativeFallback: usedFallback,
-            analysedPointPairCount: merged.count
-        )
+        return (movingCum, stoppedCum)
     }
 
     // MARK: - Helpers
