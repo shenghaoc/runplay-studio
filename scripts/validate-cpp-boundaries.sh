@@ -1633,14 +1633,28 @@ if [[ ! -f "RunPlayCore/Tests/RunPlayCoreTests/SwiftElevationProfileOracle.swift
   fail "missing SwiftElevationProfileOracle in tests"
 fi
 
-# --- DEM elevation bridge ---------------------------------------------------
+# --- DEM elevation adapter --------------------------------------------------
 
-DEM_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayDemElevationBridge.swift"
+DEM_BRIDGE_SOURCE="RunPlayCore/Sources/Engine/RunPlayDemElevationAdapter.swift"
+DEM_ORACLE_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/DemElevationDifferentialTests.swift"
 
 if [[ ! -f "$DEM_BRIDGE_SOURCE" ]]; then
-  fail "missing DEM elevation bridge $DEM_BRIDGE_SOURCE"
+  fail "missing DEM elevation adapter $DEM_BRIDGE_SOURCE"
 else
-  pass "DEM elevation bridge exists"
+  pass "DEM elevation Swift engine adapter exists"
+fi
+
+if [[ -e RunPlayCore/Sources/Interop/RunPlayDemElevationBridge.swift ]]; then
+  fail "the C++ DEM bridge must live only in $DEM_ORACLE_SOURCE"
+else
+  pass "no C++ DEM bridge remains in Core sources"
+fi
+
+if code_matches "$DEM_BRIDGE_SOURCE" 'DemTilePlanning[[:space:]]*\.[[:space:]]*plan[[:space:]]*\(' \
+  && code_matches "$DEM_BRIDGE_SOURCE" 'DemElevationSampling[[:space:]]*\.[[:space:]]*sample[[:space:]]*\('; then
+  pass "DEM adapter calls the Swift planning and sampling kernels"
+else
+  fail "DEM adapter must call the Swift planning and sampling kernels"
 fi
 
 # The two DEM calls are made only by their bridge, and each from exactly one
@@ -1650,8 +1664,7 @@ dem_native_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$DEM_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+    "$DEM_ORACLE_SOURCE") continue ;;
   esac
   while IFS= read -r leak; do
     [[ -n "$leak" ]] && dem_native_leaks+=("$relative_swift_file:$leak")
@@ -1659,21 +1672,21 @@ for swift_file in "${SWIFT_FILES[@]}"; do
 done
 
 if [[ ${#dem_native_leaks[@]} -eq 0 ]]; then
-  pass "DEM planning and sampling are invoked only from the DEM bridge"
+  pass "DEM planning and sampling are invoked only from the DEM test oracle"
 else
   for leak in "${dem_native_leaks[@]}"; do
-    fail "DEM native call outside the DEM bridge: $leak"
+    fail "DEM native call outside the DEM test oracle: $leak"
   done
 fi
 
-if [[ -f "$DEM_BRIDGE_SOURCE" ]]; then
-  dem_bridge_body="$(strip_comments "$DEM_BRIDGE_SOURCE")"
+if [[ -f "$DEM_ORACLE_SOURCE" ]]; then
+  dem_bridge_body="$(strip_comments "$DEM_ORACLE_SOURCE")"
   dem_plan_sites="$(count_matches 'runplay[[:space:]]*\.[[:space:]]*plan_dem_tiles[[:space:]]*\(' <<<"$dem_bridge_body")"
   dem_sample_sites="$(count_matches 'runplay[[:space:]]*\.[[:space:]]*sample_dem_elevations[[:space:]]*\(' <<<"$dem_bridge_body")"
   if [[ "$dem_plan_sites" == "1" && "$dem_sample_sites" == "1" ]]; then
-    pass "DEM bridge has exactly one planning and one sampling call site"
+    pass "the DEM test oracle has exactly one planning and one sampling call site"
   else
-    fail "DEM bridge must have exactly one call site per DEM call (planning $dem_plan_sites, sampling $dem_sample_sites)"
+    fail "the DEM test oracle must have exactly one call site per DEM call (planning $dem_plan_sites, sampling $dem_sample_sites)"
   fi
 fi
 
@@ -1700,16 +1713,16 @@ dem_type_leaks=""
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    RunPlayCore/Sources/Interop/*) continue ;;
+    "$DEM_ORACLE_SOURCE") continue ;;
   esac
   if code_matches "$swift_file" "$dem_cpp_type_re"; then
     dem_type_leaks="$dem_type_leaks $relative_swift_file"
   fi
 done
 if [[ -z "$dem_type_leaks" ]]; then
-  pass "C++ DEM types stay in Interop"
+  pass "C++ DEM types stay in the test oracle"
 else
-  fail "C++ DEM types named outside Interop:$dem_type_leaks"
+  fail "C++ DEM types named outside the test oracle:$dem_type_leaks"
 fi
 
 # Diagnostic benchmark entry points must remain internal and may be referenced
@@ -1744,7 +1757,6 @@ dem_benchmark_api_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$DEM_BRIDGE_SOURCE") continue ;;
     RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
   esac
   while IFS= read -r leak; do

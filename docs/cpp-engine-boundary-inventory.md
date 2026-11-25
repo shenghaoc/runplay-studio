@@ -18,8 +18,8 @@ Every public callable carries exactly one status:
 | `build_elevation_profile` | **parity/contract verification** | retained for native tests and `ElevationProfileCppBenchmarkOracle` in Core tests; production calls the Swift kernel |
 | `assign_route_metric_scale_buckets` | **parity/contract verification** | retained for native tests and `RunPlayRouteMetricScaleBucketCppBridge` in Core tests; production calls the Swift kernel |
 | `compute_training_load` | **parity/contract verification** | retained for native tests and the debug-only Core differential test; production calls the Swift kernel |
-| `plan_dem_tiles` | **production** | tile-planning step of DEM elevation correction: one call per correction pass |
-| `sample_dem_elevations` | **production** | sampling step of DEM elevation correction: one call per correction pass, after Swift decodes the planned tiles |
+| `plan_dem_tiles` | **parity/contract verification** | retained for native tests and `RunPlayDemElevationCppBridge` in Core tests; production calls the Swift planner |
+| `sample_dem_elevations` | **parity/contract verification** | retained for native tests and `RunPlayDemElevationCppBridge` in Core tests; production calls the Swift sampler |
 | `inspect_route_batch` | **parity/contract verification** | no production caller; consumed only by `RunPlayRouteBridge` for parity tests and validators |
 | `is_valid_coordinate`, `haversine_distance_meters`, `project_lat_lon_to_local_meters` | **parity/test utility** | production Swift geodesy uses `GeoDistance`; these pin the C++ implementations against it |
 | `engine_info` | **smoke/identity** | build/ABI identity probe; consumed by engine smoke tests and the external-consumer smoke |
@@ -246,7 +246,7 @@ consumers. Swift production code outside Interop never touches `runplay.*` symbo
 | `build_elevation_profile` | `ElevationProfileCppBenchmarkOracle` (Core tests) | none; differential tests and release benchmark only |
 | `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `compute_training_load` | `TrainingLoadDifferentialTests.swift` | debug differential test only |
-| `plan_dem_tiles`, `sample_dem_elevations` | `RunPlayDemElevationBridge` | DEM elevation correction: one planning and one sampling call per correction pass, with Swift decoding the planned tiles in between |
+| `plan_dem_tiles`, `sample_dem_elevations` | `RunPlayDemElevationCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | scalar geodesy | `RunPlayGeodesyBridge` | parity/tests only |
 
 Corrected-elevation route-metric finalization intentionally stays in Swift

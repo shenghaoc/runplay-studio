@@ -34,13 +34,8 @@ final class DemElevationSamplingBenchmark: XCTestCase {
         }
 
         var completeSamples: [Double] = []
-        var conversionSamples: [Double] = []
-        var planningSamples: [Double] = []
-        var loadingSamples: [Double] = []
-        var packingSamples: [Double] = []
-        var samplingSamples: [Double] = []
-        var translationSamples: [Double] = []
         var oracleSamples: [Double] = []
+        var cppSamples: [Double] = []
         var sampledCount = 0
         var oracleSampledCount = 0
 
@@ -69,11 +64,9 @@ final class DemElevationSamplingBenchmark: XCTestCase {
                     sampledCount = result.sampledCount
                 }
             }
-            let profiled = try RunPlayDemElevationBridge.sampleElevationsCollectingBenchmarkReport(
-                routePoints: points,
-                grid: Self.grid,
-                loadTiles: loadTiles
-            )
+            let cppElapsed = try Self.timeThrowing {
+                _ = try RunPlayDemElevationCppBridge.sampleElevations(routePoints: points, grid: Self.grid, loadTiles: loadTiles)
+            }
             let oracleElapsed = Self.time {
                 let plan = SwiftDemSamplingOracle.plan(coordinates, grid: oracleGrid)
                 guard case .planned = plan else { return }
@@ -85,33 +78,28 @@ final class DemElevationSamplingBenchmark: XCTestCase {
 
             guard iteration >= Self.warmupIterations else { continue }
             completeSamples.append(completeElapsed)
-            conversionSamples.append(profiled.report.inputConversionMilliseconds)
-            planningSamples.append(profiled.report.nativePlanningMilliseconds)
-            loadingSamples.append(profiled.report.tileLoadingMilliseconds)
-            packingSamples.append(profiled.report.heightPackingMilliseconds)
-            samplingSamples.append(profiled.report.nativeSamplingMilliseconds)
-            translationSamples.append(profiled.report.outputTranslationMilliseconds)
             oracleSamples.append(oracleElapsed)
+            cppSamples.append(cppElapsed)
         }
 
         XCTAssertEqual(sampledCount, Self.pointCount, "every point of the synthetic route is covered")
         XCTAssertEqual(oracleSampledCount, sampledCount)
 
+        let swiftMedian = Self.median(completeSamples)
+        let cppMedian = Self.median(cppSamples)
+        let ratio = swiftMedian / max(cppMedian, 1e-12)
         print("""
 
         RunPlay DEM elevation sampling benchmark
         fixture: \(Self.pointCount) points, zoom \(Self.grid.zoom), \(Self.grid.tileSize)-pixel tiles, \(tiles.count) planned tiles
         \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
-        complete bridge (plan, hand-off, sample): \(Self.format(Self.median(completeSamples))) ms
-          coordinate conversion:  \(Self.format(Self.median(conversionSamples))) ms
-          native planning:        \(Self.format(Self.median(planningSamples))) ms
-          tile hand-off:          \(Self.format(Self.median(loadingSamples))) ms
-          height packing:         \(Self.format(Self.median(packingSamples))) ms
-          native sampling:        \(Self.format(Self.median(samplingSamples))) ms
-          output translation:     \(Self.format(Self.median(translationSamples))) ms
+        complete C++ bridge (plan, hand-off, sample):   \(Self.format(cppMedian)) ms
+        complete Swift adapter (plan, hand-off, sample): \(Self.format(swiftMedian)) ms
+        DEM_RATIO 100k \(String(format: "%.3f", ratio)) (gate at most 1.100)
         Swift reference oracle (plan + sample): \(Self.format(Self.median(oracleSamples))) ms
         DEM sampling complete
         """)
+        XCTAssertLessThanOrEqual(ratio, 1.10, "complete Swift adapter must be within 1.10x of the C++ bridge")
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
             try Self.runProductLimitProbe()
@@ -121,26 +109,40 @@ final class DemElevationSamplingBenchmark: XCTestCase {
     private static func runProductLimitProbe() throws {
         let points = makeRoute(productLimitCount)
         let tiles = try syntheticTiles(for: points)
-        var samples: [Double] = []
-        for _ in 0..<3 {
-            let elapsed = try timeThrowing {
+        var swiftSamples: [Double] = []
+        var cppSamples: [Double] = []
+        let loadTiles: ([RunPlayDemTileKey]) -> [RunPlayDemDecodedTile] = { planned in planned.compactMap { tiles[$0] } }
+        for iteration in 0..<4 {
+            let swiftOperation = {
                 _ = try RunPlayDemElevationBridge.sampleElevations(
-                    routePoints: points,
-                    grid: grid,
+                    routePoints: points, grid: grid,
                     cancellationCheckStride: RouteQualityPolicy.runningDefault.cancellationCheckStride,
-                    loadTiles: { planned in planned.compactMap { tiles[$0] } },
-                    isCancelled: { false }
+                    loadTiles: loadTiles, isCancelled: { false }
                 )
             }
-            samples.append(elapsed)
+            let cppOperation = {
+                _ = try RunPlayDemElevationCppBridge.sampleElevations(routePoints: points, grid: grid, loadTiles: loadTiles)
+            }
+            var swiftElapsed = 0.0, cppElapsed = 0.0
+            if iteration.isMultiple(of: 2) {
+                swiftElapsed = try timeThrowing(swiftOperation)
+                cppElapsed = try timeThrowing(cppOperation)
+            } else {
+                cppElapsed = try timeThrowing(cppOperation)
+                swiftElapsed = try timeThrowing(swiftOperation)
+            }
+            if iteration > 0 { swiftSamples.append(swiftElapsed); cppSamples.append(cppElapsed) }
         }
+        let ratio = median(swiftSamples) / max(median(cppSamples), 1e-12)
         let memory = processMemorySnapshot()
         print("""
         DEM product-limit probe (\(productLimitCount) points, \(tiles.count) tiles)
-        complete bridge median: \(format(median(samples))) ms
-        complete bridge max:    \(format(samples.max() ?? 0)) ms
+        complete C++ bridge median:    \(format(median(cppSamples))) ms
+        complete Swift adapter median: \(format(median(swiftSamples))) ms
+        DEM_RATIO 1M \(String(format: "%.3f", ratio)) (gate at most 1.100)
         DEM peak RSS: \(memory.highWaterResidentBytes > 0 ? "\(memory.highWaterResidentBytes) bytes" : "unavailable")
         """)
+        XCTAssertLessThanOrEqual(ratio, 1.10, "product-limit complete Swift adapter must be within 1.10x of the C++ bridge")
     }
 
     /// A long course through the Alps at zoom 12: about 300 km on a slowly

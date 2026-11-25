@@ -124,6 +124,10 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
     engine call per workout per adaptive attempt. The engine returns exactly
     the cells it found, so the capacity negotiation described below, and its
     retry call, no longer exist
+  - DEM tile planning and bilinear sampling (`DemTilePlanning`,
+    `DemElevationSampling`), one engine call each per correction pass, sharing
+    one footprint rule. The planner returns exactly the tiles it found, so
+    only the tile budget bounds it
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
