@@ -154,32 +154,7 @@ package enum SegmentDetection {
         let target = max(samples[0].distance, min(distance, samples[count - 1].distance))
         let first = bound(samples, target: target, upper: false)
         if first < count, samples[first].distance == target {
-            // An exact match proves upper_bound is greater than zero.
-            let last = bound(samples, target: target, upper: true) - 1
-            if elevation {
-                return Location(exact: start ? last : first)
-            }
-            if samples[first].continuityGroup == samples[last].continuityGroup {
-                return Location(exact: !start && last == count - 1 ? last : first)
-            }
-            if start {
-                let group = samples[last].continuityGroup
-                var selected = last
-                // The span is read outside `&&`: a span read inside that autoclosure
-                // crashes Swift 6.3.3 in an optimized build (CopyPropagation).
-                while selected > first {
-                    guard samples[selected - 1].continuityGroup == group else { break }
-                    selected -= 1
-                }
-                return Location(exact: selected)
-            }
-            let group = samples[first].continuityGroup
-            var selected = first
-            while selected < last {
-                guard samples[selected + 1].continuityGroup == group else { break }
-                selected += 1
-            }
-            return Location(exact: selected)
+            return exactLocation(samples, first: first, target: target, start: start, elevation: elevation)
         }
 
         if first == 0 { return Location(exact: 0) }
@@ -194,6 +169,44 @@ package enum SegmentDetection {
         guard width > 0 else { return Location(exact: start ? first : before) }
         let fraction = max(0, min(1, (target - a.distance) / width))
         return Location(before, first, fraction)
+    }
+
+    /// The location of a distance that samples `first...last` record exactly.
+    /// An elevation boundary takes the last sample for a start and the first
+    /// for an end. A clock boundary stays inside one continuity group: a start
+    /// takes the earliest sample of the last sample's group, an end the latest
+    /// sample of the first sample's group.
+    @inline(__always)
+    private static func exactLocation(
+        _ samples: borrowing Span<SegmentDetectionSample>, first: Int, target: Double, start: Bool, elevation: Bool
+    ) -> Location {
+        let count = samples.count
+        // An exact match proves upper_bound is greater than zero.
+        let last = bound(samples, target: target, upper: true) - 1
+        if elevation {
+            return Location(exact: start ? last : first)
+        }
+        if samples[first].continuityGroup == samples[last].continuityGroup {
+            return Location(exact: !start && last == count - 1 ? last : first)
+        }
+        if start {
+            let group = samples[last].continuityGroup
+            var selected = last
+            // The span is read outside `&&`: a span read inside that autoclosure
+            // crashes Swift 6.3.3 in an optimized build (CopyPropagation).
+            while selected > first {
+                guard samples[selected - 1].continuityGroup == group else { break }
+                selected -= 1
+            }
+            return Location(exact: selected)
+        }
+        let group = samples[first].continuityGroup
+        var selected = first
+        while selected < last {
+            guard samples[selected + 1].continuityGroup == group else { break }
+            selected += 1
+        }
+        return Location(exact: selected)
     }
 
     @inline(__always)
@@ -220,44 +233,71 @@ package enum SegmentDetection {
     private static func validateInput(_ samples: borrowing Span<SegmentDetectionSample>) throws(SegmentDetectionError) {
         guard samples.count <= EngineRouteLimits.maxRouteInputSamples else { throw .resourceLimit }
         let first = samples[0]
-        guard first.isFinite, first.distance >= 0, first.elapsed >= 0, first.active >= 0,
-              first.active - first.elapsed <= 1e-12,
-              first.ascent >= 0, first.descent >= 0, first.reliableCount >= 0, first.continuityGroup == 0,
-              first.reliableRun == -1 || first.reliableRun == 0
-        else { throw .invalidInputContract }
+        guard isValidFirstSample(first) else { throw .invalidInputContract }
 
         var previous = first
         var lastCompletedRun: Int32 = -1
         for i in 1..<samples.count {
             let sample = samples[i]
-            guard sample.isFinite, sample.distance >= previous.distance,
-                  sample.elapsed >= previous.elapsed, sample.active >= previous.active,
-                  sample.active - sample.elapsed <= 1e-12,
-                  sample.ascent >= previous.ascent, sample.descent >= previous.descent,
-                  sample.reliableCount >= previous.reliableCount,
-                  sample.continuityGroup >= 0, sample.continuityGroup >= previous.continuityGroup
-            else { throw .invalidInputContract }
-
-            let delta = sample.continuityGroup - previous.continuityGroup
-            guard delta <= 1,
-                  delta == 0 || sample.reliableRun < 0 || sample.reliableRun != previous.reliableRun,
-                  sample.reliableRun >= -1
-            else { throw .invalidInputContract }
-            if sample.reliableRun != previous.reliableRun {
-                if previous.reliableRun >= 0 {
-                    guard previous.reliableRun > lastCompletedRun else { throw .invalidInputContract }
-                    lastCompletedRun = previous.reliableRun
-                }
-                if sample.reliableRun >= 0 {
-                    // IDs start at zero and grow by only one per sample;
-                    // the preceding 1,250,000-point cap keeps Int32 in range.
-                    guard sample.reliableRun == lastCompletedRun + 1 else { throw .invalidInputContract }
-                }
-            }
+            guard continuesMonotonically(sample, after: previous) else { throw .invalidInputContract }
+            try checkGroupAndReliableRun(sample, after: previous, lastCompletedRun: &lastCompletedRun)
             previous = sample
         }
         if previous.reliableRun >= 0, previous.reliableRun <= lastCompletedRun {
             throw .invalidInputContract
+        }
+    }
+
+    /// The first sample is finite, starts every clock and counter at a
+    /// non-negative value, is in continuity group zero, and is in reliable run
+    /// zero or in none.
+    @inline(__always)
+    private static func isValidFirstSample(_ first: SegmentDetectionSample) -> Bool {
+        guard first.isFinite, first.distance >= 0, first.elapsed >= 0, first.active >= 0,
+              first.active - first.elapsed <= 1e-12,
+              first.ascent >= 0, first.descent >= 0, first.reliableCount >= 0, first.continuityGroup == 0,
+              first.reliableRun == -1 || first.reliableRun == 0
+        else { return false }
+        return true
+    }
+
+    /// A later sample is finite, never moves a distance, clock or counter back
+    /// from `previous`, and keeps active time within elapsed time.
+    @inline(__always)
+    private static func continuesMonotonically(
+        _ sample: SegmentDetectionSample, after previous: SegmentDetectionSample
+    ) -> Bool {
+        guard sample.isFinite, sample.distance >= previous.distance,
+              sample.elapsed >= previous.elapsed, sample.active >= previous.active,
+              sample.active - sample.elapsed <= 1e-12,
+              sample.ascent >= previous.ascent, sample.descent >= previous.descent,
+              sample.reliableCount >= previous.reliableCount,
+              sample.continuityGroup >= 0, sample.continuityGroup >= previous.continuityGroup
+        else { return false }
+        return true
+    }
+
+    /// A continuity group grows by at most one and ends any reliable run; a
+    /// reliable run completes once, and the next one has the next identifier.
+    @inline(__always)
+    private static func checkGroupAndReliableRun(
+        _ sample: SegmentDetectionSample, after previous: SegmentDetectionSample, lastCompletedRun: inout Int32
+    ) throws(SegmentDetectionError) {
+        let delta = sample.continuityGroup - previous.continuityGroup
+        guard delta <= 1,
+              delta == 0 || sample.reliableRun < 0 || sample.reliableRun != previous.reliableRun,
+              sample.reliableRun >= -1
+        else { throw .invalidInputContract }
+        if sample.reliableRun != previous.reliableRun {
+            if previous.reliableRun >= 0 {
+                guard previous.reliableRun > lastCompletedRun else { throw .invalidInputContract }
+                lastCompletedRun = previous.reliableRun
+            }
+            if sample.reliableRun >= 0 {
+                // IDs start at zero and grow by only one per sample;
+                // the preceding 1,250,000-point cap keeps Int32 in range.
+                guard sample.reliableRun == lastCompletedRun + 1 else { throw .invalidInputContract }
+            }
         }
     }
 
@@ -270,6 +310,22 @@ package enum SegmentDetection {
               config.elevationEnabled <= 1, config.maximumEvaluations > 0,
               config.elevationEnabled == 0 || config.elevation.isValid
         else { throw .invalidConfiguration }
+    }
+
+    /// The pace of the window from `start` to `end`, in seconds of active time
+    /// per kilometre, or nil when the window has no active time or no length.
+    @inline(__always)
+    private static func windowPace(
+        from a: (elapsed: Double, active: Double), to b: (elapsed: Double, active: Double),
+        start: Double, end: Double
+    ) -> Double? {
+        let elapsed = max(0, b.elapsed - a.elapsed)
+        let active = min(max(0, b.active - a.active), elapsed)
+        let evaluatedDistance = end - start
+        guard active > 0, evaluatedDistance > 0 else { return nil }
+        // This is the rounded distance between boundaries, not the
+        // configured mathematical window length.
+        return (active / evaluatedDistance) * 1000
     }
 
     /// A fastest-only sweep or the combined 1 km fastest/slowest sweep.
@@ -293,22 +349,15 @@ package enum SegmentDetection {
                   let b = clocks(samples, distance: end, start: false)
             else { break }
 
-            let elapsed = max(0, b.elapsed - a.elapsed)
-            let active = min(max(0, b.active - a.active), elapsed)
-            let evaluatedDistance = end - start
-            if active > 0, evaluatedDistance > 0 {
-                // This is the rounded distance between boundaries, not the
-                // configured mathematical window length.
-                let value = (active / evaluatedDistance) * 1000
-                if value.isFinite, value >= config.minimumPace, value <= config.maximumPace {
-                    if value < fastestPace {
-                        fastestPace = value
-                        fastest = SegmentDetectionCandidate(fastestKind, start, end, value)
-                    }
-                    if recordSlowest, value > slowestPace {
-                        slowestPace = value
-                        slowest = SegmentDetectionCandidate(.slowest1km, start, end, value)
-                    }
+            if let value = windowPace(from: a, to: b, start: start, end: end),
+               value.isFinite, value >= config.minimumPace, value <= config.maximumPace {
+                if value < fastestPace {
+                    fastestPace = value
+                    fastest = SegmentDetectionCandidate(fastestKind, start, end, value)
+                }
+                if recordSlowest, value > slowestPace {
+                    slowestPace = value
+                    slowest = SegmentDetectionCandidate(.slowest1km, start, end, value)
                 }
             }
             start += window.step

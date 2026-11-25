@@ -178,6 +178,9 @@ package enum PersonalHeatmapCoverage {
         start: ProjectedSample, end: ProjectedSample, cellSizeMeters: Double,
         maximumCells: UInt, visited: inout CellSet
     ) {
+        // #lizard forgives(cyclomatic_complexity): one ordered operation, the
+        // supercover walk of the C++ kernel, whose cell cursor, boundary
+        // distances and produced-cell count advance together.
         if maximumCells < 1 { return }
 
         guard let startX = cellIndex(start.x, cellSizeMeters),
@@ -310,6 +313,36 @@ package enum PersonalHeatmapCoverage {
         let sampleCount = samples.count
         if sampleCount == 0 { return result }
 
+        let (projected, effectiveSegment) = projectSamples(samples)
+
+        result.validProjectedPointCount = UInt64(projected.count)
+        result.effectiveSegmentCount = effectiveSegment
+
+        var visited = CellSet(minimumCapacity: min(projected.count * 2, 4096))
+
+        for point in projected {
+            if let x = cellIndex(point.x, cellSizeMeters), let y = cellIndex(point.y, cellSizeMeters) {
+                visited.insert(x: x, y: y)
+            }
+        }
+
+        result.invalidIntervalCount = coverIntervals(
+            projected, cellSizeMeters: cellSizeMeters, maximumIntervalMeters: maximumIntervalMeters,
+            maximumCellsPerInterval: maximumCellsPerInterval, visited: &visited
+        )
+
+        result.cells = visited.sortedCells()
+        return result
+    }
+
+    /// Projects every valid coordinate and numbers its effective segment: a
+    /// new segment starts at the first point, after an unprojectable point, and
+    /// where the source segment changes. Returns the points and the last
+    /// effective segment number.
+    private static func projectSamples(
+        _ samples: Span<PersonalHeatmapRouteSample>
+    ) -> (projected: [ProjectedSample], effectiveSegment: UInt64) {
+        let sampleCount = samples.count
         var projected: [ProjectedSample] = []
         projected.reserveCapacity(sampleCount)
 
@@ -330,18 +363,18 @@ package enum PersonalHeatmapCoverage {
             previousSourceSegment = sample.routeSegmentIndex
             requiresNewSegment = false
         }
+        return (projected, effectiveSegment)
+    }
 
-        result.validProjectedPointCount = UInt64(projected.count)
-        result.effectiveSegmentCount = effectiveSegment
-
-        var visited = CellSet(minimumCapacity: min(projected.count * 2, 4096))
-
-        for point in projected {
-            if let x = cellIndex(point.x, cellSizeMeters), let y = cellIndex(point.y, cellSizeMeters) {
-                visited.insert(x: x, y: y)
-            }
-        }
-
+    /// Covers each interval between consecutive points of one effective segment:
+    /// a zero-length interval covers its point's cell, an interval longer than
+    /// `maximumIntervalMeters` covers nothing, and any other interval is traversed.
+    /// Returns the number of intervals that were too long.
+    private static func coverIntervals(
+        _ projected: [ProjectedSample], cellSizeMeters: Double, maximumIntervalMeters: Double,
+        maximumCellsPerInterval: UInt, visited: inout CellSet
+    ) -> UInt64 {
+        var invalidIntervalCount: UInt64 = 0
         if projected.count > 1 {
             for index in 0..<(projected.count - 1) {
                 let a = projected[index]
@@ -362,7 +395,7 @@ package enum PersonalHeatmapCoverage {
                     continue
                 }
                 if length > maximumIntervalMeters {
-                    result.invalidIntervalCount += 1
+                    invalidIntervalCount += 1
                     continue
                 }
                 supercoverGridTraversal(
@@ -371,8 +404,6 @@ package enum PersonalHeatmapCoverage {
                 )
             }
         }
-
-        result.cells = visited.sortedCells()
-        return result
+        return invalidIntervalCount
     }
 }

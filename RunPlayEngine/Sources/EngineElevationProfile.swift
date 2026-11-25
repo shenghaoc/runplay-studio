@@ -56,6 +56,10 @@ package enum EngineElevationProfile {
     }
 
     private static func validate(_ policy: EngineElevationProfilePolicy) throws(ElevationProfileError) {
+        guard hasFiniteDistances(policy), hasDistancesAndCountsInRange(policy) else { throw .invalidPolicy }
+    }
+
+    private static func hasFiniteDistances(_ policy: EngineElevationProfilePolicy) -> Bool {
         guard policy.plausibleAltitudeMinimumMeters.isFinite,
               policy.plausibleAltitudeMaximumMeters.isFinite,
               policy.spikeMinimumDeviationMeters.isFinite,
@@ -63,8 +67,12 @@ package enum EngineElevationProfile {
               policy.spikeMaximumNeighborDifferenceMeters.isFinite,
               policy.spikeMaximumHorizontalSpanMeters.isFinite,
               policy.smoothingRadiusMeters.isFinite,
-              policy.gainLossDeadbandMeters.isFinite,
-              policy.plausibleAltitudeMinimumMeters <= policy.plausibleAltitudeMaximumMeters,
+              policy.gainLossDeadbandMeters.isFinite else { return false }
+        return true
+    }
+
+    private static func hasDistancesAndCountsInRange(_ policy: EngineElevationProfilePolicy) -> Bool {
+        guard policy.plausibleAltitudeMinimumMeters <= policy.plausibleAltitudeMaximumMeters,
               policy.spikeMinimumDeviationMeters >= 0,
               policy.shortExcursionMinimumDeviationMeters >= policy.spikeMinimumDeviationMeters,
               policy.shortExcursionMaximumSampleCount >= 1,
@@ -72,7 +80,8 @@ package enum EngineElevationProfile {
               policy.spikeMaximumHorizontalSpanMeters >= 0,
               policy.smoothingRadiusMeters >= 0,
               policy.minimumReliableSampleCount >= 2,
-              policy.gainLossDeadbandMeters >= 0 else { throw .invalidPolicy }
+              policy.gainLossDeadbandMeters >= 0 else { return false }
+        return true
     }
 
     private static func validate(_ samples: Span<EngineElevationProfileInput>) throws(ElevationProfileError) {
@@ -234,17 +243,7 @@ extension EngineElevationProfile {
             }
 
             let first = unsafe output[unchecked: start].correctedAltitudeMeters
-            var end = start + 1
-            // The span is read outside `&&`: a span read inside that autoclosure
-            // crashes Swift 6.3.3 in an optimized build (CopyPropagation).
-            while end + 1 < count {
-                guard UInt64(end - start) < maxExcursion else { break }
-                guard unsafe samples[unchecked: end].continuityGroup == samples[unchecked: start].continuityGroup else { break }
-                guard unsafe output[unchecked: end].hasCorrectedAltitude else { break }
-                let neighborDifference = unsafe abs(output[unchecked: end].correctedAltitudeMeters - first)
-                guard neighborDifference <= policy.spikeMaximumNeighborDifferenceMeters else { break }
-                end += 1
-            }
+            let end = excursionEnd(from: start, first: first, samples: samples, policy: policy, output: output)
 
             guard end - start >= 2, end < count,
                   unsafe samples[unchecked: start - 1].continuityGroup == samples[unchecked: start].continuityGroup,
@@ -261,17 +260,7 @@ extension EngineElevationProfile {
             }
 
             let midpoint = (before + after) / 2
-            var extreme = true
-            for index in start..<end {
-                if unsafe !output[unchecked: index].hasCorrectedAltitude
-                    || abs(output[unchecked: index].correctedAltitudeMeters - midpoint) < policy.shortExcursionMinimumDeviationMeters {
-                    extreme = false
-                    break
-                }
-            }
-
-            let horizontalSpan = unsafe samples[unchecked: end].distanceMeters - samples[unchecked: start - 1].distanceMeters
-            if !extreme || !horizontalSpan.isFinite || horizontalSpan > policy.spikeMaximumHorizontalSpanMeters {
+            if !isShortExtremeExcursion(start, end, midpoint: midpoint, samples: samples, policy: policy, output: output) {
                 start += 1
                 continue
             }
@@ -280,6 +269,57 @@ extension EngineElevationProfile {
             }
             start = end
         }
+    }
+
+    /// The end of the candidate excursion that starts at `start`: the run grows
+    /// while it is shorter than the longest excursion, stays in the continuity
+    /// group of `start`, has corrected altitudes, and stays within the neighbour
+    /// difference of `first`, the altitude at `start`.
+    private static func excursionEnd(
+        from start: Int, first: Double, samples: Span<EngineElevationProfileInput>,
+        policy: EngineElevationProfilePolicy, output: borrowing MutableSpan<EngineElevationProfileSample>
+    ) -> Int {
+        let count = samples.count
+        let maxExcursion = policy.shortExcursionMaximumSampleCount
+        // SAFETY: `rejectExcursions` passes `start + 1 < count`, and its spans
+        // have the same count; `end` is read only while `end + 1 < count`.
+        var end = start + 1
+        // The span is read outside `&&`: a span read inside that autoclosure
+        // crashes Swift 6.3.3 in an optimized build (CopyPropagation).
+        while end + 1 < count {
+            guard UInt64(end - start) < maxExcursion else { break }
+            guard unsafe samples[unchecked: end].continuityGroup == samples[unchecked: start].continuityGroup else { break }
+            guard unsafe output[unchecked: end].hasCorrectedAltitude else { break }
+            let neighborDifference = unsafe abs(output[unchecked: end].correctedAltitudeMeters - first)
+            guard neighborDifference <= policy.spikeMaximumNeighborDifferenceMeters else { break }
+            end += 1
+        }
+        return end
+    }
+
+    /// Whether every sample of `start..<end` has a corrected altitude at least
+    /// the excursion deviation away from `midpoint`, and the excursion with its
+    /// two neighbours spans no more than the spike horizontal span.
+    private static func isShortExtremeExcursion(
+        _ start: Int, _ end: Int, midpoint: Double, samples: Span<EngineElevationProfileInput>,
+        policy: EngineElevationProfilePolicy, output: borrowing MutableSpan<EngineElevationProfileSample>
+    ) -> Bool {
+        // SAFETY: `rejectExcursions` passes `start >= 1` and `end < count`, and
+        // its spans have the same count.
+        var extreme = true
+        for index in start..<end {
+            if unsafe !output[unchecked: index].hasCorrectedAltitude
+                || abs(output[unchecked: index].correctedAltitudeMeters - midpoint) < policy.shortExcursionMinimumDeviationMeters {
+                extreme = false
+                break
+            }
+        }
+
+        let horizontalSpan = unsafe samples[unchecked: end].distanceMeters - samples[unchecked: start - 1].distanceMeters
+        if !extreme || !horizontalSpan.isFinite || horizontalSpan > policy.spikeMaximumHorizontalSpanMeters {
+            return false
+        }
+        return true
     }
 }
 
@@ -468,34 +508,10 @@ extension EngineElevationProfile {
                 }
                 previous = altitude
 
-                switch trend {
-                case 0:
-                    if altitude - pivot >= policy.gainLossDeadbandMeters {
-                        trend = 1
-                        extreme = altitude
-                    } else if pivot - altitude >= policy.gainLossDeadbandMeters {
-                        trend = -1
-                        extreme = altitude
-                    }
-                case 1:
-                    if altitude > extreme {
-                        extreme = altitude
-                    } else if extreme - altitude >= policy.gainLossDeadbandMeters {
-                        committedAscent += positivePart(extreme - pivot)
-                        pivot = extreme
-                        trend = -1
-                        extreme = altitude
-                    }
-                default:
-                    if altitude < extreme {
-                        extreme = altitude
-                    } else if altitude - extreme >= policy.gainLossDeadbandMeters {
-                        committedDescent += positivePart(pivot - extreme)
-                        pivot = extreme
-                        trend = 1
-                        extreme = altitude
-                    }
-                }
+                advanceTrend(
+                    altitude, policy, trend: &trend, pivot: &pivot, extreme: &extreme,
+                    committedAscent: &committedAscent, committedDescent: &committedDescent
+                )
                 let provisionalAscent = trend == 1 ? positivePart(extreme - pivot) : 0
                 let provisionalDescent = trend == -1 ? positivePart(pivot - extreme) : 0
                 unsafe output[unchecked: index].setCumulative(ascent: committedAscent + provisionalAscent,
@@ -505,6 +521,45 @@ extension EngineElevationProfile {
 
             ascent = unsafe output[unchecked: end - 1].cumulativeAscentMeters
             descent = unsafe output[unchecked: end - 1].cumulativeDescentMeters
+        }
+    }
+
+    /// One altitude of the deadband trend of a reliable run. `trend` is unknown
+    /// (0), rising (1) or falling (-1). A move of at least the deadband away from
+    /// `pivot` sets the first trend; a reversal of at least the deadband from
+    /// `extreme` commits the ascent or descent from `pivot` to `extreme`.
+    @inline(__always)
+    private static func advanceTrend(
+        _ altitude: Double, _ policy: EngineElevationProfilePolicy, trend: inout Int,
+        pivot: inout Double, extreme: inout Double, committedAscent: inout Double, committedDescent: inout Double
+    ) {
+        switch trend {
+        case 0:
+            if altitude - pivot >= policy.gainLossDeadbandMeters {
+                trend = 1
+                extreme = altitude
+            } else if pivot - altitude >= policy.gainLossDeadbandMeters {
+                trend = -1
+                extreme = altitude
+            }
+        case 1:
+            if altitude > extreme {
+                extreme = altitude
+            } else if extreme - altitude >= policy.gainLossDeadbandMeters {
+                committedAscent += positivePart(extreme - pivot)
+                pivot = extreme
+                trend = -1
+                extreme = altitude
+            }
+        default:
+            if altitude < extreme {
+                extreme = altitude
+            } else if altitude - extreme >= policy.gainLossDeadbandMeters {
+                committedDescent += positivePart(pivot - extreme)
+                pivot = extreme
+                trend = 1
+                extreme = altitude
+            }
         }
     }
 }

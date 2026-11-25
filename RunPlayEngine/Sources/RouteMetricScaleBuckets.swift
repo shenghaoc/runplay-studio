@@ -171,21 +171,16 @@ package enum RouteMetricScaleBuckets {
         return Int(truncatingIfNeeded: hash)
     }
 
-    /// Assign a deterministic numeric scale and bucket to one metric profile.
-    package static func assign(
-        samples: Span<RouteMetricScaleBucketSample>, policy: RouteMetricScaleBucketPolicy
-    ) throws(RouteMetricScaleBucketError) -> RouteMetricScaleBucketResult {
-        let sampleCount = samples.count
-        if sampleCount == 0 { return RouteMetricScaleBucketResult() }
-        guard sampleCount <= EngineRouteLimits.maxRouteInputSamples else { throw .resourceLimit }
-
-        // Read-only validation pass. Also accumulates the counts that decide
-        // whether a scale can possibly exist, so guaranteed no-scale inputs skip
-        // workspace compaction and sorting.
+    /// Read-only validation pass. Also accumulates the counts that decide
+    /// whether a scale can possibly exist, so guaranteed no-scale inputs skip
+    /// workspace compaction and sorting.
+    private static func validateAndCount(
+        _ samples: Span<RouteMetricScaleBucketSample>
+    ) throws(RouteMetricScaleBucketError) -> (validCount: UInt64, eligibleCount: Int, validCoverage: Double) {
         var validCount: UInt64 = 0
         var eligibleCount = 0
         var validCoverage = 0.0
-        for index in 0..<sampleCount {
+        for index in 0..<samples.count {
             let sample = samples[index]
             if sample.hasMetricValue > 1 || sample.weightMeters.isNaN || sample.weightMeters < 0.0 {
                 throw .invalidInputContract
@@ -196,6 +191,18 @@ package enum RouteMetricScaleBuckets {
                 if sample.weightMeters.isFinite { eligibleCount += 1 }
             }
         }
+        return (validCount, eligibleCount, validCoverage)
+    }
+
+    /// Assign a deterministic numeric scale and bucket to one metric profile.
+    package static func assign(
+        samples: Span<RouteMetricScaleBucketSample>, policy: RouteMetricScaleBucketPolicy
+    ) throws(RouteMetricScaleBucketError) -> RouteMetricScaleBucketResult {
+        let sampleCount = samples.count
+        if sampleCount == 0 { return RouteMetricScaleBucketResult() }
+        guard sampleCount <= EngineRouteLimits.maxRouteInputSamples else { throw .resourceLimit }
+
+        let (validCount, eligibleCount, validCoverage) = try validateAndCount(samples)
 
         let scaleKnownImpossible = validCount < policy.minimumValidIntervalCount
             || eligibleCount == 0
