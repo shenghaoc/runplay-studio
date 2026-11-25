@@ -662,6 +662,10 @@ final class WatchFolderCoordinator: ObservableObject {
         var tally = PassTally()
         let folderID = folder.configuration.id
         var duplicateFingerprints = knownDuplicateFingerprints[folderID] ?? []
+        // Oversized files reported in an earlier session are never re-probed.
+        for observed in folderStates[folderID]?.observedOutcomes ?? [] where observed.kind == .oversized {
+            duplicateFingerprints.insert(observed.key)
+        }
 
         // Hash only files whose fingerprint is not already known-duplicate.
         var hashes: [URL: String] = [:]
@@ -717,6 +721,10 @@ final class WatchFolderCoordinator: ObservableObject {
                 let fingerprint = Self.fingerprint(file)
                 guard !duplicateFingerprints.contains(fingerprint) else { continue }
                 duplicateFingerprints.insert(fingerprint)
+                recordObserved(
+                    WatchFolderObservedOutcome(kind: .oversized, key: fingerprint, fileName: entry.url.lastPathComponent),
+                    folderID: folderID
+                )
                 appendRecent(WatchFolderImportRecord(
                     folderID: folderID,
                     folderName: folder.configuration.displayName,
@@ -754,6 +762,15 @@ final class WatchFolderCoordinator: ObservableObject {
                   entry.fileName != duplicate.url.lastPathComponent else {
                 continue
             }
+            // Already reported before a relaunch: stay quiet.
+            let alreadyReported = (folderStates[folderID]?.observedOutcomes ?? []).contains {
+                $0.kind == .duplicate && $0.key == hash && $0.fileName == duplicate.url.lastPathComponent
+            }
+            guard !alreadyReported else { continue }
+            recordObserved(
+                WatchFolderObservedOutcome(kind: .duplicate, key: hash, fileName: duplicate.url.lastPathComponent),
+                folderID: folderID
+            )
             appendRecent(WatchFolderImportRecord(
                 folderID: folderID,
                 folderName: folder.configuration.displayName,
@@ -919,6 +936,25 @@ final class WatchFolderCoordinator: ObservableObject {
         ))
         trimLedger(&state)
         folderStates[folderID] = state
+    }
+
+    /// Remember an outcome so a relaunch does not report it again. An
+    /// oversized file that changed replaces its stale fingerprint entry.
+    private func recordObserved(_ outcome: WatchFolderObservedOutcome, folderID: UUID) {
+        var state = folderStates[folderID] ?? WatchFolderState(folderID: folderID)
+        if outcome.kind == .oversized {
+            state.observedOutcomes.removeAll { $0.kind == .oversized && $0.fileName == outcome.fileName }
+        }
+        state.observedOutcomes.removeAll {
+            $0.kind == outcome.kind && $0.key == outcome.key && $0.fileName == outcome.fileName
+        }
+        state.observedOutcomes.append(outcome)
+        let limit = policy.maxLedgerEntriesPerFolder
+        if state.observedOutcomes.count > limit {
+            state.observedOutcomes = Array(state.observedOutcomes.sorted { $0.observedAt > $1.observedAt }.prefix(limit))
+        }
+        folderStates[folderID] = state
+        persist()
     }
 
     private func trimLedger(_ state: inout WatchFolderState) {
