@@ -10,8 +10,10 @@
 #
 # Label: Unsigned — demo/testing only
 #
-# Never signs, notarizes, or claims Gatekeeper acceptance.
-# Delegates bundle assembly to scripts/assemble-app-bundle.sh.
+# Never signs, notarizes, or claims Gatekeeper acceptance. The app comes from
+# `xcodebuild archive` of RunPlayStudio.xcodeproj with code signing off
+# (release_xcode_archive), so it carries only the linker's signature on its
+# executable.
 
 set -euo pipefail
 
@@ -32,8 +34,12 @@ APP_BUNDLE="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app"
 ZIP_PATH="$OUTPUT_DIR/$RUNPLAY_PRODUCT_NAME.app.zip"
 ZIP_TEMP="$OUTPUT_DIR/.$RUNPLAY_PRODUCT_NAME.app.zip.tmp.$$"
 
+ARCHIVE_STAGE=""
 cleanup() {
   rm -f "$ZIP_TEMP"
+  if [[ -n "$ARCHIVE_STAGE" && -d "$ARCHIVE_STAGE" ]]; then
+    rm -rf "$ARCHIVE_STAGE"
+  fi
 }
 trap cleanup EXIT
 
@@ -41,14 +47,21 @@ release_log "Packaging unsigned demo artifact (version=$VERSION build=$BUILD_NUM
 release_log "Label: Unsigned — demo/testing only"
 
 # A failed rebuild must not leave an older zip looking like the result of the
-# current command. The app itself is replaced atomically by the assembler.
+# current command. The app itself is replaced only after a complete archive.
 rm -f "$ZIP_PATH" "$ZIP_TEMP"
 
-"$SCRIPT_DIR/assemble-app-bundle.sh" \
-  --repo-root "$REPO_ROOT" \
-  --output "$APP_BUNDLE" \
-  --version "$VERSION" \
-  --build-number "$BUILD_NUMBER"
+ARCHIVE_STAGE="$(mktemp -d "$OUTPUT_DIR/.runplay-demo-archive.XXXXXX")"
+ARCHIVE="$ARCHIVE_STAGE/$RUNPLAY_PRODUCT_NAME.xcarchive"
+release_xcode_archive "$REPO_ROOT" "$ARCHIVE" "$VERSION" "$BUILD_NUMBER"
+ARCHIVED_APP="$(release_archived_app "$ARCHIVE")"
+release_validate_built_app "$ARCHIVED_APP" "$VERSION" "$BUILD_NUMBER"
+# Replace the app only once the archive is complete and valid, so a failed
+# build cannot leave a partial app behind.
+STAGED_APP="$ARCHIVE_STAGE/$RUNPLAY_PRODUCT_NAME.app"
+ditto "$ARCHIVED_APP" "$STAGED_APP"
+rm -rf "$APP_BUNDLE"
+mv "$STAGED_APP" "$APP_BUNDLE"
+rm -rf "$ARCHIVE_STAGE"
 
 # Verify the exact app before creating the demo archive.
 if [[ -x "$SCRIPT_DIR/verify-app-bundle.sh" ]]; then

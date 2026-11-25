@@ -83,7 +83,6 @@ jobs:
           bash -n scripts/generate-demo-assets.sh
           bash -n scripts/ci-select-lanes.sh
           bash -n scripts/lib/release-common.sh
-          bash -n scripts/assemble-app-bundle.sh
           bash -n scripts/package-demo.sh
           bash -n scripts/package-release.sh
           bash -n scripts/verify-app-bundle.sh

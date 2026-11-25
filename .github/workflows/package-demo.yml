@@ -23,6 +23,9 @@ jobs:
     - uses: actions/checkout@v7
     - uses: ./.github/actions/setup-macos-build
 
+    # package-demo.sh archives the app from RunPlayStudio.xcodeproj
+    # (xcodebuild archive, Release, signing off) with the Xcode that
+    # setup-macos-build selected, verifies it, and zips it.
     - name: Build and package
       run: ./scripts/package-demo.sh .build/artifacts
 

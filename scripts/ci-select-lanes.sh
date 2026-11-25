@@ -29,7 +29,7 @@
 #   RunPlayCore/**, RunPlayEngine/**, any other
 #   RunPlay*/**, Tests/**
 #   (Package.swift, Package.resolved, scripts/**, .github/**,
-#   Packaging/**, VERSION, and every path not listed above)
+#   VERSION, and every path not listed above)
 #                                            everything
 #
 # The selector fails open: an unlisted path, an empty or unreadable diff, or

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Shared helpers for RunPlay Studio packaging and release tooling.
+# Shared helpers for RunPlay Studio packaging and release tooling. The app is
+# built by `xcodebuild archive` of RunPlayStudio.xcodeproj; these helpers
+# validate, sign, zip and describe the app taken from the archive.
 # Source this file; do not execute it directly.
 #
 # Safe to source multiple times. Never prints secrets.
@@ -35,8 +37,7 @@ RUNPLAY_STUDIO_RESOURCE_SAMPLE="Resources/sample_run.json"
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
 RUNPLAY_RESOURCE_BUNDLE_NAMES="RunPlayStudio_RunPlayCore.bundle RunPlayStudio_RunPlayPlatform.bundle"
 # Languages the app ships, in CFBundleLocalizations order; English is the
-# development language. Must match RunPlayStudio/Info.plist (and, until
-# packaging moves to xcodebuild archive, Packaging/RunPlayStudio-Info.plist.in).
+# development language. Must match RunPlayStudio/Info.plist.
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
 RUNPLAY_LOCALIZATIONS="en zh-Hans zh-Hant"
 
@@ -230,35 +231,90 @@ release_artifact_manifest_name() {
 }
 
 # ---------------------------------------------------------------------------
-# Info.plist generation from template
+# Building the app: xcodebuild archive of RunPlayStudio.xcodeproj
 # ---------------------------------------------------------------------------
 
-release_generate_info_plist() {
-  local template="${1:?}"
-  local output="${2:?}"
+# The app inside an archive.
+release_archived_app() {
+  local archive="${1:?}"
+  printf '%s/Products/Applications/%s.app' "$archive" "$RUNPLAY_PRODUCT_NAME"
+}
+
+# Archive the RunPlayStudio scheme in Release: arm64, this release's version
+# and build number from build settings. Code signing is off here
+# (CODE_SIGNING_ALLOWED=NO), so the archived app carries only the linker's
+# signature on its executable, as a SwiftPM build did; packaging then signs
+# the copy for its mode (release_codesign_bundle: ad hoc, or Developer ID with
+# the hardened runtime), and an unsigned demo stays unsigned. A development
+# build (⌘R, xcodebuild build) is signed ad hoc by the project's settings.
+# The archive itself is never distributed.
+release_xcode_archive() {
+  local repo_root="${1:?}"
+  local archive="${2:?}"
   local version="${3:?}"
   local build_number="${4:?}"
-  local bundle_identifier="${5:-$RUNPLAY_BUNDLE_IDENTIFIER}"
+  local derived_data="${5:-$repo_root/.build/xcode-archive}"
 
   release_validate_version "$version"
   release_validate_build_number "$build_number"
-  release_validate_bundle_identifier "$bundle_identifier"
-  [[ -f "$template" ]] || release_die "Info.plist template not found: $template"
+  rm -rf "$archive"
+  release_log "Archiving $RUNPLAY_PRODUCT_NAME (Release, version=$version build=$build_number)..."
+  xcodebuild archive \
+    -project "$repo_root/$RUNPLAY_PRODUCT_NAME.xcodeproj" \
+    -scheme "$RUNPLAY_PRODUCT_NAME" \
+    -configuration Release \
+    -destination 'generic/platform=macOS' \
+    -archivePath "$archive" \
+    -derivedDataPath "$derived_data" \
+    -disableAutomaticPackageResolution \
+    "$RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS" \
+    MARKETING_VERSION="$version" \
+    CURRENT_PROJECT_VERSION="$build_number" \
+    CODE_SIGNING_ALLOWED=NO \
+    || release_die "xcodebuild archive failed"
+  [[ -d "$(release_archived_app "$archive")" ]] || \
+    release_die "archive has no $RUNPLAY_PRODUCT_NAME.app: $archive"
+}
 
-  # Use sed with a delimiter unlikely in values.
-  sed \
-    -e "s|@CFBundleDisplayName@|${RUNPLAY_PRODUCT_DISPLAY_NAME}|g" \
-    -e "s|@CFBundleExecutable@|${RUNPLAY_EXECUTABLE_NAME}|g" \
-    -e "s|@CFBundleIdentifier@|${bundle_identifier}|g" \
-    -e "s|@CFBundleName@|${RUNPLAY_PRODUCT_NAME}|g" \
-    -e "s|@CFBundleShortVersionString@|${version}|g" \
-    -e "s|@CFBundleVersion@|${build_number}|g" \
-    -e "s|@LSMinimumSystemVersion@|${RUNPLAY_MINIMUM_SYSTEM_VERSION}|g" \
-    "$template" >"$output"
+# Refuse an app that lacks what the runtime needs: the executable, Studio's
+# demo resources, every package resource bundle (their generated Bundle.module
+# traps when one is missing), and the compiled strings of every shipped
+# language in the main bundle. Also refuse an app whose version, build number
+# or identifier is not this release's. verify-app-bundle.sh checks the
+# finished bundle again after signing.
+release_validate_built_app() {
+  local app="${1:?}"
+  local version="${2:?}"
+  local build_number="${3:?}"
+  local resources="$app/Contents/Resources"
+  local plist="$app/Contents/Info.plist"
 
-  if command -v plutil >/dev/null 2>&1; then
-    plutil -lint "$output" >/dev/null || release_die "generated Info.plist failed plutil -lint: $output"
-  fi
+  [[ -d "$app" ]] || release_die "built app not found: $app"
+  [[ -f "$app/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" ]] || \
+    release_die "release binary not found at $app/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
+  [[ -f "$resources/$RUNPLAY_STUDIO_RESOURCE_SAMPLE" ]] || \
+    release_die "Studio resources not found at $resources/$RUNPLAY_STUDIO_RESOURCE_SAMPLE (demo resources required)"
+  local bundle_name language
+  for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
+    [[ -d "$resources/$bundle_name" ]] || \
+      release_die "SwiftPM resource bundle not found at $resources/$bundle_name (localized strings required)"
+  done
+  for language in $RUNPLAY_LOCALIZATIONS; do
+    [[ "$language" == "en" ]] && continue
+    [[ -f "$resources/$language.lproj/Localizable.strings" ]] || \
+      release_die "compiled $language strings missing from $app (String Catalog not compiled?)"
+  done
+  [[ -f "$plist" ]] || release_die "Info.plist missing from $app"
+  local got_version got_build got_identifier
+  got_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)"
+  got_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist" 2>/dev/null || true)"
+  got_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null || true)"
+  [[ "$got_version" == "$version" ]] || \
+    release_die "built app has version '$got_version', expected $version"
+  [[ "$got_build" == "$build_number" ]] || \
+    release_die "built app has build number '$got_build', expected $build_number"
+  [[ "$got_identifier" == "$RUNPLAY_BUNDLE_IDENTIFIER" ]] || \
+    release_die "built app has bundle identifier '$got_identifier', expected $RUNPLAY_BUNDLE_IDENTIFIER"
 }
 
 # ---------------------------------------------------------------------------

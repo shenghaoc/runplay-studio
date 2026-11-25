@@ -4,6 +4,10 @@
 # Supports unsigned structural diagnostics, ad-hoc dry runs, and Developer ID
 # signing with optional notarization when credentials are supplied.
 #
+# The app comes from `xcodebuild archive` of RunPlayStudio.xcodeproj (Release,
+# arm64, version and build number from build settings). This script copies it
+# out of the archive, signs it for the chosen mode, verifies it, and zips it.
+#
 # Never creates a Git tag or GitHub Release. Never prints secret values.
 
 set -euo pipefail
@@ -26,8 +30,7 @@ NOTARY_KEY=""
 NOTARY_KEY_ID=""
 NOTARY_ISSUER=""
 DRY_RUN_FLAG=0
-SKIP_BUILD=0
-BIN_DIR=""
+ARCHIVE=""
 REQUIRE_CLEAN=0
 GIT_TAG=""
 
@@ -56,9 +59,9 @@ Options:
   --notary-key-id <id>          API key ID
   --notary-issuer <uuid>        API issuer UUID
   --dry-run                     Required for unsigned, ad-hoc, or non-notarized output
-  --skip-build                  Reuse --bin-dir without building
-  --bin-dir <path>              Existing xcodebuild Release products directory
-                                that holds RunPlayStudio.app
+  --archive <path>               Reuse an existing RunPlayStudio.xcarchive instead
+                                of archiving; its version and build number must
+                                match
   --require-clean-worktree      Fail if git worktree is dirty; required for production
   --git-tag <tag>               Annotated production tag at HEAD; required for production
   -h, --help                    Show this help
@@ -111,8 +114,7 @@ while [[ $# -gt 0 ]]; do
     --notary-key-id) NOTARY_KEY_ID="${2:-}"; shift 2 ;;
     --notary-issuer) NOTARY_ISSUER="${2:-}"; shift 2 ;;
     --dry-run) DRY_RUN_FLAG=1; shift ;;
-    --skip-build) SKIP_BUILD=1; shift ;;
-    --bin-dir) BIN_DIR="${2:-}"; shift 2 ;;
+    --archive) ARCHIVE="${2:-}"; shift 2 ;;
     --require-clean-worktree) REQUIRE_CLEAN=1; shift ;;
     --git-tag) GIT_TAG="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -253,21 +255,17 @@ release_log "  version=$VERSION build=$BUILD_NUMBER arch=$ARCHITECTURE"
 release_log "  signing-mode=$SIGNING_MODE dry-run=$DRY_RUN_FLAG notarize=$NOTARIZE"
 release_log "  output=$OUTPUT_DIR"
 
-# 1. Assemble
-ASSEMBLE_ARGS=(
-  --repo-root "$REPO_ROOT"
-  --output "$WORK_APP"
-  --version "$VERSION"
-  --build-number "$BUILD_NUMBER"
-)
-if [[ "$SKIP_BUILD" -eq 1 ]]; then
-  [[ -n "$BIN_DIR" ]] || release_die "--skip-build requires --bin-dir"
-  ASSEMBLE_ARGS+=(--skip-build --bin-dir "$BIN_DIR")
-elif [[ -n "$BIN_DIR" ]]; then
-  ASSEMBLE_ARGS+=(--bin-dir "$BIN_DIR")
+# 1. Archive, then copy the app out of the archive
+if [[ -z "$ARCHIVE" ]]; then
+  ARCHIVE="$STAGE_DIR/$RUNPLAY_PRODUCT_NAME.xcarchive"
+  release_xcode_archive "$REPO_ROOT" "$ARCHIVE" "$VERSION" "$BUILD_NUMBER"
+else
+  [[ -d "$ARCHIVE" ]] || release_die "archive not found: $ARCHIVE"
+  release_log "Using existing archive: $ARCHIVE"
 fi
-
-"$SCRIPT_DIR/assemble-app-bundle.sh" "${ASSEMBLE_ARGS[@]}"
+ARCHIVED_APP="$(release_archived_app "$ARCHIVE")"
+release_validate_built_app "$ARCHIVED_APP" "$VERSION" "$BUILD_NUMBER"
+ditto "$ARCHIVED_APP" "$WORK_APP"
 
 # 2. Sign
 case "$SIGNING_MODE" in
