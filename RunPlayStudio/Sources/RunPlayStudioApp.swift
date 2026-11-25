@@ -2,6 +2,10 @@ import SwiftUI
 import RunPlayCore
 import AppKit
 
+enum StudioSettingsTab: Hashable {
+    case athlete, elevation, watchFolders
+}
+
 /// The SwiftUI app. `RunPlayStudioEntryPoint` is the process entry point and
 /// launches it.
 @MainActor
@@ -10,6 +14,7 @@ struct RunPlayStudioApp: App {
     private var terminationCoordinator
     @StateObject private var appState: AppState
     @StateObject private var sessionController: AppSessionController
+    @State private var settingsTab: StudioSettingsTab = .athlete
 
     init() {
         let libraryRoot = ContentView.defaultLibraryRoot
@@ -44,23 +49,26 @@ struct RunPlayStudioApp: App {
         .defaultLaunchBehavior(.presented)
         .restorationBehavior(.automatic)
         .commands {
-            WorkoutViewCommands()
+            WorkoutViewCommands(settingsTab: $settingsTab)
         }
         Settings {
-            TabView {
+            TabView(selection: $settingsTab) {
                 AthleteProfileSettingsView(appState: appState)
                     .tabItem {
                         Label("Athlete", systemImage: "figure.run")
                     }
+                    .tag(StudioSettingsTab.athlete)
                 ElevationSettingsView(appState: appState)
                     .tabItem {
                         Label("Elevation", systemImage: "mountain.2")
                     }
+                    .tag(StudioSettingsTab.elevation)
                 if let coordinator = appState.watchFolderCoordinator {
                     WatchFolderSettingsView(coordinator: coordinator)
                         .tabItem {
                             Label("Watch Folders", systemImage: "folder.badge.gearshape")
                         }
+                        .tag(StudioSettingsTab.watchFolders)
                 }
             }
         }
