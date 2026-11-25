@@ -1,5 +1,6 @@
 // Keep imported C++ declarations confined to the internal Interop layer.
 internal import RunPlayEngineCpp
+internal import RunPlayEngine
 
 /// Pure-Swift projection of the engine's internal batch ceiling.
 ///
@@ -12,8 +13,14 @@ internal import RunPlayEngineCpp
 /// supported workout size; see `WorkoutImportResourceLimits`.
 enum RunPlayEngineLimits {
 
-    /// `runplay::max_route_input_samples`, the engine-side safety ceiling.
-    static let maxRouteInputSamples = Int(runplay.max_route_input_samples)
+    /// Swift engine-side safety ceiling, kept in parity with the retained C++ kernels.
+    static let maxRouteInputSamples = EngineRouteLimits.maxRouteInputSamples
+
+    /// The ceiling the retained C++ kernels enforce. Production reads the Swift
+    /// value above. `testEngineCeilingKeepsDocumentedMarginOverProductLimit`
+    /// asserts the two are equal for as long as a C++ kernel can still run, so
+    /// lowering either one alone fails the gate. Removed with the C++ engine.
+    static let cppMaxRouteInputSamples = Int(runplay.max_route_input_samples)
 
     /// The DEM tile grid the engine accepts. Swift chooses a grid inside these
     /// bounds; the engine rejects anything outside them as an invalid policy.

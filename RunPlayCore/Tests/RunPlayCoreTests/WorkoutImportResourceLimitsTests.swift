@@ -28,6 +28,13 @@ final class WorkoutImportResourceLimitsTests: XCTestCase {
             "max_route_input_samples must stay at least 1.25x maxRoutePointCount"
         )
         XCTAssertEqual(engineCeiling, 1_250_000)
+        // Swift owns the ceiling, but C++ kernels still enforce their own copy.
+        // The margin above holds for the live C++ boundary only if they match.
+        XCTAssertEqual(
+            RunPlayEngineLimits.cppMaxRouteInputSamples,
+            engineCeiling,
+            "the Swift and C++ engine ceilings must stay equal while C++ kernels remain"
+        )
     }
 
     /// Every format shares one payload ceiling rather than restating it.
