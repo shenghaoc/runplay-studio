@@ -509,7 +509,7 @@ public struct RouteMetricProfileBuilder: Sendable {
 
     /// Power interval profile, mirroring heart rate: endpoint mean with a
     /// single-endpoint gap guard, distance-domain smoothing, then the shared
-    /// native scale/bucket finalization with `higherIsMore` direction.
+    /// engine scale/bucket finalization with `higherIsMore` direction.
     private func powerProfile(
         routePoints: [RoutePoint],
         context: WorkoutAnalysisContext,
@@ -908,9 +908,9 @@ public struct RouteMetricProfileBuilder: Sendable {
         }
 
         // Structural no-scale: interval count alone cannot satisfy the minimum
-        // valid-interval policy. Skip the native bridge and still report exact
+        // valid-interval policy. Skip the engine call and still report exact
         // valid coverage / count diagnostics from a single source-order scan.
-        // This is not a numeric fallback — scale math remains exclusively native.
+        // This is not a numeric fallback — scale math remains exclusively in the engine.
         if rawIntervals.count < policy.minimumValidIntervalCount {
             return try finalizeStructurallyImpossibleScale(
                 mode: mode,
@@ -931,7 +931,7 @@ public struct RouteMetricProfileBuilder: Sendable {
             weightsMeters.append(max(0, raw.endDistanceMeters - raw.startDistanceMeters))
         }
 
-        // Pace and heart-rate: one native scale/bucket call when a scale may
+        // Pace and heart-rate: one engine scale/bucket call when a scale may
         // still exist. Corrected elevation intentionally uses the production
         // Swift numeric finalizer (mode-owned ownership; not an error fallback).
         let scaleValues: (lower: Double, median: Double, upper: Double)?

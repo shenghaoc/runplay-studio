@@ -77,7 +77,7 @@ enum RunPlayRouteAlignmentDtwAdapter {
         enginePolicy.maximumBandCells = UInt64(max(0, policy.maximumBandCells))
 
         let solved: RouteAlignmentDtwPath
-        NativeCallObserver.record(.routeAlignmentDtw)
+        EngineCallObserver.record(.routeAlignmentDtw)
         do {
             solved = try RouteAlignmentDtw.solve(
                 primary: enginePrimary.span,
@@ -88,7 +88,7 @@ enum RunPlayRouteAlignmentDtwAdapter {
                 policy: enginePolicy
             )
         } catch {
-            // Cancellation wins over every kernel outcome, as with the C++ call.
+            // Cancellation wins over every kernel outcome, as it did with the former C++ call.
             if isCancelled() { throw CancellationError() }
             switch error {
             case .resourceLimit: return .resourceLimit

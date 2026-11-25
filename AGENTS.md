@@ -78,333 +78,210 @@ Before editing:
 Dependency direction is:
 
 ```text
-RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
-                                  RunPlayCore → RunPlayEngine
+RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngine
 ```
 
 Reverse dependencies are forbidden. `RunPlayPlatform` and `RunPlayStudio` must
-not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
+not import `RunPlayEngine` directly.
 
-- **RunPlayEngine** is the pure Swift computational engine that replaces
-  `RunPlayEngineCpp` one kernel at a time. It uses only the Swift standard
-  library and the platform C math module (no Foundation, I/O, retained
-  closures, or callbacks), builds with strict memory safety, and is a
-  non-product target that only `RunPlayCore` imports, through the adapters in
-  `RunPlayCore/Sources/Engine`. A kernel in the list below runs in production
-  from `RunPlayEngine`. Its C++ counterpart then exists only as the oracle of
-  that kernel's `*DifferentialTests.swift` and release benchmark, and wherever
-  this file says C++23 performs that kernel's work, `RunPlayEngine` performs
-  it, with the same division of work between Swift and the engine. Migrated
-  kernels:
+- **RunPlayEngine** is the pure Swift computational engine. It uses only the
+  Swift standard library and the platform C math module (no Foundation, I/O,
+  Apple frameworks, third-party dependencies, retained closures, or
+  callbacks), builds with strict memory safety, and is a non-product target
+  that only `RunPlayCore` imports, with `internal import`, through the
+  adapters in `RunPlayCore/Sources/Engine`. The package contains no C or C++
+  target and enables no C++ interoperability. The engine provides the route
+  input value and its sample ceiling, scalar geodesy primitives (coordinate
+  validation, Haversine distance, local-metre projection), and one kernel per
+  production operation:
 
-  - the route input sample ceiling (`EngineRouteLimits`), which Core's
-    preflight reads; scalar geodesy and the route input value are ported for
-    the kernels that follow and have no production caller of their own
-  - heart-rate training load (`TrainingLoad`): interval-weighted Banister
-    TRIMP accumulation and five-zone time bucketing, one engine call per
-    training-load pass
-  - the constrained-DTW path solve for Route-Aware comparison
-    (`RouteAlignmentDtw`): the bounded band-packed solve described below, one
-    engine call per alignment attempt
   - combined route-quality geometry (`EngineRouteQuality`): outlier evidence,
-    isolated-point rejection, implicit gap inference, segment compaction,
-    supplied-distance policy and normalized cumulative distances, one engine
-    call per route
-  - the multi-pass `ElevationProfile` build (`EngineElevationProfile`), one
-    engine call per profile build
-  - the segment and personal-record window searches (`SegmentDetection`), one
-    engine call per `SegmentDetector` invocation
+    isolated-point rejection, implicit gap inference, final segment
+    compaction, the supplied-distance policy, and normalized cumulative
+    distances, in one engine call per route. Swift Core owns stage-1
+    validation and the source-speed checks.
+  - per-workout personal heatmap coverage (`PersonalHeatmapCoverage`): Web
+    Mercator projection, grid-cell quantization, effective-segment gap
+    breaking, supercover interval traversal, per-workout cell de-duplication,
+    and deterministic cell ordering, in one engine call per workout per
+    adaptive attempt. The engine returns exactly the cells it found. Core
+    owns date filtering, the adaptive resolution loop, cross-workout
+    aggregation, the minimum-workout-count filter, and snapshot finalization;
+    it increments the cross-workout dictionary directly from the returned
+    cells. The dictionary uses bounded reservation hints, not a product
+    limit, and `PersonalHeatmapCellID` equality and `Codable` identity remain
+    the original X/Y pair.
+  - the constrained-DTW path solve for Route-Aware comparison
+    (`RouteAlignmentDtw`): band radius, packed row layout, band-cell budget
+    validation, geometry-only point cost, open prefix/suffix seeding,
+    constrained transitions with fixed tie priority, consecutive-warp
+    capping, endpoint selection, and path reconstruction, in one engine call
+    per alignment attempt.
+  - the segment and personal-record window searches (`SegmentDetection`):
+    fastest 400m, fastest/slowest 1km, biggest climb/descent, and the five
+    fixed-distance personal-record windows (fastest 1 mile, 5 km, 10 km, half
+    marathon, marathon), in one engine call per `SegmentDetector` invocation.
+    Core owns policy calculation, public `SegmentHighlight` and
+    `PersonalRecordWindow` construction, UUIDs, titles, subtitles, final
+    range metadata, HR averages, cancellation, diagnostics, and persistence.
+  - the multi-pass `ElevationProfile` build (`EngineElevationProfile`):
+    source altitude screening, endpoint and isolated spike rejection,
+    short-excursion rejection, supported rejected-sample interpolation,
+    continuous altitude-run identification, reliable-run classification,
+    distance-domain smoothing, cumulative corrected signed change,
+    reliable-interval counting, and deadband-confirmed cumulative
+    ascent/descent, in one engine call per profile build. Core owns
+    route-point UUIDs, each point's source altitude (DEM or recorded) and the
+    continuity break at a switch between them, the public
+    `ElevationProfile`/`ElevationProfileSample` models, all distance-query
+    APIs, policy ownership, cancellation, diagnostics, and persistence.
   - pace, heart-rate and power route-metric scale and bucket finalization
-    (`RouteMetricScaleBuckets`), one engine call per profile finalization.
-    Equal sort keys keep source order, so an equal-weight `+0`/`-0` metric tie
-    has one result on every platform; the C++ kernel's result for that tie
-    depends on its standard library. Corrected-elevation finalization stays in
-    Swift, as below
-  - per-workout personal heatmap coverage (`PersonalHeatmapCoverage`), one
-    engine call per workout per adaptive attempt. The engine returns exactly
-    the cells it found, so the capacity negotiation described below, and its
-    retry call, no longer exist
+    (`RouteMetricScaleBuckets`): deterministic distance-weighted
+    lower/median/upper scale construction, numeric normalization, bucket
+    assignment, and numeric summary construction, in one engine call per
+    profile finalization. Equal sort keys keep source order, so an
+    equal-weight `+0`/`-0` metric tie has one result on every platform.
+    Corrected-elevation scale/bucket finalization intentionally stays in
+    Swift Core: a production A/B showed an engine regression above the hard
+    gate; that is mode-owned ownership, not an error-driven fallback. Core
+    owns raw pace, heart-rate, and corrected-elevation extraction,
+    distance-domain smoothing, scale direction, localized labels, public
+    route-metric models, availability and caching, Platform line coalescing,
+    cancellation, diagnostics, UI state, and persistence.
+  - heart-rate training load (`TrainingLoadKernel`): interval-weighted
+    Banister TRIMP accumulation and five-zone time bucketing, in one engine
+    call per training-load pass over a Core-built array of same-segment
+    heart-rate intervals. Core owns interval construction from route points
+    (active-time weights that never span a recording gap or pause), the
+    athlete-profile policy (resting/max heart rate, coefficient set, zone
+    bounds), the measured-versus-estimated decision, the pace/duration
+    estimator, public models, cancellation, and persistence.
   - DEM tile planning and bilinear sampling (`DemTilePlanning`,
-    `DemElevationSampling`), one engine call each per correction pass, sharing
-    one footprint rule. The planner returns exactly the tiles it found, so
-    only the tile budget bounds it
+    `DemElevationSampling`): the planner lists the exact set of XYZ Web
+    Mercator tiles that bilinear samples of a route read — neighbours within
+    half a pixel of a tile edge and across the antimeridian included,
+    coordinates beyond the projection limit needing none — and the sampler
+    bilinearly samples Core-decoded tile heights at every coordinate,
+    returning a per-point status (sampled, invalid coordinate, outside
+    projection, missing tile, implausible height), in one engine call each
+    per correction pass. Both calls share one footprint rule, so sampling
+    never reads a tile planning did not list. Core and Platform own tile
+    discovery, file reading and image decoding, the tile budget, elevation
+    precedence, public models, cancellation, and persistence; no engine
+    source performs file I/O.
 
-- **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
-  the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
-  third-party deps). It currently exposes engine identity, route input values,
-  one synchronous route-batch inspection boundary, allocation-free geodesy
-  primitives (coordinate validation, Haversine distance, local-metre
-  projection), the
-  production combined route-quality geometry kernel, the production
-  per-workout personal heatmap coverage kernel, the production
-  constrained-DTW path solver for Route-Aware comparison, the production
-  SegmentDetector window-search kernel, and the production ElevationProfile
-  multi-pass construction kernel, plus production route-metric scale and
-  bucket finalization. C++23 performs production
-  outlier evidence, isolated-point rejection, implicit gap inference, final
-  segment compaction, supplied-distance policy, and normalized cumulative
-  distances through one bulk call. Swift still owns stage-1 validation and
-  source-speed checks. For the personal heatmap, C++23 performs
-  Web Mercator projection, grid-cell quantization, effective-segment gap
-  breaking, supercover interval traversal, per-workout cell de-duplication, and
-  deterministic cell ordering through one bulk call per workout; Swift still
-  owns date filtering, the adaptive resolution loop, cross-workout aggregation,
-  the minimum-workout-count filter, and snapshot finalization. Interop consumes
-  the caller-owned native cell buffer through a private nonescaping closure and
-  increments the Swift cross-workout dictionary directly; production creates no
-  per-workout Swift cell array. The dictionary uses bounded reservation hints,
-  not a product limit, and `PersonalHeatmapCellID` equality and `Codable`
-  identity remain the original X/Y pair. For Route-Aware comparison, C++23
-  performs the bounded band-packed constrained-DTW path solve
-  — band radius, packed row layout, band-cell budget validation, geometry-only
-  point cost, open prefix/suffix seeding, constrained transitions with fixed tie
-  priority, consecutive-warp capping, endpoint selection, and path
-  reconstruction — through one bulk call per alignment attempt. No scalar
-  per-point Swift/C++ production calls are allowed. For segment detection,
-  C++23 performs the distance-window searches for fastest 400m, fastest/slowest
-  1km, biggest climb/descent, and the five fixed-distance personal-record
-  windows (fastest 1 mile, 5 km, 10 km, half marathon, marathon) through one
-  bulk call per `SegmentDetector` invocation. Swift retains policy
-  calculation, public `SegmentHighlight` and `PersonalRecordWindow`
-  construction, UUIDs, titles, subtitles, final range metadata, HR averages,
-  cancellation, diagnostics, and persistence. For
-  elevation construction, C++23 performs the complete multi-pass
-  `ElevationProfile` build — source altitude screening, endpoint and isolated
-  spike rejection, short-excursion rejection, supported rejected-sample
-  interpolation, continuous altitude-run identification, reliable-run
-  classification, distance-domain smoothing, cumulative corrected signed
-  change, reliable-interval counting, and deadband-confirmed cumulative
-  ascent/descent — through one bulk call per profile build. Swift retains
-  route-point UUIDs, each point's source altitude (DEM or recorded) and the
-  continuity break at a switch between them, public
-  `ElevationProfile`/`ElevationProfileSample` models, all distance-query APIs,
-  policy ownership, cancellation, diagnostics, and persistence. For pace and
-  heart-rate route-metric profiles,
-  C++23 performs deterministic distance-weighted lower/median/upper scale
-  construction, numeric normalization, bucket assignment, and numeric summary
-  construction through one bulk call per profile finalization, using a
-  caller-owned typed eligible workspace buffer plus a caller-owned output
-  buffer. Corrected-elevation scale/bucket finalization intentionally remains
-  in Swift because production A/B showed a native regression above the hard
-  gate; that is mode-owned ownership, not an error-driven fallback. Swift
-  retains raw pace, heart-rate, and corrected-elevation extraction,
-  distance-domain smoothing, scale direction, localized labels, public
-  route-metric models, availability and caching, Platform line coalescing,
-  cancellation, diagnostics, UI state, and persistence. For heart-rate training
-  load, C++23 performs interval-weighted Banister TRIMP accumulation and
-  five-zone time bucketing through one bulk call per training-load pass over a
-  Swift-built array of same-segment heart-rate intervals. Swift retains
-  interval construction from route points (active-time weights that never span
-  a recording gap or pause), the athlete-profile policy (resting/max heart
-  rate, coefficient set, zone bounds), the measured-versus-estimated decision,
-  the pace/duration estimator, public models, cancellation, and persistence.
-  For DEM elevation correction, C++23 plans the exact set of XYZ Web Mercator
-  tiles that bilinear samples of a route read — neighbours within half a pixel
-  of a tile edge and across the antimeridian included, coordinates beyond the
-  projection limit needing none — and then bilinearly samples Swift-decoded
-  tile heights at every coordinate, returning a per-point status (sampled,
-  invalid coordinate, outside projection, missing tile, implausible height),
-  through one bulk call each per correction pass. Both calls share one internal
-  footprint rule, so sampling never reads a tile planning did not list. Swift
-  retains tile discovery, file reading and image decoding, the tile budget,
-  elevation precedence, public models, cancellation, and persistence; no engine
-  source performs file I/O.
+  No scalar per-point engine calls are allowed in production: every
+  production operation above is one engine call, and
+  `EngineCallCardinalityTests` enforces it.
 - **RunPlayCore** is the stable Swift-facing core facade: domain models,
   `Codable` compatibility, Swift errors/diagnostics, actors and concurrency
   adaptation, filesystem persistence, schema migration, and translation
-  between Swift models and C++ engine values. It depends on
-  `RunPlayEngineCpp` via an internal Interop adapter. C++ types must not
-  appear in public `RunPlayCore` APIs. Core remains cross-platform Foundation
+  between Core models and engine values. Engine types must not appear in
+  public `RunPlayCore` APIs. Core remains cross-platform Foundation
   logic with conditional `FoundationXML`; it must not import UI, map,
-  graphics, Core Location, or Combine. Swift continues to own route-size
+  graphics, Core Location, or Combine. Core owns route-size
   validation, basic field sanitization, sorting, initial source-segment
   compaction, source-speed validation, diagnostics translation,
-  public models, and persistence. For Route-Aware comparison, Swift continues
-  to build the compact alignment samples (at most 2,000 per route), detect
-  route direction, construct alignment blocks from the returned index path,
-  calculate diagnostics and quality, maintain the in-memory cache and task
-  lifecycle, and publish the public alignment models. Use `GeoDistance` for
-  remaining Swift geodesy stages, not `CLLocation`.
+  public models, and persistence. For Route-Aware comparison, Core
+  builds the compact alignment samples (at most 2,000 per route), detects
+  route direction, constructs alignment blocks from the returned index path,
+  calculates diagnostics and quality, maintains the in-memory cache and task
+  lifecycle, and publishes the public alignment models. Use `GeoDistance` for
+  Core geodesy stages, not `CLLocation`.
 - **RunPlayPlatform** contains macOS non-SwiftUI adapters for SceneKit, AppKit,
   MapKit, ImageIO (DEM tile decoding), and non-UI Combine. It must not depend
   on `RunPlayStudio`.
 - **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
   export.
 
-See [docs/architecture.md](docs/architecture.md) and
-[Package.swift](Package.swift) for the live architecture and package graph.
+See [docs/architecture.md](docs/architecture.md), [docs/engine.md](docs/engine.md)
+and [Package.swift](Package.swift) for the live architecture and package graph.
 
-### C++ engine policy (defaults)
+### Swift engine policy (defaults)
 
-Allowed and encouraged in `RunPlayEngineCpp`: value semantics, RAII,
-`std::vector`, `std::span`, `std::array`, `std::optional`, `std::expected`
-internally, `std::unique_ptr` where ownership cannot be a value, `enum class`,
-`std::chrono`, ranges and algorithms, concepts where they simplify constraints.
+Allowed and encouraged in `RunPlayEngine`: value semantics, `package` access,
+borrowed `Span` inputs, `[T]` outputs built with
+`Array(unsafeUninitializedCapacity:)` or `InlineArray`, `MutableSpan` over a
+caller-visible output as the working buffer, typed `throws` with one error
+enum per kernel, `@inline(__always)` on measured hot helpers, and standard
+library algorithms.
 
-Requires explicit justification: `std::shared_ptr`, raw non-owning pointers,
-`reinterpret_cast`, mutable global state, exceptions in engine logic, manual
-memory management.
+Requires explicit justification: an `unsafe` expression (strict memory safety
+makes each one visible; keep it to buffer initialization and measured
+unchecked span access, each with a `SAFETY:` comment that says why it is
+sound), classes or reference semantics, `@unchecked Sendable`, mutable global
+state, generics on a hot path, a `fatalError`/`precondition` that input data
+can reach.
 
-Forbidden across the Swift boundary: uncaught exceptions, temporary borrowed
-views, ownership ambiguity, `std::tuple`, `std::variant`, template-heavy public
-APIs, callbacks into Swift, per-element cross-language calls.
+Forbidden: imports other than the Swift standard library and the platform C
+math module, Foundation, I/O, retained closures, callbacks into Core,
+per-element engine calls from Core, engine types in a public `RunPlayCore`
+signature, engine imports outside `RunPlayCore`, and test-only code in
+`RunPlayCore/Sources`.
 
-Public Swift-facing C++ headers must not expose `std::vector`, `std::pair`,
-`std::tuple`, or `std::variant`. A value-returning engine function must name its
-fields through a standard-layout aggregate, as `LocalMeters` does, so Swift
-reads documented members rather than positional elements.
+Every kernel boundary follows one contract:
 
-Approved pointer boundaries:
+- Core owns every input. The engine borrows it as a `Span` for the duration
+  of one synchronous call, retains nothing, and performs no callback.
+- The engine returns its output by value: an array holding exactly the
+  entries it produced, or a summary struct. A per-sample kernel returns one
+  entry per input sample. No kernel negotiates capacity or asks for a retry.
+- A failed call throws the kernel's typed error and returns nothing, so no
+  partial output exists.
+- One engine call occurs per production operation; none occurs per sample,
+  row, cell, window, tile, or interval.
+- Cancellation is cooperative Core work, checked before and after the engine
+  call and during conversion and output translation, never inside the call.
 
-- `const RouteInputSample*` input for route inspection
-- combined route-quality geometry:
+Kernel-specific bounds:
 
-  * `const RouteInputSample*` input samples
-  * optional `const std::uint8_t*` selection buffer
-  * `RouteQualityOutputSample*` caller-owned output
+- Constrained DTW: alignment sample count is bounded in Core
+  (`RouteAlignmentPolicy.maximumSamplesPerRoute`, 2,000 per route) and the
+  solve is bounded by `maximumBandCells` (4,000,000), checked both as an
+  estimate before allocation and exactly after the packed row layout is
+  built. A valid path never exceeds
+  `primary_sample_count + comparison_sample_count + 1` cells.
+- Segment detection returns at most ten candidates: the five
+  segment-highlight kinds plus one candidate per personal-record window that
+  the route actually covers. The eight internal searches (fastest 400m,
+  combined one-kilometre pace, five personal-record windows, and combined
+  elevation) each keep their per-search evaluation bound.
+- Elevation profile: the output array is the route-sized workspace; the build
+  makes no other route-sized allocation.
+- Training load is summary-only: every product of the pass (Banister TRIMP,
+  five-zone seconds, valid and covered time, interval counts) returns in one
+  summary value.
+- DEM tile planning returns the tiles strictly ascending by (y, x). It is
+  bounded by the tile budget Core passes: a route needing more tiles throws
+  the budget error, which Core treats as "keep recorded elevation for this
+  workout", not as a retry signal.
+- DEM sampling takes the tiles present as a directory, strictly ascending by
+  (y, x) and within the tile budget, with exactly `tile_count * tile_size^2`
+  single-precision heights in directory order; the engine validates that
+  whole contract before it produces any output. A tile absent from the
+  directory is not an error: each affected coordinate reports the
+  missing-tile status and falls back on its own. The engine never reads a
+  file, decodes an image, or calls back for a tile.
 
-- per-workout personal heatmap coverage:
-
-  * `const PersonalHeatmapRouteSample*` input samples
-  * `PersonalHeatmapCellIndex*` caller-owned output
-
-- constrained-DTW path solving:
-
-  * `const RouteAlignmentCostSample*` primary and comparison inputs plus a
-    caller-owned `RouteAlignmentDtwPathCell*` output
-
-- segment detection:
-
-  * `const SegmentDetectionSample*` input samples
-  * `SegmentWindowCandidate*` caller-owned output
-
-- elevation profile construction:
-
-  * `const ElevationProfileInputSample*` input samples
-  * `ElevationProfileOutputSample*` caller-owned output
-
-- route-metric scale/bucket assignment (pace and heart-rate production):
-
-  * `const RouteMetricScaleBucketInputSample*` input samples
-  * `RouteMetricScaleBucketWorkspaceSample*` caller-owned eligible workspace
-  * `RouteMetricScaleBucketOutputSample*` caller-owned output
-
-- heart-rate training load:
-
-  * `const TrainingLoadSample*` input samples
-  * no output pointer — aggregates return by value in `TrainingLoadSummary`
-
-- DEM tile planning:
-
-  * `const DemRouteSample*` input samples
-  * `DemTileKey*` caller-owned output
-
-- DEM bilinear sampling:
-
-  * `const DemRouteSample*` input samples
-  * `const DemTileKey*` tile directory and `const DemTileHeightSample*`
-    decoded heights
-  * `DemElevationOutputSample*` caller-owned output
-
-Swift owns every buffer. C++ borrows them synchronously. C++ retains nothing
-and performs no callback.
-
-Per-sample boundaries write exactly `sample_count` output entries on success
-and write nothing on error. The personal heatmap coverage boundary is instead
-capacity-negotiated: its output is a de-duplicated cell set whose size is not
-known in advance, so it writes exactly `required_cell_count` entries on
-success, and on `insufficient_output_capacity` it writes nothing while
-reporting `required_cell_count` so Swift can reallocate and retry.
-After success, Swift consumes only the written prefix while the caller-owned
-buffer is alive; the native pointer never escapes Interop and C++ retains
-nothing. The array-returning Swift adapter is compatibility/test-focused, not
-the production builder path.
-
-The constrained-DTW path boundary writes exactly `written_path_count` entries
-on success. It is not capacity-negotiated: a valid path never exceeds
-`primary_sample_count + comparison_sample_count + 1` cells, so Swift allocates
-that proven upper bound and an insufficient-capacity response is an engine
-contract violation rather than a retry signal. On any failure status the output
-buffer is left completely unchanged. Alignment sample count is bounded in Swift
-(`RouteAlignmentPolicy.maximumSamplesPerRoute`, 2,000 per route) and the solve
-is bounded by `maximumBandCells` (4,000,000), checked both as an estimate before
-allocation and exactly after the packed row layout is built. One native call
-occurs per alignment attempt; none occurs per dynamic-programming row or cell.
-Cancellation is cooperative Swift work checked before and after the native call
-and during conversion and output translation, never inside the native call.
-
-The segment-detection boundary writes exactly `candidate_count` entries on
-success, where `candidate_count` is at most ten: the five segment-highlight
-kinds plus one candidate per personal-record window that the route actually
-covers. Swift always supplies the fixed ten-entry capacity; insufficient
-capacity is an engine contract violation rather than a retry signal. On any
-failure status the output buffer is left completely unchanged. The eight
-internal searches (fastest 400m, combined one-kilometre pace, five
-personal-record windows, and combined elevation) each retain the existing
-per-search evaluation bound. One native call occurs per `SegmentDetector`
-invocation, with cooperative Swift cancellation during conversion and before
-and after the native call.
-
-The elevation-profile boundary writes exactly `sample_count` output entries on
-success (one-to-one with inputs). After validation the caller-owned output
-buffer is the route-sized workspace; no route-sized native heap allocation is
-performed. On any failure status the output buffer is left completely
-unchanged. One native call occurs per `ElevationProfile.build`; none occurs per
-sample, altitude run, smoothing window, or ascent/descent interval.
-Cancellation is cooperative Swift work during conversion, immediately before
-and after the native call, and during output translation — never inside the
-native call.
-
-The training-load boundary is summary-only: it takes `const TrainingLoadSample*`
-plus a count and a by-value policy, and returns every product of the pass
-(Banister TRIMP, five-zone seconds, valid and covered time, interval counts) in
-a `TrainingLoadSummary` by value. No output buffer exists, and an error summary
-carries no partial values — every numeric field is zero and only the status is
-set. One native call occurs per training-load pass; none occurs per interval.
-Cancellation is cooperative Swift work before and after the native call and
-during input conversion, never inside the native call.
-
-The DEM tile-planning boundary writes exactly `required_tile_count` keys on
-success, strictly ascending by (y, x). It is bounded rather than
-capacity-negotiated: Swift supplies an output capacity equal to its tile budget
-(`maximum_tile_count`), the planner's internal tile set never grows past that
-budget whatever the route length, and a route needing more tiles returns
-`tile_budget_exceeded`, which Swift treats as "keep recorded elevation for this
-workout", not as a retry signal. On any failure status the output buffer is
-left completely unchanged. One native call occurs per DEM correction pass;
-none occurs per point or per tile.
-
-The DEM sampling boundary writes exactly `sample_count` output entries on
-success, one per coordinate. Its tile directory is the tiles present, strictly
-ascending by (y, x) and within the tile budget, with exactly
-`tile_count * tile_size^2` single-precision heights in directory order; C++
-validates that whole contract before the first output write, so any failure
-leaves the output unchanged. A tile absent from the directory is not an error:
-each affected coordinate reports `missing_tile` and falls back on its own. One
-native call occurs per correction pass, after Swift has decoded the planned
-tiles; C++ never reads a file, decodes an image, or calls back for a tile.
-
-Supported workout size is bounded in Swift, never at the engine boundary.
+Supported workout size is bounded in Core, never at the engine boundary.
 `WorkoutImportResourceLimits` defines the product limits once — 1,000,000 route
 points per resulting workout and a 100 MB source payload — and every importer
-plus the `RouteQualityProcessor` preflight reads them from there. Apple Health's
-`export.xml` is the one exception to the 100 MB source payload: a real export
-can exceed a gigabyte. It is streamed, never read whole, and its memory and
-disk use are bounded instead by the heart-rate retention ceiling
-(`AppleHealthHeartRateIndex.maximumSampleCount`, 2,000,000 readings), by its
-declared uncompressed size, which extraction from `export.zip` never writes
-past, and by a free-space check against that size before extraction. Each
-route GPX in the archive still takes the 100 MB limit. The engine's
-`max_route_input_samples` is an internal safety ceiling 25% above the product
-limit, so a route the app accepts can never be rejected by the engine. Raising
-the product limit requires raising that ceiling to preserve the margin; a
-parity test enforces the relationship. Do not add a second copy of either
-number to an importer.
+plus the `RouteQualityProcessor` preflight reads them from there. The engine's
+`EngineRouteLimits.maxRouteInputSamples` is an internal safety ceiling 25%
+above the product limit, so a route the app accepts can never be rejected by
+the engine. Raising the product limit requires raising that ceiling to
+preserve the margin; a parity test enforces the relationship. Do not add a
+second copy of either number to an importer.
 
-Migrated numerical code is a literal translation until a change of behaviour is
-explicitly decided. Preserve constants, operation order, and existing
-limitations, and split statements where needed so `-ffp-contract` cannot fuse a
-multiply-add that Swift performs as two rounded operations.
+Engine numerical code is a literal translation of the C++23 kernels it
+replaced, and stays one until a change of behaviour is explicitly decided.
+Preserve constants, operation order, and existing limitations, and keep each
+multiply and add in its own statement where the original did, so every
+intermediate is rounded exactly as before. The one decided difference is the
+`+0`/`-0` scale-bucket tie above. Each kernel's golden digest test
+(`*GoldenTests.swift`, one FNV-1a-64 digest per CI platform, derived from the
+C++ kernel before its removal) pins the outputs bit for bit: a change that
+moves a digest is a behaviour change and needs that decision.
 
 ## Project Invariants
 
@@ -478,16 +355,15 @@ A pull request runs only the lanes and test targets its changed paths can
 reach. `scripts/ci-select-lanes.sh` holds the table; the `changes` job in
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs it, and `lint`
 self-tests it on every PR. The module graph is
-`RunPlayEngineCpp` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, with
-`RunPlayEngine` beside `RunPlayEngineCpp` under `RunPlayCore`, and each change
-reaches its own module and the modules downstream.
+`RunPlayEngine` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, and
+each change reaches its own module and the modules downstream.
 
 | Changed path | Runs |
 |---|---|
 | `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `.kiro/**`, `prompts/**`, `LICENSE` | lint only |
 | `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests, boundary validator |
 | `RunPlayPlatform/**` | macOS, Platform and Studio tests, boundary validator |
-| `RunPlayCore/**`, `RunPlayEngineCpp/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
+| `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
 
 - Every path is classified and the widest result wins; a renamed file counts
   under both its old and new path.
@@ -498,18 +374,19 @@ reaches its own module and the modules downstream.
 - On a stacked PR the diff is against the parent PR's branch, so a child PR's
   selection covers only its own changes. Each PR below it is verified by its
   own CI.
-- The C++ boundary validator (`scripts/validate-cpp-boundaries.sh`, a static
-  source check) runs once per CI run, in the tests leg of `core-linux`, which
-  therefore runs when the selector turns on `linux` OR `macos`: the validator
-  scans Core, Platform and Studio, so a Studio-only PR needs it. When only
-  `macos` is on, that leg runs just the checkout and the validator, and the
-  sanitizers leg skips all its steps; the Core gate, consumer smoke, C++
-  tests and sanitizers need `linux`. The release path runs the validator
-  through `macos-verify.yml`'s `boundaries` input. Every macOS job still
-  runs the SwiftPM package-graph check (`validate-cpp-package-graph.py`),
+- The engine boundary validator
+  (`scripts/validate-swift-engine-boundaries.py`, a static source scan plus a
+  check of the SwiftPM target graph) runs once per CI run, in the tests leg
+  of `core-linux`, which therefore runs when the selector turns on `linux` OR
+  `macos`: the validator scans Core, Platform and Studio, so a Studio-only PR
+  needs it. When only `macos` is on, that leg runs just the checkout and the
+  validator, and the sanitizers leg skips all its steps; the engine tests,
+  the Core gate, consumer smoke and the AddressSanitizer run need `linux`.
+  Every macOS job runs the validator's target-graph check (`--graph-only`),
   because the Linux package graph omits the macOS-only Platform and Studio
-  targets. The Swift image pin stays on the one `container:` line in
-  `core-linux`.
+  targets; the release path runs the whole validator through
+  `macos-verify.yml`'s `boundaries` input. The Swift image pin stays on the
+  one `container:` line in `core-linux`.
 - Every macOS run also checks the String Catalogs
   (`scripts/check-localization.sh`) without a second build: the one
   `swift build --build-tests` passes `-emit-localized-strings`, which only adds
@@ -522,30 +399,24 @@ reaches its own module and the modules downstream.
   turned on must succeed.
 - Adding a module, or a test that reads a file outside its own module (for
   example by `#filePath`), means updating `scripts/ci-select-lanes.sh` in the
-  same PR. Tests that read the repository (the Engine test running
-  `scripts/run-cpp-engine-tests.sh`, `RunPlayStudio/Resources/**` fixtures)
-  are covered by the table above.
+  same PR. Tests that read the repository (`RunPlayStudio/Resources/**`
+  fixtures) are covered by the table above.
 
 ## Validation
 
 Use the same warning-clean SwiftPM commands enforced by CI. Warnings are
 errors in every Swift target we own: `Package.swift` sets `.treatAllWarnings(as:
-.error)` on them (and on `Tests/PackageConsumerSmoke`'s target), beside the C++
-`-Werror` in `engineCppSettings`, so a plain `swift build` or `swift test` is
-the gate on macOS and Linux. Do not pass `-Xswiftc -warnings-as-errors`: it also
+.error)` on them (and on `Tests/PackageConsumerSmoke`'s target), so a plain
+`swift build` or `swift test` is the gate on macOS and Linux. Do not pass `-Xswiftc -warnings-as-errors`: it also
 reaches dependency targets, which SwiftPM compiles with `-suppress-warnings`,
 and swift-build on Swift 6.3 rejects that combination.
 
 ```bash
-./scripts/validate-cpp-boundaries.sh
-swift build --target RunPlayEngineCpp \
-  -Xcxx -Wall -Xcxx -Wextra -Xcxx -Wpedantic \
-  -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
-swift test --filter RunPlayEngineCppTests
 python3 scripts/validate-swift-engine-boundaries.py
+swift build --target RunPlayEngine
 swift test --filter RunPlayEngineTests
-./scripts/run-cpp-engine-tests.sh
-./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan on native C++ tests
+LSAN_OPTIONS=suppressions=$PWD/scripts/lsan-xctest-discovery.supp \
+  swift test --sanitize=address --filter RunPlayEngineTests   # engine tests under ASan (Linux)
 swift test --filter RunPlayCoreTests
 swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests                               # macOS
@@ -610,14 +481,16 @@ refuses uid 0. The job's container starts as root (its `apt-get` step needs
 it), so the step hands the checkout to an unprivileged uid, drops to it with
 `setpriv`, and hands the tree back afterwards.
 
-A **floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 1,389) guards the count that
+A **floor** (`RUNPLAY_LINUX_MIN_EXECUTED`, 1,378) guards the count that
 actually ran. It is not redundant with the allowlist: the allowlist sees only
 tests that *print* a skip, while a test class compiled out on Linux
 (`#if os(macOS)`, a `canImport` guard that is false on corelibs) or dropped from
 the target vanishes without a line, so the count is the only guard against
-silent disappearance, and it is tight enough to bite. Provenance: 1,389 against
-1,462 executed on the head that raised it, under the non-root container user
-(`Executed 1480, skipped 18`), about 5% headroom. The headroom is room for a PR that
+silent disappearance, and it is tight enough to bite. Provenance: 1,378 against
+1,450 executed on the head that set it, under the non-root container user
+(`Executed 1470, skipped 20`), about 5% headroom. That head lowered the floor
+from 1,389 on purpose: it removed the C++ engine and, with it, the 14 XCTest
+cases that tested only the C++ bridges. The headroom is room for a PR that
 legitimately deletes a few tests, not tolerance for drift. A PR removing more
 lowers the floor deliberately and says why. Raise it back to ~5% below the real
 count in the PR that adds Core tests once the headroom passes ~10%.
@@ -779,6 +652,7 @@ binary, so serialize PRs that change the card.
 
 - [README.md](README.md) — product overview and local build entrypoint
 - [docs/architecture.md](docs/architecture.md) — data flow and abstractions
+- [docs/engine.md](docs/engine.md) — engine kernels, boundaries, and verification
 - [docs/import-formats.md](docs/import-formats.md) — supported formats and limits
 - [docs/training-load.md](docs/training-load.md) — training-load model, defaults, estimator, and limits
 - [docs/dem-tiles.md](docs/dem-tiles.md) — DEM tile folders, elevation precedence, and limits
@@ -796,8 +670,8 @@ types, enums, scale/offset semantics — derive the answer from the official
 Garmin SDKs whose bindings this codebase resembles, in this order of
 authority, and quote the specific file and line:
 
-1. <https://github.com/garmin/fit-cpp-sdk> — official C++ SDK, closest to
-   `RunPlayEngineCpp`.
+1. <https://github.com/garmin/fit-cpp-sdk> — official C++ SDK, the reference
+   implementation.
 2. <https://github.com/garmin/fit-c-sdk> — official C SDK.
 3. <https://github.com/garmin/fit-swift-sdk> — official Swift SDK, closest to
    `RunPlayCore`'s decoding.

@@ -1,13 +1,13 @@
 import XCTest
 @testable import RunPlayCore
 
-/// Merge gate for the personal heatmap coverage C++23 cutover: the complete
+/// Benchmark for personal heatmap coverage: the complete
 /// production builder against the complete pre-migration Swift builder oracle.
 ///
 /// The two extra timings this benchmark prints are **independent diagnostics**,
 /// not additive components of the measured production build. Input conversion is
 /// timed on a batch prepared separately from the one `PersonalHeatmapBuilder`
-/// builds internally, and the native coverage total is timed once at the final
+/// builds internally, and the engine coverage total is timed once at the final
 /// effective cell size rather than across every adaptive pass. That diagnostic
 /// deliberately uses the historical array-returning bridge and is not the
 /// production aggregation path. Adding the diagnostics to each other, or
@@ -116,7 +116,7 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
         fixture: \(Self.workoutCount) workouts, \(Self.pointsPerWorkout) points/workout
         \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
         complete Swift builder oracle:     \(Self.format(oracleMedian)) ms
-        complete C++ production builder:   \(Self.format(prodMedian)) ms
+        complete production builder:       \(Self.format(prodMedian)) ms
         production / oracle ratio:         \(String(format: "%.3f", ratio))
         merge gate: complete production builder <= ~1.25× Swift builder oracle
 

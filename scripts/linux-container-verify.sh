@@ -32,8 +32,8 @@ cd "$(dirname "$0")/.."
 # not inferred: five test methods, three skipped, reports `Executed 5 tests,
 # with 3 tests skipped`), so N - S is the number that genuinely ran.
 #
-# FLOOR provenance: 1389, against 1462 actually run on the head that raised
-# it (Executed 1480, skipped 18, non-root, swift:6.3.3) -- about 5%
+# FLOOR provenance: 1378, against 1450 actually run on the head that set
+# it (Executed 1470, skipped 20, non-root, swift:6.3.3) -- about 5%
 # below the real count. The floor exists to catch tests that vanish WITHOUT printing a skip
 # (a class compiled out under `#if os(macOS)` or a `canImport` guard false on
 # corelibs, or dropped from the target), which the allowlist below cannot
@@ -41,9 +41,9 @@ cd "$(dirname "$0")/.."
 # legitimately deletes a few tests, not tolerance for drift. A PR that
 # removes more than that lowers it deliberately and says why; never lower it
 # to make a disappearance you have not explained pass. Raise it in the PR
-# that adds Core tests once the headroom passes ~10% (RAN > ~1543 today),
+# that adds Core tests once the headroom passes ~10% (RAN > ~1531 today),
 # back to ~5% below the new count.
-FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-1389}"
+FLOOR="${RUNPLAY_LINUX_MIN_EXECUTED:-1378}"
 
 # SKIP REASONS ARE ALLOWLISTED, NOT COUNTED. A ceiling on the skip count
 # (`64`) was the first design and was rejected: it does not catch
@@ -160,9 +160,8 @@ gate_log() {
 }
 
 # The parser is shell + awk and has had two holes (the dash skip shape, and
-# skips counted but never reason-checked), so it is tested like
-# validate-cpp-boundaries.sh tests its helpers: fixtures with a pinned
-# verdict, run before the gate is trusted. The two ci-*.log fixtures are
+# skips counted but never reason-checked), so it is tested with fixtures
+# that each have a pinned verdict, run before the gate is trusted. The two ci-*.log fixtures are
 # real CI output from #172; the rest are synthetic, one per failure path.
 # SELF_TEST_FLOOR is fixed, not FLOOR, so raising the policy value never
 # re-judges historical logs; the clean log (1080) and below-floor (1000)

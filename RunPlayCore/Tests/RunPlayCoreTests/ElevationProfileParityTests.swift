@@ -103,39 +103,6 @@ struct ElevationProfileParityTests {
         }
     }
 
-    @Test("Core adapter is bit-identical to C++ for the existing parity fixtures")
-    func coreAdapterMatchesCpp() throws {
-        let fixtures = [
-            ordinaryClimb(),
-            makePoints(altitudes: [100, 101, 200, 102, 103], step: 10),
-            makePoints(altitudes: [100, 101, 220, 225, 102, 103], step: 10),
-            makePoints(altitudes: [100, 120, 140, 160, 140, 120, 105], step: 10),
-        ]
-        for points in fixtures {
-            let cpp = try ElevationProfileCppBenchmarkOracle.build(
-                routePoints: points, policy: .runningDefault, isCancelled: { false }
-            )
-            let swift = try RunPlayElevationProfileBridge.build(
-                routePoints: points, policy: .runningDefault, isCancelled: { false }
-            )
-            #expect(swift.rejectedAltitudeCount == cpp.rejectedAltitudeCount)
-            #expect(swift.hasMeaningfulElevation == cpp.hasMeaningfulElevation)
-            #expect(swift.totalAscentMeters?.bitPattern == cpp.totalAscentMeters?.bitPattern)
-            #expect(swift.totalDescentMeters?.bitPattern == cpp.totalDescentMeters?.bitPattern)
-            #expect(swift.samples.count == cpp.samples.count)
-            for (actual, expected) in zip(swift.samples, cpp.samples) {
-                #expect(actual.correctedAltitudeMeters?.bitPattern == expected.correctedAltitudeMeters?.bitPattern)
-                #expect(actual.cumulativeAscentMeters.bitPattern == expected.cumulativeAscentMeters.bitPattern)
-                #expect(actual.cumulativeDescentMeters.bitPattern == expected.cumulativeDescentMeters.bitPattern)
-                #expect(actual.cumulativeSignedChangeMeters.bitPattern == expected.cumulativeSignedChangeMeters.bitPattern)
-                #expect(actual.reliableIntervalCount.bitPattern == expected.reliableIntervalCount.bitPattern)
-                #expect(actual.sourceAltitudeWasRejected == expected.sourceAltitudeWasRejected)
-                #expect(actual.runIdentifier == expected.runIdentifier)
-                #expect(actual.reliableRunIdentifier == expected.reliableRunIdentifier)
-            }
-        }
-    }
-
     @Test("public initializer builds the production profile")
     func publicInitializerBuildsProfile() {
         let points = ordinaryClimb()

@@ -1,4 +1,4 @@
-/// Selection strategies and diagnostic values corresponding to the native route-quality boundary.
+/// Selection strategies and diagnostic values of the route-quality kernel.
 package enum EngineRouteDistancePolicy {
     case coordinates, allSupplied, suppliedPerSegment, suppliedForSelection
 }
@@ -169,7 +169,7 @@ package enum EngineRouteQuality {
                 guard segment == 0 else { return false }
                 previousSegment = 0
                 expectedSegment = 0
-                continue // The native check also skips the first point's optional accuracy.
+                continue // The first point's optional accuracy is not checked, as in the former C++ kernel.
             }
             guard segment >= previousSegment else { return false }
             if segment > previousSegment {

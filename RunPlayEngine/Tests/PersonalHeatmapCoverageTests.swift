@@ -2,15 +2,8 @@ import Testing
 import RunPlayEngine
 import RunPlayEngineTestSupport
 
-/// Ports `PersonalHeatmapCoverageTests.cpp` case for case, with the same names
-/// and literals.
-///
-/// Unrepresentable by construction (kept in the C++ tests until PR 10): a null
-/// input buffer with a count, a null output buffer, and the zero-capacity
-/// `insufficient_output_capacity` renegotiation. A `Span` cannot pair a positive
-/// count with null storage, and the engine returns exactly the cells it found,
-/// so there is no caller capacity. The zero-capacity case keeps its closest Swift
-/// form: one sample yields exactly one required cell.
+/// Ported case for case from the former C++ `PersonalHeatmapCoverageTests.cpp`,
+/// with the same names and literals.
 @Suite
 struct PersonalHeatmapCoverageTests {
     private typealias Sample = PersonalHeatmapRouteSample
@@ -52,7 +45,7 @@ struct PersonalHeatmapCoverageTests {
             try Self.compute([], 0.0, 500.0)
         }
 
-        // Closest form of "zero capacity": one sample needs exactly one cell.
+        // One sample needs exactly one cell.
         let result = try Self.compute([sample])
         #expect(result.cells.count == 1, "required cell count is 1")
     }

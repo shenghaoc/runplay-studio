@@ -44,7 +44,7 @@ public struct SegmentDetector {
 
     /// Computes the best fixed-distance personal-record windows for one
     /// workout. Convenience for callers (such as the library backfill) that
-    /// only need records; it shares the same single native call per pass.
+    /// only need records; it shares the same single engine call per pass.
     public static func detectPersonalRecords(
         from workout: RunWorkout,
         context: WorkoutAnalysisContext
@@ -59,7 +59,7 @@ public struct SegmentDetector {
     }
 
     /// Segment-only throwing entry retained for parity tests and benchmarks.
-    /// Delegates to the combined pass, so a call remains exactly one native
+    /// Delegates to the combined pass, so a call remains exactly one engine
     /// detection invocation.
     static func detectSegments(
         from workout: RunWorkout,
@@ -76,7 +76,7 @@ public struct SegmentDetector {
     }
 
     /// Result of one detection pass: the five segment highlights and the
-    /// fixed-distance record windows, both produced by one native call.
+    /// fixed-distance record windows, both produced by one engine call.
     struct DetectionResult {
         let segments: [SegmentHighlight]
         let records: [PersonalRecordWindow]
@@ -116,7 +116,7 @@ public struct SegmentDetector {
             policy: policy
         )
 
-        // One native call
+        // One engine call
         let result = try RunPlaySegmentDetectorBridge.search(
             routePoints: points,
             timeline: timeline,
@@ -410,7 +410,7 @@ public struct SegmentDetector {
             return nil
         }
 
-        // Verify pace matches C++ selection within tolerance
+        // Verify pace matches the engine selection within tolerance
         let tolerance = max(1e-9, abs(candidate.selectionValue) * 1e-12)
         guard abs(result.pace - candidate.selectionValue) <= tolerance else {
             return nil
@@ -496,7 +496,7 @@ public struct SegmentDetector {
             return nil
         }
 
-        // Get change from profile and verify against C++ selection
+        // Get change from profile and verify against the engine selection
         guard let change = elevationProfile.change(
             from: candidate.startDistanceMeters,
             to: candidate.endDistanceMeters

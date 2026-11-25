@@ -1,11 +1,13 @@
 import XCTest
 @testable import RunPlayCore
 
-/// Release gate for the personal heatmap coverage cutover: the complete Swift
-/// path (conversion, one engine call per workout, direct cell counting) against
-/// the complete C++ path (conversion, native call with capacity negotiation,
-/// direct cell counting). Skipped unless `RUNPLAY_BENCHMARK=1`. Always run in
-/// release. `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the one-million-point probe.
+/// Release benchmark for personal heatmap coverage: the complete Swift path
+/// (conversion, one engine call per workout, direct cell counting). It reports
+/// absolute Swift medians; there is no reference engine and no ratio gate.
+/// Skipped unless `RUNPLAY_BENCHMARK=1`. Always run in release.
+/// `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the one-million-point probe.
+///
+/// The test keeps its former name so the benchmark script filter still matches.
 final class PersonalHeatmapEngineBenchmark: XCTestCase {
     func testCompleteSwiftVersusCpp() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] == "1", "Set RUNPLAY_BENCHMARK=1")
@@ -33,33 +35,18 @@ final class PersonalHeatmapEngineBenchmark: XCTestCase {
             }
             return counts
         }
-        func cppPass() -> [PersonalHeatmapCellID: Int] {
-            var counts: [PersonalHeatmapCellID: Int] = [:]
-            _ = RunPlayPersonalHeatmapCoverageCppBridge.completeAccumulate(
-                workoutRoutes: routes, cellSizeMeters: cell, maximumIntervalMeters: interval,
-                maximumCellsPerInterval: maxCells, into: &counts
-            )
-            return counts
-        }
-        XCTAssertEqual(try swiftPass(), cppPass(), "\(label): counts differ")
+        let reference = try swiftPass()
+        XCTAssertFalse(reference.isEmpty, "\(label): no cells")
 
-        var swiftTimes: [Double] = [], cppTimes: [Double] = []
+        var swiftTimes: [Double] = []
         for iteration in 0..<(warmups + iterations) {
-            let swiftFirst = iteration.isMultiple(of: 2)
-            var swiftElapsed = 0.0, cppElapsed = 0.0
-            for step in 0..<2 {
-                if (step == 0) == swiftFirst {
-                    swiftElapsed = try Self.time { _ = try swiftPass() }
-                } else {
-                    cppElapsed = Self.time { _ = cppPass() }
-                }
-            }
-            if iteration >= warmups { swiftTimes.append(swiftElapsed); cppTimes.append(cppElapsed) }
+            var counts: [PersonalHeatmapCellID: Int] = [:]
+            let swiftElapsed = try Self.time { counts = try swiftPass() }
+            XCTAssertEqual(counts, reference, "\(label): counts differ between runs")
+            if iteration >= warmups { swiftTimes.append(swiftElapsed) }
         }
-        let swiftMedian = Self.median(swiftTimes), cppMedian = Self.median(cppTimes)
-        let ratio = swiftMedian / max(cppMedian, 1e-12)
-        print("HEATMAP_RATIO \(label) cpp=\(String(format: "%.3f", cppMedian)) ms swift=\(String(format: "%.3f", swiftMedian)) ms ratio=\(String(format: "%.3f", ratio)) (gate at most 1.100)")
-        XCTAssertLessThanOrEqual(ratio, 1.10, label)
+        let swiftMedian = Self.median(swiftTimes)
+        print("HEATMAP_ENGINE \(label) swift=\(String(format: "%.3f", swiftMedian)) ms")
     }
 
     private static func routes(count: Int, points: Int) -> [[RoutePoint]] {

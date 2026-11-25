@@ -49,8 +49,8 @@ Behaviour when a limit is exceeded:
 - Existing persisted workouts above the limit are never deleted or rewritten.
   They stay visible with the usual route-quality upgrade warning.
 
-The C++ engine carries a separate internal ceiling of 1,250,000 samples
-(`max_route_input_samples`). That is a safety margin 25% above the product
+The engine carries a separate internal ceiling of 1,250,000 samples
+(`EngineRouteLimits.maxRouteInputSamples`). That is a safety margin 25% above the product
 limit, not a second product limit — a route the app accepts can never be
 rejected at the engine boundary.
 
@@ -523,9 +523,9 @@ importer plus the `RouteQualityProcessor` preflight reads them from there:
 | Route points per resulting workout | `maxRoutePointCount` | 1,000,000 |
 | Source payload | `maxSourceFileBytes` | 100 MiB (`100 * 1024 * 1024`) |
 
-The C++ engine's `max_route_input_samples` is an internal safety ceiling 25%
-above the route-point limit, so a route the app accepts can never be rejected
-by the engine. Raising the product limit requires raising that ceiling to
+The engine's `EngineRouteLimits.maxRouteInputSamples` is an internal safety
+ceiling 25% above the route-point limit, so a route the app accepts can never
+be rejected by the engine. Raising the product limit requires raising that ceiling to
 preserve the margin; a parity test enforces the relationship. Do not add a
 second copy of either number to an importer.
 

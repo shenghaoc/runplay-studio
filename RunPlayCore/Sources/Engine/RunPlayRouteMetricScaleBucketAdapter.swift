@@ -46,7 +46,7 @@ enum RunPlayRouteMetricScaleBucketBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlayRouteMetricScaleBucketResult {
-        NativeCallObserver.record(.routeMetricScaleBucket)
+        EngineCallObserver.record(.routeMetricScaleBucket)
         guard metricValues.count == weightsMeters.count else {
             throw RunPlayRouteMetricScaleBucketBridgeError.invalidInputContract
         }

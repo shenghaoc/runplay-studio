@@ -167,78 +167,70 @@ discarded. A poor finite accuracy value can support an isolated-coordinate
 decision only when the neighbouring trajectory has better accuracy; it is
 never sufficient evidence by itself.
 
-### Non-persisted C++ route projection
+### Non-persisted engine route projection
 
-The internal Core interoperability layer can project a complete Swift route
-into this C++23 value without changing `RoutePoint` or its `Codable` shape:
+Core projects a complete route into this `RunPlayEngine` value without changing
+`RoutePoint` or its `Codable` shape:
 
-```cpp
-struct RouteInputSample {
-    std::uint64_t source_index;
-    double timestamp_seconds_since_reference_date;
-    double latitude;
-    double longitude;
-    std::optional<double> altitude_meters;
-    std::optional<double> dem_altitude_meters;
-    double distance_from_start_meters;
-    double elapsed_seconds;
-    std::optional<double> speed_meters_per_second;
-    std::optional<double> pace_seconds_per_kilometer;
-    std::optional<double> heart_rate_bpm;
-    std::optional<double> cadence;
-    std::optional<double> power_watts;
-    std::optional<double> ground_contact_time_milliseconds;
-    std::optional<double> vertical_oscillation_millimeters;
-    std::optional<double> vertical_ratio_percent;
-    std::optional<double> stance_time_balance_percent;
-    std::optional<double> step_length_meters;
-    std::optional<double> horizontal_accuracy;
-    std::int64_t route_segment_index;
-};
+```swift
+package struct EngineRouteInputSample: Sendable {
+    package let sourceIndex: UInt64
+    package let timestampSecondsSinceReferenceDate: Double
+    package let latitude: Double
+    package let longitude: Double
+    package let altitudeMeters: Double?
+    package let demAltitudeMeters: Double?
+    package let distanceFromStartMeters: Double
+    package let elapsedSeconds: Double
+    package let speedMetersPerSecond: Double?
+    package let paceSecondsPerKilometer: Double?
+    package let heartRateBPM: Double?
+    package let cadence: Double?
+    package let powerWatts: Double?
+    package let groundContactTimeMilliseconds: Double?
+    package let verticalOscillationMillimeters: Double?
+    package let verticalRatioPercent: Double?
+    package let stanceTimeBalancePercent: Double?
+    package let stepLengthMeters: Double?
+    package let horizontalAccuracy: Double?
+    package let routeSegmentIndex: Int64
+}
 ```
 
-`source_index` is the original Swift array offset, not the point UUID. Swift
-retains authoritative identity and can map a future native result back through
-that offset. The timestamp is exactly
+`sourceIndex` is the original Core array offset, not the point UUID. Core
+retains authoritative identity and maps an engine result back through that
+offset. The timestamp is exactly
 `RoutePoint.timestamp.timeIntervalSinceReferenceDate`; this boundary performs
-no rounding or epoch conversion. Each optional uses `std::optional<double>` so
-absence remains distinct from every numeric bit pattern, including zero and
-non-finite values. The segment index converts exactly to `Int64` and never
-truncates.
+no rounding or epoch conversion. Each optional is a `Double?`, so absence
+remains distinct from every numeric bit pattern, including zero and non-finite
+values. The segment index converts exactly to `Int64` and never truncates.
 
-Swift owns one contiguous temporary buffer. C++ borrows it for one synchronous
-call, retains nothing, and returns a compact value that Core converts back to
-pure Swift. The projection is not persisted and does not change any schema or
-version. `inspect_route_batch` reads every field into the parity digest; the
-production `process_route_quality_geometry` kernel reads only source index,
-timestamp, coordinates, supplied distance, elapsed time, horizontal accuracy,
-and segment index. No kernel reads `dem_altitude_meters`, which exists only so
-the digest covers every `RoutePoint` field; `validate-cpp-boundaries.sh`
-rejects any engine source other than the digest that names it, and a native
-test shows route quality produces bit-identical output whatever DEM values the
-buffer carries.
+Core owns one contiguous temporary array. The engine borrows it as a `Span` for
+one synchronous call, retains nothing, and returns a value that Core converts
+back to its own models. The projection is not persisted and does not change any
+schema or version. The production `EngineRouteQuality.process` kernel reads only
+source index, timestamp, coordinates, supplied distance, elapsed time,
+horizontal accuracy, and segment index. No kernel reads `demAltitudeMeters`;
+an engine test shows route quality produces bit-identical output whatever DEM
+values the samples carry.
 
-### Non-persisted C++ local-metre value
+### Non-persisted engine local-metre value
 
-The geodesy primitives return planar offsets through a named aggregate rather
+The engine geodesy primitives return planar offsets through a named value rather
 than a positional pair:
 
-```cpp
-struct LocalMeters {
-    double x_meters;
-    double z_meters;
-};
+```swift
+package struct EngineLocalMeters: Equatable, Sendable {
+    package let xMeters: Double
+    package let zMeters: Double
+}
 ```
 
 This mirrors the `(x, z)` tuple returned by
 `GeoDistance.latLonToMeters(lat:lon:centerLat:centerLon:)`, using the identical
-equirectangular coefficients and operation order. The Core adapter converts it
-immediately into a pure Swift `RunPlayLocalMeters`, so no C++ type reaches a
-`RunPlayCore` signature.
-
-Like the route projection above, this value is parity infrastructure: it is
-never persisted, changes no schema or version, and production route projection
-continues to use `GeoDistance`.
+equirectangular coefficients and operation order. It is an engine-internal
+value: it is never persisted, changes no schema or version, and production
+route projection in Core continues to use `GeoDistance`.
 
 ### Route quality diagnostics and distance provenance
 

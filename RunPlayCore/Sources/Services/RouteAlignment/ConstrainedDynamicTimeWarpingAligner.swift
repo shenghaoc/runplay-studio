@@ -239,7 +239,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
     // MARK: - Direction probe
 
     /// Internal so route grouping can reuse the same coarse ordered-sequence
-    /// probe; it performs no native call.
+    /// probe; it performs no engine call.
     func detectDirection(
         primary: [RouteAlignmentSample],
         comparison: [RouteAlignmentSample],
@@ -354,8 +354,8 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         }
 
         // Band packing, the dynamic-programming sweep, endpoint selection, and
-        // path reconstruction happen in one bounded C++23 call. There is no
-        // native call per row, cell, or sample, and no callback into Swift.
+        // path reconstruction happen in one bounded engine call. There is no
+        // engine call per row, cell, or sample.
         let solved: RunPlayRouteAlignmentDtwResult
         do {
             if profile != nil {

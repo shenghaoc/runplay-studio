@@ -29,7 +29,7 @@ private func project(_ lat: Double, _ lon: Double, _ centerLat: Double, _ center
     EngineGeodesy.projectToLocalMeters(latitude: lat, longitude: lon, centerLatitude: centerLat, centerLongitude: centerLon)
 }
 
-/// C++ standard-layout traits are ABI-specific; this is the Swift two-value equivalent.
+/// The Swift two-value equivalent of the former C++ standard-layout check.
 @Test func testLocalMetersValueLayout() {
     #expect(MemoryLayout<EngineLocalMeters>.size == 2 * MemoryLayout<Double>.size)
 }

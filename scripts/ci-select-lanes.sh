@@ -12,16 +12,15 @@
 #   macos_test_filter=<regex>    `swift test --filter` value; empty means all
 #                                test targets
 #
-# Module graph: RunPlayEngineCpp -> RunPlayCore -> RunPlayPlatform ->
-# RunPlayStudio, with RunPlayEngine (the pure Swift engine) beside
-# RunPlayEngineCpp under RunPlayCore. A change can reach only its own module and the modules
+# Module graph: RunPlayEngine -> RunPlayCore -> RunPlayPlatform ->
+# RunPlayStudio. A change can reach only its own module and the modules
 # downstream of it. Every path is classified and the widest result wins:
 #
 #   *.md outside RunPlay*/** and Tests/**, docs/**, .kiro/**, prompts/**,
 #   LICENSE                              nothing (lint still runs)
 #   RunPlayStudio/**  (any file, *.md too)   macOS, Studio tests
 #   RunPlayPlatform/**                       macOS, Platform + Studio tests
-#   RunPlayCore/**, RunPlayEngineCpp/**, RunPlayEngine/**, any other
+#   RunPlayCore/**, RunPlayEngine/**, any other
 #   RunPlay*/**, Tests/**
 #   (Package.swift, Package.resolved, scripts/**, script/**, .github/**,
 #   Packaging/**, VERSION, and every path not listed above)
@@ -44,7 +43,7 @@ classify() {
   case "$1" in
     RunPlayStudio/*) echo 1 ;;
     RunPlayPlatform/*) echo 2 ;;
-    RunPlayCore/* | RunPlayEngineCpp/* | RunPlayEngine/*) echo 3 ;;
+    RunPlayCore/* | RunPlayEngine/*) echo 3 ;;
     RunPlay*/*) echo 3 ;; # a module this script does not know yet
     Tests/*) echo 3 ;;
     *.md | docs/* | .kiro/* | prompts/* | LICENSE) echo 0 ;;
@@ -100,7 +99,7 @@ self_test() {
     "Platform plus Studio|pull_request|2|RunPlayPlatform/Sources/A.swift;RunPlayStudio/Sources/B.swift"
     "Core change|pull_request|3|RunPlayCore/Sources/Models/A.swift"
     "Core md is not docs-only|pull_request|3|RunPlayCore/Sources/README.md"
-    "Engine change|pull_request|3|RunPlayEngineCpp/Sources/a.cpp"
+    "Unknown RunPlay module gives everything|pull_request|3|RunPlayEngineCpp/Sources/a.cpp"
     "Swift engine source|pull_request|3|RunPlayEngine/Sources/Geodesy.swift"
     "Swift engine tests|pull_request|3|RunPlayEngine/Tests/GeodesyTests.swift"
     "Swift engine test support|pull_request|3|RunPlayEngine/TestSupport/EngineParitySupport.swift"

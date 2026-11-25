@@ -121,11 +121,11 @@ final class RunPlayPersonalHeatmapPreparedBatch: Sendable {
         let range = workoutRanges[workoutIndex]
         if range.isEmpty { return PersonalHeatmapCoverageResult() }
 
-        NativeCallObserver.record(.personalHeatmapCoverage)
+        EngineCallObserver.record(.personalHeatmapCoverage)
         let workoutSamples = samples[range]
         let result: PersonalHeatmapCoverageResult
         do {
-            // `size_t` in the C++ signature: a negative Int keeps its two's-complement meaning.
+            // Unsigned, as `size_t` was in the former C++ signature: a negative Int keeps its two's-complement meaning.
             result = try PersonalHeatmapCoverage.compute(
                 samples: workoutSamples.span,
                 cellSizeMeters: cellSizeMeters,

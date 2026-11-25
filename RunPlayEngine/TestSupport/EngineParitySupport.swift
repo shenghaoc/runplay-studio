@@ -1,6 +1,6 @@
 import Testing
 
-/// Deterministic inputs for the native-engine parity corpus.
+/// Deterministic inputs for the engine golden corpora.
 package struct SplitMix64 {
     private var state: UInt64
 

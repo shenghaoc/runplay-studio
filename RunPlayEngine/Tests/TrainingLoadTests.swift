@@ -139,16 +139,6 @@ import Testing
         near(try compute([sample(100, 60)], policy: policy).totalTRIMP, 0.5 * 0.86 * exp(1.67 * 0.5))
     }
 
-    @Test func test_invalid_input_buffer() throws {
-        // A null base with a positive length is unrepresentable by Span.
-        // Its closest valid view matches the C++ (nullptr, 0) case.
-        let summary = try TrainingLoadKernel.compute(Span<TrainingLoadSample>(), policy: Self.referencePolicy)
-        #expect(summary.totalIntervalCount == 0)
-        #expect(summary.validIntervalCount == 0)
-        #expect(summary.coveredSeconds == 0)
-        #expect(summary.hasMeanHeartRate == 0)
-    }
-
     @Test func test_invalid_policies() {
         let mutations: [(inout TrainingLoadPolicy) -> Void] = [
             { $0.restingHeartRateBPM = 160 },

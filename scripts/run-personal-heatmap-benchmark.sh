@@ -46,8 +46,7 @@ sed -n \
   '/BEGIN RUNPLAY HEATMAP AGGREGATION BENCHMARK/,/END RUNPLAY HEATMAP AGGREGATION BENCHMARK/p' \
   "$log" | grep -v 'RUNPLAY HEATMAP AGGREGATION BENCHMARK'
 
-# The engine gate: complete Swift path against complete C++ path, one
-# HEATMAP_RATIO line per fixture.
+# The complete engine path: one HEATMAP_ENGINE line (Swift median) per fixture.
 sed -n \
   '/BEGIN RUNPLAY HEATMAP ENGINE BENCHMARK/,/END RUNPLAY HEATMAP ENGINE BENCHMARK/p' \
   "$log" | grep -v 'RUNPLAY HEATMAP ENGINE BENCHMARK'

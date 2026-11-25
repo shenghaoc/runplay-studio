@@ -2,8 +2,8 @@ import Testing
 @testable import RunPlayEngine
 
 struct RouteInputSampleTests {
-    // A fixture-only observation of the value where the old test exercised the now-dead C++ batch API.
-    // No batch inspection, status or digest is exposed by the Swift engine.
+    // A fixture-only observation of the value. The Swift engine exposes no
+    // batch inspection, status or digest.
     private func observe(_ samples: borrowing Span<EngineRouteInputSample>) -> Observation {
         var result = Observation(count: samples.count)
         for i in samples.indices {
@@ -77,8 +77,6 @@ struct RouteInputSampleTests {
     }
 
     @Test func test_invalid_and_bounded_inputs() {
-        // Null plus nonzero length, and a falsely oversized extent, cannot be made through a safe Span.
-        // The two original C++ cases stay in RouteInteropTests.cpp until the C++ removal PR.
         #expect(EngineRouteLimits.maxRouteInputSamples == 1_250_000)
         let one = [makeSample(0, 0)]
         #expect(observe(one.span).count == 1)

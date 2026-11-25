@@ -7,11 +7,9 @@ import Glibc
 /// The status failures per-workout heatmap coverage can report with a borrowed
 /// input span and an engine-owned result.
 ///
-/// `invalid_input_buffer`, `invalid_output_buffer` and `insufficient_output_capacity`
-/// have no Swift counterpart: a `Span` cannot pair a positive count with null
-/// storage, and the engine returns exactly the cells it found, so there is no
-/// caller capacity to negotiate. `allocation_failure` is not a recoverable
-/// status in Swift. `invalid_input_contract` is never returned by the C++ kernel.
+/// The engine returns exactly the cells it found, so there is no buffer or
+/// capacity failure. `invalidInputContract` is kept from the former C++ status
+/// set; the kernel never throws it.
 package enum PersonalHeatmapCoverageError: Error, Equatable {
     case invalidConfiguration
     case invalidInputContract

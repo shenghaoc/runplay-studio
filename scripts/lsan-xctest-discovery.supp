@@ -1,0 +1,17 @@
+# LeakSanitizer suppressions for `swift test --sanitize=address` on Linux.
+#
+# corelibs XCTest keeps three of its own structures alive until the process
+# exits, and LeakSanitizer reports them:
+#
+# - the generated test-discovery tables (each class's `allTests` list), built
+#   while SwiftPM lists the tests (`--dump-tests-json`), before any test runs;
+# - the suite that `XCTMainMisc` builds from the arguments, also before any
+#   test runs;
+# - the suite runs that `XCTestSuiteRun.init(test:)` records.
+#
+# Each entry names a frame that only those allocations pass through. A leak
+# from engine or Core code under test has none of these frames and still
+# fails the run.
+leak:PackageDiscoveredTests
+leak:XCTMainMisc
+leak:$s6XCTest0A8SuiteRunC4testAc2AC_tcfC

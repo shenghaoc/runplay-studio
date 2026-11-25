@@ -47,7 +47,7 @@ public enum TrainingLoadPolicy {
 public struct TrainingLoadCalculator: Sendable {
     public init() {}
 
-    /// Same-segment heart-rate intervals ready for the native call.
+    /// Same-segment heart-rate intervals ready for the engine call.
     ///
     /// Built from adjacent sample pairs only, so a segment boundary or a
     /// non-positive time delta contributes no weight at all.
@@ -197,7 +197,7 @@ public struct TrainingLoadCalculator: Sendable {
         )
     }
 
-    /// The pace/duration estimator. Pure Swift, no native call, conservative
+    /// The pace/duration estimator. Core only, no engine call, conservative
     /// by design: the assumed-reserve bands cap at 0.75, so a hard strapless
     /// effort is understated rather than inflated.
     private static func estimate(

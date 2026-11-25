@@ -6,9 +6,9 @@ import Foundation
 /// them from here so the maximum supported workout size is defined exactly
 /// once rather than duplicated per format.
 ///
-/// The C++ engine carries its own `max_route_input_samples` ceiling. That value
+/// The engine carries its own `maxRouteInputSamples` ceiling. That value
 /// is an internal safety ceiling sized above `maxRoutePointCount`, not the
-/// product limit; see `RouteInterop.hpp`. `WorkoutImportResourceLimitsTests`
+/// product limit; see `RunPlayEngineLimits`. `WorkoutImportResourceLimitsTests`
 /// asserts the engine ceiling keeps at least the documented margin.
 public enum WorkoutImportResourceLimits {
 

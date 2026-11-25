@@ -182,123 +182,99 @@ SwiftPM builds and the full test suite passes. GUI verification notes are kept i
 ### Core Testability
 
 The `RunPlayCore` target is a platform-neutral Swift library with no Apple UI
-framework dependencies. It depends on the portable `RunPlayEngineCpp` C++23
-foundation target. The engine provides identity, route input values, a bulk
-inspection boundary, allocation-free geodesy primitives, the production
-combined route-quality geometry
-kernel, the production per-workout personal heatmap coverage kernel, the
-production constrained-DTW path solver for Route-Aware comparison, the
-production SegmentDetector window-search kernel, and the production
-ElevationProfile multi-pass construction kernel. It also performs deterministic
-distance-weighted route-metric scale construction, numeric normalization, and
-bucket assignment for pace and heart rate through one allocation-free bulk call
-per pace/HR metric profile. Corrected-elevation scale/bucket finalization
-intentionally remains in Swift after production A/B showed a native regression.
+framework dependencies. It depends on `RunPlayEngine`, a pure Swift
+computational engine that uses only the Swift standard library and the platform
+C math module. The package has no C or C++ target. The engine provides route
+input values, geodesy primitives, and one kernel per production operation:
+combined route-quality geometry, per-workout personal heatmap coverage, the
+constrained-DTW path solve for Route-Aware comparison, the SegmentDetector
+window searches, the multi-pass ElevationProfile build, pace and heart-rate
+route-metric scale and bucket finalization, heart-rate training load, and DEM
+tile planning and bilinear sampling. Corrected-elevation scale/bucket
+finalization intentionally stays in Swift Core.
 
 ```text
-Swift stage-1 ordered [RoutePoint]
-    → Swift-owned contiguous RouteInputSample buffer
-      + optional selection byte buffer
-      + Swift-owned RouteQualityOutputSample buffer
-    → one synchronous process_route_quality_geometry call
-    → pure-Swift retained points / provenance / diagnostics
-    → Swift source-speed validation
-    → one ElevationProfileInputSample buffer
-    → one build_elevation_profile call
-    → pure-Swift ElevationProfile + public distance queries
+Core stage-1 ordered [RoutePoint]
+    → Core-owned contiguous engine sample array (+ optional selection bytes)
+    → one EngineRouteQuality.process call (inputs borrowed as Span)
+    → Core retained points / provenance / diagnostics
+    → Core source-speed validation
+    → one engine sample array
+    → one EngineElevationProfile.build call
+    → Core ElevationProfile + public distance queries
 ```
 
-C++ receives each point's original array offset as `source_index`; the Swift
-`UUID` remains authoritative. Timestamps are copied exactly from
-`Date.timeIntervalSinceReferenceDate` without rounding, optional metrics remain
-`std::optional<double>`, and C++ retains no pointer after the call. Route
-operations must use one bulk engine call rather than per-point calls, and
-Platform/Studio must not traverse C++ containers directly.
+The engine receives each point's original array offset as its source index; the
+Core `UUID` remains authoritative. Timestamps are copied exactly from
+`Date.timeIntervalSinceReferenceDate` without rounding. The engine borrows its
+inputs for one synchronous call, retains nothing, and returns its output by
+value. Route operations must use one engine call rather than per-point calls,
+and only `RunPlayCore` imports the engine: Platform and Studio never see an
+engine type.
 
-Route-metric extraction and distance-domain smoothing remain Swift. Swift sends
-one optional numeric value and interval weight per finalized interval, owns the
-input and output buffers, then materializes localized labels and public
-`RouteMetricProfile` values from the pure-numeric result. C++ retains no pointer;
-Platform map-line coalescing, profile availability/caching, cancellation, UI,
-diagnostics, and persistence remain Swift-owned.
+Route-metric extraction and distance-domain smoothing remain in Core. Core sends
+one optional numeric value and interval weight per finalized interval, then
+materializes localized labels and public `RouteMetricProfile` values from the
+numeric result. Platform map-line coalescing, profile availability/caching,
+cancellation, UI, diagnostics, and persistence are outside the engine.
 
-The engine also provides allocation-free C++23 geodesy primitives —
-`is_valid_coordinate`, `haversine_distance_meters`, and
-`project_lat_lon_to_local_meters` — verified against the Swift implementation
-over deterministic fixtures. They are a literal migration: the 6,371,000 m
-Earth radius, Haversine formula, projection coefficients, operation order, and
-existing limitations are all unchanged.
+The engine's numerical code is a literal translation of the C++23 kernels it
+replaced: the 6,371,000 m Earth radius, the Haversine formula, projection
+coefficients, operation order, and existing limitations are all unchanged. A
+golden digest test per kernel pins the outputs bit for bit on each CI platform.
 
-**Swift performs route-size validation, basic field sanitization, sorting,
+**Core performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation, public elevation
 models and distance queries, diagnostics translation, public models, and
 persistence.**
 
-**C++ performs production outlier evidence, isolated-point rejection, implicit
-gap inference, final segment compaction, supplied-distance policy, and
-normalized cumulative distances through one bulk call.** No scalar per-point
-Swift/C++ production calls are allowed.
+**The engine performs production outlier evidence, isolated-point rejection,
+implicit gap inference, final segment compaction, supplied-distance policy, and
+normalized cumulative distances through one call.** No scalar per-point
+production engine calls are allowed.
 
-**For Route-Aware comparison, C++ performs the bounded band-packed
-constrained-DTW path solve through one bulk call.** Swift continues to build
-the compact alignment samples, detect route direction, construct alignment
-blocks, calculate diagnostics and quality, maintain the in-memory cache and
-task lifecycle, and publish the public alignment models. Alignment is bounded
-in Swift at 2,000 samples per route and in the policy at 4,000,000 band cells.
-One native call occurs per alignment attempt; none occurs per
-dynamic-programming row or cell. Both inputs and the path output are
-Swift-owned buffers that C++ borrows synchronously without retaining a pointer
-or calling back, and on any failure status the output buffer is left completely
-unchanged. Cancellation is checked before and after the native call and during
-conversion and output translation, never inside it.
+**For Route-Aware comparison, the engine performs the bounded band-packed
+constrained-DTW path solve through one call.** Core builds the compact
+alignment samples, detects route direction, constructs alignment blocks,
+calculates diagnostics and quality, maintains the in-memory cache and task
+lifecycle, and publishes the public alignment models. Alignment is bounded
+in Core at 2,000 samples per route and in the policy at 4,000,000 band cells.
+One engine call occurs per alignment attempt; none occurs per
+dynamic-programming row or cell. A failed solve throws a typed error and
+returns no path. Cancellation is checked before and after the engine call and
+during conversion and output translation, never inside it.
 
-Supported workout size is bounded in Swift by `WorkoutImportResourceLimits`
+Supported workout size is bounded in Core by `WorkoutImportResourceLimits`
 (1,000,000 route points per workout, 100 MB source payload). The engine's
-`max_route_input_samples` sits 25% above that as an internal safety ceiling.
-`scripts/run-route-quality-benchmark.sh` compares complete Swift stages 2–4
-against the complete combined bridge in release.
+`EngineRouteLimits.maxRouteInputSamples` sits 25% above that as an internal
+safety ceiling.
 
-`scripts/run-personal-heatmap-benchmark.sh` is the heatmap merge gate: complete
-production builder against complete Swift builder oracle. The extra subtimings
-it prints are independent diagnostics, not additive components of that total.
-The same runner also executes the opt-in same-binary Swift aggregation
-microbenchmark: synthesized two-field hashing with materialized arrays and no
-reservation versus the production hash, bounded reservation policy, and direct
-native-buffer counting.
-`scripts/run-personal-heatmap-profile.sh` is the additive phase profiler: it
-decomposes one production-equivalent heatmap build across every adaptive pass and
-splits the coverage boundary into native execution, caller-owned output
-allocation with capacity retries, and direct native-buffer cell
-consumption/counting. It is a local release tool guarded by
-`RUNPLAY_HEATMAP_PROFILE=1` and never runs in CI.
+The release benchmark and profile runners (`scripts/run-*-benchmark.sh`,
+`scripts/run-*-profile.sh`) are local tools that never run in CI.
+[docs/engine.md](docs/engine.md) lists each runner and what it measures.
 
 The package checks this boundary with:
 
 ```bash
-# Build portable C++ engine foundation
-swift build --target RunPlayEngineCpp \
-  -Xcxx -Wall -Xcxx -Wextra -Xcxx -Wpedantic \
-  -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
+# Engine import boundaries and the SwiftPM target graph
+python3 scripts/validate-swift-engine-boundaries.py
 
-# Run native C++ engine tests through the portable SwiftPM harness
-swift test --filter RunPlayEngineCppTests
+# Build the pure Swift engine and run its tests
+swift build --target RunPlayEngine
+swift test --filter RunPlayEngineTests
 
-# Run the same native C++ executable directly
-./scripts/run-cpp-engine-tests.sh
-
-# ASan + UBSan on the native C++ test binary
-./scripts/run-cpp-engine-tests.sh --sanitize
-
-# Architecture-boundary validation for the C++ engine
-./scripts/validate-cpp-boundaries.sh
+# The engine tests under AddressSanitizer (Linux; LeakSanitizer suppressions
+# cover only corelibs XCTest's own test-discovery and suite setup)
+LSAN_OPTIONS=suppressions=$PWD/scripts/lsan-xctest-discovery.supp \
+  swift test --sanitize=address --filter RunPlayEngineTests
 
 # Verify RunPlayCore can be consumed by an external Swift package
 swift build --package-path Tests/PackageConsumerSmoke
 
-# Build core library (includes Swift/C++ interop adapter)
+# Build core library (includes the engine adapters)
 swift build --target RunPlayCore
 
-# Run core tests only (includes Swift integration tests for the engine adapter)
+# Run core tests only (includes the adapter and golden digest tests)
 swift test --filter RunPlayCoreTests
 ```
 
@@ -366,9 +342,9 @@ Both approaches use the same source code. There is no separate Xcode project fil
 Every pull request runs lint and the lane selector, then only the lanes its
 changed paths can reach (the table is in AGENTS.md under "Lane selection"):
 
-- **macOS** — C++ engine build + `swift test`, narrowed to the Studio or Platform and Studio test targets when only those modules changed
-- **Linux** — C++ boundary validator (whenever a change can reach Linux or macOS) + C++ engine build + native C++ tests + `swift test --filter RunPlayCoreTests` (these when a change can reach Core)
-- **Linux sanitizers** — native C++ tests under AddressSanitizer and UndefinedBehaviorSanitizer
+- **macOS** — engine build + engine target-graph check + `swift test`, narrowed to the Studio or Platform and Studio test targets when only those modules changed
+- **Linux** — engine boundary validator (whenever a change can reach Linux or macOS) + engine build and tests + `swift test --filter RunPlayCoreTests` through the gate script (these when a change can reach Core)
+- **Linux sanitizers** — the engine tests under AddressSanitizer
 
 Test counts are reported in the GitHub Actions step summary.
 

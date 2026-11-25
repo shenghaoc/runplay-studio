@@ -5,7 +5,7 @@ final class RouteMetricScaleBucketParityTests: XCTestCase {
     private let builder = RouteMetricProfileBuilder()
 
     #if DEBUG
-    /// Counts come from `NativeCallObserver.observing`, which scopes a tally to
+    /// Counts come from `EngineCallObserver.observing`, which scopes a tally to
     /// the closure instead of resetting process-wide state, so a concurrently
     /// running test cannot contribute to these numbers.
     func testNativeCallCountsByMode() throws {
@@ -17,7 +17,7 @@ final class RouteMetricScaleBucketParityTests: XCTestCase {
         let context = WorkoutAnalysisContext(workout: workout)
 
         func nativeAssignCount(_ body: () throws -> Void) rethrows -> Int {
-            try NativeCallObserver.observing(body).counts.routeMetricScaleBucket
+            try EngineCallObserver.observing(body).counts.routeMetricScaleBucket
         }
 
         XCTAssertEqual(

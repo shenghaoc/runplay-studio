@@ -91,11 +91,8 @@ package struct DemElevationOutputSample: Sendable {
 }
 
 /// The status failures tile planning can report with a borrowed input span.
-///
-/// `invalid_input_buffer`, `invalid_output_buffer` and `insufficient_output_capacity`
-/// are unrepresentable: a `Span` cannot pair a positive count with null storage,
-/// and the engine returns exactly the tiles it planned. `allocation_failure` is
-/// not a recoverable status in Swift.
+/// The engine returns exactly the tiles it planned, so there is no buffer or
+/// capacity failure.
 package enum DemTilePlanError: Error, Equatable {
     case invalidPolicy
     /// The route needs more than `maximumTileCount` tiles. Core keeps recorded

@@ -2,7 +2,8 @@ import Foundation
 import Testing
 @testable import RunPlayCore
 
-/// Release-mode elevation profile benchmarks.
+/// Release-mode elevation profile benchmarks. Absolute Swift timings only;
+/// there is no reference engine and no ratio gate.
 ///
 /// Skipped unless `RUNPLAY_BENCHMARK=1`. Always intended to run in release.
 @Suite(
@@ -36,40 +37,26 @@ struct ElevationProfileBenchmark {
     ) throws {
         let points = makeClimb(count: count)
         let policy = RouteQualityPolicy.runningDefault
-        func measure(swift: Bool) throws -> Double {
+        func measure() throws -> Double {
             let clock = ContinuousClock()
             let elapsed = try clock.measure {
-                if swift {
-                    _ = try RunPlayElevationProfileBridge.build(
-                        routePoints: points, policy: policy, isCancelled: { false }
-                    )
-                } else {
-                    _ = try ElevationProfileCppBenchmarkOracle.build(
-                        routePoints: points, policy: policy, isCancelled: { false }
-                    )
-                }
+                _ = try RunPlayElevationProfileBridge.build(
+                    routePoints: points, policy: policy, isCancelled: { false }
+                )
             }
             let parts = elapsed.components
             return Double(parts.seconds) * 1_000 + Double(parts.attoseconds) * 1e-15
         }
-        var native: [Double] = []
         var swift: [Double] = []
         for iteration in 0..<(warmups + measurements) {
-            let swiftFirst = iteration.isMultiple(of: 2)
-            let first = try measure(swift: swiftFirst)
-            let second = try measure(swift: !swiftFirst)
+            let elapsed = try measure()
             if iteration >= warmups {
-                swift.append(swiftFirst ? first : second)
-                native.append(swiftFirst ? second : first)
+                swift.append(elapsed)
             }
         }
-        let nativeMedian = native.sorted()[measurements / 2]
         let swiftMedian = swift.sorted()[measurements / 2]
-        let ratio = swiftMedian / nativeMedian
-        print("ElevationProfileBenchmark \(name) count=\(count) cpp_ms=\(nativeMedian) swift_ms=\(swiftMedian) ratio=\(ratio)")
-        #expect(nativeMedian > 0)
+        print("ElevationProfileBenchmark \(name) count=\(count) swift_ms=\(swiftMedian)")
         #expect(swiftMedian > 0)
-        #expect(ratio <= 1.10)
     }
 
     private func makeClimb(count: Int) -> [RoutePoint] {

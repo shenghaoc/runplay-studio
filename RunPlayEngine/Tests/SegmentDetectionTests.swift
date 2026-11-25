@@ -64,21 +64,6 @@ struct SegmentDetectionTests {
         #expect(try Self.solve([Self.point()]).candidateCount == 0)
     }
 
-    @Test func test_null_nonempty_input() throws {
-        // A positive count with a null pointer has no valid Span representation.
-        #expect(try Self.solve([]).candidateCount == 0)
-    }
-
-    @Test func test_null_output() throws {
-        // The Swift kernel owns this non-null result; no output pointer is passed in.
-        #expect(try Self.solve([Self.point()]).candidates.count == 10)
-    }
-
-    @Test func test_insufficient_output_capacity() throws {
-        // Callers cannot supply the native input case's four-element output.
-        #expect(try Self.solve([Self.point()]).candidates.count == 10)
-    }
-
     @Test func test_output_unchanged_on_error() throws {
         let prior = try Self.solve([Self.point(), Self.point(1, 10, 10)])
         var result = prior

@@ -138,7 +138,7 @@ final class RunPlayTrainingLoadBridgeTests: XCTestCase {
     }
 
     #if DEBUG
-    /// Counts come from `NativeCallObserver.observing`, which scopes a tally to
+    /// Counts come from `EngineCallObserver.observing`, which scopes a tally to
     /// the closure instead of resetting process-wide state, so a concurrently
     /// running test cannot contribute to these numbers. The observer exists
     /// only in DEBUG builds, so this one test is gated while the rest of the
@@ -146,7 +146,7 @@ final class RunPlayTrainingLoadBridgeTests: XCTestCase {
     func testOneNativeCallPerPass() throws {
         let rates = (0..<10).map { _ in Double?.some(Double.random(in: 100...160)) }
         let weights = (0..<10).map { _ in Double.random(in: 30...90) }
-        let (result, counts) = try NativeCallObserver.observing {
+        let (result, counts) = try EngineCallObserver.observing {
             try bridge(rates: rates, weights: weights)
         }
         XCTAssertEqual(counts.trainingLoad, 1)

@@ -45,7 +45,7 @@ enum RunPlayRouteQualityBridge {
 
         // Capture a typed result before the after-call cancellation check, so
         // cancellation still takes precedence over translating a kernel error.
-        NativeCallObserver.record(.routeQuality)
+        EngineCallObserver.record(.routeQuality)
         let result: Result<EngineRouteQualityResult, RouteQualityError>
         do throws(RouteQualityError) {
             if let selection {

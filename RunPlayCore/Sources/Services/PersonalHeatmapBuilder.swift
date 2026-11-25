@@ -172,7 +172,7 @@ public struct PersonalHeatmapBuilder: Sendable {
                     includedWorkouts: pass.includedWorkoutCount,
                     totalDistanceMeters: pass.totalDistanceMeters,
                     excludedUndated: dateFiltered.excludedUndated,
-                    // Route-less workouts are held out before the native pass,
+                    // Route-less workouts are held out before the engine pass,
                     // so they no longer appear in `dateFiltered.workouts`. Add
                     // them back here to keep the reported exclusion total equal
                     // to what the pre-`hasRoute` code computed from
@@ -202,12 +202,12 @@ public struct PersonalHeatmapBuilder: Sendable {
     private struct DateFilterResult: Sendable {
         let workouts: [RunWorkout]
         let excludedUndated: Int
-        /// Route-less workouts held out before the native coverage pass.
+        /// Route-less workouts held out before the engine coverage pass.
         ///
         /// A workout with no coordinates cannot contribute a cell, so the
         /// aggregate pass would have skipped it anyway. Filtering here makes
         /// that an explicit `hasRoute` decision instead of a side effect of
-        /// `cellCount == 0`, and avoids handing empty routes to the native
+        /// `cellCount == 0`, and avoids handing empty routes to the engine
         /// batch at all.
         let excludedNoRoute: Int
     }
@@ -249,7 +249,7 @@ public struct PersonalHeatmapBuilder: Sendable {
             // summary and heart rate but no GPX — can never contribute a cell.
             // Holding it out here makes that an explicit `hasRoute` decision
             // rather than a side effect of `cellCount == 0` discovered after
-            // the native coverage pass, and keeps empty routes out of that
+            // the engine coverage pass, and keeps empty routes out of that
             // pass entirely.
             guard workout.hasRoute else {
                 excludedNoRoute += 1

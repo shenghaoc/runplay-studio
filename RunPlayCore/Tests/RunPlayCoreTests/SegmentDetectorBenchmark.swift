@@ -1,7 +1,7 @@
 import XCTest
 @testable import RunPlayCore
 
-/// Reproducible release benchmark for the complete SegmentDetector cutover.
+/// Reproducible release benchmark for the complete SegmentDetector.
 ///
 /// Ordinary CI skips wall-clock work. Run through
 /// `scripts/run-segment-detector-benchmark.sh`; the benchmark reports timings
@@ -44,12 +44,12 @@ final class SegmentDetectorBenchmark: XCTestCase {
             points: workout.routePoints, timeline: context.timeline, elevationProfile: context.elevationProfile,
             policy: .runningDefault
         )
-        var cppBridgeTimes: [Double] = []
         var swiftAdapterTimes: [Double] = []
         var oracleSamples: [Double] = []
         var productionSamples: [Double] = []
         var oracleResult: [SegmentHighlight] = []
         var productionResult: [SegmentHighlight] = []
+        var referenceCandidates: [UInt64]?
 
         for iteration in 0..<(warmups + measurements) {
             let oracleElapsed = time {
@@ -67,15 +67,7 @@ final class SegmentDetectorBenchmark: XCTestCase {
                 )
             }
 
-            var cpp: RunPlaySegmentWindowSearchResult?
             var swift: RunPlaySegmentWindowSearchResult?
-            let cppElapsed = try timeThrowing {
-                cpp = try RunPlaySegmentDetectorCppBridge.search(
-                    routePoints: workout.routePoints, timeline: context.timeline, elevationProfile: context.elevationProfile,
-                    configuration: config, cancellationCheckStride: RouteQualityPolicy.runningDefault.cancellationCheckStride,
-                    isCancelled: { false }
-                )
-            }
             let swiftElapsed = try timeThrowing {
                 swift = try RunPlaySegmentDetectorAdapter.search(
                     routePoints: workout.routePoints, timeline: context.timeline, elevationProfile: context.elevationProfile,
@@ -83,10 +75,13 @@ final class SegmentDetectorBenchmark: XCTestCase {
                     isCancelled: { false }
                 )
             }
-            XCTAssertEqual(candidateDigest(try XCTUnwrap(swift)), candidateDigest(try XCTUnwrap(cpp)))
+            let candidates = candidateDigest(try XCTUnwrap(swift))
+            if let referenceCandidates {
+                XCTAssertEqual(candidates, referenceCandidates)
+            }
+            referenceCandidates = candidates
 
             guard iteration >= warmups else { continue }
-            cppBridgeTimes.append(cppElapsed)
             swiftAdapterTimes.append(swiftElapsed)
             oracleSamples.append(oracleElapsed)
             productionSamples.append(productionElapsed)
@@ -105,9 +100,7 @@ final class SegmentDetectorBenchmark: XCTestCase {
 
         let oracleMedian = median(oracleSamples)
         let productionMedian = median(productionSamples)
-        let cppBridgeMedian = median(cppBridgeTimes)
         let swiftAdapterMedian = median(swiftAdapterTimes)
-        let ratio = swiftAdapterMedian / max(cppBridgeMedian, 1e-12)
         print("""
 
         RunPlay SegmentDetector benchmark
@@ -116,10 +109,8 @@ final class SegmentDetectorBenchmark: XCTestCase {
         pre-migration Swift oracle: \(format(oracleMedian)) ms
         complete production Swift:      \(format(productionMedian)) ms
         production / oracle ratio:  \(String(format: "%.3f", productionMedian / max(oracleMedian, 1e-12)))
-        complete C++ bridge:         \(format(cppBridgeMedian)) ms
         complete Swift adapter:      \(format(swiftAdapterMedian)) ms
-        performance gate: Swift / C++ \(String(format: "%.3f", ratio)) (at most 1.100)
-        semantic merge gate: exact durable highlight and candidate digest parity
+        semantic merge gate: exact durable highlight parity with the Swift oracle
         """)
     }
 

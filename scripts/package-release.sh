@@ -424,7 +424,6 @@ cat >"$MANIFEST_PATH" <<EOF
   "universal_binary": false,
   "xcode_version": "$(release_json_escape "$XCODE_VER")",
   "swift_version": "$(release_json_escape "$SWIFT_VER")",
-  "cpp_standard": "$(release_json_escape "$RUNPLAY_CPP_STANDARD")",
   "artifact_filename": "$(release_json_escape "$ZIP_NAME")",
   "artifact_size_bytes": $ZIP_SIZE,
   "artifact_sha256": "$(release_json_escape "$ZIP_SHA")",

@@ -7,17 +7,8 @@ import Darwin
 import Glibc
 #endif
 
-/// Ports `DemElevationSamplingTests.cpp` case for case, with the same names and
-/// literals.
-///
-/// Unrepresentable by construction (kept in the C++ tests until PR 10): null
-/// samples, tiles, heights or output with a nonzero count or capacity; an output
-/// capacity below the sample count; and the zero- and short-capacity planning
-/// cases. A `Span` cannot pair a positive count with null storage, and the engine
-/// returns exactly what it planned or sampled. The capacity cases keep their
-/// closest Swift form: the planner returns exactly the tiles a corner needs.
-/// "Leaves output untouched" holds by construction, because a throwing call
-/// returns no result.
+/// Ported case for case from the former C++ `DemElevationSamplingTests.cpp`,
+/// with the same names and literals.
 @Suite
 struct DemElevationSamplingTests {
     private typealias Key = DemTileKey
@@ -174,8 +165,7 @@ struct DemElevationSamplingTests {
         #expect(exact.tiles.count == 5, "a budget equal to the need succeeds")
     }
 
-    @Test func test_plan_insufficient_capacity_writes_nothing() throws {
-        // Closest Swift form: the engine owns the result, so the exact need is returned.
+    @Test func test_plan_corner_needs_exactly_four_tiles() throws {
         let corner = try Self.plan([Self.route(0.0, -90.0)])
         #expect(corner.tiles.count == 4, "the corner needs exactly four tiles")
         #expect(corner.projectableSampleCount == 1, "counts stay exact")

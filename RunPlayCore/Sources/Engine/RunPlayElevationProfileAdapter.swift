@@ -4,7 +4,7 @@ internal import RunPlayEngine
 
 // MARK: - Pure-Swift result types
 
-/// One native elevation sample translated into pure Swift values.
+/// One engine elevation sample translated into Core values.
 struct RunPlayElevationProfileSampleResult: Sendable {
     let correctedAltitudeMeters: Double?
     let sourceAltitudeWasRejected: Bool
@@ -111,7 +111,7 @@ enum RunPlayElevationProfileBridge {
         )
 
         try checkCancellation(isCancelled: isCancelled)
-        NativeCallObserver.record(.elevationProfile)
+        EngineCallObserver.record(.elevationProfile)
         let result: Result<EngineElevationProfileResult, ElevationProfileError>
         do throws(ElevationProfileError) {
             result = .success(try EngineElevationProfile.build(samples: samples.span, policy: kernelPolicy))

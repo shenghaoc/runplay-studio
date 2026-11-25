@@ -17,7 +17,7 @@ final class WorkoutImportResourceLimitsTests: XCTestCase {
     }
 
     /// The engine ceiling must stay at least 25% above the product limit so a
-    /// route the app accepts can never be rejected at the C++ boundary.
+    /// route the app accepts can never be rejected at the engine boundary.
     func testEngineCeilingKeepsDocumentedMarginOverProductLimit() {
         let engineCeiling = RunPlayEngineLimits.maxRouteInputSamples
         let productLimit = WorkoutImportResourceLimits.maxRoutePointCount
@@ -25,16 +25,9 @@ final class WorkoutImportResourceLimitsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             Double(engineCeiling),
             Double(productLimit) * 1.25,
-            "max_route_input_samples must stay at least 1.25x maxRoutePointCount"
+            "maxRouteInputSamples must stay at least 1.25x maxRoutePointCount"
         )
         XCTAssertEqual(engineCeiling, 1_250_000)
-        // Swift owns the ceiling, but C++ kernels still enforce their own copy.
-        // The margin above holds for the live C++ boundary only if they match.
-        XCTAssertEqual(
-            RunPlayEngineLimits.cppMaxRouteInputSamples,
-            engineCeiling,
-            "the Swift and C++ engine ceilings must stay equal while C++ kernels remain"
-        )
     }
 
     /// Every format shares one payload ceiling rather than restating it.

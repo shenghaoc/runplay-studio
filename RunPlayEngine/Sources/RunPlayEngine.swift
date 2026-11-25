@@ -1,2 +1,2 @@
-// The Swift package target exists independently of the C++ engine.
+// The portable Swift computational engine.
 // Numerical entry points are introduced by the corresponding kernel ports.

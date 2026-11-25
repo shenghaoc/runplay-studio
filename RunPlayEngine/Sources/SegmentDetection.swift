@@ -9,7 +9,7 @@ package enum SegmentDetectionError: Error, Equatable {
     case internalFailure
 }
 
-/// Native segment-search input, reduced to the timeline and elevation fields read by the kernel.
+/// Segment-search input, reduced to the timeline and elevation fields read by the kernel.
 package struct SegmentDetectionSample: Sendable {
     package var distance: Double = 0
     package var elapsed: Double = 0

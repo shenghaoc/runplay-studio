@@ -1,8 +1,7 @@
 import Testing
 @testable import RunPlayEngine
 
-/// Native ElevationProfileTests.cpp fixtures. The three impossible pointer or
-/// caller-capacity states remain covered by their original tests until PR10.
+/// Fixtures ported from the former C++ `ElevationProfileTests.cpp`.
 struct ElevationProfileTests {
     private func defaultPolicy(
         low: Double = -500, high: Double = 9_000, spike: Double = 35, excursion: Double = 100,
