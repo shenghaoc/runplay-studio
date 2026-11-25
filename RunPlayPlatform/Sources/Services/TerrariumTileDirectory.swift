@@ -146,7 +146,9 @@ public final class TerrariumTileDirectory: DEMTileSource, @unchecked Sendable {
         return decodeTerrarium(data, tileSize: tileSize)
     }
 
-    static func decodeTerrarium(_ data: Data, tileSize: Int) -> [Float]? {
+    /// The single PNG image of a tile of the expected size, 8-bit RGB, and
+    /// its pixel layout.
+    private static func tileImage(_ data: Data, tileSize: Int) -> (image: CGImage, layout: PixelLayout)? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, options),
               (CGImageSourceGetType(source) as String?) == "public.png",
@@ -156,8 +158,18 @@ public final class TerrariumTileDirectory: DEMTileSource, @unchecked Sendable {
               image.height == tileSize,
               image.bitsPerComponent == 8,
               image.colorSpace?.model == .rgb,
-              let layout = PixelLayout(image),
-              let pixels = image.dataProvider?.data,
+              let layout = PixelLayout(image)
+        else {
+            return nil
+        }
+        return (image, layout)
+    }
+
+    static func decodeTerrarium(_ data: Data, tileSize: Int) -> [Float]? {
+        guard let tile = tileImage(data, tileSize: tileSize) else { return nil }
+        let image = tile.image
+        let layout = tile.layout
+        guard let pixels = image.dataProvider?.data,
               image.bytesPerRow >= tileSize * layout.bytesPerPixel,
               CFDataGetLength(pixels) >= image.bytesPerRow * tileSize,
               let base = CFDataGetBytePtr(pixels)

@@ -52,6 +52,25 @@ public enum MapSnapshotOverlayComposer: Sendable {
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         context.draw(basemap, in: bounds)
 
+        let containsNoData = try drawRoutes(
+            routes, in: context, converter: converter, lineWidth: lineWidth, isCancelled: isCancelled
+        )
+        try drawMarkers(
+            markers, in: context, converter: converter, width: width, height: height, isCancelled: isCancelled
+        )
+
+        guard let image = context.makeImage() else {
+            throw WorkoutMapSnapshotError.compositionFailed(platformLocalized("Could not finalize composited image"))
+        }
+        return WorkoutMapSnapshotResult(cgImage: image, containsNoDataLines: containsNoData)
+    }
+
+    /// Strokes every route of at least two coordinates in its style. Returns
+    /// whether a no-data metric line was drawn.
+    private static func drawRoutes(
+        _ routes: [RouteMapLine], in context: CGContext, converter: any MapCoordinateConverting,
+        lineWidth: CGFloat, isCancelled: @Sendable () -> Bool
+    ) throws -> Bool {
         var containsNoData = false
 
         for route in routes {
@@ -81,7 +100,15 @@ public enum MapSnapshotOverlayComposer: Sendable {
             context.strokePath()
             context.restoreGState()
         }
+        return containsNoData
+    }
 
+    /// Draws each start and finish marker that falls at least partly inside
+    /// the image, with its glyph.
+    private static func drawMarkers(
+        _ markers: [RouteMapMarker], in context: CGContext, converter: any MapCoordinateConverting,
+        width: Int, height: Int, isCancelled: @Sendable () -> Bool
+    ) throws {
         for marker in markers {
             if isCancelled() { throw WorkoutMapSnapshotError.cancelled }
             // Export never includes live replay markers.
@@ -129,11 +156,6 @@ public enum MapSnapshotOverlayComposer: Sendable {
             CTLineDraw(line, context)
             context.restoreGState()
         }
-
-        guard let image = context.makeImage() else {
-            throw WorkoutMapSnapshotError.compositionFailed(platformLocalized("Could not finalize composited image"))
-        }
-        return WorkoutMapSnapshotResult(cgImage: image, containsNoDataLines: containsNoData)
     }
 
     // MARK: - Colors

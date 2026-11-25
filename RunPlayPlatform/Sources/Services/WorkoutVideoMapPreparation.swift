@@ -276,6 +276,62 @@ struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
         self.fillColor = fillColor
     }
 
+    /// Valid coordinates spread evenly along the canvas's horizontal
+    /// midline, in route order; nil for a point without a valid coordinate.
+    private static func linearLayout(
+        of routePoints: [RoutePoint], width: Int, height: Int
+    ) throws -> [WorkoutVideoRoutePixel?] {
+        // ⚡ Bolt: Count valids with an inline loop instead of materializing a compactMapped pairs array.
+        var validPointsCount = 0
+        for point in routePoints {
+            if RouteMapCoordinate(point) != nil {
+                validPointsCount += 1
+            }
+        }
+
+        var pixels: [WorkoutVideoRoutePixel?] = Array(repeating: nil, count: routePoints.count)
+        if validPointsCount > 0 {
+            var order = 0
+            for (index, point) in routePoints.enumerated() {
+                if RouteMapCoordinate(point) != nil {
+                    try Task.checkCancellation()
+                    let t = validPointsCount == 1 ? 0.5 : Double(order) / Double(validPointsCount - 1)
+                    let x = 40 + t * Double(width - 80)
+                    let y = Double(height) * 0.5
+                    pixels[index] = WorkoutVideoRoutePixel(
+                        routePointID: point.id,
+                        routePointIndex: index,
+                        routeSegmentIndex: point.routeSegmentIndex,
+                        point: CGPoint(x: x, y: y)
+                    )
+                    order += 1
+                }
+            }
+        }
+        return pixels
+    }
+
+    /// Strokes one polyline through the known pixels in order.
+    private static func strokeRoute(through pixels: [WorkoutVideoRoutePixel?], in context: CGContext, lineWidth: CGFloat) {
+        context.setStrokeColor(NSColor.systemBlue.cgColor)
+        context.setLineWidth(lineWidth)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        var started = false
+        for pixel in pixels {
+            guard let pixel else { continue }
+            if !started {
+                context.move(to: pixel.point)
+                started = true
+            } else {
+                context.addLine(to: pixel.point)
+            }
+        }
+        if started {
+            context.strokePath()
+        }
+    }
+
     func prepare(
         request: WorkoutVideoMapPreparationRequest
     ) async throws -> WorkoutVideoMapPreparation {
@@ -304,52 +360,10 @@ struct SyntheticWorkoutVideoMapPreparer: WorkoutVideoMapPreparing, Sendable {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         // Simple linear layout of valid coordinates across the canvas.
-        // ⚡ Bolt: Count valids with an inline loop instead of materializing a compactMapped pairs array.
-        var validPointsCount = 0
-        for point in request.routePoints {
-            if RouteMapCoordinate(point) != nil {
-                validPointsCount += 1
-            }
-        }
-
-        var pixels: [WorkoutVideoRoutePixel?] = Array(repeating: nil, count: request.routePoints.count)
-        if validPointsCount > 0 {
-            var order = 0
-            for (index, point) in request.routePoints.enumerated() {
-                if RouteMapCoordinate(point) != nil {
-                    try Task.checkCancellation()
-                    let t = validPointsCount == 1 ? 0.5 : Double(order) / Double(validPointsCount - 1)
-                    let x = 40 + t * Double(width - 80)
-                    let y = Double(height) * 0.5
-                    pixels[index] = WorkoutVideoRoutePixel(
-                        routePointID: point.id,
-                        routePointIndex: index,
-                        routeSegmentIndex: point.routeSegmentIndex,
-                        point: CGPoint(x: x, y: y)
-                    )
-                    order += 1
-                }
-            }
-        }
+        let pixels = try Self.linearLayout(of: request.routePoints, width: width, height: height)
 
         // Draw route polyline through known pixels.
-        context.setStrokeColor(NSColor.systemBlue.cgColor)
-        context.setLineWidth(request.lineWidth)
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-        var started = false
-        for pixel in pixels {
-            guard let pixel else { continue }
-            if !started {
-                context.move(to: pixel.point)
-                started = true
-            } else {
-                context.addLine(to: pixel.point)
-            }
-        }
-        if started {
-            context.strokePath()
-        }
+        Self.strokeRoute(through: pixels, in: context, lineWidth: request.lineWidth)
 
         // Start / finish markers.
         // ⚡ Bolt: Scan for first/last non-nil instead of compactMap({ $0 }).first/last (full array).

@@ -217,20 +217,33 @@ public enum RouteMapContent {
             return []
         }
 
-        struct Sample {
-            let coordinate: RouteMapCoordinate
-            let segment: Int
-            let distance: Double
-        }
+        let samples = highlightSamples(
+            points: points, startDistanceMeters: startDistanceMeters, endDistanceMeters: endDistanceMeters
+        )
+        guard samples.count >= 2 else { return [] }
 
-        var samples: [Sample] = []
+        return highlightLines(idPrefix: idPrefix, samples: samples)
+    }
+
+    private struct HighlightSample {
+        let coordinate: RouteMapCoordinate
+        let segment: Int
+        let distance: Double
+    }
+
+    /// The points inside the range plus the interpolated boundaries, by
+    /// distance.
+    private static func highlightSamples(
+        points: [RoutePoint], startDistanceMeters: Double, endDistanceMeters: Double
+    ) -> [HighlightSample] {
+        var samples: [HighlightSample] = []
         for point in points {
             let distance = point.distanceFromStartMeters
             guard distance >= startDistanceMeters, distance <= endDistanceMeters,
                   let coordinate = RouteMapCoordinate(point) else {
                 continue
             }
-            samples.append(Sample(
+            samples.append(HighlightSample(
                 coordinate: coordinate,
                 segment: point.routeSegmentIndex,
                 distance: distance
@@ -241,7 +254,7 @@ public enum RouteMapContent {
         // in one segment (a boundary inside a gap clamps to the gap edge).
         for boundary in [startDistanceMeters, endDistanceMeters] {
             if let interpolated = interpolatedSample(at: boundary, points: points) {
-                samples.append(Sample(
+                samples.append(HighlightSample(
                     coordinate: interpolated.coordinate,
                     segment: interpolated.segment,
                     distance: interpolated.distance
@@ -250,8 +263,11 @@ public enum RouteMapContent {
         }
 
         samples.sort { $0.distance < $1.distance }
-        guard samples.count >= 2 else { return [] }
+        return samples
+    }
 
+    /// One highlight line per segment that has at least two samples.
+    private static func highlightLines(idPrefix: String, samples: [HighlightSample]) -> [RouteMapLine] {
         var lines: [RouteMapLine] = []
         var currentCoords: [RouteMapCoordinate] = []
         var currentSegment = samples[0].segment

@@ -33,21 +33,7 @@ public enum MapSnapshotRegionPlanner: Sendable {
             return nil
         }
 
-        var lines = routes
-        // Include marker coordinates so start/finish are never cropped when
-        // slightly outside polyline bounds (e.g. single-point segments).
-        if !markers.isEmpty {
-            let markerCoords = markers.map(\.coordinate)
-            if !markerCoords.isEmpty {
-                lines.append(
-                    RouteMapLine(
-                        id: "planner-markers",
-                        coordinates: markerCoords,
-                        style: .primary
-                    )
-                )
-            }
-        }
+        let lines = linesIncludingMarkers(routes, markers: markers)
 
         guard var rect = RouteMapContent.mapRect(for: lines), !rect.isNull, rect.size.width > 0 || rect.size.height > 0 else {
             return nil
@@ -69,11 +55,43 @@ public enum MapSnapshotRegionPlanner: Sendable {
 
         // Expand the shorter dimension to match the image aspect ratio.
         let imageAspect = Double(imageSize.width) / Double(imageSize.height)
+        rect = expandedToAspect(rect, imageAspect: imageAspect)
+
+        // Clamp before using center latitude so meter-per-map-point is well-defined.
+        rect = clampToWorld(rect)
+
+        // Ensure minimum span in meters at the center latitude.
+        rect = enforcingMinimumSpan(rect, imageAspect: imageAspect)
+
+        return rect
+    }
+
+    /// Include marker coordinates so start/finish are never cropped when
+    /// slightly outside polyline bounds (e.g. single-point segments).
+    private static func linesIncludingMarkers(_ routes: [RouteMapLine], markers: [RouteMapMarker]) -> [RouteMapLine] {
+        var lines = routes
+        if !markers.isEmpty {
+            let markerCoords = markers.map(\.coordinate)
+            if !markerCoords.isEmpty {
+                lines.append(
+                    RouteMapLine(
+                        id: "planner-markers",
+                        coordinates: markerCoords,
+                        style: .primary
+                    )
+                )
+            }
+        }
+        return lines
+    }
+
+    /// Expand the shorter dimension to match the image aspect ratio.
+    private static func expandedToAspect(_ rect: MKMapRect, imageAspect: Double) -> MKMapRect {
         let mapAspect = rect.size.width / max(rect.size.height, 1)
         if mapAspect < imageAspect {
             // Too tall/narrow — expand width.
             let targetWidth = rect.size.height * imageAspect
-            rect = MKMapRect(
+            return MKMapRect(
                 x: rect.midX - targetWidth / 2,
                 y: rect.origin.y,
                 width: targetWidth,
@@ -82,18 +100,19 @@ public enum MapSnapshotRegionPlanner: Sendable {
         } else if mapAspect > imageAspect {
             // Too wide — expand height.
             let targetHeight = rect.size.width / imageAspect
-            rect = MKMapRect(
+            return MKMapRect(
                 x: rect.origin.x,
                 y: rect.midY - targetHeight / 2,
                 width: rect.size.width,
                 height: targetHeight
             )
         }
+        return rect
+    }
 
-        // Clamp before using center latitude so meter-per-map-point is well-defined.
-        rect = clampToWorld(rect)
-
-        // Ensure minimum span in meters at the center latitude.
+    /// Ensure minimum span in meters at the center latitude, re-applying
+    /// the image aspect and the world clamp when the rect grows.
+    private static func enforcingMinimumSpan(_ rect: MKMapRect, imageAspect: Double) -> MKMapRect {
         let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
         let metersPerMapPoint = max(MKMetersPerMapPointAtLatitude(center.latitude), 0.000_001)
         let minimumSpan = minimumSpanMeters / metersPerMapPoint
@@ -109,15 +128,14 @@ public enum MapSnapshotRegionPlanner: Sendable {
             } else if aspect > imageAspect {
                 h = w / imageAspect
             }
-            rect = MKMapRect(
+            let expanded = MKMapRect(
                 x: rect.midX - w / 2,
                 y: rect.midY - h / 2,
                 width: w,
                 height: h
             )
-            rect = clampToWorld(rect)
+            return clampToWorld(expanded)
         }
-
         return rect
     }
 
