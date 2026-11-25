@@ -89,123 +89,37 @@ public enum WorkoutArchiveCandidateBuilder {
                     break
                 }
 
-                let pathMatch: WorkoutArchivePathValidator.PathMatchResult
-                if let filename = row.filename, !filename.isEmpty {
-                    pathMatch = WorkoutArchivePathValidator.matchPath(filename, index: pathIndex)
-                } else {
-                    pathMatch = .none
-                }
+                var state = pathState(
+                    for: row, pathIndex: pathIndex, entrySizes: entrySizes,
+                    hasFilenameColumn: hasFilenameColumn, usedPaths: &usedPaths
+                )
+                applyFormatCheck(to: &state)
+                applyActivityTypeCheck(row, to: &state)
+                applyDuplicateCheck(
+                    row, seenProviderIDs: &seenProviderIDs, existingByProviderID: existingByProviderID, to: &state
+                )
+                applySizeLimits(policy, to: &state)
 
-                var archivePath = ""
-                var format: WorkoutArchiveActivityFormat = .unsupported
-                var status: WorkoutArchiveCandidateStatus = .ready
-                var detail: String? = nil
-                var compressed: Int64? = nil
-                var uncompressed: Int64? = nil
-
-                switch pathMatch {
-                case .exact(let path), .caseInsensitive(let path):
-                    archivePath = path
-                    format = WorkoutArchiveActivityFormat.detect(fromPath: path)
-                    let sizes = entrySizes[path]
-                    compressed = sizes?.compressed
-                    uncompressed = sizes?.uncompressed
-                    usedPaths.insert(path)
-                case .ambiguous:
-                    archivePath = row.filename ?? ""
-                    status = .unsafeArchiveEntry
-                    detail = coreLocalized("Ambiguous path match for activity file")
-                case .none:
-                    if let filename = row.filename, !filename.isEmpty {
-                        archivePath = filename
-                        format = WorkoutArchiveActivityFormat.detect(fromPath: filename)
-                        status = .missingActivityFile
-                        detail = coreLocalized("Activity file not found in archive")
-                    } else {
-                        archivePath = ""
-                        status = .missingActivityFile
-                        detail = hasFilenameColumn
-                            ? coreLocalized("No filename for activity")
-                            : coreLocalized("No filename column; activity file not mapped")
-                    }
-                }
-
-                if status == .ready {
-                    if format == .unsupported {
-                        status = .unsupportedFormat
-                        detail = coreLocalized("Unsupported activity file format")
-                    }
-                }
-
-                let typeClass = StravaActivityTypePolicy.classify(row.activityType)
-                if status == .ready {
-                    switch typeClass {
-                    case .running, .walkOrHike:
-                        break
-                    case .unsupported:
-                        status = .unsupportedActivityType
-                        if let activityType = row.activityType {
-                            detail = coreLocalized("Activity type “\(activityType)” is not a running activity")
-                        } else {
-                            detail = coreLocalized("Activity type “unknown” is not a running activity")
-                        }
-                    case .unknown:
-                        status = .unsupportedActivityType
-                        detail = coreLocalized("Unknown activity type “\(row.activityType ?? "")”")
-                    }
-                }
-
-                if let pid = row.activityID, !pid.isEmpty {
-                    if !seenProviderIDs.insert(pid).inserted {
-                        status = .duplicate
-                        detail = duplicateProviderActivityIDWithinArchiveDetail
-                    } else if existingByProviderID[pid] != nil {
-                        // Scan-time: treat matching provider IDs as duplicates.
-                        // Import-time refineStatus distinguishes providerConflict via content hash.
-                        status = .duplicate
-                        detail = coreLocalized("Already imported (provider activity ID)")
-                    }
-                }
-
-                // Size limits
-                if status == .ready || status == .possibleDuplicate {
-                    if let c = compressed, c > policy.maxCompressedEntryBytes {
-                        status = .exceedsResourceLimit
-                        detail = coreLocalized("Compressed entry exceeds size limit")
-                    }
-                    if let u = uncompressed, u > policy.maxUncompressedEntryBytes {
-                        status = .exceedsResourceLimit
-                        detail = coreLocalized("Declared uncompressed size exceeds limit")
-                    }
-                    if let c = compressed, c > 0, let u = uncompressed, u > 0 {
-                        let ratio = Double(u) / Double(c)
-                        if ratio > policy.maxCompressionRatio {
-                            status = .exceedsResourceLimit
-                            detail = coreLocalized("Implausible compression ratio")
-                        }
-                    }
-                }
-
-                let selected = status.isImportableByDefault
+                let selected = state.status.isImportableByDefault
                     && StravaActivityTypePolicy.isSelectedByDefault(row.activityType)
 
                 // A provider ID is metadata, not a row identity: exports can
                 // contain duplicate provider IDs and SwiftUI still needs stable,
                 // distinct rows for each candidate.
-                let id = "row:\(row.rowIndex):\(archivePath)"
+                let id = "row:\(row.rowIndex):\(state.archivePath)"
 
                 candidates.append(WorkoutArchiveCandidate(
                     id: id,
-                    archiveRelativePath: archivePath,
+                    archiveRelativePath: state.archivePath,
                     providerActivityID: row.activityID,
                     activityName: row.activityName,
                     activityType: row.activityType,
                     activityDate: row.activityDate,
-                    format: format,
-                    compressedBytes: compressed,
-                    declaredUncompressedBytes: uncompressed,
-                    status: status,
-                    statusDetail: detail,
+                    format: state.format,
+                    compressedBytes: state.compressed,
+                    declaredUncompressedBytes: state.uncompressed,
+                    status: state.status,
+                    statusDetail: state.detail,
                     isSelectedByDefault: selected,
                     archiveOrder: order
                 ))
@@ -213,27 +127,176 @@ public enum WorkoutArchiveCandidateBuilder {
             }
         } else {
             // No metadata CSV: fall back to activity files only (weaker recognition).
-            for path in entryPaths.sorted() {
-                let format = WorkoutArchiveActivityFormat.detect(fromPath: path)
-                guard format != .unsupported else { continue }
-                if candidates.count >= policy.maxCandidateActivityCount { break }
-                let sizes = entrySizes[path]
-                candidates.append(WorkoutArchiveCandidate(
-                    id: "path:\(path)",
-                    archiveRelativePath: path,
-                    format: format,
-                    compressedBytes: sizes?.compressed,
-                    declaredUncompressedBytes: sizes?.uncompressed,
-                    status: .ready,
-                    isSelectedByDefault: true,
-                    archiveOrder: order
-                ))
-                order += 1
-                usedPaths.insert(path)
-            }
+            candidates = fileOnlyCandidates(
+                entryPaths: entryPaths, entrySizes: entrySizes, policy: policy, usedPaths: &usedPaths
+            )
         }
 
         return (candidates, warnings)
+    }
+
+    /// One metadata row's candidate as its checks resolve it.
+    private struct RowState {
+        var archivePath = ""
+        var format: WorkoutArchiveActivityFormat = .unsupported
+        var status: WorkoutArchiveCandidateStatus = .ready
+        var detail: String?
+        var compressed: Int64?
+        var uncompressed: Int64?
+    }
+
+    /// The row's archive path, format and sizes from its filename match. An
+    /// ambiguous match is unsafe; a filename not in the archive, or no
+    /// filename, is a missing activity file.
+    private static func pathState(
+        for row: StravaActivityMetadataRow,
+        pathIndex: WorkoutArchivePathValidator.PathIndex,
+        entrySizes: [String: (compressed: Int64?, uncompressed: Int64?)],
+        hasFilenameColumn: Bool,
+        usedPaths: inout Set<String>
+    ) -> RowState {
+        let pathMatch: WorkoutArchivePathValidator.PathMatchResult
+        if let filename = row.filename, !filename.isEmpty {
+            pathMatch = WorkoutArchivePathValidator.matchPath(filename, index: pathIndex)
+        } else {
+            pathMatch = .none
+        }
+
+        var state = RowState()
+        switch pathMatch {
+        case .exact(let path), .caseInsensitive(let path):
+            state.archivePath = path
+            state.format = WorkoutArchiveActivityFormat.detect(fromPath: path)
+            let sizes = entrySizes[path]
+            state.compressed = sizes?.compressed
+            state.uncompressed = sizes?.uncompressed
+            usedPaths.insert(path)
+        case .ambiguous:
+            state.archivePath = row.filename ?? ""
+            state.status = .unsafeArchiveEntry
+            state.detail = coreLocalized("Ambiguous path match for activity file")
+        case .none:
+            if let filename = row.filename, !filename.isEmpty {
+                state.archivePath = filename
+                state.format = WorkoutArchiveActivityFormat.detect(fromPath: filename)
+                state.status = .missingActivityFile
+                state.detail = coreLocalized("Activity file not found in archive")
+            } else {
+                state.archivePath = ""
+                state.status = .missingActivityFile
+                state.detail = hasFilenameColumn
+                    ? coreLocalized("No filename for activity")
+                    : coreLocalized("No filename column; activity file not mapped")
+            }
+        }
+        return state
+    }
+
+    /// A ready row with an unsupported file format becomes unsupported.
+    private static func applyFormatCheck(to state: inout RowState) {
+        if state.status == .ready {
+            if state.format == .unsupported {
+                state.status = .unsupportedFormat
+                state.detail = coreLocalized("Unsupported activity file format")
+            }
+        }
+    }
+
+    /// A ready row whose activity type is not running, walking or hiking
+    /// becomes an unsupported activity type.
+    private static func applyActivityTypeCheck(_ row: StravaActivityMetadataRow, to state: inout RowState) {
+        let typeClass = StravaActivityTypePolicy.classify(row.activityType)
+        if state.status == .ready {
+            switch typeClass {
+            case .running, .walkOrHike:
+                break
+            case .unsupported:
+                state.status = .unsupportedActivityType
+                if let activityType = row.activityType {
+                    state.detail = coreLocalized("Activity type “\(activityType)” is not a running activity")
+                } else {
+                    state.detail = coreLocalized("Activity type “unknown” is not a running activity")
+                }
+            case .unknown:
+                state.status = .unsupportedActivityType
+                state.detail = coreLocalized("Unknown activity type “\(row.activityType ?? "")”")
+            }
+        }
+    }
+
+    /// A provider activity ID seen earlier in this archive, or already
+    /// imported, makes the row a duplicate.
+    private static func applyDuplicateCheck(
+        _ row: StravaActivityMetadataRow,
+        seenProviderIDs: inout Set<String>,
+        existingByProviderID: [String: RunWorkout],
+        to state: inout RowState
+    ) {
+        if let pid = row.activityID, !pid.isEmpty {
+            if !seenProviderIDs.insert(pid).inserted {
+                state.status = .duplicate
+                state.detail = duplicateProviderActivityIDWithinArchiveDetail
+            } else if existingByProviderID[pid] != nil {
+                // Scan-time: treat matching provider IDs as duplicates.
+                // Import-time refineStatus distinguishes providerConflict via content hash.
+                state.status = .duplicate
+                state.detail = coreLocalized("Already imported (provider activity ID)")
+            }
+        }
+    }
+
+    /// Size limits: a ready or possibly duplicate row whose compressed size,
+    /// declared uncompressed size, or compression ratio exceeds the policy
+    /// exceeds the resource limit.
+    private static func applySizeLimits(_ policy: WorkoutArchiveSecurityPolicy, to state: inout RowState) {
+        if state.status == .ready || state.status == .possibleDuplicate {
+            if let c = state.compressed, c > policy.maxCompressedEntryBytes {
+                state.status = .exceedsResourceLimit
+                state.detail = coreLocalized("Compressed entry exceeds size limit")
+            }
+            if let u = state.uncompressed, u > policy.maxUncompressedEntryBytes {
+                state.status = .exceedsResourceLimit
+                state.detail = coreLocalized("Declared uncompressed size exceeds limit")
+            }
+            if let c = state.compressed, c > 0, let u = state.uncompressed, u > 0 {
+                let ratio = Double(u) / Double(c)
+                if ratio > policy.maxCompressionRatio {
+                    state.status = .exceedsResourceLimit
+                    state.detail = coreLocalized("Implausible compression ratio")
+                }
+            }
+        }
+    }
+
+    /// Without a metadata CSV, every supported activity file is a ready
+    /// candidate, in path order, up to the candidate limit.
+    private static func fileOnlyCandidates(
+        entryPaths: [String],
+        entrySizes: [String: (compressed: Int64?, uncompressed: Int64?)],
+        policy: WorkoutArchiveSecurityPolicy,
+        usedPaths: inout Set<String>
+    ) -> [WorkoutArchiveCandidate] {
+        var candidates: [WorkoutArchiveCandidate] = []
+        var order = 0
+        for path in entryPaths.sorted() {
+            let format = WorkoutArchiveActivityFormat.detect(fromPath: path)
+            guard format != .unsupported else { continue }
+            if candidates.count >= policy.maxCandidateActivityCount { break }
+            let sizes = entrySizes[path]
+            candidates.append(WorkoutArchiveCandidate(
+                id: "path:\(path)",
+                archiveRelativePath: path,
+                format: format,
+                compressedBytes: sizes?.compressed,
+                declaredUncompressedBytes: sizes?.uncompressed,
+                status: .ready,
+                isSelectedByDefault: true,
+                archiveOrder: order
+            ))
+            order += 1
+            usedPaths.insert(path)
+        }
+        return candidates
     }
 
     private static func indexProviderIDs(_ workouts: [RunWorkout]) -> [String: RunWorkout] {

@@ -228,6 +228,42 @@ public struct WorkoutTimeline: Sendable {
             elapsedTotal = 0
         }
 
+        let elapsedValues = Self.elapsedSeries(
+            routePoints, useTimestampElapsed: useTimestampElapsed, elapsedTotal: elapsedTotal
+        )
+
+        let activeValues = Self.activeSeries(
+            routePoints, elapsedValues: elapsedValues, useTimestampElapsed: useTimestampElapsed,
+            elapsedTotal: elapsedTotal
+        )
+
+        var distanceValues: [Double] = []
+        distanceValues.reserveCapacity(routePoints.count)
+        var previousDistance = Self.nonNegativeFinite(first.distanceFromStartMeters)
+        distanceValues.append(previousDistance)
+        for point in routePoints.dropFirst() {
+            let supplied = Self.nonNegativeFinite(point.distanceFromStartMeters)
+            previousDistance = max(previousDistance, supplied)
+            distanceValues.append(previousDistance)
+        }
+
+        elapsedSecondsByPoint = elapsedValues
+        activeSecondsByPoint = activeValues
+        distanceMetersByPoint = distanceValues
+        totalElapsedSeconds = elapsedTotal
+        totalActiveSeconds = min(activeValues.last ?? 0, totalElapsedSeconds)
+        totalPausedSeconds = Self.safeDifference(totalElapsedSeconds, totalActiveSeconds)
+        startDistanceMeters = distanceValues.first ?? 0
+        totalDistanceMeters = distanceValues.last ?? 0
+    }
+
+    /// Elapsed time at each point from the timestamps, or from the supplied
+    /// elapsed series, clamped to the total. An invalid or regressing value
+    /// holds the previous position.
+    private static func elapsedSeries(
+        _ routePoints: [RoutePoint], useTimestampElapsed: Bool, elapsedTotal: Double
+    ) -> [Double] {
+        guard let first = routePoints.first else { return [] }
         var elapsedValues: [Double] = []
         elapsedValues.reserveCapacity(routePoints.count)
         var previousElapsed: Double = 0
@@ -258,7 +294,14 @@ public struct WorkoutTimeline: Sendable {
             previousElapsed = max(previousElapsed, candidate)
             elapsedValues.append(previousElapsed)
         }
+        return elapsedValues
+    }
 
+    /// Active time at each point. With timestamps, only positive same-segment
+    /// intervals count; without them, all elapsed time is active.
+    private static func activeSeries(
+        _ routePoints: [RoutePoint], elapsedValues: [Double], useTimestampElapsed: Bool, elapsedTotal: Double
+    ) -> [Double] {
         var activeValues = Array(repeating: 0.0, count: routePoints.count)
         var activeTotal: Double = 0
         if routePoints.count >= 2 {
@@ -290,25 +333,7 @@ public struct WorkoutTimeline: Sendable {
                 activeTotal = elapsedTotal
             }
         }
-
-        var distanceValues: [Double] = []
-        distanceValues.reserveCapacity(routePoints.count)
-        var previousDistance = Self.nonNegativeFinite(first.distanceFromStartMeters)
-        distanceValues.append(previousDistance)
-        for point in routePoints.dropFirst() {
-            let supplied = Self.nonNegativeFinite(point.distanceFromStartMeters)
-            previousDistance = max(previousDistance, supplied)
-            distanceValues.append(previousDistance)
-        }
-
-        elapsedSecondsByPoint = elapsedValues
-        activeSecondsByPoint = activeValues
-        distanceMetersByPoint = distanceValues
-        totalElapsedSeconds = elapsedTotal
-        totalActiveSeconds = min(activeValues.last ?? 0, totalElapsedSeconds)
-        totalPausedSeconds = Self.safeDifference(totalElapsedSeconds, totalActiveSeconds)
-        startDistanceMeters = distanceValues.first ?? 0
-        totalDistanceMeters = distanceValues.last ?? 0
+        return activeValues
     }
 
     /// Canonical elapsed duration without constructing route-sized derived

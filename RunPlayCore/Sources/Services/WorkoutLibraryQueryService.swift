@@ -160,6 +160,26 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
         calendar: Calendar
     ) -> Bool {
         _ = calendar
+        guard matchesFavoriteSourceAndData(entry: entry, filter: filter) else {
+            return false
+        }
+
+        guard matchesTagFilter(entry: entry, filter: filter.tags) else {
+            return false
+        }
+
+        guard matchesRouteFilter(entry: entry, filter: filter.route) else {
+            return false
+        }
+
+        // Date filter
+        return matchesDateBounds(entry.startDate, dateBounds: dateBounds)
+    }
+
+    /// The favorite, source and required-data parts of the filter.
+    private static func matchesFavoriteSourceAndData(
+        entry: WorkoutLibraryEntry, filter: WorkoutLibraryFilter
+    ) -> Bool {
         if filter.favorite == .favoritesOnly, !entry.isFavorite {
             return false
         }
@@ -177,20 +197,16 @@ public struct WorkoutLibraryQueryService: WorkoutLibraryQuerying, Sendable {
         if filter.data.requiresRecordedLaps, !entry.hasRecordedLaps {
             return false
         }
+        return true
+    }
 
-        guard matchesTagFilter(entry: entry, filter: filter.tags) else {
-            return false
-        }
-
-        guard matchesRouteFilter(entry: entry, filter: filter.route) else {
-            return false
-        }
-
-        // Date filter
+    /// Whether a start date lies within the bounds; an entry without a date
+    /// matches only when the bounds include missing dates.
+    private static func matchesDateBounds(_ startDate: Date?, dateBounds: DateBounds) -> Bool {
         if dateBounds.start == nil, dateBounds.end == nil, dateBounds.includeMissingDates {
             return true
         }
-        guard let date = entry.startDate else {
+        guard let date = startDate else {
             return dateBounds.includeMissingDates
         }
         if let start = dateBounds.start, date < start {

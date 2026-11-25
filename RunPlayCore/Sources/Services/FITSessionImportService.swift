@@ -220,57 +220,143 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
             ))
         }
 
+        /// The live descriptor of a selected candidate when it is still in the
+        /// container, ready, and not a second session with an identity already
+        /// staged in this batch; otherwise records why it is not imported.
+        func admittedDescriptor(for candidate: FITSessionDescriptor) -> FITSessionDescriptor? {
+            // The live descriptor is authoritative. A missing entry means
+            // this session no longer exists in the container.
+            guard let live = liveByID[candidate.providerActivityID] else {
+                failed += 1
+                record(
+                    candidateID: candidate.providerActivityID,
+                    sourceIndex: candidate.sourceIndex,
+                    sessionName: candidate.displayName,
+                    status: .parseFailed,
+                    detail: coreLocalized("This session is no longer present in the file.")
+                )
+                return nil
+            }
+
+            guard live.status == .ready else {
+                // Force-selected or newly-invalid candidates are reported,
+                // never imported.
+                if live.status == .parseFailed {
+                    failed += 1
+                } else {
+                    skipped += 1
+                }
+                record(
+                    candidateID: live.providerActivityID,
+                    sourceIndex: live.sourceIndex,
+                    sessionName: live.displayName,
+                    status: live.status,
+                    detail: live.statusDetail
+                )
+                return nil
+            }
+
+            // Within-batch identity guard: never stage two workouts that
+            // would claim the same provider identity.
+            guard stagedIDsInBatch.insert(live.providerActivityID).inserted else {
+                skipped += 1
+                record(
+                    candidateID: live.providerActivityID,
+                    sourceIndex: live.sourceIndex,
+                    sessionName: live.displayName,
+                    status: .duplicate,
+                    detail: coreLocalized("Duplicate session identity within this file.")
+                )
+                return nil
+            }
+            return live
+        }
+
+        /// The session's workout, or nil after recording why it failed to
+        /// build. Cancellation propagates.
+        func buildWorkout(
+            for live: FITSessionDescriptor, provenance: WorkoutImportProvenance
+        ) throws -> RunWorkout? {
+            do {
+                return try importer.buildSession(
+                    index: index,
+                    sessionIndex: live.sourceIndex,
+                    suggestedName: live.displayName,
+                    provenance: provenance
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as WorkoutImportError {
+                failed += 1
+                let status: FITSessionCandidateStatus =
+                    if case .missingData = error { .noGPSRoute } else { .parseFailed }
+                record(
+                    candidateID: live.providerActivityID,
+                    sourceIndex: live.sourceIndex,
+                    sessionName: live.displayName,
+                    status: status,
+                    detail: error.localizedDescription
+                )
+                return nil
+            } catch {
+                failed += 1
+                record(
+                    candidateID: live.providerActivityID,
+                    sourceIndex: live.sourceIndex,
+                    sessionName: live.displayName,
+                    status: .parseFailed,
+                    detail: error.localizedDescription
+                )
+                return nil
+            }
+        }
+
+        /// Stages the workout and records it, or records a staging failure and
+        /// releases its identity. Cancellation propagates.
+        func stage(
+            _ workout: RunWorkout, for live: FITSessionDescriptor, elevationRecord: DEMElevationCorrection?
+        ) async throws {
+            do {
+                let workoutID = workout.id
+                let startDate = workout.metadata.startDate
+                let displayName = workout.displayName
+                try await storeActor.stageWorkout(workout, in: batch)
+                // Release the full workout; retain only report metadata.
+                stagedSummaries.append((
+                    id: workoutID,
+                    startDate: startDate,
+                    sourceIndex: live.sourceIndex
+                ))
+                record(
+                    candidateID: live.providerActivityID,
+                    sourceIndex: live.sourceIndex,
+                    sessionName: displayName,
+                    status: .ready,
+                    workoutID: workoutID,
+                    elevationCorrection: elevationRecord
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                failed += 1
+                stagedIDsInBatch.remove(live.providerActivityID)
+                record(
+                    candidateID: live.providerActivityID,
+                    sourceIndex: live.sourceIndex,
+                    sessionName: live.displayName,
+                    status: .parseFailed,
+                    detail: error.localizedDescription
+                )
+            }
+        }
+
         do {
             for candidate in selected {
                 try Task.checkCancellation()
                 completed += 1
                 await progress(makeProgress(.importing, name: candidate.displayName))
 
-                // The live descriptor is authoritative. A missing entry means
-                // this session no longer exists in the container.
-                guard let live = liveByID[candidate.providerActivityID] else {
-                    failed += 1
-                    record(
-                        candidateID: candidate.providerActivityID,
-                        sourceIndex: candidate.sourceIndex,
-                        sessionName: candidate.displayName,
-                        status: .parseFailed,
-                        detail: coreLocalized("This session is no longer present in the file.")
-                    )
-                    continue
-                }
-
-                guard live.status == .ready else {
-                    // Force-selected or newly-invalid candidates are reported,
-                    // never imported.
-                    if live.status == .parseFailed {
-                        failed += 1
-                    } else {
-                        skipped += 1
-                    }
-                    record(
-                        candidateID: live.providerActivityID,
-                        sourceIndex: live.sourceIndex,
-                        sessionName: live.displayName,
-                        status: live.status,
-                        detail: live.statusDetail
-                    )
-                    continue
-                }
-
-                // Within-batch identity guard: never stage two workouts that
-                // would claim the same provider identity.
-                guard stagedIDsInBatch.insert(live.providerActivityID).inserted else {
-                    skipped += 1
-                    record(
-                        candidateID: live.providerActivityID,
-                        sourceIndex: live.sourceIndex,
-                        sessionName: live.displayName,
-                        status: .duplicate,
-                        detail: coreLocalized("Duplicate session identity within this file.")
-                    )
-                    continue
-                }
+                guard let live = admittedDescriptor(for: candidate) else { continue }
 
                 let provenance = WorkoutImportProvenance(
                     provider: .fitMultiSessionFile,
@@ -282,39 +368,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                     sourceContainerSHA256: containerSHA256
                 )
 
-                var workout: RunWorkout
-                do {
-                    workout = try importer.buildSession(
-                        index: index,
-                        sessionIndex: live.sourceIndex,
-                        suggestedName: live.displayName,
-                        provenance: provenance
-                    )
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch let error as WorkoutImportError {
-                    failed += 1
-                    let status: FITSessionCandidateStatus =
-                        if case .missingData = error { .noGPSRoute } else { .parseFailed }
-                    record(
-                        candidateID: live.providerActivityID,
-                        sourceIndex: live.sourceIndex,
-                        sessionName: live.displayName,
-                        status: status,
-                        detail: error.localizedDescription
-                    )
-                    continue
-                } catch {
-                    failed += 1
-                    record(
-                        candidateID: live.providerActivityID,
-                        sourceIndex: live.sourceIndex,
-                        sessionName: live.displayName,
-                        status: .parseFailed,
-                        detail: error.localizedDescription
-                    )
-                    continue
-                }
+                guard var workout = try buildWorkout(for: live, provenance: provenance) else { continue }
 
                 let elevationRecord = try elevationCorrection?.apply(
                     to: &workout,
@@ -324,38 +378,7 @@ public actor FITSessionImportService: FITFileScanning, FITSessionBatchImporting 
                 await progress(makeProgress(.staging, name: live.displayName))
                 try Task.checkCancellation()
 
-                do {
-                    let workoutID = workout.id
-                    let startDate = workout.metadata.startDate
-                    let displayName = workout.displayName
-                    try await storeActor.stageWorkout(workout, in: batch)
-                    // Release the full workout; retain only report metadata.
-                    stagedSummaries.append((
-                        id: workoutID,
-                        startDate: startDate,
-                        sourceIndex: live.sourceIndex
-                    ))
-                    record(
-                        candidateID: live.providerActivityID,
-                        sourceIndex: live.sourceIndex,
-                        sessionName: displayName,
-                        status: .ready,
-                        workoutID: workoutID,
-                        elevationCorrection: elevationRecord
-                    )
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    failed += 1
-                    stagedIDsInBatch.remove(live.providerActivityID)
-                    record(
-                        candidateID: live.providerActivityID,
-                        sourceIndex: live.sourceIndex,
-                        sessionName: live.displayName,
-                        status: .parseFailed,
-                        detail: error.localizedDescription
-                    )
-                }
+                try await stage(workout, for: live, elevationRecord: elevationRecord)
             }
 
             try Task.checkCancellation()

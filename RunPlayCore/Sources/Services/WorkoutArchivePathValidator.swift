@@ -22,27 +22,8 @@ public enum WorkoutArchivePathValidator {
         _ path: String,
         maxLength: Int = WorkoutArchiveSecurityPolicy.default.maxPathLength
     ) -> WorkoutArchivePathValidation {
-        if path.isEmpty {
-            return .rejected(reason: "Empty path")
-        }
-        if path.count > maxLength {
-            return .rejected(reason: "Path exceeds maximum length")
-        }
-        if path.contains("\0") {
-            return .rejected(reason: "Path contains NUL character")
-        }
-        // Reject absolute POSIX and Windows paths.
-        if path.hasPrefix("/") || path.hasPrefix("\\") {
-            return .rejected(reason: "Absolute path")
-        }
-        if path.contains(":") {
-            // Windows drive (`C:`) or alternate data stream style paths.
-            let beforeColon = path.prefix(while: { $0 != ":" })
-            if beforeColon.count == 1, beforeColon.first?.isLetter == true {
-                return .rejected(reason: "Windows drive path")
-            }
-            // Also reject other colon forms for safety.
-            return .rejected(reason: "Path contains colon")
+        if let reason = rawPathRejection(path, maxLength: maxLength) {
+            return .rejected(reason: reason)
         }
 
         let unified = path
@@ -79,6 +60,35 @@ public enum WorkoutArchivePathValidator {
         return .valid(normalized: normalized)
     }
 
+    /// The rejection reason for a raw path that is empty, too long, holds a
+    /// NUL, is absolute, or holds a colon (a Windows drive or another colon
+    /// form); nil otherwise.
+    private static func rawPathRejection(_ path: String, maxLength: Int) -> String? {
+        if path.isEmpty {
+            return "Empty path"
+        }
+        if path.count > maxLength {
+            return "Path exceeds maximum length"
+        }
+        if path.contains("\0") {
+            return "Path contains NUL character"
+        }
+        // Reject absolute POSIX and Windows paths.
+        if path.hasPrefix("/") || path.hasPrefix("\\") {
+            return "Absolute path"
+        }
+        if path.contains(":") {
+            // Windows drive (`C:`) or alternate data stream style paths.
+            let beforeColon = path.prefix(while: { $0 != ":" })
+            if beforeColon.count == 1, beforeColon.first?.isLetter == true {
+                return "Windows drive path"
+            }
+            // Also reject other colon forms for safety.
+            return "Path contains colon"
+        }
+        return nil
+    }
+
     /// Whether an entry should be ignored (macOS junk, photos, etc.).
     public static func shouldIgnore(_ normalizedPath: String) -> Bool {
         let lower = normalizedPath.lowercased()
@@ -86,17 +96,29 @@ public enum WorkoutArchivePathValidator {
 
         if filename == ".ds_store" { return true }
         if filename.hasPrefix("._") { return true }
+        if isInIgnoredFolder(lower) { return true }
+        if hasMediaExtension(lower) {
+            return true
+        }
+        return false
+    }
+
+    /// Whether a lowercased path is in a macOS resource-fork, photos, media
+    /// or profile folder, at the top level or nested.
+    private static func isInIgnoredFolder(_ lower: String) -> Bool {
         if lower.hasPrefix("__macosx/") || lower.contains("/__macosx/") { return true }
         if lower.hasPrefix("photos/") || lower.contains("/photos/") { return true }
         if lower.hasPrefix("media/") || lower.contains("/media/") { return true }
         if lower.hasPrefix("profile/") || lower.contains("/profile/") { return true }
-        if lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg")
+        return false
+    }
+
+    /// Whether a lowercased path names an image or a video.
+    private static func hasMediaExtension(_ lower: String) -> Bool {
+        lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg")
             || lower.hasSuffix(".png") || lower.hasSuffix(".gif")
             || lower.hasSuffix(".heic") || lower.hasSuffix(".mp4")
-            || lower.hasSuffix(".mov") {
-            return true
-        }
-        return false
+            || lower.hasSuffix(".mov")
     }
 
     /// Match a metadata filename to an archive entry path.
@@ -138,17 +160,22 @@ public enum WorkoutArchivePathValidator {
         // Ambiguous exact basenames fall through to case-insensitive resolution.
 
         let lowerTarget = normalizedTarget.lowercased()
-        if let paths = index.byLowercased[lowerTarget] {
-            if paths.count == 1, let only = paths.first {
-                return .caseInsensitive(only)
-            }
-            if paths.count > 1 {
-                return .ambiguous
-            }
+        if let result = caseInsensitiveMatch(index.byLowercased[lowerTarget]) {
+            return result
         }
 
         let lowerLast = targetLast.lowercased()
-        if let paths = index.byLowercasedLastComponent[lowerLast] {
+        if let result = caseInsensitiveMatch(index.byLowercasedLastComponent[lowerLast]) {
+            return result
+        }
+
+        return .none
+    }
+
+    /// A case-insensitive match when exactly one path shares the lowercased
+    /// key, ambiguous when several do, and nil when none does.
+    private static func caseInsensitiveMatch(_ paths: [String]?) -> PathMatchResult? {
+        if let paths {
             if paths.count == 1, let only = paths.first {
                 return .caseInsensitive(only)
             }
@@ -156,8 +183,7 @@ public enum WorkoutArchivePathValidator {
                 return .ambiguous
             }
         }
-
-        return .none
+        return nil
     }
 
     public enum PathMatchResult: Equatable, Sendable {

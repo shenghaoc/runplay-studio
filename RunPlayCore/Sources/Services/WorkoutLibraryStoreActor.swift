@@ -109,159 +109,20 @@ public actor WorkoutLibraryStoreActor {
         do {
             let manifest = try store.loadManifest()
             guard !manifest.workoutIDs.isEmpty else {
-                // Empty library still shows demos, but keep user-defined tags and
-                // smart collections. Only drop assignments (no workouts) plus
-                // selection/favourites that cannot apply without library rows.
-                var repaired = manifest
-                let hadAssignments = !repaired.tagAssignments.isEmpty
-                let hadSelectionOrFavorites = repaired.selectedWorkoutID != nil
-                    || !repaired.favoriteWorkoutIDs.isEmpty
-                repaired.selectedWorkoutID = nil
-                repaired.favoriteWorkoutIDs = []
-                repaired.tagAssignments = []
-                repaired.routeGroups = []
-                repaired.routeGroupAssignments = []
-                let organizationReport = repaired.repairOrganization()
-                repaired.upgradeSchemaVersionIfNeeded()
-                let needsPersist = hadAssignments
-                    || hadSelectionOrFavorites
-                    || !organizationReport.isEmpty
-                    || repaired.version != manifest.version
-                    || repaired.tags != manifest.tags
-                    || repaired.smartCollections != manifest.smartCollections
-                if needsPersist {
-                    do {
-                        try store.saveManifest(repaired)
-                    } catch {
-                        return .demos(
-                            errorMessage: coreLocalized("Could not repair the empty library manifest: \(error.localizedDescription)"),
-                            organization: WorkoutLibraryOrganizationSnapshot(
-                                tags: repaired.tags,
-                                smartCollections: repaired.smartCollections
-                            ),
-                            manifestPresent: true
-                        )
-                    }
-                }
-                return .demos(
-                    errorMessage: nil,
-                    organization: WorkoutLibraryOrganizationSnapshot(
-                        tags: repaired.tags,
-                        tagAssignments: [],
-                        smartCollections: repaired.smartCollections
-                    ),
-                    manifestPresent: true
-                )
+                return loadEmptyLibrary(manifest)
             }
 
-            var loaded: [RunWorkout] = []
-            var loadedIDs: [UUID] = []
-            var unloadableIDs: [UUID] = []
-            var warnings: [String] = []
+            let read = loadWorkouts(ids: manifest.workoutIDs)
+            let loaded = read.loaded
+            let unloadableIDs = read.unloadableIDs
+            var warnings = read.warnings
 
-            for id in manifest.workoutIDs {
-                let shortID = String(id.uuidString.prefix(8))
-                do {
-                    var workout = try store.loadWorkout(id: id)
-                    loadedIDs.append(id)
-
-                    var upgraded = false
-                    if workout.normalizationVersion < RunWorkout.currentNormalizationVersion {
-                        let distancePolicy: RouteDistancePolicy
-                        switch workout.routeDistanceSource {
-                        case .coordinateDerived:
-                            distancePolicy = .computeFromCoordinates
-                        case .deviceSupplied:
-                            distancePolicy = .useSuppliedDistancesWhenValid
-                        case .mixed:
-                            let suppliedSegments = Set(
-                                workout.routeDistanceProvenance.segmentSources.enumerated().compactMap {
-                                    $0.element == .deviceSupplied ? $0.offset : nil
-                                }
-                            )
-                            distancePolicy = suppliedSegments.isEmpty
-                                ? .useSuppliedDistancesPerSegment
-                                : .useSuppliedDistancesForSegments(suppliedSegments)
-                        case .legacyUnknown:
-                            distancePolicy = RouteQualityProcessor.legacyDistancePolicy(
-                                for: workout.routePoints,
-                                source: workout.source
-                            )
-                        }
-
-                        do {
-                            try WorkoutAnalyzer().normalizeAndAnalyze(
-                                &workout,
-                                distancePolicy: distancePolicy,
-                                // Library loading is synchronous and recovery-oriented.
-                                // Interactive imports use the cancellable default.
-                                isCancelled: { false }
-                            )
-                            upgraded = true
-                        } catch {
-                            // A decoded workout remains usable even if quality
-                            // processing fails. Keep it visible and retry later.
-                            warnings.append(
-                                coreLocalized("Workout \(shortID)… route quality could not be upgraded: \(error.localizedDescription)")
-                            )
-                        }
-                    } else if workout.normalizationVersion <= RunWorkout.currentNormalizationVersion,
-                              workout.analysisVersion < RunWorkout.currentAnalysisVersion {
-                        WorkoutAnalyzer().reanalyzePreservingRoutePoints(&workout)
-                        upgraded = true
-                    }
-                    loaded.append(workout)
-
-                    if upgraded {
-                        // FileWorkoutLibraryStore replaces each snapshot
-                        // atomically. A failed rewrite leaves the original
-                        // legacy file intact and the upgraded workout visible
-                        // in memory; migration is retried on the next launch.
-                        do {
-                            try store.saveWorkout(workout)
-                        } catch {
-                            warnings.append(
-                                coreLocalized("Workout \(shortID)… was upgraded in memory but could not be saved: \(error.localizedDescription)")
-                            )
-                        }
-                    }
-                } catch {
-                    unloadableIDs.append(id)
-                    warnings.append(error.localizedDescription)
-                }
-            }
-
-            // Use a readable in-memory selection, but preserve the saved one
-            // so restoring compatibility can restore that selection too.
-            let selectedWorkoutID = manifest.selectedWorkoutID.flatMap { selectedID in
-                loadedIDs.contains(selectedID) ? selectedID : nil
-            } ?? loadedIDs.first
-
-            let referencedIDs = Set(manifest.workoutIDs)
-            var favoriteIDs = manifest.favoriteWorkoutIDs.intersection(referencedIDs)
-            let favoritesNeedRepair = favoriteIDs != manifest.favoriteWorkoutIDs
-
-            var workingManifest = manifest
-            if manifest.selectedWorkoutID.map(referencedIDs.contains) != true {
-                workingManifest.selectedWorkoutID = selectedWorkoutID
-            }
-            workingManifest.favoriteWorkoutIDs = favoriteIDs
-            let organizationReport = workingManifest.repairOrganization()
-            workingManifest.upgradeSchemaVersionIfNeeded()
-            if workingManifest.version == WorkoutLibraryManifest.currentVersion {
-                workingManifest.sanitizeFavorites()
-            }
-
-            let organizationChanged =
-                workingManifest.tags != manifest.tags
-                || workingManifest.tagAssignments != manifest.tagAssignments
-                || workingManifest.smartCollections != manifest.smartCollections
-                || workingManifest.routeGroups != manifest.routeGroups
-                || workingManifest.routeGroupAssignments != manifest.routeGroupAssignments
-            let manifestNeedsRepair = workingManifest.selectedWorkoutID != manifest.selectedWorkoutID
-                || favoritesNeedRepair
-                || organizationChanged
-                || manifest.version != WorkoutLibraryManifest.currentVersion
+            let repair = Self.repairedManifest(manifest, loadedIDs: read.loadedIDs)
+            let workingManifest = repair.manifest
+            let organizationReport = repair.organizationReport
+            let manifestNeedsRepair = repair.needsRepair
+            let selectedWorkoutID = repair.selectedWorkoutID
+            var favoriteIDs = repair.favoriteIDs
 
             if !organizationReport.warnings.isEmpty {
                 warnings.append(contentsOf: organizationReport.warnings)
@@ -311,6 +172,207 @@ public actor WorkoutLibraryStoreActor {
         } catch {
             return .demos(errorMessage: coreLocalized("Unexpected error loading library: \(error.localizedDescription)"))
         }
+    }
+
+    /// An empty library still shows demos, but keeps user-defined tags and
+    /// smart collections. Only assignments (no workouts) plus selection and
+    /// favourites that cannot apply without library rows are dropped, and the
+    /// repaired manifest is saved when anything changed.
+    private func loadEmptyLibrary(_ manifest: WorkoutLibraryManifest) -> WorkoutLibraryLoadResult {
+        var repaired = manifest
+        let hadAssignments = !repaired.tagAssignments.isEmpty
+        let hadSelectionOrFavorites = repaired.selectedWorkoutID != nil
+            || !repaired.favoriteWorkoutIDs.isEmpty
+        repaired.selectedWorkoutID = nil
+        repaired.favoriteWorkoutIDs = []
+        repaired.tagAssignments = []
+        repaired.routeGroups = []
+        repaired.routeGroupAssignments = []
+        let organizationReport = repaired.repairOrganization()
+        repaired.upgradeSchemaVersionIfNeeded()
+        let needsPersist = hadAssignments
+            || hadSelectionOrFavorites
+            || !organizationReport.isEmpty
+            || repaired.version != manifest.version
+            || repaired.tags != manifest.tags
+            || repaired.smartCollections != manifest.smartCollections
+        if needsPersist {
+            do {
+                try store.saveManifest(repaired)
+            } catch {
+                return .demos(
+                    errorMessage: coreLocalized("Could not repair the empty library manifest: \(error.localizedDescription)"),
+                    organization: WorkoutLibraryOrganizationSnapshot(
+                        tags: repaired.tags,
+                        smartCollections: repaired.smartCollections
+                    ),
+                    manifestPresent: true
+                )
+            }
+        }
+        return .demos(
+            errorMessage: nil,
+            organization: WorkoutLibraryOrganizationSnapshot(
+                tags: repaired.tags,
+                tagAssignments: [],
+                smartCollections: repaired.smartCollections
+            ),
+            manifestPresent: true
+        )
+    }
+
+    /// The workouts read from the store, upgrading and re-saving an outdated
+    /// one. A workout that cannot be read is kept in the manifest: its ID is
+    /// listed as unloadable, with its error as a warning.
+    private func loadWorkouts(
+        ids: [UUID]
+    ) -> (loaded: [RunWorkout], loadedIDs: [UUID], unloadableIDs: [UUID], warnings: [String]) {
+        var loaded: [RunWorkout] = []
+        var loadedIDs: [UUID] = []
+        var unloadableIDs: [UUID] = []
+        var warnings: [String] = []
+
+        for id in ids {
+            let shortID = String(id.uuidString.prefix(8))
+            do {
+                var workout = try store.loadWorkout(id: id)
+                loadedIDs.append(id)
+
+                let upgraded = upgradeIfNeeded(&workout, shortID: shortID, warnings: &warnings)
+                loaded.append(workout)
+
+                if upgraded {
+                    // FileWorkoutLibraryStore replaces each snapshot
+                    // atomically. A failed rewrite leaves the original
+                    // legacy file intact and the upgraded workout visible
+                    // in memory; migration is retried on the next launch.
+                    do {
+                        try store.saveWorkout(workout)
+                    } catch {
+                        warnings.append(
+                            coreLocalized("Workout \(shortID)… was upgraded in memory but could not be saved: \(error.localizedDescription)")
+                        )
+                    }
+                }
+            } catch {
+                unloadableIDs.append(id)
+                warnings.append(error.localizedDescription)
+            }
+        }
+        return (loaded, loadedIDs, unloadableIDs, warnings)
+    }
+
+    /// Re-normalizes a workout below the current normalization version, or
+    /// reanalyzes one below the current analysis version. Returns whether it
+    /// was upgraded; a failed normalization keeps the workout with a warning.
+    private func upgradeIfNeeded(_ workout: inout RunWorkout, shortID: String, warnings: inout [String]) -> Bool {
+        var upgraded = false
+        if workout.normalizationVersion < RunWorkout.currentNormalizationVersion {
+            let distancePolicy = Self.migrationDistancePolicy(for: workout)
+
+            do {
+                try WorkoutAnalyzer().normalizeAndAnalyze(
+                    &workout,
+                    distancePolicy: distancePolicy,
+                    // Library loading is synchronous and recovery-oriented.
+                    // Interactive imports use the cancellable default.
+                    isCancelled: { false }
+                )
+                upgraded = true
+            } catch {
+                // A decoded workout remains usable even if quality
+                // processing fails. Keep it visible and retry later.
+                warnings.append(
+                    coreLocalized("Workout \(shortID)… route quality could not be upgraded: \(error.localizedDescription)")
+                )
+            }
+        } else if workout.normalizationVersion <= RunWorkout.currentNormalizationVersion,
+                  workout.analysisVersion < RunWorkout.currentAnalysisVersion {
+            WorkoutAnalyzer().reanalyzePreservingRoutePoints(&workout)
+            upgraded = true
+        }
+        return upgraded
+    }
+
+    /// The distance policy that re-normalizes a stored workout from the
+    /// distance source it recorded.
+    private static func migrationDistancePolicy(for workout: RunWorkout) -> RouteDistancePolicy {
+        switch workout.routeDistanceSource {
+        case .coordinateDerived:
+            return .computeFromCoordinates
+        case .deviceSupplied:
+            return .useSuppliedDistancesWhenValid
+        case .mixed:
+            let suppliedSegments = Set(
+                workout.routeDistanceProvenance.segmentSources.enumerated().compactMap {
+                    $0.element == .deviceSupplied ? $0.offset : nil
+                }
+            )
+            return suppliedSegments.isEmpty
+                ? .useSuppliedDistancesPerSegment
+                : .useSuppliedDistancesForSegments(suppliedSegments)
+        case .legacyUnknown:
+            return RouteQualityProcessor.legacyDistancePolicy(
+                for: workout.routePoints,
+                source: workout.source
+            )
+        }
+    }
+
+    /// A manifest repaired against the workouts that loaded, with the
+    /// selection and favourites it was built from.
+    private struct ManifestRepair {
+        let manifest: WorkoutLibraryManifest
+        let selectedWorkoutID: UUID?
+        let favoriteIDs: Set<UUID>
+        let organizationReport: WorkoutLibraryManifest.RepairReport
+        let needsRepair: Bool
+    }
+
+    /// The manifest repaired for this load: favourites limited to listed
+    /// workouts, a readable selection only when the saved one is not listed,
+    /// and repaired organization at the current schema. Also reports the
+    /// organization repair and whether the manifest differs from the stored
+    /// one.
+    private static func repairedManifest(_ manifest: WorkoutLibraryManifest, loadedIDs: [UUID]) -> ManifestRepair {
+        // Use a readable in-memory selection, but preserve the saved one
+        // so restoring compatibility can restore that selection too.
+        let selectedWorkoutID = manifest.selectedWorkoutID.flatMap { selectedID in
+            loadedIDs.contains(selectedID) ? selectedID : nil
+        } ?? loadedIDs.first
+
+        let referencedIDs = Set(manifest.workoutIDs)
+        let favoriteIDs = manifest.favoriteWorkoutIDs.intersection(referencedIDs)
+        let favoritesNeedRepair = favoriteIDs != manifest.favoriteWorkoutIDs
+
+        var workingManifest = manifest
+        if manifest.selectedWorkoutID.map(referencedIDs.contains) != true {
+            workingManifest.selectedWorkoutID = selectedWorkoutID
+        }
+        workingManifest.favoriteWorkoutIDs = favoriteIDs
+        let organizationReport = workingManifest.repairOrganization()
+        workingManifest.upgradeSchemaVersionIfNeeded()
+        if workingManifest.version == WorkoutLibraryManifest.currentVersion {
+            workingManifest.sanitizeFavorites()
+        }
+
+        let organizationChanged =
+            workingManifest.tags != manifest.tags
+            || workingManifest.tagAssignments != manifest.tagAssignments
+            || workingManifest.smartCollections != manifest.smartCollections
+            || workingManifest.routeGroups != manifest.routeGroups
+            || workingManifest.routeGroupAssignments != manifest.routeGroupAssignments
+        let manifestNeedsRepair = workingManifest.selectedWorkoutID != manifest.selectedWorkoutID
+            || favoritesNeedRepair
+            || organizationChanged
+            || manifest.version != WorkoutLibraryManifest.currentVersion
+        return ManifestRepair(
+            manifest: workingManifest,
+            selectedWorkoutID: selectedWorkoutID,
+            favoriteIDs: favoriteIDs,
+            organizationReport: organizationReport,
+            needsRepair: manifestNeedsRepair
+        )
     }
 
     // MARK: - Add Workout
@@ -1227,26 +1289,9 @@ public actor WorkoutLibraryStoreActor {
         let manifest = try loadOrCreateManifest()
         let representativeLoaderSuspension = routeGroupRepresentativeLoaderSuspension
 
-        // Skip workouts that already carry a current-version record; the
-        // pass only ever touches the nil-marker backlog and fresh imports.
-        var failed = 0
-        var newWorkouts: [RunWorkout] = []
-        for workoutID in workoutIDs {
-            if Task.isCancelled { throw CancellationError() }
-            guard manifest.workoutIDs.contains(workoutID) else {
-                failed += 1
-                continue
-            }
-            if let existing = manifest.routeGroupAssignment(forWorkoutID: workoutID),
-               existing.algorithmVersion == policy.algorithmVersion {
-                continue
-            }
-            guard let workout = try? store.loadWorkout(id: workoutID) else {
-                failed += 1
-                continue
-            }
-            newWorkouts.append(workout)
-        }
+        let (newWorkouts, failed) = try workoutsNeedingRouteGroups(
+            workoutIDs, manifest: manifest, policy: policy
+        )
         guard !newWorkouts.isEmpty else {
             return RouteGroupAssignmentPassResult(
                 groups: manifest.routeGroups,
@@ -1304,6 +1349,69 @@ public actor WorkoutLibraryStoreActor {
             result.groups.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let preAwaitGroupIDs = Set(manifest.routeGroups.map(\.id))
+        Self.upsertPassGroups(
+            result.groups, passGroupsByID: passGroupsByID, currentGroupIDs: currentGroupIDs,
+            preAwaitGroupIDs: preAwaitGroupIDs, into: &current
+        )
+        let redirectedTargetsBySourceID = applyPassAssignments(
+            result.assignments, survivingIDs: survivingIDs, currentGroupIDs: currentGroupIDs,
+            preAwaitGroupIDs: preAwaitGroupIDs, policy: policy, into: &current
+        )
+        Self.adoptRedirectedSummaries(
+            redirectedTargetsBySourceID, passGroupsByID: passGroupsByID, into: &current
+        )
+        reconcileTransplantedRouteGroups(in: &current)
+        current.migrateToCurrentVersionIfNeeded()
+        try store.saveManifest(current)
+
+        return RouteGroupAssignmentPassResult(
+            groups: current.routeGroups,
+            assignments: current.routeGroupAssignments,
+            joinedCount: result.joinedCount,
+            createdCount: result.createdCount,
+            failedCount: failed
+        )
+    }
+
+    /// The listed workouts that the pass must assign: in the library and
+    /// without a current-version record. Skips workouts that already carry
+    /// one; the pass only ever touches the nil-marker backlog and fresh
+    /// imports. Counts the workouts not in the library or not loadable.
+    private func workoutsNeedingRouteGroups(
+        _ workoutIDs: [UUID], manifest: WorkoutLibraryManifest, policy: RouteGroupingPolicy
+    ) throws -> (workouts: [RunWorkout], failed: Int) {
+        var failed = 0
+        var newWorkouts: [RunWorkout] = []
+        for workoutID in workoutIDs {
+            if Task.isCancelled { throw CancellationError() }
+            guard manifest.workoutIDs.contains(workoutID) else {
+                failed += 1
+                continue
+            }
+            if let existing = manifest.routeGroupAssignment(forWorkoutID: workoutID),
+               existing.algorithmVersion == policy.algorithmVersion {
+                continue
+            }
+            guard let workout = try? store.loadWorkout(id: workoutID) else {
+                failed += 1
+                continue
+            }
+            newWorkouts.append(workout)
+        }
+        return (newWorkouts, failed)
+    }
+
+    /// Upserts the pass's groups into the re-read manifest: a group the
+    /// re-read copy has keeps that copy's user intent, and a group only the
+    /// pass created is appended.
+    private static func upsertPassGroups(
+        _ passGroups: [WorkoutRouteGroup],
+        passGroupsByID: [UUID: WorkoutRouteGroup],
+        currentGroupIDs: Set<UUID>,
+        preAwaitGroupIDs: Set<UUID>,
+        into current: inout WorkoutLibraryManifest
+    ) {
         current.routeGroups = current.routeGroups.map { fresh in
             guard var passGroup = passGroupsByID[fresh.id] else { return fresh }
             passGroup.name = fresh.name
@@ -1326,15 +1434,27 @@ public actor WorkoutLibraryStoreActor {
         // references the missing group, which
         // `migrateToCurrentVersionIfNeeded()` drops to record absence — the
         // backlog marker — so the next pass re-matches it.
-        let preAwaitGroupIDs = Set(manifest.routeGroups.map(\.id))
         var appendedGroupIDs = Set<UUID>()
-        for group in result.groups
+        for group in passGroups
         where !currentGroupIDs.contains(group.id) && !preAwaitGroupIDs.contains(group.id) {
             guard appendedGroupIDs.insert(group.id).inserted else { continue }
             current.routeGroups.append(group)
         }
+    }
+
+    /// Writes each pass assignment the re-read manifest has not re-decided
+    /// at the current version, redirecting one whose group was merged away
+    /// inside the window to the merge target. Returns the redirects.
+    private func applyPassAssignments(
+        _ assignments: [WorkoutRouteGroupAssignment],
+        survivingIDs: Set<UUID>,
+        currentGroupIDs: Set<UUID>,
+        preAwaitGroupIDs: Set<UUID>,
+        policy: RouteGroupingPolicy,
+        into current: inout WorkoutLibraryManifest
+    ) -> [UUID: UUID] {
         var redirectedTargetsBySourceID: [UUID: UUID] = [:]
-        for var assignment in result.assignments {
+        for var assignment in assignments {
             guard survivingIDs.contains(assignment.workoutID) else { continue }
             if let freshRecord = current.routeGroupAssignment(forWorkoutID: assignment.workoutID),
                freshRecord.algorithmVersion == policy.algorithmVersion {
@@ -1353,6 +1473,14 @@ public actor WorkoutLibraryStoreActor {
             }
             current.setRouteGroupAssignment(assignment)
         }
+        return redirectedTargetsBySourceID
+    }
+
+    private static func adoptRedirectedSummaries(
+        _ redirectedTargetsBySourceID: [UUID: UUID],
+        passGroupsByID: [UUID: WorkoutRouteGroup],
+        into current: inout WorkoutLibraryManifest
+    ) {
         // A redirected newcomer reaches the target the way it would have had
         // it joined the source before the merge: the target keeps its pin,
         // and an unpinned target adopts the pass's source summary — computed
@@ -1367,17 +1495,6 @@ public actor WorkoutLibraryStoreActor {
             else { continue }
             current.routeGroups[targetIndex].representativeSummary = sourceSummary
         }
-        reconcileTransplantedRouteGroups(in: &current)
-        current.migrateToCurrentVersionIfNeeded()
-        try store.saveManifest(current)
-
-        return RouteGroupAssignmentPassResult(
-            groups: current.routeGroups,
-            assignments: current.routeGroupAssignments,
-            joinedCount: result.joinedCount,
-            createdCount: result.createdCount,
-            failedCount: failed
-        )
     }
 
     /// Backfills route-group assignment for every library workout whose

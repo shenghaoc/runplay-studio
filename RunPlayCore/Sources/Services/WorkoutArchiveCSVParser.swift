@@ -139,6 +139,74 @@ public struct WorkoutArchiveCSVParser: Sendable {
             rowByteEstimate = 0
         }
 
+        /// Appends one field scalar within the field and row size limits.
+        func appendToField(_ scalar: Unicode.Scalar) throws {
+            currentField.unicodeScalars.append(scalar)
+            rowByteEstimate += Self.utf8ByteCount(scalar)
+            if currentField.utf8.count > policy.maxCSVFieldBytes {
+                throw WorkoutArchiveCSVError.oversizedField
+            }
+            if rowByteEstimate > policy.maxCSVRowBytes {
+                throw WorkoutArchiveCSVError.oversizedRow
+            }
+        }
+
+        /// One step inside a quoted field: a doubled quote is a literal quote,
+        /// a single quote closes the field, and anything else is field text.
+        /// Returns the number of scalars consumed.
+        func stepInQuotes(_ scalar: Unicode.Scalar, next: Unicode.Scalar?) throws -> Int {
+            if scalar == "\"" {
+                if next == "\"" {
+                    currentField.append("\"")
+                    rowByteEstimate += 1
+                    return 2
+                } else {
+                    inQuotes = false
+                    return 1
+                }
+            } else {
+                try appendToField(scalar)
+                return 1
+            }
+        }
+
+        /// One step outside quotes: a quote opens a field, a comma ends a
+        /// field, CR, CRLF or LF ends a row, and anything else is field text.
+        /// Returns the number of scalars consumed.
+        func stepOutsideQuotes(_ scalar: Unicode.Scalar, next: Unicode.Scalar?) throws -> Int {
+            switch scalar {
+            case "\"":
+                // Quote must start a field.
+                if !currentField.isEmpty {
+                    throw WorkoutArchiveCSVError.malformedQuotation
+                }
+                inQuotes = true
+                return 1
+            case ",":
+                try finishField()
+                rowByteEstimate += 1
+                if rowByteEstimate > policy.maxCSVRowBytes {
+                    throw WorkoutArchiveCSVError.oversizedRow
+                }
+                return 1
+            case "\r":
+                // CRLF or bare CR.
+                if next == "\n" {
+                    try finishRow()
+                    return 2
+                } else {
+                    try finishRow()
+                    return 1
+                }
+            case "\n":
+                try finishRow()
+                return 1
+            default:
+                try appendToField(scalar)
+                return 1
+            }
+        }
+
         while i < scalars.count {
             scalarsSinceCancelCheck += 1
             if scalarsSinceCancelCheck >= policy.cancellationCheckStride {
@@ -150,68 +218,9 @@ public struct WorkoutArchiveCSVParser: Sendable {
             let next = i + 1 < scalars.count ? scalars[i + 1] : nil
 
             if inQuotes {
-                if scalar == "\"" {
-                    if next == "\"" {
-                        currentField.append("\"")
-                        rowByteEstimate += 1
-                        i += 2
-                        continue
-                    } else {
-                        inQuotes = false
-                        i += 1
-                        continue
-                    }
-                } else {
-                    currentField.unicodeScalars.append(scalar)
-                    rowByteEstimate += Self.utf8ByteCount(scalar)
-                    if currentField.utf8.count > policy.maxCSVFieldBytes {
-                        throw WorkoutArchiveCSVError.oversizedField
-                    }
-                    if rowByteEstimate > policy.maxCSVRowBytes {
-                        throw WorkoutArchiveCSVError.oversizedRow
-                    }
-                    i += 1
-                    continue
-                }
-            }
-
-            switch scalar {
-            case "\"":
-                // Quote must start a field.
-                if !currentField.isEmpty {
-                    throw WorkoutArchiveCSVError.malformedQuotation
-                }
-                inQuotes = true
-                i += 1
-            case ",":
-                try finishField()
-                rowByteEstimate += 1
-                if rowByteEstimate > policy.maxCSVRowBytes {
-                    throw WorkoutArchiveCSVError.oversizedRow
-                }
-                i += 1
-            case "\r":
-                // CRLF or bare CR.
-                if next == "\n" {
-                    try finishRow()
-                    i += 2
-                } else {
-                    try finishRow()
-                    i += 1
-                }
-            case "\n":
-                try finishRow()
-                i += 1
-            default:
-                currentField.unicodeScalars.append(scalar)
-                rowByteEstimate += Self.utf8ByteCount(scalar)
-                if currentField.utf8.count > policy.maxCSVFieldBytes {
-                    throw WorkoutArchiveCSVError.oversizedField
-                }
-                if rowByteEstimate > policy.maxCSVRowBytes {
-                    throw WorkoutArchiveCSVError.oversizedRow
-                }
-                i += 1
+                i += try stepInQuotes(scalar, next: next)
+            } else {
+                i += try stepOutsideQuotes(scalar, next: next)
             }
         }
 

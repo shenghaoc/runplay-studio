@@ -192,19 +192,7 @@ public enum WorkoutTrendsAggregator {
             weekConvention: weekConvention
         )
 
-        struct Accumulator {
-            var runCount = 0
-            var distance: Double = 0
-            var active: Double = 0
-            var heartRateWeightedSum: Double = 0
-            var heartRateWeight: Double = 0
-            var heartRateSimpleSum: Double = 0
-            var heartRateSimpleCount = 0
-            var heartRateContributors = 0
-            var ascent: Double = 0
-            var ascentContributors = 0
-        }
-        var accumulators: [WorkoutTrendsPeriodKey: Accumulator] = [:]
+        var accumulators: [WorkoutTrendsPeriodKey: TrendAccumulator] = [:]
         accumulators.reserveCapacity(rows.count)
 
         var minimumKey: WorkoutTrendsPeriodKey?
@@ -227,33 +215,154 @@ public enum WorkoutTrendsAggregator {
             } else {
                 minimumKey = key
             }
-            var accumulator = accumulators[key] ?? Accumulator()
-            accumulator.runCount += 1
-            accumulator.distance += max(0, row.distanceMeters)
-            accumulator.active += max(0, row.activeSeconds)
-            if let heartRate = row.averageHeartRateBPM {
-                let weight = max(0, row.activeSeconds)
-                accumulator.heartRateWeightedSum += heartRate * weight
-                accumulator.heartRateWeight += weight
-                accumulator.heartRateSimpleSum += heartRate
-                accumulator.heartRateSimpleCount += 1
-                accumulator.heartRateContributors += 1
-            }
-            if let ascent = row.ascentMeters {
-                accumulator.ascent += max(0, ascent)
-                accumulator.ascentContributors += 1
-            }
+            var accumulator = accumulators[key] ?? TrendAccumulator()
+            accumulator.add(row)
             accumulators[key] = accumulator
         }
 
-        // The window always includes the current period (an in-progress
-        // trailing bar), and extends at most one period past it. One period is
-        // exactly what a run recorded in a zone ahead of the display zone
-        // needs; beyond that a row is clock skew or a corrupt date, and
-        // letting it set the end would push the real data out of a capped
-        // window entirely. Such rows are counted in `outOfWindowRunCount`,
-        // never silently dropped.
-        let newestRowKey = accumulators.keys.max()
+        let (windowStart, windowEnd) = windowBounds(
+            newestRowKey: accumulators.keys.max(),
+            currentKey: currentKey,
+            anchor: anchor,
+            minimumKey: minimumKey,
+            weekConvention: weekConvention
+        )
+        let keys = windowKeys(from: windowStart, to: windowEnd, weekConvention: weekConvention)
+
+        let buckets = keys.map { key -> WorkoutTrendsPeriodBucket in
+            let accumulator = accumulators[key]
+            let totals = accumulator ?? TrendAccumulator()
+            return WorkoutTrendsPeriodBucket(
+                id: key,
+                runCount: accumulator?.runCount ?? 0,
+                totalDistanceMeters: totals.distance,
+                totalActiveSeconds: totals.active,
+                meanActivePaceSecondsPerKilometer: totals.meanActivePace,
+                meanHeartRateBPM: totals.meanHeartRate,
+                heartRateContributingRuns: accumulator?.heartRateContributors ?? 0,
+                totalAscentMeters: totals.totalAscent,
+                ascentContributingRuns: accumulator?.ascentContributors ?? 0
+            )
+        }
+
+        var includedRunCount = 0
+        let includedKeys = Set(keys)
+        for key in keys {
+            includedRunCount += accumulators[key]?.runCount ?? 0
+        }
+        for (key, accumulator) in accumulators where !includedKeys.contains(key) {
+            outOfWindow += accumulator.runCount
+        }
+
+        var window = TrendAccumulator()
+        for key in keys {
+            guard let accumulator = accumulators[key] else { continue }
+            window.merge(accumulator)
+        }
+
+        return WorkoutTrendsAggregation(
+            period: period,
+            range: range,
+            buckets: buckets,
+            includedRunCount: includedRunCount,
+            outOfWindowRunCount: outOfWindow,
+            currentPeriodKey: includedKeys.contains(currentKey) ? currentKey : nil,
+            windowStartKey: keys.first,
+            totalDistanceMeters: window.distance,
+            totalActiveSeconds: window.active,
+            meanActivePaceSecondsPerKilometer: window.meanActivePace,
+            meanHeartRateBPM: window.meanHeartRate,
+            heartRateContributingRuns: window.heartRateContributors,
+            totalAscentMeters: window.totalAscent,
+            ascentContributingRuns: window.ascentContributors
+        )
+    }
+
+    /// The running totals of one period, or of the whole window.
+    private struct TrendAccumulator {
+        var runCount = 0
+        var distance: Double = 0
+        var active: Double = 0
+        var heartRateWeightedSum: Double = 0
+        var heartRateWeight: Double = 0
+        var heartRateSimpleSum: Double = 0
+        var heartRateSimpleCount = 0
+        var heartRateContributors = 0
+        var ascent: Double = 0
+        var ascentContributors = 0
+
+        mutating func add(_ row: WorkoutTrendsSummaryRow) {
+            runCount += 1
+            distance += max(0, row.distanceMeters)
+            active += max(0, row.activeSeconds)
+            if let heartRate = row.averageHeartRateBPM {
+                let weight = max(0, row.activeSeconds)
+                heartRateWeightedSum += heartRate * weight
+                heartRateWeight += weight
+                heartRateSimpleSum += heartRate
+                heartRateSimpleCount += 1
+                heartRateContributors += 1
+            }
+            if let ascent = row.ascentMeters {
+                self.ascent += max(0, ascent)
+                ascentContributors += 1
+            }
+        }
+
+        /// Adds another period's totals; the run count is not part of the window totals.
+        mutating func merge(_ other: TrendAccumulator) {
+            distance += other.distance
+            active += other.active
+            heartRateWeightedSum += other.heartRateWeightedSum
+            heartRateWeight += other.heartRateWeight
+            heartRateSimpleSum += other.heartRateSimpleSum
+            heartRateSimpleCount += other.heartRateSimpleCount
+            heartRateContributors += other.heartRateContributors
+            ascent += other.ascent
+            ascentContributors += other.ascentContributors
+        }
+
+        /// Active seconds per kilometre, when both are positive and finite.
+        var meanActivePace: Double? {
+            let kilometres = distance / 1_000
+            if kilometres > 0, active > 0, (active / kilometres).isFinite {
+                return active / kilometres
+            }
+            return nil
+        }
+
+        /// The active-time weighted mean heart rate, or the plain mean when no
+        /// contributing run has active time; nil without a contributor.
+        var meanHeartRate: Double? {
+            if heartRateContributors > 0 {
+                if heartRateWeight > 0 {
+                    return heartRateWeightedSum / heartRateWeight
+                } else {
+                    return heartRateSimpleSum / Double(heartRateSimpleCount)
+                }
+            }
+            return nil
+        }
+
+        var totalAscent: Double? {
+            ascentContributors > 0 ? ascent : nil
+        }
+    }
+
+    /// The window always includes the current period (an in-progress
+    /// trailing bar), and extends at most one period past it. One period is
+    /// exactly what a run recorded in a zone ahead of the display zone
+    /// needs; beyond that a row is clock skew or a corrupt date, and
+    /// letting it set the end would push the real data out of a capped
+    /// window entirely. Such rows are counted in `outOfWindowRunCount`,
+    /// never silently dropped.
+    private static func windowBounds(
+        newestRowKey: WorkoutTrendsPeriodKey?,
+        currentKey: WorkoutTrendsPeriodKey,
+        anchor: WorkoutTrendsPeriodKey?,
+        minimumKey: WorkoutTrendsPeriodKey?,
+        weekConvention: WorkoutTrendsWeekConvention
+    ) -> (start: WorkoutTrendsPeriodKey, end: WorkoutTrendsPeriodKey) {
         let periodAfterCurrent = nextKey(after: currentKey, weekConvention: weekConvention)
         let windowEnd: WorkoutTrendsPeriodKey
         if let newestRowKey, newestRowKey > currentKey, newestRowKey <= periodAfterCurrent {
@@ -268,10 +377,18 @@ public enum WorkoutTrendsAggregator {
         if windowStart > windowEnd {
             windowStart = windowEnd
         }
+        return (windowStart, windowEnd)
+    }
 
-        // Enumerate backwards from the newest period, stopping at the render
-        // cap, so the clamp drops the oldest periods without first building
-        // (or walking) a span that an ancient row could make enormous.
+    /// Enumerate backwards from the newest period, stopping at the render
+    /// cap, so the clamp drops the oldest periods without first building
+    /// (or walking) a span that an ancient row could make enormous. Returns
+    /// the keys oldest first.
+    private static func windowKeys(
+        from windowStart: WorkoutTrendsPeriodKey,
+        to windowEnd: WorkoutTrendsPeriodKey,
+        weekConvention: WorkoutTrendsWeekConvention
+    ) -> [WorkoutTrendsPeriodKey] {
         var keys: [WorkoutTrendsPeriodKey] = []
         var cursor = windowEnd
         while keys.count < maximumRenderedPeriods {
@@ -284,112 +401,7 @@ public enum WorkoutTrendsAggregator {
             cursor = previous
         }
         keys.reverse()
-
-        let buckets = keys.map { key -> WorkoutTrendsPeriodBucket in
-            let accumulator = accumulators[key]
-            let distance = accumulator?.distance ?? 0
-            let active = accumulator?.active ?? 0
-            let kilometres = distance / 1_000
-            let pace: Double?
-            if kilometres > 0, active > 0, (active / kilometres).isFinite {
-                pace = active / kilometres
-            } else {
-                pace = nil
-            }
-            let heartRate: Double?
-            if let accumulator, accumulator.heartRateContributors > 0 {
-                if accumulator.heartRateWeight > 0 {
-                    heartRate = accumulator.heartRateWeightedSum / accumulator.heartRateWeight
-                } else {
-                    heartRate = accumulator.heartRateSimpleSum
-                        / Double(accumulator.heartRateSimpleCount)
-                }
-            } else {
-                heartRate = nil
-            }
-            let ascent: Double?
-            if let accumulator, accumulator.ascentContributors > 0 {
-                ascent = accumulator.ascent
-            } else {
-                ascent = nil
-            }
-            return WorkoutTrendsPeriodBucket(
-                id: key,
-                runCount: accumulator?.runCount ?? 0,
-                totalDistanceMeters: distance,
-                totalActiveSeconds: active,
-                meanActivePaceSecondsPerKilometer: pace,
-                meanHeartRateBPM: heartRate,
-                heartRateContributingRuns: accumulator?.heartRateContributors ?? 0,
-                totalAscentMeters: ascent,
-                ascentContributingRuns: accumulator?.ascentContributors ?? 0
-            )
-        }
-
-        var includedRunCount = 0
-        let includedKeys = Set(keys)
-        for key in keys {
-            includedRunCount += accumulators[key]?.runCount ?? 0
-        }
-        for (key, accumulator) in accumulators where !includedKeys.contains(key) {
-            outOfWindow += accumulator.runCount
-        }
-
-        var windowDistance = 0.0
-        var windowActive = 0.0
-        var windowHeartRateWeightedSum = 0.0
-        var windowHeartRateWeight = 0.0
-        var windowHeartRateSimpleSum = 0.0
-        var windowHeartRateSimpleCount = 0
-        var windowHeartRateContributors = 0
-        var windowAscent = 0.0
-        var windowAscentContributors = 0
-        for key in keys {
-            guard let accumulator = accumulators[key] else { continue }
-            windowDistance += accumulator.distance
-            windowActive += accumulator.active
-            windowHeartRateWeightedSum += accumulator.heartRateWeightedSum
-            windowHeartRateWeight += accumulator.heartRateWeight
-            windowHeartRateSimpleSum += accumulator.heartRateSimpleSum
-            windowHeartRateSimpleCount += accumulator.heartRateSimpleCount
-            windowHeartRateContributors += accumulator.heartRateContributors
-            windowAscent += accumulator.ascent
-            windowAscentContributors += accumulator.ascentContributors
-        }
-        let windowKilometres = windowDistance / 1_000
-        let windowPace: Double?
-        if windowKilometres > 0, windowActive > 0, (windowActive / windowKilometres).isFinite {
-            windowPace = windowActive / windowKilometres
-        } else {
-            windowPace = nil
-        }
-        let windowHeartRate: Double?
-        if windowHeartRateContributors > 0 {
-            if windowHeartRateWeight > 0 {
-                windowHeartRate = windowHeartRateWeightedSum / windowHeartRateWeight
-            } else {
-                windowHeartRate = windowHeartRateSimpleSum / Double(windowHeartRateSimpleCount)
-            }
-        } else {
-            windowHeartRate = nil
-        }
-
-        return WorkoutTrendsAggregation(
-            period: period,
-            range: range,
-            buckets: buckets,
-            includedRunCount: includedRunCount,
-            outOfWindowRunCount: outOfWindow,
-            currentPeriodKey: includedKeys.contains(currentKey) ? currentKey : nil,
-            windowStartKey: keys.first,
-            totalDistanceMeters: windowDistance,
-            totalActiveSeconds: windowActive,
-            meanActivePaceSecondsPerKilometer: windowPace,
-            meanHeartRateBPM: windowHeartRate,
-            heartRateContributingRuns: windowHeartRateContributors,
-            totalAscentMeters: windowAscentContributors > 0 ? windowAscent : nil,
-            ascentContributingRuns: windowAscentContributors
-        )
+        return keys
     }
 
     /// The nominal key following `key` within its kind. Ascends by one unit;

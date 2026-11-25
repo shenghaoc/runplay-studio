@@ -153,38 +153,17 @@ public struct WorkoutAnalyzer: Sendable {
         let movementProfile: MovementProfile
         if let existing = context.movementProfile {
             movementProfile = existing
-        } else if profile != nil {
-            let (built, nanos) = try HotspotProfileClock.measureNanoseconds {
+        } else {
+            movementProfile = try HotspotProfileClock.profiled(&profile, \.movementProfileNanoseconds) {
                 try MovementProfile(
                     routePoints: workout.routePoints,
                     timeline: context.timeline,
                     isCancelled: isCancelled
                 )
             }
-            movementProfile = built
-            profile?.movementProfileNanoseconds = nanos
-        } else {
-            movementProfile = try MovementProfile(
-                routePoints: workout.routePoints,
-                timeline: context.timeline,
-                isCancelled: isCancelled
-            )
         }
-        let ctx: WorkoutAnalysisContext
-        if profile != nil {
-            let start = ContinuousClock.now
-            ctx = WorkoutAnalysisContext(
-                routePoints: workout.routePoints,
-                elevationProfile: context.elevationProfile,
-                movementProfile: movementProfile,
-                standaloneHeartRateSamples: workout.heartRateSourceSeries
-            )
-            profile?.contextRebindNanoseconds = HotspotProfileClock.nanoseconds(
-                from: start,
-                to: ContinuousClock.now
-            )
-        } else {
-            ctx = WorkoutAnalysisContext(
+        let ctx = HotspotProfileClock.profiled(&profile, \.contextRebindNanoseconds) {
+            WorkoutAnalysisContext(
                 routePoints: workout.routePoints,
                 elevationProfile: context.elevationProfile,
                 movementProfile: movementProfile,
@@ -220,20 +199,8 @@ public struct WorkoutAnalyzer: Sendable {
 
         // Recorded laps: rederive canonical metrics while preserving source fields.
         // Never fabricate laps from splits or route segments.
-        let lapWarnings: [WorkoutAnalysisWarning]
-        if profile != nil {
-            let (warnings, nanos) = try HotspotProfileClock.measureNanoseconds {
-                try reanalyzeRecordedLaps(
-                    &workout,
-                    context: ctx,
-                    policy: policy,
-                    isCancelled: isCancelled
-                )
-            }
-            lapWarnings = warnings
-            profile?.recordedLapsNanoseconds = nanos
-        } else {
-            lapWarnings = try reanalyzeRecordedLaps(
+        let lapWarnings = try HotspotProfileClock.profiled(&profile, \.recordedLapsNanoseconds) {
+            try reanalyzeRecordedLaps(
                 &workout,
                 context: ctx,
                 policy: policy,
@@ -258,40 +225,47 @@ public struct WorkoutAnalyzer: Sendable {
         measurePhase(into: &profile, keyPath: \.warningsNanoseconds) {
             workout.analysisVersion = RunWorkout.currentAnalysisVersion
             workout.movementDiagnostics = movementProfile.diagnostics
-
-            // Attach movement diagnostics as analysis warnings
-            var warnings = workout.analysisWarnings.filter {
-                $0 != .movementEstimatedStoppedTime
-                    && $0 != .movementLowReliability
-                    && $0 != .recordedLapsMalformedSkipped
-                    && $0 != .recordedLapSourceTotalsMismatch
-                    && $0 != .recordedLapsRequireReimport
-            }
-            if movementProfile.totalStoppedSeconds > 0 {
-                if !warnings.contains(.movementEstimatedStoppedTime) {
-                    warnings.append(.movementEstimatedStoppedTime)
-                }
-            }
-            // Movement detection judges route points, so the note is about a
-            // route. A workout with none has nothing for it to be unreliable
-            // about, and the note would claim sparse GPS where there is no GPS.
-            if workout.hasRoute, movementProfile.diagnostics.usedConservativeFallback {
-                if !warnings.contains(.movementLowReliability) {
-                    warnings.append(.movementLowReliability)
-                }
-            }
-            for warning in lapWarnings where !warnings.contains(warning) {
-                warnings.append(warning)
-            }
-            if workout.mayRequireReimportForRecordedLaps,
-               !warnings.contains(.recordedLapsRequireReimport) {
-                warnings.append(.recordedLapsRequireReimport)
-                var diagnostics = workout.recordedLapDiagnostics
-                diagnostics.requiresReimportForSourceLaps = true
-                workout.recordedLapDiagnostics = diagnostics
-            }
-            workout.analysisWarnings = warnings
+            refreshAnalysisWarnings(&workout, movementProfile: movementProfile, lapWarnings: lapWarnings)
         }
+    }
+
+    /// Replaces the movement and recorded-lap analysis warnings with the ones
+    /// this analysis found, keeping every other warning.
+    private func refreshAnalysisWarnings(
+        _ workout: inout RunWorkout, movementProfile: MovementProfile, lapWarnings: [WorkoutAnalysisWarning]
+    ) {
+        // Attach movement diagnostics as analysis warnings
+        var warnings = workout.analysisWarnings.filter {
+            $0 != .movementEstimatedStoppedTime
+                && $0 != .movementLowReliability
+                && $0 != .recordedLapsMalformedSkipped
+                && $0 != .recordedLapSourceTotalsMismatch
+                && $0 != .recordedLapsRequireReimport
+        }
+        if movementProfile.totalStoppedSeconds > 0 {
+            if !warnings.contains(.movementEstimatedStoppedTime) {
+                warnings.append(.movementEstimatedStoppedTime)
+            }
+        }
+        // Movement detection judges route points, so the note is about a
+        // route. A workout with none has nothing for it to be unreliable
+        // about, and the note would claim sparse GPS where there is no GPS.
+        if workout.hasRoute, movementProfile.diagnostics.usedConservativeFallback {
+            if !warnings.contains(.movementLowReliability) {
+                warnings.append(.movementLowReliability)
+            }
+        }
+        for warning in lapWarnings where !warnings.contains(warning) {
+            warnings.append(warning)
+        }
+        if workout.mayRequireReimportForRecordedLaps,
+           !warnings.contains(.recordedLapsRequireReimport) {
+            warnings.append(.recordedLapsRequireReimport)
+            var diagnostics = workout.recordedLapDiagnostics
+            diagnostics.requiresReimportForSourceLaps = true
+            workout.recordedLapDiagnostics = diagnostics
+        }
+        workout.analysisWarnings = warnings
     }
 
     @inline(__always)
@@ -566,30 +540,51 @@ public struct WorkoutAnalyzer: Sendable {
                 continue
             }
 
-            if workout.routePoints[index].speedMetersPerSecond == nil {
-                let distance = current.distanceFromStartMeters - previous.distanceFromStartMeters
-                let elapsed = currentElapsed - previousElapsed
-                if distance.isFinite, distance >= 0, elapsed.isFinite, elapsed > 0 {
-                    let derivedSpeed = distance / elapsed
-                    if derivedSpeed.isFinite,
-                       derivedSpeed <= policy.maximumSourceSpeedMetersPerSecond {
-                        workout.routePoints[index].speedMetersPerSecond = derivedSpeed
-                    }
-                }
+            if workout.routePoints[index].speedMetersPerSecond == nil,
+               let derivedSpeed = Self.derivedSpeed(
+                   from: previous, previousElapsed: previousElapsed,
+                   to: current, currentElapsed: currentElapsed, policy: policy
+               ) {
+                workout.routePoints[index].speedMetersPerSecond = derivedSpeed
             }
 
-            if let speed = workout.routePoints[index].speedMetersPerSecond,
-               speed.isFinite,
-               speed > 0,
-               speed <= policy.maximumSourceSpeedMetersPerSecond {
-                workout.routePoints[index].paceSecondsPerKilometer = 1000.0 / speed
-            } else {
-                if let speed = workout.routePoints[index].speedMetersPerSecond,
-                   !speed.isFinite || speed < 0 || speed > policy.maximumSourceSpeedMetersPerSecond {
-                    workout.routePoints[index].speedMetersPerSecond = nil
-                }
-                workout.routePoints[index].paceSecondsPerKilometer = nil
+            Self.applySpeedLimits(to: &workout.routePoints[index], policy: policy)
+        }
+    }
+
+    /// The speed between two points from their distance and elapsed deltas,
+    /// when both are finite and the speed does not exceed the source limit.
+    private static func derivedSpeed(
+        from previous: RoutePoint, previousElapsed: Double,
+        to current: RoutePoint, currentElapsed: Double,
+        policy: RouteQualityPolicy
+    ) -> Double? {
+        let distance = current.distanceFromStartMeters - previous.distanceFromStartMeters
+        let elapsed = currentElapsed - previousElapsed
+        if distance.isFinite, distance >= 0, elapsed.isFinite, elapsed > 0 {
+            let derivedSpeed = distance / elapsed
+            if derivedSpeed.isFinite,
+               derivedSpeed <= policy.maximumSourceSpeedMetersPerSecond {
+                return derivedSpeed
             }
+        }
+        return nil
+    }
+
+    /// A valid positive speed sets the pace; an invalid speed is dropped, and
+    /// without a valid positive speed there is no pace.
+    private static func applySpeedLimits(to point: inout RoutePoint, policy: RouteQualityPolicy) {
+        if let speed = point.speedMetersPerSecond,
+           speed.isFinite,
+           speed > 0,
+           speed <= policy.maximumSourceSpeedMetersPerSecond {
+            point.paceSecondsPerKilometer = 1000.0 / speed
+        } else {
+            if let speed = point.speedMetersPerSecond,
+               !speed.isFinite || speed < 0 || speed > policy.maximumSourceSpeedMetersPerSecond {
+                point.speedMetersPerSecond = nil
+            }
+            point.paceSecondsPerKilometer = nil
         }
     }
 
@@ -834,24 +829,52 @@ public struct WorkoutAnalyzer: Sendable {
     /// windows in `SegmentDetector`), computed from prefix sums with a
     /// two-pointer window that resets at route-segment boundaries so a pause
     /// can never inflate a "20-minute" effort.
-    static func powerAndDynamicsAverages(in points: [RoutePoint]) -> PowerAndDynamicsAverages {
-        struct RunningMean {
-            var sum: Double = 0
-            var count: Int = 0
-            mutating func add(_ value: Double) {
-                sum += value
-                count += 1
-            }
-            var mean: Double? { count > 0 ? sum / Double(count) : nil }
+    private struct RunningMean {
+        var sum: Double = 0
+        var count: Int = 0
+        mutating func add(_ value: Double) {
+            sum += value
+            count += 1
         }
+        var mean: Double? { count > 0 ? sum / Double(count) : nil }
+    }
 
+    /// The means of the valid running-dynamics values.
+    private struct DynamicsMeans {
+        var groundContact = RunningMean()
+        var verticalOscillation = RunningMean()
+        var verticalRatio = RunningMean()
+        var stanceTimeBalance = RunningMean()
+        var stepLength = RunningMean()
+
+        mutating func add(_ point: RoutePoint) {
+            if let value = point.groundContactTimeMilliseconds,
+               MetricValidation.isValidGroundContactTime(value) {
+                groundContact.add(value)
+            }
+            if let value = point.verticalOscillationMillimeters,
+               MetricValidation.isValidVerticalOscillation(value) {
+                verticalOscillation.add(value)
+            }
+            if let value = point.verticalRatioPercent,
+               MetricValidation.isValidVerticalRatio(value) {
+                verticalRatio.add(value)
+            }
+            if let value = point.stanceTimeBalancePercent,
+               MetricValidation.isValidStanceTimeBalance(value) {
+                stanceTimeBalance.add(value)
+            }
+            if let value = point.stepLengthMeters,
+               MetricValidation.isValidStepLength(value) {
+                stepLength.add(value)
+            }
+        }
+    }
+
+    static func powerAndDynamicsAverages(in points: [RoutePoint]) -> PowerAndDynamicsAverages {
         var powerMean = RunningMean()
         var maxPower: Double?
-        var groundContactMean = RunningMean()
-        var verticalOscillationMean = RunningMean()
-        var verticalRatioMean = RunningMean()
-        var stanceTimeBalanceMean = RunningMean()
-        var stepLengthMean = RunningMean()
+        var dynamics = DynamicsMeans()
 
         for point in points {
             if let power = point.powerWatts, MetricValidation.isValidPower(power) {
@@ -862,37 +885,18 @@ public struct WorkoutAnalyzer: Sendable {
                     maxPower = power
                 }
             }
-            if let value = point.groundContactTimeMilliseconds,
-               MetricValidation.isValidGroundContactTime(value) {
-                groundContactMean.add(value)
-            }
-            if let value = point.verticalOscillationMillimeters,
-               MetricValidation.isValidVerticalOscillation(value) {
-                verticalOscillationMean.add(value)
-            }
-            if let value = point.verticalRatioPercent,
-               MetricValidation.isValidVerticalRatio(value) {
-                verticalRatioMean.add(value)
-            }
-            if let value = point.stanceTimeBalancePercent,
-               MetricValidation.isValidStanceTimeBalance(value) {
-                stanceTimeBalanceMean.add(value)
-            }
-            if let value = point.stepLengthMeters,
-               MetricValidation.isValidStepLength(value) {
-                stepLengthMean.add(value)
-            }
+            dynamics.add(point)
         }
 
         return PowerAndDynamicsAverages(
             averagePowerWatts: powerMean.mean,
             maxPowerWatts: maxPower,
             best20MinutePowerWatts: bestTimeWindowMeanPower(in: points, windowSeconds: 1_200),
-            averageGroundContactTimeMilliseconds: groundContactMean.mean,
-            averageVerticalOscillationMillimeters: verticalOscillationMean.mean,
-            averageVerticalRatioPercent: verticalRatioMean.mean,
-            averageStanceTimeBalancePercent: stanceTimeBalanceMean.mean,
-            averageStepLengthMeters: stepLengthMean.mean
+            averageGroundContactTimeMilliseconds: dynamics.groundContact.mean,
+            averageVerticalOscillationMillimeters: dynamics.verticalOscillation.mean,
+            averageVerticalRatioPercent: dynamics.verticalRatio.mean,
+            averageStanceTimeBalancePercent: dynamics.stanceTimeBalance.mean,
+            averageStepLengthMeters: dynamics.stepLength.mean
         )
     }
 
