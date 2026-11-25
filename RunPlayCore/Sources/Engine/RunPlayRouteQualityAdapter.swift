@@ -140,6 +140,38 @@ enum RunPlayRouteQualityBridge {
         return samples
     }
 
+    /// Retained samples start in segment zero and stay in a segment or move
+    /// to the next one, and every sample of a segment has the segment's
+    /// distance source. Records each new segment's source.
+    @inline(__always)
+    private static func acceptSegment(
+        _ normalizedSegment: Int64,
+        distanceSource: EngineRouteDistanceSource,
+        previousNormalizedSegment: inout Int64?,
+        segmentSources: inout [RouteDistanceSource]
+    ) throws {
+        if previousNormalizedSegment == nil {
+            guard normalizedSegment == 0 else {
+                throw RunPlayRouteQualityBridgeError.engineContractViolation
+            }
+        } else if let previous = previousNormalizedSegment {
+            guard normalizedSegment == previous
+                || normalizedSegment == previous + 1
+            else {
+                throw RunPlayRouteQualityBridgeError.engineContractViolation
+            }
+        }
+        if previousNormalizedSegment != normalizedSegment {
+            segmentSources.append(modelDistanceSource(distanceSource))
+            previousNormalizedSegment = normalizedSegment
+        } else if let last = segmentSources.last {
+            let current = modelDistanceSource(distanceSource)
+            guard last == current else {
+                throw RunPlayRouteQualityBridgeError.engineContractViolation
+            }
+        }
+    }
+
     private static func projectSwiftResult(
         orderedPoints: [RoutePoint],
         summary: EngineRouteQualityResult,
@@ -172,26 +204,10 @@ enum RunPlayRouteQualityBridge {
             retainedCount += 1
 
             let normalizedSegment = sample.normalizedSegmentIndex
-            if previousNormalizedSegment == nil {
-                guard normalizedSegment == 0 else {
-                    throw RunPlayRouteQualityBridgeError.engineContractViolation
-                }
-            } else if let previous = previousNormalizedSegment {
-                guard normalizedSegment == previous
-                    || normalizedSegment == previous + 1
-                else {
-                    throw RunPlayRouteQualityBridgeError.engineContractViolation
-                }
-            }
-            if previousNormalizedSegment != normalizedSegment {
-                segmentSources.append(modelDistanceSource(sample.distanceSource))
-                previousNormalizedSegment = normalizedSegment
-            } else if let last = segmentSources.last {
-                let current = modelDistanceSource(sample.distanceSource)
-                guard last == current else {
-                    throw RunPlayRouteQualityBridgeError.engineContractViolation
-                }
-            }
+            try acceptSegment(
+                normalizedSegment, distanceSource: sample.distanceSource,
+                previousNormalizedSegment: &previousNormalizedSegment, segmentSources: &segmentSources
+            )
 
             var point = orderedPoints[index]
             guard let segmentIndex = Int(exactly: normalizedSegment) else {

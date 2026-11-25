@@ -161,37 +161,68 @@ enum FITMultiSessionFixtureBuilder {
                 writeDeveloperDataID(identity, to: &content)
             }
         }
-        if !fieldDescriptions.isEmpty && !descriptionsFollowRecords {
+        if !descriptionsFollowRecords {
+            writeFieldDescriptions(fieldDescriptions, to: &content)
+        }
+
+        writeRecords(
+            records,
+            developerDefinitions: developerDefinitions,
+            includePower: includeNativePowerField,
+            includeDynamics: includeNativeDynamicsFields,
+            to: &content
+        )
+
+        if descriptionsFollowRecords {
+            writeFieldDescriptions(fieldDescriptions, to: &content)
+        }
+        writeSummaryMessages(events: events, laps: laps, sessions: sessions, to: &content)
+
+        return wrap(content: content)
+    }
+
+    /// The field-description definition and messages, when there are any.
+    private static func writeFieldDescriptions(_ fieldDescriptions: [FieldDescriptionSpec], to content: inout Data) {
+        if !fieldDescriptions.isEmpty {
             writeFieldDescriptionDefinition(to: &content)
             for description in fieldDescriptions {
                 writeFieldDescription(description, to: &content)
             }
         }
+    }
 
+    /// The record definition and messages, when there are any.
+    private static func writeRecords(
+        _ records: [RecordSpec],
+        developerDefinitions: [RecordDeveloperDefinition],
+        includePower: Bool,
+        includeDynamics: Bool,
+        to content: inout Data
+    ) {
         if !records.isEmpty {
             writeRecordDefinition(
                 to: &content,
                 developerFields: developerDefinitions,
-                includePower: includeNativePowerField,
-                includeDynamics: includeNativeDynamicsFields
+                includePower: includePower,
+                includeDynamics: includeDynamics
             )
             for record in records {
                 writeRecord(
                     record,
                     developerDefinitions: developerDefinitions,
-                    includePower: includeNativePowerField,
-                    includeDynamics: includeNativeDynamicsFields,
+                    includePower: includePower,
+                    includeDynamics: includeDynamics,
                     to: &content
                 )
             }
         }
+    }
 
-        if !fieldDescriptions.isEmpty && descriptionsFollowRecords {
-            writeFieldDescriptionDefinition(to: &content)
-            for description in fieldDescriptions {
-                writeFieldDescription(description, to: &content)
-            }
-        }
+    /// Events, then laps, then sessions: the summary messages that trail
+    /// their samples, each with its definition when present.
+    private static func writeSummaryMessages(
+        events: [EventSpec], laps: [LapSpec], sessions: [SessionSpec], to content: inout Data
+    ) {
         if !events.isEmpty {
             writeEventDefinition(to: &content)
             for event in events {
@@ -210,8 +241,6 @@ enum FITMultiSessionFixtureBuilder {
                 writeSession(session, to: &content)
             }
         }
-
-        return wrap(content: content)
     }
 
     /// Union of developer fields across record specs, in first-seen order.

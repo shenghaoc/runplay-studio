@@ -104,9 +104,36 @@ extension WorkoutDeveloperFieldSummary {
             )
         }
 
-        // Mapped fields first so the fields the app understands are never the
-        // ones truncated; a stable (index, field number) order follows.
-        let orderedStats = report.fieldStats.sorted { lhs, rhs in
+        let orderedStats = orderedForRetention(report.fieldStats)
+        var notes: [String] = []
+        let fields = retainedFields(
+            orderedStats, pointCount: max(1, report.totalPointCount), notes: &notes
+        )
+        if let note = nonDefaultScaleOrOffsetNote(orderedStats) {
+            notes.append(note)
+        }
+        notes.append(contentsOf: skippedValueNotes(report))
+
+        return WorkoutDeveloperFieldSummary(
+            sources: sources,
+            fields: fields,
+            powerSourceDeveloperDataIndex: report.powerDeveloperDataIndex.map(Int.init),
+            powerSourceIsNativeRecordField:
+                report.nativeRecordPowerPointCount > 0
+                && report.developerPowerPointCount == 0,
+            dynamicsSourceIsNativeRecordField:
+                report.nativeRecordDynamicsPointCount > 0
+                && report.developerDynamicsPointCount == 0,
+            notes: notes
+        )
+    }
+
+    /// Mapped fields first so the fields the app understands are never the
+    /// ones truncated; a stable (index, field number) order follows.
+    private static func orderedForRetention(
+        _ fieldStats: [FITDeveloperFieldReport.FieldStat]
+    ) -> [FITDeveloperFieldReport.FieldStat] {
+        fieldStats.sorted { lhs, rhs in
             let lhsMapped = lhs.metric?.routePointKey != nil
             let rhsMapped = rhs.metric?.routePointKey != nil
             if lhsMapped != rhsMapped {
@@ -117,11 +144,15 @@ extension WorkoutDeveloperFieldSummary {
             }
             return lhs.fieldNumber < rhs.fieldNumber
         }
+    }
 
-        let pointCount = max(1, report.totalPointCount)
+    /// The retained fields up to the retention cap, noting the fields beyond
+    /// it and each field that declares accumulation.
+    private static func retainedFields(
+        _ orderedStats: [FITDeveloperFieldReport.FieldStat], pointCount: Int, notes: inout [String]
+    ) -> [Field] {
         var fields: [Field] = []
         fields.reserveCapacity(min(orderedStats.count, maximumRetainedFieldCount))
-        var notes: [String] = []
 
         for stat in orderedStats {
             guard fields.count < maximumRetainedFieldCount else {
@@ -158,33 +189,38 @@ extension WorkoutDeveloperFieldSummary {
                 )
             }
         }
+        return fields
+    }
 
-        // A non-default developer scale or offset is rare in the wild
-        // (nearly every field ships scale 1 / offset 0), which is exactly
-        // why it must be surfaced: a non-zero offset is the only case where
-        // the subtract-vs-add sign convention is observable, and a non-unit
-        // scale is the only case where the C++ SDK's hard-coded 1.0 (which
-        // declines developer scale/offset entirely) would disagree with the
-        // Swift SDK's applied conversion this importer follows. The first
-        // real file carrying either should make the assumption visible
-        // instead of silently decoding wrong. Scanned across every stat,
-        // not just the retained ones, so a field beyond the retention cap
-        // still gets flagged.
+    /// A non-default developer scale or offset is rare in the wild
+    /// (nearly every field ships scale 1 / offset 0), which is exactly
+    /// why it must be surfaced: a non-zero offset is the only case where
+    /// the subtract-vs-add sign convention is observable, and a non-unit
+    /// scale is the only case where the C++ SDK's hard-coded 1.0 (which
+    /// declines developer scale/offset entirely) would disagree with the
+    /// Swift SDK's applied conversion this importer follows. The first
+    /// real file carrying either should make the assumption visible
+    /// instead of silently decoding wrong. Scanned across every stat,
+    /// not just the retained ones, so a field beyond the retention cap
+    /// still gets flagged.
+    private static func nonDefaultScaleOrOffsetNote(_ orderedStats: [FITDeveloperFieldReport.FieldStat]) -> String? {
         let nonDefaultFieldNames = orderedStats
             .filter { $0.offset != 0 || $0.scale != 1 }
             .map(\.fieldName)
-        if !nonDefaultFieldNames.isEmpty {
-            let named = nonDefaultFieldNames.prefix(maximumNamedOffsetFields)
-            let remainder = nonDefaultFieldNames.count - named.count
-            let list = named.map { "\"\($0)\"" }.joined(separator: ", ")
-            let count = nonDefaultFieldNames.count
-            notes.append(
-                remainder > 0
-                    ? coreLocalized("\(count) developer fields declare a non-default scale or offset (\(list) and \(remainder) more); decoded as raw / scale - offset, matching the Garmin Swift SDK.")
-                    : coreLocalized("\(count) developer fields declare a non-default scale or offset (\(list)); decoded as raw / scale - offset, matching the Garmin Swift SDK.")
-            )
-        }
+        guard !nonDefaultFieldNames.isEmpty else { return nil }
+        let named = nonDefaultFieldNames.prefix(maximumNamedOffsetFields)
+        let remainder = nonDefaultFieldNames.count - named.count
+        let list = named.map { "\"\($0)\"" }.joined(separator: ", ")
+        let count = nonDefaultFieldNames.count
+        return remainder > 0
+            ? coreLocalized("\(count) developer fields declare a non-default scale or offset (\(list) and \(remainder) more); decoded as raw / scale - offset, matching the Garmin Swift SDK.")
+            : coreLocalized("\(count) developer fields declare a non-default scale or offset (\(list)); decoded as raw / scale - offset, matching the Garmin Swift SDK.")
+    }
 
+    /// The notes for developer values and descriptions that were skipped or
+    /// dropped.
+    private static func skippedValueNotes(_ report: FITDeveloperFieldReport) -> [String] {
+        var notes: [String] = []
         if report.missingDescriptionValueCount > 0 {
             notes.append(
                 coreLocalized("\(report.missingDescriptionValueCount) developer field values skipped: no field_description message defined them.")
@@ -210,18 +246,6 @@ extension WorkoutDeveloperFieldSummary {
                 coreLocalized("\(report.droppedDescriptionCount) field_description messages dropped: description table limit reached.")
             )
         }
-
-        return WorkoutDeveloperFieldSummary(
-            sources: sources,
-            fields: fields,
-            powerSourceDeveloperDataIndex: report.powerDeveloperDataIndex.map(Int.init),
-            powerSourceIsNativeRecordField:
-                report.nativeRecordPowerPointCount > 0
-                && report.developerPowerPointCount == 0,
-            dynamicsSourceIsNativeRecordField:
-                report.nativeRecordDynamicsPointCount > 0
-                && report.developerDynamicsPointCount == 0,
-            notes: notes
-        )
+        return notes
     }
 }

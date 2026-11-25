@@ -114,30 +114,12 @@ enum RunPlayDemElevationBridge {
         let stride = max(1, cancellationCheckStride)
 
         // ---- Coordinates, converted once for both engine calls ----
-        var samples = [DemRouteSample]()
-        samples.reserveCapacity(count)
-        for index in 0..<count {
-            if index.isMultiple(of: stride), isCancelled() { throw CancellationError() }
-            samples.append(DemRouteSample(
-                latitudeDegrees: routePoints[index].latitude, longitudeDegrees: routePoints[index].longitude
-            ))
-        }
+        let samples = try demRouteSamples(routePoints, stride: stride, isCancelled: isCancelled)
 
         // ---- Plan ----
         if isCancelled() { throw CancellationError() }
-        EngineCallObserver.record(.demTilePlanning)
-        let plan: DemTilePlanResult
-        do {
-            plan = try DemTilePlanning.plan(samples: samples.span, policy: policy)
-        } catch {
-            switch error {
-            case .tileBudgetExceeded:
-                return .tileBudgetExceeded(minimumRequiredTileCount: grid.maximumTileCount + 1)
-            case .resourceLimit:
-                throw RunPlayDemElevationBridgeError.resourceLimit
-            case .invalidPolicy, .internalFailure:
-                throw RunPlayDemElevationBridgeError.engineContractViolation
-            }
+        guard let plan = try planTiles(samples, policy: policy) else {
+            return .tileBudgetExceeded(minimumRequiredTileCount: grid.maximumTileCount + 1)
         }
         if isCancelled() { throw CancellationError() }
         let plannedTiles = plan.tiles.map { RunPlayDemTileKey(x: $0.x, y: $0.y) }
@@ -148,22 +130,104 @@ enum RunPlayDemElevationBridge {
         let directory = try validatedDirectory(loaded, plannedTiles: plannedTiles, tileSize: grid.tileSize)
 
         // ---- Pack the directory and heights ----
+        let (keys, heights) = try packedDirectory(directory, tileSize: grid.tileSize, isCancelled: isCancelled)
+
+        // ---- Sample ----
+        if isCancelled() { throw CancellationError() }
+        let sampled = try sampleTiles(samples, policy: policy, keys: keys, heights: heights)
+        if isCancelled() { throw CancellationError() }
+        guard sampled.samples.count == count else {
+            throw RunPlayDemElevationBridgeError.engineContractViolation
+        }
+
+        // ---- Translate ----
+        let (elevations, statuses) = try translatedSamples(sampled, stride: stride, isCancelled: isCancelled)
+
+        return .sampled(try samplingResult(
+            sampled, elevations: elevations, statuses: statuses, plannedTiles: plannedTiles,
+            loadedTileCount: directory.count
+        ))
+    }
+
+    /// The Core result, with the engine's status counts as exact integers.
+    private static func samplingResult(
+        _ sampled: DemSamplingResult, elevations: [Double?], statuses: [RunPlayDemSampleStatus],
+        plannedTiles: [RunPlayDemTileKey], loadedTileCount: Int
+    ) throws -> RunPlayDemSamplingResult {
+        guard let sampledCount = Int(exactly: sampled.sampledCount),
+              let invalidCount = Int(exactly: sampled.invalidCoordinateCount),
+              let outsideCount = Int(exactly: sampled.outsideProjectionCount),
+              let missingCount = Int(exactly: sampled.missingTileCount),
+              let implausibleCount = Int(exactly: sampled.implausibleHeightCount)
+        else {
+            throw RunPlayDemElevationBridgeError.engineContractViolation
+        }
+        return RunPlayDemSamplingResult(
+            elevationsMeters: elevations, statuses: statuses, plannedTiles: plannedTiles,
+            loadedTileCount: loadedTileCount, sampledCount: sampledCount,
+            invalidCoordinateCount: invalidCount, outsideProjectionCount: outsideCount,
+            missingTileCount: missingCount, implausibleHeightCount: implausibleCount
+        )
+    }
+
+    private static func demRouteSamples(
+        _ routePoints: [RoutePoint], stride: Int, isCancelled: @Sendable () -> Bool
+    ) throws -> [DemRouteSample] {
+        let count = routePoints.count
+        var samples = [DemRouteSample]()
+        samples.reserveCapacity(count)
+        for index in 0..<count {
+            if index.isMultiple(of: stride), isCancelled() { throw CancellationError() }
+            samples.append(DemRouteSample(
+                latitudeDegrees: routePoints[index].latitude, longitudeDegrees: routePoints[index].longitude
+            ))
+        }
+        return samples
+    }
+
+    /// The planning engine call; nil when the route needs more tiles than the
+    /// budget allows.
+    private static func planTiles(
+        _ samples: [DemRouteSample], policy: DemSamplingPolicy
+    ) throws -> DemTilePlanResult? {
+        EngineCallObserver.record(.demTilePlanning)
+        do {
+            return try DemTilePlanning.plan(samples: samples.span, policy: policy)
+        } catch {
+            switch error {
+            case .tileBudgetExceeded:
+                return nil
+            case .resourceLimit:
+                throw RunPlayDemElevationBridgeError.resourceLimit
+            case .invalidPolicy, .internalFailure:
+                throw RunPlayDemElevationBridgeError.engineContractViolation
+            }
+        }
+    }
+
+    /// The directory keys and every tile's heights, in directory order.
+    private static func packedDirectory(
+        _ directory: [RunPlayDemDecodedTile], tileSize: Int, isCancelled: @Sendable () -> Bool
+    ) throws -> (keys: [DemTileKey], heights: [Float]) {
         var keys = [DemTileKey]()
         keys.reserveCapacity(directory.count)
         var heights = [Float]()
-        heights.reserveCapacity(directory.count * grid.tileSize * grid.tileSize)
+        heights.reserveCapacity(directory.count * tileSize * tileSize)
         for tile in directory {
             if isCancelled() { throw CancellationError() }
             keys.append(DemTileKey(x: tile.key.x, y: tile.key.y))
             heights.append(contentsOf: tile.heightsMeters)
         }
+        return (keys, heights)
+    }
 
-        // ---- Sample ----
-        if isCancelled() { throw CancellationError() }
+    /// The sampling engine call.
+    private static func sampleTiles(
+        _ samples: [DemRouteSample], policy: DemSamplingPolicy, keys: [DemTileKey], heights: [Float]
+    ) throws -> DemSamplingResult {
         EngineCallObserver.record(.demSampling)
-        let sampled: DemSamplingResult
         do {
-            sampled = try DemElevationSampling.sample(
+            return try DemElevationSampling.sample(
                 samples: samples.span, policy: policy, tiles: keys.span, tileHeights: heights.span
             )
         } catch {
@@ -176,12 +240,13 @@ enum RunPlayDemElevationBridge {
                 throw RunPlayDemElevationBridgeError.engineContractViolation
             }
         }
-        if isCancelled() { throw CancellationError() }
-        guard sampled.samples.count == count else {
-            throw RunPlayDemElevationBridgeError.engineContractViolation
-        }
+    }
 
-        // ---- Translate ----
+    /// Each sample's elevation, present only when it was sampled, and status.
+    private static func translatedSamples(
+        _ sampled: DemSamplingResult, stride: Int, isCancelled: @Sendable () -> Bool
+    ) throws -> (elevations: [Double?], statuses: [RunPlayDemSampleStatus]) {
+        let count = sampled.samples.count
         var elevations: [Double?] = []
         elevations.reserveCapacity(count)
         var statuses: [RunPlayDemSampleStatus] = []
@@ -207,21 +272,7 @@ enum RunPlayDemElevationBridge {
                 statuses.append(.implausibleHeight)
             }
         }
-
-        guard let sampledCount = Int(exactly: sampled.sampledCount),
-              let invalidCount = Int(exactly: sampled.invalidCoordinateCount),
-              let outsideCount = Int(exactly: sampled.outsideProjectionCount),
-              let missingCount = Int(exactly: sampled.missingTileCount),
-              let implausibleCount = Int(exactly: sampled.implausibleHeightCount)
-        else {
-            throw RunPlayDemElevationBridgeError.engineContractViolation
-        }
-        return .sampled(RunPlayDemSamplingResult(
-            elevationsMeters: elevations, statuses: statuses, plannedTiles: plannedTiles,
-            loadedTileCount: directory.count, sampledCount: sampledCount,
-            invalidCoordinateCount: invalidCount, outsideProjectionCount: outsideCount,
-            missingTileCount: missingCount, implausibleHeightCount: implausibleCount
-        ))
+        return (elevations, statuses)
     }
 
     /// The loaded tiles, validated against the plan and sorted into the

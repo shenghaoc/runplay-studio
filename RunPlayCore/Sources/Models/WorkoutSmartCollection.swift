@@ -239,49 +239,18 @@ public enum WorkoutSmartCollectionQuerySummary: Sendable {
             parts.append(coreLocalized("Favourites"))
         }
 
-        switch query.filter.date {
-        case .allTime:
-            break
-        case .last30Days, .last90Days, .currentCalendarYear:
-            parts.append(query.filter.date.displayName)
-        case .custom(let start, let end):
-            if start != nil || end != nil {
-                parts.append(coreLocalized("Custom Date Range"))
-            }
+        if let date = dateSummary(query.filter.date) {
+            parts.append(date)
         }
 
         if query.filter.source != .all {
             parts.append(query.filter.source.displayName)
         }
 
-        if query.filter.data.requiresHeartRate {
-            parts.append(coreLocalized("Has Heart Rate"))
-        }
-        if query.filter.data.requiresCorrectedElevation {
-            parts.append(coreLocalized("Has Corrected Elevation"))
-        }
-        if query.filter.data.requiresRecordedLaps {
-            parts.append(coreLocalized("Has Recorded Laps"))
-        }
+        parts.append(contentsOf: dataSummaries(query.filter.data))
 
-        switch query.filter.tags {
-        case .anyTags:
-            break
-        case .untaggedOnly:
-            parts.append(coreLocalized("Untagged"))
-        case .selected(let tagIDs, let match):
-            let names = tagIDs
-                .compactMap { tagsByID[$0]?.name }
-                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-            if !names.isEmpty {
-                let joined = names.joined(separator: ", ")
-                switch match {
-                case .any:
-                    parts.append(coreLocalized("Tag: \(joined)"))
-                case .all:
-                    parts.append(coreLocalized("Tags (all): \(joined)"))
-                }
-            }
+        if let tags = tagSummary(query.filter.tags, tagsByID: tagsByID) {
+            parts.append(tags)
         }
 
         if query.sort != .dateNewest {
@@ -291,5 +260,56 @@ public enum WorkoutSmartCollectionQuerySummary: Sendable {
         }
 
         return parts.joined(separator: " · ")
+    }
+
+    private static func dateSummary(_ date: WorkoutLibraryDateFilter) -> String? {
+        switch date {
+        case .allTime:
+            return nil
+        case .last30Days, .last90Days, .currentCalendarYear:
+            return date.displayName
+        case .custom(let start, let end):
+            if start != nil || end != nil {
+                return coreLocalized("Custom Date Range")
+            }
+            return nil
+        }
+    }
+
+    private static func dataSummaries(_ data: WorkoutLibraryDataFilters) -> [String] {
+        var parts: [String] = []
+        if data.requiresHeartRate {
+            parts.append(coreLocalized("Has Heart Rate"))
+        }
+        if data.requiresCorrectedElevation {
+            parts.append(coreLocalized("Has Corrected Elevation"))
+        }
+        if data.requiresRecordedLaps {
+            parts.append(coreLocalized("Has Recorded Laps"))
+        }
+        return parts
+    }
+
+    private static func tagSummary(_ tags: WorkoutLibraryTagFilter, tagsByID: [UUID: WorkoutTag]) -> String? {
+        switch tags {
+        case .anyTags:
+            return nil
+        case .untaggedOnly:
+            return coreLocalized("Untagged")
+        case .selected(let tagIDs, let match):
+            let names = tagIDs
+                .compactMap { tagsByID[$0]?.name }
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            if !names.isEmpty {
+                let joined = names.joined(separator: ", ")
+                switch match {
+                case .any:
+                    return coreLocalized("Tag: \(joined)")
+                case .all:
+                    return coreLocalized("Tags (all): \(joined)")
+                }
+            }
+            return nil
+        }
     }
 }

@@ -235,6 +235,51 @@ enum RunPlaySegmentDetectorAdapter {
         return engineConfig
     }
 
+    /// Every timeline and elevation snapshot array has one entry per route point.
+    private static func validateAlignment(
+        _ timelineSnapshot: WorkoutTimeline.WorkoutTimelineSegmentDetectionSnapshot,
+        _ elevationSnapshot: ElevationProfile.ElevationSegmentDetectionSnapshot,
+        count: Int
+    ) throws {
+        guard timelineSnapshot.distancesMeters.count == count,
+              timelineSnapshot.elapsedSeconds.count == count,
+              timelineSnapshot.activeSeconds.count == count,
+              elevationSnapshot.cumulativeAscentMeters.count == count,
+              elevationSnapshot.cumulativeDescentMeters.count == count,
+              elevationSnapshot.reliableIntervalCounts.count == count,
+              elevationSnapshot.reliableRunIdentifiers.count == count
+        else {
+            throw RunPlaySegmentDetectorBridgeError.invalidInputContract
+        }
+    }
+
+    /// Compact 0-based reliable run identifiers in route order; -1 marks a
+    /// sample in no reliable run.
+    private struct ReliableRunCompactor {
+        private var compactReliableRun: Int32 = 0
+        private var previousRawReliableRun: Int?
+
+        @inline(__always)
+        mutating func compactIdentifier(for rawRun: Int?) -> Int32 {
+            if let raw = rawRun {
+                if let prev = previousRawReliableRun {
+                    if raw != prev {
+                        compactReliableRun += 1
+                    }
+                }
+                // First reliable run uses current compactReliableRun (starts at 0)
+                let mappedRun = compactReliableRun
+                // Keep the previous reliable run across nil samples. A missing
+                // elevation interval separates runs, and the next non-nil raw
+                // identifier must advance the compact identifier.
+                previousRawReliableRun = raw
+                return mappedRun
+            } else {
+                return -1
+            }
+        }
+    }
+
     @inline(__always)
     static func pack<Sample>(
         routePoints: [RoutePoint], timeline: WorkoutTimeline, elevationProfile: ElevationProfile,
@@ -247,16 +292,7 @@ enum RunPlaySegmentDetectorAdapter {
         let elevationSnapshot = elevationProfile.segmentDetectionSnapshot()
 
         // Verify array alignment
-        guard timelineSnapshot.distancesMeters.count == count,
-              timelineSnapshot.elapsedSeconds.count == count,
-              timelineSnapshot.activeSeconds.count == count,
-              elevationSnapshot.cumulativeAscentMeters.count == count,
-              elevationSnapshot.cumulativeDescentMeters.count == count,
-              elevationSnapshot.reliableIntervalCounts.count == count,
-              elevationSnapshot.reliableRunIdentifiers.count == count
-        else {
-            throw RunPlaySegmentDetectorBridgeError.invalidInputContract
-        }
+        try validateAlignment(timelineSnapshot, elevationSnapshot, count: count)
 
         // Build compact samples in the destination representation.
         var samples = ContiguousArray<Sample>()
@@ -267,8 +303,7 @@ enum RunPlaySegmentDetectorAdapter {
         var previousRouteSegment: Int? = nil
 
         // Compact reliable run identifiers
-        var compactReliableRun: Int32 = 0
-        var previousRawReliableRun: Int?
+        var reliableRuns = ReliableRunCompactor()
 
         for index in 0..<count {
             if index.isMultiple(of: cancellationCheckStride), isCancelled() {
@@ -287,23 +322,7 @@ enum RunPlaySegmentDetectorAdapter {
             previousRouteSegment = segment
 
             // Compact reliable run identifiers
-            let rawRun = elevationSnapshot.reliableRunIdentifiers[index]
-            let mappedRun: Int32
-            if let raw = rawRun {
-                if let prev = previousRawReliableRun {
-                    if raw != prev {
-                        compactReliableRun += 1
-                    }
-                }
-                // First reliable run uses current compactReliableRun (starts at 0)
-                mappedRun = compactReliableRun
-                // Keep the previous reliable run across nil samples. A missing
-                // elevation interval separates runs, and the next non-nil raw
-                // identifier must advance the compact identifier.
-                previousRawReliableRun = raw
-            } else {
-                mappedRun = -1
-            }
+            let mappedRun = reliableRuns.compactIdentifier(for: elevationSnapshot.reliableRunIdentifiers[index])
 
             samples.append(makeSample(
                 timelineSnapshot.distancesMeters[index],
@@ -318,6 +337,95 @@ enum RunPlaySegmentDetectorAdapter {
         }
 
         return samples
+    }
+
+    /// A pace candidate's value is within the valid pace range; a climb is
+    /// positive and a descent negative.
+    private static func validateSelectionValue(
+        _ value: Double, kind: RunPlaySegmentWindowKind, configuration: SegmentDetectorSearchConfiguration
+    ) throws {
+        switch kind {
+        case .fastest400m, .fastest1km, .slowest1km,
+                .fastestOneMile, .fastest5km, .fastest10km,
+                .fastestHalfMarathon, .fastestMarathon:
+            let minPace = configuration.minimumValidPaceSecondsPerKilometer
+            let maxPace = configuration.maximumValidPaceSecondsPerKilometer
+            if value < minPace || value > maxPace {
+                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+        case .biggestClimb:
+            if !(value > 0) {
+                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+        case .biggestDescent:
+            if !(value < 0) {
+                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+        }
+    }
+
+    /// The configured window length of each candidate kind.
+    private static func windowDistance(
+        for kind: RunPlaySegmentWindowKind, configuration: SegmentDetectorSearchConfiguration
+    ) -> Double {
+        switch kind {
+        case .fastest400m:
+            configuration.fastest400mDistanceMeters
+        case .fastest1km, .slowest1km:
+            configuration.oneKilometerDistanceMeters
+        case .fastestOneMile:
+            configuration.oneMileDistanceMeters
+        case .fastest5km:
+            configuration.fiveKilometerDistanceMeters
+        case .fastest10km:
+            configuration.tenKilometerDistanceMeters
+        case .fastestHalfMarathon:
+            configuration.halfMarathonDistanceMeters
+        case .fastestMarathon:
+            configuration.marathonDistanceMeters
+        case .biggestClimb, .biggestDescent:
+            configuration.elevationWindowDistanceMeters
+        }
+    }
+
+    /// Verify deterministic order (kinds appear in expected emission order).
+    private static func validateEmissionOrder(_ candidates: [RunPlaySegmentWindowCandidate]) throws {
+        let expectedOrder: [RunPlaySegmentWindowKind] = [
+            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent,
+            .fastestOneMile, .fastest5km, .fastest10km, .fastestHalfMarathon,
+            .fastestMarathon
+        ]
+        var orderIndex = 0
+        for candidate in candidates {
+            while orderIndex < expectedOrder.count,
+                  expectedOrder[orderIndex] != candidate.kind {
+                orderIndex += 1
+            }
+            guard orderIndex < expectedOrder.count else {
+                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+        }
+    }
+
+    /// Each of the seven pace searches is individually capped by the
+    /// per-search budget, so the summed pace evaluation count is capped by
+    /// seven times that budget.
+    private static func evaluationCounts(
+        paceEvaluations: UInt64, elevationEvaluations: UInt64, configuration: SegmentDetectorSearchConfiguration
+    ) throws -> (pace: Int, elevation: Int) {
+        let (maximumPaceEvaluations, paceLimitOverflow) =
+            configuration.maximumEvaluationsPerSearch.multipliedReportingOverflow(
+                by: SegmentDetection.paceSearchCount)
+        guard !paceLimitOverflow,
+              paceEvaluations <= maximumPaceEvaluations,
+              elevationEvaluations
+                <= configuration.maximumEvaluationsPerSearch,
+              let paceEvalCount = Int(exactly: paceEvaluations),
+              let elevEvalCount = Int(exactly: elevationEvaluations)
+        else {
+            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+        }
+        return (paceEvalCount, elevEvalCount)
     }
 
     static func validateCandidates(
@@ -346,44 +454,9 @@ enum RunPlaySegmentDetectorAdapter {
                 throw RunPlaySegmentDetectorBridgeError.engineContractViolation
             }
 
-            switch kind {
-            case .fastest400m, .fastest1km, .slowest1km,
-                    .fastestOneMile, .fastest5km, .fastest10km,
-                    .fastestHalfMarathon, .fastestMarathon:
-                let minPace = configuration.minimumValidPaceSecondsPerKilometer
-                let maxPace = configuration.maximumValidPaceSecondsPerKilometer
-                if value < minPace || value > maxPace {
-                    throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-                }
-            case .biggestClimb:
-                if !(value > 0) {
-                    throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-                }
-            case .biggestDescent:
-                if !(value < 0) {
-                    throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-                }
-            }
+            try validateSelectionValue(value, kind: kind, configuration: configuration)
 
-            let expectedWindowDistance: Double
-            switch kind {
-            case .fastest400m:
-                expectedWindowDistance = configuration.fastest400mDistanceMeters
-            case .fastest1km, .slowest1km:
-                expectedWindowDistance = configuration.oneKilometerDistanceMeters
-            case .fastestOneMile:
-                expectedWindowDistance = configuration.oneMileDistanceMeters
-            case .fastest5km:
-                expectedWindowDistance = configuration.fiveKilometerDistanceMeters
-            case .fastest10km:
-                expectedWindowDistance = configuration.tenKilometerDistanceMeters
-            case .fastestHalfMarathon:
-                expectedWindowDistance = configuration.halfMarathonDistanceMeters
-            case .fastestMarathon:
-                expectedWindowDistance = configuration.marathonDistanceMeters
-            case .biggestClimb, .biggestDescent:
-                expectedWindowDistance = configuration.elevationWindowDistanceMeters
-            }
+            let expectedWindowDistance = windowDistance(for: kind, configuration: configuration)
             let expectedEndDistance = startDistance + expectedWindowDistance
             guard endDistance == expectedEndDistance else {
                 throw RunPlaySegmentDetectorBridgeError.engineContractViolation
@@ -391,38 +464,12 @@ enum RunPlaySegmentDetectorAdapter {
 
         }
 
-        // Verify deterministic order (kinds appear in expected emission order)
-        let expectedOrder: [RunPlaySegmentWindowKind] = [
-            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent,
-            .fastestOneMile, .fastest5km, .fastest10km, .fastestHalfMarathon,
-            .fastestMarathon
-        ]
-        var orderIndex = 0
-        for candidate in candidates {
-            while orderIndex < expectedOrder.count,
-                  expectedOrder[orderIndex] != candidate.kind {
-                orderIndex += 1
-            }
-            guard orderIndex < expectedOrder.count else {
-                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-            }
-        }
+        try validateEmissionOrder(candidates)
 
-        // Each of the seven pace searches is individually capped by the
-        // per-search budget, so the summed pace evaluation count is capped by
-        // seven times that budget.
-        let (maximumPaceEvaluations, paceLimitOverflow) =
-            configuration.maximumEvaluationsPerSearch.multipliedReportingOverflow(
-                by: SegmentDetection.paceSearchCount)
-        guard !paceLimitOverflow,
-              paceEvaluations <= maximumPaceEvaluations,
-              elevationEvaluations
-                <= configuration.maximumEvaluationsPerSearch,
-              let paceEvalCount = Int(exactly: paceEvaluations),
-              let elevEvalCount = Int(exactly: elevationEvaluations)
-        else {
-            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-        }
+        let (paceEvalCount, elevEvalCount) = try evaluationCounts(
+            paceEvaluations: paceEvaluations, elevationEvaluations: elevationEvaluations,
+            configuration: configuration
+        )
 
         return RunPlaySegmentWindowSearchResult(
             candidates: candidates,

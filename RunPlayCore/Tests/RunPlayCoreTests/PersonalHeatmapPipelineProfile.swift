@@ -421,29 +421,23 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         }
     }
 
-    /// Test-only reconstruction of `PersonalHeatmapBuilder.build`.
-    ///
-    /// Mirrors production semantics statement for statement: one date filter,
-    /// one prepared native batch reused across every adaptive pass, per-workout
-    /// coverage, unfiltered global counts, the minimum-repeat filter, the
-    /// coarsening decision, then sort / materialize / assemble exactly once.
-    private static func profiledBuild(
-        workouts: [RunWorkout],
-        configuration: PersonalHeatmapConfiguration
-    ) throws -> ReconstructionMeasurement {
-        let wallStart = ContinuousClock.now
-
+    private static func isValid(_ configuration: PersonalHeatmapConfiguration) -> Bool {
         guard configuration.cellSizeMeters.isFinite,
               configuration.cellSizeMeters > 0,
               configuration.minimumWorkoutCount >= 1,
               configuration.maximumRenderedCellCount >= 1,
               configuration.maximumIntervalMeters.isFinite,
               configuration.maximumIntervalMeters > 0 else {
-            throw PersonalHeatmapError.invalidConfiguration
+            return false
         }
+        return true
+    }
 
-        // Phase 1: date filtering.
-        let dateFilterStart = ContinuousClock.now
+    /// The workouts inside the date filter, and how many a range filter
+    /// excluded for having no date.
+    private static func dateFiltered(
+        _ workouts: [RunWorkout], configuration: PersonalHeatmapConfiguration
+    ) -> (eligible: [RunWorkout], excludedUndated: Int) {
         var eligible: [RunWorkout] = []
         eligible.reserveCapacity(workouts.count)
         var excludedUndated = 0
@@ -461,6 +455,28 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             }
             eligible.append(workout)
         }
+        return (eligible, excludedUndated)
+    }
+
+    /// Test-only reconstruction of `PersonalHeatmapBuilder.build`.
+    ///
+    /// Mirrors production semantics statement for statement: one date filter,
+    /// one prepared native batch reused across every adaptive pass, per-workout
+    /// coverage, unfiltered global counts, the minimum-repeat filter, the
+    /// coarsening decision, then sort / materialize / assemble exactly once.
+    private static func profiledBuild(
+        workouts: [RunWorkout],
+        configuration: PersonalHeatmapConfiguration
+    ) throws -> ReconstructionMeasurement {
+        let wallStart = ContinuousClock.now
+
+        guard isValid(configuration) else {
+            throw PersonalHeatmapError.invalidConfiguration
+        }
+
+        // Phase 1: date filtering.
+        let dateFilterStart = ContinuousClock.now
+        let (eligible, excludedUndated) = dateFiltered(workouts, configuration: configuration)
         let dateFilterNanoseconds = nanoseconds(from: dateFilterStart, to: ContinuousClock.now)
 
         // Phase 2: native route preparation (exactly one batch).
