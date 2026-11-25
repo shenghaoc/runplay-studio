@@ -4,56 +4,10 @@ import Foundation
 internal import CxxStdlib
 internal import RunPlayEngineCpp
 
-// MARK: - Pure-Swift result types
+@testable import RunPlayCore
 
-/// One native elevation sample translated into pure Swift values.
-struct RunPlayElevationProfileSampleResult: Sendable {
-    let correctedAltitudeMeters: Double?
-    let sourceAltitudeWasRejected: Bool
-
-    let cumulativeAscentMeters: Double
-    let cumulativeDescentMeters: Double
-    let cumulativeSignedChangeMeters: Double
-    let reliableIntervalCount: Double
-
-    let runIdentifier: Int?
-    let reliableRunIdentifier: Int?
-}
-
-/// Complete elevation-profile build result for one route.
-struct RunPlayElevationProfileBuildResult: Sendable {
-    let samples: [RunPlayElevationProfileSampleResult]
-
-    let rejectedAltitudeCount: Int
-    let hasMeaningfulElevation: Bool
-    let totalAscentMeters: Double?
-    let totalDescentMeters: Double?
-}
-
-/// Diagnostic-only phase timings for one complete bridge invocation.
-/// Production callers never request or collect these clocks.
-struct RunPlayElevationProfileBenchmarkReport: Sendable {
-    let inputConversionMilliseconds: Double
-    let outputAllocationMilliseconds: Double
-    let nativeKernelMilliseconds: Double
-    let outputTranslationMilliseconds: Double
-}
-
-enum RunPlayElevationProfileBridgeError: Error, Equatable {
-    case resourceLimit
-    case invalidPolicy
-    case invalidInputContract
-    case engineContractViolation
-}
-
-// MARK: - Bridge
-
-/// Production adapter for the complete multi-pass ElevationProfile build.
-///
-/// Converts route points into one compact native input buffer, invokes
-/// `build_elevation_profile` exactly once, and translates the one-to-one
-/// output samples. C++ retains no pointer and performs no callback.
-enum RunPlayElevationProfileBridge {
+// Transitional benchmark oracle; exact prior C++ path. Remove in PR10.
+enum ElevationProfileCppBenchmarkOracle {
     static func build(
         routePoints: [RoutePoint],
         policy: RouteQualityPolicy,
@@ -77,41 +31,8 @@ enum RunPlayElevationProfileBridge {
         return try buildNative(
             routePoints: routePoints,
             policy: policy,
-            isCancelled: isCancelled,
-            collectBenchmarkTimings: false
-        ).result
-    }
-
-    /// Diagnostic-only profiled bridge used by release benchmarks. The result
-    /// travels through the same conversion, native call, validation, and output
-    /// translation as production.
-    static func buildCollectingBenchmarkReport(
-        routePoints: [RoutePoint],
-        policy: RouteQualityPolicy,
-        isCancelled: @Sendable () -> Bool
-    ) throws -> RunPlayElevationProfileBenchmarkReport {
-        guard !routePoints.isEmpty else {
-            return RunPlayElevationProfileBenchmarkReport(
-                inputConversionMilliseconds: 0,
-                outputAllocationMilliseconds: 0,
-                nativeKernelMilliseconds: 0,
-                outputTranslationMilliseconds: 0
-            )
-        }
-        guard routePoints.count <= WorkoutImportResourceLimits.maxRoutePointCount else {
-            throw RunPlayElevationProfileBridgeError.resourceLimit
-        }
-
-        let profiled = try buildNative(
-            routePoints: routePoints,
-            policy: policy,
-            isCancelled: isCancelled,
-            collectBenchmarkTimings: true
+            isCancelled: isCancelled
         )
-        guard let report = profiled.report else {
-            throw RunPlayElevationProfileBridgeError.engineContractViolation
-        }
-        return report
     }
 
     /// Nested so every temporary C++ value is destroyed before the pure-Swift
@@ -119,17 +40,10 @@ enum RunPlayElevationProfileBridge {
     private static func buildNative(
         routePoints: [RoutePoint],
         policy: RouteQualityPolicy,
-        isCancelled: @Sendable () -> Bool,
-        collectBenchmarkTimings: Bool
-    ) throws -> (
-        result: RunPlayElevationProfileBuildResult,
-        report: RunPlayElevationProfileBenchmarkReport?
-    ) {
+        isCancelled: @Sendable () -> Bool
+    ) throws -> RunPlayElevationProfileBuildResult {
         let count = routePoints.count
         let stride = max(1, policy.cancellationCheckStride)
-        let conversionStart = collectBenchmarkTimings
-            ? DispatchTime.now().uptimeNanoseconds
-            : 0
 
         var samples = ContiguousArray<runplay.ElevationProfileInputSample>()
         samples.reserveCapacity(count)
@@ -200,26 +114,15 @@ enum RunPlayElevationProfileBridge {
         nativePolicy.gain_loss_deadband_meters =
             policy.elevationGainLossDeadbandMeters
 
-        let conversionEnd = collectBenchmarkTimings
-            ? DispatchTime.now().uptimeNanoseconds
-            : 0
-        let allocationStart = conversionEnd
 
         var output = ContiguousArray<runplay.ElevationProfileOutputSample>(
             repeating: runplay.ElevationProfileOutputSample(),
             count: count
         )
 
-        let allocationEnd = collectBenchmarkTimings
-            ? DispatchTime.now().uptimeNanoseconds
-            : 0
 
         try checkCancellation(isCancelled: isCancelled)
 
-        let nativeStart = collectBenchmarkTimings
-            ? DispatchTime.now().uptimeNanoseconds
-            : 0
-        NativeCallObserver.record(.elevationProfile)
         let summary = samples.withUnsafeBufferPointer { samplesBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 runplay.build_elevation_profile(
@@ -231,15 +134,9 @@ enum RunPlayElevationProfileBridge {
                 )
             }
         }
-        let nativeEnd = collectBenchmarkTimings
-            ? DispatchTime.now().uptimeNanoseconds
-            : 0
 
         try checkCancellation(isCancelled: isCancelled)
 
-        let translationStart = collectBenchmarkTimings
-            ? DispatchTime.now().uptimeNanoseconds
-            : 0
 
         switch summary.status {
         case .success:
@@ -421,29 +318,7 @@ enum RunPlayElevationProfileBridge {
             totalDescentMeters: meaningful ? summary.total_descent_meters : nil
         )
 
-        guard collectBenchmarkTimings else {
-            return (result, nil)
-        }
-        let translationEnd = DispatchTime.now().uptimeNanoseconds
-        let report = RunPlayElevationProfileBenchmarkReport(
-            inputConversionMilliseconds: milliseconds(
-                from: conversionStart,
-                to: conversionEnd
-            ),
-            outputAllocationMilliseconds: milliseconds(
-                from: allocationStart,
-                to: allocationEnd
-            ),
-            nativeKernelMilliseconds: milliseconds(
-                from: nativeStart,
-                to: nativeEnd
-            ),
-            outputTranslationMilliseconds: milliseconds(
-                from: translationStart,
-                to: translationEnd
-            )
-        )
-        return (result, report)
+        return result
     }
 
     private static func checkCancellation(
@@ -460,7 +335,4 @@ enum RunPlayElevationProfileBridge {
         return abs(a - b) <= tolerance
     }
 
-    private static func milliseconds(from start: UInt64, to end: UInt64) -> Double {
-        Double(end - start) / 1_000_000
-    }
 }

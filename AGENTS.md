@@ -110,6 +110,8 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
     isolated-point rejection, implicit gap inference, segment compaction,
     supplied-distance policy and normalized cumulative distances, one engine
     call per route
+  - the multi-pass `ElevationProfile` build (`EngineElevationProfile`), one
+    engine call per profile build
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
