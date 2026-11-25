@@ -772,6 +772,23 @@ final class WorkoutLibraryViewModel: ObservableObject {
         }
     }
 
+    /// Whether `key` is the published query and its result is on screen.
+    private func isPublished(_ key: QueryCacheKey) -> Bool {
+        key == lastPublishedKey && (loadState == .ready || loadState == .emptyLibrary
+            || loadState == .emptySearch(query: searchText) || loadState == .emptyFilters)
+    }
+
+    /// A query keeps the previous results on screen while it runs; any other
+    /// state shows loading.
+    private func showLoadingUnlessShowingResults() {
+        switch loadState {
+        case .ready, .emptySearch, .emptyFilters:
+            break
+        case .idle, .loading, .emptyLibrary, .failed:
+            loadState = .loading
+        }
+    }
+
     private func scheduleQuery(force: Bool = false) {
         guard !isBatchingQueryChanges else { return }
 
@@ -791,8 +808,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             query: query,
             context: queryContext
         )
-        if !force, key == lastPublishedKey, loadState == .ready || loadState == .emptyLibrary
-            || loadState == .emptySearch(query: searchText) || loadState == .emptyFilters {
+        if !force, isPublished(key) {
             return
         }
 
@@ -811,12 +827,7 @@ final class WorkoutLibraryViewModel: ObservableObject {
             return
         }
 
-        switch loadState {
-        case .ready, .emptySearch, .emptyFilters:
-            break
-        case .idle, .loading, .emptyLibrary, .failed:
-            loadState = .loading
-        }
+        showLoadingUnlessShowingResults()
 
         queryTask = Task { [weak self] in
             do {

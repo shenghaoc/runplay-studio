@@ -231,93 +231,130 @@ enum PlainStringScanner {
     /// The string literals of `source`, with interpolations replaced by U+0001,
     /// each with the call it sits in (empty at statement level, "[" in an array).
     static func literals(in source: String) -> [Literal] {
-        let bytes = Array(source.utf8)
-        let count = bytes.count
+        var scanner = LiteralScanner(bytes: Array(source.utf8))
+        return scanner.scan()
+    }
+
+    /// A byte scanner over Swift source that tracks the line, the stack of
+    /// open calls and brackets, and the literals found so far.
+    private struct LiteralScanner {
+        let bytes: [UInt8]
         var result: [Literal] = []
         var calls: [String] = []
         var line = 1
         var i = 0
 
+        init(bytes: [UInt8]) {
+            self.bytes = bytes
+        }
+
+        var count: Int { bytes.count }
+
         func isIdentifierByte(_ b: UInt8) -> Bool {
             (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 || b == 46
         }
+
         func starts(_ s: String, at index: Int) -> Bool {
             let pattern = Array(s.utf8)
             guard index + pattern.count <= count else { return false }
             return Array(bytes[index..<index + pattern.count]) == pattern
         }
 
-        while i < count {
-            let c = bytes[i]
-            if c == 10 { line += 1; i += 1; continue }
-            if starts("//", at: i) {
-                while i < count, bytes[i] != 10 { i += 1 }
-                continue
-            }
-            if starts("/*", at: i) {
-                i += 2
-                while i < count, !starts("*/", at: i) { if bytes[i] == 10 { line += 1 }; i += 1 }
-                i += 2
-                continue
-            }
-            if c == 40 || c == 91 {  // ( [
-                if c == 91 {
-                    calls.append("[")
-                } else {
-                    var start = i
-                    while start > 0, isIdentifierByte(bytes[start - 1]) { start -= 1 }
-                    calls.append(String(decoding: bytes[start..<i], as: UTF8.self))
+        mutating func scan() -> [Literal] {
+            while i < count {
+                let c = bytes[i]
+                if c == 10 { line += 1; i += 1; continue }
+                if starts("//", at: i) {
+                    while i < count, bytes[i] != 10 { i += 1 }
+                    continue
+                }
+                if starts("/*", at: i) {
+                    skipBlockComment()
+                    continue
+                }
+                if c == 40 || c == 91 {  // ( [
+                    openCall(c)
+                    continue
+                }
+                if c == 41 || c == 93 {  // ) ]
+                    if !calls.isEmpty { calls.removeLast() }
+                    i += 1
+                    continue
+                }
+                if c == 34 {  // "
+                    readStringLiteral()
+                    continue
                 }
                 i += 1
-                continue
             }
-            if c == 41 || c == 93 {  // ) ]
-                if !calls.isEmpty { calls.removeLast() }
-                i += 1
-                continue
-            }
-            if c == 34 {  // "
-                let multiline = starts("\"\"\"", at: i)
-                let delimiter = multiline ? "\"\"\"" : "\""
-                let literalLine = line
-                let beforeStart = max(0, i - 40)
-                let before = String(decoding: bytes[beforeStart..<i], as: UTF8.self)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                var j = i + delimiter.utf8.count
-                var text: [UInt8] = []
-                while j < count {
-                    if starts("\\(", at: j) {
-                        text.append(1)
-                        j += 2
-                        var depth = 1
-                        while j < count, depth > 0 {
-                            if bytes[j] == 40 { depth += 1 } else if bytes[j] == 41 { depth -= 1 }
-                            else if bytes[j] == 34 {
-                                j += 1
-                                while j < count, bytes[j] != 34 { if bytes[j] == 92 { j += 1 }; j += 1 }
-                            }
-                            j += 1
-                        }
-                        continue
-                    }
-                    if starts(delimiter, at: j) { break }
-                    if !multiline, bytes[j] == 10 { break }
-                    if bytes[j] == 92, j + 1 < count { text.append(bytes[j]); text.append(bytes[j + 1]); j += 2; continue }
-                    if bytes[j] == 10 { line += 1 }
-                    text.append(bytes[j])
-                    j += 1
-                }
-                result.append(Literal(
-                    line: literalLine,
-                    text: String(decoding: text, as: UTF8.self),
-                    callee: calls.last ?? "",
-                    before: before
-                ))
-                i = j + delimiter.utf8.count
-                continue
+            return result
+        }
+
+        mutating func skipBlockComment() {
+            i += 2
+            while i < count, !starts("*/", at: i) { if bytes[i] == 10 { line += 1 }; i += 1 }
+            i += 2
+        }
+
+        /// Pushes "[" for a bracket, or the identifier before a parenthesis.
+        mutating func openCall(_ c: UInt8) {
+            if c == 91 {
+                calls.append("[")
+            } else {
+                var start = i
+                while start > 0, isIdentifierByte(bytes[start - 1]) { start -= 1 }
+                calls.append(String(decoding: bytes[start..<i], as: UTF8.self))
             }
             i += 1
         }
-        return result
+
+        /// Reads one single-line or multiline string literal at `i`, with each
+        /// interpolation replaced by U+0001.
+        mutating func readStringLiteral() {
+            let multiline = starts("\"\"\"", at: i)
+            let delimiter = multiline ? "\"\"\"" : "\""
+            let literalLine = line
+            let beforeStart = max(0, i - 40)
+            let before = String(decoding: bytes[beforeStart..<i], as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            var j = i + delimiter.utf8.count
+            var text: [UInt8] = []
+            while j < count {
+                if starts("\\(", at: j) {
+                    text.append(1)
+                    j = endOfInterpolation(from: j + 2)
+                    continue
+                }
+                if starts(delimiter, at: j) { break }
+                if !multiline, bytes[j] == 10 { break }
+                if bytes[j] == 92, j + 1 < count { text.append(bytes[j]); text.append(bytes[j + 1]); j += 2; continue }
+                if bytes[j] == 10 { line += 1 }
+                text.append(bytes[j])
+                j += 1
+            }
+            result.append(Literal(
+                line: literalLine,
+                text: String(decoding: text, as: UTF8.self),
+                callee: calls.last ?? "",
+                before: before
+            ))
+            i = j + delimiter.utf8.count
+        }
+
+        /// The index just past the parenthesis that closes an interpolation
+        /// whose body starts at `start`, skipping nested strings.
+        func endOfInterpolation(from start: Int) -> Int {
+            var j = start
+            var depth = 1
+            while j < count, depth > 0 {
+                if bytes[j] == 40 { depth += 1 } else if bytes[j] == 41 { depth -= 1 }
+                else if bytes[j] == 34 {
+                    j += 1
+                    while j < count, bytes[j] != 34 { if bytes[j] == 92 { j += 1 }; j += 1 }
+                }
+                j += 1
+            }
+            return j
+        }
     }
 }

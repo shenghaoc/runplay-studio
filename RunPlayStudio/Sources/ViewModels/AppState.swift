@@ -467,52 +467,9 @@ class AppState: ObservableObject {
     /// Library membership and selected-workout authority remain in the
     /// manifest; replay stores only a validated ID and scalar position.
     func makeSessionSnapshot() -> AppSessionSnapshot {
-        let destination: AppSessionDestination
-        switch workspaceMode {
-        case .workout:
-            destination = .workout
-        case .comparison:
-            destination = .comparison
-        case .personalHeatmap:
-            destination = .personalHeatmap
-        case .trends:
-            destination = .trends
-        case .personalRecords:
-            destination = .personalRecords
-        case .routeGroups:
-            destination = .routeGroups
-        case .workoutLibrary:
-            if case .smartCollection(let id, _) = workoutLibrary.queryContext {
-                destination = .smartCollection(id)
-            } else {
-                destination = .allRuns
-            }
-        }
-
-        let activeCollection: (UUID, Bool, WorkoutLibrarySavedQuery?)? = {
-            guard case .smartCollection(let id, let modified) = workoutLibrary.queryContext else {
-                return nil
-            }
-            return (
-                id,
-                modified,
-                modified ? AppSessionPolicy.boundedQuery(workoutLibrary.currentSavedQuery()) : nil
-            )
-        }()
-        let comparison: AppSessionComparisonState? = {
-            guard workspaceMode == .comparison,
-                  let peer = comparisonWorkout,
-                  let primary = selectedWorkout,
-                  primary.id != peer.id else {
-                return nil
-            }
-            return AppSessionComparisonState(
-                peerWorkoutID: peer.id,
-                distanceMeters: clampedComparisonDistanceMeters,
-                alignmentModeRaw: comparisonViewModel.alignmentMode.rawValue,
-                alignedProgressMeters: comparisonViewModel.persistableAlignedProgressMeters
-            )
-        }()
+        let destination = sessionDestination()
+        let activeCollection = sessionActiveCollection()
+        let comparison = sessionComparison()
         let replay: AppSessionReplayState? = selectedWorkout.map {
             AppSessionReplayState(
                 workoutID: $0.id,
@@ -540,30 +497,86 @@ class AppState: ObservableObject {
                 customEndDate: personalHeatmap.customEndDate,
                 resolutionRaw: personalHeatmap.resolution.rawValue,
                 minimumWorkoutCount: personalHeatmap.minimumWorkoutCount,
-                routeGroupID: {
-                    if case .group(let id) = personalHeatmap.routeFilter { return id }
-                    return nil
-                }()
+                routeGroupID: Self.routeGroupID(of: personalHeatmap.routeFilter)
             ),
             trends: AppSessionTrendsState(
                 periodRaw: trends.period.rawValue,
                 rangeRaw: trends.range.rawValue,
                 scopeKindRaw: trends.scope.sessionKindRawValue,
-                scopeSmartCollectionID: {
-                    if case .smartCollection(let id) = trends.scope { return id }
-                    return nil
-                }()
+                scopeSmartCollectionID: Self.smartCollectionID(of: trends.scope)
             ),
             personalRecords: AppSessionPersonalRecordsState(
                 scopeKindRaw: personalRecords.scope.sessionKindRawValue,
-                scopeSmartCollectionID: {
-                    if case .smartCollection(let id) = personalRecords.scope { return id }
-                    return nil
-                }()
+                scopeSmartCollectionID: Self.smartCollectionID(of: personalRecords.scope)
             ),
             comparison: comparison,
             replay: replay
         )
+    }
+
+    /// The session destination for the current workspace; the library is a
+    /// smart collection when one is active.
+    private func sessionDestination() -> AppSessionDestination {
+        switch workspaceMode {
+        case .workout:
+            return .workout
+        case .comparison:
+            return .comparison
+        case .personalHeatmap:
+            return .personalHeatmap
+        case .trends:
+            return .trends
+        case .personalRecords:
+            return .personalRecords
+        case .routeGroups:
+            return .routeGroups
+        case .workoutLibrary:
+            if case .smartCollection(let id, _) = workoutLibrary.queryContext {
+                return .smartCollection(id)
+            } else {
+                return .allRuns
+            }
+        }
+    }
+
+    /// The active smart collection, whether it is modified, and its bounded
+    /// working query when it is.
+    private func sessionActiveCollection() -> (UUID, Bool, WorkoutLibrarySavedQuery?)? {
+        guard case .smartCollection(let id, let modified) = workoutLibrary.queryContext else {
+            return nil
+        }
+        return (
+            id,
+            modified,
+            modified ? AppSessionPolicy.boundedQuery(workoutLibrary.currentSavedQuery()) : nil
+        )
+    }
+
+    /// The comparison to persist: only in comparison mode, with a peer that
+    /// is not the selected workout.
+    private func sessionComparison() -> AppSessionComparisonState? {
+        guard workspaceMode == .comparison,
+              let peer = comparisonWorkout,
+              let primary = selectedWorkout,
+              primary.id != peer.id else {
+            return nil
+        }
+        return AppSessionComparisonState(
+            peerWorkoutID: peer.id,
+            distanceMeters: clampedComparisonDistanceMeters,
+            alignmentModeRaw: comparisonViewModel.alignmentMode.rawValue,
+            alignedProgressMeters: comparisonViewModel.persistableAlignedProgressMeters
+        )
+    }
+
+    private static func routeGroupID(of filter: WorkoutLibraryRouteFilter) -> UUID? {
+        if case .group(let id) = filter { return id }
+        return nil
+    }
+
+    private static func smartCollectionID(of scope: WorkoutTrendsScope) -> UUID? {
+        if case .smartCollection(let id) = scope { return id }
+        return nil
     }
 
     /// Lightweight facts used to validate persisted references before apply.
@@ -689,40 +702,21 @@ class AppState: ObservableObject {
             if let peerID = snapshot.comparison?.peerWorkoutID,
                let peer = workouts.first(where: { $0.id == peerID }),
                canCompare(peer) {
-                comparisonWorkout = peer
-                comparisonSelectionMessage = nil
-                selectedComparisonDistanceMeters = snapshot.comparison?.distanceMeters ?? 0
-                let restoredMode = ComparisonAlignmentMode(
-                    rawValue: snapshot.comparison?.alignmentModeRaw ?? ComparisonAlignmentMode.distance.rawValue
-                ) ?? .distance
-                comparisonViewModel.restoreAlignmentMode(restoredMode)
-                let restoredAlignedProgress = snapshot.comparison?.alignedProgressMeters ?? 0
-                workspaceMode = .comparison
-                clampComparisonDistance()
-                // Recompute Route-Aware from current workout data; do not trust
-                // persisted alignment anchors.
-                if restoredMode == .routeAware, let pair = comparisonPair {
-                    comparisonViewModel.ensureRouteAlignment(
-                        pair: pair,
-                        primaryContext: analysisContext(for: pair.primary),
-                        comparisonContext: analysisContext(for: pair.comparison)
-                    )
-                }
-                // `ensureRouteAlignment` may publish a cached result
-                // synchronously. Restore the scalar selection afterwards, then
-                // clamp now for a cache hit or when the async result publishes.
-                comparisonViewModel.selectedAlignedProgressMeters = restoredAlignedProgress
-                if comparisonViewModel.routeAlignmentLoadState == .ready {
-                    comparisonViewModel.clampAlignedProgress()
-                }
+                restoreComparison(with: peer, from: snapshot.comparison)
             } else {
                 clearComparison()
                 workspaceMode = .workout
             }
         }
 
+        restoreReplay(snapshot.replay)
+    }
+
+    /// Restores the persisted replay of the selected workout, or loads the
+    /// selected workout paused at the start.
+    private func restoreReplay(_ replay: AppSessionReplayState?) {
         if let selectedWorkout,
-           let replay = snapshot.replay,
+           let replay,
            replay.workoutID == selectedWorkout.id {
             replayController.restore(
                 workout: selectedWorkout,
@@ -732,6 +726,38 @@ class AppState: ObservableObject {
         } else if let selectedWorkout {
             replayController.load(selectedWorkout)
             replayController.pause()
+        }
+    }
+
+    /// Enters comparison with the restored peer, distance, alignment mode
+    /// and aligned progress. Route-Aware alignment is recomputed from the
+    /// current workout data.
+    private func restoreComparison(with peer: RunWorkout, from comparison: AppSessionComparisonState?) {
+        comparisonWorkout = peer
+        comparisonSelectionMessage = nil
+        selectedComparisonDistanceMeters = comparison?.distanceMeters ?? 0
+        let restoredMode = ComparisonAlignmentMode(
+            rawValue: comparison?.alignmentModeRaw ?? ComparisonAlignmentMode.distance.rawValue
+        ) ?? .distance
+        comparisonViewModel.restoreAlignmentMode(restoredMode)
+        let restoredAlignedProgress = comparison?.alignedProgressMeters ?? 0
+        workspaceMode = .comparison
+        clampComparisonDistance()
+        // Recompute Route-Aware from current workout data; do not trust
+        // persisted alignment anchors.
+        if restoredMode == .routeAware, let pair = comparisonPair {
+            comparisonViewModel.ensureRouteAlignment(
+                pair: pair,
+                primaryContext: analysisContext(for: pair.primary),
+                comparisonContext: analysisContext(for: pair.comparison)
+            )
+        }
+        // `ensureRouteAlignment` may publish a cached result
+        // synchronously. Restore the scalar selection afterwards, then
+        // clamp now for a cache hit or when the async result publishes.
+        comparisonViewModel.selectedAlignedProgressMeters = restoredAlignedProgress
+        if comparisonViewModel.routeAlignmentLoadState == .ready {
+            comparisonViewModel.clampAlignedProgress()
         }
     }
 
@@ -857,6 +883,36 @@ class AppState: ObservableObject {
     ///
     /// Parsing and persistence run off the main actor. The UI shows
     /// `.importing(filename:)` while in progress.
+    /// Adds or replaces the imported workout in memory. The first successful
+    /// import after demos drops the non-persisted demos so favourites and
+    /// metadata cannot target IDs missing from the manifest.
+    private func adoptImportedWorkout(_ workout: RunWorkout) {
+        // First successful import after demos: drop non-persisted demos so
+        // favourites/metadata cannot target IDs missing from the manifest.
+        if !hasPersistedLibrary || libraryWorkoutIDs.isEmpty {
+            analysisContextCache.removeAll()
+            workouts = [workout]
+            libraryWorkoutIDs = [workout.id]
+        } else if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
+            workouts[existingIndex] = workout
+            libraryWorkoutIDs.insert(workout.id)
+        } else {
+            workouts.append(workout)
+            libraryWorkoutIDs.insert(workout.id)
+        }
+    }
+
+    /// Announces the import, with the elevation correction summary when one ran.
+    private func announceImportCompleted(_ workout: RunWorkout, filename: String) {
+        if let elevation = workout.demElevationCorrection?.importSummary(
+            recordedAltitudeSensor: workout.recordedAltitudeSensor
+        ) {
+            announcementPolicy.handle(.importCompletedWithDetail(name: filename, detail: elevation))
+        } else {
+            announcementPolicy.handle(.importCompleted(name: filename))
+        }
+    }
+
     func importWorkout(from url: URL) async {
         guard let importService, let storeActor else { return }
         guard operationState == .idle,
@@ -909,19 +965,7 @@ class AppState: ObservableObject {
             try Task.checkCancellation()
             analysisContextCache.removeValue(forKey: workout.id)
 
-            // First successful import after demos: drop non-persisted demos so
-            // favourites/metadata cannot target IDs missing from the manifest.
-            if !hasPersistedLibrary || libraryWorkoutIDs.isEmpty {
-                analysisContextCache.removeAll()
-                workouts = [workout]
-                libraryWorkoutIDs = [workout.id]
-            } else if let existingIndex = workouts.firstIndex(where: { $0.id == workout.id }) {
-                workouts[existingIndex] = workout
-                libraryWorkoutIDs.insert(workout.id)
-            } else {
-                workouts.append(workout)
-                libraryWorkoutIDs.insert(workout.id)
-            }
+            adoptImportedWorkout(workout)
             hasPersistedLibrary = true
             bumpPersonalRecordsLibraryRevision()
             workoutLibrary.replaceLibrary(
@@ -936,13 +980,7 @@ class AppState: ObservableObject {
             // Selecting a workout exits heatmap / All Runs by design (current product policy).
             selectWorkout(workout, persistSelection: false)
             requestSessionSave()
-            if let elevation = workout.demElevationCorrection?.importSummary(
-                recordedAltitudeSensor: workout.recordedAltitudeSensor
-            ) {
-                announcementPolicy.handle(.importCompletedWithDetail(name: filename, detail: elevation))
-            } else {
-                announcementPolicy.handle(.importCompleted(name: filename))
-            }
+            announceImportCompleted(workout, filename: filename)
         } catch is CancellationError {
             // Cancelled — do not add to UI.
             announcementPolicy.handle(.importCancelled)

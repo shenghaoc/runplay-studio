@@ -13,6 +13,34 @@ extension AppState {
 
     // MARK: - Strava Archive Import
 
+    /// Opens the review for a recognized export, or reports an unrecognized
+    /// one; a cancelled scan only ends. Releases the file access unless the
+    /// review takes it over.
+    private func finishArchiveScan(_ result: WorkoutArchiveScanResult, archiveURL url: URL, securityScoped accessing: Bool) {
+        guard !Task.isCancelled else {
+            if accessing { url.stopAccessingSecurityScopedResource() }
+            operationState = .idle
+            return
+        }
+        if !result.isRecognizedStravaExport {
+            if accessing { url.stopAccessingSecurityScopedResource() }
+            operationState = .idle
+            errorMessage = result.rejectionMessage
+                ?? studioLocalized("This ZIP does not appear to be a supported Strava bulk export.")
+            showingError = true
+            announcementPolicy.handle(
+                .importFailed(message: errorMessage ?? studioLocalized("Unsupported archive."))
+            )
+            return
+        }
+        archiveSession = ArchiveImportSession(
+            archiveURL: url,
+            scanResult: result,
+            securityScoped: accessing
+        )
+        operationState = .idle
+    }
+
     /// Begin scanning a user-selected Strava bulk-export ZIP.
     func beginArchiveImport(from url: URL) {
         // Mutual exclusion with multi-session FIT review / import and with the
@@ -41,28 +69,7 @@ extension AppState {
                     at: url,
                     existingWorkouts: existing
                 ) { _ in }
-                guard !Task.isCancelled else {
-                    if accessing { url.stopAccessingSecurityScopedResource() }
-                    self.operationState = .idle
-                    return
-                }
-                if !result.isRecognizedStravaExport {
-                    if accessing { url.stopAccessingSecurityScopedResource() }
-                    self.operationState = .idle
-                    self.errorMessage = result.rejectionMessage
-                        ?? studioLocalized("This ZIP does not appear to be a supported Strava bulk export.")
-                    self.showingError = true
-                    self.announcementPolicy.handle(
-                        .importFailed(message: self.errorMessage ?? studioLocalized("Unsupported archive."))
-                    )
-                    return
-                }
-                self.archiveSession = ArchiveImportSession(
-                    archiveURL: url,
-                    scanResult: result,
-                    securityScoped: accessing
-                )
-                self.operationState = .idle
+                self.finishArchiveScan(result, archiveURL: url, securityScoped: accessing)
             } catch is CancellationError {
                 if accessing { url.stopAccessingSecurityScopedResource() }
                 self.operationState = .idle

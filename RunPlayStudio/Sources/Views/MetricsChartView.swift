@@ -213,39 +213,65 @@ struct MetricsChartView: View {
         }
     }
 
+    /// The metric picker and, while a position is shown, the current value.
+    private var metricPickerRow: some View {
+        HStack {
+            Picker("Metric", selection: $selectedMetric) {
+                ForEach(MetricType.allCases, id: \.self) { metric in
+                    Text(metric.displayName).tag(metric)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            .accessibilityLabel("Chart metric")
+            .accessibilityHint(metricPickerHint)
+            .help(metricPickerHint)
+
+            Spacer()
+
+            // Current value readout
+            if currentDistance > 0, !chartData.isEmpty {
+                HStack(spacing: AppDesign.Spacing.xxSmall) {
+                    Circle()
+                        .fill(chartColor)
+                        .frame(width: 6, height: 6)
+                    Text(formatValue(valueForDistance(currentDistance)))
+                        .font(AppDesign.Typography.compactMetric.monospacedDigit())
+                        .foregroundStyle(chartColor)
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    /// The replay or drag position as a dashed rule with its value.
+    @ChartContentBuilder
+    private var currentPositionMark: some ChartContent {
+        let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
+        if displayDistance > 0 {
+            RuleMark(x: .value("Current", displayDistance / 1000))
+                .foregroundStyle(isDragging ? AppDesign.comparisonOrange : AppDesign.warmYellow)
+                .lineStyle(StrokeStyle(lineWidth: isDragging ? 2.5 : 1.5, dash: [6, 4]))
+                .annotation(position: .top, alignment: .center) {
+                    Text(formatValue(valueForDistance(displayDistance)))
+                        .font(AppDesign.Typography.compactMetric)
+                        .padding(.horizontal, AppDesign.Spacing.small)
+                        .padding(.vertical, AppDesign.Spacing.xxSmall)
+                        .background(
+                            Capsule()
+                                .fill(.ultraThinMaterial)
+                        )
+                }
+        }
+    }
+
     var body: some View {
         let accessibilityModel = chartAccessibilityModel
         // Resolved once per pass: the chart reads it for every plotted point.
         let metricName = selectedMetric.displayName
         return VStack(spacing: AppDesign.Spacing.medium) {
             // Metric picker with semantic color indicator
-            HStack {
-                Picker("Metric", selection: $selectedMetric) {
-                    ForEach(MetricType.allCases, id: \.self) { metric in
-                        Text(metric.displayName).tag(metric)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 360)
-                .accessibilityLabel("Chart metric")
-                .accessibilityHint(metricPickerHint)
-                .help(metricPickerHint)
-
-                Spacer()
-
-                // Current value readout
-                if currentDistance > 0, !chartData.isEmpty {
-                    HStack(spacing: AppDesign.Spacing.xxSmall) {
-                        Circle()
-                            .fill(chartColor)
-                            .frame(width: 6, height: 6)
-                        Text(formatValue(valueForDistance(currentDistance)))
-                            .font(AppDesign.Typography.compactMetric.monospacedDigit())
-                            .foregroundStyle(chartColor)
-                    }
-                }
-            }
-            .padding(.horizontal)
+            metricPickerRow
 
             if let timeModel = timeDomainModel {
                 TimeDomainHeartRateChart(model: timeModel)
@@ -294,22 +320,7 @@ struct MetricsChartView: View {
                         }
 
                         // Current position indicator
-                        let displayDistance = isDragging ? (dragDistance ?? currentDistance) : currentDistance
-                        if displayDistance > 0 {
-                            RuleMark(x: .value("Current", displayDistance / 1000))
-                                .foregroundStyle(isDragging ? AppDesign.comparisonOrange : AppDesign.warmYellow)
-                                .lineStyle(StrokeStyle(lineWidth: isDragging ? 2.5 : 1.5, dash: [6, 4]))
-                                .annotation(position: .top, alignment: .center) {
-                                    Text(formatValue(valueForDistance(displayDistance)))
-                                        .font(AppDesign.Typography.compactMetric)
-                                        .padding(.horizontal, AppDesign.Spacing.small)
-                                        .padding(.vertical, AppDesign.Spacing.xxSmall)
-                                        .background(
-                                            Capsule()
-                                                .fill(.ultraThinMaterial)
-                                        )
-                                }
-                        }
+                        currentPositionMark
                     }
                     .chartOverlay { proxy in
                         GeometryReader { geometry in

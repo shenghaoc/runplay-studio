@@ -802,6 +802,57 @@ struct WorkoutLibraryView: View {
         .padding()
     }
 
+    /// One run's open, favourite, details, tags and delete actions, or tag
+    /// editing for several library runs.
+    @ViewBuilder
+    private func libraryContextMenu(for ids: Set<UUID>) -> some View {
+        let persisted = ids.intersection(appState.libraryWorkoutIDs)
+        if ids.count == 1, let id = ids.first,
+           let entry = viewModel.entry(for: id),
+           let workout = appState.workouts.first(where: { $0.id == id }) {
+            Button("Open") { appState.openWorkoutFromLibrary(workout) }
+            Divider()
+            if appState.canFavorite(workout) {
+                Button(entry.isFavorite ? "Unfavourite" : "Favourite") {
+                    Task { await appState.setFavorite(!entry.isFavorite, workoutID: id) }
+                }
+            } else {
+                Button("Favourite") {}
+                    .disabled(true)
+                    .help("Favourites apply to imported library workouts, not bundled demos.")
+            }
+            if appState.canEditLibraryMetadata(workout) {
+                Button("Edit Details…") {
+                    appState.metadataEditError = nil
+                    metadataEditorWorkout = workout
+                }
+            } else {
+                Button("Edit Details…") {}
+                    .disabled(true)
+                    .help("Details can only be edited for imported library workouts.")
+            }
+            if appState.canTag(workout) {
+                Button("Edit Tags…") {
+                    appState.organizationEditError = nil
+                    tagEditorWorkoutIDs = [id]
+                }
+            } else {
+                Button("Edit Tags…") {}
+                    .disabled(true)
+                    .help("Tags apply to imported library workouts, not bundled demos.")
+            }
+            Divider()
+            Button("Delete", role: .destructive) {
+                workoutToDelete = workout
+            }
+        } else if persisted.count > 1 {
+            Button("Edit Tags for \(persisted.count) Runs…") {
+                appState.organizationEditError = nil
+                tagEditorWorkoutIDs = persisted
+            }
+        }
+    }
+
     private var libraryTable: some View {
         Table(viewModel.matchingEntries, selection: $viewModel.tableSelection) {
             TableColumn("") { entry in
@@ -871,51 +922,7 @@ struct WorkoutLibraryView: View {
                 : "All Runs table, \(viewModel.tableSelection.count) selected"
         )
         .contextMenu(forSelectionType: UUID.self) { ids in
-            let persisted = ids.intersection(appState.libraryWorkoutIDs)
-            if ids.count == 1, let id = ids.first,
-               let entry = viewModel.entry(for: id),
-               let workout = appState.workouts.first(where: { $0.id == id }) {
-                Button("Open") { appState.openWorkoutFromLibrary(workout) }
-                Divider()
-                if appState.canFavorite(workout) {
-                    Button(entry.isFavorite ? "Unfavourite" : "Favourite") {
-                        Task { await appState.setFavorite(!entry.isFavorite, workoutID: id) }
-                    }
-                } else {
-                    Button("Favourite") {}
-                        .disabled(true)
-                        .help("Favourites apply to imported library workouts, not bundled demos.")
-                }
-                if appState.canEditLibraryMetadata(workout) {
-                    Button("Edit Details…") {
-                        appState.metadataEditError = nil
-                        metadataEditorWorkout = workout
-                    }
-                } else {
-                    Button("Edit Details…") {}
-                        .disabled(true)
-                        .help("Details can only be edited for imported library workouts.")
-                }
-                if appState.canTag(workout) {
-                    Button("Edit Tags…") {
-                        appState.organizationEditError = nil
-                        tagEditorWorkoutIDs = [id]
-                    }
-                } else {
-                    Button("Edit Tags…") {}
-                        .disabled(true)
-                        .help("Tags apply to imported library workouts, not bundled demos.")
-                }
-                Divider()
-                Button("Delete", role: .destructive) {
-                    workoutToDelete = workout
-                }
-            } else if persisted.count > 1 {
-                Button("Edit Tags for \(persisted.count) Runs…") {
-                    appState.organizationEditError = nil
-                    tagEditorWorkoutIDs = persisted
-                }
-            }
+            libraryContextMenu(for: ids)
         } primaryAction: { ids in
             // Double-click opens the clicked workout even if multi-selected.
             if let id = ids.first,

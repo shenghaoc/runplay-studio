@@ -628,6 +628,99 @@ final class WatchFolderCoordinator: ObservableObject {
     /// Returns the outcome counts for this folder's pass so the caller can
     /// announce once per pass rather than once per file.
     @discardableResult
+    /// Content hashes of the files that can be read now, and the files that
+    /// exceed an import limit. A nil hash means unreadable right now
+    /// (vanished, locked); the file is left for the next pass.
+    nonisolated private static func hashOutcome(
+        for hashable: [WatchFolderScanner.DiscoveredFile], scanner: WatchFolderScanner
+    ) -> HashOutcome {
+        var ok: [URL: String] = [:]
+        var tooLarge: [(url: URL, detail: String)] = []
+        for file in hashable {
+            do {
+                // A nil hash means unreadable right now (vanished,
+                // locked); leave it for the next pass rather than
+                // failing it.
+                if let hash = try scanner.contentHash(for: file.url) {
+                    ok[file.url] = hash
+                }
+            } catch let error as WorkoutResourceLimitError {
+                // Definitive: this file can never import. Report it
+                // once and stop re-reading it on every pass. Reuses
+                // the shared product wording rather than a second
+                // copy of the limit.
+                tooLarge.append((
+                    file.url,
+                    error.errorDescription ?? studioLocalized("This file exceeds a RunPlay Studio import limit.")
+                ))
+            } catch {
+                continue
+            }
+        }
+        return HashOutcome(hashes: ok, oversized: tooLarge)
+    }
+
+    /// Records each oversized file not yet known by fingerprint as a failure,
+    /// once. Returns how many it recorded.
+    private func recordOversized(
+        _ oversized: [(url: URL, detail: String)],
+        among files: [WatchFolderScanner.DiscoveredFile],
+        in folder: ActiveFolder,
+        duplicateFingerprints: inout Set<String>
+    ) -> Int {
+        var failed = 0
+        for entry in oversized {
+            guard let file = files.first(where: { $0.url == entry.url }) else { continue }
+            let fingerprint = Self.fingerprint(file)
+            guard !duplicateFingerprints.contains(fingerprint) else { continue }
+            duplicateFingerprints.insert(fingerprint)
+            appendRecent(WatchFolderImportRecord(
+                folderID: folder.configuration.id,
+                folderName: folder.configuration.displayName,
+                fileURL: entry.url,
+                fileName: entry.url.lastPathComponent,
+                status: .failed,
+                processedAt: Date(),
+                failureDetail: entry.detail
+            ))
+            failed += 1
+        }
+        return failed
+    }
+
+    /// Ledgered content whose file is unchanged needs no new record and
+    /// no re-hash next pass: remember the fingerprint. A skip row is
+    /// recorded only for a *newly seen* duplicate under a different name
+    /// (a rename or copy) — the unchanged original stays silent so every
+    /// successful import does not produce a second row.
+    private func recordRenamedDuplicates(
+        _ duplicates: [WatchFolderScanner.DiscoveredFile],
+        hashes: [URL: String],
+        state: WatchFolderState,
+        in folder: ActiveFolder,
+        duplicateFingerprints: inout Set<String>
+    ) {
+        let ledgerByHash = Dictionary(state.ledger.map { ($0.contentSHA256, $0) }, uniquingKeysWith: { first, _ in first })
+        for duplicate in duplicates {
+            let fingerprint = Self.fingerprint(duplicate)
+            defer { duplicateFingerprints.insert(fingerprint) }
+            guard !duplicateFingerprints.contains(fingerprint) else { continue }
+            guard let hash = hashes[duplicate.url],
+                  let entry = ledgerByHash[hash],
+                  entry.fileName != duplicate.url.lastPathComponent else {
+                continue
+            }
+            appendRecent(WatchFolderImportRecord(
+                folderID: folder.configuration.id,
+                folderName: folder.configuration.displayName,
+                fileURL: duplicate.url,
+                fileName: duplicate.url.lastPathComponent,
+                status: .skippedDuplicate,
+                processedAt: Date()
+            ))
+        }
+    }
+
     private func processSettledFiles(
         _ files: [WatchFolderScanner.DiscoveredFile],
         in folder: ActiveFolder
@@ -637,44 +730,14 @@ final class WatchFolderCoordinator: ObservableObject {
         var duplicateFingerprints = knownDuplicateFingerprints[folderID] ?? []
 
         // Hash only files whose fingerprint is not already known-duplicate.
-        var hashes: [URL: String] = [:]
-        var hashable: [WatchFolderScanner.DiscoveredFile] = []
-        for file in files {
-            let fingerprint = Self.fingerprint(file)
-            if duplicateFingerprints.contains(fingerprint) {
-                continue
-            }
-            hashable.append(file)
-        }
+        let hashable = files.filter { !duplicateFingerprints.contains(Self.fingerprint($0)) }
 
+        var hashes: [URL: String] = [:]
         var oversized: [(url: URL, detail: String)] = []
         if !hashable.isEmpty {
             let scanner = self.scanner
             let hashed: HashOutcome = await Task.detached(priority: .utility) {
-                var ok: [URL: String] = [:]
-                var tooLarge: [(url: URL, detail: String)] = []
-                for file in hashable {
-                    do {
-                        // A nil hash means unreadable right now (vanished,
-                        // locked); leave it for the next pass rather than
-                        // failing it.
-                        if let hash = try scanner.contentHash(for: file.url) {
-                            ok[file.url] = hash
-                        }
-                    } catch let error as WorkoutResourceLimitError {
-                        // Definitive: this file can never import. Report it
-                        // once and stop re-reading it on every pass. Reuses
-                        // the shared product wording rather than a second
-                        // copy of the limit.
-                        tooLarge.append((
-                            file.url,
-                            error.errorDescription ?? studioLocalized("This file exceeds a RunPlay Studio import limit.")
-                        ))
-                    } catch {
-                        continue
-                    }
-                }
-                return HashOutcome(hashes: ok, oversized: tooLarge)
+                Self.hashOutcome(for: hashable, scanner: scanner)
             }.value
             hashes = hashed.hashes
             oversized = hashed.oversized
@@ -683,22 +746,9 @@ final class WatchFolderCoordinator: ObservableObject {
         // Record oversized files as failures exactly once, keyed by fingerprint
         // so a later pass never re-reads or re-reports them.
         if !oversized.isEmpty {
-            for entry in oversized {
-                guard let file = files.first(where: { $0.url == entry.url }) else { continue }
-                let fingerprint = Self.fingerprint(file)
-                guard !duplicateFingerprints.contains(fingerprint) else { continue }
-                duplicateFingerprints.insert(fingerprint)
-                appendRecent(WatchFolderImportRecord(
-                    folderID: folderID,
-                    folderName: folder.configuration.displayName,
-                    fileURL: entry.url,
-                    fileName: entry.url.lastPathComponent,
-                    status: .failed,
-                    processedAt: Date(),
-                    failureDetail: entry.detail
-                ))
-                tally.failed += 1
-            }
+            tally.failed += recordOversized(
+                oversized, among: files, in: folder, duplicateFingerprints: &duplicateFingerprints
+            )
             knownDuplicateFingerprints[folderID] = duplicateFingerprints
         }
 
@@ -715,25 +765,10 @@ final class WatchFolderCoordinator: ObservableObject {
         // recorded only for a *newly seen* duplicate under a different name
         // (a rename or copy) — the unchanged original stays silent so every
         // successful import does not produce a second row.
-        let ledgerByHash = Dictionary(state.ledger.map { ($0.contentSHA256, $0) }, uniquingKeysWith: { first, _ in first })
-        for duplicate in result.duplicates {
-            let fingerprint = Self.fingerprint(duplicate)
-            defer { duplicateFingerprints.insert(fingerprint) }
-            guard !duplicateFingerprints.contains(fingerprint) else { continue }
-            guard let hash = hashes[duplicate.url],
-                  let entry = ledgerByHash[hash],
-                  entry.fileName != duplicate.url.lastPathComponent else {
-                continue
-            }
-            appendRecent(WatchFolderImportRecord(
-                folderID: folderID,
-                folderName: folder.configuration.displayName,
-                fileURL: duplicate.url,
-                fileName: duplicate.url.lastPathComponent,
-                status: .skippedDuplicate,
-                processedAt: Date()
-            ))
-        }
+        recordRenamedDuplicates(
+            result.duplicates, hashes: hashes, state: state, in: folder,
+            duplicateFingerprints: &duplicateFingerprints
+        )
         knownDuplicateFingerprints[folderID] = duplicateFingerprints
 
         for candidate in result.candidates {

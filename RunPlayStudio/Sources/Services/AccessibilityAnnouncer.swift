@@ -115,6 +115,8 @@ enum AccessibilityAnnouncementEvent: Equatable, Sendable {
     case elevationSourceChanged(message: String)
 
     var message: String {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each announcement to its localized message.
         switch self {
         case .libraryLoaded(let count):
             return studioLocalized("Library loaded. \(count) runs.")
