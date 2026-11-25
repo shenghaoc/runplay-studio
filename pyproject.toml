@@ -1,0 +1,8 @@
+[project]
+name = "runplay-studio-tools"
+version = "0"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+complexity = ["lizard>=1.26.1"]

@@ -322,7 +322,7 @@ each change reaches its own module and the modules downstream.
 
 | Changed path | Runs |
 |---|---|
-| `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `prompts/**`, `LICENSE` | lint only |
+| `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `prompts/**`, `LICENSE`, the Lizard tool files (`pyproject.toml`, `uv.lock`, `uv.toml`, `.python-version`) | lint only |
 | `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests, boundary validator |
 | `RunPlayPlatform/**` | macOS, Platform and Studio tests, boundary validator |
 | `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
@@ -609,6 +609,62 @@ cards in the same PR, as [docs/demo-assets.md](docs/demo-assets.md) describes:
 run `./scripts/generate-demo-assets.sh` or the manual Demo Assets workflow and
 commit the curated files. CI does not compare or enforce them. The cards are
 binary, so serialize PRs that change the card.
+
+### Complexity limit
+
+Every Swift function, in sources and tests, stays at or below Lizard
+cyclomatic complexity (CCN) 15. Run the check from the repository root:
+
+```bash
+uv run --locked --only-group complexity --managed-python python -X utf8 -m lizard RunPlayEngine RunPlayCore RunPlayPlatform RunPlayStudio Tests -l swift -C 15 -w
+```
+
+`-w` prints only the functions above the limit, one warning line each, and
+the command exits non-zero when it prints one. The measure is plain CCN:
+there is no `-m` (which counts a whole `switch` as one decision) and no
+length or nesting limit. For Swift, Lizard counts each `if`, `guard`, `for`,
+`while`, `case`, `catch`, `&&`, `||` and ternary `?`, and each comma between
+the clauses of an `if`, `guard` or `while` condition. A closure is part of
+the function that contains it, so a SwiftUI `body` counts the paths of every
+closure in it.
+
+Lizard is a tool, not a package dependency: nothing in `Package.swift`
+refers to it. `pyproject.toml` declares it in the `complexity` dependency
+group, `uv.lock` records the release and its hashes, `.python-version` names
+the Python that uv installs, and `uv.toml` sets the minimum uv version and
+lets uv use only the Python it manages. The repository's `python3` scripts
+keep using the system Python.
+
+CCN counts the linearly independent paths through a function: the number of
+test cases that basis-path testing needs. It indicates testing effort; it
+does not count the tests that are sufficient, and it does not show
+correctness. A split does not remove a path; it only spreads the paths over
+more functions. A split helps only when each part can be understood alone.
+
+The one exception is a `#lizard forgives(cyclomatic_complexity)` comment
+inside the function, with a one-sentence reason:
+
+```swift
+// #lizard forgives(cyclomatic_complexity): an exhaustive mapping from each FIT sport to its display name.
+```
+
+The reason is one of these: the function's paths are one ordered operation,
+an exhaustive mapping, or mutually exclusive implementations. In each case,
+a split would increase what a reader must hold to follow the function. The
+comment waives only the function that contains it, and only CCN.
+
+In `RunPlayEngine` a split may only move statements: the same operations in
+the same order, each multiply and add still in its own statement, with
+`@inline(__always)` kept on a measured hot path. Every golden digest stays
+unchanged (see the Swift engine policy above). An ordered numerical pass may
+be forgiven as one ordered operation instead.
+
+Two alternatives are rejected:
+
+- A limit with no exceptions: some splits would serve the metric, not the
+  reader.
+- An allowed count of warnings, or a baseline of known violations: a new
+  violation could replace an old one without failing.
 
 ## Detailed References
 
