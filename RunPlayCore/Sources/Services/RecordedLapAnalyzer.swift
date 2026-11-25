@@ -136,25 +136,13 @@ public struct RecordedLapAnalyzer: Sendable {
             )
 
             if let reported = provisional.reportedMetrics {
-                if differsMaterially(
-                    reported.elapsedSeconds,
-                    from: elapsed,
-                    absolute: mismatchPolicy.absoluteTimeSeconds,
-                    relative: mismatchPolicy.relativeTime
-                ) || differsMaterially(
-                    reported.timerSeconds,
-                    from: active,
-                    absolute: mismatchPolicy.absoluteTimeSeconds,
-                    relative: mismatchPolicy.relativeTime
-                ) {
+                let mismatch = sourceTotalsMismatch(
+                    reported, elapsed: elapsed, active: active, distance: distance, policy: mismatchPolicy
+                )
+                if mismatch.time {
                     timeMismatches += 1
                 }
-                if differsMaterially(
-                    reported.distanceMeters,
-                    from: distance,
-                    absolute: mismatchPolicy.absoluteDistanceMeters,
-                    relative: mismatchPolicy.relativeDistance
-                ) {
+                if mismatch.distance {
                     distanceMismatches += 1
                 }
             }
@@ -201,17 +189,53 @@ public struct RecordedLapAnalyzer: Sendable {
             requiresReimportForSourceLaps: false
         )
 
+        let warnings = lapWarnings(
+            malformed: malformed, mismatches: timeMismatches + distanceMismatches, lapCount: laps.count
+        )
+
+        return Result(laps: laps, diagnostics: diagnostics, warnings: warnings)
+    }
+
+    /// Whether the source-reported time (elapsed or timer) and distance differ
+    /// materially from the rederived ones.
+    private static func sourceTotalsMismatch(
+        _ reported: RecordedLapReportedMetrics, elapsed: Double, active: Double, distance: Double,
+        policy mismatchPolicy: MismatchPolicy
+    ) -> (time: Bool, distance: Bool) {
+        let time = differsMaterially(
+            reported.elapsedSeconds,
+            from: elapsed,
+            absolute: mismatchPolicy.absoluteTimeSeconds,
+            relative: mismatchPolicy.relativeTime
+        ) || differsMaterially(
+            reported.timerSeconds,
+            from: active,
+            absolute: mismatchPolicy.absoluteTimeSeconds,
+            relative: mismatchPolicy.relativeTime
+        )
+        let distanceDiffers = differsMaterially(
+            reported.distanceMeters,
+            from: distance,
+            absolute: mismatchPolicy.absoluteDistanceMeters,
+            relative: mismatchPolicy.relativeDistance
+        )
+        return (time, distanceDiffers)
+    }
+
+    /// A warning for skipped malformed laps, and one when source totals
+    /// mismatch on at least a quarter of the laps (and at least one) or on
+    /// three or more.
+    private static func lapWarnings(malformed: Int, mismatches: Int, lapCount: Int) -> [WorkoutAnalysisWarning] {
         var warnings: [WorkoutAnalysisWarning] = []
         if malformed > 0 {
             warnings.append(.recordedLapsMalformedSkipped)
         }
-        if timeMismatches + distanceMismatches > 0,
-           (Double(timeMismatches + distanceMismatches) >= max(1, Double(laps.count) * 0.25)
-            || timeMismatches + distanceMismatches >= 3) {
+        if mismatches > 0,
+           (Double(mismatches) >= max(1, Double(lapCount) * 0.25)
+            || mismatches >= 3) {
             warnings.append(.recordedLapSourceTotalsMismatch)
         }
-
-        return Result(laps: laps, diagnostics: diagnostics, warnings: warnings)
+        return warnings
     }
 
     // MARK: - Boundary resolution
@@ -227,9 +251,27 @@ public struct RecordedLapAnalyzer: Sendable {
         timeline: WorkoutTimeline,
         clampedBoundaryCount: inout Int
     ) -> ResolvedBoundaries? {
-        let clampDiagnosticEpsilon = 0.01
-        let total = timeline.totalElapsedSeconds
+        var (startElapsed, endElapsed) = sourceDateBoundaries(of: provisional, workoutStart: workoutStart)
+        applyAnalyzedBoundaryFallback(provisional, startElapsed: &startElapsed, endElapsed: &endElapsed)
+        applyReportedElapsedFallback(provisional, startElapsed: &startElapsed, endElapsed: &endElapsed)
 
+        guard let start = startElapsed, let end = endElapsed,
+              start.isFinite, end.isFinite
+        else {
+            return nil
+        }
+
+        return clampedToRoute(
+            start: start, end: end, total: timeline.totalElapsedSeconds,
+            clampedBoundaryCount: &clampedBoundaryCount
+        )
+    }
+
+    /// The lap's source start and end dates as elapsed seconds from the
+    /// workout start, when both dates are known.
+    private static func sourceDateBoundaries(
+        of provisional: RecordedLap, workoutStart: Date?
+    ) -> (start: Double?, end: Double?) {
         var startElapsed: Double?
         var endElapsed: Double?
 
@@ -239,9 +281,14 @@ public struct RecordedLapAnalyzer: Sendable {
         if let endDate = provisional.sourceEndDate, let workoutStart {
             endElapsed = endDate.timeIntervalSince(workoutStart)
         }
+        return (startElapsed, endElapsed)
+    }
 
-        // Prefer already-analyzed elapsed bounds when source dates are missing
-        // (reanalysis of persisted laps).
+    /// Prefer already-analyzed elapsed bounds when source dates are missing
+    /// (reanalysis of persisted laps).
+    private static func applyAnalyzedBoundaryFallback(
+        _ provisional: RecordedLap, startElapsed: inout Double?, endElapsed: inout Double?
+    ) {
         if startElapsed == nil,
            (provisional.endElapsedSeconds > provisional.startElapsedSeconds
             || provisional.startElapsedSeconds > 0) {
@@ -250,8 +297,13 @@ public struct RecordedLapAnalyzer: Sendable {
         if endElapsed == nil, provisional.endElapsedSeconds > 0 {
             endElapsed = provisional.endElapsedSeconds
         }
+    }
 
-        // Safe fallbacks from reported totals.
+    /// Safe fallbacks from reported totals: a missing bound is the known one
+    /// minus or plus the reported elapsed time.
+    private static func applyReportedElapsedFallback(
+        _ provisional: RecordedLap, startElapsed: inout Double?, endElapsed: inout Double?
+    ) {
         if startElapsed == nil,
            let end = endElapsed,
            let reportedElapsed = provisional.reportedMetrics?.elapsedSeconds,
@@ -266,15 +318,18 @@ public struct RecordedLapAnalyzer: Sendable {
            reportedElapsed > 0 {
             endElapsed = start + reportedElapsed
         }
+    }
 
-        guard var start = startElapsed, var end = endElapsed,
-              start.isFinite, end.isFinite
-        else {
-            return nil
-        }
-
-        // Clamp source-clock overhangs onto the retained route. A first GPS
-        // fix may legitimately arrive well after the device opened the lap.
+    /// Clamp source-clock overhangs onto the retained route, counting each
+    /// overhang beyond the diagnostic epsilon. A first GPS fix may
+    /// legitimately arrive well after the device opened the lap. Nil when the
+    /// clamped end is before the start.
+    private static func clampedToRoute(
+        start startElapsed: Double, end endElapsed: Double, total: Double, clampedBoundaryCount: inout Int
+    ) -> ResolvedBoundaries? {
+        let clampDiagnosticEpsilon = 0.01
+        var start = startElapsed
+        var end = endElapsed
         if start < 0 {
             if start < -clampDiagnosticEpsilon {
                 clampedBoundaryCount += 1

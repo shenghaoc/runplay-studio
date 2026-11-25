@@ -65,6 +65,27 @@ public struct ComparisonVideoAlignmentSeed: Sendable {
         )
     }
 
+    /// The same workouts, in the same order, at the same normalization and
+    /// analysis versions.
+    private func matchesWorkoutRevisions(_ pair: ComparisonPair) -> Bool {
+        primaryWorkoutID == pair.primary.id
+            && comparisonWorkoutID == pair.comparison.id
+            && primaryNormalizationVersion == pair.primary.normalizationVersion
+            && comparisonNormalizationVersion == pair.comparison.normalizationVersion
+            && primaryAnalysisVersion == pair.primary.analysisVersion
+            && comparisonAnalysisVersion == pair.comparison.analysisVersion
+    }
+
+    /// The same route-point counts and first and last route-point IDs.
+    private func matchesRoutePoints(_ pair: ComparisonPair) -> Bool {
+        primaryPointCount == pair.primary.routePoints.count
+            && comparisonPointCount == pair.comparison.routePoints.count
+            && primaryFirstPointID == pair.primary.routePoints.first?.id
+            && primaryLastPointID == pair.primary.routePoints.last?.id
+            && comparisonFirstPointID == pair.comparison.routePoints.first?.id
+            && comparisonLastPointID == pair.comparison.routePoints.last?.id
+    }
+
     /// Whether this seed matches the ordered pair, revisions, and policy.
     public func matches(
         pair: ComparisonPair,
@@ -72,18 +93,8 @@ public struct ComparisonVideoAlignmentSeed: Sendable {
         comparisonContext: WorkoutAnalysisContext,
         policy: RouteAlignmentPolicy = .default
     ) -> Bool {
-        guard primaryWorkoutID == pair.primary.id,
-              comparisonWorkoutID == pair.comparison.id,
-              primaryNormalizationVersion == pair.primary.normalizationVersion,
-              comparisonNormalizationVersion == pair.comparison.normalizationVersion,
-              primaryAnalysisVersion == pair.primary.analysisVersion,
-              comparisonAnalysisVersion == pair.comparison.analysisVersion,
-              primaryPointCount == pair.primary.routePoints.count,
-              comparisonPointCount == pair.comparison.routePoints.count,
-              primaryFirstPointID == pair.primary.routePoints.first?.id,
-              primaryLastPointID == pair.primary.routePoints.last?.id,
-              comparisonFirstPointID == pair.comparison.routePoints.first?.id,
-              comparisonLastPointID == pair.comparison.routePoints.last?.id,
+        guard matchesWorkoutRevisions(pair),
+              matchesRoutePoints(pair),
               policyVersion == policy.algorithmVersion,
               snapshot.policyVersion == policy.algorithmVersion
         else {

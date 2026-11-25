@@ -148,6 +148,53 @@ public struct WorkoutComparisonService: Sendable {
     }
 
     /// Ordinal recorded-lap comparison only. Does not invent route-aligned laps.
+    /// The caveats for one row of the recorded-lap comparison: a run without
+    /// laps, a run that may need a reimport, different lap counts, and, for a
+    /// lap present in both runs, different triggers or materially different
+    /// distances.
+    private func lapCaveats(
+        primary: RunWorkout, comparison: RunWorkout, primaryLap: RecordedLap?, comparisonLap: RecordedLap?
+    ) -> [String] {
+        let primaryLaps = primary.recordedLaps
+        let comparisonLaps = comparison.recordedLaps
+        var caveats: [String] = []
+
+        if primaryLaps.isEmpty {
+            caveats.append(coreLocalized("Selected run has no recorded laps"))
+        } else if comparisonLaps.isEmpty {
+            caveats.append(coreLocalized("Compared run has no recorded laps"))
+        }
+        if primary.mayRequireReimportForRecordedLaps {
+            caveats.append(coreLocalized("Selected run may require reimport to recover source laps"))
+        }
+        if comparison.mayRequireReimportForRecordedLaps {
+            caveats.append(coreLocalized("Compared run may require reimport to recover source laps"))
+        }
+        if primaryLaps.count != comparisonLaps.count {
+            caveats.append(coreLocalized("Lap counts differ (\(primaryLaps.count) vs \(comparisonLaps.count))"))
+        }
+        if let primaryLap, let comparisonLap {
+            if primaryLap.trigger != comparisonLap.trigger {
+                caveats.append(coreLocalized("Trigger types differ"))
+            }
+            let distanceDelta = abs(primaryLap.distanceMeters - comparisonLap.distanceMeters)
+            if distanceDelta > max(50, primaryLap.distanceMeters * 0.05) {
+                caveats.append(coreLocalized("Lap distances differ materially"))
+            }
+        }
+        return caveats
+    }
+
+    /// The faster lap by active pace, a tie within five seconds per kilometre,
+    /// or unavailable without a finite pace difference.
+    private func lapWinner(activePaceDelta paceDelta: Double?) -> ComparisonResult {
+        if let paceDelta, paceDelta.isFinite {
+            return abs(paceDelta) < 5 ? .tie : (paceDelta > 0 ? .comparison : .primary)
+        } else {
+            return .unavailable
+        }
+    }
+
     public func compareRecordedLaps(
         primary: RunWorkout,
         comparison: RunWorkout
@@ -163,42 +210,15 @@ public struct WorkoutComparisonService: Sendable {
         for index in 0..<count {
             let primaryLap = primaryLaps.indices.contains(index) ? primaryLaps[index] : nil
             let comparisonLap = comparisonLaps.indices.contains(index) ? comparisonLaps[index] : nil
-            var caveats: [String] = []
-
-            if primaryLaps.isEmpty {
-                caveats.append(coreLocalized("Selected run has no recorded laps"))
-            } else if comparisonLaps.isEmpty {
-                caveats.append(coreLocalized("Compared run has no recorded laps"))
-            }
-            if primary.mayRequireReimportForRecordedLaps {
-                caveats.append(coreLocalized("Selected run may require reimport to recover source laps"))
-            }
-            if comparison.mayRequireReimportForRecordedLaps {
-                caveats.append(coreLocalized("Compared run may require reimport to recover source laps"))
-            }
-            if primaryLaps.count != comparisonLaps.count {
-                caveats.append(coreLocalized("Lap counts differ (\(primaryLaps.count) vs \(comparisonLaps.count))"))
-            }
-            if let primaryLap, let comparisonLap {
-                if primaryLap.trigger != comparisonLap.trigger {
-                    caveats.append(coreLocalized("Trigger types differ"))
-                }
-                let distanceDelta = abs(primaryLap.distanceMeters - comparisonLap.distanceMeters)
-                if distanceDelta > max(50, primaryLap.distanceMeters * 0.05) {
-                    caveats.append(coreLocalized("Lap distances differ materially"))
-                }
-            }
+            let caveats = lapCaveats(
+                primary: primary, comparison: comparison, primaryLap: primaryLap, comparisonLap: comparisonLap
+            )
 
             let paceDelta = optionalDifference(
                 positiveFinite(primaryLap?.activePaceSecondsPerKilometer),
                 positiveFinite(comparisonLap?.activePaceSecondsPerKilometer)
             )
-            let winner: ComparisonResult
-            if let paceDelta, paceDelta.isFinite {
-                winner = abs(paceDelta) < 5 ? .tie : (paceDelta > 0 ? .comparison : .primary)
-            } else {
-                winner = .unavailable
-            }
+            let winner = lapWinner(activePaceDelta: paceDelta)
 
             rows.append(RecordedLapComparison(
                 lapIndex: index + 1,
@@ -468,14 +488,14 @@ public struct WorkoutComparisonService: Sendable {
         )
     }
 
-    private func generateWarnings(
+    /// The route warnings: different distances, too little overlap, too few
+    /// points, and a different route shape.
+    private func routeWarnings(
         primary: RunWorkout,
         comparison: RunWorkout,
         primaryTimeline: WorkoutTimeline,
         comparisonTimeline: WorkoutTimeline,
-        commonDistanceMeters: Double,
-        primaryElevationProfile: ElevationProfile,
-        comparisonElevationProfile: ElevationProfile
+        commonDistanceMeters: Double
     ) -> [ComparisonWarning] {
         var warnings: [ComparisonWarning] = []
         let primaryDistance = primaryTimeline.totalDistanceMeters
@@ -492,6 +512,25 @@ public struct WorkoutComparisonService: Sendable {
         ) {
             warnings.append(.differentRouteShape)
         }
+        return warnings
+    }
+
+    private func generateWarnings(
+        primary: RunWorkout,
+        comparison: RunWorkout,
+        primaryTimeline: WorkoutTimeline,
+        comparisonTimeline: WorkoutTimeline,
+        commonDistanceMeters: Double,
+        primaryElevationProfile: ElevationProfile,
+        comparisonElevationProfile: ElevationProfile
+    ) -> [ComparisonWarning] {
+        var warnings = routeWarnings(
+            primary: primary,
+            comparison: comparison,
+            primaryTimeline: primaryTimeline,
+            comparisonTimeline: comparisonTimeline,
+            commonDistanceMeters: commonDistanceMeters
+        )
         if abs(primaryTimeline.totalPausedSeconds - comparisonTimeline.totalPausedSeconds)
             >= Self.pauseDurationWarningThresholdSeconds {
             warnings.append(.differentPauseDurations)

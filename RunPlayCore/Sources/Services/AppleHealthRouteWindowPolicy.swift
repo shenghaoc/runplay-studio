@@ -14,6 +14,16 @@ public enum AppleHealthRouteWindowPolicy {
     public static let toleranceSeconds: Double = 60
     public static let maximumOverrunSeconds: Double = 300
 
+    /// Whether the route's finite, ordered time span overlaps the ordered
+    /// workout window.
+    private static func routeOverlapsWindow(
+        routeStart: Double, routeEnd: Double, start: Double, end: Double
+    ) -> Bool {
+        guard routeStart.isFinite, routeEnd.isFinite, start <= end, routeStart <= routeEnd,
+              routeStart <= end, routeEnd >= start else { return false }
+        return true
+    }
+
     public static func decision(
         for points: [RoutePoint], window: AppleHealthWorkoutWindow
     ) -> Decision {
@@ -27,8 +37,9 @@ public enum AppleHealthRouteWindowPolicy {
         let start = Double(window.startSeconds), end = Double(window.endSeconds)
         let routeStart = first.timestamp.timeIntervalSince1970
         let routeEnd = last.timestamp.timeIntervalSince1970
-        guard routeStart.isFinite, routeEnd.isFinite, start <= end, routeStart <= routeEnd,
-              routeStart <= end, routeEnd >= start else { return .mismatch }
+        guard routeOverlapsWindow(routeStart: routeStart, routeEnd: routeEnd, start: start, end: end) else {
+            return .mismatch
+        }
         let low = start - toleranceSeconds, high = end + toleranceSeconds
         if routeStart >= low, routeEnd <= high { return .keep }
         guard start - routeStart <= maximumOverrunSeconds,
