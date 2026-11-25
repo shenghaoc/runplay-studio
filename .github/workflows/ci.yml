@@ -64,7 +64,8 @@ jobs:
           fi
 
   # Free, runner-cheap lint lane: packaging script syntax, actionlint over
-  # the workflows, and the selector's self-test. Always runs.
+  # the workflows, the selector's self-test, and the Lizard complexity
+  # limit. Always runs.
   lint:
     name: Lint
     runs-on: ubuntu-26.04
@@ -109,6 +110,20 @@ jobs:
       # every PR, whatever the selector itself selected.
       - name: Self-test the lane selector
         run: ./scripts/ci-select-lanes.sh --self-test
+      # Lizard is third-party tooling too: setup-uv is pinned by commit, and
+      # it states no uv version, so it reads `required-version` from uv.toml
+      # and installs the newest uv that satisfies it. The cache stays off.
+      # uv then installs the managed Python that .python-version names,
+      # apart from the runner's python3.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: false
+      # Complexity limit (AGENTS.md "Complexity limit"): the command is
+      # stated once there; pyproject.toml and uv.lock name the Lizard
+      # release. `-w` prints only the functions above CCN 15, and any one
+      # of them fails the step.
+      - name: Lizard complexity limit
+        run: uv run --locked --only-group complexity --managed-python python -X utf8 -m lizard RunPlayEngine RunPlayCore RunPlayPlatform RunPlayStudio Tests -l swift -C 15 -w
 
   # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + the
   # engine, in one call of the reusable macOS verification workflow (the same

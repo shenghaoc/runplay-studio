@@ -316,7 +316,8 @@ See [docs/private-data.md](docs/private-data.md) and
 A pull request runs only the lanes and test targets its changed paths can
 reach. `scripts/ci-select-lanes.sh` holds the table; the `changes` job in
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs it, and `lint`
-self-tests it on every PR. The module graph is
+self-tests it and runs the Lizard complexity limit on every PR. The module
+graph is
 `RunPlayEngine` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, and
 each change reaches its own module and the modules downstream.
 
@@ -620,7 +621,11 @@ uv run --locked --only-group complexity --managed-python python -X utf8 -m lizar
 ```
 
 `-w` prints only the functions above the limit, one warning line each, and
-the command exits non-zero when it prints one. The measure is plain CCN:
+the command exits non-zero when it prints one. The `lint` job in
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs the same command on
+every pull request and fails on any warning; it installs uv with
+`astral-sh/setup-uv`, pinned by commit, which reads the minimum uv from
+`uv.toml`. The measure is plain CCN:
 there is no `-m` (which counts a whole `switch` as one decision) and no
 length or nesting limit. For Swift, Lizard counts each `if`, `guard`, `for`,
 `while`, `case`, `catch`, `&&`, `||` and ternary `?`, and each comma between
