@@ -341,7 +341,7 @@ every macOS run runs them.
 | `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `prompts/**`, `LICENSE` | lint only |
 | `RunPlayStudio/**` (a `*.md` there too; the xcconfigs and `Info.plist` live there), `RunPlayStudio.xcodeproj/**` (the project, its shared scheme and its `Package.resolved`) | macOS: Studio tests (xcodebuild), no package tests; boundary validator |
 | `RunPlayPlatform/**` | macOS: `swift test --filter RunPlayPlatformTests` and the Studio tests; boundary validator |
-| `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
+| `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `.github/**`, `VERSION`, and any path not listed | everything |
 
 - Every path is classified and the widest result wins; a renamed file counts
   under both its old and new path.

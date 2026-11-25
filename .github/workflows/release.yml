@@ -162,12 +162,14 @@ jobs:
       - name: Packaging tooling syntax
         run: |
           bash -n scripts/lib/release-common.sh
-          bash -n scripts/assemble-app-bundle.sh
           bash -n scripts/package-demo.sh
           bash -n scripts/package-release.sh
           bash -n scripts/verify-app-bundle.sh
           bash -n scripts/test-release-packaging.sh
 
+      # package-release.sh archives the app from RunPlayStudio.xcodeproj
+      # (xcodebuild archive, Release, signing off), copies it out of the
+      # archive, signs it for the mode, verifies it, and zips it.
       - name: Ad-hoc dry-run package
         if: needs.resolve-metadata.outputs.is_production != 'true'
         env:

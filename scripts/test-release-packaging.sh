@@ -169,47 +169,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Unit: plist generation
+# Unit: the project's Info.plist (values resolved from build settings are
+# checked on the archived app below)
 # ---------------------------------------------------------------------------
-PLIST_OUT="$TMP_ROOT/Info.plist"
-bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_generate_info_plist '$REPO_ROOT/Packaging/RunPlayStudio-Info.plist.in' '$PLIST_OUT' '0.1.0' '7'"
-assert_ok "plist lints" plutil -lint "$PLIST_OUT"
-BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST_OUT")"
-BVER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST_OUT")"
-BBUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST_OUT")"
-BDISP="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST_OUT")"
-BCAT="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$PLIST_OUT")"
-if [[ "$BID" == "com.shenghaoc.runplay-studio" && "$BVER" == "0.1.0" && "$BBUILD" == "7" && "$BDISP" == "RunPlay Studio" ]]; then
-  printf 'PASS: plist field values\n'
-  PASS=$((PASS + 1))
-else
-  printf 'FAIL: plist field values (id=%s ver=%s build=%s disp=%s)\n' "$BID" "$BVER" "$BBUILD" "$BDISP" >&2
-  FAIL=$((FAIL + 1))
-fi
-if [[ "$BCAT" == "public.app-category.healthcare-fitness" ]]; then
+SOURCE_PLIST="$REPO_ROOT/RunPlayStudio/Info.plist"
+assert_ok "project Info.plist lints" plutil -lint "$SOURCE_PLIST"
+SCAT="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$SOURCE_PLIST")"
+if [[ "$SCAT" == "public.app-category.healthcare-fitness" ]]; then
   printf 'PASS: LSApplicationCategoryType healthcare-fitness\n'
   PASS=$((PASS + 1))
 else
   printf 'FAIL: LSApplicationCategoryType\n' >&2
   FAIL=$((FAIL + 1))
 fi
-BLOC="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations' "$PLIST_OUT" | awk 'NR > 1 && $1 != "}" { printf "%s%s", sep, $1; sep = " " }')"
-if [[ "$BLOC" == "$RUNPLAY_LOCALIZATIONS" ]]; then
+SLOC="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations' "$SOURCE_PLIST" | awk 'NR > 1 && $1 != "}" { printf "%s%s", sep, $1; sep = " " }')"
+if [[ "$SLOC" == "$RUNPLAY_LOCALIZATIONS" ]]; then
   printf 'PASS: CFBundleLocalizations matches RUNPLAY_LOCALIZATIONS\n'
   PASS=$((PASS + 1))
 else
-  printf 'FAIL: CFBundleLocalizations (got %s, expected %s)\n' "$BLOC" "$RUNPLAY_LOCALIZATIONS" >&2
+  printf 'FAIL: CFBundleLocalizations (got %s, expected %s)\n' "$SLOC" "$RUNPLAY_LOCALIZATIONS" >&2
   FAIL=$((FAIL + 1))
 fi
-
-DEV_PLIST_OUT="$TMP_ROOT/Info-dev.plist"
-bash -c "source '$SCRIPT_DIR/lib/release-common.sh'; release_generate_info_plist '$REPO_ROOT/Packaging/RunPlayStudio-Info.plist.in' '$DEV_PLIST_OUT' '0.1.0' '1' 'com.shenghaoc.RunPlayStudio'"
-DEV_BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEV_PLIST_OUT")"
-if [[ "$DEV_BID" == "com.shenghaoc.RunPlayStudio" ]]; then
-  printf 'PASS: explicit development bundle identifier override\n'
+# Version and build number come from build settings, never literals, so one
+# project serves every release.
+if [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SOURCE_PLIST")" == '$(MARKETING_VERSION)' ]] && \
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$SOURCE_PLIST")" == '$(CURRENT_PROJECT_VERSION)' ]]; then
+  printf 'PASS: version and build number come from build settings\n'
   PASS=$((PASS + 1))
 else
-  printf 'FAIL: development bundle identifier override (got %s)\n' "$DEV_BID" >&2
+  printf 'FAIL: Info.plist version or build number is not a build setting\n' >&2
   FAIL=$((FAIL + 1))
 fi
 assert_fail "reject malformed bundle identifier" \
@@ -252,108 +240,93 @@ assert_fail_contains "non-notarized Developer ID output must be a dry run" \
     --skip-notarization \
     --output-dir "$TMP_ROOT/out9"
 
-assert_fail_contains "assembler rejects non-product output basename" \
-  "--output must end in RunPlayStudio.app" \
-  "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/not-the-product.app" \
-    --skip-build \
-    --bin-dir "$TMP_ROOT/empty-bin" \
-    --version 0.1.0 \
-    --build-number 1
+assert_fail_contains "missing reused archive rejected" \
+  "archive not found" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode adhoc --skip-notarization --dry-run \
+    --output-dir "$TMP_ROOT/out10" \
+    --archive "$TMP_ROOT/no-such.xcarchive"
 
 # ---------------------------------------------------------------------------
-# Integration: assemble with mock missing inputs
+# Integration: full ad-hoc dry run (uses one real xcodebuild archive)
 # ---------------------------------------------------------------------------
-assert_fail "assemble missing binary fails" \
-  "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/missing/RunPlayStudio.app" \
-    --skip-build \
-    --bin-dir "$TMP_ROOT/empty-bin" \
-    --version 0.1.0 \
-    --build-number 1
-
-mkdir -p "$TMP_ROOT/empty-bin"
-assert_fail "assemble empty bin fails" \
-  "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/missing2/RunPlayStudio.app" \
-    --skip-build \
-    --bin-dir "$TMP_ROOT/empty-bin" \
-    --version 0.1.0 \
-    --build-number 1
-
-# ---------------------------------------------------------------------------
-# Integration: full ad-hoc dry run (uses one real xcodebuild build)
-# ---------------------------------------------------------------------------
-# Reuse a shared release build if RUNPLAY_TEST_BIN_DIR (an xcodebuild products
-# directory that holds RunPlayStudio.app) is set; otherwise build.
+# Reuse an archive if RUNPLAY_TEST_ARCHIVE is set (version from VERSION, build
+# number 9); otherwise archive once.
 INTEGRATION_OUT="$TMP_ROOT/integration"
 mkdir -p "$INTEGRATION_OUT"
+TEST_VERSION="$(release_read_version_file "$REPO_ROOT/VERSION")"
 
-if [[ -n "${RUNPLAY_TEST_BIN_DIR:-}" && -d "${RUNPLAY_TEST_BIN_DIR}" ]]; then
-  release_log "Using provided RUNPLAY_TEST_BIN_DIR=$RUNPLAY_TEST_BIN_DIR"
-  TEST_BIN="$RUNPLAY_TEST_BIN_DIR"
+if [[ -n "${RUNPLAY_TEST_ARCHIVE:-}" && -d "${RUNPLAY_TEST_ARCHIVE}" ]]; then
+  release_log "Using provided RUNPLAY_TEST_ARCHIVE=$RUNPLAY_TEST_ARCHIVE"
+  TEST_ARCHIVE="$RUNPLAY_TEST_ARCHIVE"
 else
-  release_log "Building the release app for integration tests..."
-  # The same build as scripts/assemble-app-bundle.sh, whose output these tests
-  # package (see the note there).
-  xcodebuild build \
-    -project "$REPO_ROOT/RunPlayStudio.xcodeproj" \
-    -scheme "$RUNPLAY_PRODUCT_NAME" \
-    -configuration Release \
-    -destination 'generic/platform=macOS' \
-    -derivedDataPath "$REPO_ROOT/.build/xcode-package" \
-    -disableAutomaticPackageResolution \
-    "$RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS" \
-    CODE_SIGNING_ALLOWED=NO
-  TEST_BIN="$REPO_ROOT/.build/xcode-package/Build/Products/Release"
+  release_log "Archiving the app for integration tests..."
+  TEST_ARCHIVE="$TMP_ROOT/RunPlayStudio.xcarchive"
+  release_xcode_archive "$REPO_ROOT" "$TEST_ARCHIVE" "$TEST_VERSION" 9
 fi
-TEST_BIN="$(cd "$TEST_BIN" && pwd)"
+TEST_ARCHIVE="$(cd "$TEST_ARCHIVE" && pwd)"
+TEST_APP="$(release_archived_app "$TEST_ARCHIVE")"
 
-# Missing resources simulation: an app that holds only its executable.
-FAKE_BIN="$TMP_ROOT/fake-bin"
-mkdir -p "$FAKE_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS"
-cp "$TEST_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" \
-  "$FAKE_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS/"
-assert_fail "assemble missing resource bundle fails" \
-  "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/nores/RunPlayStudio.app" \
-    --skip-build \
-    --bin-dir "$FAKE_BIN" \
-    --version 0.1.0 \
-    --build-number 1
-
-# An app with Studio's resources but not the Core string bundle: Core's
-# Bundle.module would trap at first use, so assembly must refuse it.
-NO_CORE_BIN="$TMP_ROOT/no-core-bin"
-mkdir -p "$NO_CORE_BIN"
-ditto "$TEST_BIN/$RUNPLAY_PRODUCT_NAME.app" "$NO_CORE_BIN/$RUNPLAY_PRODUCT_NAME.app"
-rm -rf "$NO_CORE_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/Resources/RunPlayStudio_RunPlayCore.bundle"
-assert_fail_contains "assemble missing Core string bundle fails" \
-  "RunPlayStudio_RunPlayCore.bundle (localized strings required)" \
-  "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$TMP_ROOT/nocore/RunPlayStudio.app" \
-    --skip-build \
-    --bin-dir "$NO_CORE_BIN" \
-    --version 0.1.0 \
-    --build-number 1
-
-PRESERVED_APP="$TMP_ROOT/preserved/RunPlayStudio.app"
-mkdir -p "$PRESERVED_APP"
-printf 'known-good\n' >"$PRESERVED_APP/marker"
-assert_fail "failed assembly leaves prior complete app untouched" \
-  "$SCRIPT_DIR/assemble-app-bundle.sh" \
-    --output "$PRESERVED_APP" \
-    --skip-build \
-    --bin-dir "$FAKE_BIN" \
-    --version 0.1.0 \
-    --build-number 1
-if [[ "$(cat "$PRESERVED_APP/marker")" == "known-good" ]]; then
-  printf 'PASS: staged assembly preserves prior app on failure\n'
+# The archived app's build-setting values.
+ABID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TEST_APP/Contents/Info.plist")"
+AVER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$TEST_APP/Contents/Info.plist")"
+ABUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$TEST_APP/Contents/Info.plist")"
+ADISP="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$TEST_APP/Contents/Info.plist")"
+if [[ "$ABID" == "$RUNPLAY_BUNDLE_IDENTIFIER" && "$AVER" == "$TEST_VERSION" && "$ABUILD" == "9" && "$ADISP" == "$RUNPLAY_PRODUCT_DISPLAY_NAME" ]]; then
+  printf 'PASS: archived Info.plist field values\n'
   PASS=$((PASS + 1))
 else
-  printf 'FAIL: failed assembly replaced prior app\n' >&2
+  printf 'FAIL: archived Info.plist field values (id=%s ver=%s build=%s disp=%s)\n' "$ABID" "$AVER" "$ABUILD" "$ADISP" >&2
   FAIL=$((FAIL + 1))
 fi
+
+# make_archive DIR: an archive directory holding a copy of the archived app.
+make_archive() {
+  local dir="$1"
+  mkdir -p "$dir/Products/Applications"
+  ditto "$TEST_APP" "$dir/Products/Applications/$RUNPLAY_PRODUCT_NAME.app"
+}
+
+# An archive whose app holds only its executable.
+FAKE_ARCHIVE="$TMP_ROOT/fake.xcarchive"
+mkdir -p "$FAKE_ARCHIVE/Products/Applications/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS"
+cp "$TEST_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" \
+  "$FAKE_ARCHIVE/Products/Applications/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS/"
+assert_fail_contains "archive without Studio resources fails" \
+  "demo resources required" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode adhoc --skip-notarization --dry-run \
+    --output-dir "$TMP_ROOT/nores" --build-number 9 \
+    --archive "$FAKE_ARCHIVE"
+
+# An archive with no app at all.
+EMPTY_ARCHIVE="$TMP_ROOT/empty.xcarchive"
+mkdir -p "$EMPTY_ARCHIVE/Products/Applications"
+assert_fail_contains "archive without an app fails" \
+  "built app not found" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode adhoc --skip-notarization --dry-run \
+    --output-dir "$TMP_ROOT/noapp" --build-number 9 \
+    --archive "$EMPTY_ARCHIVE"
+
+# An app with Studio's resources but not the Core string bundle: Core's
+# Bundle.module would trap at first use, so packaging must refuse it.
+NO_CORE_ARCHIVE="$TMP_ROOT/no-core.xcarchive"
+make_archive "$NO_CORE_ARCHIVE"
+rm -rf "$NO_CORE_ARCHIVE/Products/Applications/$RUNPLAY_PRODUCT_NAME.app/Contents/Resources/RunPlayStudio_RunPlayCore.bundle"
+assert_fail_contains "archive missing Core string bundle fails" \
+  "RunPlayStudio_RunPlayCore.bundle (localized strings required)" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode adhoc --skip-notarization --dry-run \
+    --output-dir "$TMP_ROOT/nocore" --build-number 9 \
+    --archive "$NO_CORE_ARCHIVE"
+
+assert_fail_contains "archive with another build number fails" \
+  "built app has build number '9', expected 1" \
+  "$SCRIPT_DIR/package-release.sh" \
+    --signing-mode adhoc --skip-notarization --dry-run \
+    --output-dir "$TMP_ROOT/wrongbuild" --build-number 1 \
+    --archive "$TEST_ARCHIVE"
 
 PRESERVED_SET="$TMP_ROOT/preserved-release-set"
 mkdir -p "$PRESERVED_SET/RunPlayStudio.app"
@@ -367,8 +340,8 @@ assert_fail "failed package run does not publish staged output" \
     --skip-notarization \
     --dry-run \
     --output-dir "$PRESERVED_SET" \
-    --skip-build \
-    --bin-dir "$FAKE_BIN"
+    --build-number 9 \
+    --archive "$FAKE_ARCHIVE"
 if [[ "$(cat "$PRESERVED_SET/RunPlayStudio.app/marker")" == "old-app" ]] && \
     [[ "$(cat "$PRESERVED_SET/RunPlayStudio-0.1.0-macos-arm64.zip")" == "old-zip" ]] && \
     [[ "$(cat "$PRESERVED_SET/RunPlayStudio-0.1.0-release.json")" == "old-manifest" ]] && \
@@ -391,8 +364,7 @@ set +e
   --dry-run \
   --output-dir "$RELEASE_OUT" \
   --build-number 9 \
-  --skip-build \
-  --bin-dir "$TEST_BIN"
+  --archive "$TEST_ARCHIVE"
 PKG_ST=$?
 set -e
 
@@ -520,20 +492,18 @@ else
   PASS=$((PASS + 1))
 fi
 
-# Demo packaging path (unsigned) reusing bin
+# Unsigned packaging path, reusing the archive (package-demo.sh archives again
+# on its own; package-release.sh in unsigned mode covers the same app).
 DEMO_OUT="$INTEGRATION_OUT/demo"
 mkdir -p "$DEMO_OUT"
-# package-demo always builds; use assemble + zip manually style by calling package-demo
-# which rebuilds — for speed, assemble unsigned via package-release unsigned
 set +e
 "$SCRIPT_DIR/package-release.sh" \
   --signing-mode unsigned \
   --skip-notarization \
   --dry-run \
   --output-dir "$DEMO_OUT" \
-  --build-number 1 \
-  --skip-build \
-  --bin-dir "$TEST_BIN"
+  --build-number 9 \
+  --archive "$TEST_ARCHIVE"
 UNSIGNED_ST=$?
 set -e
 if [[ $UNSIGNED_ST -eq 0 ]]; then
@@ -550,7 +520,7 @@ if [[ -d "$DEMO_OUT/RunPlayStudio.app" ]]; then
     --app "$DEMO_OUT/RunPlayStudio.app" \
     --expected-signing-mode unsigned \
     --expected-version 0.1.0 \
-    --expected-build-number 1
+    --expected-build-number 9
   UV=$?
   set -e
   if [[ $UV -eq 0 ]]; then
@@ -570,12 +540,10 @@ assert_fail "version override mismatch fails" \
     --version 9.9.9 \
     --skip-notarization \
     --output-dir "$TMP_ROOT/mismatch" \
-    --skip-build \
-    --bin-dir "$TEST_BIN"
+    --archive "$TEST_ARCHIVE"
 
 # help exits 0
 assert_ok "package-release --help" "$SCRIPT_DIR/package-release.sh" --help
-assert_ok "assemble-app-bundle --help" "$SCRIPT_DIR/assemble-app-bundle.sh" --help
 assert_ok "verify-app-bundle --help" "$SCRIPT_DIR/verify-app-bundle.sh" --help
 
 printf '\n=== test-release-packaging summary: pass=%d fail=%d skip=%d ===\n' "$PASS" "$FAIL" "$SKIP"

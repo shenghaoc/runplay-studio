@@ -20,7 +20,8 @@ configured, no official binary is produced.
 ## Prerequisites
 
 - macOS 26.0+ host for local packaging
-- Xcode 26.6 / Swift 6.3.3
+- Xcode 26.6 / Swift 6.3.3 (CI's Xcode, the authority; a newer local Xcode
+  builds too, but its bundle carries that Xcode's `DT*` keys and SDK)
 - Apple Silicon (`arm64`) only for this release train
 - For production: Apple Developer Program membership, Developer ID Application
   certificate, App Store Connect API key with Notary access
@@ -65,7 +66,8 @@ The release workflow fails before signing when:
 - `HEAD` is not the tagged commit;
 - the tagged commit is not reachable from `main`;
 - the worktree is dirty;
-- generated bundle metadata disagrees with `VERSION`.
+- the archived app's version, build number or bundle identifier disagrees with
+  `VERSION`, the build number, or the distribution identifier.
 
 Dry runs may run from a branch without a tag.
 
@@ -77,6 +79,11 @@ Dry runs may run from a branch without a tag.
 - Never a Git SHA, timestamp with punctuation, or arbitrary string
 
 Marketing version (`CFBundleShortVersionString`) comes only from `VERSION`.
+Packaging passes both to `xcodebuild archive` as the build settings
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, which the project's
+`RunPlayStudio/Info.plist` reads. The copy of `MARKETING_VERSION` in
+`RunPlayStudio/Configuration/Shared.xcconfig` serves IDE builds; CI's lint
+fails when it differs from `VERSION`.
 
 ---
 
@@ -84,12 +91,34 @@ Marketing version (`CFBundleShortVersionString`) comes only from `VERSION`.
 
 | Script | Role |
 |--------|------|
-| `scripts/lib/release-common.sh` | Shared validation, plist generation, checksums, signing helpers |
-| `scripts/assemble-app-bundle.sh` | Builds the app from `RunPlayStudio.xcodeproj` (`xcodebuild build`, Release, signing off) and makes a staged copy with this release's version, build and identifier (no sign / zip / publish) |
+| `scripts/lib/release-common.sh` | Shared validation, `xcodebuild archive` and built-app checks, checksums, signing helpers |
 | `scripts/package-demo.sh` | Unsigned demo `.app` + `RunPlayStudio.app.zip` |
 | `scripts/package-release.sh` | Versioned release packaging (unsigned / adhoc / developer-id) |
 | `scripts/verify-app-bundle.sh` | Non-mutating structural + signing verification |
 | `scripts/test-release-packaging.sh` | Credential-free packaging tests |
+
+### Building the app
+
+Both packaging scripts build the app with one command,
+`release_xcode_archive` in `scripts/lib/release-common.sh`:
+
+```bash
+xcodebuild archive -project RunPlayStudio.xcodeproj -scheme RunPlayStudio \
+  -configuration Release -destination 'generic/platform=macOS' \
+  -archivePath <stage>/RunPlayStudio.xcarchive -derivedDataPath .build/xcode-archive \
+  -disableAutomaticPackageResolution SWIFT_SUPPRESS_WARNINGS=NO \
+  MARKETING_VERSION=<VERSION> CURRENT_PROJECT_VERSION=<build> CODE_SIGNING_ALLOWED=NO
+```
+
+They take `Products/Applications/RunPlayStudio.app` out of the archive,
+check it (`release_validate_built_app`: executable, Studio demo resources, the
+Core and Platform resource bundles, compiled `zh-Hans`/`zh-Hant` strings, and
+the version, build number and identifier), and copy it into the staging
+directory. Signing is off in the archive, so the copy carries only the
+linker's signature on its executable; packaging then signs it for its mode
+(below). `-exportArchive` is not used; the archive's app is the
+bundle. `package-release.sh --archive <path>` reuses an
+existing archive instead of archiving; its version and build number must match.
 
 ### Info.plist
 
@@ -101,19 +130,19 @@ The app's Info.plist is a file of the Xcode project. Its keys are bundle
 identity, versions (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`), minimum
 OS (`MACOSX_DEPLOYMENT_TARGET`), localizations, high-resolution capability,
 and `LSApplicationCategoryType = public.app-category.healthcare-fitness`
-(fitness/workout analysis product). Xcode adds its build keys (`DTXcode`,
-`DTSDKName` and the like). The assembler sets the version, build number and
-bundle identifier of each packaging run in its staged copy.
-`Packaging/RunPlayStudio-Info.plist.in` holds the same keys for the plist unit
-tests until packaging moves to `xcodebuild archive`.
+(fitness/workout analysis product). Xcode adds its build keys
+(`BuildMachineOSBuild`, `CFBundleSupportedPlatforms`, `DTCompiler`,
+`DTPlatformBuild`, `DTPlatformName`, `DTPlatformVersion`, `DTSDKBuild`,
+`DTSDKName`, `DTXcode`, `DTXcodeBuild`).
 
 **Bundle identifier (distribution):** `com.shenghaoc.runplay-studio`
 Preserved from the historical demo packager. Do not change casually — it affects
 trust records and future upgrades. Application Support storage uses the fixed
 folder name `RunPlayStudio`, not a reverse-DNS derivation from this ID.
 
-There is one bundle-structure implementation: the Xcode project. Developers
-run the app from Xcode (⌘R) or from its `xcodebuild` build (README).
+There is one bundle-structure implementation: the Xcode project. No script
+assembles a bundle. Developers run the app from Xcode (⌘R) or from its
+`xcodebuild` build (README).
 "Repeatable" here means one validated process and deterministic logical
 metadata/naming; signed archives are not claimed to be byte-for-byte
 reproducible because build timestamps and secure signing timestamps vary.
@@ -138,8 +167,9 @@ Label: **Unsigned — demo/testing only**
 - Never claims Gatekeeper acceptance
 - Workflow: `.github/workflows/package-demo.yml` (`workflow_dispatch`)
 
-On Apple Silicon, the Swift toolchain may attach a linker ad-hoc signature to
-the executable. That is still **not** a public distribution signature.
+The app comes from `xcodebuild archive` with code signing off. On Apple
+Silicon the linker still attaches an ad-hoc signature to the executable. That
+is still **not** a public distribution signature.
 
 ---
 
