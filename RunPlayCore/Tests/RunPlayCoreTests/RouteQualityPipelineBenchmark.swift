@@ -55,7 +55,7 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
             // production path always does. True kernel isolation still
             // lives in native C++ tests.
             let nativeElapsed = try Self.timeThrowing {
-                try RunPlayRouteQualityBridge.invokeNativeKernelForBenchmark(
+                try CppRouteQualityOracle.invokeNativeKernelForBenchmark(
                     points,
                     policy: policy,
                     distancePolicy: distancePolicy
@@ -108,13 +108,89 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
         }
     }
 
+    // Transition benchmark: complete model conversion + engine call + projection
+    // for each implementation. Alternate order to avoid a systematic warm-start bias.
+    func testSwiftEngineRouteQualityCompleteBridgeBenchmark() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] == "1",
+            "Set RUNPLAY_BENCHMARK=1 to run the release benchmark."
+        )
+        try Self.compareCompleteBridges(
+            count: Self.pointCount, warmup: Self.warmupIterations, measured: Self.measuredIterations,
+            distancePolicy: .useSuppliedDistancesPerSegment
+        )
+        if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
+            try Self.compareCompleteBridges(
+                count: Self.productLimitCount, warmup: 1, measured: 3, distancePolicy: .computeFromCoordinates
+            )
+        }
+    }
+
+    private static func compareCompleteBridges(
+        count: Int, warmup: Int, measured: Int, distancePolicy: RouteDistancePolicy
+    ) throws {
+        let points = makeFixture(count)
+        let policy = RouteQualityPolicy.runningDefault
+        var cppSamples: [Double] = []
+        var swiftSamples: [Double] = []
+
+        func cpp() throws -> (Double, UInt64) {
+            var distance: UInt64 = 0
+            let elapsed = try timeThrowing {
+                let result = try CppRouteQualityOracle.processCppForVerification(
+                    points, policy: policy, distancePolicy: distancePolicy,
+                    cancellationCheckStride: policy.cancellationCheckStride, isCancelled: { false }
+                )
+                distance = result.routePoints.last?.distanceFromStartMeters.bitPattern ?? 0
+            }
+            return (elapsed, distance)
+        }
+        func swift() throws -> (Double, UInt64) {
+            var distance: UInt64 = 0
+            let elapsed = try timeThrowing {
+                let result = try RunPlayRouteQualityBridge.process(
+                    points, policy: policy, distancePolicy: distancePolicy,
+                    cancellationCheckStride: policy.cancellationCheckStride, isCancelled: { false }
+                )
+                distance = result.routePoints.last?.distanceFromStartMeters.bitPattern ?? 0
+            }
+            return (elapsed, distance)
+        }
+
+        for iteration in 0..<(warmup + measured) {
+            let native: (Double, UInt64)
+            let port: (Double, UInt64)
+            if iteration.isMultiple(of: 2) {
+                native = try cpp()
+                port = try swift()
+            } else {
+                port = try swift()
+                native = try cpp()
+            }
+            XCTAssertEqual(port.1, native.1)
+            guard iteration >= warmup else { continue }
+            cppSamples.append(native.0)
+            swiftSamples.append(port.0)
+        }
+
+        let nativeMedian = median(cppSamples)
+        let swiftMedian = median(swiftSamples)
+        let ratio = swiftMedian / nativeMedian
+        print("""
+        RunPlay route-quality geometry benchmark
+        Complete bridge, \(count) points: C++=\(nativeMedian) ms Swift=\(swiftMedian) ms ratio=\(ratio)
+        merge gate: Swift complete bridge <= 1.10x C++ complete bridge
+        """)
+        XCTAssertLessThanOrEqual(ratio, 1.10)
+    }
+
     private static func runProductLimitProbe() throws {
         let points = makeFixture(productLimitCount)
         let policy = RouteQualityPolicy.runningDefault
         var nativeSamples: [Double] = []
         for _ in 0..<3 {
             let elapsed = try timeThrowing {
-                try RunPlayRouteQualityBridge.invokeNativeKernelForBenchmark(
+                try CppRouteQualityOracle.invokeNativeKernelForBenchmark(
                     points,
                     policy: policy,
                     distancePolicy: .computeFromCoordinates
