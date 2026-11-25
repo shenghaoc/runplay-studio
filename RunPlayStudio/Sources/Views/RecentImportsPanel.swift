@@ -74,7 +74,7 @@ struct RecentImportsPanel: View {
             Label("Recent Imports", systemImage: "tray.full")
                 .font(.headline)
             Spacer()
-            if coordinator.isPaused {
+            if coordinator.isPaused || (!coordinator.folders.isEmpty && !coordinator.canScanFolders) {
                 Text("Watching paused")
                     .font(.caption)
                     .foregroundStyle(.secondary)
