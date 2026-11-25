@@ -154,18 +154,19 @@ the numbers below are policy (fixture sizes, iteration counts), not results.
   product-limit probe 1,000,000 points × 3 native-kernel iterations, gated.
   DEM — a 100,000-point course of about 300 km over synthetic zoom-12,
   256-pixel tiles decoded once up front, 3 + 15, medians; product-limit probe
-  1,000,000 points over the same course and tiles × 3 complete-bridge
-  iterations, gated.
+  1,000,000 points over the same course and tiles, 1 warm-up + 3 measured
+  iterations of each complete path, gated.
 - **Conversion:** route quality reports four timings — Swift stages 2–4
   oracle, complete combined bridge (conversion + C++ + projection), native path
   alone, and the complete `RouteQualityProcessor.process`. DEM reports the
-  complete bridge (coordinate conversion, both native calls, the tile hand-off,
-  height packing, and translation), each of those phases, and the independent
-  `SwiftDemSamplingOracle` for context.
+  complete Swift adapter and the complete C++ bridge (coordinate conversion,
+  both engine calls, the tile hand-off, height packing, and translation), their
+  ratio, and the independent `SwiftDemSamplingOracle` for context.
 - **Role:** route quality is a merge gate — complete combined bridge ≤ ~1.25×
-  the Swift stages 2–4 oracle. DEM sampling has no Swift production path to
-  gate against; its report tracks the boundary's cost, and PNG decoding is
-  measured by the tile source, not here.
+  the Swift stages 2–4 oracle. DEM is a merge gate too: the complete Swift adapter, which is
+  the production path, at most 1.10× the complete C++ bridge, at 100,000
+  points and at the 1,000,000-point product limit. PNG decoding is measured by
+  the tile source, not here.
 - **Memory:** both product-limit probes report peak RSS.
 - **Retention rationale:** guards the largest single kernel cutover; the
   processor timing keeps the end-to-end cost visible alongside the kernel. The

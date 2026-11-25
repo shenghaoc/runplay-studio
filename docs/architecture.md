@@ -1570,10 +1570,13 @@ DEM correction samples terrain heights from a folder of Terrarium PNG tiles the
 user downloaded (see [dem-tiles.md](dem-tiles.md)). It adds two engine calls
 and no network access; nothing in the dependency direction is reversed.
 
-- **RunPlayEngineCpp** plans and samples, never reading files or images:
-  `plan_dem_tiles` lists the bounded set of XYZ tiles a route's bilinear
-  footprints read (columns wrap across the antimeridian, rows clamp at the Web
-  Mercator limit), and `sample_dem_elevations` interpolates Swift-decoded
+- **RunPlayEngine** (the pure Swift engine) plans and samples, never reading
+  files or images. The C++ `plan_dem_tiles` and `sample_dem_elevations` remain
+  only as the oracle of `DemElevationDifferentialTests.swift` and the release
+  benchmark. `DemTilePlanning.plan` lists the bounded set of XYZ tiles a
+  route's bilinear footprints read (columns wrap across the antimeridian, rows
+  clamp at the Web Mercator limit), and `DemElevationSampling.sample`
+  interpolates Swift-decoded
   heights at every route point with a per-point status (sampled, invalid
   coordinate, outside the projection, missing tile, implausible height). Both
   share one pixel-footprint function, so the sampler only ever reads planned
@@ -1582,8 +1585,8 @@ and no network access; nothing in the dependency direction is reversed.
 - **RunPlayCore** decides everything that is policy.
   `RunPlayDemElevationBridge` converts coordinates once, calls the planner,
   hands the planned keys to a `DEMTileSource` (a Swift closure between the two
-  native calls; C++ never calls back), packs the heights into one buffer, and
-  calls the sampler. `DEMElevationCorrector` applies precedence per point
+  engine calls; the engine never calls back), packs the heights into one
+  array, and calls the sampler. `DEMElevationCorrector` applies precedence per point
   (barometric recorded altitude kept, DEM replacing any other recorded altitude
   and filling missing points, recorded altitude where no tile covers), writes
   `RoutePoint.demAltitudeMeters`, reanalyzes elevation through
