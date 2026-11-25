@@ -89,6 +89,14 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let collector: AnnouncementCollector
     }
 
+    /// Adds a folder and then asks for its existing files, since adding a
+    /// folder only baselines them (#179).
+    private func addFolderImportingExisting(_ coordinator: WatchFolderCoordinator, url: URL) -> Bool {
+        let added = coordinator.addFolder(url: url)
+        coordinator.importExistingNow()
+        return added
+    }
+
     private func makeCoordinator(
         importResults: [WatchFolderExecutionResult] = [],
         maxFileBytes: Int? = nil,
@@ -169,19 +177,71 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         XCTAssertTrue(FileWatchFolderStore(rootURL: libraryRoot).loadOrEmpty().folders.isEmpty)
     }
 
-    func testAddFolderFiresOneImmediateScanWithSettleBypass() async throws {
-        // addFolder triggers requestEarlyScan(bypassSettle: true), so a file
-        // that already exists in the folder is picked up without waiting for
-        // two probes across the poll interval.
-        let runURL = try writeJSON()
+    func testAddFolderBaselinesExistingFilesAndImportsNewOnes() async throws {
+        // Adding a folder records what is already there and imports none of
+        // it (#179). A file that arrives afterwards is imported by an
+        // ordinary pass, without asking for the existing files.
+        _ = try writeJSON("existing.json")
         let (coordinator, recorder, _) = makeCoordinator()
+        defer { coordinator.shutdown() }
 
         XCTAssertTrue(coordinator.addFolder(url: watchedDir))
-        // The early scan coalesces after 300ms.
+        await waitForCondition(timeout: 1.0) { !recorder.recordedURLs.isEmpty }
+        XCTAssertTrue(recorder.recordedURLs.isEmpty, "existing files must not be imported on add")
+
+        let fresh = try writeJSON("fresh.json")
+        // Pausing and resuming runs an ordinary pass that does not include the baseline.
+        coordinator.setAllPaused(true)
+        coordinator.setAllPaused(false)
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertEqual(
             recorder.recordedURLs.map { $0.resolvingSymlinksInPath() },
-            [runURL.resolvingSymlinksInPath()]
+            [fresh.resolvingSymlinksInPath()]
+        )
+    }
+
+    func testBaselinedFileStaysOutAfterRelaunchAndModificationImportsIt() async throws {
+        let existing = try writeJSON("existing.json")
+        let (first, firstRecorder, _) = makeCoordinator()
+        XCTAssertTrue(first.addFolder(url: watchedDir))
+        await waitForCondition(timeout: 1.0) { !firstRecorder.recordedURLs.isEmpty }
+        XCTAssertTrue(firstRecorder.recordedURLs.isEmpty)
+        first.shutdown()
+
+        // The baseline is persisted: a fresh coordinator still leaves it alone.
+        let (second, secondRecorder, _) = makeCoordinator()
+        second.start()
+        second.importExistingNow()
+        second.shutdown()
+        _ = secondRecorder
+
+        let (third, thirdRecorder, _) = makeCoordinator()
+        defer { third.shutdown() }
+        third.start()
+        // A pass that does not ask for existing files must skip the baseline.
+        await waitForCondition(timeout: 1.0) { !thirdRecorder.recordedURLs.isEmpty }
+        XCTAssertTrue(thirdRecorder.recordedURLs.isEmpty, "a baselined file stays out after relaunch")
+
+        // Changing the file gives it a new key, so it counts as new.
+        try Data("{\"marker\":\"changed, longer content\"}".utf8).write(to: existing)
+        third.importExistingNow()
+        await waitForCondition(timeout: 3.0) { !thirdRecorder.recordedURLs.isEmpty }
+        XCTAssertEqual(thirdRecorder.recordedURLs.count, 1)
+    }
+
+    func testImportExistingNowImportsTheBaselinedFiles() async throws {
+        let existing = try writeJSON("existing.json")
+        let (coordinator, recorder, _) = makeCoordinator()
+        defer { coordinator.shutdown() }
+        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        await waitForCondition(timeout: 1.0) { !recorder.recordedURLs.isEmpty }
+        XCTAssertTrue(recorder.recordedURLs.isEmpty)
+
+        coordinator.importExistingNow()
+        await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
+        XCTAssertEqual(
+            recorder.recordedURLs.map { $0.resolvingSymlinksInPath() },
+            [existing.resolvingSymlinksInPath()]
         )
     }
 
@@ -190,7 +250,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
     func testImportedFileIsLedgeredAndNotReimported() async throws {
         _ = try writeJSON()
         let (coordinator, recorder, _) = makeCoordinator()
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertEqual(recorder.recordedURLs.count, 1)
 
@@ -210,7 +270,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
     func testRenamedDuplicateContentIsSkipped() async throws {
         _ = try writeJSON("run.json")
         let (coordinator, recorder, _) = makeCoordinator()
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertEqual(recorder.recordedURLs.count, 1)
         let originalURL = watchedDir.appendingPathComponent("run.json")
@@ -244,7 +304,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let fitURL = watchedDir.appendingPathComponent("multi.fit")
         try Data(repeating: 0x40, count: 16).write(to: fitURL)
         let (coordinator, recorder, _) = makeCoordinator(importResults: [.awaitingReview])
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertEqual(coordinator.recentImports.first?.status, .awaitingReview)
         XCTAssertNotNil(coordinator.pendingReviewBanner)
@@ -301,6 +361,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         XCTAssertTrue(recorder.recordedURLs.isEmpty)
 
         coordinator.setAllPaused(false)
+        coordinator.importExistingNow()
         await waitForCondition(timeout: 2) { recorder.recordedURLs.contains(file) }
         XCTAssertEqual(recorder.recordedURLs.map { $0.resolvingSymlinksInPath() }, [file.resolvingSymlinksInPath()])
         XCTAssertEqual(startedWatches.recordedURLs.count, 1)
@@ -343,7 +404,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
     func testPauseBlocksScansAndImports() async throws {
         _ = try writeJSON()
         let (coordinator, recorder, _) = makeCoordinator()
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertEqual(recorder.recordedURLs.count, 1)
 
@@ -367,7 +428,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         try Data(repeating: 0x61, count: 200).write(to: bigURL)
         let (coordinator, recorder, _) = makeCoordinator(maxFileBytes: 10)
 
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !coordinator.recentImports.isEmpty }
 
         XCTAssertEqual(recorder.recordedURLs.count, 0, "oversized file must never reach the importer")
@@ -392,7 +453,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let bigURL = watchedDir.appendingPathComponent("huge.json")
         try Data(repeating: 0x61, count: 200).write(to: bigURL)
         let (first, _, _) = makeCoordinator(maxFileBytes: 10)
-        XCTAssertTrue(first.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(first, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !first.recentImports.isEmpty }
         XCTAssertEqual(first.recentImports.count, 1)
         first.shutdown()
@@ -411,7 +472,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let bigURL = watchedDir.appendingPathComponent("huge.json")
         try Data(repeating: 0x61, count: 200).write(to: bigURL)
         let (first, _, _) = makeCoordinator(maxFileBytes: 10)
-        XCTAssertTrue(first.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(first, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !first.recentImports.isEmpty }
         first.shutdown()
 
@@ -429,7 +490,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
     func testDuplicateNoticeIsNotRepeatedAfterRelaunch() async throws {
         _ = try writeJSON("run.json")
         let (first, recorder, _) = makeCoordinator()
-        XCTAssertTrue(first.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(first, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         let original = watchedDir.appendingPathComponent("run.json")
         try Data(contentsOf: original).write(to: watchedDir.appendingPathComponent("copy-of-run.json"))
@@ -504,7 +565,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
     func testFolderRemovedWhileWatchingIsReportedOnceAndRecovers() async throws {
         _ = try writeJSON()
         let (coordinator, recorder, _) = makeCoordinator()
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         let folderID = try XCTUnwrap(coordinator.folders.first?.id)
         XCTAssertTrue(coordinator.unavailableFolderIDs.isEmpty)
@@ -571,7 +632,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let fitURL = watchedDir.appendingPathComponent("multi.fit")
         try Data(repeating: 0x40, count: 16).write(to: fitURL)
         let (first, recorder, _) = makeCoordinator(importResults: [.awaitingReview])
-        XCTAssertTrue(first.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(first, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertNotNil(first.pendingReviewBanner)
 
@@ -629,8 +690,8 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let (coordinator, recorder, _) = makeCoordinator(
             importResults: [.awaitingReview, .awaitingReview]
         )
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
-        XCTAssertTrue(coordinator.addFolder(url: secondDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: secondDir))
         await waitForCondition(timeout: 3.0) { recorder.recordedURLs.count >= 2 }
 
         // Both files queued; exactly one banner is on screen.
@@ -660,7 +721,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let fitURL = watchedDir.appendingPathComponent("gone.fit")
         try Data(repeating: 0x40, count: 16).write(to: fitURL)
         let (coordinator, recorder, _) = makeCoordinator(importResults: [.awaitingReview])
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         XCTAssertNotNil(coordinator.pendingReviewBanner)
 
@@ -681,7 +742,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         _ = try writeJSON("b.json")
         _ = try writeJSON("c.json")
         let (coordinator, recorder, announcements) = makeCoordinator()
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { recorder.recordedURLs.count >= 3 }
         try await Task.sleep(for: .milliseconds(300))
 
@@ -710,7 +771,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let (coordinator, recorder, announcements) = makeCoordinator(
             importResults: [.imported, .failed("bad file")]
         )
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { recorder.recordedURLs.count >= 2 }
         try await Task.sleep(for: .milliseconds(300))
 
@@ -761,7 +822,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         let (coordinator, recorder, announcements) = makeCoordinator(
             importResults: [.awaitingReview]
         )
-        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        XCTAssertTrue(addFolderImportingExisting(coordinator, url: watchedDir))
         await waitForCondition(timeout: 3.0) { !recorder.recordedURLs.isEmpty }
         try await Task.sleep(for: .milliseconds(300))
 

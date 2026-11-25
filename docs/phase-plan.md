@@ -108,7 +108,7 @@
 - User-chosen directories auto-import new GPX/TCX/FIT/JSON files; opt-in, never on by default
 - Security-scoped bookmark persistence (`watch-folders.json` beside the manifest) with stale-tolerant re-resolution; works identically once App Sandbox lands (enablement itself is a follow-up)
 - Detection: authoritative ~5 s poll plus DispatchSource directory events as an early wake (missed events degrade to poll latency)
-- Two-probe size+mtime settle (default 2 s) so files still being written are never imported; "Import Existing Files Now" bypasses settling for pre-existing files
+- Two-probe size+mtime settle (default 2 s) so files still being written are never imported; adding a folder baselines the files already in it without importing them, and "Import Existing Files Now" imports them, bypassing settling
 - Per-folder SHA-256 content ledger: every outcome (imported/skipped/failed) is ledgered so nothing retries forever; identity is content, not filename (renames dedupe)
 - Steady-state duplicates are silent; a skip row appears only for a renamed/copied duplicate
 - Reuses the single-file import pipeline end-to-end (training-load restamp, store add, library refresh, per-folder default tag via existing tag APIs)
