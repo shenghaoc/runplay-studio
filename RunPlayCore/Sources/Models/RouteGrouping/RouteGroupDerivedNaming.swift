@@ -605,6 +605,8 @@ extension WorkoutRouteGroup {
     /// `defaultDisplayName` comment records); the English default is the
     /// Linux fallback.
     private static func compassAbbreviation(forSector sector: Int, fine: Bool) -> String {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each compass sector to its localized abbreviation.
         #if canImport(Darwin)
         switch (fine, sector) {
         case (false, 0), (true, 0): return String(localized: "route_group.compass.north", defaultValue: "N", bundle: .module)

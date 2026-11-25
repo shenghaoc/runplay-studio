@@ -41,6 +41,81 @@ enum RunPlayRouteAlignmentDtwBridgeError: Error, Equatable {
 /// Maps Core-owned policy and samples to one synchronous engine solve.
 /// Cancellation, output checks, and diagnostics remain Core-owned.
 enum RunPlayRouteAlignmentDtwAdapter {
+    private static func engineDtwPolicy(_ policy: RouteAlignmentPolicy) -> RouteAlignmentDtwPolicy {
+        var enginePolicy = RouteAlignmentDtwPolicy()
+        enginePolicy.bandWidthFraction = policy.bandWidthFraction
+        enginePolicy.maximumUnmatchedPrefixSuffixMeters = policy.maximumUnmatchedPrefixSuffixMeters
+        enginePolicy.maximumUnmatchedPrefixSuffixFraction = policy.maximumUnmatchedPrefixSuffixFraction
+        enginePolicy.nonDiagonalStepPenalty = policy.nonDiagonalStepPenalty
+        enginePolicy.maximumConsecutiveWarpSteps = UInt64(max(0, policy.maximumConsecutiveWarpSteps))
+        enginePolicy.spatialDistanceCostScaleMeters = policy.spatialDistanceCostScaleMeters
+        enginePolicy.maximumSpatialCost = policy.maximumSpatialCost
+        enginePolicy.headingPenaltyWeight = policy.headingPenaltyWeight
+        enginePolicy.progressPenaltyWeight = policy.progressPenaltyWeight
+        enginePolicy.maximumBandCells = UInt64(max(0, policy.maximumBandCells))
+        return enginePolicy
+    }
+
+    /// The Core outcome of a kernel error: a resource limit and no path are
+    /// results; every other error is thrown.
+    private static func outcome(for error: RouteAlignmentDtwError) throws -> RunPlayRouteAlignmentDtwResult {
+        switch error {
+        case .resourceLimit: return .resourceLimit
+        case .noPath: return .noPath
+        case .invalidPolicy: throw RunPlayRouteAlignmentDtwBridgeError.invalidPolicy
+        case .invalidInputContract: throw RunPlayRouteAlignmentDtwBridgeError.invalidInputContract
+        case .internalFailure: throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation
+        }
+    }
+
+    /// The engine path as Core cells. Every index is in range and every step
+    /// moves by exactly what its kind says.
+    private static func translatedPath(
+        _ cells: [RouteAlignmentDtwCell], primaryCount: Int, comparisonCount: Int,
+        stride: Int, isCancelled: @Sendable () -> Bool
+    ) throws -> [RunPlayRouteAlignmentDtwPathCell] {
+        var path: [RunPlayRouteAlignmentDtwPathCell] = []
+        path.reserveCapacity(cells.count)
+        for (index, cell) in cells.enumerated() {
+            if index % stride == 0, isCancelled() { throw CancellationError() }
+            guard cell.primaryIndex >= 0, cell.primaryIndex < primaryCount,
+                  cell.comparisonIndex >= 0, cell.comparisonIndex < comparisonCount
+            else { throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation }
+
+            let step = stepKind(cell.step)
+
+            if let previous = path.last {
+                let di = cell.primaryIndex - previous.primaryIndex
+                let dj = cell.comparisonIndex - previous.comparisonIndex
+                guard isConsistent(step, di: di, dj: dj) else {
+                    throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation
+                }
+            }
+            path.append(RunPlayRouteAlignmentDtwPathCell(
+                primaryIndex: cell.primaryIndex, comparisonIndex: cell.comparisonIndex, step: step
+            ))
+        }
+        return path
+    }
+
+    private static func stepKind(_ step: RouteAlignmentDtwStep) -> RunPlayRouteAlignmentDtwStepKind {
+        switch step {
+        case .diagonal: .diagonal
+        case .primaryOnly: .primaryOnly
+        case .comparisonOnly: .comparisonOnly
+        }
+    }
+
+    /// Whether a step moves one primary sample, one comparison sample, or
+    /// one of each, as its kind says.
+    private static func isConsistent(_ step: RunPlayRouteAlignmentDtwStepKind, di: Int, dj: Int) -> Bool {
+        switch step {
+        case .diagonal: di == 1 && dj == 1
+        case .primaryOnly: di == 1 && dj == 0
+        case .comparisonOnly: di == 0 && dj == 1
+        }
+    }
+
     static func solve(
         primary: [RouteAlignmentSample],
         comparison: [RouteAlignmentSample],
@@ -64,17 +139,7 @@ enum RunPlayRouteAlignmentDtwAdapter {
         }
         if isCancelled() { throw CancellationError() }
 
-        var enginePolicy = RouteAlignmentDtwPolicy()
-        enginePolicy.bandWidthFraction = policy.bandWidthFraction
-        enginePolicy.maximumUnmatchedPrefixSuffixMeters = policy.maximumUnmatchedPrefixSuffixMeters
-        enginePolicy.maximumUnmatchedPrefixSuffixFraction = policy.maximumUnmatchedPrefixSuffixFraction
-        enginePolicy.nonDiagonalStepPenalty = policy.nonDiagonalStepPenalty
-        enginePolicy.maximumConsecutiveWarpSteps = UInt64(max(0, policy.maximumConsecutiveWarpSteps))
-        enginePolicy.spatialDistanceCostScaleMeters = policy.spatialDistanceCostScaleMeters
-        enginePolicy.maximumSpatialCost = policy.maximumSpatialCost
-        enginePolicy.headingPenaltyWeight = policy.headingPenaltyWeight
-        enginePolicy.progressPenaltyWeight = policy.progressPenaltyWeight
-        enginePolicy.maximumBandCells = UInt64(max(0, policy.maximumBandCells))
+        let enginePolicy = engineDtwPolicy(policy)
 
         let solved: RouteAlignmentDtwPath
         EngineCallObserver.record(.routeAlignmentDtw)
@@ -90,13 +155,7 @@ enum RunPlayRouteAlignmentDtwAdapter {
         } catch {
             // Cancellation wins over every kernel outcome, as it did with the former C++ call.
             if isCancelled() { throw CancellationError() }
-            switch error {
-            case .resourceLimit: return .resourceLimit
-            case .noPath: return .noPath
-            case .invalidPolicy: throw RunPlayRouteAlignmentDtwBridgeError.invalidPolicy
-            case .invalidInputContract: throw RunPlayRouteAlignmentDtwBridgeError.invalidInputContract
-            case .internalFailure: throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation
-            }
+            return try outcome(for: error)
         }
 
         if isCancelled() { throw CancellationError() }
@@ -104,36 +163,10 @@ enum RunPlayRouteAlignmentDtwAdapter {
             throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation
         }
 
-        var path: [RunPlayRouteAlignmentDtwPathCell] = []
-        path.reserveCapacity(solved.cells.count)
-        for (index, cell) in solved.cells.enumerated() {
-            if index % stride == 0, isCancelled() { throw CancellationError() }
-            guard cell.primaryIndex >= 0, cell.primaryIndex < primary.count,
-                  cell.comparisonIndex >= 0, cell.comparisonIndex < comparison.count
-            else { throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation }
-
-            let step: RunPlayRouteAlignmentDtwStepKind
-            switch cell.step {
-            case .diagonal: step = .diagonal
-            case .primaryOnly: step = .primaryOnly
-            case .comparisonOnly: step = .comparisonOnly
-            }
-
-            if let previous = path.last {
-                let di = cell.primaryIndex - previous.primaryIndex
-                let dj = cell.comparisonIndex - previous.comparisonIndex
-                let consistent: Bool
-                switch step {
-                case .diagonal: consistent = di == 1 && dj == 1
-                case .primaryOnly: consistent = di == 1 && dj == 0
-                case .comparisonOnly: consistent = di == 0 && dj == 1
-                }
-                guard consistent else { throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation }
-            }
-            path.append(RunPlayRouteAlignmentDtwPathCell(
-                primaryIndex: cell.primaryIndex, comparisonIndex: cell.comparisonIndex, step: step
-            ))
-        }
+        let path = try translatedPath(
+            solved.cells, primaryCount: primary.count, comparisonCount: comparison.count,
+            stride: stride, isCancelled: isCancelled
+        )
         return .success(
             path: path, bandRadius: solved.bandRadius, bandCellCount: solved.bandCellCount, bestEndCost: solved.bestEndCost
         )

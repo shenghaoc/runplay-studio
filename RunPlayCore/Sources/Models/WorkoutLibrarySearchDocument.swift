@@ -32,24 +32,7 @@ public struct WorkoutLibrarySearchDocument: Hashable, Sendable {
         tokens.append(entry.source.displayName)
         if let provider = entry.importProvider {
             tokens.append(provider.rawValue)
-            switch provider {
-            case .stravaBulkExport:
-                tokens.append("Strava")
-                tokens.append("strava")
-            case .appleHealthExport:
-                tokens.append("Apple Health")
-                tokens.append("apple")
-                tokens.append("health")
-            case .singleFile:
-                tokens.append("single")
-                tokens.append("file")
-            case .fitMultiSessionFile:
-                tokens.append("FIT")
-                tokens.append("fit")
-                tokens.append("session")
-            case .unknown:
-                break
-            }
+            tokens.append(contentsOf: providerTokens(provider))
         }
         if let filename = entry.originalFilename {
             tokens.append(filename)
@@ -60,25 +43,7 @@ public struct WorkoutLibrarySearchDocument: Hashable, Sendable {
         }
 
         if let date = entry.startDate {
-            let comps = calendar.dateComponents(in: calendar.timeZone, from: date)
-            if let year = comps.year {
-                tokens.append(String(year))
-            }
-            if let month = comps.month {
-                tokens.append(String(format: "%02d", month))
-                tokens.append(String(month))
-                // English month names as stable search aids (not the only tokens).
-                let englishMonths = [
-                    "january", "february", "march", "april", "may", "june",
-                    "july", "august", "september", "october", "november", "december"
-                ]
-                if month >= 1, month <= 12 {
-                    tokens.append(englishMonths[month - 1])
-                }
-            }
-            if let day = comps.day {
-                tokens.append(String(format: "%02d", day))
-            }
+            tokens.append(contentsOf: dateTokens(date, calendar: calendar))
         }
 
         // Assigned tag names participate in free-text search (not tag colors).
@@ -94,6 +59,48 @@ public struct WorkoutLibrarySearchDocument: Hashable, Sendable {
             .joined(separator: "\u{001F}")
 
         return WorkoutLibrarySearchDocument(workoutID: entry.id, normalizedText: joined)
+    }
+
+    /// Stable search words for an import provider.
+    private static func providerTokens(_ provider: WorkoutImportProvider) -> [String] {
+        switch provider {
+        case .stravaBulkExport:
+            return ["Strava", "strava"]
+        case .appleHealthExport:
+            return ["Apple Health", "apple", "health"]
+        case .singleFile:
+            return ["single", "file"]
+        case .fitMultiSessionFile:
+            return ["FIT", "fit", "session"]
+        case .unknown:
+            return []
+        }
+    }
+
+    /// The year, the month (padded, plain and its English name) and the
+    /// padded day of a start date in the calendar's time zone.
+    private static func dateTokens(_ date: Date, calendar: Calendar) -> [String] {
+        var tokens: [String] = []
+        let comps = calendar.dateComponents(in: calendar.timeZone, from: date)
+        if let year = comps.year {
+            tokens.append(String(year))
+        }
+        if let month = comps.month {
+            tokens.append(String(format: "%02d", month))
+            tokens.append(String(month))
+            // English month names as stable search aids (not the only tokens).
+            let englishMonths = [
+                "january", "february", "march", "april", "may", "june",
+                "july", "august", "september", "october", "november", "december"
+            ]
+            if month >= 1, month <= 12 {
+                tokens.append(englishMonths[month - 1])
+            }
+        }
+        if let day = comps.day {
+            tokens.append(String(format: "%02d", day))
+        }
+        return tokens
     }
 
     /// Case-, diacritic-, and width-insensitive folding for search.

@@ -48,6 +48,34 @@ enum HotspotProfilingFixtures {
         var name: String = "synthetic"
     }
 
+    /// The altitude of point `index`, drawing from `lcg` in the fixture's
+    /// fixed order: a heavy sine with optional noise, noise with periodic
+    /// spikes, or a gentle sine with small noise.
+    private static func syntheticAltitude(index i: Int, options: RouteOptions, lcg: inout ProfilingLCG) -> Double? {
+        if options.includeAltitude {
+            if options.altitudeHeavy {
+                return 100 + 250 * sin(Double(i) * 0.01) + (options.noisyElevation ? lcg.symmetric(8) : 0)
+            } else if options.noisyElevation {
+                return 50 + lcg.symmetric(40) + (i % 97 == 0 ? 120 : 0)
+            } else {
+                return 40 + 15 * sin(Double(i) * 0.02) + lcg.symmetric(2)
+            }
+        }
+        return nil
+    }
+
+    /// The time since the previous point: a pause-like gap every
+    /// `pauseEvery` points, else the step at the point's speed.
+    private static func intervalSeconds(
+        index i: Int, options: RouteOptions, isStationary: Bool, step: Double, speed: Double?
+    ) -> Double {
+        if let pauseEvery = options.pauseEvery, i > 0, i % pauseEvery == 0 {
+            return 45 // pause-like gap
+        } else {
+            return isStationary ? 1.0 : max(0.6, step / max(speed ?? 2.8, 0.5))
+        }
+    }
+
     static func makeRoutePoints(options: RouteOptions) -> [RoutePoint] {
         var lcg = ProfilingLCG(seed: options.seed)
         let cosLat = cos(options.baseLat * .pi / 180.0)
@@ -67,18 +95,7 @@ enum HotspotProfilingFixtures {
             let lat = options.baseLat + (Double(segment) * 0.0001) + wiggle / metresPerDegLat
             let lon = options.baseLon + (x + wiggle * 0.4) / metresPerDegLon
 
-            let alt: Double?
-            if options.includeAltitude {
-                if options.altitudeHeavy {
-                    alt = 100 + 250 * sin(Double(i) * 0.01) + (options.noisyElevation ? lcg.symmetric(8) : 0)
-                } else if options.noisyElevation {
-                    alt = 50 + lcg.symmetric(40) + (i % 97 == 0 ? 120 : 0)
-                } else {
-                    alt = 40 + 15 * sin(Double(i) * 0.02) + lcg.symmetric(2)
-                }
-            } else {
-                alt = nil
-            }
+            let alt = syntheticAltitude(index: i, options: options, lcg: &lcg)
 
             let speed: Double? = options.includeSourceSpeed
                 ? (isStationary ? 0.2 : 2.8 + lcg.symmetric(0.4))
@@ -92,13 +109,7 @@ enum HotspotProfilingFixtures {
                 ? (isStationary ? 0 : 160 + lcg.unit() * 20)
                 : nil
 
-            let dt: Double
-            if let pauseEvery = options.pauseEvery, i > 0, i % pauseEvery == 0 {
-                dt = 45 // pause-like gap
-            } else {
-                dt = isStationary ? 1.0 : max(0.6, step / max(speed ?? 2.8, 0.5))
-            }
-            elapsed += dt
+            elapsed += intervalSeconds(index: i, options: options, isStationary: isStationary, step: step, speed: speed)
 
             points.append(RoutePoint(
                 id: stableID(seed: options.seed, index: i),

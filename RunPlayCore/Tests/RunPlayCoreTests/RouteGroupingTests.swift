@@ -1019,21 +1019,7 @@ final class RouteGroupingTests: XCTestCase {
             // that occasionally makes short git object names awkward
             // cannot arise here, and this pins the same-length
             // comparison the rule depends on.
-            var digestClusters: [String: [String]] = [:]
-            for entry in derived where entry.tier == .digest {
-                digestClusters["\(entry.baseName)|\(entry.fineToken ?? "")", default: []]
-                    .append(entry.digestDiscriminator ?? "")
-            }
-            for (cluster, discriminators) in digestClusters {
-                for discriminator in discriminators {
-                    for other in discriminators where other != discriminator {
-                        XCTAssertFalse(
-                            other.hasPrefix(discriminator),
-                            "seed \(seed): '\(discriminator)' is a prefix of '\(other)' in \(cluster)"
-                        )
-                    }
-                }
-            }
+            assertDigestDiscriminatorsArePrefixFree(derived, seed: seed)
 
             // Order independence: a seeded shuffle changes nothing.
             XCTAssertEqual(
@@ -1110,38 +1096,74 @@ final class RouteGroupingTests: XCTestCase {
             ]
 
             for newcomer in newcomers {
-                let after = WorkoutRouteGroup.derivedNameDetails(
-                    for: population + [newcomer.group],
-                    loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+                try assertInsertionRefines(
+                    population: population, details: details, newcomer: newcomer, seed: seed
                 )
-                let newcomerDigest = WorkoutRouteGroup.stableDigestHex(for: newcomer.group.id)
-                for old in details.values {
-                    let new = try XCTUnwrap(after[old.groupID], "seed \(seed)")
-                    if old.isUserAssigned {
-                        XCTAssertEqual(new, old, "seed \(seed): user names never move")
-                        continue
-                    }
-                    if !newcomer.colliding {
-                        XCTAssertEqual(new, old, "seed \(seed): a non-colliding arrival must change nothing")
-                        continue
-                    }
-                    XCTAssertGreaterThanOrEqual(new.tier, old.tier, "seed \(seed): a group's tier never decreases")
-                    XCTAssertEqual(new.baseName, old.baseName, "seed \(seed): a group's base name never changes")
-                    guard old.tier == .digest, new.tier == .digest,
-                          let oldDiscriminator = old.digestDiscriminator else { continue }
-                    if newcomerDigest.hasPrefix(oldDiscriminator) {
-                        XCTAssertTrue(
-                            new.digestDiscriminator?.hasPrefix(oldDiscriminator) == true,
-                            "seed \(seed): a colliding digest may only lengthen by prefix, \(String(describing: old.digestDiscriminator)) → \(String(describing: new.digestDiscriminator))"
-                        )
-                    } else {
-                        XCTAssertEqual(
-                            new,
-                            old,
-                            "seed \(seed): an arrival cannot change a name it does not collide with"
-                        )
-                    }
+            }
+        }
+    }
+
+    /// No discriminator in one digest cluster is a proper prefix of another.
+    private func assertDigestDiscriminatorsArePrefixFree(
+        _ derived: [RouteGroupDerivedName], seed: UInt64
+    ) {
+        var digestClusters: [String: [String]] = [:]
+        for entry in derived where entry.tier == .digest {
+            digestClusters["\(entry.baseName)|\(entry.fineToken ?? "")", default: []]
+                .append(entry.digestDiscriminator ?? "")
+        }
+        for (cluster, discriminators) in digestClusters {
+            for discriminator in discriminators {
+                for other in discriminators where other != discriminator {
+                    XCTAssertFalse(
+                        other.hasPrefix(discriminator),
+                        "seed \(seed): '\(discriminator)' is a prefix of '\(other)' in \(cluster)"
+                    )
                 }
+            }
+        }
+    }
+
+    /// Adding one newcomer to the population leaves user names alone, changes
+    /// nothing for a non-colliding arrival, and for a colliding one only
+    /// raises tiers, keeps base names, and lengthens a colliding digest by
+    /// prefix.
+    private func assertInsertionRefines(
+        population: [WorkoutRouteGroup],
+        details: [UUID: RouteGroupDerivedName],
+        newcomer: (group: WorkoutRouteGroup, colliding: Bool),
+        seed: UInt64
+    ) throws {
+        let after = WorkoutRouteGroup.derivedNameDetails(
+            for: population + [newcomer.group],
+            loopClosureDistanceMeters: WorkoutRouteGroup.defaultLoopClosureDistanceMeters
+        )
+        let newcomerDigest = WorkoutRouteGroup.stableDigestHex(for: newcomer.group.id)
+        for old in details.values {
+            let new = try XCTUnwrap(after[old.groupID], "seed \(seed)")
+            if old.isUserAssigned {
+                XCTAssertEqual(new, old, "seed \(seed): user names never move")
+                continue
+            }
+            if !newcomer.colliding {
+                XCTAssertEqual(new, old, "seed \(seed): a non-colliding arrival must change nothing")
+                continue
+            }
+            XCTAssertGreaterThanOrEqual(new.tier, old.tier, "seed \(seed): a group's tier never decreases")
+            XCTAssertEqual(new.baseName, old.baseName, "seed \(seed): a group's base name never changes")
+            guard old.tier == .digest, new.tier == .digest,
+                  let oldDiscriminator = old.digestDiscriminator else { continue }
+            if newcomerDigest.hasPrefix(oldDiscriminator) {
+                XCTAssertTrue(
+                    new.digestDiscriminator?.hasPrefix(oldDiscriminator) == true,
+                    "seed \(seed): a colliding digest may only lengthen by prefix, \(String(describing: old.digestDiscriminator)) → \(String(describing: new.digestDiscriminator))"
+                )
+            } else {
+                XCTAssertEqual(
+                    new,
+                    old,
+                    "seed \(seed): an arrival cannot change a name it does not collide with"
+                )
             }
         }
     }

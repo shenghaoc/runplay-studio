@@ -200,6 +200,8 @@ public enum WorkoutVideoExportError: Error, LocalizedError, Sendable, Equatable 
     case cancelled
 
     public var errorDescription: String? {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each video export error to its localized description.
         switch self {
         case .noPlayableTimeline:
             return coreLocalized("This workout has no playable elapsed timeline for video export.")

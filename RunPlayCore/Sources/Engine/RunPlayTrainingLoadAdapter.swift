@@ -37,6 +37,58 @@ enum RunPlayTrainingLoadBridge {
         guard heartRatesBPM.count == weightsSeconds.count else {
             throw RunPlayTrainingLoadBridgeError.invalidInputContract
         }
+        try validatePolicy(
+            restingHeartRateBPM: restingHeartRateBPM,
+            maximumHeartRateBPM: maximumHeartRateBPM,
+            coefficientMultiplier: coefficientMultiplier,
+            coefficientExponent: coefficientExponent,
+            zoneLowerBoundsBPM: zoneLowerBoundsBPM
+        )
+
+        let count = heartRatesBPM.count
+        let stride = max(1, cancellationCheckStride)
+        try checkCancellation(isCancelled)
+
+        let input = try engineSamples(
+            heartRatesBPM: heartRatesBPM, weightsSeconds: weightsSeconds, stride: stride, isCancelled: isCancelled
+        )
+
+        let policy = RunPlayEngine.TrainingLoadPolicy(
+            restingHeartRateBPM: restingHeartRateBPM,
+            maximumHeartRateBPM: maximumHeartRateBPM,
+            coefficientMultiplier: coefficientMultiplier,
+            coefficientExponent: coefficientExponent,
+            zoneLowerBoundsBPM: [
+                zoneLowerBoundsBPM[0], zoneLowerBoundsBPM[1], zoneLowerBoundsBPM[2],
+                zoneLowerBoundsBPM[3], zoneLowerBoundsBPM[4],
+            ]
+        )
+
+        let summary = try runKernel(input, policy: policy, isCancelled: isCancelled)
+        let (validCount, totalCount) = try validatedCounts(summary, inputCount: count)
+        let zoneSeconds = try validatedZoneSeconds(summary)
+        let meanRate = try validatedMeanHeartRate(summary)
+
+        return RunPlayTrainingLoadResult(
+            totalTRIMP: summary.totalTRIMP,
+            meanHeartRateBPM: meanRate,
+            zoneSeconds: zoneSeconds,
+            validHeartRateSeconds: summary.validHeartRateSeconds,
+            coveredSeconds: summary.coveredSeconds,
+            validIntervalCount: validCount,
+            totalIntervalCount: totalCount
+        )
+    }
+
+    /// Five zone bounds, finite positive heart rates with the maximum above
+    /// the resting rate, and finite positive coefficients.
+    private static func validatePolicy(
+        restingHeartRateBPM: Double,
+        maximumHeartRateBPM: Double,
+        coefficientMultiplier: Double,
+        coefficientExponent: Double,
+        zoneLowerBoundsBPM: [Double]
+    ) throws {
         guard zoneLowerBoundsBPM.count == TrainingLoadKernel.zoneCount else {
             throw RunPlayTrainingLoadBridgeError.invalidPolicy
         }
@@ -56,11 +108,14 @@ enum RunPlayTrainingLoadBridge {
             }
             previousBound = bound
         }
+    }
 
+    /// One kernel sample per interval; a weight is finite and non-negative,
+    /// and a present heart rate is finite and positive.
+    private static func engineSamples(
+        heartRatesBPM: [Double?], weightsSeconds: [Double], stride: Int, isCancelled: @Sendable () -> Bool
+    ) throws -> ContiguousArray<TrainingLoadSample> {
         let count = heartRatesBPM.count
-        let stride = max(1, cancellationCheckStride)
-        try checkCancellation(isCancelled)
-
         var input = ContiguousArray<TrainingLoadSample>()
         input.reserveCapacity(count)
         for index in 0..<count {
@@ -79,18 +134,15 @@ enum RunPlayTrainingLoadBridge {
                 heartRateBPM: rate ?? 0, weightSeconds: weight, hasHeartRate: rate == nil ? 0 : 1
             ))
         }
+        return input
+    }
 
-        let policy = RunPlayEngine.TrainingLoadPolicy(
-            restingHeartRateBPM: restingHeartRateBPM,
-            maximumHeartRateBPM: maximumHeartRateBPM,
-            coefficientMultiplier: coefficientMultiplier,
-            coefficientExponent: coefficientExponent,
-            zoneLowerBoundsBPM: [
-                zoneLowerBoundsBPM[0], zoneLowerBoundsBPM[1], zoneLowerBoundsBPM[2],
-                zoneLowerBoundsBPM[3], zoneLowerBoundsBPM[4],
-            ]
-        )
-
+    /// One kernel call, with cancellation checked before it and before its
+    /// status is translated.
+    private static func runKernel(
+        _ input: ContiguousArray<TrainingLoadSample>, policy: RunPlayEngine.TrainingLoadPolicy,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> TrainingLoadSummary {
         try checkCancellation(isCancelled)
         let computed: Result<TrainingLoadSummary, TrainingLoadError>
         do throws(TrainingLoadError) {
@@ -103,10 +155,9 @@ enum RunPlayTrainingLoadBridge {
         }
         // Cancellation is checked before the status is translated.
         try checkCancellation(isCancelled)
-        let summary: TrainingLoadSummary
         switch computed {
         case let .success(value):
-            summary = value
+            return value
         case .failure(.invalidPolicy):
             throw RunPlayTrainingLoadBridgeError.invalidPolicy
         case .failure(.invalidInputContract):
@@ -114,7 +165,13 @@ enum RunPlayTrainingLoadBridge {
         case .failure(.internalFailure):
             throw RunPlayTrainingLoadBridgeError.engineContractViolation
         }
+    }
 
+    /// The interval counts, which must cover every input, and finite
+    /// non-negative totals with valid time within covered time.
+    private static func validatedCounts(
+        _ summary: TrainingLoadSummary, inputCount count: Int
+    ) throws -> (valid: Int, total: Int) {
         guard let validCount = Int(exactly: summary.validIntervalCount),
               let totalCount = Int(exactly: summary.totalIntervalCount),
               totalCount == count,
@@ -127,7 +184,12 @@ enum RunPlayTrainingLoadBridge {
         else {
             throw RunPlayTrainingLoadBridgeError.engineContractViolation
         }
+        return (validCount, totalCount)
+    }
 
+    /// The five zone times, each finite and non-negative, summing to the
+    /// valid heart-rate time.
+    private static func validatedZoneSeconds(_ summary: TrainingLoadSummary) throws -> [Double] {
         let zoneSeconds = [
             summary.zoneSeconds[0],
             summary.zoneSeconds[1],
@@ -146,29 +208,22 @@ enum RunPlayTrainingLoadBridge {
         else {
             throw RunPlayTrainingLoadBridgeError.engineContractViolation
         }
+        return zoneSeconds
+    }
 
-        let meanRate: Double?
+    /// A present mean heart rate is finite and positive; an absent one is zero.
+    private static func validatedMeanHeartRate(_ summary: TrainingLoadSummary) throws -> Double? {
         if summary.hasMeanHeartRate == 1 {
             guard summary.meanHeartRateBPM.isFinite, summary.meanHeartRateBPM > 0 else {
                 throw RunPlayTrainingLoadBridgeError.engineContractViolation
             }
-            meanRate = summary.meanHeartRateBPM
+            return summary.meanHeartRateBPM
         } else {
             guard summary.meanHeartRateBPM == 0 else {
                 throw RunPlayTrainingLoadBridgeError.engineContractViolation
             }
-            meanRate = nil
+            return nil
         }
-
-        return RunPlayTrainingLoadResult(
-            totalTRIMP: summary.totalTRIMP,
-            meanHeartRateBPM: meanRate,
-            zoneSeconds: zoneSeconds,
-            validHeartRateSeconds: summary.validHeartRateSeconds,
-            coveredSeconds: summary.coveredSeconds,
-            validIntervalCount: validCount,
-            totalIntervalCount: totalCount
-        )
     }
 
     private static func checkCancellation(_ isCancelled: @Sendable () -> Bool) throws {

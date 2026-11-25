@@ -209,6 +209,17 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         var report = RepairReport()
         let workoutIDSet = Set(workoutIDs)
 
+        let validTagIDs = repairTags(report: &report)
+        repairSmartCollections(validTagIDs: validTagIDs, report: &report)
+        repairTagAssignments(workoutIDSet: workoutIDSet, validTagIDs: validTagIDs, report: &report)
+        let keptGroupIDs = repairRouteGroups(workoutIDSet: workoutIDSet, report: &report)
+        repairRouteGroupAssignments(workoutIDSet: workoutIDSet, keptGroupIDs: keptGroupIDs, report: &report)
+
+        return report
+    }
+
+    /// Deduplicates and caps the tag definitions; returns the valid tag IDs.
+    private mutating func repairTags(report: inout RepairReport) -> Set<UUID> {
         // Deduplicate tag IDs (keep first occurrence).
         var seenTagIDs = Set<UUID>()
         var uniqueTags: [WorkoutTag] = []
@@ -227,8 +238,12 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
             report.warnings.append(coreLocalized("Truncated tags to \(ResourceLimits.maxTags) definitions."))
         }
         tags = uniqueTags
-        let validTagIDs = Set(tags.map(\.id))
+        return Set(tags.map(\.id))
+    }
 
+    /// Deduplicates and caps the smart collections, and repairs their tag
+    /// references and search text.
+    private mutating func repairSmartCollections(validTagIDs: Set<UUID>, report: inout RepairReport) {
         // Deduplicate collection IDs (keep first occurrence).
         var seenCollectionIDs = Set<UUID>()
         var uniqueCollections: [WorkoutSmartCollection] = []
@@ -271,8 +286,12 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
             uniqueCollections[index] = collection
         }
         smartCollections = uniqueCollections
+    }
 
-        // Repair assignments.
+    /// Keeps one capped assignment per library workout, with valid tags only.
+    private mutating func repairTagAssignments(
+        workoutIDSet: Set<UUID>, validTagIDs: Set<UUID>, report: inout RepairReport
+    ) {
         var repairedAssignments: [WorkoutTagAssignment] = []
         repairedAssignments.reserveCapacity(min(tagAssignments.count, ResourceLimits.maxAssignments))
         var seenWorkoutIDs = Set<UUID>()
@@ -295,7 +314,10 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         }
         tagAssignments = repairedAssignments
         sortAssignmentsDeterministically()
+    }
 
+    /// Repairs the route groups; returns the IDs of the groups kept.
+    private mutating func repairRouteGroups(workoutIDSet: Set<UUID>, report: inout RepairReport) -> Set<UUID> {
         // Repair route groups and their assignment records. Only assignments
         // whose workout is still in the library count towards membership —
         // a group left only by deleted workouts is empty and unreachable.
@@ -325,21 +347,9 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
             report.warnings.append(coreLocalized("Truncated route groups to \(ResourceLimits.maxRouteGroups)."))
         }
 
-        // A pin or cached summary survives only while the referenced workout
-        // is still a member of this group.
-        for index in uniqueRouteGroups.indices {
-            let groupID = uniqueRouteGroups[index].id
-            if let pinned = uniqueRouteGroups[index].pinnedRepresentativeWorkoutID,
-               !workoutIDSet.contains(pinned)
-               || groupIDByAssignedWorkout[pinned] != groupID {
-                uniqueRouteGroups[index].pinnedRepresentativeWorkoutID = nil
-            }
-            if let summary = uniqueRouteGroups[index].representativeSummary,
-               !workoutIDSet.contains(summary.workoutID)
-               || groupIDByAssignedWorkout[summary.workoutID] != groupID {
-                uniqueRouteGroups[index].representativeSummary = nil
-            }
-        }
+        Self.clearStaleRepresentatives(
+            in: &uniqueRouteGroups, workoutIDSet: workoutIDSet, groupIDByAssignedWorkout: groupIDByAssignedWorkout
+        )
 
         // Groups with no surviving members are unreachable; remove them.
         let memberGroupIDs = Set(groupIDByAssignedWorkout.values)
@@ -356,10 +366,37 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         // name already stored. A manifest that predates the field gets the
         // whole set at once on its first repair (the load-time migration).
         WorkoutRouteGroup.materializeDerivedNames(in: &routeGroups)
+        return keptGroupIDs
+    }
 
-        // Repair assignment records: drop workouts that left the library,
-        // drop references to groups that no longer exist, deduplicate by
-        // workout, and cap the count.
+    /// A pin or cached summary survives only while the referenced workout
+    /// is still a member of this group.
+    private static func clearStaleRepresentatives(
+        in uniqueRouteGroups: inout [WorkoutRouteGroup],
+        workoutIDSet: Set<UUID>,
+        groupIDByAssignedWorkout: [UUID: UUID]
+    ) {
+        for index in uniqueRouteGroups.indices {
+            let groupID = uniqueRouteGroups[index].id
+            if let pinned = uniqueRouteGroups[index].pinnedRepresentativeWorkoutID,
+               !workoutIDSet.contains(pinned)
+               || groupIDByAssignedWorkout[pinned] != groupID {
+                uniqueRouteGroups[index].pinnedRepresentativeWorkoutID = nil
+            }
+            if let summary = uniqueRouteGroups[index].representativeSummary,
+               !workoutIDSet.contains(summary.workoutID)
+               || groupIDByAssignedWorkout[summary.workoutID] != groupID {
+                uniqueRouteGroups[index].representativeSummary = nil
+            }
+        }
+    }
+
+    /// Repair assignment records: drop workouts that left the library, drop
+    /// references to groups that no longer exist, deduplicate by workout, and
+    /// cap the count.
+    private mutating func repairRouteGroupAssignments(
+        workoutIDSet: Set<UUID>, keptGroupIDs: Set<UUID>, report: inout RepairReport
+    ) {
         var repairedRouteGroupAssignments: [WorkoutRouteGroupAssignment] = []
         repairedRouteGroupAssignments.reserveCapacity(
             min(routeGroupAssignments.count, ResourceLimits.maxRouteGroupAssignments)
@@ -381,8 +418,6 @@ public struct WorkoutLibraryManifest: Codable, Equatable, Sendable {
         }
         routeGroupAssignments = repairedRouteGroupAssignments
         sortRouteGroupAssignmentsDeterministically()
-
-        return report
     }
 
     private static func repairTagFilter(
