@@ -6,4 +6,3 @@
 self-hosted-runner:
   labels:
     - ubuntu-26.04
-    - xcode-27

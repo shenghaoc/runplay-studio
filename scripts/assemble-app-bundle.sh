@@ -133,10 +133,16 @@ fi
 if [[ "$SKIP_BUILD" -eq 1 ]]; then
   [[ -n "$BIN_DIR" ]] || release_die "--skip-build requires --bin-dir"
 else
-  release_log "Building release binary (warnings-as-errors)..."
-  swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors
+  release_log "Building release binary (warnings are errors, per Package.swift)..."
+  # --build-system swiftbuild: the shipped app needs its String Catalogs
+  # compiled, which Swift 6.3.x's default (native) build system does not do.
+  # --arch arm64: the release train is arm64-only (docs/releasing.md), and
+  # swift-build on Swift 6.3.x builds a universal binary for -c release
+  # without it. --show-bin-path must be given the same flags, since the bin
+  # path depends on the build system and the architecture.
+  swift build --build-system swiftbuild -c release --arch arm64 --package-path "$REPO_ROOT"
   if [[ -z "$BIN_DIR" ]]; then
-    BIN_DIR="$(swift build -c release --package-path "$REPO_ROOT" --show-bin-path)"
+    BIN_DIR="$(swift build --build-system swiftbuild -c release --arch arm64 --package-path "$REPO_ROOT" --show-bin-path)"
   fi
 fi
 

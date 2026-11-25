@@ -14,8 +14,7 @@ cleanup() { rm -f "$log" "$platform_log"; }
 trap cleanup EXIT
 
 swift test -c release \
-  --filter RouteMetricScaleBucketBenchmark \
-  -Xswiftc -warnings-as-errors >"$log" 2>&1
+  --filter RouteMetricScaleBucketBenchmark >"$log" 2>&1
 
 if ! grep -q 'BEGIN RUNPLAY ROUTE METRIC SCALE BUCKET BENCHMARK' "$log"; then
   tail -120 "$log" >&2
@@ -28,7 +27,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   RUNPLAY_CORE_HOTSPOT_PROFILE=1 \
   RUNPLAY_PROFILE_FAMILY=metrics \
   swift test -c release \
-    --filter RemainingPlatformHotspotProfile \
-    -Xswiftc -warnings-as-errors >"$platform_log" 2>&1
+    --filter RemainingPlatformHotspotProfile >"$platform_log" 2>&1
   sed -n '/BEGIN RUNPLAY PLATFORM HOTSPOT PROFILE LINES/,/END RUNPLAY PLATFORM HOTSPOT PROFILE LINES/p' "$platform_log"
 fi

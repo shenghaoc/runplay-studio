@@ -241,8 +241,8 @@ per-keystroke search.
 
 ```bash
 git diff --check origin/main
-swift build -Xswiftc -warnings-as-errors
-swift test --filter "CommandRegistryTests|FocusedActionTests|AccessibilitySummaryTests|ChartAccessibilityTests|MetricChartAccessibilityTests|AccessibilityAnnouncementTests|ReplayControllerTests" -Xswiftc -warnings-as-errors
+swift build
+swift test --filter "CommandRegistryTests|FocusedActionTests|AccessibilitySummaryTests|ChartAccessibilityTests|MetricChartAccessibilityTests|AccessibilityAnnouncementTests|ReplayControllerTests"
 ```
 
 Head-specific results belong in the live PR testing section.

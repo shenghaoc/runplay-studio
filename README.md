@@ -280,7 +280,7 @@ swift build --target RunPlayEngineCpp \
   -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
 
 # Run native C++ engine tests through the portable SwiftPM harness
-swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+swift test --filter RunPlayEngineCppTests
 
 # Run the same native C++ executable directly
 ./scripts/run-cpp-engine-tests.sh
@@ -310,8 +310,8 @@ testing guidance.
 ## Build Requirements
 
 - macOS 26.0+
-- Xcode 27+ (for the Swift 6.4 toolchain)
-- Swift 6.4+
+- Xcode 26.6+ (for the Swift 6.3.3 toolchain)
+- Swift 6.3.3+
 
 ---
 

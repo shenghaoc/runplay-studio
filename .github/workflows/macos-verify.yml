@@ -44,7 +44,7 @@ permissions:
 jobs:
   verify:
     name: Verify (macOS)
-    runs-on: xcode-27
+    runs-on: macos-26
     timeout-minutes: 60
     steps:
       # A local action resolves from the workspace, so checkout must precede
@@ -67,10 +67,16 @@ jobs:
           /bin/bash ./scripts/linux-container-verify.sh --self-test
           /bin/bash ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
 
+      # Every SwiftPM build and test call below passes --build-system swiftbuild.
+      # Swift 6.3.x (Xcode 26.6) builds with its native build system by default,
+      # which copies a String Catalog uncompiled: no .lproj folders and no plural
+      # forms, so the localization tests fail. swift-build compiles the catalogs
+      # and is the default from Swift 6.4. A `swift test --skip-build` must use
+      # the build system that built.
       - name: Build RunPlayEngineCpp
         if: inputs.engine
         run: >-
-          swift build --target RunPlayEngineCpp
+          swift build --build-system swiftbuild --target RunPlayEngineCpp
           -Xcxx -Wall
           -Xcxx -Wextra
           -Xcxx -Wpedantic
@@ -82,13 +88,13 @@ jobs:
       # the separate run is needed only when the full suite is off.
       - name: Run native C++ engine tests
         if: inputs.engine && !inputs.full-tests
-        run: swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+        run: swift test --build-system swiftbuild --filter RunPlayEngineCppTests
 
       - name: Verify full package
         if: inputs.full-tests
         env:
           RUNPLAY_SNAPSHOT_FAILURES_DIR: ${{ runner.temp }}/snapshot-failures
-        run: swift test -Xswiftc -warnings-as-errors
+        run: swift test --build-system swiftbuild
 
       # A failing image snapshot (SnapshotAssertion) writes its actual render
       # and a diff image there; without them a difference that appears only
@@ -121,7 +127,7 @@ jobs:
         # harmless. Verified on clean main: with #121's `#if DEBUG` guards
         # reverted this command fails at `SyntheticWorkoutVideoMapPreparer`
         # not being in scope; with them present it passes.
-        run: swift test -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
+        run: swift test --build-system swiftbuild -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
 
       # Every String Catalog must list exactly the strings its module's
       # source uses (no missing, no stale keys), each translated into zh-Hans

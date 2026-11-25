@@ -1,9 +1,10 @@
 name: "Set up macOS build"
 description: >-
-  The shared step sequence of every macOS CI job after checkout: the Swift
-  toolchain identity probe and the SwiftPM dependency cache restore. The
-  xcode-27 runner image carries exactly one Xcode as its default, so there
-  is no developer-dir selection to perform.
+  The shared step sequence of every macOS CI job after checkout: the Xcode
+  selection, the Swift toolchain identity probe, and the SwiftPM dependency
+  cache restore. The macos-26 runner image carries several Xcode 26.x
+  releases, and its default can move on an image roll, so the first step
+  selects one by path.
 
   GitHub Actions constraint: a local action resolves from the workspace, so
   the calling job MUST run actions/checkout before this action. Checkout
@@ -12,6 +13,15 @@ description: >-
 runs:
   using: "composite"
   steps:
+    # Xcode 26.6 bundles Swift 6.3.3, the version the Linux container pin in
+    # ci.yml names. Bump this path and that pin together.
+    - name: Select Xcode
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+        xcodebuild -version
+
     - name: Record Swift toolchain identity
       id: toolchain
       shell: bash
@@ -24,8 +34,8 @@ runs:
           exit 1
         fi
         # The marketing version alone is not a toolchain identity: Xcode
-        # 27.0 -> 27.1 ships a different swiftlang build and SDK under the
-        # same "Swift 6.4" banner, and hosted image rolls are silent. Hash
+        # 26.5 -> 26.6 can ship a different swiftlang build and SDK under the
+        # same Swift banner, and hosted image rolls are silent. Hash
         # the full build identity — every line of `swift --version` plus
         # `xcodebuild -version` (which carries the Xcode build number) — and
         # append a short digest to the key. The marketing version stays in

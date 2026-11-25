@@ -204,8 +204,8 @@ does not uniformly support it; it stays enabled elsewhere.
 The Swift-side engine bridge tests additionally run under the standard
 warning-clean SwiftPM suite:
 
-- `swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors`
-- `swift test --filter RunPlayCoreTests -Xswiftc -warnings-as-errors`
+- `swift test --filter RunPlayEngineCppTests`
+- `swift test --filter RunPlayCoreTests`
 
 ## Discovery-coverage proof
 

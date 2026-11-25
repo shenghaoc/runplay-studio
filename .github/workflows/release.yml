@@ -133,7 +133,7 @@ jobs:
   validate-and-package:
     name: Validate and package
     needs: [resolve-metadata, verify]
-    runs-on: xcode-27
+    runs-on: macos-26
     # Production tag path uses the `release` environment; every other trigger
     # resolves to the empty string, which GitHub treats as "no environment".
     # Verified on an isolated probe branch: an empty name neither fails the run

@@ -1,4 +1,4 @@
-// swift-tools-version:6.4
+// swift-tools-version:6.3
 import PackageDescription
 
 let package = Package(
@@ -25,6 +25,8 @@ let package = Package(
                 // SwiftPM currently propagates the C++ module map through
                 // RunPlayCore, so external Swift consumers must enable interop.
                 .interoperabilityMode(.Cxx),
+                // Our own target: warnings are errors, as in the main package.
+                .treatAllWarnings(as: .error),
             ]
         ),
     ],

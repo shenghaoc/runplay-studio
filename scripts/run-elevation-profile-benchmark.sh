@@ -9,5 +9,4 @@ export RUNPLAY_BENCHMARK=1
 
 swift test \
   --configuration release \
-  --filter ElevationProfileBenchmark \
-  -Xswiftc -warnings-as-errors
+  --filter ElevationProfileBenchmark

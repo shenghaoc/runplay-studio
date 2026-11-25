@@ -6,6 +6,13 @@ import RunPlayCore
 /// The Apple Health sheets, the route-less run text, the File-menu command and
 /// the elevation axis once shipped in English in a Chinese app, and four layouts
 /// clipped Chinese text that fitted in English. These pin both.
+///
+/// `@MainActor` because the layout helpers under test are statics on SwiftUI
+/// `View`s, which are main-actor isolated. Swift 6.4 infers the isolation for
+/// those calls and compiles without it; Swift 6.3.3 does not, and rejects them
+/// as actor-isolated calls from a nonisolated context. Matching the other
+/// main-actor suites here keeps it correct on both.
+@MainActor
 final class HealthAndLayoutLocalizationTests: XCTestCase {
     private let english = Locale(identifier: "en_US")
     private let simplified = Locale(identifier: "zh-Hans_CN")

@@ -39,7 +39,6 @@ echo "--- Building and running Core profile (release) ---" >&2
 swift test \
   -c release \
   --filter RemainingCoreHotspotProfile \
-  -Xswiftc -warnings-as-errors \
   > "$log" 2>&1 || status=$?
 
 if ! grep -q 'BEGIN RUNPLAY CORE HOTSPOT PROFILE' "$log"; then
@@ -76,7 +75,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   swift test \
     -c release \
     --filter RemainingPlatformHotspotProfile \
-    -Xswiftc -warnings-as-errors \
     > "$plat_log" 2>&1 || plat_status=$?
 
   if grep -q 'BEGIN RUNPLAY PLATFORM HOTSPOT PROFILE' "$plat_log"; then

@@ -33,7 +33,7 @@ cd "$(dirname "$0")/.."
 # with 3 tests skipped`), so N - S is the number that genuinely ran.
 #
 # FLOOR provenance: 1145, against 1208 actually run on the head that raised
-# it (Executed 1225, skipped 17, non-root, swift:6.4.0-resolute) -- about 5%
+# it (Executed 1225, skipped 17, non-root, swift:6.3.3) -- about 5%
 # below the real count. The floor exists to catch tests that vanish WITHOUT printing a skip
 # (a class compiled out under `#if os(macOS)` or a `canImport` guard false on
 # corelibs, or dropped from the target), which the allowlist below cannot
@@ -230,7 +230,7 @@ case "${IMAGE}" in
   swift:*@sha256:*[0-9a-f]) ;;
   *)
     echo "error: could not read the Swift container pin from ${WORKFLOW}" >&2
-    echo "expected a job-level line of the shape 'container: swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>'" >&2
+    echo "expected a job-level line of the shape 'container: swift:<major>.<minor>.<patch>[-<codename>]@sha256:<digest>'" >&2
     exit 1
     ;;
 esac
@@ -385,7 +385,7 @@ printf '%s\n' "${SELF_TEST_OUTPUT}" | tail -n1
 # -q/--quiet or --skip-build hide that line, and turn the retry off.
 set +e
 ./scripts/retry-swiftpm-libdispatch-crash.sh \
-  "${VIRTUALIZE[@]}" swift test "$@" -Xswiftc -warnings-as-errors --scratch-path "${SCRATCH_PATH}" 2>&1 | tee "${LOG}"
+  "${VIRTUALIZE[@]}" swift test "$@" --scratch-path "${SCRATCH_PATH}" 2>&1 | tee "${LOG}"
 STATUS="${PIPESTATUS[0]}"
 set -e
 

@@ -173,7 +173,7 @@ BLIND_CASES=(
   "swift test --skip-build --filter RunPlayCoreTests|--skip-build"
   "env HOME=/h TMPDIR=/t swift test -q --filter RunPlayCoreTests|-q"
   "/usr/bin/swift-test --quiet|--quiet"
-  "docker run --rm -q swift:6.4.0-resolute swift test --filter RunPlayCoreTests|"
+  "docker run --rm -q swift:6.3.3 swift test --filter RunPlayCoreTests|"
   "swift run RunPlayCoreConsumerSmoke -- --quiet|"
 )
 RETRY_CASES=(

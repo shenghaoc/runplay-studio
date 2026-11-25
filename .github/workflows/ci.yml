@@ -80,8 +80,8 @@ jobs:
 
   # RunPlayCore + portable C++ engine — test on Linux for cross-platform
   # validation. Linux CI is container-only by policy: every Linux job that
-  # needs Swift runs the one official Swift image pinned below (Ubuntu
-  # 26.04 "resolute" userspace, Swift 6.4), so the tag lives in exactly one
+  # needs Swift runs the one official Swift image pinned below (Swift
+  # 6.3.3, the version Xcode 26.6 bundles), so the tag lives in exactly one
   # place and bumping it is a one-line change. The ubuntu-26.04 host
   # contributes only the kernel and the Docker daemon; nothing from the
   # runner image exists inside the container, which is why the explicit
@@ -123,10 +123,14 @@ jobs:
     # entrypoint the AGENTS.md recipe invokes — which reads the line by its
     # `container:` key (then checks the @sha256: shape). Do not reformat
     # this line; keep the shape
-    # `swift:<major>.<minor>.<patch>-<codename>@sha256:<digest>`.
+    # `swift:<major>.<minor>.<patch>[-<codename>]@sha256:<digest>`.
     # Bumping the image means editing this line and refreshing the digest
     # in the same change.
-    container: swift:6.4.0-resolute@sha256:bb6e5d5f2a97bc07cf8022c1a3e062f8164b8fd078698327ce2ab097e02a91dc
+    #
+    # Keep the Swift version in this image equal to the Swift in the Xcode
+    # selected in .github/actions/setup-macos-build/action.yml; bump both in
+    # the same change.
+    container: swift:6.3.3@sha256:4f42306306fe7e5a773a8d47d7e2a24dc3a975d1feb77996297ecfd7c329b1e9
     steps:
       - uses: actions/checkout@v7
       - name: Record Swift toolchain identity
@@ -145,7 +149,7 @@ jobs:
           # full digit+digest shape is required in the pattern so the
           # shape-documenting comment above that line cannot be picked up
           # instead.
-          PIN="$(grep -oE 'container:[[:space:]]*swift:[0-9]+(\.[0-9]+)+-[a-z]+@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1)"
+          PIN="$(grep -oE 'container:[[:space:]]*swift:[0-9]+(\.[0-9]+)+(-[a-z]+)?@sha256:[0-9a-f]+' .github/workflows/ci.yml | head -n1)"
           DIGEST="${PIN##*@sha256:}"
           if [[ -z "${DIGEST}" || "${DIGEST}" == "${PIN}" ]]; then
             echo "could not read the container digest from .github/workflows/ci.yml" >&2
@@ -196,7 +200,7 @@ jobs:
         if: matrix.suite == 'tests'
         run: >-
           ./scripts/retry-swiftpm-libdispatch-crash.sh
-          swift test --filter RunPlayEngineCppTests -Xswiftc -warnings-as-errors
+          swift test --filter RunPlayEngineCppTests
       - name: Native C++ tests under ASan + UBSan
         if: matrix.suite == 'sanitizers'
         run: ./scripts/run-cpp-engine-tests.sh --sanitize

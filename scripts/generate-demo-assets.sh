@@ -188,15 +188,15 @@ provenance_value() {
 
 cd "$REPO_ROOT"
 
-# Debug build with CI's flags: the app's --demo-assets mode exists only in
-# debug builds, and matching `swift test -Xswiftc -warnings-as-errors` lets
-# the CI check reuse that job's build instead of compiling again.
+# Debug build: the app's --demo-assets mode exists only in debug builds.
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   log "building RunPlayStudio (debug)..."
-  swift build --product RunPlayStudio -Xswiftc -warnings-as-errors \
+  # --build-system swiftbuild: the media render localized text, and Swift
+  # 6.3.x's default (native) build system does not compile String Catalogs.
+  swift build --build-system swiftbuild --product RunPlayStudio \
     || die "swift build failed"
 fi
-BIN_DIR="$(swift build --show-bin-path)" || die "could not locate the debug build"
+BIN_DIR="$(swift build --build-system swiftbuild --show-bin-path)" || die "could not locate the debug build"
 APP="$BIN_DIR/RunPlayStudio"
 [[ -x "$APP" ]] || die "no debug RunPlayStudio binary at $APP; rerun without --skip-build"
 

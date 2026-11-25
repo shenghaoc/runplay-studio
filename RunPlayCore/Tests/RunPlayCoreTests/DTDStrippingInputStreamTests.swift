@@ -144,9 +144,11 @@ final class DTDStrippingInputStreamTests: XCTestCase {
 
     /// The minimal document that reproduces the upstream defect.
     ///
-    /// Handed to `XMLParser` directly this **segfaults** on Linux (Swift 6.4,
-    /// `swift:6.4.0-resolute`, Ubuntu 26.04.1, arm64) inside
-    /// `libxml2.so.16.1.2` beneath `XMLParser.parseData`, and parses fine on
+    /// Handed to `XMLParser` directly this **segfaults** on Linux (observed on
+    /// Swift 6.4, `swift:6.4.0-resolute`, Ubuntu 26.04.1, arm64, inside
+    /// `libxml2.so.16.1.2`; and again on Swift 6.3.3, `swift:6.3.3`,
+    /// Ubuntu 24.04.5, arm64, inside `libxml2.so.2.9.14`, exit 139 — both
+    /// beneath `XMLParser.parseData`), and parses fine on
     /// macOS (`ok=true elements=3`). The faulting element name is visible in the
     /// crash registers. This is the reproducer attached to
     /// <https://github.com/swiftlang/swift-corelibs-foundation/issues/5573>.
@@ -275,13 +277,19 @@ final class DTDStrippingInputStreamTests: XCTestCase {
 
     // MARK: - The lossless guard (condition 1)
 
+    // A refused document is asserted by what the elider and the parse
+    // delegate observed — `policyViolation` set, zero elements delivered —
+    // not by `XMLParser.parse()`'s return value. On Swift 6.3.3 corelibs
+    // `parse()` returns true after the stream ends in error; the importers
+    // read `policyViolation` first for the same reason (see
+    // AppleHealthExportParser).
+
     /// A quoted attribute default is the case the user called out by name: a
     /// future iOS release could add one, and eliding would then silently drop an
     /// attribute from every record lacking it. This must fail loudly.
     func testQuotedAttributeDefaultFailsLoudlyInsteadOfImporting() {
         let xml = docWithDTD("<!ELEMENT Root (A*)><!ELEMENT A EMPTY><!ATTLIST A v CDATA \"supplied\">")
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk) must not report success", file: file, line: line)
             XCTAssertEqual(
                 result.violation, .quotedAttributeDefault,
                 "chunk=\(chunk) must name the reason", file: file, line: line
@@ -294,7 +302,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
     func testSingleQuotedAttributeDefaultFailsLoudly() {
         let xml = docWithDTD("<!ATTLIST A v CDATA 'supplied'>")
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "chunk=\(chunk)", file: file, line: line)
             XCTAssertEqual(result.violation, .quotedAttributeDefault, "chunk=\(chunk)", file: file, line: line)
         }
     }
@@ -303,7 +311,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
     func testFixedAttributeDefaultFailsLoudly() {
         let xml = docWithDTD("<!ATTLIST A v CDATA #FIXED \"pinned\">")
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "chunk=\(chunk)", file: file, line: line)
             XCTAssertEqual(result.violation, .fixedAttributeDefault, "chunk=\(chunk)", file: file, line: line)
         }
     }
@@ -312,7 +320,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
     func testEntityDeclarationFailsLoudly() {
         let xml = "<?xml version=\"1.0\"?><!DOCTYPE Root [<!ENTITY e \"boom\">]><Root>&e;</Root>"
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "chunk=\(chunk)", file: file, line: line)
             XCTAssertEqual(result.violation, .entityDeclaration, "chunk=\(chunk)", file: file, line: line)
         }
     }
@@ -321,7 +329,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
     func testNotationDeclarationFailsLoudly() {
         let xml = "<?xml version=\"1.0\"?><!DOCTYPE Root [<!NOTATION n SYSTEM \"x\">]><Root/>"
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "chunk=\(chunk)", file: file, line: line)
             XCTAssertEqual(result.violation, .notationDeclaration, "chunk=\(chunk)", file: file, line: line)
         }
     }
@@ -336,7 +344,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
                              "fixture must exceed the inspection limit to test the guard")
         let xml = docWithDTD(padding)
         acrossChunks(xml, chunks: [4096]) { result, _, file, line in
-            XCTAssertFalse(result.parseOK, "must not parse an uninspectable DTD", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "must not import an uninspectable DTD", file: file, line: line)
             if case .internalSubsetTooLarge = result.violation {
                 // expected
             } else {
@@ -463,7 +471,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
                 + "<!ATTLIST A x CDATA \"late default\">"
         )
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "chunk=\(chunk)", file: file, line: line)
             XCTAssertEqual(result.violation, .quotedAttributeDefault, "chunk=\(chunk)", file: file, line: line)
         }
     }
@@ -474,7 +482,7 @@ final class DTDStrippingInputStreamTests: XCTestCase {
     func testEnumeratedAttributeTypeIsRefused() {
         let xml = docWithDTD("<!ELEMENT Root (A*)><!ATTLIST A v (yes|no) #IMPLIED>")
         acrossChunks(xml) { result, chunk, file, line in
-            XCTAssertFalse(result.parseOK, "chunk=\(chunk)", file: file, line: line)
+            XCTAssertEqual(result.elements, 0, "chunk=\(chunk)", file: file, line: line)
             XCTAssertEqual(
                 result.violation, .nonCDATAAttributeType("enumeration"),
                 "chunk=\(chunk)", file: file, line: line
