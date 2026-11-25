@@ -80,153 +80,31 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
         await progress(WorkoutBatchImportProgress(phase: .openingArchive))
         try Task.checkCancellation()
 
-        // Reject non-local URLs before any filesystem access or ZIP open.
-        guard url.isFileURL else {
-            throw WorkoutArchiveError.cannotOpenArchive(
-                platformLocalized("Only local file URLs are supported")
-            )
-        }
-
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-        if fileSize > policy.maxArchiveFileBytes {
-            throw WorkoutArchiveError.archiveTooLarge
-        }
-
-        let archive: Archive
-        do {
-            archive = try Archive(url: url, accessMode: .read)
-        } catch {
-            throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
-        }
+        let archive = try openArchive(at: url)
 
         await progress(WorkoutBatchImportProgress(phase: .scanningEntries))
 
-        var entryPaths: [String] = []
-        var entrySizes: [String: (compressed: Int64?, uncompressed: Int64?)] = [:]
-        var ignored = 0
-        var unsafe = 0
-        var entryCount = 0
-        var seenNormalizedPaths = Set<String>()
-        var activitiesCSVPath: String?
-        var activitiesCSVData: Data?
-
-        for entry in archive {
-            entryCount += 1
-            if entryCount > policy.maxEntryCount {
-                throw WorkoutArchiveError.tooManyEntries
-            }
-            if entryCount % policy.cancellationCheckStride == 0 {
-                try Task.checkCancellation()
-            }
-
-            // Skip directories.
-            if entry.type == .directory {
-                ignored += 1
-                continue
-            }
-            // Reject symlinks and special types.
-            if entry.type != .file {
-                unsafe += 1
-                continue
-            }
-
-            let pathResult = WorkoutArchivePathValidator.validate(
-                entry.path,
-                maxLength: policy.maxPathLength
-            )
-            guard case .valid(let normalized) = pathResult else {
-                unsafe += 1
-                continue
-            }
-
-            if WorkoutArchivePathValidator.shouldIgnore(normalized) {
-                ignored += 1
-                continue
-            }
-
-            // Nested zip is never extracted.
-            if normalized.lowercased().hasSuffix(".zip") {
-                ignored += 1
-                continue
-            }
-
-            if !seenNormalizedPaths.insert(normalized).inserted {
-                // Keep both paths in the inventory so candidate matching marks
-                // the entry ambiguous rather than importing an arbitrary one.
-                unsafe += 1
-            }
-
-            let compressed = try checkedEntrySize(entry.compressedSize, label: .compressed)
-            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: .uncompressed)
-            entryPaths.append(normalized)
-            entrySizes[normalized] = (compressed, uncompressed)
-
-            // Locate activities.csv (any depth, optional root folder).
-            let last = (normalized as NSString).lastPathComponent.lowercased()
-            if last == "activities.csv" {
-                // Prefer shallowest path if multiple.
-                if activitiesCSVPath == nil
-                    || normalized.split(separator: "/").count
-                    < (activitiesCSVPath?.split(separator: "/").count ?? Int.max) {
-                    activitiesCSVPath = normalized
-                }
-            }
-        }
+        let inventory = try entryInventory(of: archive)
+        let entryPaths = inventory.entryPaths
+        let entrySizes = inventory.entrySizes
+        let entryCount = inventory.entryCount
+        let ignored = inventory.ignoredCount
+        let unsafeCount = inventory.unsafeCount
 
         await progress(WorkoutBatchImportProgress(phase: .readingMetadata))
 
-        var metadataTable = StravaActivityMetadataTable()
-        var metadataFound = false
         let entryIndex = try makeEntryIndex(for: archive)
-
-        if let csvPath = activitiesCSVPath {
-            let sizes = entrySizes[csvPath]
-            if let uncompressed = sizes?.uncompressed, uncompressed > policy.maxMetadataCSVBytes {
-                throw WorkoutArchiveError.cannotOpenArchive(
-                    platformLocalized("activities.csv exceeds size limit.")
-                )
-            }
-            if let compressed = sizes?.compressed, compressed > policy.maxMetadataCSVBytes {
-                throw WorkoutArchiveError.cannotOpenArchive(
-                    platformLocalized("activities.csv compressed size exceeds limit.")
-                )
-            }
-            do {
-                activitiesCSVData = try readEntry(
-                    path: csvPath,
-                    archive: archive,
-                    entryIndex: entryIndex,
-                    maxUncompressed: Int(policy.maxMetadataCSVBytes)
-                )
-                if let data = activitiesCSVData {
-                    metadataTable = try csvParser.parseStravaActivitiesCSV(from: data)
-                    metadataFound = true
-                }
-            } catch is CancellationError {
-                throw WorkoutArchiveError.cancelled
-            } catch {
-                // Malformed CSV → not a supported export if we cannot parse it.
-                metadataFound = false
-            }
-        }
+        let (metadataTable, metadataFound) = try stravaMetadata(
+            at: inventory.activitiesCSVPath, entrySizes: entrySizes, archive: archive, entryIndex: entryIndex
+        )
 
         // Conservative recognition: need activities.csv with rows AND/OR mapped activity files.
         let activityFiles = entryPaths.filter {
             WorkoutArchiveActivityFormat.detect(fromPath: $0) != .unsupported
         }
-        let pathIndex = WorkoutArchivePathValidator.PathIndex(entries: entryPaths)
-        let hasMappedRows = metadataTable.rows.contains { row in
-            guard let filename = row.filename, !filename.isEmpty else { return false }
-            switch WorkoutArchivePathValidator.matchPath(filename, index: pathIndex) {
-            case .exact, .caseInsensitive: return true
-            default: return false
-            }
-        }
-
         let recognized = metadataFound
             && !metadataTable.rows.isEmpty
-            && (hasMappedRows || !activityFiles.isEmpty)
+            && (Self.hasMappedRows(metadataTable, entryPaths: entryPaths) || !activityFiles.isEmpty)
 
         let estimatedTotalSourceBytes = activityFiles.reduce(Int64.zero) { partial, path in
             let size = entrySizes[path]?.uncompressed ?? entrySizes[path]?.compressed ?? 0
@@ -237,7 +115,7 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             archiveName: url.lastPathComponent,
             entryCount: entryCount,
             ignoredEntryCount: ignored,
-            unsafeEntryCount: unsafe,
+            unsafeEntryCount: unsafeCount,
             metadataCSVFound: metadataFound,
             metadataFilenameColumnPresent: metadataTable.hasFilenameColumn,
             estimatedTotalSourceBytes: estimatedTotalSourceBytes
@@ -284,6 +162,162 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             isRecognizedStravaExport: true,
             rejectionMessage: nil
         )
+    }
+
+    /// Opens a local archive that is within the archive size limit.
+    private func openArchive(at url: URL) throws -> Archive {
+        // Reject non-local URLs before any filesystem access or ZIP open.
+        guard url.isFileURL else {
+            throw WorkoutArchiveError.cannotOpenArchive(
+                platformLocalized("Only local file URLs are supported")
+            )
+        }
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        if fileSize > policy.maxArchiveFileBytes {
+            throw WorkoutArchiveError.archiveTooLarge
+        }
+
+        do {
+            return try Archive(url: url, accessMode: .read)
+        } catch {
+            throw WorkoutArchiveError.cannotOpenArchive(error.localizedDescription)
+        }
+    }
+
+    /// The regular, safe, non-ignored entries of an archive with their
+    /// sizes, the ignored and unsafe entry counts, and the shallowest
+    /// activities.csv.
+    private struct EntryInventory {
+        var entryPaths: [String] = []
+        var entrySizes: [String: (compressed: Int64?, uncompressed: Int64?)] = [:]
+        var ignoredCount = 0
+        var unsafeCount = 0
+        var entryCount = 0
+        var activitiesCSVPath: String?
+    }
+
+    private func entryInventory(of archive: Archive) throws -> EntryInventory {
+        var inventory = EntryInventory()
+        var seenNormalizedPaths = Set<String>()
+
+        for entry in archive {
+            inventory.entryCount += 1
+            if inventory.entryCount > policy.maxEntryCount {
+                throw WorkoutArchiveError.tooManyEntries
+            }
+            if inventory.entryCount % policy.cancellationCheckStride == 0 {
+                try Task.checkCancellation()
+            }
+
+            // Skip directories.
+            if entry.type == .directory {
+                inventory.ignoredCount += 1
+                continue
+            }
+            // Reject symlinks and special types.
+            if entry.type != .file {
+                inventory.unsafeCount += 1
+                continue
+            }
+
+            let pathResult = WorkoutArchivePathValidator.validate(
+                entry.path,
+                maxLength: policy.maxPathLength
+            )
+            guard case .valid(let normalized) = pathResult else {
+                inventory.unsafeCount += 1
+                continue
+            }
+
+            if WorkoutArchivePathValidator.shouldIgnore(normalized) {
+                inventory.ignoredCount += 1
+                continue
+            }
+
+            // Nested zip is never extracted.
+            if normalized.lowercased().hasSuffix(".zip") {
+                inventory.ignoredCount += 1
+                continue
+            }
+
+            if !seenNormalizedPaths.insert(normalized).inserted {
+                // Keep both paths in the inventory so candidate matching marks
+                // the entry ambiguous rather than importing an arbitrary one.
+                inventory.unsafeCount += 1
+            }
+
+            let compressed = try checkedEntrySize(entry.compressedSize, label: .compressed)
+            let uncompressed = try checkedEntrySize(entry.uncompressedSize, label: .uncompressed)
+            inventory.entryPaths.append(normalized)
+            inventory.entrySizes[normalized] = (compressed, uncompressed)
+
+            // Locate activities.csv (any depth, optional root folder).
+            let last = (normalized as NSString).lastPathComponent.lowercased()
+            if last == "activities.csv" {
+                // Prefer shallowest path if multiple.
+                if inventory.activitiesCSVPath == nil
+                    || normalized.split(separator: "/").count
+                    < (inventory.activitiesCSVPath?.split(separator: "/").count ?? Int.max) {
+                    inventory.activitiesCSVPath = normalized
+                }
+            }
+        }
+        return inventory
+    }
+
+    /// The parsed activities.csv and whether it parsed. An oversized CSV is
+    /// refused; a malformed one is reported as not found.
+    private func stravaMetadata(
+        at activitiesCSVPath: String?,
+        entrySizes: [String: (compressed: Int64?, uncompressed: Int64?)],
+        archive: Archive,
+        entryIndex: ArchiveEntryIndex
+    ) throws -> (table: StravaActivityMetadataTable, found: Bool) {
+        var metadataTable = StravaActivityMetadataTable()
+        var metadataFound = false
+        if let csvPath = activitiesCSVPath {
+            let sizes = entrySizes[csvPath]
+            if let uncompressed = sizes?.uncompressed, uncompressed > policy.maxMetadataCSVBytes {
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("activities.csv exceeds size limit.")
+                )
+            }
+            if let compressed = sizes?.compressed, compressed > policy.maxMetadataCSVBytes {
+                throw WorkoutArchiveError.cannotOpenArchive(
+                    platformLocalized("activities.csv compressed size exceeds limit.")
+                )
+            }
+            do {
+                let data = try readEntry(
+                    path: csvPath,
+                    archive: archive,
+                    entryIndex: entryIndex,
+                    maxUncompressed: Int(policy.maxMetadataCSVBytes)
+                )
+                metadataTable = try csvParser.parseStravaActivitiesCSV(from: data)
+                metadataFound = true
+            } catch is CancellationError {
+                throw WorkoutArchiveError.cancelled
+            } catch {
+                // Malformed CSV → not a supported export if we cannot parse it.
+                metadataFound = false
+            }
+        }
+        return (metadataTable, metadataFound)
+    }
+
+    /// Whether any metadata row names a file the archive holds.
+    private static func hasMappedRows(_ metadataTable: StravaActivityMetadataTable, entryPaths: [String]) -> Bool {
+        let pathIndex = WorkoutArchivePathValidator.PathIndex(entries: entryPaths)
+        return metadataTable.rows.contains { row in
+            guard let filename = row.filename, !filename.isEmpty else { return false }
+            switch WorkoutArchivePathValidator.matchPath(filename, index: pathIndex) {
+            case .exact, .caseInsensitive: return true
+            default: return false
+            }
+        }
     }
 
     // MARK: - Import
@@ -350,174 +384,24 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
                     failedCount: failed
                 ))
 
-                // Skip non-ready statuses that may have been force-selected.
-                if candidate.status == .providerConflict
-                    || (candidate.status == .duplicate
-                        && candidate.statusDetail
-                            == WorkoutArchiveCandidateBuilder.duplicateProviderActivityIDWithinArchiveDetail)
-                {
-                    skipped += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: candidate.status,
-                        detail: candidate.statusDetail
-                    ))
-                    continue
-                }
-
-                guard candidate.format != .unsupported,
-                      !candidate.archiveRelativePath.isEmpty else {
-                    failed += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: .missingActivityFile,
-                        detail: candidate.statusDetail ?? platformLocalized("Missing activity file")
-                    ))
-                    continue
-                }
-
-                let rawBytes: Data
-                do {
-                    rawBytes = try readEntry(
-                        path: candidate.archiveRelativePath,
-                        archive: archive,
-                        entryIndex: entryIndex,
-                        maxUncompressed: Int(policy.maxUncompressedEntryBytes)
-                    )
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    failed += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: .parseFailed,
-                        detail: error.localizedDescription
-                    ))
-                    continue
-                }
-
-                // Decompress one GZIP layer when needed.
-                let activityBytes: Data
-                do {
-                    if candidate.format.isGzipWrapped {
-                        activityBytes = try gzipDecoder.decode(rawBytes)
-                    } else {
-                        activityBytes = rawBytes
-                    }
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    failed += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: .parseFailed,
-                        detail: error.localizedDescription
-                    ))
-                    continue
-                }
-
-                let hash = ContentHasher.sha256Hex(of: activityBytes)
-                let refined = WorkoutArchiveCandidateBuilder.refineStatus(
-                    for: candidate,
-                    contentSHA256: hash,
-                    existingWorkouts: existingWorkouts,
-                    seenHashesInBatch: &batchHashes
-                )
-                if refined.0 == .duplicate || refined.0 == .providerConflict {
-                    skipped += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: refined.0,
-                        detail: refined.1
-                    ))
-                    continue
-                }
-                if seenHashes.contains(hash) {
-                    skipped += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: .duplicate,
-                        detail: platformLocalized("Already imported (identical file content)")
-                    ))
-                    continue
-                }
-
-                let provenance = WorkoutImportProvenance(
-                    provider: .stravaBulkExport,
-                    providerActivityID: candidate.providerActivityID,
-                    contentSHA256: hash,
-                    originalFilename: (candidate.archiveRelativePath as NSString).lastPathComponent
-                )
-
-                let input = WorkoutImportInput(
-                    data: activityBytes,
-                    fileExtension: candidate.format.fileExtension,
-                    suggestedName: candidate.activityName
-                        ?? (candidate.archiveRelativePath as NSString).lastPathComponent,
-                    provenance: provenance
-                )
-
+                let hash: String
                 var workout: RunWorkout
                 do {
-                    var parsed = try WorkoutImporterFactory.importWorkout(from: input)
-                    let meta = StravaActivityMetadataRow(
-                        activityID: candidate.providerActivityID,
-                        activityName: candidate.activityName,
-                        activityType: candidate.activityType,
-                        activityDate: candidate.activityDate,
-                        filename: candidate.archiveRelativePath
+                    (workout, hash) = try preparedWorkout(
+                        for: candidate,
+                        archive: archive,
+                        entryIndex: entryIndex,
+                        existingWorkouts: existingWorkouts,
+                        seenHashes: seenHashes,
+                        batchHashes: &batchHashes
                     )
-                    WorkoutArchiveMetadataApplier.apply(
-                        metadata: meta,
-                        to: &parsed,
-                        provenance: provenance,
-                        contentSHA256: hash
-                    )
-                    // Prefer provider activity name after parse.
-                    if let name = candidate.activityName, !name.isEmpty {
-                        parsed.metadata.name = name
+                } catch let rejection as CandidateRejection {
+                    if rejection.isSkip {
+                        skipped += 1
+                    } else {
+                        failed += 1
                     }
-                    workout = parsed
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch let error as WorkoutImportError {
-                    failed += 1
-                    let status: WorkoutArchiveCandidateStatus
-                    switch error {
-                    case .missingData:
-                        status = .noGPSRoute
-                    default:
-                        status = .parseFailed
-                    }
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: status,
-                        detail: error.localizedDescription
-                    ))
-                    continue
-                } catch {
-                    failed += 1
-                    items.append(WorkoutBatchImportItemResult(
-                        candidateID: candidate.id,
-                        archiveRelativePath: candidate.archiveRelativePath,
-                        activityName: candidate.activityName,
-                        status: .parseFailed,
-                        detail: error.localizedDescription
-                    ))
+                    items.append(rejection.item)
                     continue
                 }
 
@@ -643,6 +527,194 @@ public actor StravaArchiveService: WorkoutArchiveScanning, WorkoutArchiveImporti
             await storeActor.rollbackBatchImport(batch)
             throw error
         }
+    }
+
+    // MARK: - Preparing one candidate
+
+    /// Why one selected candidate is not staged: its result item, and
+    /// whether it counts as skipped rather than failed.
+    private struct CandidateRejection: Error {
+        let item: WorkoutBatchImportItemResult
+        let isSkip: Bool
+    }
+
+    /// Reads, unwraps, deduplicates and parses one selected candidate into a
+    /// workout carrying its Strava metadata, with its content hash. Throws a
+    /// `CandidateRejection` for a candidate that is skipped or fails, in the
+    /// order the checks run; cancellation propagates.
+    private func preparedWorkout(
+        for candidate: WorkoutArchiveCandidate,
+        archive: Archive,
+        entryIndex: ArchiveEntryIndex,
+        existingWorkouts: [RunWorkout],
+        seenHashes: Set<String>,
+        batchHashes: inout Set<String>
+    ) throws -> (workout: RunWorkout, hash: String) {
+        // Skip non-ready statuses that may have been force-selected.
+        if candidate.status == .providerConflict
+            || (candidate.status == .duplicate
+                && candidate.statusDetail
+                    == WorkoutArchiveCandidateBuilder.duplicateProviderActivityIDWithinArchiveDetail)
+        {
+            throw CandidateRejection(
+                item: Self.item(for: candidate, status: candidate.status, detail: candidate.statusDetail),
+                isSkip: true
+            )
+        }
+
+        guard candidate.format != .unsupported,
+              !candidate.archiveRelativePath.isEmpty else {
+            throw CandidateRejection(
+                item: Self.item(
+                    for: candidate,
+                    status: .missingActivityFile,
+                    detail: candidate.statusDetail ?? platformLocalized("Missing activity file")
+                ),
+                isSkip: false
+            )
+        }
+
+        let activityBytes = try activityBytes(for: candidate, archive: archive, entryIndex: entryIndex)
+
+        let hash = ContentHasher.sha256Hex(of: activityBytes)
+        let refined = WorkoutArchiveCandidateBuilder.refineStatus(
+            for: candidate,
+            contentSHA256: hash,
+            existingWorkouts: existingWorkouts,
+            seenHashesInBatch: &batchHashes
+        )
+        if refined.0 == .duplicate || refined.0 == .providerConflict {
+            throw CandidateRejection(
+                item: Self.item(for: candidate, status: refined.0, detail: refined.1),
+                isSkip: true
+            )
+        }
+        if seenHashes.contains(hash) {
+            throw CandidateRejection(
+                item: Self.item(
+                    for: candidate,
+                    status: .duplicate,
+                    detail: platformLocalized("Already imported (identical file content)")
+                ),
+                isSkip: true
+            )
+        }
+
+        return (try parsedWorkout(for: candidate, activityBytes: activityBytes, hash: hash), hash)
+    }
+
+    /// The candidate's activity file, with one GZIP layer removed when the
+    /// format is wrapped. A read or decode error is a parse failure.
+    private func activityBytes(
+        for candidate: WorkoutArchiveCandidate, archive: Archive, entryIndex: ArchiveEntryIndex
+    ) throws -> Data {
+        let rawBytes: Data
+        do {
+            rawBytes = try readEntry(
+                path: candidate.archiveRelativePath,
+                archive: archive,
+                entryIndex: entryIndex,
+                maxUncompressed: Int(policy.maxUncompressedEntryBytes)
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw CandidateRejection(
+                item: Self.item(for: candidate, status: .parseFailed, detail: error.localizedDescription),
+                isSkip: false
+            )
+        }
+
+        // Decompress one GZIP layer when needed.
+        do {
+            if candidate.format.isGzipWrapped {
+                return try gzipDecoder.decode(rawBytes)
+            } else {
+                return rawBytes
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw CandidateRejection(
+                item: Self.item(for: candidate, status: .parseFailed, detail: error.localizedDescription),
+                isSkip: false
+            )
+        }
+    }
+
+    /// The parsed workout with the candidate's Strava metadata and
+    /// provenance. A missing-data import error has no GPS route; any other
+    /// error is a parse failure.
+    private func parsedWorkout(
+        for candidate: WorkoutArchiveCandidate, activityBytes: Data, hash: String
+    ) throws -> RunWorkout {
+        let provenance = WorkoutImportProvenance(
+            provider: .stravaBulkExport,
+            providerActivityID: candidate.providerActivityID,
+            contentSHA256: hash,
+            originalFilename: (candidate.archiveRelativePath as NSString).lastPathComponent
+        )
+
+        let input = WorkoutImportInput(
+            data: activityBytes,
+            fileExtension: candidate.format.fileExtension,
+            suggestedName: candidate.activityName
+                ?? (candidate.archiveRelativePath as NSString).lastPathComponent,
+            provenance: provenance
+        )
+
+        do {
+            var parsed = try WorkoutImporterFactory.importWorkout(from: input)
+            let meta = StravaActivityMetadataRow(
+                activityID: candidate.providerActivityID,
+                activityName: candidate.activityName,
+                activityType: candidate.activityType,
+                activityDate: candidate.activityDate,
+                filename: candidate.archiveRelativePath
+            )
+            WorkoutArchiveMetadataApplier.apply(
+                metadata: meta,
+                to: &parsed,
+                provenance: provenance,
+                contentSHA256: hash
+            )
+            // Prefer provider activity name after parse.
+            if let name = candidate.activityName, !name.isEmpty {
+                parsed.metadata.name = name
+            }
+            return parsed
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as WorkoutImportError {
+            let status: WorkoutArchiveCandidateStatus
+            switch error {
+            case .missingData:
+                status = .noGPSRoute
+            default:
+                status = .parseFailed
+            }
+            throw CandidateRejection(
+                item: Self.item(for: candidate, status: status, detail: error.localizedDescription),
+                isSkip: false
+            )
+        } catch {
+            throw CandidateRejection(
+                item: Self.item(for: candidate, status: .parseFailed, detail: error.localizedDescription),
+                isSkip: false
+            )
+        }
+    }
+
+    private static func item(
+        for candidate: WorkoutArchiveCandidate, status: WorkoutArchiveCandidateStatus, detail: String?
+    ) -> WorkoutBatchImportItemResult {
+        WorkoutBatchImportItemResult(
+            candidateID: candidate.id,
+            archiveRelativePath: candidate.archiveRelativePath,
+            activityName: candidate.activityName,
+            status: status,
+            detail: detail
+        )
     }
 
     // MARK: - Helpers

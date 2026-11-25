@@ -61,6 +61,55 @@ public struct GZIPDecoder: Sendable {
         guard data.count >= 18 else { throw GZIPDecoderError.truncatedHeader }
 
         let bytes = [UInt8](data)
+        let offset = try Self.payloadOffset(afterHeaderOf: bytes)
+
+        // Trailer is last 8 bytes of the member. Compressed payload is between
+        // header end and trailer. For a single member, trailer is end of data.
+        guard bytes.count >= offset + 8 else { throw GZIPDecoderError.truncatedData }
+        let trailerIndex = bytes.count - 8
+        guard offset <= trailerIndex else { throw GZIPDecoderError.truncatedData }
+
+        let compressed = Array(bytes[offset..<trailerIndex])
+        let output = try inflateRaw(
+            compressed,
+            maxOutput: maxOutputBytes,
+            isCancelled: isCancelled
+        )
+
+        let crcExpected = UInt32(bytes[trailerIndex])
+            | (UInt32(bytes[trailerIndex + 1]) << 8)
+            | (UInt32(bytes[trailerIndex + 2]) << 16)
+            | (UInt32(bytes[trailerIndex + 3]) << 24)
+        let isize = UInt32(bytes[trailerIndex + 4])
+            | (UInt32(bytes[trailerIndex + 5]) << 8)
+            | (UInt32(bytes[trailerIndex + 6]) << 16)
+            | (UInt32(bytes[trailerIndex + 7]) << 24)
+
+        let crcActual: UInt32 = output.withUnsafeBytes { buf in
+            guard let p = buf.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+            return UInt32(crc32(0, p, uInt(output.count)))
+        }
+        if crcActual != crcExpected {
+            throw GZIPDecoderError.crcMismatch
+        }
+        if UInt32(truncatingIfNeeded: output.count) != isize {
+            throw GZIPDecoderError.sizeMismatch
+        }
+
+        // Single-member policy: trailer must be the end of the buffer.
+        // (We always use end-of-data as trailer; concatenated members would
+        // mean the inflate stream ends earlier with leftover compressed bytes
+        // that are not a valid single-member layout. Detect via inflate
+        // not consuming all compressed input.)
+        // inflateRaw already requires full consumption.
+
+        return output
+    }
+
+    /// The offset just past the member header: the magic bytes, deflate as
+    /// the method, only known flags, and the optional extra field, name,
+    /// comment and header CRC those flags announce.
+    private static func payloadOffset(afterHeaderOf bytes: [UInt8]) throws -> Int {
         var offset = 0
 
         func need(_ n: Int) throws {
@@ -121,48 +170,7 @@ public struct GZIPDecoder: Sendable {
         if flg & fhcrc != 0 {
             _ = try readU16LE()
         }
-
-        // Trailer is last 8 bytes of the member. Compressed payload is between
-        // header end and trailer. For a single member, trailer is end of data.
-        guard bytes.count >= offset + 8 else { throw GZIPDecoderError.truncatedData }
-        let trailerIndex = bytes.count - 8
-        guard offset <= trailerIndex else { throw GZIPDecoderError.truncatedData }
-
-        let compressed = Array(bytes[offset..<trailerIndex])
-        let output = try inflateRaw(
-            compressed,
-            maxOutput: maxOutputBytes,
-            isCancelled: isCancelled
-        )
-
-        let crcExpected = UInt32(bytes[trailerIndex])
-            | (UInt32(bytes[trailerIndex + 1]) << 8)
-            | (UInt32(bytes[trailerIndex + 2]) << 16)
-            | (UInt32(bytes[trailerIndex + 3]) << 24)
-        let isize = UInt32(bytes[trailerIndex + 4])
-            | (UInt32(bytes[trailerIndex + 5]) << 8)
-            | (UInt32(bytes[trailerIndex + 6]) << 16)
-            | (UInt32(bytes[trailerIndex + 7]) << 24)
-
-        let crcActual: UInt32 = output.withUnsafeBytes { buf in
-            guard let p = buf.bindMemory(to: UInt8.self).baseAddress else { return 0 }
-            return UInt32(crc32(0, p, uInt(output.count)))
-        }
-        if crcActual != crcExpected {
-            throw GZIPDecoderError.crcMismatch
-        }
-        if UInt32(truncatingIfNeeded: output.count) != isize {
-            throw GZIPDecoderError.sizeMismatch
-        }
-
-        // Single-member policy: trailer must be the end of the buffer.
-        // (We always use end-of-data as trailer; concatenated members would
-        // mean the inflate stream ends earlier with leftover compressed bytes
-        // that are not a valid single-member layout. Detect via inflate
-        // not consuming all compressed input.)
-        // inflateRaw already requires full consumption.
-
-        return output
+        return offset
     }
 
     private func inflateRaw(
@@ -222,27 +230,36 @@ public struct GZIPDecoder: Sendable {
                     throw GZIPDecoderError.outputLimitExceeded
                 }
 
-                switch status {
-                case Z_STREAM_END:
-                    if stream.avail_in != 0 {
-                        throw GZIPDecoderError.concatenatedMembersNotSupported
-                    }
+                if try Self.isStreamEnd(status, stream: stream, chunkSize: chunkSize) {
                     return output
-                case Z_OK:
-                    if stream.avail_out == uInt(chunkSize), stream.avail_in == 0 {
-                        // No progress.
-                        throw GZIPDecoderError.truncatedData
-                    }
-                    continue
-                case Z_BUF_ERROR:
-                    if stream.avail_in == 0 {
-                        throw GZIPDecoderError.truncatedData
-                    }
-                    continue
-                default:
-                    throw GZIPDecoderError.inflateFailed("inflate status \(status)")
                 }
             }
+        }
+    }
+
+    /// Whether one inflate call ended the single member. Input left after the
+    /// end is a concatenated member; no progress, or a buffer error with no
+    /// input left, is truncated data; any other status is an inflate failure.
+    private static func isStreamEnd(_ status: Int32, stream: z_stream, chunkSize: Int) throws -> Bool {
+        switch status {
+        case Z_STREAM_END:
+            if stream.avail_in != 0 {
+                throw GZIPDecoderError.concatenatedMembersNotSupported
+            }
+            return true
+        case Z_OK:
+            if stream.avail_out == uInt(chunkSize), stream.avail_in == 0 {
+                // No progress.
+                throw GZIPDecoderError.truncatedData
+            }
+            return false
+        case Z_BUF_ERROR:
+            if stream.avail_in == 0 {
+                throw GZIPDecoderError.truncatedData
+            }
+            return false
+        default:
+            throw GZIPDecoderError.inflateFailed("inflate status \(status)")
         }
     }
 }

@@ -232,18 +232,25 @@ public struct RouteMetricMapLineBuilder: Sendable {
             else { continue }
 
             // Same continuous segment only.
-            let prevInterval = intervals[i - 1]
-            let currentInterval = intervals[i]
-            let nextInterval = intervals[i + 1]
-            guard prevInterval.routeSegmentIndex == currentInterval.routeSegmentIndex,
-                  nextInterval.routeSegmentIndex == currentInterval.routeSegmentIndex,
-                  prevInterval.endPointIndex == currentInterval.startPointIndex,
-                  currentInterval.endPointIndex == nextInterval.startPointIndex
-            else { continue }
+            guard Self.areContinuous(intervals[i - 1], intervals[i], intervals[i + 1]) else { continue }
 
             buckets[i] = .level(p)
         }
         return buckets
+    }
+
+    /// Whether three intervals are in one route segment and each starts
+    /// where the previous one ends.
+    private static func areContinuous(
+        _ prevInterval: RouteMetricInterval, _ currentInterval: RouteMetricInterval,
+        _ nextInterval: RouteMetricInterval
+    ) -> Bool {
+        guard prevInterval.routeSegmentIndex == currentInterval.routeSegmentIndex,
+              nextInterval.routeSegmentIndex == currentInterval.routeSegmentIndex,
+              prevInterval.endPointIndex == currentInterval.startPointIndex,
+              currentInterval.endPointIndex == nextInterval.startPointIndex
+        else { return false }
+        return true
     }
 
     // MARK: - Adaptive chunking
@@ -261,49 +268,10 @@ public struct RouteMetricMapLineBuilder: Sendable {
         while index < intervals.count {
             if index % 256 == 0, isCancelled() { throw CancellationError() }
 
-            let segment = intervals[index].routeSegmentIndex
             let chunkStart = index
-            var chunkDistance = 0.0
-            var end = index
+            let end = Self.chunkEnd(from: chunkStart, intervals: intervals, minimumChunkDistance: minimumChunkDistance)
 
-            while end < intervals.count,
-                  intervals[end].routeSegmentIndex == segment,
-                  (end == chunkStart || intervals[end].startPointIndex == intervals[end - 1].endPointIndex) {
-                chunkDistance += max(0, intervals[end].distanceMeters)
-                end += 1
-                if chunkDistance >= minimumChunkDistance { break }
-            }
-
-            // Extend to at least one interval.
-            if end == chunkStart { end = min(intervals.count, chunkStart + 1) }
-
-            // Representative bucket: distance-weighted median of valid levels;
-            // if the whole chunk is no-data, keep no-data.
-            var weighted: [(bucket: Int, weight: Double)] = []
-            var noDataWeight = 0.0
-            var dataWeight = 0.0
-            for j in chunkStart..<end {
-                let weight = max(0, intervals[j].distanceMeters)
-                switch buckets[j] {
-                case .noData:
-                    noDataWeight += weight
-                case .level(let level):
-                    weighted.append((bucket: level, weight: weight))
-                    dataWeight += weight
-                }
-            }
-
-            let representative: RouteMetricColorBucket
-            if weighted.isEmpty {
-                representative = .noData
-            } else if noDataWeight > dataWeight { // ⚡ Bolt: Tracked weight inline to avoid closure call overhead from .reduce
-                // Substantial no-data span: do not absorb into coloured run.
-                representative = .noData
-            } else if let median = DistanceWeightedStatistics.weightedMedianBucket(values: weighted) {
-                representative = .level(median)
-            } else {
-                representative = buckets[chunkStart]
-            }
+            let representative = Self.representativeBucket(of: chunkStart..<end, intervals: intervals, buckets: buckets)
 
             for j in chunkStart..<end {
                 // Preserve genuine no-data intervals inside a mostly-valid chunk
@@ -323,6 +291,60 @@ public struct RouteMetricMapLineBuilder: Sendable {
             index = end
         }
         return result
+    }
+
+    /// The end of the chunk that starts at `chunkStart`: it grows through one
+    /// continuous segment until it reaches the minimum chunk distance, and
+    /// holds at least one interval.
+    private static func chunkEnd(
+        from chunkStart: Int, intervals: [RouteMetricInterval], minimumChunkDistance: Double
+    ) -> Int {
+        let segment = intervals[chunkStart].routeSegmentIndex
+        var chunkDistance = 0.0
+        var end = chunkStart
+
+        while end < intervals.count,
+              intervals[end].routeSegmentIndex == segment,
+              (end == chunkStart || intervals[end].startPointIndex == intervals[end - 1].endPointIndex) {
+            chunkDistance += max(0, intervals[end].distanceMeters)
+            end += 1
+            if chunkDistance >= minimumChunkDistance { break }
+        }
+
+        // Extend to at least one interval.
+        if end == chunkStart { end = min(intervals.count, chunkStart + 1) }
+        return end
+    }
+
+    /// Representative bucket: distance-weighted median of valid levels;
+    /// if the whole chunk is no-data, keep no-data.
+    private static func representativeBucket(
+        of chunk: Range<Int>, intervals: [RouteMetricInterval], buckets: [RouteMetricColorBucket]
+    ) -> RouteMetricColorBucket {
+        var weighted: [(bucket: Int, weight: Double)] = []
+        var noDataWeight = 0.0
+        var dataWeight = 0.0
+        for j in chunk {
+            let weight = max(0, intervals[j].distanceMeters)
+            switch buckets[j] {
+            case .noData:
+                noDataWeight += weight
+            case .level(let level):
+                weighted.append((bucket: level, weight: weight))
+                dataWeight += weight
+            }
+        }
+
+        if weighted.isEmpty {
+            return .noData
+        } else if noDataWeight > dataWeight { // ⚡ Bolt: Tracked weight inline to avoid closure call overhead from .reduce
+            // Substantial no-data span: do not absorb into coloured run.
+            return .noData
+        } else if let median = DistanceWeightedStatistics.weightedMedianBucket(values: weighted) {
+            return .level(median)
+        } else {
+            return buckets[chunk.lowerBound]
+        }
     }
 
     // MARK: - Coalesce

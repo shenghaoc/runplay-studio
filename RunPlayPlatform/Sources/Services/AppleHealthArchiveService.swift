@@ -104,6 +104,8 @@ public enum AppleHealthArchiveError: Error, LocalizedError, Equatable, Sendable 
     case extractionUnavailable(String)
 
     public var errorDescription: String? {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each archive error to its localized description.
         // Whole sentences, one catalog key each, so a translator can reorder them.
         switch self {
         case .notALocalFile:

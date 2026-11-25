@@ -191,35 +191,8 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
             )
             try Task.checkCancellation()
 
-            var pixelBuffer: CVPixelBuffer?
-            let poolStatus: CVReturn
-            if let pool {
-                poolStatus = CVPixelBufferPoolCreatePixelBuffer(
-                    kCFAllocatorDefault,
-                    pool,
-                    &pixelBuffer
-                )
-            } else {
-                poolStatus = CVPixelBufferCreate(
-                    kCFAllocatorDefault,
-                    policy.width,
-                    policy.height,
-                    kCVPixelFormatType_32BGRA,
-                    sourceAttributes as CFDictionary,
-                    &pixelBuffer
-                )
-            }
-            guard poolStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
-                throw WorkoutVideoExportError.pixelBufferAllocationFailed
-            }
-
-            do {
-                try provider.renderFrame(at: frameIndex, into: buffer)
-            } catch let error as WorkoutVideoExportError {
-                throw error
-            } catch {
-                throw WorkoutVideoExportError.frameRenderingFailed(error.localizedDescription)
-            }
+            let buffer = try Self.makePixelBuffer(pool: pool, policy: policy, sourceAttributes: sourceAttributes)
+            try Self.render(frameAt: frameIndex, into: buffer, provider: provider)
 
             let time = CMTime(value: CMTimeValue(frameIndex), timescale: timescale)
             guard adaptor.append(buffer, withPresentationTime: time) else {
@@ -244,6 +217,54 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
             timescale: timescale
         ))
 
+        try await Self.finishWriting(writer)
+    }
+
+    /// One pixel buffer from the adaptor's pool, or a newly created one when
+    /// the adaptor has no pool.
+    private static func makePixelBuffer(
+        pool: CVPixelBufferPool?, policy: WorkoutVideoExportPolicy, sourceAttributes: [String: Any]
+    ) throws -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let poolStatus: CVReturn
+        if let pool {
+            poolStatus = CVPixelBufferPoolCreatePixelBuffer(
+                kCFAllocatorDefault,
+                pool,
+                &pixelBuffer
+            )
+        } else {
+            poolStatus = CVPixelBufferCreate(
+                kCFAllocatorDefault,
+                policy.width,
+                policy.height,
+                kCVPixelFormatType_32BGRA,
+                sourceAttributes as CFDictionary,
+                &pixelBuffer
+            )
+        }
+        guard poolStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
+            throw WorkoutVideoExportError.pixelBufferAllocationFailed
+        }
+        return buffer
+    }
+
+    /// Renders one frame; a provider error that is not an export error
+    /// becomes a frame-rendering failure.
+    private static func render(
+        frameAt frameIndex: Int, into buffer: CVPixelBuffer, provider: any OfflineVideoFrameProviding
+    ) throws {
+        do {
+            try provider.renderFrame(at: frameIndex, into: buffer)
+        } catch let error as WorkoutVideoExportError {
+            throw error
+        } catch {
+            throw WorkoutVideoExportError.frameRenderingFailed(error.localizedDescription)
+        }
+    }
+
+    /// Finishes the file, cancelling the writer if the task is cancelled.
+    private static func finishWriting(_ writer: AVAssetWriter) async throws {
         nonisolated(unsafe) let finishingWriter = writer
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation {
@@ -349,6 +370,20 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
         }
 
         let track = videoTracks[0]
+        try await validateVideoFormat(of: track, policy: policy)
+
+        try await validateFrameSamples(
+            asset: asset,
+            track: track,
+            frameCount: frameCount,
+            policy: policy
+        )
+    }
+
+    /// The track has the policy's dimensions, an H.264 format at the
+    /// policy's frame rate, and colour primaries, transfer function and
+    /// matrix metadata.
+    private func validateVideoFormat(of track: AVAssetTrack, policy: WorkoutVideoExportPolicy) async throws {
         let naturalSize = try await track.load(.naturalSize)
         let preferredTransform = try await track.load(.preferredTransform)
         try Task.checkCancellation()
@@ -395,13 +430,6 @@ public struct OfflineH264VideoAssetEncoder: Sendable {
                 platformLocalized("Video track is missing required color metadata")
             )
         }
-
-        try await validateFrameSamples(
-            asset: asset,
-            track: track,
-            frameCount: frameCount,
-            policy: policy
-        )
     }
 
     private func validateFrameSamples(

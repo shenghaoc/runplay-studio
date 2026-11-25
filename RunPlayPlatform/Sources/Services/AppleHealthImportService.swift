@@ -249,15 +249,7 @@ public actor AppleHealthImportService {
 
         let libraryWindows = AppleHealthLibraryRunWindow.windows(for: existingWorkouts)
 
-        let batch: WorkoutLibraryBatchToken
-        do {
-            batch = try await storeActor.beginBatchImport()
-        } catch is CancellationError {
-            // A cancelled task is not a conflict with another import.
-            throw CancellationError()
-        } catch {
-            throw AppleHealthImportError.batchConflict
-        }
+        let batch = try await Self.beginBatch(on: storeActor)
 
         var items: [AppleHealthImportItemResult] = []
         /// Staged identity only. The full workouts are released as they stage.
@@ -305,24 +297,12 @@ public actor AppleHealthImportService {
                     continue
                 }
 
-                let built: BuiltWorkout
-                do {
-                    built = try await buildWorkout(
-                        for: candidate,
-                        archiveAt: archiveURL,
-                        isCancelled: isCancelled
-                    )
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
+                let buildResult = try await buildWorkoutUnlessFailed(
+                    for: candidate, archiveAt: archiveURL, isCancelled: isCancelled
+                )
+                guard let built = try? buildResult.get() else {
                     failed += 1
-                    items.append(AppleHealthImportItemResult(
-                        candidateID: candidate.id,
-                        activityType: candidate.window.activityType,
-                        startSeconds: candidate.window.startSeconds,
-                        outcome: .failed,
-                        detail: error.localizedDescription
-                    ))
+                    items.append(Self.failedItem(for: candidate, detail: buildResult.failureDescription))
                     continue
                 }
 
@@ -335,33 +315,15 @@ public actor AppleHealthImportService {
                     failedCount: failed
                 ))
 
-                do {
-                    let workout = built.workout
-                    let workoutID = workout.id
-                    try await storeActor.stageWorkout(workout, in: batch)
+                let workout = built.workout
+                let workoutID = workout.id
+                if let stagingError = try await Self.stagingError(staging: workout, in: batch, on: storeActor) {
+                    failed += 1
+                    items.append(Self.failedItem(for: candidate, detail: stagingError.localizedDescription))
+                } else {
                     staged.append((id: workoutID, startSeconds: candidate.window.startSeconds))
                     stagedItemIndices.append(items.count)
-                    items.append(AppleHealthImportItemResult(
-                        candidateID: candidate.id,
-                        activityType: candidate.window.activityType,
-                        startSeconds: candidate.window.startSeconds,
-                        outcome: built.routeFailure == nil ? .imported : .importedWithoutRoute,
-                        detail: built.routeFailure,
-                        importedWorkoutID: workoutID,
-                        routeFallbackReason: built.fallbackReason,
-                        wasRouteTrimmed: built.wasTrimmed
-                    ))
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    failed += 1
-                    items.append(AppleHealthImportItemResult(
-                        candidateID: candidate.id,
-                        activityType: candidate.window.activityType,
-                        startSeconds: candidate.window.startSeconds,
-                        outcome: .failed,
-                        detail: error.localizedDescription
-                    ))
+                    items.append(Self.importedItem(for: candidate, built: built, workoutID: workoutID))
                 }
             }
 
@@ -387,25 +349,16 @@ public actor AppleHealthImportService {
                 return report
             }
 
-            let committedIDs: [UUID]
-            do {
-                committedIDs = try await storeActor.commitBatchImport(
-                    batch,
-                    selectedWorkoutID: selectedID
-                )
-            } catch is CancellationError {
-                // The commit refuses a cancelled task before promoting anything,
-                // so this is a cancellation, handled below, not a failed commit.
-                throw CancellationError()
-            } catch {
+            let commitResult = try await Self.commit(batch, selectedWorkoutID: selectedID, on: storeActor)
+            guard let committedIDs = try? commitResult.get() else {
                 await storeActor.rollbackBatchImport(batch)
                 report.items = Self.markingDiscarded(
                     items,
                     at: stagedItemIndices,
-                    detail: error.localizedDescription
+                    detail: commitResult.failureDescription
                 )
                 report.commitFailed = true
-                report.errorMessage = error.localizedDescription
+                report.errorMessage = commitResult.failureDescription
                 await progress(AppleHealthImportProgress(phase: .completed))
                 return report
             }
@@ -437,6 +390,100 @@ public actor AppleHealthImportService {
             await storeActor.rollbackBatchImport(batch)
             throw error
         }
+    }
+
+    /// Begins the library's batch import. A cancelled task is not a
+    /// conflict with another import.
+    private static func beginBatch(on storeActor: WorkoutLibraryStoreActor) async throws -> WorkoutLibraryBatchToken {
+        do {
+            return try await storeActor.beginBatchImport()
+        } catch is CancellationError {
+            // A cancelled task is not a conflict with another import.
+            throw CancellationError()
+        } catch {
+            throw AppleHealthImportError.batchConflict
+        }
+    }
+
+    /// The candidate's workout, or the error that kept it from building.
+    /// Cancellation propagates.
+    private func buildWorkoutUnlessFailed(
+        for candidate: AppleHealthWorkoutCandidate,
+        archiveAt archiveURL: URL,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) async throws -> Result<BuiltWorkout, any Error> {
+        do {
+            return .success(try await buildWorkout(
+                for: candidate,
+                archiveAt: archiveURL,
+                isCancelled: isCancelled
+            ))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Stages the workout; returns the staging error, or nil once staged.
+    /// Cancellation propagates.
+    private static func stagingError(
+        staging workout: RunWorkout, in batch: WorkoutLibraryBatchToken, on storeActor: WorkoutLibraryStoreActor
+    ) async throws -> (any Error)? {
+        do {
+            try await storeActor.stageWorkout(workout, in: batch)
+            return nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return error
+        }
+    }
+
+    /// Commits the batch; returns the committed IDs, or the error that failed
+    /// the commit. The commit refuses a cancelled task before promoting
+    /// anything, so cancellation propagates as a cancellation, not a failed
+    /// commit.
+    private static func commit(
+        _ batch: WorkoutLibraryBatchToken, selectedWorkoutID: UUID?, on storeActor: WorkoutLibraryStoreActor
+    ) async throws -> Result<[UUID], any Error> {
+        do {
+            return .success(try await storeActor.commitBatchImport(
+                batch,
+                selectedWorkoutID: selectedWorkoutID
+            ))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private static func importedItem(
+        for candidate: AppleHealthWorkoutCandidate, built: BuiltWorkout, workoutID: UUID
+    ) -> AppleHealthImportItemResult {
+        AppleHealthImportItemResult(
+            candidateID: candidate.id,
+            activityType: candidate.window.activityType,
+            startSeconds: candidate.window.startSeconds,
+            outcome: built.routeFailure == nil ? .imported : .importedWithoutRoute,
+            detail: built.routeFailure,
+            importedWorkoutID: workoutID,
+            routeFallbackReason: built.fallbackReason,
+            wasRouteTrimmed: built.wasTrimmed
+        )
+    }
+
+    private static func failedItem(
+        for candidate: AppleHealthWorkoutCandidate, detail: String
+    ) -> AppleHealthImportItemResult {
+        AppleHealthImportItemResult(
+            candidateID: candidate.id,
+            activityType: candidate.window.activityType,
+            startSeconds: candidate.window.startSeconds,
+            outcome: .failed,
+            detail: detail
+        )
     }
 
     // MARK: - Building one workout
@@ -699,5 +746,13 @@ public actor AppleHealthImportService {
             if entry.startSeconds >= current.startSeconds { best = entry }
         }
         return best?.id
+    }
+}
+
+private extension Result {
+    /// The failure's localized description; empty for a success.
+    var failureDescription: String {
+        if case .failure(let error) = self { return error.localizedDescription }
+        return ""
     }
 }
