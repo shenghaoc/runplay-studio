@@ -77,6 +77,10 @@ def import_violations(relative, source):
     is_engine_source = relative.parts[:2] == ("RunPlayEngine", "Sources")
     is_engine_test = relative.parts[:2] == ("RunPlayEngine", "Tests")
     is_core_source = relative.parts[:2] == ("RunPlayCore", "Sources")
+    is_core_differential = (
+        relative.parts[:3] == ("RunPlayCore", "Tests", "RunPlayCoreTests")
+        and relative.name.endswith("DifferentialTests.swift")
+    )
     code = source_without_comments_or_strings(source)
     for match in SWIFT_IMPORT.finditer(code):
         exported = "@_exported" in match["attributes"].split()
@@ -85,7 +89,7 @@ def import_violations(relative, source):
         if is_engine_source and module not in ALLOWED_ENGINE_IMPORTS:
             yield f"{relative}:{line}: engine cannot import {module}"
         if module == ENGINE and (
-            exported or not (is_engine_test or (is_core_source and access == "internal"))
+            exported or not (is_engine_test or is_core_differential or (is_core_source and access == "internal"))
         ):
             yield f"{relative}:{line}: unauthorized {ENGINE} import"
 
@@ -120,6 +124,15 @@ def self_test():
         ("core-exported.swift", "RunPlayCore/Sources/Adapter.swift", "unauthorized RunPlayEngine import"),
         ("core-exported-modifiers.swift", "RunPlayCore/Sources/Adapter.swift", "unauthorized RunPlayEngine import"),
         ("core-commented-and-raw.swift", "RunPlayCore/Sources/Adapter.swift", None),
+        ("core-differential.swift", "RunPlayCore/Tests/RunPlayCoreTests/GeodesyDifferentialTests.swift", None),
+        ("core-differential.swift", "RunPlayCore/Tests/RunPlayCoreTests/GeodesyTests.swift",
+         "unauthorized RunPlayEngine import"),
+        ("core-differential.swift", "RunPlayCore/Tests/OtherTests/GeodesyDifferentialTests.swift",
+         "unauthorized RunPlayEngine import"),
+        ("core-differential.swift", "RunPlayPlatform/Tests/RunPlayPlatformTests/GeodesyDifferentialTests.swift",
+         "unauthorized RunPlayEngine import"),
+        ("core-exported.swift", "RunPlayCore/Tests/RunPlayCoreTests/GeodesyDifferentialTests.swift",
+         "unauthorized RunPlayEngine import"),
         ("platform-ignored.swift", "RunPlayPlatform/Sources/Adapter.swift", None),
         ("platform-regex-literals.swift", "RunPlayPlatform/Sources/Adapter.swift", None),
         ("platform-regex-then-import.swift", "RunPlayPlatform/Sources/Adapter.swift",

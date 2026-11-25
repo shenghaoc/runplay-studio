@@ -1,4 +1,6 @@
 import XCTest
+import RunPlayEngine
+import RunPlayEngineTestSupport
 @testable import RunPlayCore
 
 /// Parity coverage for the C++23 geodesy primitives.
@@ -773,5 +775,164 @@ final class RunPlayGeodesyBridgeTests: XCTestCase {
 
     func testEarthRadiusConstantIsUnchanged() {
         XCTAssertEqual(GeoDistance.earthRadiusMeters, 6_371_000.0)
+    }
+}
+
+/// Uses the established C++ fixtures plus a reproducible seeded corpus. This is
+/// the only transitional C++ dependency in the new differential test.
+extension RunPlayGeodesyBridgeTests {
+    private typealias GeodesyPair = (Double, Double, Double, Double)
+    private typealias GeodesyWords = (UInt64, UInt64, UInt64, UInt64)
+
+    private static func words(_ pair: GeodesyPair, native: Bool) -> GeodesyWords {
+        let (lat, lon, centerLat, centerLon) = pair
+        if native {
+            let valid = RunPlayGeodesyBridge.isValidCoordinate(latitude: lat, longitude: lon)
+            let distance = RunPlayGeodesyBridge.distanceMeters(
+                latitude1: lat, longitude1: lon, latitude2: centerLat, longitude2: centerLon
+            )
+            let projection = RunPlayGeodesyBridge.projectToLocalMeters(
+                latitude: lat, longitude: lon, centerLatitude: centerLat, centerLongitude: centerLon
+            )
+            return (valid ? 1 : 0, distance.bitPattern, projection.xMeters.bitPattern, projection.zMeters.bitPattern)
+        }
+        let valid = EngineGeodesy.isValidCoordinate(latitude: lat, longitude: lon)
+        let distance = EngineGeodesy.distanceMeters(
+            latitude1: lat, longitude1: lon, latitude2: centerLat, longitude2: centerLon
+        )
+        let projection = EngineGeodesy.projectToLocalMeters(
+            latitude: lat, longitude: lon, centerLatitude: centerLat, centerLongitude: centerLon
+        )
+        return (valid ? 1 : 0, distance.bitPattern, projection.xMeters.bitPattern, projection.zMeters.bitPattern)
+    }
+
+    private static func fixtures() -> [GeodesyPair] {
+        var fixtures = distanceFixtures().map {
+            ($0.first.latitude, $0.first.longitude, $0.second.latitude, $0.second.longitude)
+        }
+        for latitude in latitudeMatrix {
+            for longitude in longitudeMatrix {
+                fixtures.append((latitude, longitude, 1.352083, 103.819836))
+            }
+        }
+        let small = Double.leastNonzeroMagnitude
+        let mercator = 85.0511287798066
+        fixtures += [
+            (small, -small, -small, small),
+            (0, 179.9995, 0, -179.9995),
+            (90, 45, 90, -135),
+            (-90, -180, 90, 180),
+            (mercator.nextDown, 0, mercator, 0),
+            (mercator, 0, mercator.nextUp, 0),
+            (1, 1, .nan, 0),
+            (1, 1, .infinity, 0),
+            (1, 1, -.infinity, 0),
+            (1, 1, 0, .infinity),
+            (1, 1, 0, -.infinity),
+            (1000, 4000, 0, 0),
+        ]
+        return fixtures
+    }
+
+    private static func seededPair(_ random: inout SplitMix64) -> GeodesyPair {
+        func unit() -> Double { Double(random.next() >> 11) * (1.0 / 9_007_199_254_740_992.0) }
+        return (unit() * 180.0 - 90.0, unit() * 360.0 - 180.0,
+                unit() * 180.0 - 90.0, unit() * 360.0 - 180.0)
+    }
+
+    private static func append(_ result: GeodesyWords, to digest: inout FNV1a64) {
+        digest.append(word: result.0)
+        digest.append(word: result.1)
+        digest.append(word: result.2)
+        digest.append(word: result.3)
+    }
+
+    func testSwiftEngineGeodesyBitParityAndGolden() {
+        var nativeDigest = FNV1a64()
+        var swiftDigest = FNV1a64()
+        var index = 0
+        func compare(_ pair: GeodesyPair) -> Bool {
+            let native = Self.words(pair, native: true)
+            let swift = Self.words(pair, native: false)
+            guard native == swift else {
+                XCTFail("geodesy bit mismatch at \(index) for \(pair): native \(native), Swift \(swift)")
+                return false
+            }
+            Self.append(native, to: &nativeDigest)
+            Self.append(swift, to: &swiftDigest)
+            index += 1
+            return true
+        }
+        let fixtures = Self.fixtures()
+        nativeDigest.append(word: UInt64(fixtures.count))
+        swiftDigest.append(word: UInt64(fixtures.count))
+        for pair in fixtures where !compare(pair) { return }
+
+        var random = SplitMix64(seed: 0xa45e_8e75_7bc6_9c2e)
+        // Prefix batch lengths so empty and one-element inputs are observable.
+        // The kernel is scalar: these sizes do not imply a production buffer allocation.
+        let ceiling = RunPlayEngineLimits.maxRouteInputSamples
+        let batchSizes = [0, 1, 4_096, WorkoutImportResourceLimits.maxRoutePointCount, ceiling, ceiling + 1]
+        for count in batchSizes {
+            nativeDigest.append(word: UInt64(count))
+            swiftDigest.append(word: UInt64(count))
+            for _ in 0..<count {
+                guard compare(Self.seededPair(&random)) else { return }
+            }
+        }
+
+        XCTAssertEqual(nativeDigest.value, swiftDigest.value)
+        #if os(macOS) && arch(arm64)
+        // Captured from the native C++ oracle with Xcode 27.2 on arm64.
+        XCTAssertEqual(nativeDigest.value, 0x9906_b023_91c7_8489)
+        #elseif os(Linux) && arch(x86_64)
+        // Captured from the C++ oracle in hosted Linux CI run 45273058519.
+        XCTAssertEqual(nativeDigest.value, 0xc1b2_5289_5d30_ee7d)
+        #endif
+        print("Geodesy native corpus FNV1a64: \(String(nativeDigest.value, radix: 16))")
+    }
+}
+
+extension RunPlayGeodesyBridgeTests {
+    func testSwiftEngineGeodesyKernelBenchmark() throws {
+        guard ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] == "1" else {
+            throw XCTSkip("Set RUNPLAY_BENCHMARK=1 via scripts/run-geodesy-benchmark.sh to measure the release kernels")
+        }
+
+        let includeProductLimit = ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1"
+        let sizes = includeProductLimit ? [100_000, WorkoutImportResourceLimits.maxRoutePointCount] : [100_000]
+        let clock = ContinuousClock()
+        for size in sizes {
+            var random = SplitMix64(seed: 0xae15_57f3_6c0f_12b8)
+            let pairs = (0..<size).map { _ in Self.seededPair(&random) }
+            func timed(native: Bool) -> (Double, UInt64) {
+                var sink: UInt64 = 0
+                let duration = clock.measure {
+                    for pair in pairs {
+                        let words = Self.words(pair, native: native)
+                        sink &+= words.0 &+ words.1 &+ words.2 &+ words.3
+                    }
+                }
+                let parts = duration.components
+                return (Double(parts.seconds) * 1_000 + Double(parts.attoseconds) * 1e-15, sink)
+            }
+            for _ in 0..<2 {
+                XCTAssertEqual(timed(native: true).1, timed(native: false).1)
+            }
+            var nativeTimes: [Double] = []
+            var swiftTimes: [Double] = []
+            for i in 0..<9 {
+                let first = timed(native: i.isMultiple(of: 2))
+                let second = timed(native: !i.isMultiple(of: 2))
+                XCTAssertEqual(first.1, second.1)
+                nativeTimes.append(i.isMultiple(of: 2) ? first.0 : second.0)
+                swiftTimes.append(i.isMultiple(of: 2) ? second.0 : first.0)
+            }
+            let nativeMedian = nativeTimes.sorted()[4]
+            let swiftMedian = swiftTimes.sorted()[4]
+            let ratio = swiftMedian / nativeMedian
+            print("Geodesy kernel-level: pairs=\(size) C++=\(nativeMedian)ms Swift=\(swiftMedian)ms ratio=\(ratio)")
+            XCTAssertLessThanOrEqual(ratio, 1.10, "Kernel-level median at \(size) coordinate pairs")
+        }
     }
 }
