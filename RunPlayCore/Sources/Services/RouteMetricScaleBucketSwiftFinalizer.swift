@@ -7,9 +7,9 @@ import Foundation
 /// A/B of the former C++ kernel showed a regression above the 1.05× hard gate. This is a
 /// mode-owned implementation decision, not an error-driven fallback.
 ///
-/// Semantics match the pre-migration Swift implementation and the independent
-/// test oracle: eligible filtering, distance-weighted quantiles, minimum
-/// scale span, normalization, buckets, coverage, and diagnostic counts.
+/// Semantics match the pre-migration Swift implementation: eligible
+/// filtering, distance-weighted quantiles, minimum scale span, normalization,
+/// buckets, coverage, and diagnostic counts.
 enum RouteMetricScaleBucketSwiftFinalizer {
     struct NumericScale: Equatable, Sendable {
         let lowerBound: Double

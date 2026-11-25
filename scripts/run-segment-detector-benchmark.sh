@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Reproducible release benchmark for the complete SegmentDetector cutover.
+# Reproducible release benchmark for the complete SegmentDetector.
 #
 # Set RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1 to add the one-million-point probe.
-# Timings are reported for evidence; only exact durable highlight parity is an
-# assertion. Ordinary CI skips the benchmark.
+# Each case prints one stable line, "SegmentDetectorBenchmark <case>
+# <count>=<value> ... iterations=<n> swift_ms=<median>". The timings are an
+# absolute Swift baseline with no ratio gate; the only assertions are that
+# repeated runs give identical results. Ordinary CI skips the benchmark.
 
 set -euo pipefail
 
@@ -22,7 +24,7 @@ swift test \
   cat "$log" >&2
   exit 1
 fi
-sed -n '/RunPlay SegmentDetector benchmark/,/semantic merge gate/p' "$log"
+grep -E '^(RunPlay SegmentDetector benchmark|SegmentDetectorBenchmark )' "$log" || true
 if ! grep -Eq "Test Case .*testSegmentDetectorBenchmark.* passed" "$log"; then
   cat "$log" >&2
   echo "Expected one executed SegmentDetectorBenchmark test." >&2

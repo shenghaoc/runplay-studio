@@ -1,8 +1,9 @@
 import XCTest
 @testable import RunPlayCore
 
-/// Benchmark for personal heatmap coverage: the complete
-/// production builder against the complete pre-migration Swift builder oracle.
+/// Benchmark for personal heatmap coverage: the complete production builder,
+/// as an absolute Swift baseline with no ratio gate. Each case prints one
+/// `BenchmarkBaselineLine`.
 ///
 /// The two extra timings this benchmark prints are **independent diagnostics**,
 /// not additive components of the measured production build. Input conversion is
@@ -19,6 +20,7 @@ import XCTest
 /// `PersonalHeatmapPipelineProfile` via
 /// `scripts/run-personal-heatmap-profile.sh`.
 final class PersonalHeatmapCoverageBenchmark: XCTestCase {
+    private static let benchmarkName = "PersonalHeatmapCoverageBenchmark"
     private static let workoutCount = 250
     private static let pointsPerWorkout = 1_000
     private static let productLimitPointCount = 1_000_000
@@ -37,33 +39,30 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
             maximumRenderedCellCount: 500
         )
 
-        let oracleBuilder = SwiftPersonalHeatmapBuilderOracle()
         let prodBuilder = PersonalHeatmapBuilder()
 
-        var oracleSamples: [Double] = []
         var prodSamples: [Double] = []
         var nativeCallTotalSamples: [Double] = []
         var conversionSamples: [Double] = []
 
-        var oracleCellCount = 0
         var prodCellCount = 0
+        var referenceCellCount: Int?
 
         let totalIterations = Self.warmupIterations + Self.measuredIterations
         for iteration in 0..<totalIterations {
-            let oracleElapsed = try Self.timeThrowing {
-                let snapshot = try oracleBuilder.build(workouts: workouts, configuration: config)
-                oracleCellCount = snapshot.cells.count
-            }
-
-            // The merge-gate value: the complete public production builder and
+            // The baseline value: the complete public production builder and
             // nothing else. Diagnostics are timed afterwards, outside this
-            // measurement, so they can never inflate the gated number.
+            // measurement, so they can never inflate the baseline number.
             var effectiveCellSize = config.cellSizeMeters
             let prodElapsed = try Self.timeThrowing {
                 let snapshot = try prodBuilder.build(workouts: workouts, configuration: config)
                 prodCellCount = snapshot.cells.count
                 effectiveCellSize = snapshot.configuration.cellSizeMeters
             }
+            if let referenceCellCount {
+                XCTAssertEqual(prodCellCount, referenceCellCount, "repeated builds differ")
+            }
+            referenceCellCount = prodCellCount
 
             // Independent diagnostic 1: cost of one input conversion, on a
             // batch prepared separately from the builder's own.
@@ -93,45 +92,67 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
             }
 
             guard iteration >= Self.warmupIterations else { continue }
-            oracleSamples.append(oracleElapsed)
             prodSamples.append(prodElapsed)
             conversionSamples.append(conversionElapsed)
             nativeCallTotalSamples.append(nativeTotalElapsed)
         }
 
-        XCTAssertEqual(prodCellCount, oracleCellCount)
+        XCTAssertGreaterThan(prodCellCount, 0)
 
-        let oracleMedian = Self.median(oracleSamples)
-        let prodMedian = Self.median(prodSamples)
-        let conversionMedian = Self.median(conversionSamples)
-        let nativeTotalMedian = Self.median(nativeCallTotalSamples)
-        let ratio = prodMedian / max(oracleMedian, 1e-12)
-        let peak = Self.peakResidentMemoryBytes()
+        let counts: KeyValuePairs<String, Int> = [
+            "workouts": Self.workoutCount,
+            "points_per_workout": Self.pointsPerWorkout,
+            "cells": prodCellCount,
+        ]
+        let builderLine = BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "builder",
+            counts: counts,
+            iterations: Self.measuredIterations,
+            medianMilliseconds: Self.median(prodSamples)
+        )
+        let conversionLine = BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "diagnostic-input-conversion",
+            counts: counts,
+            iterations: Self.measuredIterations,
+            medianMilliseconds: Self.median(conversionSamples)
+        )
+        let sweepLine = BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "diagnostic-array-coverage-sweep",
+            counts: counts,
+            iterations: Self.measuredIterations,
+            medianMilliseconds: Self.median(nativeCallTotalSamples)
+        )
+        let memoryLine = BenchmarkBaselineLine.memory(
+            Self.benchmarkName,
+            "resident-rss",
+            bytes: Self.peakResidentMemoryBytes()
+        )
 
         print("""
 
         <!-- BEGIN RUNPLAY HEATMAP COVERAGE BENCHMARK -->
 
         RunPlay personal heatmap route coverage benchmark
-        fixture: \(Self.workoutCount) workouts, \(Self.pointsPerWorkout) points/workout
-        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
-        complete Swift builder oracle:     \(Self.format(oracleMedian)) ms
-        complete production builder:       \(Self.format(prodMedian)) ms
-        production / oracle ratio:         \(String(format: "%.3f", ratio))
-        merge gate: complete production builder <= ~1.25× Swift builder oracle
-
-        independent diagnostics -- NOT additive components of the production total
-        one separate input conversion:     \(Self.format(conversionMedian)) ms
-        historical array coverage sweep:  \(Self.format(nativeTotalMedian)) ms
-        resident RSS after benchmark:      \(peak.map { "\($0) bytes" } ?? "unavailable")
+        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians in ms
+        \(builderLine)
+        independent diagnostics -- NOT additive components of the builder total:
+        \(conversionLine)
+        \(sweepLine)
+        \(memoryLine)
         additive phase attribution lives in scripts/run-personal-heatmap-profile.sh
-
-        <!-- END RUNPLAY HEATMAP COVERAGE BENCHMARK -->
         """)
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
             try Self.runProductLimitProbe()
         }
+
+        print("""
+
+        <!-- END RUNPLAY HEATMAP COVERAGE BENCHMARK -->
+        """)
     }
 
     private static func runProductLimitProbe() throws {
@@ -141,8 +162,9 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
             isCancelled: { false }
         )
 
+        let iterations = 5
         var nativeSamples: [Double] = []
-        for _ in 0..<5 {
+        for _ in 0..<iterations {
             let elapsed = try timeThrowing {
                 _ = try prepared.coverage(
                     workoutIndex: 0,
@@ -155,16 +177,15 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
             nativeSamples.append(elapsed)
         }
 
-        let nativeMedian = median(nativeSamples)
-        let nativeMax = nativeSamples.max() ?? 0
-        let peak = peakResidentMemoryBytes()
-
-        print("""
-        product-limit native probe (\(productLimitPointCount) points)
-        native median: \(format(nativeMedian)) ms
-        native max:    \(format(nativeMax)) ms
-        peak RSS:      \(peak.map { "\($0) bytes" } ?? "unavailable")
-        """)
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "product-limit-coverage",
+            counts: ["points": productLimitPointCount],
+            iterations: iterations,
+            medianMilliseconds: median(nativeSamples),
+            maximumMilliseconds: nativeSamples.max() ?? 0
+        ))
+        print(BenchmarkBaselineLine.memory(benchmarkName, "product-limit-resident-rss", bytes: peakResidentMemoryBytes()))
     }
 
     private static func makeWorkoutsFixture(count: Int, pointsPerWorkout: Int) -> [RunWorkout] {
@@ -241,10 +262,6 @@ final class PersonalHeatmapCoverageBenchmark: XCTestCase {
             return (sorted[mid - 1] + sorted[mid]) / 2
         }
         return sorted[mid]
-    }
-
-    private static func format(_ milliseconds: Double) -> String {
-        String(format: "%.3f", milliseconds)
     }
 
     private static func peakResidentMemoryBytes() -> UInt64? {

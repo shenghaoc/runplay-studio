@@ -3,10 +3,12 @@
 # Reproducible release benchmarks for the complete Personal Heatmap builder and
 # isolated Swift cross-workout aggregation.
 #
-# This is the merge gate: complete production builder versus complete Swift
-# builder oracle. The extra timings it prints are independent diagnostics and
-# are not additive components of the production total; for an additive phase
-# decomposition use scripts/run-personal-heatmap-profile.sh.
+# The timings are an absolute Swift baseline with no ratio gate. Each engine
+# case prints one stable line, "<Benchmark> <case> <count>=<value> ...
+# iterations=<n> swift_ms=<median>". The extra coverage-benchmark timings are
+# independent diagnostics and are not additive components of the builder
+# total; for an additive phase decomposition use
+# scripts/run-personal-heatmap-profile.sh.
 #
 
 set -uo pipefail
@@ -50,11 +52,6 @@ sed -n \
 sed -n \
   '/BEGIN RUNPLAY HEATMAP ENGINE BENCHMARK/,/END RUNPLAY HEATMAP ENGINE BENCHMARK/p' \
   "$log" | grep -v 'RUNPLAY HEATMAP ENGINE BENCHMARK'
-
-# The product-limit probe prints after the coverage END marker, so it falls
-# outside both marker ranges above. Without this the 1,000,000-point probe runs
-# under RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1 and its report is discarded.
-sed -n '/product-limit native probe/,/peak RSS:/p' "$log"
 
 if [[ $status -ne 0 ]]; then
   echo "" >&2

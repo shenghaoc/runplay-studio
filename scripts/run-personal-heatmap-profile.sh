@@ -9,7 +9,7 @@
 # skips there.
 #
 # Detailed phase attribution lives here. scripts/run-personal-heatmap-benchmark.sh
-# remains the historical complete-builder-versus-Swift-oracle merge gate.
+# reports the absolute complete-builder baseline.
 #
 
 set -uo pipefail

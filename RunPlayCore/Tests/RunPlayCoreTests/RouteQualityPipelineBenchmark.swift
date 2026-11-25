@@ -4,8 +4,10 @@ import XCTest
 /// Reproducible release benchmark for the combined route-quality geometry kernel.
 ///
 /// Skipped unless `RUNPLAY_BENCHMARK=1`. Run through
-/// `scripts/run-route-quality-benchmark.sh` in release mode.
+/// `scripts/run-route-quality-benchmark.sh` in release mode. Each case prints
+/// one `BenchmarkBaselineLine`: an absolute Swift timing with no ratio gate.
 final class RouteQualityPipelineBenchmark: XCTestCase {
+    private static let benchmarkName = "RouteQualityPipelineBenchmark"
     private static let pointCount = 100_000
     private static let productLimitCount = 1_000_000
     private static let warmupIterations = 5
@@ -22,24 +24,14 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
         let distancePolicy: RouteDistancePolicy = .useSuppliedDistancesPerSegment
         let processor = RouteQualityProcessor(policy: policy)
 
-        var oracleSamples: [Double] = []
         var bridgeSamples: [Double] = []
         var processSamples: [Double] = []
 
-        var oracleDistance = 0.0
         var bridgeDistance = 0.0
         var processDistance = 0.0
 
         let total = Self.warmupIterations + Self.measuredIterations
         for iteration in 0..<total {
-            let oracleElapsed = try Self.timeThrowing {
-                let result = try SwiftRouteQualityGeometryOracle.process(
-                    points,
-                    policy: policy,
-                    distancePolicy: distancePolicy
-                )
-                oracleDistance = result.routePoints.last?.distanceFromStartMeters ?? 0
-            }
             let bridgeElapsed = try Self.timeThrowing {
                 let result = try RunPlayRouteQualityBridge.process(
                     points,
@@ -60,33 +52,35 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
             }
 
             guard iteration >= Self.warmupIterations else { continue }
-            oracleSamples.append(oracleElapsed)
             bridgeSamples.append(bridgeElapsed)
             processSamples.append(processElapsed)
         }
 
-        XCTAssertEqual(
-            bridgeDistance,
-            oracleDistance,
-            accuracy: max(1e-6, abs(oracleDistance) * 1e-12)
-        )
+        XCTAssertGreaterThan(bridgeDistance, 0)
         XCTAssertGreaterThan(processDistance, 0)
 
-        let oracleMedian = Self.median(oracleSamples)
-        let bridgeMedian = Self.median(bridgeSamples)
-        let processMedian = Self.median(processSamples)
-        let ratio = bridgeMedian / max(oracleMedian, 1e-12)
+        let adapterLine = BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "adapter",
+            counts: ["points": Self.pointCount],
+            iterations: Self.measuredIterations,
+            medianMilliseconds: Self.median(bridgeSamples)
+        )
+        let processorLine = BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "processor",
+            counts: ["points": Self.pointCount],
+            iterations: Self.measuredIterations,
+            medianMilliseconds: Self.median(processSamples)
+        )
 
         print("""
 
         RunPlay route-quality geometry benchmark
         fixture: \(Self.pointCount) points, mixed segments/outliers/gaps/supplied
-        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
-        complete Swift stages 2–4 oracle: \(Self.format(oracleMedian)) ms
-        complete combined bridge:         \(Self.format(bridgeMedian)) ms
-        complete RouteQualityProcessor:   \(Self.format(processMedian)) ms
-        bridge / oracle ratio:            \(String(format: "%.3f", ratio))
-        merge gate: combined bridge <= ~1.25× Swift stages 2–4
+        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians in ms
+        \(adapterLine)
+        \(processorLine)
         """)
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
@@ -101,17 +95,20 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
             "Set RUNPLAY_BENCHMARK=1 to run the release benchmark."
         )
         try Self.measureCompleteBridge(
+            "complete-bridge-supplied-distances",
             count: Self.pointCount, warmup: Self.warmupIterations, measured: Self.measuredIterations,
             distancePolicy: .useSuppliedDistancesPerSegment
         )
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
             try Self.measureCompleteBridge(
+                "complete-bridge-coordinate-distances",
                 count: Self.productLimitCount, warmup: 1, measured: 3, distancePolicy: .computeFromCoordinates
             )
         }
     }
 
     private static func measureCompleteBridge(
+        _ caseName: String,
         count: Int, warmup: Int, measured: Int, distancePolicy: RouteDistancePolicy
     ) throws {
         let points = makeFixture(count)
@@ -136,18 +133,21 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
             swiftSamples.append(elapsed)
         }
 
-        print("""
-        RunPlay route-quality geometry benchmark
-        Complete bridge, \(count) points: Swift=\(median(swiftSamples)) ms
-        no merge gate: absolute Swift timing
-        """)
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            caseName,
+            counts: ["points": count],
+            iterations: measured,
+            medianMilliseconds: median(swiftSamples)
+        ))
     }
 
     private static func runProductLimitProbe() throws {
         let points = makeFixture(productLimitCount)
         let policy = RouteQualityPolicy.runningDefault
+        let iterations = 3
         var samples: [Double] = []
-        for _ in 0..<3 {
+        for _ in 0..<iterations {
             let elapsed = try timeThrowing {
                 _ = try RunPlayRouteQualityBridge.process(
                     points, policy: policy, distancePolicy: .computeFromCoordinates,
@@ -157,12 +157,15 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
             samples.append(elapsed)
         }
         let peak = Self.peakResidentMemoryBytes()
-        print("""
-        product-limit bridge probe (\(productLimitCount) points)
-        bridge median: \(format(median(samples))) ms
-        bridge max:    \(format(samples.max() ?? 0)) ms
-        peak RSS:      \(peak.map { "\($0) bytes" } ?? "unavailable")
-        """)
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "product-limit-adapter",
+            counts: ["points": productLimitCount],
+            iterations: iterations,
+            medianMilliseconds: median(samples),
+            maximumMilliseconds: samples.max() ?? 0
+        ))
+        print(BenchmarkBaselineLine.memory(benchmarkName, "product-limit-peak-rss", bytes: peak))
     }
 
     private static func makeFixture(_ count: Int) -> [RoutePoint] {
@@ -220,10 +223,6 @@ final class RouteQualityPipelineBenchmark: XCTestCase {
             return (sorted[mid - 1] + sorted[mid]) / 2
         }
         return sorted[mid]
-    }
-
-    private static func format(_ milliseconds: Double) -> String {
-        String(format: "%.3f", milliseconds)
     }
 
     /// Peak resident size via the Mach task API. RunPlayCore is cross-platform,

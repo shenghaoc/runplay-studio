@@ -6,7 +6,7 @@ import XCTest
 /// ## Why this exists
 ///
 /// `PersonalHeatmapCoverageBenchmark` establishes the authoritative
-/// production-versus-Swift-oracle comparison, but its extra subtimings are
+/// absolute production timings, but its extra subtimings are
 /// independent diagnostics: input conversion is measured on a separately
 /// prepared batch, and the native coverage total is measured once at the final
 /// effective cell size rather than across every adaptive pass. Those numbers
@@ -22,9 +22,9 @@ import XCTest
 ///   is the authoritative end-to-end value. The public builder gains no timing
 ///   hooks.
 /// * **Mode B** is a test-only reconstruction of the same orchestration that
-///   records phase timings. It is asserted exactly equal to both the public
-///   builder and `SwiftPersonalHeatmapBuilderOracle`, and its own overhead
-///   versus Mode A is reported so phase percentages can be read honestly.
+///   records phase timings. It is asserted exactly equal to the public
+///   builder, and its own overhead versus Mode A is reported so phase
+///   percentages can be read honestly.
 ///
 /// Skipped unless `RUNPLAY_HEATMAP_PROFILE=1`; run it through
 /// `scripts/run-personal-heatmap-profile.sh`, never in ordinary CI.
@@ -49,7 +49,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         report.append("")
         report.append("Mode A is the unmodified public `PersonalHeatmapBuilder.build`.")
         report.append("Mode B is the test-only profiled reconstruction of the same orchestration.")
-        report.append("Every Mode B snapshot is asserted exactly equal to both Mode A and the Swift oracle.")
+        report.append("Every Mode B snapshot is asserted exactly equal to Mode A.")
         report.append("")
 
         var fixtureRows: [String] = []
@@ -113,21 +113,13 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         let workouts = library(for: fixture)
         let configuration = fixture.configuration
         let builder = PersonalHeatmapBuilder()
-        let oracle = SwiftPersonalHeatmapBuilderOracle()
 
         // Parity reference computed once; snapshots are deterministic, so every
         // measured Mode B iteration is compared against it.
-        let oracleSnapshot = try oracle.build(workouts: workouts, configuration: configuration)
         let productionReference = try builder.build(workouts: workouts, configuration: configuration)
-        XCTAssertEqual(
-            productionReference,
-            oracleSnapshot,
-            "\(fixture.key): production builder diverged from the Swift oracle"
-        )
 
         var productionSamples: [Double] = []
         var reconstructionSamples: [Double] = []
-        var oracleSamples: [Double] = []
         var directConsumptionAndCountingSamples: [Double] = []
         var lastMeasurement: ReconstructionMeasurement?
 
@@ -151,17 +143,6 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                 productionReference,
                 "\(fixture.key): profiled reconstruction diverged from PersonalHeatmapBuilder"
             )
-            XCTAssertEqual(
-                measurement.snapshot,
-                oracleSnapshot,
-                "\(fixture.key): profiled reconstruction diverged from SwiftPersonalHeatmapBuilderOracle"
-            )
-
-            let oracleElapsed = fixture.isPrimary
-                ? try Self.milliseconds {
-                    _ = try oracle.build(workouts: workouts, configuration: configuration)
-                }
-                : 0
 
             guard iteration >= fixture.warmups else { continue }
             productionSamples.append(productionElapsed)
@@ -169,7 +150,6 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             directConsumptionAndCountingSamples.append(
                 Self.ms(measurement.totalDirectConsumptionAndCountingNanoseconds)
             )
-            if fixture.isPrimary { oracleSamples.append(oracleElapsed) }
             lastMeasurement = measurement
         }
 
@@ -260,9 +240,6 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         detail.append("| Measurement | Median | Min | p90 | Max |")
         detail.append("|---|---:|---:|---:|---:|")
         detail.append(Self.statsRow("Mode A production builder", productionSamples))
-        if !oracleSamples.isEmpty {
-            detail.append(Self.statsRow("Swift builder oracle", oracleSamples))
-        }
         detail.append(Self.statsRow("Mode B profiled reconstruction", reconstructionSamples))
         detail.append(Self.statsRow(
             "Direct native-buffer consumption / counting",

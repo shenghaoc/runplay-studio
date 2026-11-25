@@ -5,95 +5,6 @@ import Testing
 struct RunPlayPersonalHeatmapCoverageBridgeTests {
     private let origin = Date(timeIntervalSince1970: 1_700_000_000)
 
-    /// Pure-Swift per-workout coverage oracle for testing parity.
-    private struct SwiftWorkoutCoverageOracle {
-        static func computeCoverage(
-            routePoints: [RoutePoint],
-            cellSizeMeters: Double,
-            maximumIntervalMeters: Double
-        ) throws -> (cells: [PersonalHeatmapCellID], validPoints: Int, effectiveSegments: Int, invalidIntervals: Int) {
-            var projected: [(x: Double, y: Double, segment: Int)] = []
-            projected.reserveCapacity(routePoints.count)
-
-            var effectiveSegment = 0
-            var previousSourceSegment: Int?
-            var requiresNewSegment = true
-
-            for point in routePoints {
-                guard GeoDistance.isValidCoordinate(lat: point.latitude, lon: point.longitude),
-                      let xy = PersonalHeatmapProjection.project(latitude: point.latitude, longitude: point.longitude)
-                else {
-                    requiresNewSegment = true
-                    continue
-                }
-
-                if requiresNewSegment || previousSourceSegment != point.routeSegmentIndex {
-                    effectiveSegment += 1
-                }
-                projected.append((xy.x, xy.y, effectiveSegment))
-                previousSourceSegment = point.routeSegmentIndex
-                requiresNewSegment = false
-            }
-
-            guard !projected.isEmpty else {
-                return (cells: [], validPoints: 0, effectiveSegments: 0, invalidIntervals: 0)
-            }
-
-            var visited = Set<PersonalHeatmapCellID>()
-            var invalidIntervals = 0
-
-            for p in projected {
-                if let x = PersonalHeatmapProjection.cellIndex(projected: p.x, cellSizeMeters: cellSizeMeters),
-                   let y = PersonalHeatmapProjection.cellIndex(projected: p.y, cellSizeMeters: cellSizeMeters) {
-                    visited.insert(PersonalHeatmapCellID(x: x, y: y))
-                }
-            }
-
-            if projected.count > 1 {
-                for i in 0..<(projected.count - 1) {
-                    let a = projected[i]
-                    let b = projected[i + 1]
-
-                    guard a.segment == b.segment else { continue }
-
-                    let dx = b.x - a.x
-                    let dy = b.y - a.y
-                    let length = (dx * dx + dy * dy).squareRoot()
-
-                    if length == 0 {
-                        if let x = PersonalHeatmapProjection.cellIndex(projected: a.x, cellSizeMeters: cellSizeMeters),
-                           let y = PersonalHeatmapProjection.cellIndex(projected: a.y, cellSizeMeters: cellSizeMeters) {
-                            visited.insert(PersonalHeatmapCellID(x: x, y: y))
-                        }
-                        continue
-                    }
-
-                    if length > maximumIntervalMeters {
-                        invalidIntervals += 1
-                        continue
-                    }
-
-                    let intervalCells = try PersonalHeatmapGridTraversal.cells(
-                        from: (a.x, a.y),
-                        to: (b.x, b.y),
-                        cellSizeMeters: cellSizeMeters
-                    )
-                    for cell in intervalCells {
-                        visited.insert(cell)
-                    }
-                }
-            }
-
-            let sortedCells = visited.sorted()
-            return (
-                cells: sortedCells,
-                validPoints: projected.count,
-                effectiveSegments: effectiveSegment,
-                invalidIntervals: invalidIntervals
-            )
-        }
-    }
-
     private func point(
         latitude: Double,
         longitude: Double,
@@ -367,15 +278,9 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
             isCancelled: { false }
         )
 
-        for (i, route) in allRoutes.enumerated() {
+        for i in allRoutes.indices {
             let cellSize = 10.0 + (Double(i % 5) * 5.0)
             let maxInterval = 200.0 + (Double(i % 3) * 100.0)
-
-            let expected = try SwiftWorkoutCoverageOracle.computeCoverage(
-                routePoints: route,
-                cellSizeMeters: cellSize,
-                maximumIntervalMeters: maxInterval
-            )
 
             let actual = try batch.coverage(
                 workoutIndex: i,
@@ -384,11 +289,6 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
                 maximumCellsPerInterval: 10_000,
                 isCancelled: { false }
             )
-
-            #expect(actual.cells == expected.cells, "Fixture \(i) cell mismatch")
-            #expect(actual.validProjectedPointCount == expected.validPoints, "Fixture \(i) valid points mismatch")
-            #expect(actual.effectiveSegmentCount == expected.effectiveSegments, "Fixture \(i) effective segments mismatch")
-            #expect(actual.invalidIntervalCount == expected.invalidIntervals, "Fixture \(i) invalid intervals mismatch")
 
             var directCounts: [PersonalHeatmapCellID: Int] = [:]
             let metadata = try batch.accumulateCoverage(

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Release benchmark for the engine route-metric numeric finalizer.
+#
+# Each case prints one stable line, "RouteMetricScaleBucketBenchmark <case>
+# <count>=<value> ... iterations=<n> swift_ms=<median>". The timings are an
+# absolute Swift baseline with no ratio gate.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

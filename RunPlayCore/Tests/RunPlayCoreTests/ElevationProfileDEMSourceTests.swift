@@ -82,10 +82,10 @@ final class ElevationProfileDEMSourceTests: XCTestCase {
     }
 
     /// The source rule is an input mapping and nothing more: a route with DEM
-    /// builds the same profile as the independent pre-migration oracle on a
-    /// copy whose altitude is the analysed one and whose route segment breaks
-    /// wherever a segment or the altitude source changes.
-    func testDEMRoutesMatchTheOracleOnSubstitutedAltitudeAndSplitSegments() throws {
+    /// builds the same profile as a DEM-free copy whose altitude is the
+    /// analysed one and whose route segment breaks wherever a segment or the
+    /// altitude source changes.
+    func testDEMRoutesMatchSubstitutedAltitudeAndSplitSegments() throws {
         var random = DemSplitMix64(seed: 0xD3_5EED)
         for fixture in 0..<400 {
             let points = randomRoute(&random)
@@ -94,13 +94,18 @@ final class ElevationProfileDEMSourceTests: XCTestCase {
                 policy: .runningDefault,
                 isCancelled: { false }
             )
-            let oracle = SwiftElevationProfileOracle.build(routePoints: Self.oracleInput(points))
+            let substituted = try RunPlayElevationProfileBridge.build(
+                routePoints: Self.substitutedInput(points),
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
 
-            XCTAssertEqual(native.rejectedAltitudeCount, oracle.rejectedAltitudeCount, "fixture \(fixture)")
-            XCTAssertEqual(native.hasMeaningfulElevation, oracle.hasMeaningfulElevation, "fixture \(fixture)")
-            XCTAssertTrue(Self.near(native.totalAscentMeters, oracle.totalAscentMeters), "fixture \(fixture)")
-            XCTAssertTrue(Self.near(native.totalDescentMeters, oracle.totalDescentMeters), "fixture \(fixture)")
-            for (index, (built, expected)) in zip(native.samples, oracle.samples).enumerated() {
+            XCTAssertEqual(native.samples.count, substituted.samples.count, "fixture \(fixture)")
+            XCTAssertEqual(native.rejectedAltitudeCount, substituted.rejectedAltitudeCount, "fixture \(fixture)")
+            XCTAssertEqual(native.hasMeaningfulElevation, substituted.hasMeaningfulElevation, "fixture \(fixture)")
+            XCTAssertTrue(Self.near(native.totalAscentMeters, substituted.totalAscentMeters), "fixture \(fixture)")
+            XCTAssertTrue(Self.near(native.totalDescentMeters, substituted.totalDescentMeters), "fixture \(fixture)")
+            for (index, (built, expected)) in zip(native.samples, substituted.samples).enumerated() {
                 let label = "fixture \(fixture) point \(index)"
                 XCTAssertTrue(Self.near(built.correctedAltitudeMeters, expected.correctedAltitudeMeters), label)
                 XCTAssertEqual(built.sourceAltitudeWasRejected, expected.sourceAltitudeWasRejected, label)
@@ -190,7 +195,7 @@ final class ElevationProfileDEMSourceTests: XCTestCase {
 
     /// The analysed altitude as recorded altitude, and a new route segment at
     /// every segment or source change; no DEM field.
-    private static func oracleInput(_ points: [RoutePoint]) -> [RoutePoint] {
+    private static func substitutedInput(_ points: [RoutePoint]) -> [RoutePoint] {
         var group = 0
         var mapped: [RoutePoint] = []
         for (index, point) in points.enumerated() {

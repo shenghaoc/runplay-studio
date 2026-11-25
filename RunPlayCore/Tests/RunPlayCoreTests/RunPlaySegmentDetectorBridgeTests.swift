@@ -2,8 +2,9 @@ import XCTest
 @testable import RunPlayCore
 import RunPlayEngineTestSupport
 
-/// Compares the C++23 bridge candidate selection against the independent
-/// Swift oracle across deterministic generated fixtures.
+/// Behaviour coverage for the segment-detection bridge candidate selection.
+/// The golden digest in `SegmentDetectionGoldenTests` pins the full output
+/// across the generated fixture matrix.
 final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
 
     // MARK: - Named fixtures
@@ -25,32 +26,26 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             cancellationCheckStride: 2048, isCancelled: { false }
         )
 
-        let oracleConfig = makeOracleConfig(timeline: timeline, bridgeConfig: config)
-        let oracleResult = SwiftSegmentDetectorOracle.search(
-            timeline: timeline, elevationProfile: elevationProfile, config: oracleConfig
-        )
-
         // Must have fastest 1km
         let bridge1km = bridgeResult.candidates.first { $0.kind == .fastest1km }
-        let oracle1km = oracleResult.first { $0.kind == .fastest1km }
         XCTAssertNotNil(bridge1km, "Bridge should find fastest 1km")
-        XCTAssertNotNil(oracle1km, "Oracle should find fastest 1km")
-        if let b = bridge1km, let o = oracle1km {
-            assertClose(b.startDistanceMeters, o.startDistanceMeters)
-            assertClose(b.endDistanceMeters, o.endDistanceMeters)
-            assertClose(b.selectionValue, o.selectionValue)
-        }
 
-        // The 2 km pause fixture also attempts the one-mile record window,
-        // which the segment-only oracle never searches; compare segment kinds.
-        let oracleKinds: Set<RunPlaySegmentWindowKind> = [
-            .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent
+        // Every candidate, with the values the production path gives. They
+        // replace the comparison with the retired Swift detector, using its
+        // tolerance.
+        let expected: [(RunPlaySegmentWindowKind, start: Double, end: Double, selection: Double)] = [
+            (.fastest400m, 0, 400, 300),
+            (.fastest1km, 0, 1_000, 300),
+            (.slowest1km, 1_000, 2_000, 600),
+            (.fastestOneMile, 0, 1_609.344, 413.58864232879984),
         ]
-        XCTAssertEqual(
-            bridgeResult.candidates.filter { oracleKinds.contains($0.kind) }.count,
-            oracleResult.count,
-            "Same candidate count"
-        )
+        XCTAssertEqual(bridgeResult.candidates.map(\.kind), expected.map(\.0))
+        for (candidate, want) in zip(bridgeResult.candidates, expected) {
+            let label = "\(candidate.kind)"
+            assertClose(candidate.startDistanceMeters, want.start, message: "\(label) start")
+            assertClose(candidate.endDistanceMeters, want.end, message: "\(label) end")
+            assertClose(candidate.selectionValue, want.selection, message: "\(label) selection")
+        }
     }
 
     func testConstantPaceRoute() throws {
@@ -126,7 +121,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         XCTAssertNil(descent, "No descent when elevation disabled")
     }
 
-    func testSameSegmentDistancePlateauMatchesTimelineOracle() throws {
+    func testSameSegmentDistancePlateauUsesTimeline() throws {
         let points = TestFixtures.makeSameSegmentPlateauRoute()
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
@@ -149,18 +144,8 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             cancellationCheckStride: 2_048,
             isCancelled: { false }
         )
-        let oracleResult = SwiftSegmentDetectorOracle.search(
-            timeline: timeline,
-            elevationProfile: elevationProfile,
-            config: makeOracleConfig(timeline: timeline, bridgeConfig: config)
-        )
 
-        XCTAssertEqual(bridgeResult.candidates.count, oracleResult.count)
         XCTAssertEqual(bridgeResult.candidates.first?.startDistanceMeters, 400)
-        assertClose(
-            bridgeResult.candidates.first?.selectionValue ?? .nan,
-            oracleResult.first?.selectionValue ?? .nan
-        )
         assertClose(bridgeResult.candidates.first?.selectionValue ?? .nan, 500)
     }
 
@@ -181,7 +166,8 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             maximumEvaluationsPerSearch: 1_000
         )
 
-        let bridgeResult = try RunPlaySegmentDetectorBridge.search(
+        // Missing-altitude gaps must separate, not invalidate, reliable runs.
+        let result = try RunPlaySegmentDetectorBridge.search(
             routePoints: points,
             timeline: timeline,
             elevationProfile: elevationProfile,
@@ -189,15 +175,8 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             cancellationCheckStride: 2_048,
             isCancelled: { false }
         )
-        let oracleResult = SwiftSegmentDetectorOracle.search(
-            timeline: timeline,
-            elevationProfile: elevationProfile,
-            config: makeOracleConfig(timeline: timeline, bridgeConfig: config)
-        )
-
-        XCTAssertEqual(
-            bridgeResult.candidates.map(\.kind).count,
-            oracleResult.count,
+        XCTAssertTrue(
+            result.candidates.contains { $0.kind == .biggestClimb || $0.kind == .biggestDescent },
             "Missing-altitude gaps must separate, not invalidate, reliable runs"
         )
     }
@@ -254,71 +233,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         }
     }
 
-    // MARK: - Generated fixture parity
-
-    func testDeterministicGeneratedParityFixtures() throws {
-        for index in 0..<SegmentDetectorParityFixtures.generatedFixtureCount {
-            let points = SegmentDetectorParityFixtures.generatedFixture(index: index)
-            let timeline = WorkoutTimeline(routePoints: points)
-            let elevationProfile = ElevationProfile(routePoints: points)
-            let config = Self.makeDefaultConfig(
-                points: points,
-                timeline: timeline,
-                elevationProfile: elevationProfile
-            )
-
-            let bridgeResult = try RunPlaySegmentDetectorBridge.search(
-                routePoints: points, timeline: timeline,
-                elevationProfile: elevationProfile, configuration: config,
-                cancellationCheckStride: 2048, isCancelled: { false }
-            )
-
-            let oracleConfig = makeOracleConfig(timeline: timeline, bridgeConfig: config)
-            let oracleResult = SwiftSegmentDetectorOracle.search(
-                timeline: timeline, elevationProfile: elevationProfile,
-                config: oracleConfig
-            )
-
-            // The oracle preserves pre-migration segment behavior; it never
-            // searches the personal-record windows. Filter the bridge result
-            // down to the five segment kinds — record windows have dedicated
-            // end-to-end tests.
-            let oracleKinds: Set<RunPlaySegmentWindowKind> = [
-                .fastest400m, .fastest1km, .slowest1km, .biggestClimb, .biggestDescent
-            ]
-            let segmentCandidates = bridgeResult.candidates.filter {
-                oracleKinds.contains($0.kind)
-            }
-
-            // Same count
-            XCTAssertEqual(segmentCandidates.count, oracleResult.count,
-                           "Fixture \(index): candidate count mismatch")
-
-            // Each candidate matches
-            for (bi, bc) in segmentCandidates.enumerated() {
-                let oc = oracleResult[bi]
-                let oracleKind: SwiftSegmentDetectorOracle.Candidate.Kind
-                switch bc.kind {
-                case .fastest400m: oracleKind = .fastest400m
-                case .fastest1km: oracleKind = .fastest1km
-                case .slowest1km: oracleKind = .slowest1km
-                case .biggestClimb: oracleKind = .biggestClimb
-                case .biggestDescent: oracleKind = .biggestDescent
-                case .fastestOneMile, .fastest5km, .fastest10km,
-                     .fastestHalfMarathon, .fastestMarathon:
-                    continue
-                }
-                XCTAssertEqual(oracleKind, oc.kind,
-                               "Fixture \(index): kind mismatch at position \(bi)")
-                assertClose(bc.startDistanceMeters, oc.startDistanceMeters,
-                            message: "Fixture \(index) candidate \(bi) startDistance")
-                assertClose(bc.endDistanceMeters, oc.endDistanceMeters,
-                            message: "Fixture \(index) candidate \(bi) endDistance")
-                assertClose(bc.selectionValue, oc.selectionValue,
-                            message: "Fixture \(index) candidate \(bi) selectionValue")
-            }
-        }
-    }
+    // MARK: - Degenerate routes
 
     func testBridgeHandlesEmptyRoute() throws {
         let result = try RunPlaySegmentDetectorBridge.search(
@@ -423,23 +338,6 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         )
     }
 
-    private func makeOracleConfig(
-        timeline: WorkoutTimeline,
-        bridgeConfig: SegmentDetectorSearchConfiguration
-    ) -> SwiftSegmentDetectorOracle.SearchConfig {
-        SwiftSegmentDetectorOracle.SearchConfig(
-            fastest400mDistance: bridgeConfig.fastest400mDistanceMeters,
-            fastest400mStep: bridgeConfig.fastest400mStepMeters,
-            oneKmDistance: bridgeConfig.oneKilometerDistanceMeters,
-            oneKmStep: bridgeConfig.oneKilometerStepMeters,
-            minPace: bridgeConfig.minimumValidPaceSecondsPerKilometer,
-            maxPace: bridgeConfig.maximumValidPaceSecondsPerKilometer,
-            elevationEnabled: bridgeConfig.elevationEnabled,
-            elevationWindow: bridgeConfig.elevationWindowDistanceMeters,
-            elevationStep: bridgeConfig.elevationStepMeters
-        )
-    }
-
     private func assertClose(
         _ a: Double, _ b: Double,
         message: String = "",
@@ -452,7 +350,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
     }
 }
 
-/// Deterministic test fixtures for bridge parity tests.
+/// Deterministic test fixtures for the bridge tests.
 private enum TestFixtures {
 
     static func makePauseSpanningRoute() -> [RoutePoint] {

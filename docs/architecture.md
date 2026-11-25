@@ -100,7 +100,7 @@ constants, same operation order, same limitations. Verification:
 - one golden digest test per kernel in `RunPlayCoreTests`
   (`*GoldenTests.swift`): one FNV-1a-64 digest per CI platform, derived from
   the C++ kernel before its removal, pins the outputs bit for bit;
-- Swift-oracle parity tests in `RunPlayCoreTests`;
+- adapter behaviour tests in `RunPlayCoreTests` (`RunPlay*BridgeTests`);
 - `EngineCallCardinalityTests`, which enforces one engine call per production
   operation;
 - the boundary validator `scripts/validate-swift-engine-boundaries.py` (source
@@ -362,7 +362,7 @@ library manifest versions.
 | Layer | Responsibility |
 | --- | --- |
 | **RunPlayEngine** | Per-workout coverage kernel: Web Mercator projection, grid-cell quantization, effective-segment gap breaking, Amanatides–Woo supercover traversal, per-workout de-duplication, deterministic cell ordering |
-| **RunPlayCore** | `PersonalHeatmap*` models, the heatmap coverage adapter (`RunPlayPersonalHeatmapCoverageAdapter.swift`), `PersonalHeatmapBuilder` date filtering, adaptive resolution, cross-workout aggregation, and snapshot finalization. The adapter increments the Core counts dictionary directly from the cell array the engine returns, without a production per-workout `[PersonalHeatmapCellID]`. `PersonalHeatmapProjection` / `PersonalHeatmapGridTraversal` remain as the public Swift reference implementation and parity oracle |
+| **RunPlayCore** | `PersonalHeatmap*` models, the heatmap coverage adapter (`RunPlayPersonalHeatmapCoverageAdapter.swift`), `PersonalHeatmapBuilder` date filtering, adaptive resolution, cross-workout aggregation, and snapshot finalization. The adapter increments the Core counts dictionary directly from the cell array the engine returns, without a production per-workout `[PersonalHeatmapCellID]`. `PersonalHeatmapProjection` / `PersonalHeatmapGridTraversal` remain as the public Swift reference implementation |
 | **RunPlayPlatform** | `RouteMapArea` polygons and map-rect fitting for areas |
 | **RunPlayStudio** | `PersonalHeatmapViewModel`, workspace mode, sidebar/menu entry, SwiftUI map fills |
 
@@ -439,7 +439,7 @@ through one engine call per invocation. Segment detection remains a material
 analysis phase.
 
 **Completed boundary:** `ElevationProfile` multi-pass construction runs in the
-engine. The golden digest and Swift-oracle parity tests preserve gap, spike,
+engine. The golden digest and the elevation tests preserve gap, spike,
 excursion, smoothing, and deadband gain/loss semantics. SegmentDetector
 consumes the Core elevation snapshot after the engine elevation build.
 
