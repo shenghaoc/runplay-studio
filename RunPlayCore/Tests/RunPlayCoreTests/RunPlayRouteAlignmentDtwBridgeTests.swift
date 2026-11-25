@@ -45,7 +45,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         }
     }
 
-    private struct Fixture {
+    struct Fixture {
         let name: String
         let primary: [RouteAlignmentSample]
         let comparison: [RouteAlignmentSample]
@@ -92,7 +92,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         return result
     }
 
-    private static func makeGeneratedFixtures(count: Int) -> [Fixture] {
+    static func makeGeneratedFixtures(count: Int) -> [Fixture] {
         var generator = DeterministicGenerator(seed: 0x5250_4C41_5944_5457)
         var fixtures: [Fixture] = []
         fixtures.reserveCapacity(count)
@@ -176,7 +176,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             effectiveSampleIntervalMeters: fixture.effectiveSampleIntervalMeters,
             policy: fixture.policy
         )
-        let bridge = try RunPlayRouteAlignmentDtwBridge.solve(
+        let bridge = try RunPlayRouteAlignmentDtwAdapter.solve(
             primary: fixture.primary,
             comparison: fixture.comparison,
             primaryRouteDistanceMeters: fixture.primaryRouteDistanceMeters,
@@ -466,7 +466,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         )
         for (primary, comparison) in [([RouteAlignmentSample](), samples), (samples, [])] {
             XCTAssertThrowsError(
-                try RunPlayRouteAlignmentDtwBridge.solve(
+                try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: primary,
                     comparison: comparison,
                     primaryRouteDistanceMeters: 1_000,
@@ -501,7 +501,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         ]
         for (primaryDistance, comparisonDistance, interval) in cases {
             XCTAssertThrowsError(
-                try RunPlayRouteAlignmentDtwBridge.solve(
+                try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: samples,
                     comparison: samples,
                     primaryRouteDistanceMeters: primaryDistance,
@@ -538,7 +538,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         ]
         for (name, policy) in policies {
             XCTAssertThrowsError(
-                try RunPlayRouteAlignmentDtwBridge.solve(
+                try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: samples,
                     comparison: samples,
                     primaryRouteDistanceMeters: 1_000,
@@ -570,7 +570,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         )
 
         // A negative band-cell budget behaves exactly like zero: always limited.
-        let negativeCells = try RunPlayRouteAlignmentDtwBridge.solve(
+        let negativeCells = try RunPlayRouteAlignmentDtwAdapter.solve(
             primary: a, comparison: b,
             primaryRouteDistanceMeters: 1_600,
             comparisonRouteDistanceMeters: 1_600,
@@ -584,7 +584,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         // the Swift `run <= maximumConsecutiveWarpSteps` comparison for run >= 1.
         let negativeWarp = RouteAlignmentPolicy(maximumConsecutiveWarpSteps: -3)
         let zeroWarp = RouteAlignmentPolicy(maximumConsecutiveWarpSteps: 0)
-        let negativeResult = try RunPlayRouteAlignmentDtwBridge.solve(
+        let negativeResult = try RunPlayRouteAlignmentDtwAdapter.solve(
             primary: a, comparison: b,
             primaryRouteDistanceMeters: 1_600,
             comparisonRouteDistanceMeters: 1_600,
@@ -592,7 +592,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             policy: negativeWarp,
             isCancelled: { false }
         )
-        let zeroResult = try RunPlayRouteAlignmentDtwBridge.solve(
+        let zeroResult = try RunPlayRouteAlignmentDtwAdapter.solve(
             primary: a, comparison: b,
             primaryRouteDistanceMeters: 1_600,
             comparisonRouteDistanceMeters: 1_600,
@@ -610,7 +610,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             noise: 0, headingProbability: 0, generator: &generator
         )
         XCTAssertThrowsError(
-            try RunPlayRouteAlignmentDtwBridge.solve(
+            try RunPlayRouteAlignmentDtwAdapter.solve(
                 primary: samples,
                 comparison: samples,
                 primaryRouteDistanceMeters: 2_400,
@@ -636,7 +636,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         )
         var previous: RunPlayRouteAlignmentDtwResult?
         for _ in 0..<5 {
-            let result = try RunPlayRouteAlignmentDtwBridge.solve(
+            let result = try RunPlayRouteAlignmentDtwAdapter.solve(
                 primary: a, comparison: b,
                 primaryRouteDistanceMeters: 3_100,
                 comparisonRouteDistanceMeters: 3_300,
@@ -683,7 +683,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             count: 72, distance: 3_400, startFraction: 0.05, offsetX: 18, offsetZ: 12,
             noise: 7, headingProbability: 0.7, generator: &generator
         )
-        let result = try RunPlayRouteAlignmentDtwBridge.solve(
+        let result = try RunPlayRouteAlignmentDtwAdapter.solve(
             primary: a, comparison: b,
             primaryRouteDistanceMeters: 3_600,
             comparisonRouteDistanceMeters: 3_400,

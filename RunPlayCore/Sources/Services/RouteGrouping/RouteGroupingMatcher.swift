@@ -53,7 +53,7 @@ public enum RouteGroupCandidateFilter {
 ///
 /// Reuses the Route-Aware comparison machinery end to end: the compact
 /// alignment samples come from `RouteAlignmentSampleBuilder`, the path from
-/// the existing one-bulk-call `RunPlayRouteAlignmentDtwBridge` solve, and the
+/// the existing one-bulk-call `RunPlayRouteAlignmentDtwAdapter` solve, and the
 /// direction probe from the aligner. No second DTW exists here — the only
 /// geometry work beyond the reuse is a scoring walk over the returned path
 /// cells, mirroring how the aligner derives its diagnostics.
@@ -189,7 +189,7 @@ public struct RouteGroupingMatcher: Sendable {
 
         let solved: RunPlayRouteAlignmentDtwResult
         do {
-            solved = try RunPlayRouteAlignmentDtwBridge.solve(
+            solved = try RunPlayRouteAlignmentDtwAdapter.solve(
                 primary: pair.primary,
                 comparison: comparison,
                 primaryRouteDistanceMeters: pair.primaryRouteDistanceMeters,

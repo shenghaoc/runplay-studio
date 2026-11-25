@@ -733,7 +733,7 @@ Two-stage matching, both owned by RunPlayCore:
    filtering work.
 2. **Stage 2 — shape confirmation over the existing constrained-DTW
    boundary.** The pair goes through `RouteAlignmentSampleBuilder` and the
-   same one-bulk-call `RunPlayRouteAlignmentDtwBridge` solve used by
+   same one-kernel-call `RunPlayRouteAlignmentDtwAdapter` solve used by
    Route-Aware comparison — there is no second DTW. A Swift scoring walk
    over the returned path accumulates **diagonally matched** distance per
    side and advance-weighted separations, exactly mirroring how the aligner
@@ -1344,12 +1344,12 @@ presented as route-aligned intervals.
 - complexity O(samples × bandWidth); slider lookup does not recompute DTW
 - in-memory cache only; alignment paths are never written to disk
 
-The path solve itself is native. The split is:
+The path solve runs in the pure Swift engine. The split is:
 
 | Layer | Responsibility |
 | --- | --- |
-| **RunPlayEngineCpp** | Bounded band-packed constrained-DTW path solve: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed diagonal → primary-only → comparison-only tie priority, consecutive-warp capping, open-suffix endpoint selection, deterministic path reconstruction |
-| **RunPlayCore** | `RouteAlignmentSampleBuilder` compact alignment samples, route-direction detection, `RunPlayRouteAlignmentDtwBridge` interop and path validation, alignment blocks and anchors, diagnostics and quality classification, public alignment models |
+| **RunPlayEngine** | Bounded band-packed constrained-DTW path solve: band radius, unmatched prefix/suffix expansion, packed row layout, band-cell budget validation, geometry-only point cost, open-beginning seeding, constrained transitions with fixed diagonal → primary-only → comparison-only tie priority, consecutive-warp capping, open-suffix endpoint selection, deterministic path reconstruction |
+| **RunPlayCore** | `RouteAlignmentSampleBuilder` compact alignment samples, route-direction detection, `RunPlayRouteAlignmentDtwAdapter` conversion and path validation, alignment blocks and anchors, diagnostics and quality classification, public alignment models |
 | **RunPlayStudio** | `ComparisonViewModel` cache, task lifecycle, request-generation stale-result suppression, Compare/Map/Chart UI |
 
 Bounds and boundary semantics:
@@ -1357,14 +1357,13 @@ Bounds and boundary semantics:
 - at most **2,000 samples per route** (`RouteAlignmentPolicy.maximumSamplesPerRoute`)
   and at most **4,000,000 band cells** (`maximumBandCells`), the latter checked
   as an estimate before allocation and exactly after the packed layout is built;
-- **one native call per alignment attempt**; no call per dynamic-programming row
-  or cell, and no callback into Swift;
-- both inputs and the path output are Swift-owned buffers borrowed
-  synchronously; C++ retains no pointer;
-- **on any failure status the output buffer is left completely unchanged**;
-- cancellation is checked before and after the native call and during conversion
-  and output translation, never inside the native call;
-- `resource_limit` surfaces as `.unavailable(.resourceLimit)` and `no_path` as
+- **one kernel call per alignment attempt**; neither the aligner nor the grouping
+  matcher calls a kernel per row or cell;
+- input spans are borrowed synchronously and the kernel returns an owned path
+  only on success; the C++ oracle is confined to tests and release comparisons;
+- cancellation is checked before and after the kernel call and during conversion
+  and output translation, not inside the solve;
+- `resourceLimit` surfaces as `.unavailable(.resourceLimit)` and `noPath` as
   `.unavailable(.routesTooFarApart)`; contract violations surface as
   `.unavailable(.algorithmFailure)`.
 

@@ -1,48 +1,13 @@
 import Foundation
+import RunPlayEngineTestSupport
+import Testing
+@testable import RunPlayCore
 
-// Keep imported C++ declarations confined to the internal Interop layer.
+// Native oracle for differential tests and release measurements only.
 internal import CxxStdlib
 internal import RunPlayEngineCpp
 
-/// Transition that produced one matched path cell.
-///
-/// Raw values match the engine's `RouteAlignmentDtwStepKind` and the historical
-/// Swift `StepKind` so diagnostics counting stays unchanged.
-enum RunPlayRouteAlignmentDtwStepKind: UInt8, Equatable, Sendable {
-    case diagonal = 0
-    case primaryOnly = 1
-    case comparisonOnly = 2
-}
-
-/// One matched sample pair on the reconstructed path, in forward order.
-struct RunPlayRouteAlignmentDtwPathCell: Equatable, Sendable {
-    let primaryIndex: Int
-    let comparisonIndex: Int
-    let step: RunPlayRouteAlignmentDtwStepKind
-}
-
-/// Pure-Swift projection of one complete constrained-DTW path solve.
-enum RunPlayRouteAlignmentDtwResult: Equatable, Sendable {
-    case success(
-        path: [RunPlayRouteAlignmentDtwPathCell],
-        bandRadius: Int,
-        bandCellCount: Int,
-        bestEndCost: Double
-    )
-
-    case resourceLimit
-    case noPath
-}
-
-/// Errors raised by the constrained-DTW path bridge.
-enum RunPlayRouteAlignmentDtwBridgeError: Error, Equatable {
-    case invalidPolicy
-    case invalidInputContract
-    case allocationFailure
-    case engineContractViolation
-}
-
-/// Production bridge for the bounded band-packed constrained-DTW path solve.
+/// Transitional C++ reference for differential tests and release benchmarks.
 ///
 /// Builds one compact native cost array per route plus one Swift-owned output
 /// buffer sized to the proven `n + m + 1` path upper bound, invokes
@@ -53,7 +18,7 @@ enum RunPlayRouteAlignmentDtwBridgeError: Error, Equatable {
 /// callback into Swift. Swift owns every buffer; C++ borrows them synchronously
 /// and retains nothing. Cancellation is cooperative and checked around the
 /// native call, never inside it.
-enum RunPlayRouteAlignmentDtwBridge {
+enum RunPlayRouteAlignmentDtwCppBridge {
     static func solve(
         primary: [RouteAlignmentSample],
         comparison: [RouteAlignmentSample],
@@ -61,7 +26,8 @@ enum RunPlayRouteAlignmentDtwBridge {
         comparisonRouteDistanceMeters: Double,
         effectiveSampleIntervalMeters: Double,
         policy: RouteAlignmentPolicy,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @Sendable () -> Bool,
+        checkUntouchedOutput: Bool = false
     ) throws -> RunPlayRouteAlignmentDtwResult {
         guard !primary.isEmpty, !comparison.isEmpty else {
             throw RunPlayRouteAlignmentDtwBridgeError.invalidInputContract
@@ -72,7 +38,7 @@ enum RunPlayRouteAlignmentDtwBridge {
         let nativePrimary = try makeCostSamples(primary, stride: stride, isCancelled: isCancelled)
         let nativeComparison = try makeCostSamples(comparison, stride: stride, isCancelled: isCancelled)
 
-        // A valid DTW path never exceeds n + m + 1 cells, so production never
+        // A valid DTW path never exceeds n + m + 1 cells, so this bridge never
         // needs a retry. Overflow here would mean the engine could not index the
         // result at all.
         let (sampleSum, sumOverflow) = primary.count.addingReportingOverflow(comparison.count)
@@ -85,8 +51,13 @@ enum RunPlayRouteAlignmentDtwBridge {
             throw CancellationError()
         }
 
+        let sentinel = checkUntouchedOutput ? runplay.RouteAlignmentDtwPathCell(
+            primary_index: 0xfeed_face_0000_0000,
+            comparison_index: 0x0bad_c0de_0000_0000,
+            step: .comparison_only
+        ) : runplay.RouteAlignmentDtwPathCell()
         var outputBuffer = ContiguousArray<runplay.RouteAlignmentDtwPathCell>(
-            repeating: runplay.RouteAlignmentDtwPathCell(),
+            repeating: sentinel,
             count: pathCapacity
         )
 
@@ -103,6 +74,14 @@ enum RunPlayRouteAlignmentDtwBridge {
 
         if isCancelled() {
             throw CancellationError()
+        }
+
+        if checkUntouchedOutput, summary.status != .success {
+            guard summary.written_path_count == 0, outputBuffer.allSatisfy({
+                $0.primary_index == sentinel.primary_index
+                    && $0.comparison_index == sentinel.comparison_index
+                    && $0.step == sentinel.step
+            }) else { throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation }
         }
 
         switch summary.status {
@@ -210,7 +189,6 @@ enum RunPlayRouteAlignmentDtwBridge {
         capacity: Int
     ) -> runplay.RouteAlignmentDtwSummary {
         let nativePolicy = makeNativePolicy(policy)
-        NativeCallObserver.record(.routeAlignmentDtw)
         return primary.withUnsafeBufferPointer { primaryBuffer in
             comparison.withUnsafeBufferPointer { comparisonBuffer in
                 outputBuffer.withUnsafeMutableBufferPointer { output in
@@ -325,7 +303,7 @@ enum RunPlayRouteAlignmentDtwBridge {
 /// Deliberately narrower than `RunPlayRouteAlignmentDtwResult`: it reports the
 /// engine's own counters without reconstructing or validating a Swift path, so
 /// a release benchmark can attribute time to the native solve alone. Production
-/// always goes through `RunPlayRouteAlignmentDtwBridge.solve`.
+/// always goes through the Swift adapter.
 struct RunPlayRouteAlignmentDtwNativeBenchmarkReport: Equatable, Sendable {
     /// `true` only for engine `success`; `resource_limit` and `no_path` are
     /// reported as `false` rather than thrown, matching `solve`'s treatment of
@@ -367,7 +345,7 @@ final class RunPlayRouteAlignmentDtwPreparedBenchmarkInput {
     }
 }
 
-extension RunPlayRouteAlignmentDtwBridge {
+extension RunPlayRouteAlignmentDtwCppBridge {
     /// Diagnostic-only: perform the conversion half of `solve` up front so a
     /// benchmark can time the native solve on its own. Not a production path.
     ///
@@ -447,6 +425,215 @@ extension RunPlayRouteAlignmentDtwBridge {
             throw RunPlayRouteAlignmentDtwBridgeError.allocationFailure
         default:
             throw RunPlayRouteAlignmentDtwBridgeError.engineContractViolation
+        }
+    }
+}
+
+@Suite struct RouteAlignmentDtwDifferentialTests {
+    private typealias Fixture = RunPlayRouteAlignmentDtwBridgeTests.Fixture
+
+    private enum Observation: Equatable {
+        case path([RunPlayRouteAlignmentDtwPathCell], radius: Int, cellCount: Int, costBits: UInt64)
+        case resourceLimit
+        case noPath
+        case invalidInput
+        case invalidPolicy
+
+        init(_ run: () throws -> RunPlayRouteAlignmentDtwResult) throws {
+            do {
+                switch try run() {
+                case .success(let path, let radius, let cells, let cost):
+                    self = .path(path, radius: radius, cellCount: cells, costBits: cost.bitPattern)
+                case .resourceLimit: self = .resourceLimit
+                case .noPath: self = .noPath
+                }
+            } catch RunPlayRouteAlignmentDtwBridgeError.invalidInputContract {
+                self = .invalidInput
+            } catch RunPlayRouteAlignmentDtwBridgeError.invalidPolicy {
+                self = .invalidPolicy
+            }
+        }
+
+        // The existing digest tags double as corpus coverage categories.
+        var category: UInt8 {
+            switch self {
+            case .path: 0
+            case .resourceLimit: 1
+            case .noPath: 2
+            case .invalidInput: 3
+            case .invalidPolicy: 4
+            }
+        }
+
+        func append(to digest: inout FNV1a64) {
+            digest.append(byte: category)
+            switch self {
+            case .path(let path, let radius, let cells, let bits):
+                digest.append(word: UInt64(radius))
+                digest.append(word: UInt64(cells))
+                digest.append(word: UInt64(path.count))
+                digest.append(word: bits)
+                for cell in path {
+                    digest.append(word: UInt64(cell.primaryIndex))
+                    digest.append(word: UInt64(cell.comparisonIndex))
+                    digest.append(byte: cell.step.rawValue)
+                }
+            case .resourceLimit, .noPath, .invalidInput, .invalidPolicy:
+                break
+            }
+        }
+    }
+
+    private static func bitCorpus() -> [Fixture] {
+        var cases = RunPlayRouteAlignmentDtwBridgeTests.makeGeneratedFixtures(count: 1_200)
+        var rng = SplitMix64(seed: 0x6474_772d_7377_6966)
+        func projected(x: Double, z: Double = 0, progress: Double = 0, heading: Double? = nil) -> RouteAlignmentSample {
+            RouteAlignmentSample(
+                xMeters: x, zMeters: z, distanceFromStartMeters: 0, routeSegmentIndex: 0,
+                elapsedSeconds: nil, headingRadians: heading, normalizedProgress: progress
+            )
+        }
+        func fixture(
+            _ name: String, _ a: [RouteAlignmentSample], _ b: [RouteAlignmentSample],
+            meters: Double = 40_000, interval: Double = 20, policy: RouteAlignmentPolicy = .default
+        ) -> Fixture {
+            Fixture(name: name, primary: a, comparison: b, primaryRouteDistanceMeters: meters,
+                    comparisonRouteDistanceMeters: meters, effectiveSampleIntervalMeters: interval, policy: policy)
+        }
+        let zero = projected(x: 0)
+        cases.append(fixture("empty primary", [], [zero]))
+        cases.append(fixture("empty comparison", [zero], []))
+        cases.append(fixture("both empty", [], []))
+        cases.append(fixture("one point, signed zeros", [zero], [projected(x: -0.0, z: -0.0, progress: -0.0)]))
+        for (name, value): (String, Double) in [
+            ("nan", .nan), ("+inf", .infinity), ("-inf", -.infinity),
+            ("subnormal", .leastNonzeroMagnitude), ("negative subnormal", -.leastNonzeroMagnitude),
+        ] {
+            cases.append(fixture(name + " x", [projected(x: value)], [zero]))
+            cases.append(fixture(name + " z", [zero], [projected(x: 0, z: value)]))
+            cases.append(fixture(name + " progress", [projected(x: 0, progress: value)], [zero]))
+            cases.append(fixture(name + " heading", [zero], [projected(x: 0, heading: value)]))
+            cases.append(fixture(name + " distance", [zero], [zero], meters: value))
+        }
+        for invalid: Double in [.nan, .infinity, -.infinity] {
+            cases.append(fixture("invalid band policy", [zero], [zero], policy: RouteAlignmentPolicy(bandWidthFraction: invalid)))
+        }
+        cases.append(fixture(
+            "finite cost above unreachable sentinel", [zero], [projected(x: 1e308)],
+            policy: RouteAlignmentPolicy(maximumSpatialCost: 1e308)
+        ))
+        cases.append(fixture(
+            "finite band width overflows by multiplication", [zero, zero], [zero, zero],
+            policy: RouteAlignmentPolicy(bandWidthFraction: .greatestFiniteMagnitude)
+        ))
+        // DTW accepts only local metre coordinates, not latitude/longitude.
+        // Stable, synthetic metre fixtures represent offsets across the
+        // antimeridian and projected pole/Mercator extremes, without libm in
+        // corpus construction or geo policy at the DTW boundary.
+        for (name, x, z): (String, Double, Double) in [
+            ("antimeridian", 22.25, 0), ("poles", 0, 10_007_543.5), ("Mercator limit", 0, 9_457_000),
+        ] {
+            cases.append(fixture(name, [projected(x: -x, z: -z)], [projected(x: x, z: z)]))
+        }
+        for i in 0..<48 {
+            let count = 1 + Int(rng.next() % 31)
+            let points = (0..<count).map { index in
+                projected(
+                    x: Double(Int(rng.next() % 4096) - 2048) / 8,
+                    z: Double(Int(rng.next() % 2048) - 1024) / 4,
+                    progress: Double(index) / Double(max(1, count - 1)),
+                    heading: index.isMultiple(of: 3) ? Double(Int(rng.next() % 2048) - 1024) / 256 : nil
+                )
+            }
+            cases.append(fixture("seeded metre route \(i)", points, Array(points.reversed())))
+        }
+        let route = (0..<2_000).map { projected(x: Double($0) * 20, progress: Double($0) / 1_999) }
+        cases.append(fixture("alignment product maximum 2,000", route, route))
+        let overBudget = RouteAlignmentPolicy(bandWidthFraction: 1, maximumBandCells: 4_000_000)
+        cases.append(fixture("4,000,000-cell estimate rejection", route, route, policy: overBudget))
+        let a = (0..<20).map { projected(x: Double($0) * 5, progress: Double($0) / 19) }
+        let b = (0..<100).map { projected(x: Double($0), progress: Double($0) / 99) }
+        for budget in [179, 180, 210, 211] {
+            let policy = RouteAlignmentPolicy(
+                bandWidthFraction: 0.01, maximumUnmatchedPrefixSuffixMeters: 400,
+                maximumUnmatchedPrefixSuffixFraction: 1, nonDiagonalStepPenalty: 0,
+                maximumConsecutiveWarpSteps: 6, spatialDistanceCostScaleMeters: 1,
+                maximumSpatialCost: 1e9, headingPenaltyWeight: 0, progressPenaltyWeight: 0,
+                maximumBandCells: budget
+            )
+            cases.append(fixture("packed budget \(budget)", a, b, meters: 400, interval: 100, policy: policy))
+        }
+        return cases
+    }
+
+    private static func observeSwift(_ fixture: Fixture) throws -> Observation {
+        try Observation {
+            try RunPlayRouteAlignmentDtwAdapter.solve(
+                primary: fixture.primary, comparison: fixture.comparison,
+                primaryRouteDistanceMeters: fixture.primaryRouteDistanceMeters,
+                comparisonRouteDistanceMeters: fixture.comparisonRouteDistanceMeters,
+                effectiveSampleIntervalMeters: fixture.effectiveSampleIntervalMeters,
+                policy: fixture.policy, isCancelled: { false }
+            )
+        }
+    }
+
+    private static var cppGolden: UInt64? {
+        #if os(macOS) && arch(arm64)
+        0x9fc7_5d5e_35cb_3762
+        #elseif os(Linux) && arch(x86_64)
+        0x8a94_d3cb_d385_aa8c
+        #else
+        nil
+        #endif
+    }
+
+    // Captured from the unchanged C++ port. This Swift-only test survives
+    // removal of the live native differential and its marshalling.
+    @Test(.enabled(if: RouteAlignmentDtwDifferentialTests.cppGolden != nil))
+    func swiftMatchesCppDerivedGolden() throws {
+        let expected = try #require(Self.cppGolden)
+        var digest = FNV1a64()
+        for fixture in Self.bitCorpus() {
+            try Self.observeSwift(fixture).append(to: &digest)
+        }
+        #expect(digest.value == expected)
+    }
+
+    @Test func cppAndSwiftMatchBitForBit() throws {
+        var cppDigest = FNV1a64()
+        var swiftDigest = FNV1a64()
+        var comparedCategories = Set<UInt8>()
+        let corpus = Self.bitCorpus()
+        #expect(corpus.count == 1_291)
+        for fixture in corpus {
+            let cpp = try Observation {
+                try RunPlayRouteAlignmentDtwCppBridge.solve(
+                    primary: fixture.primary, comparison: fixture.comparison,
+                    primaryRouteDistanceMeters: fixture.primaryRouteDistanceMeters,
+                    comparisonRouteDistanceMeters: fixture.comparisonRouteDistanceMeters,
+                    effectiveSampleIntervalMeters: fixture.effectiveSampleIntervalMeters,
+                    policy: fixture.policy, isCancelled: { false }, checkUntouchedOutput: true
+                )
+            }
+            let swift = try Self.observeSwift(fixture)
+            #expect(swift == cpp, "DTW mismatch: \(fixture.name)")
+            comparedCategories.insert(cpp.category)
+            cpp.append(to: &cppDigest)
+            swift.append(to: &swiftDigest)
+        }
+        #if os(macOS) && arch(arm64)
+        let platform = "macos-arm64"
+        #elseif os(Linux) && arch(x86_64)
+        let platform = "linux-x86_64"
+        #else
+        let platform = "other"
+        #endif
+        print("DTW_NATIVE_FNV1A64 \(String(cppDigest.value, radix: 16)) \(platform) cases=\(corpus.count)")
+        #expect(comparedCategories == [0, 1, 2, 3, 4])
+        #expect(swiftDigest.value == cppDigest.value)
+        if let expected = Self.cppGolden {
+            #expect(cppDigest.value == expected)
         }
     }
 }

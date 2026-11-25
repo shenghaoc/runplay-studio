@@ -13,7 +13,7 @@ Every public callable carries exactly one status:
 |---|---|---|
 | `process_route_quality_geometry` | **production** | called by `RouteQualityProcessor` via `RunPlayRouteQualityBridge` |
 | `compute_personal_heatmap_workout_coverage` | **production** | called by the personal heatmap builder via `RunPlayPersonalHeatmapCoverageBridge` |
-| `compute_constrained_dtw_path` | **production** | called by the Route-Aware aligner via `RunPlayRouteAlignmentDtwBridge` |
+| `compute_constrained_dtw_path` | **parity/contract verification** | retained for native tests and `RunPlayRouteAlignmentDtwCppBridge` in Core tests; production calls the Swift kernel |
 | `detect_segment_windows` | **production** | called by the segment detector via `RunPlaySegmentDetectorBridge` |
 | `build_elevation_profile` | **production** | called by the elevation profile builder via `RunPlayElevationProfileBridge` |
 | `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
@@ -232,16 +232,16 @@ manual memory management appears at or behind the public boundary.
 
 ## Swift facade mapping
 
-Each public pointer boundary is consumed by exactly one Interop bridge under
-`RunPlayCore/Sources/Interop/`. Production Swift never touches `runplay.*`
-symbols directly.
+Each production pointer boundary is consumed by exactly one Interop bridge under
+`RunPlayCore/Sources/Interop/`. The table distinguishes verification-only
+consumers. Swift production code outside Interop never touches `runplay.*` symbols.
 
 | C++ boundary | Swift bridge | Production consumer |
 |---|---|---|
 | `inspect_route_batch` | `RunPlayRouteBridge` | none — parity/contract tests only (route-size preflight is pure Swift via `WorkoutImportResourceLimits`) |
 | `process_route_quality_geometry` | `RunPlayRouteQualityBridge` | `RouteQualityProcessor` |
 | `compute_personal_heatmap_workout_coverage` | `RunPlayPersonalHeatmapCoverageBridge` | personal heatmap builder (one call per workout per adaptive attempt) |
-| `compute_constrained_dtw_path` | `RunPlayRouteAlignmentDtwBridge` | Route-Aware aligner (one call per alignment attempt) |
+| `compute_constrained_dtw_path` | `RunPlayRouteAlignmentDtwCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `detect_segment_windows` | `RunPlaySegmentDetectorBridge` | segment detector |
 | `build_elevation_profile` | `RunPlayElevationProfileBridge` | elevation profile builder |
 | `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketBridge` | `RouteMetricProfileBuilder` (pace/HR path) |

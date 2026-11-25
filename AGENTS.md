@@ -103,6 +103,9 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
   - heart-rate training load (`TrainingLoad`): interval-weighted Banister
     TRIMP accumulation and five-zone time bucketing, one engine call per
     training-load pass
+  - the constrained-DTW path solve for Route-Aware comparison
+    (`RouteAlignmentDtw`): the bounded band-packed solve described below, one
+    engine call per alignment attempt
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
