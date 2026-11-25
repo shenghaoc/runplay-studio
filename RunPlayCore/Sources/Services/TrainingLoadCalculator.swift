@@ -34,11 +34,11 @@ public enum TrainingLoadPolicy {
 
 /// Computes one workout's `TrainingLoadSnapshot`.
 ///
-/// Measured loads make exactly one native `compute_training_load` call over
+/// Measured loads make exactly one Swift training-load kernel call over
 /// same-segment heart-rate intervals — recording gaps and pauses never
 /// contribute weight, because interval weights only exist between adjacent
 /// samples of one segment. Estimated loads are pure Swift arithmetic
-/// over pace and duration and make no native call.
+/// over pace and duration and make no kernel call.
 ///
 /// Heart rate arrives as normalized `[HeartRateSample]` from
 /// `RunWorkout.heartRateSamples`, so a route-less workout whose heart rate came
