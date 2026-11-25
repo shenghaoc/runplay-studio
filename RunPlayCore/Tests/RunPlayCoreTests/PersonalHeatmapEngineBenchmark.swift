@@ -9,7 +9,7 @@ import XCTest
 ///
 /// The test keeps its former name so the benchmark script filter still matches.
 final class PersonalHeatmapEngineBenchmark: XCTestCase {
-    func testCompleteSwiftVersusCpp() throws {
+    func testCompleteSwiftEngineBaseline() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] == "1", "Set RUNPLAY_BENCHMARK=1")
         print("\n<!-- BEGIN RUNPLAY HEATMAP ENGINE BENCHMARK -->")
         try runFixture("H1 250 workouts x 1000 points, cell 50 m", routes: Self.routes(count: 250, points: 1_000), cell: 50, warmups: 3, iterations: 15)

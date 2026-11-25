@@ -166,105 +166,58 @@ final class PersonalHeatmapAggregationOptimizationTests: XCTestCase {
             workouts: workouts,
             configuration: configuration
         )
-        let expected = try SwiftPersonalHeatmapBuilderOracle().build(
-            workouts: workouts,
-            configuration: configuration
-        )
-        XCTAssertEqual(actual, expected)
         XCTAssertGreaterThan(actual.diagnostics.adaptiveResolutionRetries, 0)
-    }
 
-    func testGeneratedCompleteSnapshotParityForOneThousandFixtures() throws {
-        var generator = DeterministicGenerator(state: 0xA76E_31D9_B54C_208F)
-        let builder = PersonalHeatmapBuilder()
-        let oracle = SwiftPersonalHeatmapBuilderOracle()
-        let cellSizes: [Double] = [10, 25, 50, 100]
-        let renderBudgets = [8, 64, 5_000]
-        let intervalLimits: [Double] = [100, 1_000, 50_000]
+        // The complete snapshot, field by field. The values were taken from the
+        // production builder once the golden digests pinned the engine; they
+        // replace the comparison with the retired pre-migration builder, which
+        // also compared the whole snapshot exactly.
+        let expectedBounds = (
+            minLatitude: 1.2949128620196582, maxLatitude: 1.3006670438748733,
+            minLongitude: 103.79754138328568, maxLongitude: 103.80329704156355
+        )
+        XCTAssertEqual(actual.cells.count, 1)
+        let cell = try XCTUnwrap(actual.cells.first)
+        XCTAssertEqual(cell.id.x, 18_034)
+        XCTAssertEqual(cell.id.y, 225)
+        XCTAssertEqual(cell.workoutCount, 8)
+        XCTAssertEqual(cell.normalizedIntensity, 1.0)
+        XCTAssertEqual(cell.bounds.minLatitude, expectedBounds.minLatitude)
+        XCTAssertEqual(cell.bounds.maxLatitude, expectedBounds.maxLatitude)
+        XCTAssertEqual(cell.bounds.minLongitude, expectedBounds.minLongitude)
+        XCTAssertEqual(cell.bounds.maxLongitude, expectedBounds.maxLongitude)
 
-        for fixtureIndex in 0..<1_000 {
-            let workoutCount = generator.nextInt(upperBound: 6)
-            var workouts: [RunWorkout] = []
-            workouts.reserveCapacity(workoutCount)
+        XCTAssertEqual(actual.statistics.includedWorkoutCount, 8)
+        XCTAssertEqual(actual.statistics.totalDistanceMeters, 4_000)
+        XCTAssertEqual(actual.statistics.maximumOverlap, 8)
+        XCTAssertEqual(actual.statistics.requestedCellSizeMeters, 10)
+        XCTAssertEqual(actual.statistics.effectiveCellSizeMeters, 640)
+        XCTAssertTrue(actual.statistics.resolutionWasAdjusted)
+        XCTAssertEqual(actual.statistics.excludedUndatedWorkoutCount, 0)
+        XCTAssertEqual(actual.statistics.excludedNoRouteWorkoutCount, 0)
 
-            for workoutIndex in 0..<workoutCount {
-                let pointCount = generator.nextInt(upperBound: 13)
-                let hemisphere = generator.nextInt(upperBound: 4)
-                var latitude = hemisphere < 2 ? 1.30 : -33.86
-                var longitude = hemisphere.isMultiple(of: 2) ? 103.80 : -122.42
-                var points: [RoutePoint] = []
-                points.reserveCapacity(pointCount)
+        XCTAssertEqual(actual.diagnostics.totalCandidateWorkouts, 8)
+        XCTAssertEqual(actual.diagnostics.includedWorkouts, 8)
+        XCTAssertEqual(actual.diagnostics.excludedUndatedWorkouts, 0)
+        XCTAssertEqual(actual.diagnostics.excludedNoRouteWorkouts, 0)
+        XCTAssertEqual(actual.diagnostics.invalidRouteIntervalsSkipped, 0)
+        XCTAssertEqual(actual.diagnostics.adaptiveResolutionRetries, 6)
+        XCTAssertEqual(actual.diagnostics.requestedCellSizeMeters, 10)
+        XCTAssertEqual(actual.diagnostics.effectiveCellSizeMeters, 640)
+        XCTAssertEqual(actual.diagnostics.aggregatedCellCount, 1)
+        XCTAssertEqual(actual.diagnostics.renderedCellCount, 1)
 
-                for pointIndex in 0..<pointCount {
-                    let selector = generator.nextInt(upperBound: 23)
-                    if selector == 0 {
-                        points.append(point(
-                            latitude: 95,
-                            longitude: longitude,
-                            elapsed: Double(pointIndex),
-                            segment: pointIndex / 4
-                        ))
-                        continue
-                    }
-                    if selector == 1 {
-                        latitude += 0.2
-                        longitude += 0.2
-                    } else if selector != 2 {
-                        latitude += generator.nextSignedUnit() * 0.000_08
-                        longitude += generator.nextSignedUnit() * 0.000_08
-                    }
-                    points.append(point(
-                        latitude: latitude,
-                        longitude: longitude,
-                        distance: Double(pointIndex) * 8,
-                        elapsed: Double(pointIndex) * 4,
-                        segment: pointIndex / 4
-                    ))
-                }
+        XCTAssertEqual(actual.configuration.dateFilter, .allTime)
+        XCTAssertEqual(actual.configuration.cellSizeMeters, 640)
+        XCTAssertEqual(actual.configuration.minimumWorkoutCount, 1)
+        XCTAssertEqual(actual.configuration.maximumRenderedCellCount, 1)
+        XCTAssertEqual(actual.configuration.maximumIntervalMeters, 50_000)
 
-                let date: Date? = (fixtureIndex + workoutIndex).isMultiple(of: 7)
-                    ? nil
-                    : origin.addingTimeInterval(Double(workoutIndex) * 3_600)
-                let distance: Double
-                if (fixtureIndex + workoutIndex).isMultiple(of: 41) {
-                    distance = .nan
-                } else if (fixtureIndex + workoutIndex).isMultiple(of: 37) {
-                    distance = -10
-                } else {
-                    distance = Double(pointCount) * 8
-                }
-                workouts.append(workout(
-                    name: "F\(fixtureIndex)-W\(workoutIndex)",
-                    points: points,
-                    startDate: date,
-                    distanceMeters: distance
-                ))
-            }
-
-            let dateFilter: PersonalHeatmapDateFilter = fixtureIndex.isMultiple(of: 5)
-                ? .range(
-                    start: origin.addingTimeInterval(-1),
-                    end: origin.addingTimeInterval(7_200)
-                )
-                : .allTime
-            let configuration = PersonalHeatmapConfiguration(
-                dateFilter: dateFilter,
-                cellSizeMeters: cellSizes[fixtureIndex % cellSizes.count],
-                minimumWorkoutCount: fixtureIndex % 3 + 1,
-                maximumRenderedCellCount: renderBudgets[fixtureIndex % renderBudgets.count],
-                maximumIntervalMeters: intervalLimits[fixtureIndex % intervalLimits.count]
-            )
-
-            let expected = try oracle.build(
-                workouts: workouts,
-                configuration: configuration
-            )
-            let actual = try builder.build(
-                workouts: workouts,
-                configuration: configuration
-            )
-            XCTAssertEqual(actual, expected, "generated fixture \(fixtureIndex)")
-        }
+        let bounds = try XCTUnwrap(actual.bounds)
+        XCTAssertEqual(bounds.minLatitude, expectedBounds.minLatitude)
+        XCTAssertEqual(bounds.maxLatitude, expectedBounds.maxLatitude)
+        XCTAssertEqual(bounds.minLongitude, expectedBounds.minLongitude)
+        XCTAssertEqual(bounds.maxLongitude, expectedBounds.maxLongitude)
     }
 
     func testCancellationDuringDirectConsumptionPublishesNoSnapshot() {
@@ -347,25 +300,6 @@ final class PersonalHeatmapAggregationOptimizationTests: XCTestCase {
                 totalElapsedSeconds: points.last?.elapsedSeconds ?? 0
             )
         )
-    }
-}
-
-private struct DeterministicGenerator {
-    var state: UInt64
-
-    mutating func next() -> UInt64 {
-        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-        return state
-    }
-
-    mutating func nextInt(upperBound: Int) -> Int {
-        precondition(upperBound > 0)
-        return Int(next() % UInt64(upperBound))
-    }
-
-    mutating func nextSignedUnit() -> Double {
-        let unit = Double(next() >> 11) / Double(UInt64(1) << 53)
-        return unit * 2 - 1
     }
 }
 

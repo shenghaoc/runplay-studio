@@ -7,18 +7,20 @@ import XCTest
 /// `scripts/run-route-alignment-dtw-benchmark.sh`, which always builds release;
 /// debug timings for a band-packed dynamic-programming sweep are meaningless.
 ///
-/// Three timings are reported:
+/// Two timings are reported, as one `BenchmarkBaselineLine` per case:
 ///
-///   1. the complete Swift path oracle (`SwiftConstrainedDtwPathOracle`)
-///   2. the complete Swift adapter, including conversion and validation
-///   3. the complete production `ConstrainedDynamicTimeWarpingAligner`
+///   1. the complete Swift adapter, including conversion and validation, per
+///      fixture and summed over all fixtures
+///   2. the complete production `ConstrainedDynamicTimeWarpingAligner`
 ///
-/// The timings are absolute. There is no reference engine and no ratio gate.
+/// The timings are an absolute Swift baseline. There is no reference
+/// implementation and no ratio gate.
 ///
 /// Every fixture is deterministic. Randomness comes from a fixed-seed linear
 /// congruential generator, never from `arc4random`, `SystemRandomNumberGenerator`,
 /// or wall-clock state, so two runs on one machine compare like for like.
 final class RouteAlignmentDtwBenchmark: XCTestCase {
+    private static let benchmarkName = "RouteAlignmentDtwBenchmark"
     private static let warmupIterations = 5
     private static let measuredIterations = 20
 
@@ -53,11 +55,9 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         let primaryContext = WorkoutAnalysisContext(workout: workouts.primary)
         let comparisonContext = WorkoutAnalysisContext(workout: workouts.comparison)
 
-        var oracleSamples = [[Double]](repeating: [], count: fixtures.count)
         var swiftSamples = [[Double]](repeating: [], count: fixtures.count)
         var alignerSamples: [Double] = []
 
-        var oracleObservations = [SolveObservation?](repeating: nil, count: fixtures.count)
         var swiftObservations = [SolveObservation?](repeating: nil, count: fixtures.count)
         var alignerAvailable = false
         var alignerSampleCount = 0
@@ -65,19 +65,6 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         let total = Self.warmupIterations + Self.measuredIterations
         for iteration in 0..<total {
             for (index, fixture) in fixtures.enumerated() {
-                var oracleObservation: SolveObservation?
-                let oracleElapsed = Self.timeThrowing {
-                    let result = SwiftConstrainedDtwPathOracle.solve(
-                        primary: fixture.primary,
-                        comparison: fixture.comparison,
-                        primaryRouteDistanceMeters: fixture.primaryRouteDistanceMeters,
-                        comparisonRouteDistanceMeters: fixture.comparisonRouteDistanceMeters,
-                        effectiveSampleIntervalMeters: fixture.effectiveSampleIntervalMeters,
-                        policy: fixture.policy
-                    )
-                    oracleObservation = Self.observe(result)
-                }
-
                 var swiftResult: RunPlayRouteAlignmentDtwResult?
                 let swiftElapsed = try Self.timeThrowing {
                     swiftResult = try RunPlayRouteAlignmentDtwAdapter.solve(
@@ -91,11 +78,13 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
                     )
                 }
 
-                oracleObservations[index] = oracleObservation
-                swiftObservations[index] = Self.observe(try XCTUnwrap(swiftResult))
+                let observation = Self.observe(try XCTUnwrap(swiftResult))
+                if let previous = swiftObservations[index] {
+                    XCTAssertEqual(observation, previous, "\(fixture.name): repeated solves differ")
+                }
+                swiftObservations[index] = observation
 
                 guard iteration >= Self.warmupIterations else { continue }
-                oracleSamples[index].append(oracleElapsed)
                 swiftSamples[index].append(swiftElapsed)
             }
 
@@ -116,63 +105,54 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
             alignerSamples.append(alignerElapsed)
         }
 
-        // The benchmark is only meaningful while both implementations still agree.
         var bandCells = [Int](repeating: 0, count: fixtures.count)
         for (index, fixture) in fixtures.enumerated() {
-            guard
-                let oracle = oracleObservations[index],
-                let swift = swiftObservations[index]
-            else {
+            guard let swift = swiftObservations[index] else {
                 return XCTFail("Missing observation for fixture \(fixture.name)")
             }
-            XCTAssertEqual(swift.outcome, oracle.outcome, fixture.name)
-            XCTAssertEqual(swift.pathCount, oracle.pathCount, fixture.name)
-            XCTAssertEqual(swift.bandRadius, oracle.bandRadius, fixture.name)
-            XCTAssertEqual(swift.bandCellCount, oracle.bandCellCount, fixture.name)
-            XCTAssertEqual(
-                swift.bestEndCost,
-                oracle.bestEndCost,
-                accuracy: max(1e-9, abs(oracle.bestEndCost) * 1e-12),
-                fixture.name
-            )
             bandCells[index] = swift.bandCellCount
         }
         XCTAssertGreaterThan(alignerSampleCount, 0)
 
-        let oracleMedians = oracleSamples.map(Self.median)
         let swiftMedians = swiftSamples.map(Self.median)
-        let oracleTotal = oracleMedians.reduce(0, +)
-        let swiftTotal = swiftMedians.reduce(0, +)
         let alignerMedian = Self.median(alignerSamples)
         let peak = Self.peakResidentMemoryBytes()
 
-        var rows: [String] = []
+        var lines: [String] = []
         for (index, fixture) in fixtures.enumerated() {
-            rows.append(
-                Self.pad(fixture.name, 22)
-                    + Self.pad("\(fixture.primary.count)x\(fixture.comparison.count)", 14)
-                    + Self.padLeft(Self.formatCount(bandCells[index]), 12)
-                    + Self.padLeft(Self.format(oracleMedians[index]), 15)
-                    + Self.padLeft(Self.format(swiftMedians[index]), 16)
-            )
+            lines.append(BenchmarkBaselineLine.make(
+                Self.benchmarkName,
+                "adapter-\(fixture.name)",
+                counts: [
+                    "primary_samples": fixture.primary.count,
+                    "comparison_samples": fixture.comparison.count,
+                    "band_cells": bandCells[index],
+                ],
+                iterations: Self.measuredIterations,
+                medianMilliseconds: swiftMedians[index]
+            ))
         }
-        let totalRow = Self.pad("all fixtures", 22)
-            + Self.pad("", 14)
-            + Self.padLeft(Self.formatCount(bandCells.reduce(0, +)), 12)
-            + Self.padLeft(Self.format(oracleTotal), 15)
-            + Self.padLeft(Self.format(swiftTotal), 16)
+        lines.append(BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "adapter-all-fixtures",
+            counts: ["fixtures": fixtures.count, "band_cells": bandCells.reduce(0, +)],
+            iterations: Self.measuredIterations,
+            medianMilliseconds: swiftMedians.reduce(0, +)
+        ))
+        lines.append(BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "aligner",
+            counts: ["primary_samples": alignerSampleCount, "available": alignerAvailable ? 1 : 0],
+            iterations: Self.measuredIterations,
+            medianMilliseconds: alignerMedian
+        ))
+        lines.append(BenchmarkBaselineLine.memory(Self.benchmarkName, "peak-rss", bytes: peak))
 
         print("""
 
         RunPlay constrained-DTW path benchmark
-        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, per-fixture medians in ms
-        \(Self.pad("fixture", 22))\(Self.pad("samples", 14))\(Self.padLeft("band cells", 12))\(Self.padLeft("Swift oracle", 15))\(Self.padLeft("Swift adapter", 16))
-        \(rows.joined(separator: "\n"))
-        \(totalRow)
-        complete ConstrainedDynamicTimeWarpingAligner: \(Self.format(alignerMedian)) ms \
-        (\(alignerSampleCount)-sample workout pair, available=\(alignerAvailable))
-        peak RSS: \(peak.map { "\($0) bytes" } ?? "unavailable")
-        no merge gate: absolute Swift timings
+        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians in ms
+        \(lines.joined(separator: "\n"))
         """)
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
@@ -191,8 +171,9 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         let route = makeWorkout(noiseMeters: 0, pointCount: pointCount, generator: &generator)
         let context = WorkoutAnalysisContext(workout: route)
         let pair = try RouteAlignmentSampleBuilder().build(primary: route, comparison: route)
+        let iterations = 3
         var swift: [Double] = []
-        for _ in 0..<3 {
+        for _ in 0..<iterations {
             swift.append(try timeThrowing {
                 _ = try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: pair.primary, comparison: pair.comparison,
@@ -206,7 +187,7 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         let aligner = ConstrainedDynamicTimeWarpingAligner()
         var runs: [Double] = []
         var sampleCount = 0
-        for _ in 0..<3 {
+        for _ in 0..<iterations {
             runs.append(try timeThrowing {
                 let snapshot = try aligner.align(
                     primary: route, comparison: route, primaryContext: context, comparisonContext: context,
@@ -218,9 +199,20 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         XCTAssertEqual(sampleCount, pair.primary.count)
         XCTAssertGreaterThan(sampleCount, 0)
         XCTAssertLessThanOrEqual(sampleCount, RouteAlignmentPolicy.default.maximumSamplesPerRoute)
-        print("product-limit probe: \(pointCount) raw points, \(sampleCount) compact samples, "
-            + "Swift adapter median \(format(median(swift))) ms, "
-            + "full aligner median \(format(median(runs))) ms")
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "product-limit-adapter",
+            counts: ["raw_points": pointCount, "compact_samples": pair.primary.count],
+            iterations: iterations,
+            medianMilliseconds: median(swift)
+        ))
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "product-limit-aligner",
+            counts: ["raw_points": pointCount, "compact_samples": sampleCount],
+            iterations: iterations,
+            medianMilliseconds: median(runs)
+        ))
     }
 
     // MARK: - Maximum-band probe
@@ -262,18 +254,22 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         XCTAssertGreaterThan(bandCells, 3_500_000)
         XCTAssertLessThanOrEqual(bandCells, fixture.policy.maximumBandCells)
 
-        print("""
-
-        maximum-band probe (\(fixture.primary.count)x\(fixture.comparison.count) samples, \
-        band width fraction \(maximumBandWidthFraction))
-        band cells:      \(formatCount(bandCells)) of \(formatCount(fixture.policy.maximumBandCells)) allowed
-        band radius:     \(observation?.bandRadius ?? 0)
-        Swift solve:     \(observation?.pathCount ?? 0) path cells, \
-        best end cost \(String(format: "%.6f", observation?.bestEndCost ?? 0))
-        Swift median:    \(format(median(swiftTimes))) ms
-        Swift maximum:   \(format(swiftTimes.max() ?? 0)) ms
-        peak RSS:        \(peak.map { "\($0) bytes" } ?? "unavailable")
-        """)
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "maximum-band-adapter",
+            counts: [
+                "primary_samples": fixture.primary.count,
+                "comparison_samples": fixture.comparison.count,
+                "band_cells": bandCells,
+                "band_cell_limit": fixture.policy.maximumBandCells,
+                "band_radius": observation?.bandRadius ?? 0,
+                "path_cells": observation?.pathCount ?? 0,
+            ],
+            iterations: maximumBandIterations,
+            medianMilliseconds: median(swiftTimes),
+            maximumMilliseconds: swiftTimes.max() ?? 0
+        ))
+        print(BenchmarkBaselineLine.memory(benchmarkName, "maximum-band-peak-rss", bytes: peak))
     }
 
 
@@ -316,7 +312,7 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
         }
     }
 
-    /// The six standard fixtures the merge gate is measured over.
+    /// The six standard fixtures the baseline is measured over.
     ///
     /// Sample counts and route distances stay consistent at the production 20 m
     /// alignment interval, so every fixture is a shape the sample builder could
@@ -645,43 +641,14 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
 
     // MARK: - Observations
 
-    /// The comparable part of one solve, shared by the oracle and the bridge so
-    /// the benchmark can prove both still produce the same answer.
+    /// The comparable part of one solve, so repeated solves can be checked for
+    /// the same answer.
     private struct SolveObservation: Equatable {
         let outcome: String
         let pathCount: Int
         let bandRadius: Int
         let bandCellCount: Int
         let bestEndCost: Double
-    }
-
-    private static func observe(_ result: SwiftConstrainedDtwPathResult) -> SolveObservation {
-        switch result {
-        case .success(let path, let bandRadius, let bandCellCount, let bestEndCost):
-            return SolveObservation(
-                outcome: "success",
-                pathCount: path.count,
-                bandRadius: bandRadius,
-                bandCellCount: bandCellCount,
-                bestEndCost: bestEndCost
-            )
-        case .resourceLimit:
-            return SolveObservation(
-                outcome: "resourceLimit",
-                pathCount: 0,
-                bandRadius: 0,
-                bandCellCount: 0,
-                bestEndCost: 0
-            )
-        case .noPath:
-            return SolveObservation(
-                outcome: "noPath",
-                pathCount: 0,
-                bandRadius: 0,
-                bandCellCount: 0,
-                bestEndCost: 0
-            )
-        }
     }
 
     private static func observe(_ result: RunPlayRouteAlignmentDtwResult) -> SolveObservation {
@@ -730,32 +697,6 @@ final class RouteAlignmentDtwBenchmark: XCTestCase {
             return (sorted[mid - 1] + sorted[mid]) / 2
         }
         return sorted[mid]
-    }
-
-    private static func format(_ milliseconds: Double) -> String {
-        String(format: "%.3f", milliseconds)
-    }
-
-    /// Locale-independent thousands grouping; every count reported here is
-    /// non-negative.
-    private static func formatCount(_ value: Int) -> String {
-        let digits = String(value)
-        var result = ""
-        for (offset, character) in digits.enumerated() {
-            if offset > 0, (digits.count - offset).isMultiple(of: 3) {
-                result.append(",")
-            }
-            result.append(character)
-        }
-        return result
-    }
-
-    private static func pad(_ text: String, _ width: Int) -> String {
-        text.count >= width ? text : text + String(repeating: " ", count: width - text.count)
-    }
-
-    private static func padLeft(_ text: String, _ width: Int) -> String {
-        text.count >= width ? text : String(repeating: " ", count: width - text.count) + text
     }
 
     /// Peak resident size. RunPlayCore is cross-platform, so the probe uses the

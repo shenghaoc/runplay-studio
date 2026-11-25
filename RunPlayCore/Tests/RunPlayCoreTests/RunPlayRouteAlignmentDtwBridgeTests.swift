@@ -1,12 +1,9 @@
 import XCTest
 @testable import RunPlayCore
 
-/// Parity coverage for the C++23 constrained-DTW path bridge against the
-/// independent Swift path oracle.
-///
-/// The oracle is the pre-migration Swift implementation transcribed into the
-/// test target. Nothing in this file exercises the migrated kernel through the
-/// oracle or vice versa, so a shared-helper regression cannot hide a mismatch.
+/// Behaviour coverage for the constrained-DTW path adapter. The golden digest
+/// in `RouteAlignmentDtwGoldenTests` pins the full output over the generated
+/// fixtures defined here.
 final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
 
     // MARK: - Deterministic fixture generation
@@ -160,23 +157,10 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         return fixtures
     }
 
-    // MARK: - Parity assertion
+    // MARK: - Solve helper
 
-    @discardableResult
-    private func assertParity(
-        _ fixture: Fixture,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) throws -> RunPlayRouteAlignmentDtwResult {
-        let oracle = SwiftConstrainedDtwPathOracle.solve(
-            primary: fixture.primary,
-            comparison: fixture.comparison,
-            primaryRouteDistanceMeters: fixture.primaryRouteDistanceMeters,
-            comparisonRouteDistanceMeters: fixture.comparisonRouteDistanceMeters,
-            effectiveSampleIntervalMeters: fixture.effectiveSampleIntervalMeters,
-            policy: fixture.policy
-        )
-        let bridge = try RunPlayRouteAlignmentDtwAdapter.solve(
+    private func solve(_ fixture: Fixture) throws -> RunPlayRouteAlignmentDtwResult {
+        try RunPlayRouteAlignmentDtwAdapter.solve(
             primary: fixture.primary,
             comparison: fixture.comparison,
             primaryRouteDistanceMeters: fixture.primaryRouteDistanceMeters,
@@ -185,63 +169,11 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             policy: fixture.policy,
             isCancelled: { false }
         )
-
-        switch (oracle, bridge) {
-        case (.resourceLimit, .resourceLimit), (.noPath, .noPath):
-            break
-
-        case let (
-            .success(oraclePath, oracleRadius, oracleCells, oracleCost),
-            .success(bridgePath, bridgeRadius, bridgeCells, bridgeCost)
-        ):
-            XCTAssertEqual(
-                bridgeRadius, oracleRadius,
-                "\(fixture.name): band radius", file: file, line: line
-            )
-            XCTAssertEqual(
-                bridgeCells, oracleCells,
-                "\(fixture.name): packed band cell count", file: file, line: line
-            )
-            XCTAssertEqual(
-                bridgePath.count, oraclePath.count,
-                "\(fixture.name): required path count", file: file, line: line
-            )
-            let tolerance = max(1e-9, abs(oracleCost) * 1e-12)
-            XCTAssertEqual(
-                bridgeCost, oracleCost, accuracy: tolerance,
-                "\(fixture.name): best end cost", file: file, line: line
-            )
-            guard bridgePath.count == oraclePath.count else { break }
-            for step in 0..<oraclePath.count {
-                let expected = oraclePath[step]
-                let actual = bridgePath[step]
-                XCTAssertEqual(
-                    actual.primaryIndex, expected.primaryIndex,
-                    "\(fixture.name): primary index at \(step)", file: file, line: line
-                )
-                XCTAssertEqual(
-                    actual.comparisonIndex, expected.comparisonIndex,
-                    "\(fixture.name): comparison index at \(step)", file: file, line: line
-                )
-                XCTAssertEqual(
-                    actual.step.rawValue, expected.step.rawValue,
-                    "\(fixture.name): step kind at \(step)", file: file, line: line
-                )
-            }
-
-        default:
-            XCTFail(
-                "\(fixture.name): status mismatch oracle=\(oracle) bridge=\(bridge)",
-                file: file, line: line
-            )
-        }
-
-        return bridge
     }
 
     // MARK: - Generated coverage
 
-    func testGeneratedFixturesMatchTheSwiftPathOracle() throws {
+    func testGeneratedFixturesReachEveryOutcome() throws {
         let fixtures = Self.makeGeneratedFixtures(count: 1_200)
         XCTAssertGreaterThanOrEqual(fixtures.count, 1_000)
 
@@ -250,7 +182,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         var noPaths = 0
 
         for fixture in fixtures {
-            let result = try assertParity(fixture)
+            let result = try solve(fixture)
             switch result {
             case .success: successes += 1
             case .resourceLimit: resourceLimits += 1
@@ -265,159 +197,9 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
         XCTAssertGreaterThan(noPaths, 0, "generated no-path cases")
     }
 
-    // MARK: - Shape-specific parity
+    // MARK: - Outcome categories
 
-    func testIdenticalSequencesMatchOracle() throws {
-        var generator = DeterministicGenerator(seed: 11)
-        let samples = Self.makeSamples(
-            count: 60, distance: 3_000, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 0, headingProbability: 1, generator: &generator
-        )
-        try assertParity(Fixture(
-            name: "identical",
-            primary: samples,
-            comparison: samples,
-            primaryRouteDistanceMeters: 3_000,
-            comparisonRouteDistanceMeters: 3_000,
-            effectiveSampleIntervalMeters: 50,
-            policy: .default
-        ))
-    }
-
-    func testUnequalSampleCountsMatchOracle() throws {
-        var generator = DeterministicGenerator(seed: 12)
-        let long = Self.makeSamples(
-            count: 90, distance: 4_000, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 3, headingProbability: 0.8, generator: &generator
-        )
-        let short = Self.makeSamples(
-            count: 35, distance: 4_000, startFraction: 0, offsetX: 6, offsetZ: -4,
-            noise: 3, headingProbability: 0.8, generator: &generator
-        )
-        try assertParity(Fixture(
-            name: "primary-longer",
-            primary: long, comparison: short,
-            primaryRouteDistanceMeters: 4_000,
-            comparisonRouteDistanceMeters: 4_000,
-            effectiveSampleIntervalMeters: 45,
-            policy: .default
-        ))
-        try assertParity(Fixture(
-            name: "comparison-longer",
-            primary: short, comparison: long,
-            primaryRouteDistanceMeters: 4_000,
-            comparisonRouteDistanceMeters: 4_000,
-            effectiveSampleIntervalMeters: 45,
-            policy: .default
-        ))
-    }
-
-    func testPrefixAndSuffixOffsetsMatchOracle() throws {
-        var generator = DeterministicGenerator(seed: 13)
-        let base = Self.makeSamples(
-            count: 70, distance: 3_500, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 2, headingProbability: 0.6, generator: &generator
-        )
-        let shifted = Self.makeSamples(
-            count: 70, distance: 3_500, startFraction: 0.15, offsetX: 0, offsetZ: 0,
-            noise: 2, headingProbability: 0.6, generator: &generator
-        )
-        for (name, policy) in [
-            ("wide-open-ends", RouteAlignmentPolicy(
-                maximumUnmatchedPrefixSuffixMeters: 1_200,
-                maximumUnmatchedPrefixSuffixFraction: 0.4
-            )),
-            ("no-open-ends", RouteAlignmentPolicy(
-                maximumUnmatchedPrefixSuffixMeters: 0,
-                maximumUnmatchedPrefixSuffixFraction: 0
-            )),
-        ] {
-            try assertParity(Fixture(
-                name: name,
-                primary: base, comparison: shifted,
-                primaryRouteDistanceMeters: 3_500,
-                comparisonRouteDistanceMeters: 3_500,
-                effectiveSampleIntervalMeters: 50,
-                policy: policy
-            ))
-        }
-    }
-
-    func testWarpLimitsMatchOracle() throws {
-        var generator = DeterministicGenerator(seed: 14)
-        let dense = Self.makeSamples(
-            count: 80, distance: 3_000, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 8, headingProbability: 0.5, generator: &generator
-        )
-        let sparse = Self.makeSamples(
-            count: 41, distance: 3_000, startFraction: 0, offsetX: 12, offsetZ: 9,
-            noise: 8, headingProbability: 0.5, generator: &generator
-        )
-        for warpSteps in [0, 1, 2, 6, 64, 300] {
-            try assertParity(Fixture(
-                name: "warp-steps-\(warpSteps)",
-                primary: dense, comparison: sparse,
-                primaryRouteDistanceMeters: 3_000,
-                comparisonRouteDistanceMeters: 3_000,
-                effectiveSampleIntervalMeters: 40,
-                policy: RouteAlignmentPolicy(maximumConsecutiveWarpSteps: warpSteps)
-            ))
-        }
-    }
-
-    func testNarrowAndWideBandsMatchOracle() throws {
-        var generator = DeterministicGenerator(seed: 15)
-        let a = Self.makeSamples(
-            count: 64, distance: 2_400, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 5, headingProbability: 0.9, generator: &generator
-        )
-        let b = Self.makeSamples(
-            count: 58, distance: 2_600, startFraction: 0.05, offsetX: 20, offsetZ: -15,
-            noise: 5, headingProbability: 0.9, generator: &generator
-        )
-        for fraction in [0.001, 0.02, 0.15, 0.5, 1.0] {
-            try assertParity(Fixture(
-                name: "band-\(fraction)",
-                primary: a, comparison: b,
-                primaryRouteDistanceMeters: 2_400,
-                comparisonRouteDistanceMeters: 2_600,
-                effectiveSampleIntervalMeters: 42,
-                policy: RouteAlignmentPolicy(bandWidthFraction: fraction)
-            ))
-        }
-    }
-
-    func testUnusualFinitePolicyWeightsMatchOracle() throws {
-        var generator = DeterministicGenerator(seed: 16)
-        let a = Self.makeSamples(
-            count: 50, distance: 2_000, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 12, headingProbability: 0.45, generator: &generator
-        )
-        let b = Self.makeSamples(
-            count: 47, distance: 2_100, startFraction: 0, offsetX: 35, offsetZ: 25,
-            noise: 12, headingProbability: 0.45, generator: &generator
-        )
-        let policies: [(String, RouteAlignmentPolicy)] = [
-            ("negative-penalty", RouteAlignmentPolicy(nonDiagonalStepPenalty: -0.75)),
-            ("zero-spatial-cost", RouteAlignmentPolicy(maximumSpatialCost: 0)),
-            ("sub-unit-scale", RouteAlignmentPolicy(spatialDistanceCostScaleMeters: 0.001)),
-            ("negative-heading", RouteAlignmentPolicy(headingPenaltyWeight: -3)),
-            ("negative-progress", RouteAlignmentPolicy(progressPenaltyWeight: -4)),
-            ("huge-progress", RouteAlignmentPolicy(progressPenaltyWeight: 5_000)),
-        ]
-        for (name, policy) in policies {
-            try assertParity(Fixture(
-                name: name,
-                primary: a, comparison: b,
-                primaryRouteDistanceMeters: 2_000,
-                comparisonRouteDistanceMeters: 2_100,
-                effectiveSampleIntervalMeters: 44,
-                policy: policy
-            ))
-        }
-    }
-
-    func testResourceLimitAndNoPathCategoriesMatchOracle() throws {
+    func testResourceLimitAndNoPathCategories() throws {
         var generator = DeterministicGenerator(seed: 17)
         let a = Self.makeSamples(
             count: 60, distance: 2_500, startFraction: 0, offsetX: 0, offsetZ: 0,
@@ -428,7 +210,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             noise: 0, headingProbability: 0, generator: &generator
         )
 
-        let limited = try assertParity(Fixture(
+        let limited = try solve(Fixture(
             name: "resource-limit",
             primary: a, comparison: b,
             primaryRouteDistanceMeters: 2_500,
@@ -440,7 +222,7 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
 
         // Diagonal-only transitions cannot reach the open-suffix window when the
         // two routes have different sample counts.
-        let blocked = try assertParity(Fixture(
+        let blocked = try solve(Fixture(
             name: "no-path",
             primary: a, comparison: b,
             primaryRouteDistanceMeters: 2_500,
@@ -649,28 +431,6 @@ final class RunPlayRouteAlignmentDtwBridgeTests: XCTestCase {
             }
             previous = result
         }
-    }
-
-    func testMaximumSampleShapeMatchesOracle() throws {
-        var generator = DeterministicGenerator(seed: 24)
-        let policy = RouteAlignmentPolicy.default
-        let count = policy.maximumSamplesPerRoute
-        let a = Self.makeSamples(
-            count: count, distance: 40_000, startFraction: 0, offsetX: 0, offsetZ: 0,
-            noise: 6, headingProbability: 0.75, generator: &generator
-        )
-        let b = Self.makeSamples(
-            count: count, distance: 40_000, startFraction: 0, offsetX: 14, offsetZ: -11,
-            noise: 6, headingProbability: 0.75, generator: &generator
-        )
-        try assertParity(Fixture(
-            name: "maximum-samples",
-            primary: a, comparison: b,
-            primaryRouteDistanceMeters: 40_000,
-            comparisonRouteDistanceMeters: 40_000,
-            effectiveSampleIntervalMeters: 20,
-            policy: policy
-        ))
     }
 
     func testSolvedPathIsMonotoneAndInRange() throws {

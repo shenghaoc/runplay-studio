@@ -2,7 +2,15 @@ import Foundation
 import XCTest
 @testable import RunPlayCore
 
+/// Release benchmark for route-metric scale/bucket finalization.
+///
+/// Skipped unless `RUNPLAY_BENCHMARK=1`; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1`
+/// adds the 1,000,000-point cases. Run through
+/// `scripts/run-route-metric-scale-bucket-benchmark.sh`. Each case prints one
+/// `BenchmarkBaselineLine`: an absolute Swift timing with no ratio gate.
 final class RouteMetricScaleBucketBenchmark: XCTestCase {
+    private static let benchmarkName = "RouteMetricScaleBucketBenchmark"
+
     private var enabled: Bool {
         ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK"] == "1"
     }
@@ -13,12 +21,10 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1"
         let memoryBefore = processMemorySnapshot()
         print("\n<!-- BEGIN RUNPLAY ROUTE METRIC SCALE BUCKET BENCHMARK -->")
-        print("\n# Route metric scale/bucket benchmark\n")
-        print("| Fixture | Swift oracle ms | Complete Swift adapter ms | Public materialization ms | Production profile ms |")
-        print("|---|---:|---:|---:|---:|")
+        print("\n# Route metric scale/bucket benchmark (medians in ms)\n")
 
         try runFixture(
-            label: "R1 1k pace",
+            label: "R1-1k-pace",
             count: 1_000,
             warmups: 5,
             iterations: 20,
@@ -26,7 +32,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             mode: .pace
         )
         try runFixture(
-            label: "R2 100k pace",
+            label: "R2-100k-pace",
             count: 100_000,
             warmups: 2,
             iterations: 5,
@@ -34,7 +40,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             mode: .pace
         )
         try runFixture(
-            label: "R3 100k HR gaps",
+            label: "R3-100k-heart-rate-gaps",
             count: 100_000,
             warmups: 2,
             iterations: 5,
@@ -43,7 +49,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             gaps: true
         )
         try runFixture(
-            label: "R4 100k elevation",
+            label: "R4-100k-elevation",
             count: 100_000,
             warmups: 2,
             iterations: 5,
@@ -51,7 +57,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             mode: .correctedElevation
         )
         try runFixture(
-            label: "R5 100k no scale",
+            label: "R5-100k-no-scale",
             count: 100_000,
             warmups: 2,
             iterations: 5,
@@ -60,7 +66,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             policy: RouteMetricColorPolicy(minimumValidIntervalCount: 200_000)
         )
         try runFixture(
-            label: "R6 100k duplicates/zero",
+            label: "R6-100k-duplicates-zero",
             count: 100_000,
             warmups: 2,
             iterations: 5,
@@ -72,7 +78,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
         if includeProductLimit {
             let product = HotspotProfilingFixtures.c5()
             try runFixture(
-                label: "R7 1M pace",
+                label: "R7-1M-pace",
                 count: 1_000_000,
                 warmups: 1,
                 iterations: 3,
@@ -84,17 +90,26 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             for _ in 0..<1 {
                 _ = try builder.probe(routePoints: product.routePoints, context: context)
             }
-            let probe = try timings(iterations: 3) {
+            let probeIterations = 3
+            let probe = try timings(iterations: probeIterations) {
                 _ = try builder.probe(routePoints: product.routePoints, context: context)
             }
-            print("\nR8 complete three-mode product-limit probe median ms: \(format(median(probe)))")
+            print(BenchmarkBaselineLine.make(
+                Self.benchmarkName,
+                "R8-1M-three-mode-probe",
+                counts: ["points": product.routePoints.count],
+                iterations: probeIterations,
+                medianMilliseconds: median(probe)
+            ))
         } else {
             print("\n_R7/R8 skipped; set RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1._")
         }
 
         let memoryAfter = processMemorySnapshot()
-        print("Resident before/after: \(memoryBefore.residentBytes) / \(memoryAfter.residentBytes)")
-        print("High-water before/after: \(memoryBefore.highWaterResidentBytes) / \(memoryAfter.highWaterResidentBytes)")
+        print(BenchmarkBaselineLine.memory(Self.benchmarkName, "resident-before", bytes: memoryBefore.residentBytes))
+        print(BenchmarkBaselineLine.memory(Self.benchmarkName, "resident-after", bytes: memoryAfter.residentBytes))
+        print(BenchmarkBaselineLine.memory(Self.benchmarkName, "high-water-before", bytes: memoryBefore.highWaterResidentBytes))
+        print(BenchmarkBaselineLine.memory(Self.benchmarkName, "high-water-after", bytes: memoryAfter.highWaterResidentBytes))
         print("\n<!-- END RUNPLAY ROUTE METRIC SCALE BUCKET BENCHMARK -->\n")
     }
 
@@ -121,11 +136,7 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
         }
 
         for _ in 0..<warmups {
-            _ = oracle(metrics, weights, policy)
             _ = try bridge(metrics, weights, policy)
-        }
-        let oracleTimes = timings(iterations: iterations) {
-            _ = oracle(metrics, weights, policy)
         }
         let swiftTimes = try timings(iterations: iterations) {
             _ = try bridge(metrics, weights, policy)
@@ -144,7 +155,27 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             let intervals = materializeIntervals(metrics: metrics, weights: weights, result: result)
             withExtendedLifetime(intervals) {}
         }
-        print("| \(label) | \(format(median(oracleTimes))) | \(format(median(swiftTimes))) | \(format(median(materializationTimes))) | \(format(median(productionTimes))) |")
+        print(BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "\(label)-adapter",
+            counts: ["intervals": count],
+            iterations: iterations,
+            medianMilliseconds: median(swiftTimes)
+        ))
+        print(BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "\(label)-materialization",
+            counts: ["intervals": count],
+            iterations: iterations,
+            medianMilliseconds: median(materializationTimes)
+        ))
+        print(BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "\(label)-profile",
+            counts: ["points": workout.routePoints.count],
+            iterations: iterations,
+            medianMilliseconds: median(productionTimes)
+        ))
     }
 
     private func materializeIntervals(
@@ -171,22 +202,6 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             ))
         }
         return intervals
-    }
-
-    private func oracle(
-        _ metrics: [Double?],
-        _ weights: [Double],
-        _ policy: RouteMetricColorPolicy
-    ) -> SwiftRouteMetricScaleBucketOracle.Result {
-        SwiftRouteMetricScaleBucketOracle.assign(
-            metricValues: metrics,
-            weightsMeters: weights,
-            lowerQuantile: policy.lowerQuantile,
-            upperQuantile: policy.upperQuantile,
-            minimumScaleSpan: 0,
-            minimumValidIntervalCount: policy.minimumValidIntervalCount,
-            bucketCount: policy.bucketCount
-        )
     }
 
     private func bridge(
@@ -236,9 +251,5 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
     private func median(_ values: [Double]) -> Double {
         let sorted = values.sorted()
         return sorted[sorted.count / 2]
-    }
-
-    private func format(_ value: Double) -> String {
-        String(format: "%.3f", value)
     }
 }

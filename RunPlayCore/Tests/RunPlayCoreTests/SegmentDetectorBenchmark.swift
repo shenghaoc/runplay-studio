@@ -4,9 +4,12 @@ import XCTest
 /// Reproducible release benchmark for the complete SegmentDetector.
 ///
 /// Ordinary CI skips wall-clock work. Run through
-/// `scripts/run-segment-detector-benchmark.sh`; the benchmark reports timings
-/// but asserts only semantic parity.
+/// `scripts/run-segment-detector-benchmark.sh`. Each case prints one
+/// `BenchmarkBaselineLine`: an absolute Swift timing with no ratio gate. The
+/// only assertions are that repeated runs give identical durable highlights
+/// and identical adapter candidates.
 final class SegmentDetectorBenchmark: XCTestCase {
+    private static let benchmarkName = "SegmentDetectorBenchmark"
     private static let standardPointCount = 100_000
     private static let productLimitPointCount = 1_000_000
     private static let warmupIterations = 3
@@ -18,7 +21,14 @@ final class SegmentDetectorBenchmark: XCTestCase {
             "Set RUNPLAY_BENCHMARK=1 to run the release benchmark."
         )
 
+        print("""
+
+        RunPlay SegmentDetector benchmark
+        fixture: four segments, elevation and heart rate; medians in ms
+        """)
+
         try Self.runFixture(
+            casePrefix: "",
             pointCount: Self.standardPointCount,
             warmups: Self.warmupIterations,
             measurements: Self.measuredIterations
@@ -26,6 +36,7 @@ final class SegmentDetectorBenchmark: XCTestCase {
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
             try Self.runFixture(
+                casePrefix: "product-limit-",
                 pointCount: Self.productLimitPointCount,
                 warmups: 1,
                 measurements: 3
@@ -34,6 +45,7 @@ final class SegmentDetectorBenchmark: XCTestCase {
     }
 
     private static func runFixture(
+        casePrefix: String,
         pointCount: Int,
         warmups: Int,
         measurements: Int
@@ -45,19 +57,13 @@ final class SegmentDetectorBenchmark: XCTestCase {
             policy: .runningDefault
         )
         var swiftAdapterTimes: [Double] = []
-        var oracleSamples: [Double] = []
         var productionSamples: [Double] = []
-        var oracleResult: [SegmentHighlight] = []
-        var productionResult: [SegmentHighlight] = []
+        var referenceHighlights: [String]?
         var referenceCandidates: [UInt64]?
+        var candidateCount = 0
 
         for iteration in 0..<(warmups + measurements) {
-            let oracleElapsed = time {
-                oracleResult = SwiftSegmentDetectorOracle.detectSegments(
-                    from: workout,
-                    context: context
-                )
-            }
+            var productionResult: [SegmentHighlight] = []
             let productionElapsed = try timeThrowing {
                 productionResult = try SegmentDetector.detectSegments(
                     from: workout,
@@ -66,6 +72,11 @@ final class SegmentDetectorBenchmark: XCTestCase {
                     isCancelled: { false }
                 )
             }
+            let highlights = digest(productionResult)
+            if let referenceHighlights {
+                XCTAssertEqual(highlights, referenceHighlights)
+            }
+            referenceHighlights = highlights
 
             var swift: RunPlaySegmentWindowSearchResult?
             let swiftElapsed = try timeThrowing {
@@ -75,7 +86,9 @@ final class SegmentDetectorBenchmark: XCTestCase {
                     isCancelled: { false }
                 )
             }
-            let candidates = candidateDigest(try XCTUnwrap(swift))
+            let searchResult = try XCTUnwrap(swift)
+            candidateCount = searchResult.candidates.count
+            let candidates = candidateDigest(searchResult)
             if let referenceCandidates {
                 XCTAssertEqual(candidates, referenceCandidates)
             }
@@ -83,35 +96,23 @@ final class SegmentDetectorBenchmark: XCTestCase {
 
             guard iteration >= warmups else { continue }
             swiftAdapterTimes.append(swiftElapsed)
-            oracleSamples.append(oracleElapsed)
             productionSamples.append(productionElapsed)
         }
 
-        let productionDigest = digest(productionResult)
-        let oracleDigest = digest(oracleResult)
-        guard productionDigest == oracleDigest else {
-            XCTFail("""
-            SegmentDetector durable highlight parity failed.
-            production: \(productionDigest)
-            Swift oracle: \(oracleDigest)
-            """)
-            return
-        }
-
-        let oracleMedian = median(oracleSamples)
-        let productionMedian = median(productionSamples)
-        let swiftAdapterMedian = median(swiftAdapterTimes)
-        print("""
-
-        RunPlay SegmentDetector benchmark
-        fixture: \(pointCount) points, four segments, elevation and heart rate
-        \(warmups) warm-ups + \(measurements) measured iterations, medians
-        pre-migration Swift oracle: \(format(oracleMedian)) ms
-        complete production Swift:      \(format(productionMedian)) ms
-        production / oracle ratio:  \(String(format: "%.3f", productionMedian / max(oracleMedian, 1e-12)))
-        complete Swift adapter:      \(format(swiftAdapterMedian)) ms
-        semantic merge gate: exact durable highlight parity with the Swift oracle
-        """)
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "\(casePrefix)detector",
+            counts: ["points": pointCount, "highlights": referenceHighlights?.count ?? 0],
+            iterations: measurements,
+            medianMilliseconds: median(productionSamples)
+        ))
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "\(casePrefix)adapter",
+            counts: ["points": pointCount, "candidates": candidateCount],
+            iterations: measurements,
+            medianMilliseconds: median(swiftAdapterTimes)
+        ))
     }
 
     private static func makeFixture(_ count: Int) -> [RoutePoint] {
@@ -182,12 +183,6 @@ final class SegmentDetectorBenchmark: XCTestCase {
         }
     }
 
-    private static func time(_ body: () -> Void) -> Double {
-        let start = DispatchTime.now().uptimeNanoseconds
-        body()
-        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
-    }
-
     private static func timeThrowing(_ body: () throws -> Void) rethrows -> Double {
         let start = DispatchTime.now().uptimeNanoseconds
         try body()
@@ -201,9 +196,5 @@ final class SegmentDetectorBenchmark: XCTestCase {
         return sorted.count.isMultiple(of: 2)
             ? (sorted[middle - 1] + sorted[middle]) / 2
             : sorted[middle]
-    }
-
-    private static func format(_ milliseconds: Double) -> String {
-        String(format: "%.3f", milliseconds)
     }
 }

@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 #
-# Reproducible release benchmark for the constrained-DTW path cutover.
+# Reproducible release benchmark for the constrained-DTW path solver.
 #
 # Reports medians over six deterministic fixtures — near-identical 500x500,
 # noisy 1000x1000, maximum-sample 2000x2000, unequal sample counts, open
-# prefix/suffix, and warp-heavy — plus a per-fixture and total comparison of:
+# prefix/suffix, and warp-heavy — for:
 #
-#   1. complete Swift path oracle
-#   2. complete engine adapter (conversion + solve + output validation)
-#   3. complete ConstrainedDynamicTimeWarpingAligner on a workout pair
+#   1. complete engine adapter (conversion + solve + output validation), per
+#      fixture and summed over all fixtures
+#   2. complete ConstrainedDynamicTimeWarpingAligner on a workout pair
 #
-# The timings are absolute: the C++ kernel that the adapter was gated against
-# (at most 1.10x) no longer exists. Debug timings for a band-packed dynamic-programming sweep are meaningless —
-# always release.
+# Each case prints one stable line, "RouteAlignmentDtwBenchmark <case>
+# <count>=<value> ... iterations=<n> swift_ms=<median>". The timings are an
+# absolute Swift baseline with no ratio gate. Debug timings for a band-packed
+# dynamic-programming sweep are meaningless — always release.
 #
 # Optional worst-case probe:
 #
@@ -20,7 +21,7 @@
 #
 # adds a deterministic fixture that packs ~3.93 M band cells against the
 # 4,000,000-cell policy ceiling and reports the band-cell count, the adapter
-# median and maximum, and peak resident memory. It costs
+# median and maximum (swift_max_ms), and peak resident memory. It costs
 # roughly 40 MB of engine-side state, so it is opt-in and is not part of
 # ordinary CI. RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1 also probes a one-million-point
 # synthetic workout through the same production compact-sampling limit.
@@ -43,10 +44,7 @@ swift test \
   cat "$log" >&2
   exit 1
 fi
-sed -n \
-    -e '/RunPlay constrained-DTW path benchmark/,/merge gate/p' \
-    -e '/maximum-band probe/,/peak RSS/p' \
-    -e '/product-limit probe:/p' "$log"
+grep -E '^(RunPlay constrained-DTW path benchmark|RouteAlignmentDtwBenchmark )' "$log" || true
 if ! grep -Eq "Test Case .*testRouteAlignmentDtwBenchmark.* passed" "$log"; then
   cat "$log" >&2
   echo "Expected one executed RouteAlignmentDtwBenchmark test." >&2

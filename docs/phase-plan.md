@@ -292,10 +292,11 @@ nonescaping Interop closure. Production creates no per-workout cell array;
 pointer lifetime, public models, equality, persistence, cancellation, and
 native-call count are unchanged.
 
-`scripts/run-personal-heatmap-benchmark.sh` remains the merge gate: complete
-production builder against complete Swift builder oracle. The extra subtimings
-it prints are independent diagnostics and are not additive components of that
-total. It also runs the opt-in same-binary aggregation comparison. Profile the
+`scripts/run-personal-heatmap-benchmark.sh` was the merge gate for this
+phase: complete production builder against complete Swift builder oracle. The
+oracle has since been retired, and the runner now reports an absolute Swift
+baseline. The extra subtimings it prints are independent diagnostics and are
+not additive components of that total. It also runs the opt-in same-binary aggregation comparison. Profile the
 remaining active production hotspots before selecting another C++ migration.
 
 ### Phase: Heart-Rate Training Load

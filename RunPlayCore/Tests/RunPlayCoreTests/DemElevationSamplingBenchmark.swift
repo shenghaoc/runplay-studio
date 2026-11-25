@@ -8,8 +8,11 @@ import XCTest
 /// `scripts/run-route-quality-benchmark.sh` in release mode, which prints this
 /// report after the route-quality one. Tiles are synthetic and decoded once up
 /// front, so "tile hand-off" measures only the in-memory hand-off; PNG decoding
-/// cost belongs to the Platform tile source, not to this boundary.
+/// cost belongs to the Platform tile source, not to this boundary. Each case
+/// prints one `BenchmarkBaselineLine`: an absolute Swift timing with no ratio
+/// gate.
 final class DemElevationSamplingBenchmark: XCTestCase {
+    private static let benchmarkName = "DemElevationSamplingBenchmark"
     private static let pointCount = 100_000
     private static let productLimitCount = 1_000_000
     private static let warmupIterations = 3
@@ -34,20 +37,7 @@ final class DemElevationSamplingBenchmark: XCTestCase {
         }
 
         var completeSamples: [Double] = []
-        var oracleSamples: [Double] = []
         var sampledCount = 0
-        var oracleSampledCount = 0
-
-        let oracleGrid = SwiftDemSamplingOracle.Grid(
-            zoom: Self.grid.zoom,
-            tileSize: Self.grid.tileSize,
-            maximumTileCount: Self.grid.maximumTileCount,
-            plausibleElevationMeters: Self.grid.plausibleElevationMeters
-        )
-        let coordinates = points.map { (latitude: $0.latitude, longitude: $0.longitude) }
-        let oracleTiles = Dictionary(
-            uniqueKeysWithValues: tiles.map { (SwiftDemSamplingOracle.Key(x: $0.key.x, y: $0.key.y), $0.value.heightsMeters) }
-        )
 
         let total = Self.warmupIterations + Self.measuredIterations
         for iteration in 0..<total {
@@ -63,32 +53,26 @@ final class DemElevationSamplingBenchmark: XCTestCase {
                     sampledCount = result.sampledCount
                 }
             }
-            let oracleElapsed = Self.time {
-                let plan = SwiftDemSamplingOracle.plan(coordinates, grid: oracleGrid)
-                guard case .planned = plan else { return }
-                let samples = SwiftDemSamplingOracle.sample(coordinates, grid: oracleGrid, tiles: oracleTiles)
-                oracleSampledCount = samples.reduce(into: 0) { count, sample in
-                    if case .sampled = sample { count += 1 }
-                }
-            }
 
             guard iteration >= Self.warmupIterations else { continue }
             completeSamples.append(completeElapsed)
-            oracleSamples.append(oracleElapsed)
         }
 
         XCTAssertEqual(sampledCount, Self.pointCount, "every point of the synthetic route is covered")
-        XCTAssertEqual(oracleSampledCount, sampledCount)
 
-        let swiftMedian = Self.median(completeSamples)
+        // The complete adapter: plan, tile hand-off, and sample.
+        let adapterLine = BenchmarkBaselineLine.make(
+            Self.benchmarkName,
+            "adapter",
+            counts: ["points": Self.pointCount, "tiles": tiles.count, "zoom": Self.grid.zoom, "tile_size": Self.grid.tileSize],
+            iterations: Self.measuredIterations,
+            medianMilliseconds: Self.median(completeSamples)
+        )
         print("""
 
         RunPlay DEM elevation sampling benchmark
-        fixture: \(Self.pointCount) points, zoom \(Self.grid.zoom), \(Self.grid.tileSize)-pixel tiles, \(tiles.count) planned tiles
-        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians
-        complete Swift adapter (plan, hand-off, sample): \(Self.format(swiftMedian)) ms
-        Swift reference oracle (plan + sample): \(Self.format(Self.median(oracleSamples))) ms
-        DEM sampling complete
+        \(Self.warmupIterations) warm-ups + \(Self.measuredIterations) measured iterations, medians in ms
+        \(adapterLine)
         """)
 
         if ProcessInfo.processInfo.environment["RUNPLAY_BENCHMARK_PRODUCT_LIMIT"] == "1" {
@@ -101,7 +85,9 @@ final class DemElevationSamplingBenchmark: XCTestCase {
         let tiles = try syntheticTiles(for: points)
         var swiftSamples: [Double] = []
         let loadTiles: ([RunPlayDemTileKey]) -> [RunPlayDemDecodedTile] = { planned in planned.compactMap { tiles[$0] } }
-        for iteration in 0..<4 {
+        let warmups = 1
+        let iterations = 3
+        for iteration in 0..<(warmups + iterations) {
             let swiftElapsed = try timeThrowing {
                 _ = try RunPlayDemElevationBridge.sampleElevations(
                     routePoints: points, grid: grid,
@@ -109,14 +95,21 @@ final class DemElevationSamplingBenchmark: XCTestCase {
                     loadTiles: loadTiles, isCancelled: { false }
                 )
             }
-            if iteration > 0 { swiftSamples.append(swiftElapsed) }
+            if iteration >= warmups { swiftSamples.append(swiftElapsed) }
         }
         let memory = processMemorySnapshot()
-        print("""
-        DEM product-limit probe (\(productLimitCount) points, \(tiles.count) tiles)
-        complete Swift adapter median: \(format(median(swiftSamples))) ms
-        DEM peak RSS: \(memory.highWaterResidentBytes > 0 ? "\(memory.highWaterResidentBytes) bytes" : "unavailable")
-        """)
+        print(BenchmarkBaselineLine.make(
+            benchmarkName,
+            "product-limit-adapter",
+            counts: ["points": productLimitCount, "tiles": tiles.count],
+            iterations: iterations,
+            medianMilliseconds: median(swiftSamples)
+        ))
+        print(BenchmarkBaselineLine.memory(
+            benchmarkName,
+            "product-limit-peak-rss",
+            bytes: memory.highWaterResidentBytes > 0 ? memory.highWaterResidentBytes : nil
+        ))
     }
 
     /// A long course through the Alps at zoom 12: about 300 km on a slowly
@@ -180,12 +173,6 @@ final class DemElevationSamplingBenchmark: XCTestCase {
         return tiles
     }
 
-    private static func time(_ body: () -> Void) -> Double {
-        let start = DispatchTime.now().uptimeNanoseconds
-        body()
-        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
-    }
-
     private static func timeThrowing(_ body: () throws -> Void) rethrows -> Double {
         let start = DispatchTime.now().uptimeNanoseconds
         try body()
@@ -197,9 +184,5 @@ final class DemElevationSamplingBenchmark: XCTestCase {
         guard !sorted.isEmpty else { return 0 }
         let middle = sorted.count / 2
         return sorted.count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
-    }
-
-    private static func format(_ milliseconds: Double) -> String {
-        String(format: "%.3f", milliseconds)
     }
 }

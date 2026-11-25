@@ -85,17 +85,17 @@ release builds contain no counter, no lock, and no mutable diagnostic state.
 
 ## Verification
 
-| Kernel | Engine tests (`RunPlayEngine/Tests`) | Golden digest (`RunPlayCoreTests`) | Swift parity oracle | Runner |
+| Kernel | Engine tests (`RunPlayEngine/Tests`) | Golden digest (`RunPlayCoreTests`) | Adapter tests (`RunPlayCoreTests`) | Runner |
 |---|---|---|---|---|
-| Route quality | `RouteQualityTests` | `RouteQualityGoldenTests` | `SwiftRouteQualityGeometryOracle` | `run-route-quality-benchmark.sh` |
-| Personal heatmap coverage | `PersonalHeatmapCoverageTests` | `PersonalHeatmapCoverageGoldenTests` | `SwiftPersonalHeatmapBuilderOracle` | `run-personal-heatmap-benchmark.sh`, `run-personal-heatmap-profile.sh` |
-| Constrained DTW | `RouteAlignmentDtwTests` | `RouteAlignmentDtwGoldenTests` | `SwiftConstrainedDtwPathOracle`, `PreMigrationRouteAlignerOracle` | `run-route-alignment-dtw-benchmark.sh` |
-| Segment detection | `SegmentDetectionTests` | `SegmentDetectionGoldenTests` | `SwiftSegmentDetectorOracle` | `run-segment-detector-benchmark.sh` |
-| Elevation profile | `ElevationProfileTests` | `ElevationProfileGoldenTests` | `SwiftElevationProfileOracle` | `run-elevation-profile-benchmark.sh` |
-| Scale buckets | `RouteMetricScaleBucketTests` | `RouteMetricScaleBucketGoldenTests` | `SwiftRouteMetricScaleBucketOracle` | `run-route-metric-scale-bucket-benchmark.sh` |
-| Training load | `TrainingLoadTests` | `TrainingLoadGoldenTests` | none | none |
-| DEM planning and sampling | `DemElevationSamplingTests` | `DemElevationGoldenTests` | `SwiftDemSamplingOracle` | `run-route-quality-benchmark.sh` (DEM section) |
-| Geodesy and route input | `GeodesyTests`, `RouteInputSampleTests` | `GeodesyGoldenTests` | `GeoDistance` | `run-geodesy-benchmark.sh` |
+| Route quality | `RouteQualityTests` | `RouteQualityGoldenTests` | `RunPlayRouteQualityBridgeTests` | `run-route-quality-benchmark.sh` |
+| Personal heatmap coverage | `PersonalHeatmapCoverageTests` | `PersonalHeatmapCoverageGoldenTests` | `RunPlayPersonalHeatmapCoverageBridgeTests` | `run-personal-heatmap-benchmark.sh`, `run-personal-heatmap-profile.sh` |
+| Constrained DTW | `RouteAlignmentDtwTests` | `RouteAlignmentDtwGoldenTests` | `RunPlayRouteAlignmentDtwBridgeTests` | `run-route-alignment-dtw-benchmark.sh` |
+| Segment detection | `SegmentDetectionTests` | `SegmentDetectionGoldenTests` | `RunPlaySegmentDetectorBridgeTests` | `run-segment-detector-benchmark.sh` |
+| Elevation profile | `ElevationProfileTests` | `ElevationProfileGoldenTests` | `RunPlayElevationProfileBridgeTests` | `run-elevation-profile-benchmark.sh` |
+| Scale buckets | `RouteMetricScaleBucketTests` | `RouteMetricScaleBucketGoldenTests` | `RunPlayRouteMetricScaleBucketBridgeTests` | `run-route-metric-scale-bucket-benchmark.sh` |
+| Training load | `TrainingLoadTests` | `TrainingLoadGoldenTests` | `RunPlayTrainingLoadBridgeTests` | none |
+| DEM planning and sampling | `DemElevationSamplingTests` | `DemElevationGoldenTests` | `RunPlayDemElevationBridgeTests` | `run-route-quality-benchmark.sh` (DEM section) |
+| Geodesy and route input | `GeodesyTests`, `RouteInputSampleTests` | `GeodesyGoldenTests` (also pins the engine against `GeoDistance`) | none | `run-geodesy-benchmark.sh` |
 
 - **Engine tests** are the C++ kernel tests, ported with the same case names.
   Cases that only a pointer boundary could express (a null buffer with a
@@ -115,6 +115,12 @@ release builds contain no counter, no lock, and no mutable diagnostic state.
   platform.
 - A change that moves a digest is a behaviour change and needs an explicit
   decision. Do not re-pin a digest to make a test pass.
+- **No Swift oracles.** During the migration the test target kept the
+  pre-migration Swift implementations as parity oracles. They were retired
+  once the golden digests pinned every kernel: the digests are now the only
+  output reference. The adapter tests assert behaviour directly (empty and
+  degenerate input, contract errors, cancellation, determinism, fixed expected
+  values).
 - **The boundary validator** (`python3 scripts/validate-swift-engine-boundaries.py`)
   scans every Swift source and reads the SwiftPM target graph. It fails when
   the engine imports anything other than the Swift standard library and the
@@ -138,22 +144,42 @@ release builds contain no counter, no lock, and no mutable diagnostic state.
 
 Every runner is opt-in and local: CI never sets its environment variable, so
 the underlying tests skip. Each runner uses a release build and reports medians
-on deterministic synthetic fixtures. Timings are absolute: the C++ kernels the
-adapters were gated against (complete Swift path at most 1.10 times the
-complete C++ path) no longer exist. Machine-specific results belong in the PR
-that ran them, not here.
+on deterministic synthetic fixtures. The benchmarks are absolute Swift
+baselines: they time only the production Swift path, print no ratio, and have
+no ratio gate. Machine-specific results belong in the PR that ran them, not
+here.
+
+The 1.10 times gate (complete Swift path at most 1.10 times the complete C++
+path) was the migration gate. It is historical: the C++ kernels it compared
+against no longer exist, and neither do the Swift oracles that the earlier
+benchmarks also timed.
+
+The route-quality, DEM, personal heatmap coverage, constrained-DTW, segment
+detection and scale-bucket benchmarks print one stable line per case
+(`BenchmarkBaselineLine` in `RunPlayCoreTests`):
+
+```text
+<Benchmark> <case> <count>=<value> ... iterations=<n> swift_ms=<median> [swift_max_ms=<maximum>]
+```
+
+`<Benchmark>` is the test class name, so `grep '^<Benchmark> '` selects one
+benchmark's cases from a log. Resident-memory lines use the same prefix with
+`bytes=<n>` (or `bytes=unavailable`). The elevation profile and heatmap engine
+benchmarks keep their own single-line formats
+(`ElevationProfileBenchmark <case> count=<n> swift_ms=<median>` and
+`HEATMAP_ENGINE <label> swift=<median> ms`).
 
 | Runner | Gate variable | What it measures |
 |---|---|---|
 | `scripts/run-elevation-profile-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | `ElevationProfileBenchmark`: the complete adapter on 1,000, 100,000 and 1,000,000 points. The 1,000,000-point case runs on every invocation |
 | `scripts/run-geodesy-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | the scalar engine geodesy primitives on 100,000 and 1,000,000 pairs |
-| `scripts/run-personal-heatmap-benchmark.sh` | `RUNPLAY_BENCHMARK=1`, `RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1` | the complete heatmap builder against the Swift builder oracle, the cross-workout aggregation microbenchmark, and the complete engine path per fixture; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1,000,000-point probes |
+| `scripts/run-personal-heatmap-benchmark.sh` | `RUNPLAY_BENCHMARK=1`, `RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1` | the complete heatmap builder (with two independent, non-additive diagnostics), the cross-workout aggregation microbenchmark, and the complete engine path per fixture; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1,000,000-point probes |
 | `scripts/run-personal-heatmap-profile.sh` | `RUNPLAY_HEATMAP_PROFILE=1` | additive phase profile of one production-equivalent heatmap build across every adaptive pass |
 | `scripts/run-remaining-core-hotspot-profile.sh` | `RUNPLAY_CORE_HOTSPOT_PROFILE=1` | phase profile of the Core work around the kernels; `RUNPLAY_PROFILE_FAMILY` selects the family and `RUNPLAY_PROFILE_PRODUCT_LIMIT=1` enables the 1,000,000-point probes |
-| `scripts/run-route-alignment-dtw-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | the Swift path oracle, the complete adapter and the complete aligner over six fixtures; `RUNPLAY_BENCHMARK_MAX_BAND=1` adds the maximum-band probe and `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` the 1,000,000-point probe |
+| `scripts/run-route-alignment-dtw-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | the complete adapter per fixture and in total over six fixtures, and the complete aligner; `RUNPLAY_BENCHMARK_MAX_BAND=1` adds the maximum-band probe and `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` the 1,000,000-point probe |
 | `scripts/run-route-metric-scale-bucket-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | the scale-bucket finalizer across seven input shapes, plus the Platform map-line section on macOS; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1,000,000-point cases |
-| `scripts/run-route-quality-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | route quality on a 100,000-point mixed fixture (Swift stages 2-4 oracle, complete adapter, complete `RouteQualityProcessor.process`), then DEM planning and sampling on a 100,000-point route over synthetic zoom-12 tiles; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds a 1,000,000-point probe for each |
-| `scripts/run-segment-detector-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | the complete `SegmentDetector` path on a 100,000-point fixture, with exact durable-highlight parity against the Swift oracle as an assertion; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1,000,000-point probe |
+| `scripts/run-route-quality-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | route quality on a 100,000-point mixed fixture (complete adapter, complete `RouteQualityProcessor.process`), then DEM planning and sampling on a 100,000-point route over synthetic zoom-12 tiles; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds a 1,000,000-point probe for each |
+| `scripts/run-segment-detector-benchmark.sh` | `RUNPLAY_BENCHMARK=1` | the complete `SegmentDetector` path and the complete adapter on a 100,000-point fixture, asserting only that repeated runs give identical results; `RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1` adds the 1,000,000-point probe |
 
 The product-limit probe is not gated uniformly: the elevation runner's
 1,000,000-point case has no environment gate, and the other runners gate

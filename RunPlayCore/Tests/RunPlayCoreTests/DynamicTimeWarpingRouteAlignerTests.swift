@@ -5,9 +5,6 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
     private let aligner = ConstrainedDynamicTimeWarpingAligner()
     private let policy = RouteAlignmentPolicy.default
 
-    /// Complete pre-migration aligner, used only by the snapshot-parity tests.
-    private let preMigrationOracle = PreMigrationRouteAlignerOracle()
-
     func testIdenticalRoutesProduceAvailableHighQualityAlignment() throws {
         let workout = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 25)
         let snapshot = try aligner.align(
@@ -195,18 +192,16 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertTrue(snapshot.availability.isAvailable || snapshot.availability.unavailableReason != nil)
     }
 
-    // MARK: - End-to-end pre-migration snapshot parity
+    // MARK: - End-to-end snapshots
     //
-    // These compare the migrated production aligner against
-    // `PreMigrationRouteAlignerOracle`, a transcription of the complete
-    // pre-migration Swift aligner whose dynamic-programming solve is delegated
-    // to `SwiftConstrainedDtwPathOracle`. Every fixture is deterministic: fixed
-    // geometry or seeded SplitMix64 noise, never wall-clock or system
-    // randomness.
+    // These run the production aligner end to end and pin the behaviour of
+    // the resulting snapshots. `RouteAlignmentDtwGoldenTests` pins the path
+    // solve itself. Every fixture is deterministic: fixed geometry or seeded
+    // SplitMix64 noise, never wall-clock or system randomness.
 
-    func testSnapshotParityForIdenticalRoutes() throws {
+    func testSnapshotForIdenticalRoutes() throws {
         let workout = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 25)
-        let snapshot = try assertSnapshotParity(
+        let snapshot = try alignSnapshot(
             "identical",
             primary: workout,
             comparison: workout
@@ -215,54 +210,134 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertFalse(snapshot.blocks.isEmpty)
     }
 
-    func testSnapshotParityForDenseAndSparseSampleRates() throws {
+    func testSnapshotForDenseAndSparseSampleRates() throws {
         let dense = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 10)
         let sparse = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 40)
-        let forward = try assertSnapshotParity("dense-vs-sparse", primary: dense, comparison: sparse)
+        let forward = try alignSnapshot("dense-vs-sparse", primary: dense, comparison: sparse)
         XCTAssertTrue(forward.availability.isAvailable)
-        try assertSnapshotParity("sparse-vs-dense", primary: sparse, comparison: dense)
+        try alignSnapshot("sparse-vs-dense", primary: sparse, comparison: dense)
     }
 
-    func testSnapshotParityForGPSNoise() throws {
+    func testSnapshotForGPSNoise() throws {
         let clean = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 20)
         let alternating = makeNoisyWorkout(from: clean, noiseMeters: 4)
-        let noisy = try assertSnapshotParity("alternating-noise", primary: clean, comparison: alternating)
+        let noisy = try alignSnapshot("alternating-noise", primary: clean, comparison: alternating)
         XCTAssertTrue(noisy.availability.isAvailable)
+        assertPinnedSnapshot(
+            "alternating-noise", noisy,
+            quality: .excellent, anchorsPerBlock: [136], totalAlignedDistanceMeters: 2_700,
+            digest: 0x2cd2_2847_374b_90c4
+        )
 
-        for (seed, amplitude) in [(UInt64(1), 3.0), (UInt64(2), 12.0), (UInt64(3), 45.0)] {
-            try assertSnapshotParity(
-                "seeded-noise-\(seed)",
+        // The seeded fixtures add noise through `cos`, so the inputs, and with
+        // them the snapshots, differ by platform libm. Each digest is pinned
+        // per platform; the structure is pinned everywhere.
+        let seeded: [(seed: UInt64, amplitude: Double, quality: RouteAlignmentQuality,
+                      anchors: [Int], total: Double, digest: UInt64?)] = [
+            (1, 3, .excellent, [136], 2_700, Self.seededNoiseDigests.0),
+            (2, 12, .excellent, [136], 2_700, Self.seededNoiseDigests.1),
+            (3, 45, .good, [137], 2_720, Self.seededNoiseDigests.2),
+        ]
+        for fixture in seeded {
+            let name = "seeded-noise-\(fixture.seed)"
+            let snapshot = try alignSnapshot(
+                name,
                 primary: clean,
-                comparison: makeSeededNoisyWorkout(from: clean, noiseMeters: amplitude, seed: seed)
+                comparison: makeSeededNoisyWorkout(
+                    from: clean, noiseMeters: fixture.amplitude, seed: fixture.seed
+                )
+            )
+            assertPinnedSnapshot(
+                name, snapshot,
+                quality: fixture.quality, anchorsPerBlock: fixture.anchors,
+                totalAlignedDistanceMeters: fixture.total, digest: fixture.digest
             )
         }
     }
 
-    func testSnapshotParityForModestPrefixOffset() throws {
-        for offset in [40.0, 80.0, 250.0] {
-            let base = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 20)
-            let shifted = makeLinearWorkout(
-                distanceMeters: 3_000,
-                stepMeters: 20,
-                startOffsetMeters: offset
+    /// Full-snapshot digests (`ExactValueDigest`) of the seeded GPS-noise
+    /// fixtures, taken from the production aligner on each platform once the
+    /// golden digests pinned the engine.
+    private static var seededNoiseDigests: (UInt64?, UInt64?, UInt64?) {
+        #if os(macOS) && arch(arm64)
+        // Xcode 27.2 locally and Xcode 26.6 in hosted CI give the same values.
+        (0x384b_5a92_edb0_4517, 0x88f8_bfb0_c85f_d0db, 0x8c60_cf1f_777b_1b84)
+        #elseif os(Linux) && arch(x86_64)
+        // Hosted Linux CI run 45546263205, in the pinned swift:6.3.3 image.
+        (0x38b8_c50b_988c_5791, 0x1713_2d10_b097_c80a, 0x9e1d_5cbc_b95a_8f7a)
+        #elseif os(Linux) && arch(arm64)
+        // The pinned swift:6.3.3 image, Apple container on arm64.
+        (0x6715_ad28_6353_41a2, 0xdf7b_894a_ea32_bd62, 0xe5e3_5aa3_a033_bc0d)
+        #else
+        (nil, nil, nil)
+        #endif
+    }
+
+    /// Fails when a platform condition leaves `seededNoiseDigests` nil on a
+    /// platform that pins it. A nil digest skips only the digest assertion,
+    /// so the seeded snapshots would otherwise pass on structure alone.
+    func testSeededNoiseDigestsArePinnedOnPinnedPlatforms() {
+        let platform = GoldenPlatform.current
+        guard platform == .macOSArm64 || platform == .linuxX86_64 || platform == .linuxArm64 else { return }
+        let digests = Self.seededNoiseDigests
+        XCTAssertTrue(
+            digests.0 != nil && digests.1 != nil && digests.2 != nil,
+            GoldenPlatform.unpinnedMessage("seededNoiseDigests")
+        )
+    }
+
+    /// Pins one snapshot. It replaces the comparison with the retired
+    /// pre-migration aligner, which compared the whole snapshot exactly: the
+    /// availability, block structure and aligned distance are asserted
+    /// directly, and the digest covers every remaining field, every anchor
+    /// and the diagnostics bit for bit.
+    private func assertPinnedSnapshot(
+        _ name: String,
+        _ snapshot: RouteAlignmentSnapshot,
+        quality: RouteAlignmentQuality,
+        anchorsPerBlock: [Int],
+        totalAlignedDistanceMeters: Double,
+        digest: UInt64?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(snapshot.availability, .available(quality), "\(name): availability", file: file, line: line)
+        XCTAssertEqual(snapshot.policyVersion, 1, "\(name): policyVersion", file: file, line: line)
+        XCTAssertEqual(
+            snapshot.blocks.map(\.anchors.count), anchorsPerBlock,
+            "\(name): anchors per block", file: file, line: line
+        )
+        XCTAssertEqual(
+            snapshot.totalAlignedDistanceMeters, totalAlignedDistanceMeters,
+            "\(name): totalAlignedDistanceMeters", file: file, line: line
+        )
+        XCTAssertEqual(
+            snapshot.diagnostics.matchedBlockCount, anchorsPerBlock.count,
+            "\(name): matchedBlockCount", file: file, line: line
+        )
+        let actualDigest = ExactValueDigest.of(snapshot)
+        print("DTW_GPS_NOISE_DIGEST \(name)=\(ExactValueDigest.hex(actualDigest))")
+        if let digest {
+            XCTAssertEqual(
+                ExactValueDigest.hex(actualDigest), ExactValueDigest.hex(digest),
+                "\(name): full snapshot digest", file: file, line: line
             )
-            try assertSnapshotParity("prefix-offset-\(offset)", primary: base, comparison: shifted)
         }
     }
 
-    func testSnapshotParityForOppositeDirection() throws {
+    func testSnapshotForOppositeDirection() throws {
         let forward = makeLinearWorkout(distanceMeters: 2_500, stepMeters: 20)
         let reverse = reverseWorkout(forward)
-        let snapshot = try assertSnapshotParity("opposite", primary: forward, comparison: reverse)
+        let snapshot = try alignSnapshot("opposite", primary: forward, comparison: reverse)
         XCTAssertEqual(snapshot.availability.unavailableReason, .oppositeDirection)
         XCTAssertEqual(snapshot.diagnostics.detectedDirection, .opposite)
     }
 
-    func testSnapshotParityForUnrelatedRoutes() throws {
+    func testSnapshotForUnrelatedRoutes() throws {
         // Far enough apart that the shared local projection is rejected.
         let west = makeLinearWorkout(distanceMeters: 2_500, stepMeters: 20, lat: 37.77, lon: -122.42)
         let east = makeLinearWorkout(distanceMeters: 2_500, stepMeters: 20, lat: 40.71, lon: -74.00)
-        let continental = try assertSnapshotParity("continental", primary: west, comparison: east)
+        let continental = try alignSnapshot("continental", primary: west, comparison: east)
         XCTAssertEqual(continental.availability.unavailableReason, .unsupportedGeographicExtent)
 
         // Same city, parallel streets: rejected by separation, not by extent.
@@ -273,14 +348,14 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
                 stepMeters: 20,
                 lateralOffsetMeters: offset
             )
-            let snapshot = try assertSnapshotParity("parallel-\(offset)", primary: base, comparison: parallel)
+            let snapshot = try alignSnapshot("parallel-\(offset)", primary: base, comparison: parallel)
             XCTAssertEqual(snapshot.availability.unavailableReason, .routesTooFarApart)
         }
     }
 
-    func testSnapshotParityForRecordingGapsProducingMultipleBlocks() throws {
+    func testSnapshotForRecordingGapsProducingMultipleBlocks() throws {
         let twoSegments = makeGappedWorkout(segmentDistances: [1_500, 1_500])
-        let paired = try assertSnapshotParity(
+        let paired = try alignSnapshot(
             "gapped-vs-gapped",
             primary: twoSegments,
             comparison: twoSegments
@@ -289,7 +364,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertEqual(paired.diagnostics.matchedBlockCount, 2)
 
         let continuous = makeLinearWorkout(distanceMeters: 3_050, stepMeters: 20)
-        let mixed = try assertSnapshotParity(
+        let mixed = try alignSnapshot(
             "gapped-vs-continuous",
             primary: continuous,
             comparison: twoSegments
@@ -300,7 +375,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
             segmentDistances: [1_200, 900, 1_100],
             gapMeters: 120
         )
-        let triple = try assertSnapshotParity(
+        let triple = try alignSnapshot(
             "three-segments",
             primary: threeSegments,
             comparison: threeSegments
@@ -308,7 +383,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertEqual(triple.blocks.count, 3)
     }
 
-    func testSnapshotParityForAmbiguousDirection() throws {
+    func testSnapshotForAmbiguousDirection() throws {
         let loop = makeSquareLoopWorkout(sideMeters: 500, stepMeters: 20, startFraction: 0)
 
         // Default policy: ambiguous geometry that never becomes available.
@@ -318,7 +393,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
                 stepMeters: 20,
                 startFraction: rotation
             )
-            let snapshot = try assertSnapshotParity(
+            let snapshot = try alignSnapshot(
                 "ambiguous-loop-\(rotation)",
                 primary: loop,
                 comparison: rotated
@@ -348,7 +423,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
                 stepMeters: 20,
                 startFraction: rotation
             )
-            let snapshot = try assertSnapshotParity(
+            let snapshot = try alignSnapshot(
                 "ambiguous-available-loop-\(rotation)",
                 primary: loop,
                 comparison: rotated,
@@ -363,12 +438,12 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         }
     }
 
-    func testSnapshotParityForResourceLimits() throws {
+    func testSnapshotForResourceLimits() throws {
         let workout = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 20)
 
         // Tiny budget: the sample builder refuses before any solve.
         for cells in [0, 8, 64, 512] {
-            let snapshot = try assertSnapshotParity(
+            let snapshot = try alignSnapshot(
                 "builder-band-cells-\(cells)",
                 primary: workout,
                 comparison: workout,
@@ -380,7 +455,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
 
         // Budget tuned so the builder estimate passes and the wide open-ended
         // band inside the solve is what exceeds it.
-        let solverLimited = try assertSnapshotParity(
+        let solverLimited = try alignSnapshot(
             "solver-band-cells",
             primary: workout,
             comparison: workout,
@@ -394,17 +469,17 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertGreaterThan(solverLimited.diagnostics.primarySampleCount, 0)
     }
 
-    func testSnapshotParityIsIdenticalWhenRepeated() throws {
+    func testSnapshotIsIdenticalWhenRepeated() throws {
         let base = makeLinearWorkout(distanceMeters: 2_200, stepMeters: 20)
         let noisy = makeSeededNoisyWorkout(from: base, noiseMeters: 6, seed: 99)
-        let first = try assertSnapshotParity("repeat-1", primary: base, comparison: noisy)
-        let second = try assertSnapshotParity("repeat-2", primary: base, comparison: noisy)
+        let first = try alignSnapshot("repeat-1", primary: base, comparison: noisy)
+        let second = try alignSnapshot("repeat-2", primary: base, comparison: noisy)
         XCTAssertEqual(first, second, "repeated production alignment must be identical")
     }
 
-    func testSnapshotParityWhenCancelledBeforeAnyWork() throws {
+    func testSnapshotWhenCancelledBeforeAnyWork() throws {
         let workout = makeLinearWorkout(distanceMeters: 5_000, stepMeters: 10)
-        let snapshot = try assertSnapshotParity(
+        let snapshot = try alignSnapshot(
             "always-cancelled",
             primary: workout,
             comparison: workout,
@@ -414,11 +489,10 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertTrue(snapshot.blocks.isEmpty)
     }
 
-    /// Production-only: cancellation call counts legitimately differ between the
-    /// migrated aligner and the pre-migration one, because the dynamic
-    /// programming no longer polls per cell. What must hold is that flipping the
+    /// The aligner does not poll cancellation per dynamic-programming cell.
+    /// What must hold is that flipping the
     /// token at *any* observation point — including the one immediately after the
-    /// native solve returns — yields `.unavailable(.cancelled)` and never an
+    /// engine solve returns — yields `.unavailable(.cancelled)` and never an
     /// available snapshot.
     func testCancellationAfterNativeWorkNeverPublishesAnAvailableResult() throws {
         let workout = makeLinearWorkout(distanceMeters: 1_400, stepMeters: 20)
@@ -469,17 +543,17 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertEqual(repeated, uncancelled)
     }
 
-    func testSnapshotParityAtMaximumSampleCount() throws {
+    func testSnapshotAtMaximumSampleCount() throws {
         // 39,980 m at the 20 m preferred interval resamples to exactly
         // `maximumSamplesPerRoute` alignment samples on each route.
         let dense = makeLinearWorkout(distanceMeters: 39_980, stepMeters: 20)
-        let snapshot = try assertSnapshotParity("maximum-samples", primary: dense, comparison: dense)
+        let snapshot = try alignSnapshot("maximum-samples", primary: dense, comparison: dense)
         XCTAssertEqual(snapshot.diagnostics.primarySampleCount, policy.maximumSamplesPerRoute)
         XCTAssertEqual(snapshot.diagnostics.comparisonSampleCount, policy.maximumSamplesPerRoute)
         XCTAssertTrue(snapshot.availability.isAvailable)
     }
 
-    func testSnapshotParityAcrossCustomPolicies() throws {
+    func testSnapshotAcrossCustomPolicies() throws {
         let base = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 20)
         let shifted = makeLinearWorkout(distanceMeters: 3_000, stepMeters: 25, startOffsetMeters: 12)
         let noisy = makeSeededNoisyWorkout(from: base, noiseMeters: 9, seed: 7)
@@ -518,7 +592,7 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         var unavailableOutcomes = 0
         for (name, custom) in policies {
             for (label, comparison) in [("shifted", shifted), ("noisy", noisy)] {
-                let snapshot = try assertSnapshotParity(
+                let snapshot = try alignSnapshot(
                     "\(name)/\(label)",
                     primary: base,
                     comparison: comparison,
@@ -537,214 +611,30 @@ final class DynamicTimeWarpingRouteAlignerTests: XCTestCase {
         XCTAssertGreaterThan(unavailableOutcomes, 0)
     }
 
-    // MARK: - Parity assertion
+    // MARK: - Alignment helper
 
-    /// Runs the production aligner and the pre-migration oracle over the same
-    /// inputs and compares every public field of the resulting snapshots.
+    /// Runs the production aligner over the inputs with fresh analysis
+    /// contexts and returns its snapshot. `name` labels the case at the call
+    /// site.
     @discardableResult
-    private func assertSnapshotParity(
+    private func alignSnapshot(
         _ name: String,
         primary: RunWorkout,
         comparison: RunWorkout,
         policy customPolicy: RouteAlignmentPolicy? = nil,
-        isCancelled: @Sendable () -> Bool = { false },
-        file: StaticString = #filePath,
-        line: UInt = #line
+        isCancelled: @Sendable () -> Bool = { false }
     ) throws -> RouteAlignmentSnapshot {
         let effectivePolicy = customPolicy ?? policy
         let primaryContext = WorkoutAnalysisContext(workout: primary)
         let comparisonContext = WorkoutAnalysisContext(workout: comparison)
 
-        let produced = try aligner.align(
+        return try aligner.align(
             primary: primary,
             comparison: comparison,
             primaryContext: primaryContext,
             comparisonContext: comparisonContext,
             policy: effectivePolicy,
             isCancelled: isCancelled
-        )
-        let expected = try preMigrationOracle.align(
-            primary: primary,
-            comparison: comparison,
-            primaryContext: primaryContext,
-            comparisonContext: comparisonContext,
-            policy: effectivePolicy,
-            isCancelled: isCancelled
-        )
-
-        assertSnapshotsMatch(name, produced, expected, file: file, line: line)
-        return produced
-    }
-
-    private func assertSnapshotsMatch(
-        _ name: String,
-        _ actual: RouteAlignmentSnapshot,
-        _ expected: RouteAlignmentSnapshot,
-        file: StaticString,
-        line: UInt
-    ) {
-        // Availability: quality when available, structured reason when not.
-        XCTAssertEqual(
-            actual.availability, expected.availability,
-            "\(name): availability", file: file, line: line
-        )
-        XCTAssertEqual(
-            actual.availability.quality, expected.availability.quality,
-            "\(name): quality", file: file, line: line
-        )
-        XCTAssertEqual(
-            actual.availability.unavailableReason, expected.availability.unavailableReason,
-            "\(name): unavailable reason", file: file, line: line
-        )
-        XCTAssertEqual(
-            actual.policyVersion, expected.policyVersion,
-            "\(name): policyVersion", file: file, line: line
-        )
-        assertDoubleParity(
-            actual.totalAlignedDistanceMeters, expected.totalAlignedDistanceMeters,
-            "\(name): totalAlignedDistanceMeters", file: file, line: line
-        )
-
-        // Blocks and every anchor inside them.
-        XCTAssertEqual(
-            actual.blocks.count, expected.blocks.count,
-            "\(name): blocks.count", file: file, line: line
-        )
-        for index in 0..<min(actual.blocks.count, expected.blocks.count) {
-            let actualBlock = actual.blocks[index]
-            let expectedBlock = expected.blocks[index]
-            XCTAssertEqual(
-                actualBlock.id, expectedBlock.id,
-                "\(name): block \(index) id", file: file, line: line
-            )
-            assertDoubleParity(
-                actualBlock.alignedStartMeters, expectedBlock.alignedStartMeters,
-                "\(name): block \(index) alignedStartMeters", file: file, line: line
-            )
-            assertDoubleParity(
-                actualBlock.alignedEndMeters, expectedBlock.alignedEndMeters,
-                "\(name): block \(index) alignedEndMeters", file: file, line: line
-            )
-            XCTAssertEqual(
-                actualBlock.anchors.count, expectedBlock.anchors.count,
-                "\(name): block \(index) anchors.count", file: file, line: line
-            )
-            for anchorIndex in 0..<min(actualBlock.anchors.count, expectedBlock.anchors.count) {
-                let actualAnchor = actualBlock.anchors[anchorIndex]
-                let expectedAnchor = expectedBlock.anchors[anchorIndex]
-                let label = "\(name): block \(index) anchor \(anchorIndex)"
-                assertDoubleParity(
-                    actualAnchor.alignedProgressMeters, expectedAnchor.alignedProgressMeters,
-                    "\(label) alignedProgressMeters", file: file, line: line
-                )
-                assertDoubleParity(
-                    actualAnchor.primaryDistanceMeters, expectedAnchor.primaryDistanceMeters,
-                    "\(label) primaryDistanceMeters", file: file, line: line
-                )
-                assertDoubleParity(
-                    actualAnchor.comparisonDistanceMeters, expectedAnchor.comparisonDistanceMeters,
-                    "\(label) comparisonDistanceMeters", file: file, line: line
-                )
-                assertDoubleParity(
-                    actualAnchor.spatialSeparationMeters, expectedAnchor.spatialSeparationMeters,
-                    "\(label) spatialSeparationMeters", file: file, line: line
-                )
-                XCTAssertEqual(
-                    actualAnchor.primarySegmentIndex, expectedAnchor.primarySegmentIndex,
-                    "\(label) primarySegmentIndex", file: file, line: line
-                )
-                XCTAssertEqual(
-                    actualAnchor.comparisonSegmentIndex, expectedAnchor.comparisonSegmentIndex,
-                    "\(label) comparisonSegmentIndex", file: file, line: line
-                )
-            }
-        }
-
-        assertDiagnosticsMatch(name, actual.diagnostics, expected.diagnostics, file: file, line: line)
-
-        // The delegated path is bit-identical and the surrounding Swift code is
-        // unchanged, so the whole value must compare equal, not merely close.
-        XCTAssertTrue(
-            actual == expected,
-            "\(name): snapshots differ beyond the field comparisons above",
-            file: file, line: line
-        )
-    }
-
-    private func assertDiagnosticsMatch(
-        _ name: String,
-        _ actual: RouteAlignmentDiagnostics,
-        _ expected: RouteAlignmentDiagnostics,
-        file: StaticString,
-        line: UInt
-    ) {
-        let doubleFields: [(String, KeyPath<RouteAlignmentDiagnostics, Double>)] = [
-            ("primaryRouteDistanceMeters", \.primaryRouteDistanceMeters),
-            ("comparisonRouteDistanceMeters", \.comparisonRouteDistanceMeters),
-            ("effectiveSampleIntervalMeters", \.effectiveSampleIntervalMeters),
-            ("alignedDistanceMeters", \.alignedDistanceMeters),
-            ("primaryCoverageFraction", \.primaryCoverageFraction),
-            ("comparisonCoverageFraction", \.comparisonCoverageFraction),
-            ("meanSpatialSeparationMeters", \.meanSpatialSeparationMeters),
-            ("medianSpatialSeparationMeters", \.medianSpatialSeparationMeters),
-            ("p90SpatialSeparationMeters", \.p90SpatialSeparationMeters),
-            ("maximumSpatialSeparationMeters", \.maximumSpatialSeparationMeters),
-            ("primaryUnmatchedPrefixMeters", \.primaryUnmatchedPrefixMeters),
-            ("primaryUnmatchedSuffixMeters", \.primaryUnmatchedSuffixMeters),
-            ("comparisonUnmatchedPrefixMeters", \.comparisonUnmatchedPrefixMeters),
-            ("comparisonUnmatchedSuffixMeters", \.comparisonUnmatchedSuffixMeters),
-        ]
-        for (label, keyPath) in doubleFields {
-            assertDoubleParity(
-                actual[keyPath: keyPath], expected[keyPath: keyPath],
-                "\(name): diagnostics.\(label)", file: file, line: line
-            )
-        }
-
-        let integerFields: [(String, KeyPath<RouteAlignmentDiagnostics, Int>)] = [
-            ("primarySampleCount", \.primarySampleCount),
-            ("comparisonSampleCount", \.comparisonSampleCount),
-            ("matchedBlockCount", \.matchedBlockCount),
-            ("diagonalStepCount", \.diagonalStepCount),
-            ("primaryOnlyWarpStepCount", \.primaryOnlyWarpStepCount),
-            ("comparisonOnlyWarpStepCount", \.comparisonOnlyWarpStepCount),
-            ("maximumConsecutiveWarpRun", \.maximumConsecutiveWarpRun),
-            ("algorithmVersion", \.algorithmVersion),
-        ]
-        for (label, keyPath) in integerFields {
-            XCTAssertEqual(
-                actual[keyPath: keyPath], expected[keyPath: keyPath],
-                "\(name): diagnostics.\(label)", file: file, line: line
-            )
-        }
-
-        XCTAssertEqual(
-            actual.detectedDirection, expected.detectedDirection,
-            "\(name): diagnostics.detectedDirection", file: file, line: line
-        )
-        XCTAssertEqual(
-            actual.warnings, expected.warnings,
-            "\(name): diagnostics.warnings", file: file, line: line
-        )
-        XCTAssertEqual(
-            actual.compactStatusLabel, expected.compactStatusLabel,
-            "\(name): diagnostics.compactStatusLabel", file: file, line: line
-        )
-    }
-
-    /// Absolute 1e-9, widened only in proportion to magnitude so kilometre-scale
-    /// distances are still held to roughly twelve significant digits.
-    private func assertDoubleParity(
-        _ actual: Double,
-        _ expected: Double,
-        _ label: String,
-        file: StaticString,
-        line: UInt
-    ) {
-        XCTAssertEqual(
-            actual, expected,
-            accuracy: max(1e-9, abs(expected) * 1e-12),
-            label, file: file, line: line
         )
     }
 
