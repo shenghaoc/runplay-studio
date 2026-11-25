@@ -76,18 +76,18 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
 
         report.append("### Phase breakdown across every fixture (ms, last measured Mode B iteration)")
         report.append("")
-        report.append("`Native`, `Alloc`, and `Direct count` are nested inside `Coverage` and are not summed again.")
+        report.append("`Native` and `Direct count` are nested inside `Coverage` and are not summed again.")
         report.append("The historical array-translation path is not part of this production-equivalent profile.")
         report.append("")
-        report.append("| Fixture | Date | Prep | Coverage | ⤷ Native | ⤷ Alloc | ⤷ Direct count | Filter | Decision | Sort | Cells | Assemble | Unacc. | Total |")
-        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        report.append("| Fixture | Date | Prep | Coverage | ⤷ Engine | ⤷ Direct count | Filter | Decision | Sort | Cells | Assemble | Unacc. | Total |")
+        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         report.append(contentsOf: phaseMillisecondRows)
         report.append("")
 
         report.append("### Phase breakdown across every fixture (percent of profiled wall clock)")
         report.append("")
-        report.append("| Fixture | Date | Prep | Coverage | ⤷ Native | ⤷ Alloc | ⤷ Direct count | Filter | Decision | Sort | Cells | Assemble | Unacc. |")
-        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        report.append("| Fixture | Date | Prep | Coverage | ⤷ Engine | ⤷ Direct count | Filter | Decision | Sort | Cells | Assemble | Unacc. |")
+        report.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         report.append(contentsOf: phasePercentRows)
         report.append("")
 
@@ -212,7 +212,6 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             measurement.preparationNanoseconds,
             measurement.totalCoverageBridgeNanoseconds,
             measurement.totalNativeNanoseconds,
-            measurement.totalAllocationNanoseconds,
             measurement.totalDirectConsumptionAndCountingNanoseconds,
             measurement.totalFilterNanoseconds,
             measurement.totalAdaptiveDecisionNanoseconds,
@@ -294,8 +293,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             detail.append(phaseRow("Date filtering", measurement.dateFilterNanoseconds))
             detail.append(phaseRow("Native preparation", measurement.preparationNanoseconds))
             detail.append(phaseRow("Coverage bridge across all passes", measurement.totalCoverageBridgeNanoseconds))
-            detail.append(phaseRow("— of which native C++ execution", measurement.totalNativeNanoseconds))
-            detail.append(phaseRow("— of which output allocation / retries", measurement.totalAllocationNanoseconds))
+            detail.append(phaseRow("— of which Swift engine execution", measurement.totalNativeNanoseconds))
             detail.append(phaseRow(
                 "— of which direct native-buffer consumption / counting",
                 measurement.totalDirectConsumptionAndCountingNanoseconds
@@ -310,8 +308,8 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
             detail.append("")
             detail.append("#### Per adaptive pass")
             detail.append("")
-            detail.append("| Pass | Cell size | Reserve hint | Eligible | With coverage | Without | Cells returned | Invalid intervals | Aggregated | Passing filter | Dict updates | Coverage bridge | Native | Alloc | Direct count | Filter | Decision | Pass total | Capacity retries |")
-            detail.append("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+            detail.append("| Pass | Cell size | Reserve hint | Eligible | With coverage | Without | Cells returned | Invalid intervals | Aggregated | Passing filter | Dict updates | Coverage bridge | Native | Direct count | Filter | Decision | Pass total |")
+            detail.append("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
             for pass in measurement.passes {
                 detail.append(
                     "| \(pass.index) "
@@ -327,16 +325,14 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                     + "| \(pass.dictionaryUpdates) "
                     + "| \(Self.format(Self.ms(pass.coverageBridgeNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.nativeNanoseconds))) "
-                    + "| \(Self.format(Self.ms(pass.allocationNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.directConsumptionAndCountingNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.filterNanoseconds))) "
                     + "| \(Self.format(Self.ms(pass.adaptiveDecisionNanoseconds))) "
-                    + "| \(Self.format(Self.ms(pass.totalNanoseconds))) "
-                    + "| \(pass.capacityRetries) |"
+                    + "| \(Self.format(Self.ms(pass.totalNanoseconds))) |"
                 )
             }
             detail.append("")
-            detail.append("All milliseconds. Native / Alloc / Direct count are nested inside Coverage bridge.")
+            detail.append("All milliseconds. Engine / Direct count are nested inside Coverage bridge.")
             detail.append("")
         } else {
             detail.append("#### Additive phase breakdown")
@@ -383,12 +379,10 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
         let dictionaryUpdates: Int
         let coverageBridgeNanoseconds: UInt64
         let nativeNanoseconds: UInt64
-        let allocationNanoseconds: UInt64
         let directConsumptionAndCountingNanoseconds: UInt64
         let filterNanoseconds: UInt64
         let adaptiveDecisionNanoseconds: UInt64
         let totalNanoseconds: UInt64
-        let capacityRetries: Int
         let residentBytesAfterPass: UInt64?
     }
 
@@ -420,7 +414,6 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
 
         var totalCoverageBridgeNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.coverageBridgeNanoseconds } }
         var totalNativeNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.nativeNanoseconds } }
-        var totalAllocationNanoseconds: UInt64 { passes.reduce(0) { $0 + $1.allocationNanoseconds } }
         var totalDirectConsumptionAndCountingNanoseconds: UInt64 {
             passes.reduce(0) { $0 + $1.directConsumptionAndCountingNanoseconds }
         }
@@ -533,9 +526,7 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
 
             var coverageBridgeNanoseconds: UInt64 = 0
             var nativeNanoseconds: UInt64 = 0
-            var allocationNanoseconds: UInt64 = 0
             var directConsumptionAndCountingNanoseconds: UInt64 = 0
-            var capacityRetries = 0
             var coverageCellsReturned = 0
             var dictionaryUpdates = 0
             var workoutsWithoutCoverage = 0
@@ -552,11 +543,9 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                 )
                 coverageBridgeNanoseconds += nanoseconds(from: coverageStart, to: ContinuousClock.now)
 
-                nativeNanoseconds += result.profile.nativeNanoseconds
-                allocationNanoseconds += result.profile.outputAllocationNanoseconds
+                nativeNanoseconds += result.profile.engineNanoseconds
                 directConsumptionAndCountingNanoseconds +=
                     result.profile.directCellConsumptionAndCountingNanoseconds
-                capacityRetries += result.profile.capacityRetryCount
 
                 let metadata = result.metadata
                 if metadata.cellCount == 0 {
@@ -599,12 +588,10 @@ final class PersonalHeatmapPipelineProfile: XCTestCase {
                 dictionaryUpdates: dictionaryUpdates,
                 coverageBridgeNanoseconds: coverageBridgeNanoseconds,
                 nativeNanoseconds: nativeNanoseconds,
-                allocationNanoseconds: allocationNanoseconds,
                 directConsumptionAndCountingNanoseconds: directConsumptionAndCountingNanoseconds,
                 filterNanoseconds: filterNanoseconds,
                 adaptiveDecisionNanoseconds: adaptiveDecisionNanoseconds,
                 totalNanoseconds: passTotalNanoseconds,
-                capacityRetries: capacityRetries,
                 residentBytesAfterPass: currentResidentBytes()
             ))
 

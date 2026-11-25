@@ -23,12 +23,13 @@ RUNPLAY_BENCHMARK=1 \
 RUNPLAY_HEATMAP_AGGREGATION_BENCHMARK=1 \
 swift test \
   -c release \
-  --filter 'PersonalHeatmapCoverageBenchmark|PersonalHeatmapAggregationBenchmark' \
+  --filter 'PersonalHeatmapCoverageBenchmark|PersonalHeatmapAggregationBenchmark|PersonalHeatmapEngineBenchmark' \
   > "$log" 2>&1 || status=$?
 
 for marker in \
   'BEGIN RUNPLAY HEATMAP COVERAGE BENCHMARK' \
-  'BEGIN RUNPLAY HEATMAP AGGREGATION BENCHMARK'; do
+  'BEGIN RUNPLAY HEATMAP AGGREGATION BENCHMARK' \
+  'BEGIN RUNPLAY HEATMAP ENGINE BENCHMARK'; do
   if ! grep -q "$marker" "$log"; then
     echo "run-personal-heatmap-benchmark: missing report marker: $marker" >&2
     tail -80 "$log" >&2
@@ -44,6 +45,12 @@ sed -n \
 sed -n \
   '/BEGIN RUNPLAY HEATMAP AGGREGATION BENCHMARK/,/END RUNPLAY HEATMAP AGGREGATION BENCHMARK/p' \
   "$log" | grep -v 'RUNPLAY HEATMAP AGGREGATION BENCHMARK'
+
+# The engine gate: complete Swift path against complete C++ path, one
+# HEATMAP_RATIO line per fixture.
+sed -n \
+  '/BEGIN RUNPLAY HEATMAP ENGINE BENCHMARK/,/END RUNPLAY HEATMAP ENGINE BENCHMARK/p' \
+  "$log" | grep -v 'RUNPLAY HEATMAP ENGINE BENCHMARK'
 
 # The product-limit probe prints after the coverage END marker, so it falls
 # outside both marker ranges above. Without this the 1,000,000-point probe runs

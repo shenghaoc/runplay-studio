@@ -106,13 +106,10 @@ final class NativeCallCardinalityTests: XCTestCase {
     /// with a fine starting cell size forces the builder to coarsen and re-run
     /// the whole aggregation, so the rule is checked against a real retry count.
     ///
-    /// The exact rule is *not* one call per workout per attempt. The coverage
-    /// boundary is capacity-negotiated: when the caller-owned output buffer is
-    /// too small, C++ writes nothing, reports `required_cell_count`, and Swift
-    /// reallocates and calls once more. That renegotiation is bounded to a
-    /// single extra call (the bridge does not loop), so per workout per attempt
-    /// the count is 1 normally and 2 after a capacity retry.
-    func testPersonalHeatmapBuilderCallsNativeOncePerWorkoutPerAdaptiveAttemptPlusCapacityRetries() throws {
+    /// The rule is exactly one engine call per workout per attempt. The Swift
+    /// engine returns the cells it found, so there is no output capacity to
+    /// renegotiate and no second call.
+    func testPersonalHeatmapBuilderCallsEngineOncePerWorkoutPerAdaptiveAttempt() throws {
         let workoutCount = 3
         let line = makeHeatmapLineWorkouts(count: workoutCount)
         let builder = PersonalHeatmapBuilder()
@@ -131,20 +128,10 @@ final class NativeCallCardinalityTests: XCTestCase {
         let retries = snapshot.diagnostics.adaptiveResolutionRetries
         XCTAssertGreaterThan(retries, 0, "expected the adaptive loop to coarsen at least once")
 
-        let attempts = retries + 1
-        let calls = counts.personalHeatmapCoverage
-
-        // Lower bound: every workout is visited exactly once per attempt.
-        XCTAssertGreaterThanOrEqual(
-            calls,
-            workoutCount * attempts,
-            "each workout must be covered on every adaptive attempt"
-        )
-        // Upper bound: at most one capacity renegotiation per workout per attempt.
-        XCTAssertLessThanOrEqual(
-            calls,
-            workoutCount * attempts * 2,
-            "capacity renegotiation must not loop beyond a single extra call"
+        XCTAssertEqual(
+            counts.personalHeatmapCoverage,
+            workoutCount * (retries + 1),
+            "each workout must be covered exactly once on every adaptive attempt"
         )
         XCTAssertEqual(snapshot.statistics.includedWorkoutCount, workoutCount)
     }
