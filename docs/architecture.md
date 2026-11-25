@@ -989,6 +989,21 @@ public protocol WorkoutImporting {
 
 The `WorkoutImporterFactory` dispatches by file extension. The SwiftUI file picker allows generic data files so `.tcx` and `.fit` files remain selectable even when the system does not declare dedicated UTIs; unsupported extensions are rejected by the importer factory.
 
+Every importer passes its output through `RoutePointSanitizer` before any
+analysis or persistence.
+
+Untrusted files are read defensively:
+
+- Every `XMLParser` over a user-supplied file sets
+  `shouldResolveExternalEntities = false`.
+- An entry point that reads a local file checks `url.isFileURL` before any
+  `Data(contentsOf:)`, path-based `FileManager` call or `Archive(url:)` open.
+  `FileManager.fileExists(atPath: url.path)` alone does not stop a non-file URL.
+- `CSVRow.escape` prefixes `'` to a non-numeric field whose first
+  non-whitespace character is `=`, `+`, `-` or `@`. Leading tabs and carriage
+  returns go through the whitespace-trimming slow path; never add whitespace
+  to `dangerousPrefixes`, which would escape ordinary fields such as `\tHello`.
+
 ### FIT activity decoding
 
 `FITParser` independently decodes the FIT binary stream into ordered standard
@@ -1261,6 +1276,25 @@ therefore cannot expose a partially analyzed workout or leave a partial library
 entry. Synchronous library migration uses the same deterministic processor
 without task cancellation because its recovery path must return every decodable
 workout.
+
+Hot-path conventions for route-sized work (importers, analysis, map and export
+preparation):
+
+- Accumulate in one inline `for` loop rather than chaining `map`, `compactMap`,
+  `filter`, `reduce` or `+` over a route array; each chained step allocates a
+  throwaway O(n) buffer or pays a closure call per element. When several
+  arrays derive from one source, build them in the same loop with
+  `reserveCapacity`. Find the first or last non-nil value with `for case let`,
+  not `compactMap { $0 }.first`.
+- Precompute a reduction that depends only on immutable construction inputs
+  (for example `FITDefinitionMessage.totalDataSize`) once in `init`.
+- Cache `DateFormatter` and `ISO8601DateFormatter` as `static let`, never one
+  per parse, cell or render. `DateFormatter` is `Sendable` under Swift 6.3 on
+  Darwin and Linux; `ISO8601DateFormatter` still needs `nonisolated(unsafe)`.
+  `Date.formatted(date:time:)` is slower than a cached formatter and has no
+  `.medium` date style, so it is not a drop-in replacement on model paths.
+  Measure before replacing a cached formatter, and test the style against a
+  reference `DateFormatter` in a non-English locale.
 
 ### GeoDistance
 

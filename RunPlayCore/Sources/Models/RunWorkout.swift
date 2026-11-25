@@ -234,8 +234,10 @@ public struct RunWorkout: Identifiable, Codable, Hashable, Sendable {
     /// Deliberately a cached `DateFormatter` rather than `Date.formatted(date:time:)`:
     /// `Date.FormatStyle` has no `.medium` date style, so `.abbreviated` would change
     /// the rendered string in locales such as `de_DE`, `ja_JP`, and `zh_Hans_CN`, and it
-    /// measures slower than the cached formatter it would replace. See the 2026-07-30
-    /// entry in `.jules/bolt.md`.
+    /// measures slower than the cached formatter it would replace (0.92 against 0.63 µs
+    /// per call over 20,000 formats, release build, Swift 6.3, arm64 macOS; a formatter
+    /// built per call costs about 68 µs). `DateFormatter` is `Sendable` under Swift 6.3
+    /// on Darwin and Linux, so the cached instance needs no `nonisolated(unsafe)`.
     private static let displayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.autoupdatingCurrent

@@ -243,7 +243,7 @@ struct RouteMetricScaleBucketTests {
     /// The former C++ result for equal-weight `+0` and `-0` metrics depended on the
     /// C++ library (libc++ selected `-0`, libstdc++ `+0`). Swift's stable sort keeps
     /// source order, so this result is identical on every platform. Intended
-    /// behaviour change, recorded in the Kiro design and the PR.
+    /// behaviour change, recorded in docs/engine.md and the PR.
     @Test func test_signed_zero_tie_is_stable_and_platform_independent() throws {
         let base: [Double] = [0.0, 1.0, 0.0, 2.0]
         let input = (0..<32).map { Self.sample($0 == 26 ? -0.0 : base[$0 % 4], 1.0) }
