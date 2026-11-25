@@ -259,7 +259,7 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
     }
 
     @Test
-    func testDirectAccumulationCapacityRetryAndCachedReuse() throws {
+    func testDirectAccumulationMakesOneEngineCallAndRepeatsExactly() throws {
         let route = [
             point(latitude: 0, longitude: 0, index: 0),
             point(latitude: 0, longitude: 0.03, index: 1)
@@ -288,10 +288,8 @@ struct RunPlayPersonalHeatmapCoverageBridgeTests {
         )
 
         #expect(first.metadata.cellCount > 64)
-        #expect(first.profile.capacityRetryCount == 1)
-        #expect(first.profile.nativeCallCount == 2)
-        #expect(second.profile.capacityRetryCount == 0)
-        #expect(second.profile.nativeCallCount == 1)
+        #expect(first.profile.engineCallCount == 1)
+        #expect(second.profile.engineCallCount == 1)
         #expect(second.metadata == first.metadata)
         #expect(counts.values.allSatisfy { $0 == 2 })
     }

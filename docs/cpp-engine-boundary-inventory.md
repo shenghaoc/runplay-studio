@@ -12,7 +12,7 @@ Every public callable carries exactly one status:
 | Callable | Status | Basis |
 |---|---|---|
 | `process_route_quality_geometry` | **parity/contract verification** | retained for native tests and `CppRouteQualityOracle` in Core tests; production calls the Swift kernel |
-| `compute_personal_heatmap_workout_coverage` | **production** | called by the personal heatmap builder via `RunPlayPersonalHeatmapCoverageBridge` |
+| `compute_personal_heatmap_workout_coverage` | **parity/contract verification** | retained for native tests and `RunPlayPersonalHeatmapCoverageCppBridge` in Core tests; production calls the Swift kernel |
 | `compute_constrained_dtw_path` | **parity/contract verification** | retained for native tests and `RunPlayRouteAlignmentDtwCppBridge` in Core tests; production calls the Swift kernel |
 | `detect_segment_windows` | **parity/contract verification** | retained for native tests and `RunPlaySegmentDetectorCppBridge` in Core tests; production calls the Swift kernel |
 | `build_elevation_profile` | **parity/contract verification** | retained for native tests and `ElevationProfileCppBenchmarkOracle` in Core tests; production calls the Swift kernel |
@@ -240,7 +240,7 @@ consumers. Swift production code outside Interop never touches `runplay.*` symbo
 |---|---|---|
 | `inspect_route_batch` | `RunPlayRouteBridge` | none — parity/contract tests only (route-size preflight is pure Swift via `WorkoutImportResourceLimits`) |
 | `process_route_quality_geometry` | `CppRouteQualityOracle` (Core tests) | none; differential tests and release benchmark only |
-| `compute_personal_heatmap_workout_coverage` | `RunPlayPersonalHeatmapCoverageBridge` | personal heatmap builder (one call per workout per adaptive attempt) |
+| `compute_personal_heatmap_workout_coverage` | `RunPlayPersonalHeatmapCoverageCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `compute_constrained_dtw_path` | `RunPlayRouteAlignmentDtwCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `detect_segment_windows` | `RunPlaySegmentDetectorCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `build_elevation_profile` | `ElevationProfileCppBenchmarkOracle` (Core tests) | none; differential tests and release benchmark only |

@@ -937,12 +937,13 @@ else
   fi
 fi
 
-# Only the heatmap coverage bridge may invoke the coverage symbol.
-HEATMAP_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayPersonalHeatmapCoverageBridge.swift"
+# Only the named test oracle may invoke the C++ coverage symbol.
+HEATMAP_BRIDGE_SOURCE="RunPlayCore/Sources/Engine/RunPlayPersonalHeatmapCoverageAdapter.swift"
+HEATMAP_ORACLE_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/PersonalHeatmapCoverageDifferentialTests.swift"
 HEATMAP_BUILDER_SOURCE="RunPlayCore/Sources/Services/PersonalHeatmapBuilder.swift"
 
 if [[ ! -f "$HEATMAP_BRIDGE_SOURCE" ]]; then
-  fail "missing production personal heatmap coverage bridge $HEATMAP_BRIDGE_SOURCE"
+  fail "missing production personal heatmap coverage adapter $HEATMAP_BRIDGE_SOURCE"
 fi
 if [[ ! -f "$HEATMAP_BUILDER_SOURCE" ]]; then
   fail "missing production PersonalHeatmapBuilder $HEATMAP_BUILDER_SOURCE"
@@ -953,8 +954,7 @@ heatmap_symbol_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$HEATMAP_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+    "$HEATMAP_ORACLE_SOURCE") continue ;;
   esac
   while IFS= read -r leak; do
     [[ -n "$leak" ]] && heatmap_symbol_leaks+=("$relative_swift_file:$leak")
@@ -962,11 +962,23 @@ for swift_file in "${SWIFT_FILES[@]}"; do
 done
 
 if [[ ${#heatmap_symbol_leaks[@]} -eq 0 ]]; then
-  pass "compute_personal_heatmap_workout_coverage is invoked only from the heatmap coverage bridge"
+  pass "compute_personal_heatmap_workout_coverage is invoked only from the heatmap test oracle"
 else
   for leak in "${heatmap_symbol_leaks[@]}"; do
-    fail "compute_personal_heatmap_workout_coverage used outside the heatmap coverage bridge: $leak"
+    fail "compute_personal_heatmap_workout_coverage used outside the heatmap test oracle: $leak"
   done
+fi
+
+if [[ -e RunPlayCore/Sources/Interop/RunPlayPersonalHeatmapCoverageBridge.swift ]]; then
+  fail "the C++ heatmap bridge must live only in $HEATMAP_ORACLE_SOURCE"
+else
+  pass "no C++ heatmap bridge remains in Core sources"
+fi
+
+if code_matches "$HEATMAP_BRIDGE_SOURCE" 'PersonalHeatmapCoverage[[:space:]]*\.[[:space:]]*compute[[:space:]]*\('; then
+  pass "heatmap adapter calls the Swift kernel"
+else
+  fail "heatmap adapter must call the Swift kernel"
 fi
 
 if code_matches "$HEATMAP_BUILDER_SOURCE" '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
@@ -993,11 +1005,11 @@ else
   pass "PersonalHeatmapBuilder does not materialize per-workout coverage arrays"
 fi
 
-heatmap_bridge_symbol_count="$(count_code_matches "$HEATMAP_BRIDGE_SOURCE" "$heatmap_symbol_re")"
+heatmap_bridge_symbol_count="$(count_code_matches "$HEATMAP_ORACLE_SOURCE" "$heatmap_symbol_re")"
 if [[ "$heatmap_bridge_symbol_count" == "1" ]]; then
-  pass "heatmap Interop contains exactly one native coverage call site"
+  pass "the heatmap test oracle contains exactly one native coverage call site"
 else
-  fail "heatmap Interop must contain exactly one native coverage call site (found $heatmap_bridge_symbol_count)"
+  fail "the heatmap test oracle must contain exactly one native coverage call site (found $heatmap_bridge_symbol_count)"
 fi
 
 heatmap_header_symbol_count="$(count_code_matches "$HEATMAP_HEADER" 'compute_personal_heatmap_workout_coverage[[:space:]]*\(')"
@@ -1012,7 +1024,7 @@ heatmap_native_buffer_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$HEATMAP_BRIDGE_SOURCE") continue ;;
+    "$HEATMAP_ORACLE_SOURCE") continue ;;
   esac
   while IFS= read -r leak; do
     [[ -n "$leak" ]] && heatmap_native_buffer_leaks+=("$relative_swift_file:$leak")
@@ -1020,10 +1032,10 @@ for swift_file in "${SWIFT_FILES[@]}"; do
 done
 
 if [[ ${#heatmap_native_buffer_leaks[@]} -eq 0 ]]; then
-  pass "native heatmap output buffers remain contained in Interop"
+  pass "native heatmap output buffers remain contained in the test oracle"
 else
   for leak in "${heatmap_native_buffer_leaks[@]}"; do
-    fail "native heatmap output buffer type escaped Interop: $leak"
+    fail "native heatmap output buffer type escaped the test oracle: $leak"
   done
 fi
 
@@ -1115,7 +1127,6 @@ heatmap_profile_api_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$HEATMAP_BRIDGE_SOURCE") continue ;;
     RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
   esac
   while IFS= read -r leak; do
@@ -1124,7 +1135,7 @@ for swift_file in "${SWIFT_FILES[@]}"; do
 done
 
 if [[ ${#heatmap_profile_api_leaks[@]} -eq 0 ]]; then
-  pass "heatmap coverage profiling API is referenced only by its bridge and tests"
+  pass "heatmap coverage profiling API is referenced only by tests"
 else
   for leak in "${heatmap_profile_api_leaks[@]}"; do
     fail "production Swift references the test-only heatmap profiling API: $leak"

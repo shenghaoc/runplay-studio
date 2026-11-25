@@ -120,6 +120,10 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
     has one result on every platform; the C++ kernel's result for that tie
     depends on its standard library. Corrected-elevation finalization stays in
     Swift, as below
+  - per-workout personal heatmap coverage (`PersonalHeatmapCoverage`), one
+    engine call per workout per adaptive attempt. The engine returns exactly
+    the cells it found, so the capacity negotiation described below, and its
+    retry call, no longer exist
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
