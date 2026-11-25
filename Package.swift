@@ -83,13 +83,35 @@ var targets: [Target] = [
         path: "RunPlayEngineCpp/SwiftPMTests",
         swiftSettings: strictWarnings
     ),
+    // Pure Swift computational engine. Kernels are ported here from
+    // RunPlayEngineCpp one at a time; Core calls each ported kernel through
+    // its adapter in RunPlayCore/Sources/Engine. AGENTS.md lists which
+    // kernels run from this target. Swift standard library and the platform
+    // C math module only: no Foundation, I/O, or third-party dependencies.
+    .target(
+        name: "RunPlayEngine",
+        path: "RunPlayEngine/Sources",
+        swiftSettings: [.strictMemorySafety()] + strictWarnings
+    ),
+    // Test-only parity primitives shared by the engine and Core suites.
+    .target(
+        name: "RunPlayEngineTestSupport",
+        path: "RunPlayEngine/TestSupport",
+        swiftSettings: strictWarnings
+    ),
+    .testTarget(
+        name: "RunPlayEngineTests",
+        dependencies: ["RunPlayEngine", "RunPlayEngineTestSupport"],
+        path: "RunPlayEngine/Tests",
+        swiftSettings: strictWarnings
+    ),
     // Cross-platform core: Foundation (and conditional FoundationXML) only.
     // This target and its tests are the complete Swift-facing package graph on Linux.
     // C++ interop is enabled so the internal Interop adapter can import
     // RunPlayEngineCpp; C++ types never appear in public RunPlayCore APIs.
     .target(
         name: "RunPlayCore",
-        dependencies: ["RunPlayEngineCpp"],
+        dependencies: ["RunPlayEngineCpp", "RunPlayEngine"],
         path: "RunPlayCore/Sources",
         resources: coreResources,
         swiftSettings: cxxInteropSettings + strictWarnings
@@ -99,7 +121,7 @@ var targets: [Target] = [
     // tests call only the pure-Swift adapter and must not import the C++ module.
     .testTarget(
         name: "RunPlayCoreTests",
-        dependencies: ["RunPlayCore"],
+        dependencies: ["RunPlayCore", "RunPlayEngineTestSupport"],
         path: "RunPlayCore/Tests/RunPlayCoreTests",
         resources: [
             .process("Fixtures")
