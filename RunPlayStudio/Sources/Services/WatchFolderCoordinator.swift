@@ -55,6 +55,14 @@ final class WatchFolderCoordinator: ObservableObject {
     /// Master pause: when true no folder is scanned or imported.
     @Published private(set) var isPaused = false
 
+    var canScanFolders: Bool {
+        folders.contains { !isEffectivelyPaused($0) }
+    }
+
+    func isEffectivelyPaused(_ folder: WatchFolderConfiguration) -> Bool {
+        isPaused || folder.isPaused
+    }
+
     /// The queued FIT file surfaced by the non-modal banner, if any.
     @Published private(set) var pendingReviewBanner: PendingReviewBanner?
 
@@ -200,7 +208,7 @@ final class WatchFolderCoordinator: ObservableObject {
             surfaceNextPendingReview()
         }
         guard !folders.isEmpty else { return }
-        for folder in folders where !folder.isPaused {
+        for folder in folders where !isEffectivelyPaused(folder) {
             activate(folder)
         }
         beginPolling()
@@ -222,7 +230,7 @@ final class WatchFolderCoordinator: ObservableObject {
         for state in snapshot.states {
             folderStates[state.folderID] = state
         }
-        isPaused = !folders.isEmpty && folders.allSatisfy(\.isPaused)
+        isPaused = snapshot.masterPaused
     }
 
     private func beginPolling() {
@@ -238,6 +246,7 @@ final class WatchFolderCoordinator: ObservableObject {
     }
 
     private func activate(_ configuration: WatchFolderConfiguration) {
+        guard !isEffectivelyPaused(configuration), activeFolders[configuration.id] == nil else { return }
         do {
             let resolved = try bookmarkStore.resolve(configuration.bookmarkData)
             let access = bookmarkStore.beginAccess(to: resolved.url)
@@ -285,7 +294,7 @@ final class WatchFolderCoordinator: ObservableObject {
     /// volume is offline would stay dead until the app restarts.
     private func retryInactiveFolders() {
         for configuration in folders
-        where !configuration.isPaused && activeFolders[configuration.id] == nil {
+        where !isEffectivelyPaused(configuration) && activeFolders[configuration.id] == nil {
             activate(configuration)
         }
     }
@@ -388,29 +397,46 @@ final class WatchFolderCoordinator: ObservableObject {
     }
 
     func setPaused(_ paused: Bool, folderID: UUID) {
-        updateFolder(id: folderID) { $0.isPaused = paused }
-        if paused {
-            if let active = activeFolders.removeValue(forKey: folderID) {
-                active.watchHandle?.cancel()
-                active.scopedAccess?.stop()
-            }
-            // Pausing deliberately stops access, so an unreadable folder is
-            // expected, not a fault: never show Unavailable for a paused folder.
-            unavailableFolderIDs.remove(folderID)
-        } else if let folder = folders.first(where: { $0.id == folderID }) {
+        guard let index = folders.firstIndex(where: { $0.id == folderID }),
+              folders[index].isPaused != paused
+        else { return }
+        folders[index].isPaused = paused
+        let folder = folders[index]
+        if isEffectivelyPaused(folder) {
+            deactivate(folderID: folderID)
+        } else {
             activate(folder)
             requestEarlyScan(bypassSettle: true)
         }
-        isPaused = !folders.isEmpty && folders.allSatisfy(\.isPaused)
         persist()
     }
 
-    /// Master pause toggle from settings.
+    /// Master pause controls watcher lifetimes without editing folder choices.
     func setAllPaused(_ paused: Bool) {
-        for folder in folders {
-            setPaused(paused, folderID: folder.id)
-        }
+        guard isPaused != paused else { return }
         isPaused = paused
+        if paused {
+            for folder in folders {
+                deactivate(folderID: folder.id)
+            }
+        } else {
+            for folder in folders where !folder.isPaused {
+                activate(folder)
+            }
+            if canScanFolders {
+                requestEarlyScan(bypassSettle: true)
+            }
+        }
+        persist()
+    }
+
+    private func deactivate(folderID: UUID) {
+        if let active = activeFolders.removeValue(forKey: folderID) {
+            active.watchHandle?.cancel()
+            active.scopedAccess?.stop()
+        }
+        // Pausing deliberately stops access, so a missing directory is not a fault here.
+        unavailableFolderIDs.remove(folderID)
     }
 
     func setDefaultTag(_ tagName: String, folderID: UUID) {
@@ -422,6 +448,7 @@ final class WatchFolderCoordinator: ObservableObject {
     /// tracker's two-probe requirement — pre-existing files are
     /// definitionally not mid-write.
     func importExistingNow() {
+        guard canScanFolders else { return }
         requestEarlyScan(bypassSettle: true)
     }
 
@@ -680,6 +707,8 @@ final class WatchFolderCoordinator: ObservableObject {
             oversized = hashed.oversized
         }
 
+        guard !isPaused, activeFolders[folderID] != nil else { return tally }
+
         // Record oversized files as failures exactly once, keyed by fingerprint
         // so a later pass never re-reads or re-reports them.
         if !oversized.isEmpty {
@@ -737,7 +766,7 @@ final class WatchFolderCoordinator: ObservableObject {
         knownDuplicateFingerprints[folderID] = duplicateFingerprints
 
         for candidate in result.candidates {
-            guard !isPaused else { break }
+            guard !isPaused, activeFolders[folderID] != nil else { break }
             guard canImportNow() else {
                 // Busy with a user-initiated operation: leave as candidate,
                 // retried next pass without ledgering.
@@ -763,10 +792,10 @@ final class WatchFolderCoordinator: ObservableObject {
         folder: ActiveFolder,
         hash: String
     ) async -> WatchFolderImportOutcome? {
-        let configuration = folder.configuration
-        let folderID = configuration.id
-
-        guard let importExecutor else { return nil }
+        let folderID = folder.configuration.id
+        guard let configuration = folders.first(where: { $0.id == folderID }),
+              !isEffectivelyPaused(configuration), let importExecutor
+        else { return nil }
         let execution = await importExecutor(file.url, configuration)
 
         switch execution.outcome {
@@ -913,10 +942,11 @@ final class WatchFolderCoordinator: ObservableObject {
     }
 
     private func persist() {
-        let snapshot = FileWatchFolderStore.WatchFolderStoreSnapshot(
+        var snapshot = FileWatchFolderStore.WatchFolderStoreSnapshot(
             folders: folders,
             states: Array(folderStates.values)
         )
+        snapshot.masterPaused = isPaused
         try? store.save(snapshot)
     }
 }
