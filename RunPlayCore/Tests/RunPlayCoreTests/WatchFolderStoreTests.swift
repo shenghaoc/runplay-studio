@@ -67,6 +67,36 @@ final class WatchFolderStoreTests: XCTestCase {
         XCTAssertEqual(loaded.states, snapshot.states)
     }
 
+    func testStateWithoutObservedOutcomesLoadsAndRoundTripsThem() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let folderID = UUID()
+        let legacy = """
+        {
+          "version": 1,
+          "folders": [],
+          "states": [{ "folderID": "\(folderID)", "ledger": [], "pendingReview": {} }]
+        }
+        """
+        try Data(legacy.utf8).write(to: directory.appendingPathComponent("watch-folders.json"))
+        let store = FileWatchFolderStore(rootURL: directory)
+
+        guard case .loaded(var loaded) = store.load() else {
+            return XCTFail("A state written before observed outcomes must still load")
+        }
+        XCTAssertEqual(loaded.states.first?.observedOutcomes, [])
+
+        let outcome = WatchFolderObservedOutcome(
+            kind: .oversized,
+            key: "300|1700000000000|file:///tmp/huge.gpx",
+            fileName: "huge.gpx",
+            observedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        loaded.states[0].observedOutcomes = [outcome]
+        try store.save(loaded)
+        XCTAssertEqual(store.load(), .loaded(loaded))
+    }
+
     func testCorruptFileFallsBackToEmpty() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
