@@ -76,16 +76,78 @@ enum AppSessionValidator {
             )
         )
 
+        var destination = snapshot.destination
+        let library = repairedLibrary(
+            snapshot.library, context: context, destination: &destination,
+            issues: &issues, usedFallback: &usedFallback
+        )
+        let heatmap = repairedHeatmap(snapshot.heatmap, context: context, issues: &issues, usedFallback: &usedFallback)
+        let trends = repairedTrends(snapshot.trends, context: context, issues: &issues, usedFallback: &usedFallback)
+        let personalRecords = repairedPersonalRecords(
+            snapshot.personalRecords, context: context, issues: &issues, usedFallback: &usedFallback
+        )
+
+        var comparison = repairedComparison(
+            snapshot.comparison, context: context, destination: &destination,
+            issues: &issues, usedFallback: &usedFallback
+        )
+
+        if destination == .comparison, comparison == nil {
+            destination = .workout
+            usedFallback = true
+        }
+        if destination != .comparison {
+            comparison = nil
+        }
+
+        let replay = repairedReplay(snapshot.replay, context: context, issues: &issues, usedFallback: &usedFallback)
+
+        let sidebarVisibilityRaw = repairedRaw(
+            snapshot.sidebarVisibilityRaw,
+            allowed: AppSessionPolicy.validSidebarVisibility,
+            fallback: "automatic",
+            issues: &issues,
+            usedFallback: &usedFallback
+        )
+
+        return makeResult(
+            snapshot: AppSessionSnapshot(
+                destination: destination,
+                sidebarVisibilityRaw: sidebarVisibilityRaw,
+                workout: workout,
+                library: library,
+                heatmap: heatmap,
+                trends: trends,
+                personalRecords: personalRecords,
+                comparison: comparison,
+                replay: replay
+            ),
+            usedFallback: usedFallback,
+            issues: issues
+        )
+    }
+
+    /// The manual and smart-collection library queries, and the destination
+    /// that selects a smart collection: a missing collection or a missing
+    /// modified query falls back, and only a smart-collection destination
+    /// keeps an active collection.
+    private static func repairedLibrary(
+        _ library: AppSessionLibraryState,
+        context: AppSessionValidationContext,
+        destination: inout AppSessionDestination,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionLibraryState {
         let manualQuery = sanitizeQuery(
-            snapshot.library.manualQuery,
+            library.manualQuery,
             validTagIDs: context.tagIDs,
             referenceDate: context.referenceDate,
             issues: &issues,
             usedFallback: &usedFallback
         )
-        var activeCollectionID = snapshot.library.activeSmartCollectionID
-        var isModified = snapshot.library.activeSmartCollectionModified
-        var workingQuery = snapshot.library.modifiedWorkingQuery.map {
+        var activeCollectionID = library.activeSmartCollectionID
+        var isModified = library.activeSmartCollectionModified
+        var workingQuery = library.modifiedWorkingQuery.map {
             sanitizeQuery(
                 $0,
                 validTagIDs: context.tagIDs,
@@ -111,7 +173,6 @@ enum AppSessionValidator {
             usedFallback = true
         }
 
-        var destination = snapshot.destination
         if case .smartCollection(let destinationID) = destination {
             if !context.smartCollectionIDs.contains(destinationID) {
                 destination = .allRuns
@@ -134,16 +195,32 @@ enum AppSessionValidator {
             workingQuery = nil
         }
 
+        return AppSessionLibraryState(
+            manualQuery: manualQuery,
+            activeSmartCollectionID: activeCollectionID,
+            activeSmartCollectionModified: isModified,
+            modifiedWorkingQuery: workingQuery
+        )
+    }
+
+    /// The heatmap date range, resolution, minimum count and route filter;
+    /// an empty custom range becomes all time.
+    private static func repairedHeatmap(
+        _ persisted: AppSessionHeatmapState,
+        context: AppSessionValidationContext,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionHeatmapState {
         var heatmapDatePreset = repairedRaw(
-            snapshot.heatmap.datePresetRaw,
+            persisted.datePresetRaw,
             allowed: AppSessionPolicy.validHeatmapDatePresets,
             fallback: "allTime",
             issues: &issues,
             usedFallback: &usedFallback
         )
         let heatmapDates = sanitizedDateRange(
-            start: snapshot.heatmap.customStartDate,
-            end: snapshot.heatmap.customEndDate,
+            start: persisted.customStartDate,
+            end: persisted.customEndDate,
             referenceDate: context.referenceDate,
             label: "heatmap",
             issues: &issues,
@@ -156,33 +233,42 @@ enum AppSessionValidator {
             issues.append("Custom heatmap range was empty.")
             usedFallback = true
         }
-        var heatmapRouteGroupID = snapshot.heatmap.routeGroupID
+        var heatmapRouteGroupID = persisted.routeGroupID
         if let existingRouteGroupID = heatmapRouteGroupID,
            !context.routeGroupIDs.contains(existingRouteGroupID) {
             heatmapRouteGroupID = nil
             issues.append("Missing heatmap route filter.")
             usedFallback = true
         }
-        let heatmap = AppSessionHeatmapState(
+        return AppSessionHeatmapState(
             datePresetRaw: heatmapDatePreset,
             customStartDate: heatmapDates.start,
             customEndDate: heatmapDates.end,
             resolutionRaw: repairedRaw(
-                snapshot.heatmap.resolutionRaw,
+                persisted.resolutionRaw,
                 allowed: Set(PersonalHeatmapResolution.allCases.map(\.rawValue)),
                 fallback: PersonalHeatmapResolution.standard.rawValue,
                 issues: &issues,
                 usedFallback: &usedFallback
             ),
             minimumWorkoutCount: sanitizedMinimumWorkoutCount(
-                snapshot.heatmap.minimumWorkoutCount,
+                persisted.minimumWorkoutCount,
                 issues: &issues,
                 usedFallback: &usedFallback
             ),
             routeGroupID: heatmapRouteGroupID
         )
+    }
 
-        var trendsScopeCollectionID = snapshot.trends.scopeSmartCollectionID
+    /// The Trends period, range and scope; a smart-collection scope needs a
+    /// collection that still exists.
+    private static func repairedTrends(
+        _ persisted: AppSessionTrendsState,
+        context: AppSessionValidationContext,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionTrendsState {
+        var trendsScopeCollectionID = persisted.scopeSmartCollectionID
         if let existingCollectionID = trendsScopeCollectionID,
            !context.smartCollectionIDs.contains(existingCollectionID) {
             trendsScopeCollectionID = nil
@@ -190,7 +276,7 @@ enum AppSessionValidator {
             usedFallback = true
         }
         var trendsScopeKindRaw = repairedRaw(
-            snapshot.trends.scopeKindRaw,
+            persisted.scopeKindRaw,
             allowed: AppSessionPolicy.validTrendsScopeKinds,
             fallback: "entireLibrary",
             issues: &issues,
@@ -201,16 +287,16 @@ enum AppSessionValidator {
             issues.append("Trends smart-collection scope without a collection.")
             usedFallback = true
         }
-        let trends = AppSessionTrendsState(
+        return AppSessionTrendsState(
             periodRaw: repairedRaw(
-                snapshot.trends.periodRaw,
+                persisted.periodRaw,
                 allowed: AppSessionPolicy.validTrendsPeriods,
                 fallback: WorkoutTrendsPeriod.month.rawValue,
                 issues: &issues,
                 usedFallback: &usedFallback
             ),
             rangeRaw: repairedRaw(
-                snapshot.trends.rangeRaw,
+                persisted.rangeRaw,
                 allowed: AppSessionPolicy.validTrendsRanges,
                 fallback: WorkoutTrendsRange.last12Months.rawValue,
                 issues: &issues,
@@ -219,10 +305,17 @@ enum AppSessionValidator {
             scopeKindRaw: trendsScopeKindRaw,
             scopeSmartCollectionID: trendsScopeCollectionID
         )
+    }
 
-        // Records scope repair mirrors the Trends scope: the raw kinds are the
-        // same shared scope enum, so the same allowed set applies.
-        var recordsScopeCollectionID = snapshot.personalRecords.scopeSmartCollectionID
+    /// Records scope repair mirrors the Trends scope: the raw kinds are the
+    /// same shared scope enum, so the same allowed set applies.
+    private static func repairedPersonalRecords(
+        _ persisted: AppSessionPersonalRecordsState,
+        context: AppSessionValidationContext,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionPersonalRecordsState {
+        var recordsScopeCollectionID = persisted.scopeSmartCollectionID
         if let existingCollectionID = recordsScopeCollectionID,
            !context.smartCollectionIDs.contains(existingCollectionID) {
             recordsScopeCollectionID = nil
@@ -230,7 +323,7 @@ enum AppSessionValidator {
             usedFallback = true
         }
         var recordsScopeKindRaw = repairedRaw(
-            snapshot.personalRecords.scopeKindRaw,
+            persisted.scopeKindRaw,
             allowed: AppSessionPolicy.validTrendsScopeKinds,
             fallback: "entireLibrary",
             issues: &issues,
@@ -241,142 +334,142 @@ enum AppSessionValidator {
             issues.append("Records smart-collection scope without a collection.")
             usedFallback = true
         }
-        let personalRecords = AppSessionPersonalRecordsState(
+        return AppSessionPersonalRecordsState(
             scopeKindRaw: recordsScopeKindRaw,
             scopeSmartCollectionID: recordsScopeCollectionID
         )
-
-        var comparison: AppSessionComparisonState?
-        if let persistedComparison = snapshot.comparison {
-            let validPrimary = context.selectedWorkoutID
-            let validPeer = context.workoutIDs.contains(persistedComparison.peerWorkoutID)
-                && persistedComparison.peerWorkoutID != validPrimary
-            if validPrimary == nil || !validPeer {
-                issues.append("Invalid comparison peer.")
-                usedFallback = true
-                if destination == .comparison { destination = .workout }
-            } else {
-                let rawDistance = persistedComparison.distanceMeters
-                let repairedDistance: Double
-                if rawDistance.isFinite, rawDistance >= 0 {
-                    repairedDistance = rawDistance
-                } else {
-                    issues.append("Invalid comparison distance.")
-                    usedFallback = true
-                    repairedDistance = 0
-                }
-                let derivedLimit: Double? = {
-                    guard let selectedID = context.selectedWorkoutID,
-                          let selectedDistance = context.workoutDistanceMetersByID[selectedID],
-                          let peerDistance = context.workoutDistanceMetersByID[persistedComparison.peerWorkoutID],
-                          selectedDistance.isFinite, peerDistance.isFinite else {
-                        return nil
-                    }
-                    return min(max(0, selectedDistance), max(0, peerDistance))
-                }()
-                let limit = (context.comparisonDistanceLimit ?? derivedLimit)
-                    .flatMap { $0.isFinite ? max(0, $0) : nil }
-                let modeRaw = ComparisonAlignmentMode(rawValue: persistedComparison.alignmentModeRaw)?.rawValue
-                    ?? ComparisonAlignmentMode.distance.rawValue
-                if modeRaw != persistedComparison.alignmentModeRaw {
-                    issues.append("Invalid comparison alignment mode.")
-                    usedFallback = true
-                }
-                let rawAligned = persistedComparison.alignedProgressMeters
-                let repairedAligned: Double
-                if rawAligned.isFinite, rawAligned >= 0 {
-                    repairedAligned = rawAligned
-                } else {
-                    issues.append("Invalid comparison aligned progress.")
-                    usedFallback = true
-                    repairedAligned = 0
-                }
-                comparison = AppSessionComparisonState(
-                    peerWorkoutID: persistedComparison.peerWorkoutID,
-                    distanceMeters: limit.map { min(repairedDistance, $0) } ?? repairedDistance,
-                    alignmentModeRaw: modeRaw,
-                    alignedProgressMeters: repairedAligned
-                )
-            }
+    }
+    /// The persisted comparison when its peer is still a different available
+    /// workout; otherwise none, and a comparison destination becomes the
+    /// workout.
+    private static func repairedComparison(
+        _ persisted: AppSessionComparisonState?,
+        context: AppSessionValidationContext,
+        destination: inout AppSessionDestination,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionComparisonState? {
+        guard let persistedComparison = persisted else { return nil }
+        let validPrimary = context.selectedWorkoutID
+        let validPeer = context.workoutIDs.contains(persistedComparison.peerWorkoutID)
+            && persistedComparison.peerWorkoutID != validPrimary
+        if validPrimary == nil || !validPeer {
+            issues.append("Invalid comparison peer.")
+            usedFallback = true
+            if destination == .comparison { destination = .workout }
+            return nil
         }
+        return repairedComparisonState(
+            persistedComparison, context: context, issues: &issues, usedFallback: &usedFallback
+        )
+    }
 
-        if destination == .comparison, comparison == nil {
-            destination = .workout
+    /// A valid comparison's distance (clamped to the shorter route or the
+    /// given limit), alignment mode and aligned progress.
+    private static func repairedComparisonState(
+        _ persistedComparison: AppSessionComparisonState,
+        context: AppSessionValidationContext,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionComparisonState {
+        let rawDistance = persistedComparison.distanceMeters
+        let repairedDistance: Double
+        if rawDistance.isFinite, rawDistance >= 0 {
+            repairedDistance = rawDistance
+        } else {
+            issues.append("Invalid comparison distance.")
+            usedFallback = true
+            repairedDistance = 0
+        }
+        let derivedLimit = derivedDistanceLimit(context: context, peerWorkoutID: persistedComparison.peerWorkoutID)
+        let limit = (context.comparisonDistanceLimit ?? derivedLimit)
+            .flatMap { $0.isFinite ? max(0, $0) : nil }
+        let modeRaw = ComparisonAlignmentMode(rawValue: persistedComparison.alignmentModeRaw)?.rawValue
+            ?? ComparisonAlignmentMode.distance.rawValue
+        if modeRaw != persistedComparison.alignmentModeRaw {
+            issues.append("Invalid comparison alignment mode.")
             usedFallback = true
         }
-        if destination != .comparison {
-            comparison = nil
+        let rawAligned = persistedComparison.alignedProgressMeters
+        let repairedAligned: Double
+        if rawAligned.isFinite, rawAligned >= 0 {
+            repairedAligned = rawAligned
+        } else {
+            issues.append("Invalid comparison aligned progress.")
+            usedFallback = true
+            repairedAligned = 0
         }
+        return AppSessionComparisonState(
+            peerWorkoutID: persistedComparison.peerWorkoutID,
+            distanceMeters: limit.map { min(repairedDistance, $0) } ?? repairedDistance,
+            alignmentModeRaw: modeRaw,
+            alignedProgressMeters: repairedAligned
+        )
+    }
 
-        var replay: AppSessionReplayState?
-        if let persistedReplay = snapshot.replay {
-            let validWorkout = context.workoutIDs.contains(persistedReplay.workoutID)
-                && persistedReplay.workoutID == context.selectedWorkoutID
-            if !validWorkout {
-                issues.append("Replay workout is not the selected available workout.")
-                usedFallback = true
-                replay = context.selectedWorkoutID.map {
-                    AppSessionReplayState(workoutID: $0)
-                }
-            } else {
-                let duration = context.replayDuration.map { max(0, $0) }
-                let elapsed = persistedReplay.elapsedSeconds.isFinite
-                    ? max(0, persistedReplay.elapsedSeconds)
-                    : 0
-                if !persistedReplay.elapsedSeconds.isFinite || persistedReplay.elapsedSeconds < 0 {
-                    issues.append("Invalid replay time.")
-                    usedFallback = true
-                }
-                let clampedElapsed = duration.map { min(elapsed, $0) } ?? elapsed
-                if duration.map({ elapsed > $0 }) == true {
-                    issues.append("Replay time was clamped.")
-                    usedFallback = true
-                }
-                let speed = AppSessionPolicy.replaySpeedOptions.contains(persistedReplay.playbackSpeed)
-                    ? persistedReplay.playbackSpeed
-                    : 1
-                if speed != persistedReplay.playbackSpeed {
-                    issues.append("Invalid replay speed.")
-                    usedFallback = true
-                }
-                replay = AppSessionReplayState(
-                    workoutID: persistedReplay.workoutID,
-                    elapsedSeconds: clampedElapsed,
-                    playbackSpeed: speed
-                )
+    /// The shorter of the selected and peer workout distances, when both
+    /// are known and finite.
+    private static func derivedDistanceLimit(
+        context: AppSessionValidationContext, peerWorkoutID: UUID
+    ) -> Double? {
+        guard let selectedID = context.selectedWorkoutID,
+              let selectedDistance = context.workoutDistanceMetersByID[selectedID],
+              let peerDistance = context.workoutDistanceMetersByID[peerWorkoutID],
+              selectedDistance.isFinite, peerDistance.isFinite else {
+            return nil
+        }
+        return min(max(0, selectedDistance), max(0, peerDistance))
+    }
+
+    /// The persisted replay of the selected available workout, with its time
+    /// clamped to the replay and a supported speed; otherwise a fresh replay
+    /// of the selected workout, if any.
+    private static func repairedReplay(
+        _ persisted: AppSessionReplayState?,
+        context: AppSessionValidationContext,
+        issues: inout [String],
+        usedFallback: inout Bool
+    ) -> AppSessionReplayState? {
+    if let persistedReplay = persisted {
+        let validWorkout = context.workoutIDs.contains(persistedReplay.workoutID)
+            && persistedReplay.workoutID == context.selectedWorkoutID
+        if !validWorkout {
+            issues.append("Replay workout is not the selected available workout.")
+            usedFallback = true
+            return context.selectedWorkoutID.map {
+                AppSessionReplayState(workoutID: $0)
             }
-        } else if let selectedWorkoutID = context.selectedWorkoutID {
-            replay = AppSessionReplayState(workoutID: selectedWorkoutID)
+        } else {
+            let duration = context.replayDuration.map { max(0, $0) }
+            let elapsed = persistedReplay.elapsedSeconds.isFinite
+                ? max(0, persistedReplay.elapsedSeconds)
+                : 0
+            if !persistedReplay.elapsedSeconds.isFinite || persistedReplay.elapsedSeconds < 0 {
+                issues.append("Invalid replay time.")
+                usedFallback = true
+            }
+            let clampedElapsed = duration.map { min(elapsed, $0) } ?? elapsed
+            if duration.map({ elapsed > $0 }) == true {
+                issues.append("Replay time was clamped.")
+                usedFallback = true
+            }
+            let speed = AppSessionPolicy.replaySpeedOptions.contains(persistedReplay.playbackSpeed)
+                ? persistedReplay.playbackSpeed
+                : 1
+            if speed != persistedReplay.playbackSpeed {
+                issues.append("Invalid replay speed.")
+                usedFallback = true
+            }
+            return AppSessionReplayState(
+                workoutID: persistedReplay.workoutID,
+                elapsedSeconds: clampedElapsed,
+                playbackSpeed: speed
+            )
         }
-
-        let sidebarVisibilityRaw = repairedRaw(
-            snapshot.sidebarVisibilityRaw,
-            allowed: AppSessionPolicy.validSidebarVisibility,
-            fallback: "automatic",
-            issues: &issues,
-            usedFallback: &usedFallback
-        )
-
-        return makeResult(
-            snapshot: AppSessionSnapshot(
-                destination: destination,
-                sidebarVisibilityRaw: sidebarVisibilityRaw,
-                workout: workout,
-                library: AppSessionLibraryState(
-                    manualQuery: manualQuery,
-                    activeSmartCollectionID: activeCollectionID,
-                    activeSmartCollectionModified: isModified,
-                    modifiedWorkingQuery: workingQuery
-                ),
-                heatmap: heatmap,
-                trends: trends,
-                personalRecords: personalRecords,
-                comparison: comparison,
-                replay: replay
-            ),
-            usedFallback: usedFallback,
-            issues: issues
-        )
+    } else if let selectedWorkoutID = context.selectedWorkoutID {
+        return AppSessionReplayState(workoutID: selectedWorkoutID)
+    }
+    return nil
     }
 
     private static func makeResult(

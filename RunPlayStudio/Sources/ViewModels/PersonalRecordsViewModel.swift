@@ -178,9 +178,10 @@ final class PersonalRecordsViewModel: ObservableObject {
 
     /// Recompute when the library, All Runs state, scope, or backfill output
     /// changes.
-    func refresh(inputs: PersonalRecordsRefreshInputs) {
-        lastInputs = inputs
-        let key = PersonalRecordsRequestKey(
+    /// The cache key: each workout's record-relevant revision, the library
+    /// entries, the smart collections, the query and the scope.
+    private func requestKey(for inputs: PersonalRecordsRefreshInputs) -> PersonalRecordsRequestKey {
+        PersonalRecordsRequestKey(
             workouts: inputs.workouts.map {
                 PersonalRecordsRequestKey.WorkoutRevision(
                     id: $0.id,
@@ -199,6 +200,20 @@ final class PersonalRecordsViewModel: ObservableObject {
                 return nil
             }()
         )
+    }
+
+    /// Ends a cancelled computation of the current request.
+    private func finishCancelledCompute(key: PersonalRecordsRequestKey) {
+        guard lastKey == key else { return }
+        isComputing = false
+        if loadState == .loading {
+            loadState = snapshot == nil ? .idle : .ready
+        }
+    }
+
+    func refresh(inputs: PersonalRecordsRefreshInputs) {
+        lastInputs = inputs
+        let key = requestKey(for: inputs)
 
         lastKey = key
         computeTask?.cancel()
@@ -234,11 +249,7 @@ final class PersonalRecordsViewModel: ObservableObject {
                 }
                 self.apply(snapshot: result.snapshot, inputs: inputs)
             } catch is CancellationError {
-                guard let self, self.lastKey == key else { return }
-                self.isComputing = false
-                if self.loadState == .loading {
-                    self.loadState = self.snapshot == nil ? .idle : .ready
-                }
+                self?.finishCancelledCompute(key: key)
             } catch {
                 guard let self, self.lastKey == key else { return }
                 self.isComputing = false

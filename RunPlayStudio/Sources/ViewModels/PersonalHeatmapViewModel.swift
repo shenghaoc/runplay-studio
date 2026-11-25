@@ -256,15 +256,7 @@ final class PersonalHeatmapViewModel: ObservableObject {
     /// cache entry.
     func refresh(workouts: [RunWorkout], force: Bool = false) {
         let now = nowProvider()
-        let inputWorkouts: [RunWorkout]
-        switch routeFilter {
-        case .anyRoute:
-            inputWorkouts = workouts
-        case .ungroupedOnly:
-            inputWorkouts = workouts.filter { routeGroupIDByWorkout[$0.id] == nil }
-        case .group(let groupID):
-            inputWorkouts = workouts.filter { routeGroupIDByWorkout[$0.id] == groupID }
-        }
+        let inputWorkouts = routeFiltered(workouts)
         // Ordered the same way `makeConfiguration` orders them, so a range and
         // its inversion share one cache entry instead of building twice for
         // the same filter.
@@ -332,29 +324,46 @@ final class PersonalHeatmapViewModel: ObservableObject {
             // Ignore superseded or cancelled requests — do not publish stale work.
             guard self.lastKey == key, !flag.isCancelled, !Task.isCancelled else { return }
 
-            switch result {
-            case .success(let snapshot):
-                self.cache[key] = snapshot
-                // Bound cache size.
-                if self.cache.count > 12 {
-                    let keep = snapshot
-                    self.cache.removeAll(keepingCapacity: true)
-                    self.cache[key] = keep
-                }
-                self.apply(snapshot: snapshot, key: key, requestFit: true)
-            case .failure(let error):
-                if error is CancellationError {
-                    self.isComputing = false
-                    if self.snapshot != nil {
-                        self.loadState = .ready
-                    } else if self.loadState == .loading {
-                        self.loadState = .idle
-                    }
-                    return
-                }
-                self.isComputing = false
-                self.loadState = .failed(error.localizedDescription)
+            self.publish(result, key: key)
+        }
+    }
+
+    /// The workouts the route filter keeps.
+    private func routeFiltered(_ workouts: [RunWorkout]) -> [RunWorkout] {
+        switch routeFilter {
+        case .anyRoute:
+            return workouts
+        case .ungroupedOnly:
+            return workouts.filter { routeGroupIDByWorkout[$0.id] == nil }
+        case .group(let groupID):
+            return workouts.filter { routeGroupIDByWorkout[$0.id] == groupID }
+        }
+    }
+
+    /// Caches and shows a built snapshot, or ends a cancelled or failed build.
+    private func publish(_ result: Result<PersonalHeatmapSnapshot, Error>, key: PersonalHeatmapRequestKey) {
+        switch result {
+        case .success(let snapshot):
+            cache[key] = snapshot
+            // Bound cache size.
+            if cache.count > 12 {
+                let keep = snapshot
+                cache.removeAll(keepingCapacity: true)
+                cache[key] = keep
             }
+            apply(snapshot: snapshot, key: key, requestFit: true)
+        case .failure(let error):
+            if error is CancellationError {
+                isComputing = false
+                if snapshot != nil {
+                    loadState = .ready
+                } else if loadState == .loading {
+                    loadState = .idle
+                }
+                return
+            }
+            isComputing = false
+            loadState = .failed(error.localizedDescription)
         }
     }
 

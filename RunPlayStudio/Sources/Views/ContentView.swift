@@ -106,6 +106,110 @@ struct ContentView: View {
         )
     }
 
+    private func handleFileImporterResult(_ result: Result<[URL], any Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            // Keep security-scoped access alive for the full async import.
+            let scoped = SecurityScopedURL(url)
+            Task {
+                await appState.importWorkout(from: url)
+                _ = scoped // prevent early deallocation
+            }
+        case .failure(let error):
+            appState.errorMessage = error.localizedDescription
+            appState.showingError = true
+        }
+    }
+
+    private func handleArchiveImporterResult(_ result: Result<[URL], any Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            appState.beginArchiveImport(from: url)
+        case .failure(let error):
+            appState.errorMessage = error.localizedDescription
+            appState.showingError = true
+        }
+    }
+
+    private func handleAppleHealthImporterResult(_ result: Result<[URL], any Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            appState.beginAppleHealthImport(from: url)
+        case .failure(let error):
+            appState.errorMessage = error.localizedDescription
+            appState.showingError = true
+        }
+    }
+
+    /// Dismissing the archive sheet cancels a running import, otherwise
+    /// closes the session.
+    private var archiveSessionPresented: Binding<Bool> {
+        Binding(
+            get: { appState.archiveSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.archiveSession?.phase == .importing {
+                    appState.cancelArchiveImport()
+                } else {
+                    appState.dismissArchiveSession()
+                }
+            }
+        )
+    }
+
+    /// Dismissing the FIT session sheet cancels a running import, otherwise
+    /// closes the review.
+    private var fitSessionImportPresented: Binding<Bool> {
+        Binding(
+            get: { appState.fitSessionImportSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.fitSessionImportSession?.phase == .importing {
+                    appState.cancelFITSessionImport()
+                } else {
+                    appState.dismissFITSessionImport()
+                }
+            }
+        )
+    }
+
+    /// Dismissing the Apple Health sheet cancels a scan or a running import,
+    /// otherwise closes the review.
+    private var appleHealthImportPresented: Binding<Bool> {
+        Binding(
+            get: { appState.appleHealthScan != nil || appState.appleHealthSession != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if appState.appleHealthScan != nil || appState.appleHealthSession?.phase == .importing {
+                    appState.cancelAppleHealthImport()
+                } else {
+                    appState.dismissAppleHealthSession()
+                }
+            }
+        )
+    }
+
+    /// The window is disabled while the workspace restores and during
+    /// operations whose progress has no sheet of its own.
+    private var isWindowDisabled: Bool {
+        if sessionController.isRestoring {
+            return true
+        }
+        switch appState.operationState {
+        case .idle, .importingArchive, .importingFITSessions:
+            // Batch progress UI lives in its sheet; keep the window usable.
+            return false
+        case .scanningArchive:
+            // The Health sheet owns scan progress and can still be cancelled.
+            return appState.appleHealthScan == nil
+        case .loadingLibrary, .importing, .deleting, .scanningFITFile:
+            return true
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: sidebarVisibilityBinding) {
             SidebarView(
@@ -147,59 +251,23 @@ struct ContentView: View {
             allowedContentTypes: UTType.supportedImportTypes,
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                // Keep security-scoped access alive for the full async import.
-                let scoped = SecurityScopedURL(url)
-                Task {
-                    await appState.importWorkout(from: url)
-                    _ = scoped // prevent early deallocation
-                }
-            case .failure(let error):
-                appState.errorMessage = error.localizedDescription
-                appState.showingError = true
-            }
+            handleFileImporterResult(result)
         }
         .fileImporter(
             isPresented: $appState.showArchiveImporter,
             allowedContentTypes: UTType.stravaArchiveTypes,
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                appState.beginArchiveImport(from: url)
-            case .failure(let error):
-                appState.errorMessage = error.localizedDescription
-                appState.showingError = true
-            }
+            handleArchiveImporterResult(result)
         }
         .fileImporter(
             isPresented: $appState.showAppleHealthImporter,
             allowedContentTypes: UTType.appleHealthExportTypes,
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                appState.beginAppleHealthImport(from: url)
-            case .failure(let error):
-                appState.errorMessage = error.localizedDescription
-                appState.showingError = true
-            }
+            handleAppleHealthImporterResult(result)
         }
-        .sheet(isPresented: Binding(
-            get: { appState.archiveSession != nil },
-            set: { isPresented in
-                guard !isPresented else { return }
-                if appState.archiveSession?.phase == .importing {
-                    appState.cancelArchiveImport()
-                } else {
-                    appState.dismissArchiveSession()
-                }
-            }
-        )) {
+        .sheet(isPresented: archiveSessionPresented) {
             if let session = appState.archiveSession {
                 StravaArchiveImportView(
                     session: session,
@@ -212,17 +280,7 @@ struct ContentView: View {
                 .interactiveDismissDisabled(session.phase == .importing)
             }
         }
-        .sheet(isPresented: Binding(
-            get: { appState.fitSessionImportSession != nil },
-            set: { isPresented in
-                guard !isPresented else { return }
-                if appState.fitSessionImportSession?.phase == .importing {
-                    appState.cancelFITSessionImport()
-                } else {
-                    appState.dismissFITSessionImport()
-                }
-            }
-        )) {
+        .sheet(isPresented: fitSessionImportPresented) {
             if let session = appState.fitSessionImportSession {
                 FITSessionImportView(
                     session: session,
@@ -235,17 +293,7 @@ struct ContentView: View {
                 .interactiveDismissDisabled(session.phase == .importing)
             }
         }
-        .sheet(isPresented: Binding(
-            get: { appState.appleHealthScan != nil || appState.appleHealthSession != nil },
-            set: { isPresented in
-                guard !isPresented else { return }
-                if appState.appleHealthScan != nil || appState.appleHealthSession?.phase == .importing {
-                    appState.cancelAppleHealthImport()
-                } else {
-                    appState.dismissAppleHealthSession()
-                }
-            }
-        )) {
+        .sheet(isPresented: appleHealthImportPresented) {
             if let scan = appState.appleHealthScan {
                 AppleHealthScanView(filename: scan.filename, onCancel: appState.cancelAppleHealthImport)
                     .interactiveDismissDisabled()
@@ -268,21 +316,7 @@ struct ContentView: View {
         .task {
             await sessionController.startIfNeeded()
         }
-        .disabled({
-            if sessionController.isRestoring {
-                return true
-            }
-            switch appState.operationState {
-            case .idle, .importingArchive, .importingFITSessions:
-                // Batch progress UI lives in its sheet; keep the window usable.
-                return false
-            case .scanningArchive:
-                // The Health sheet owns scan progress and can still be cancelled.
-                return appState.appleHealthScan == nil
-            case .loadingLibrary, .importing, .deleting, .scanningFITFile:
-                return true
-            }
-        }())
+        .disabled(isWindowDisabled)
         .overlay {
             if sessionController.isRestoring {
                 ProgressView("Restoring workspace…")

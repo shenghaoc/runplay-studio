@@ -54,6 +54,60 @@ struct SidebarView: View {
         smartCollections.count > WorkoutLibrarySidebarPolicy.smartCollectionCap
     }
 
+    /// The visible smart collections, and a link to all of them when some
+    /// are hidden.
+    @ViewBuilder
+    private var smartCollectionsSection: some View {
+        if !smartCollections.isEmpty {
+            Section {
+                ForEach(visibleCollections) { collection in
+                    Label(collection.name, systemImage: "rectangle.stack")
+                        .tag(SidebarSelection.smartCollection(collection.id))
+                        .help("Open smart collection “\(collection.name)”")
+                        .accessibilityLabel("Smart collection \(collection.name)")
+                }
+                if hasMoreCollections {
+                    Button {
+                        onManageSmartCollections?()
+                    } label: {
+                        Label("All Smart Collections…", systemImage: "rectangle.stack.badge.person.crop")
+                    }
+                    .accessibilityLabel("Show all smart collections")
+                }
+            } header: {
+                Text("Smart Collections")
+                    .font(AppDesign.Typography.compactLabel)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// The Import menu and, when watch folders run, the recent-imports button.
+    private var importToolbarContent: some View {
+        HStack(spacing: 4) {
+            Menu {
+                Button(action: onImport) {
+                    Label("Import File…", systemImage: "doc.badge.plus")
+                }
+                .keyboardShortcut("i", modifiers: .command)
+                if let onArchiveImport {
+                    Button(action: onArchiveImport) {
+                        Label("Import Strava Archive…", systemImage: "archivebox")
+                    }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                }
+            } label: {
+                Label("Import", systemImage: "plus")
+            }
+            .help("Import a workout file or Strava archive")
+
+            if let watchFolderCoordinator {
+                RecentImportsToolbarButton(coordinator: watchFolderCoordinator)
+            }
+        }
+    }
+
     var body: some View {
         List(selection: $selection) {
             Section {
@@ -105,29 +159,7 @@ struct SidebarView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            if !smartCollections.isEmpty {
-                Section {
-                    ForEach(visibleCollections) { collection in
-                        Label(collection.name, systemImage: "rectangle.stack")
-                            .tag(SidebarSelection.smartCollection(collection.id))
-                            .help("Open smart collection “\(collection.name)”")
-                            .accessibilityLabel("Smart collection \(collection.name)")
-                    }
-                    if hasMoreCollections {
-                        Button {
-                            onManageSmartCollections?()
-                        } label: {
-                            Label("All Smart Collections…", systemImage: "rectangle.stack.badge.person.crop")
-                        }
-                        .accessibilityLabel("Show all smart collections")
-                    }
-                } header: {
-                    Text("Smart Collections")
-                        .font(AppDesign.Typography.compactLabel)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.tertiary)
-                }
-            }
+            smartCollectionsSection
 
             let bounded = sections
 
@@ -211,27 +243,7 @@ struct SidebarView: View {
         .navigationTitle("RunPlay Studio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Menu {
-                        Button(action: onImport) {
-                            Label("Import File…", systemImage: "doc.badge.plus")
-                        }
-                        .keyboardShortcut("i", modifiers: .command)
-                        if let onArchiveImport {
-                            Button(action: onArchiveImport) {
-                                Label("Import Strava Archive…", systemImage: "archivebox")
-                            }
-                            .keyboardShortcut("i", modifiers: [.command, .shift])
-                        }
-                    } label: {
-                        Label("Import", systemImage: "plus")
-                    }
-                    .help("Import a workout file or Strava archive")
-
-                    if let watchFolderCoordinator {
-                        RecentImportsToolbarButton(coordinator: watchFolderCoordinator)
-                    }
-                }
+                importToolbarContent
             }
         }
         .alert("Delete Run", isPresented: Binding(

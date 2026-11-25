@@ -67,11 +67,7 @@ extension AppState {
                 if accessing && !accessTransferredToReview { url.stopAccessingSecurityScopedResource() }
                 // A cancelled read can finish after a replacement starts. It
                 // releases its own file access, but may never change the new state.
-                if let self, self.appleHealthScan?.id == scan.id {
-                    self.appleHealthScan = nil
-                    self.appleHealthTask = nil
-                    self.operationState = .idle
-                }
+                self?.endAppleHealthScan(scanID: scan.id)
             }
             do {
                 let result = try await scanService.scan(
@@ -87,14 +83,28 @@ extension AppState {
             } catch is CancellationError {
                 // Archive cleanup runs before the scanner returns.
             } catch {
-                guard !Task.isCancelled,
-                      let self, self.appleHealthScan?.id == scan.id
-                else { return }
-                self.errorMessage = error.localizedDescription
-                self.showingError = true
-                self.announcementPolicy.handle(.importFailed(message: error.localizedDescription))
+                self?.reportAppleHealthScanFailure(error, scanID: scan.id)
             }
         }
+    }
+
+    /// Clears the scan state, unless a replacement scan has started.
+    private func endAppleHealthScan(scanID: UUID) {
+        if appleHealthScan?.id == scanID {
+            appleHealthScan = nil
+            appleHealthTask = nil
+            operationState = .idle
+        }
+    }
+
+    /// Reports a failed scan, unless it was cancelled or replaced.
+    private func reportAppleHealthScanFailure(_ error: any Error, scanID: UUID) {
+        guard !Task.isCancelled,
+              appleHealthScan?.id == scanID
+        else { return }
+        errorMessage = error.localizedDescription
+        showingError = true
+        announcementPolicy.handle(.importFailed(message: error.localizedDescription))
     }
 
     /// Present a finished scan as a review.

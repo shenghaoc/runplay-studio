@@ -337,8 +337,9 @@ final class WorkoutVideoExportViewModel: Identifiable {
         }
     }
 
-    private func schedulePosterPreview(forceMapRefresh: Bool = false) {
-        guard hasAppeared else { return }
+    /// Cancels the running preview (and, when forced, the map preparation),
+    /// clears the previous outcome, and returns the new request's serial.
+    private func beginPreviewRequest(forceMapRefresh: Bool) -> Int {
         previewTask?.cancel()
         if forceMapRefresh {
             mapPreparationTask?.cancel()
@@ -353,6 +354,12 @@ final class WorkoutVideoExportViewModel: Identifiable {
         }
         isPreparingPoster = true
         phase = forceMapRefresh || mapPreparation == nil ? .loadingMap : .renderingPoster
+        return serial
+    }
+
+    private func schedulePosterPreview(forceMapRefresh: Bool = false) {
+        guard hasAppeared else { return }
+        let serial = beginPreviewRequest(forceMapRefresh: forceMapRefresh)
 
         let config = configuration
         let exporter = self.exporter
@@ -435,8 +442,6 @@ final class WorkoutVideoExportViewModel: Identifiable {
                 self.finishCancelledPreview(serial: serial)
             } catch let error as WorkoutVideoExportError where error.isCancellation {
                 self.finishCancelledPreview(serial: serial)
-            } catch let error as WorkoutVideoExportError {
-                self.finishFailedPreview(error, serial: serial)
             } catch {
                 self.finishFailedPreview(error, serial: serial)
             }

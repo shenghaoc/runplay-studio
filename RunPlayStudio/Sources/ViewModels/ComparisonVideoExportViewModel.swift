@@ -495,17 +495,23 @@ final class ComparisonVideoExportViewModel: Identifiable {
         }
     }
 
-    private func schedulePosterPreview(forceMapRefresh: Bool = false) {
-        guard hasAppeared else { return }
+    /// Route-Aware without an alignment shows that the alignment is still
+    /// preparing or unavailable instead of a poster. Returns whether it did.
+    private func showRouteAwareAlignmentState() -> Bool {
         if configuration.alignmentMode == .routeAware, !isRouteAwareAvailable {
             if isPreparingAlignment {
                 phase = .preparingAlignment
             } else {
                 phase = .alignmentUnavailable
             }
-            return
+            return true
         }
+        return false
+    }
 
+    /// Cancels the running preview (and, when forced, the map preparation),
+    /// clears the previous outcome, and returns the new request's serial.
+    private func beginPreviewRequest(forceMapRefresh: Bool) -> Int {
         previewTask?.cancel()
         if forceMapRefresh {
             mapPreparationTask?.cancel()
@@ -517,6 +523,14 @@ final class ComparisonVideoExportViewModel: Identifiable {
         isPreviewFailure = false
         isPreparingPoster = true
         phase = mapPreparation == nil || forceMapRefresh ? .loadingMap : .renderingPoster
+        return serial
+    }
+
+    private func schedulePosterPreview(forceMapRefresh: Bool = false) {
+        guard hasAppeared else { return }
+        if showRouteAwareAlignmentState() { return }
+
+        let serial = beginPreviewRequest(forceMapRefresh: forceMapRefresh)
 
         let config = configuration
         let pair = self.pair
@@ -571,35 +585,47 @@ final class ComparisonVideoExportViewModel: Identifiable {
                 self.phase = .awaitingDestination
                 self.announcementPolicy.handle(.comparisonVideoPreviewReady)
             } catch is CancellationError {
-                if serial == self.requestSerial {
-                    self.isPreparingPoster = false
-                }
+                self.finishCancelledPreview(serial: serial)
             } catch let error as ComparisonVideoExportError where error.isCancellation {
-                if serial == self.requestSerial {
-                    self.isPreparingPoster = false
-                }
+                self.finishCancelledPreview(serial: serial)
             } catch let error as ComparisonVideoExportError {
-                guard serial == self.requestSerial else { return }
-                self.isPreparingPoster = false
-                self.isPreviewFailure = true
-                self.errorMessage = error.localizedDescription
-                if case .mapPreparationFailed = error {
-                    self.mapFailureMessage = error.localizedDescription
-                    self.phase = .failed
-                } else {
-                    self.phase = .failed
-                }
-                self.announcementPolicy.handle(
-                    .comparisonVideoExportFailed(message: error.localizedDescription)
-                )
+                self.finishFailedPreview(error, serial: serial)
             } catch {
-                guard serial == self.requestSerial else { return }
-                self.isPreparingPoster = false
-                self.isPreviewFailure = true
-                self.errorMessage = error.localizedDescription
-                self.phase = .failed
+                self.finishUnexpectedPreviewFailure(error, serial: serial)
             }
         }
+    }
+
+    private func finishCancelledPreview(serial: Int) {
+        if serial == requestSerial {
+            isPreparingPoster = false
+        }
+    }
+
+    /// A failed preview of the current request; a map failure is also kept
+    /// for the map status.
+    private func finishFailedPreview(_ error: ComparisonVideoExportError, serial: Int) {
+        guard serial == requestSerial else { return }
+        isPreparingPoster = false
+        isPreviewFailure = true
+        errorMessage = error.localizedDescription
+        if case .mapPreparationFailed = error {
+            mapFailureMessage = error.localizedDescription
+            phase = .failed
+        } else {
+            phase = .failed
+        }
+        announcementPolicy.handle(
+            .comparisonVideoExportFailed(message: error.localizedDescription)
+        )
+    }
+
+    private func finishUnexpectedPreviewFailure(_ error: any Error, serial: Int) {
+        guard serial == requestSerial else { return }
+        isPreparingPoster = false
+        isPreviewFailure = true
+        errorMessage = error.localizedDescription
+        phase = .failed
     }
 
     private func makePosterAccessibilityLabel(_ poster: ComparisonVideoPoster) -> String {

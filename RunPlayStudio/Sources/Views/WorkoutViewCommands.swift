@@ -86,6 +86,21 @@ struct WorkoutViewCommands: Commands {
         open()
     }
 
+    /// Runs a workspace command through the focused scene's actions, or
+    /// posts it for the workspace when no scene has focus.
+    private func performWorkspaceCommand(
+        _ command: AppWorkspaceCommand, _ action: (AppWorkspaceActions) -> Void
+    ) {
+        if let workspaceActions {
+            action(workspaceActions)
+        } else {
+            NotificationCenter.default.post(
+                name: .runPlayWorkspaceCommand,
+                object: command
+            )
+        }
+    }
+
     var body: some Commands {
         // `importExport` is absent from a non-document SwiftUI app's File menu,
         // so place these actions after the always-present New item instead.
@@ -233,70 +248,35 @@ struct WorkoutViewCommands: Commands {
 
         CommandMenu("Library") {
             Button(CommandRegistry.definition(for: .showAllRuns).menuTitle) {
-                if let workspaceActions {
-                    workspaceActions.showAllRuns()
-                } else {
-                    NotificationCenter.default.post(
-                        name: .runPlayWorkspaceCommand,
-                        object: AppWorkspaceCommand.showAllRuns
-                    )
-                }
+                performWorkspaceCommand(.showAllRuns) { $0.showAllRuns() }
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showAllRuns).purpose)
             .disabled(isSheetBlocking)
 
             Button(CommandRegistry.definition(for: .showPersonalHeatmap).menuTitle) {
-                if let workspaceActions {
-                    workspaceActions.showPersonalHeatmap()
-                } else {
-                    NotificationCenter.default.post(
-                        name: .runPlayWorkspaceCommand,
-                        object: AppWorkspaceCommand.showPersonalHeatmap
-                    )
-                }
+                performWorkspaceCommand(.showPersonalHeatmap) { $0.showPersonalHeatmap() }
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showPersonalHeatmap).purpose)
             .disabled(isSheetBlocking)
 
             Button(CommandRegistry.definition(for: .showTrends).menuTitle) {
-                if let workspaceActions {
-                    workspaceActions.showTrends()
-                } else {
-                    NotificationCenter.default.post(
-                        name: .runPlayWorkspaceCommand,
-                        object: AppWorkspaceCommand.showTrends
-                    )
-                }
+                performWorkspaceCommand(.showTrends) { $0.showTrends() }
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showTrends).purpose)
             .disabled(isSheetBlocking)
 
             Button(CommandRegistry.definition(for: .showPersonalRecords).menuTitle) {
-                if let workspaceActions {
-                    workspaceActions.showPersonalRecords()
-                } else {
-                    NotificationCenter.default.post(
-                        name: .runPlayWorkspaceCommand,
-                        object: AppWorkspaceCommand.showPersonalRecords
-                    )
-                }
+                performWorkspaceCommand(.showPersonalRecords) { $0.showPersonalRecords() }
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showPersonalRecords).purpose)
             .disabled(isSheetBlocking)
 
             Button(CommandRegistry.definition(for: .showRouteGroups).menuTitle) {
-                if let workspaceActions {
-                    workspaceActions.showRouteGroups()
-                } else {
-                    NotificationCenter.default.post(
-                        name: .runPlayWorkspaceCommand,
-                        object: AppWorkspaceCommand.showRouteGroups
-                    )
-                }
+                performWorkspaceCommand(.showRouteGroups) { $0.showRouteGroups() }
             }
             .keyboardShortcut("g", modifiers: [.command, .shift])
             .help(CommandRegistry.definition(for: .showRouteGroups).purpose)
